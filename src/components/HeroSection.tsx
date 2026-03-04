@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import heroBg1 from "@/assets/hero-bg-1.jpg";
 import heroBg2 from "@/assets/hero-bg-2.jpg";
 import heroBg3 from "@/assets/hero-bg-3.jpg";
-import logoFaceimob from "@/assets/logo-faceimob.png";
+import logoSymbol from "@/assets/logo-faceimob-symbol.png";
 
 const backgrounds = [heroBg1, heroBg2, heroBg3];
 
@@ -60,7 +60,7 @@ const HeroSection = () => {
             className="hidden lg:flex flex-col items-center justify-center"
           >
             <motion.img
-              src={logoFaceimob}
+              src={logoSymbol}
               alt="Faceimob"
               className="w-64 h-auto drop-shadow-2xl"
               animate={{ y: [0, -8, 0] }}
