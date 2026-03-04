@@ -8,18 +8,19 @@ const SectionTransition = ({ variant = "dark-to-light" }: Props) => {
   const isDarkToLight = variant === "dark-to-light";
 
   return (
-    <div className="relative h-24 overflow-hidden">
-      <svg
-        viewBox="0 0 1440 120"
-        className="absolute w-full h-full"
-        preserveAspectRatio="none"
-      >
-        <path
-          d="M0,0 C360,120 1080,0 1440,80 L1440,120 L0,120 Z"
-          className={isDarkToLight ? "fill-background" : "fill-primary"}
-        />
-      </svg>
-      <div className={`absolute inset-0 ${isDarkToLight ? "bg-primary" : "bg-background"}`} style={{ zIndex: -1 }} />
+    <div className="relative h-32 overflow-hidden">
+      {/* Top color */}
+      <div className={`absolute inset-0 ${isDarkToLight ? "bg-primary" : "bg-background"}`} />
+      {/* Bottom color fading in */}
+      <motion.div
+        className={`absolute inset-0 ${isDarkToLight ? "bg-background" : "bg-primary"}`}
+        style={{
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 100%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 100%)",
+        }}
+      />
+      {/* Subtle center glow line */}
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-px bg-accent/20 blur-sm" />
     </div>
   );
 };
