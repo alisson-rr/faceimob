@@ -1,68 +1,26 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Search, MapPin, Home, Building2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import dianho from "@/assets/dianho.png";
 
-const floatingIcons = [
-  { icon: "🏠", x: "10%", y: "20%", delay: 0, duration: 6 },
-  { icon: "🏢", x: "85%", y: "15%", delay: 1, duration: 7 },
-  { icon: "🔑", x: "75%", y: "70%", delay: 2, duration: 5 },
-  { icon: "📍", x: "15%", y: "75%", delay: 0.5, duration: 8 },
-  { icon: "🏗️", x: "50%", y: "10%", delay: 1.5, duration: 6 },
-];
-
 const HeroSection = () => {
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden bg-primary">
-      {/* Animated gradient background */}
-      <div className="absolute inset-0">
-        <motion.div
-          className="absolute inset-0 opacity-30"
-          style={{
-            background: "radial-gradient(ellipse at 30% 50%, hsl(213, 42%, 35%) 0%, transparent 60%), radial-gradient(ellipse at 70% 30%, hsl(150, 30%, 40%) 0%, transparent 50%), radial-gradient(ellipse at 50% 80%, hsl(47, 80%, 40%) 0%, transparent 50%)"
-          }}
-          animate={{
-            scale: [1, 1.1, 1],
-            rotate: [0, 2, -2, 0],
-          }}
-          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
-        />
-      </div>
-
-      {/* Grid pattern overlay */}
+      {/* Clean subtle background */}
       <div className="absolute inset-0 opacity-[0.03]"
         style={{
           backgroundImage: "linear-gradient(hsla(0,0%,100%,0.1) 1px, transparent 1px), linear-gradient(90deg, hsla(0,0%,100%,0.1) 1px, transparent 1px)",
-          backgroundSize: "60px 60px"
+          backgroundSize: "80px 80px"
         }}
       />
 
-      {/* Floating real estate icons */}
-      {floatingIcons.map((item, i) => (
-        <motion.div
-          key={i}
-          className="absolute text-2xl md:text-3xl opacity-10 pointer-events-none select-none"
-          style={{ left: item.x, top: item.y }}
-          animate={{
-            y: [0, -20, 0],
-            rotate: [0, 10, -10, 0],
-            opacity: [0.05, 0.15, 0.05],
-          }}
-          transition={{ duration: item.duration, delay: item.delay, repeat: Infinity, ease: "easeInOut" }}
-        >
-          {item.icon}
-        </motion.div>
-      ))}
-
-      {/* Glow Effects */}
-      <div className="absolute top-1/4 right-1/3 w-[600px] h-[600px] rounded-full bg-accent/8 blur-[150px] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-[hsl(213,42%,56%)]/10 blur-[120px] pointer-events-none" />
+      {/* Subtle glow */}
+      <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] rounded-full bg-accent/5 blur-[180px] pointer-events-none" />
 
       {/* Content */}
       <div className="relative z-10 container mx-auto px-4 pt-28 pb-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-          {/* Left - Text content */}
+          {/* Left - Text */}
           <div className="text-center lg:text-left order-2 lg:order-1">
             <motion.p
               initial={{ opacity: 0, y: 20 }}
@@ -80,7 +38,7 @@ const HeroSection = () => {
               className="text-primary-foreground font-display text-4xl md:text-6xl lg:text-7xl font-bold leading-[1.1] mb-6"
             >
               Encontre o imóvel{" "}
-              <span className="text-gradient-accent">dos seus sonhos</span>
+              <span className="text-accent">dos seus sonhos</span>
             </motion.h1>
 
             <motion.p
@@ -92,7 +50,7 @@ const HeroSection = () => {
               Especialistas em imóveis residenciais, comerciais e galpões em Porto Alegre e região.
             </motion.p>
 
-            {/* CTA Buttons */}
+            {/* CTA */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -129,22 +87,26 @@ const HeroSection = () => {
             </motion.div>
           </div>
 
-          {/* Right - Dianho character */}
+          {/* Right - Dianho */}
           <motion.div
-            initial={{ opacity: 0, x: 60, scale: 0.9 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.3, type: "spring" }}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1, delay: 0.3, type: "spring", stiffness: 80 }}
             className="relative flex justify-center order-1 lg:order-2"
           >
-            {/* Glow behind character */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] rounded-full bg-accent/10 blur-[80px] pointer-events-none" />
-            
-            {/* Glass card behind */}
+            {/* Glow ring behind */}
+            <motion.div
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] aspect-square rounded-full border border-accent/10"
+              animate={{ scale: [1, 1.08, 1], opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            />
+
+            {/* Glass cards */}
             <motion.div
               className="absolute bottom-8 -left-4 glass rounded-2xl px-5 py-3 shadow-glow z-20"
-              initial={{ opacity: 0, x: -20 }}
+              initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 1 }}
+              transition={{ delay: 1, type: "spring" }}
               whileHover={{ scale: 1.05 }}
             >
               <p className="text-accent font-bold text-sm font-display">Dianho recomenda! 🤙</p>
@@ -153,26 +115,32 @@ const HeroSection = () => {
 
             <motion.div
               className="absolute top-12 -right-2 glass rounded-2xl px-4 py-2 shadow-glow z-20"
-              initial={{ opacity: 0, x: 20 }}
+              initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 1.2 }}
+              transition={{ delay: 1.2, type: "spring" }}
               whileHover={{ scale: 1.05 }}
             >
-              <p className="text-[hsl(150,30%,65%)] font-bold text-xs">⭐ 4.9/5</p>
+              <p className="text-accent font-bold text-xs">⭐ 4.9/5</p>
               <p className="text-primary-foreground/50 text-[10px]">+200 avaliações</p>
             </motion.div>
 
+            {/* Dianho with complex animation */}
             <motion.img
               src={dianho}
               alt="Dianho - Mascote Faceimob"
               className="relative z-10 w-full max-w-md h-auto drop-shadow-[0_20px_60px_rgba(0,0,0,0.5)]"
-              animate={{ y: [0, -6, 0] }}
-              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+              style={{ mixBlendMode: "normal", filter: "drop-shadow(0 0 40px hsl(47 80% 58% / 0.15))" }}
+              animate={{
+                y: [0, -12, 0],
+                rotate: [0, 1.5, -1.5, 0],
+                scale: [1, 1.02, 1],
+              }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
             />
           </motion.div>
         </div>
 
-        {/* Search Bar - Glass */}
+        {/* Search Bar */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
@@ -191,7 +159,6 @@ const HeroSection = () => {
                 <option>Comercial</option>
               </select>
             </div>
-
             <div className="flex items-center gap-3 bg-primary-foreground/10 rounded-xl px-4 py-3 hover:bg-primary-foreground/15 transition-colors">
               <MapPin className="h-5 w-5 text-accent shrink-0" />
               <select className="bg-transparent text-primary-foreground/80 text-sm w-full outline-none appearance-none cursor-pointer">
@@ -203,7 +170,6 @@ const HeroSection = () => {
                 <option>Viamão</option>
               </select>
             </div>
-
             <div className="flex items-center gap-3 bg-primary-foreground/10 rounded-xl px-4 py-3 hover:bg-primary-foreground/15 transition-colors">
               <Building2 className="h-5 w-5 text-accent shrink-0" />
               <select className="bg-transparent text-primary-foreground/80 text-sm w-full outline-none appearance-none cursor-pointer">
@@ -214,7 +180,6 @@ const HeroSection = () => {
                 <option>Zona Norte</option>
               </select>
             </div>
-
             <div className="flex items-center gap-3 bg-primary-foreground/10 rounded-xl px-4 py-3 hover:bg-primary-foreground/15 transition-colors">
               <input
                 type="text"
@@ -222,8 +187,7 @@ const HeroSection = () => {
                 className="bg-transparent text-primary-foreground/80 text-sm w-full outline-none placeholder:text-primary-foreground/40"
               />
             </div>
-
-            <Button variant="hero" size="lg" className="gap-2 rounded-xl h-auto py-3 animate-glow-pulse">
+            <Button variant="hero" size="lg" className="gap-2 rounded-xl h-auto py-3">
               <Search className="h-5 w-5" />
               Pesquisar
             </Button>
