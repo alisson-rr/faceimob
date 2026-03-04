@@ -36,13 +36,16 @@ const Navbar = () => {
     >
       <div className="container mx-auto flex items-center justify-between h-20 px-4">
         <Link to="/" className="flex items-center gap-3 group">
-          <motion.img
-            src={logoFaceimob}
-            alt="Faceimob"
-            className="h-12 w-auto object-contain drop-shadow-lg"
-            whileHover={{ scale: 1.05 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          />
+          <div className="flex flex-col items-start">
+            <motion.img
+              src={logoFaceimob}
+              alt="Faceimob"
+              className="h-12 w-auto object-contain drop-shadow-lg"
+              whileHover={{ scale: 1.05 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            />
+            <span className="text-[9px] tracking-[0.15em] text-primary-foreground/40 font-medium mt-0.5 ml-0.5">CRECI-J 23681</span>
+          </div>
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
