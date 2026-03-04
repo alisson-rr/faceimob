@@ -1,37 +1,41 @@
 import { motion } from "framer-motion";
-import { Building2, Home, Landmark, TrendingUp } from "lucide-react";
+import { Building2, Home, Warehouse, BedDouble } from "lucide-react";
 
 const categories = [
   {
     icon: Building2,
     title: "Apartamentos",
-    description: "Opções verticais com conforto e praticidade para sua família.",
+    description: "Veja tudo que temos em opção vertical.",
     count: "120+ imóveis",
   },
   {
     icon: Home,
     title: "Casas",
-    description: "Escolha entre nossas opções horizontais com espaço e segurança.",
+    description: "Escolha uma de nossas opções horizontais!",
     count: "85+ imóveis",
   },
   {
-    icon: Landmark,
-    title: "Comerciais",
-    description: "Salas, lojas e galpões para impulsionar o seu negócio.",
+    icon: Warehouse,
+    title: "Galpões",
+    description: "A imobiliária Galponeira! Somos especialistas.",
     count: "45+ imóveis",
   },
   {
-    icon: TrendingUp,
-    title: "Investimento",
-    description: "Imóveis com alto potencial de valorização e rentabilidade.",
-    count: "30+ imóveis",
+    icon: BedDouble,
+    title: "2 Dormitórios",
+    description: "Conforto e muito espaço. Confira!",
+    count: "60+ imóveis",
   },
 ];
 
 const PropertyCategories = () => {
   return (
-    <section className="py-20 md:py-28 bg-secondary">
-      <div className="container mx-auto px-4">
+    <section className="py-20 md:py-28 bg-primary relative overflow-hidden">
+      {/* Glow orbs */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-accent/5 rounded-full blur-[150px] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-accent/5 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="container mx-auto px-4 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -39,10 +43,10 @@ const PropertyCategories = () => {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <p className="text-primary font-semibold text-sm tracking-widest uppercase mb-3">
+          <p className="text-accent font-semibold text-sm tracking-widest uppercase mb-3">
             Categorias
           </p>
-          <h2 className="font-display text-3xl md:text-5xl font-bold text-secondary-foreground">
+          <h2 className="font-display text-3xl md:text-5xl font-bold text-primary-foreground">
             Imóveis Exclusivos
           </h2>
         </motion.div>
@@ -55,17 +59,17 @@ const PropertyCategories = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
-              whileHover={{ y: -8 }}
-              className="group bg-secondary-foreground/5 backdrop-blur-sm border border-secondary-foreground/10 rounded-2xl p-8 cursor-pointer hover:border-primary/40 transition-colors"
+              whileHover={{ y: -8, scale: 1.02 }}
+              className="group glass rounded-2xl p-8 cursor-pointer hover:shadow-glow transition-all duration-300"
             >
-              <div className="w-14 h-14 rounded-xl bg-gradient-orange flex items-center justify-center mb-6">
-                <cat.icon className="h-7 w-7 text-primary-foreground" />
+              <div className="w-14 h-14 rounded-xl bg-gradient-accent flex items-center justify-center mb-6 group-hover:animate-glow-pulse transition-all">
+                <cat.icon className="h-7 w-7 text-accent-foreground" />
               </div>
-              <h3 className="font-display text-xl font-bold text-secondary-foreground mb-2">
+              <h3 className="font-display text-xl font-bold text-primary-foreground mb-2">
                 {cat.title}
               </h3>
-              <p className="text-secondary-foreground/60 text-sm mb-4">{cat.description}</p>
-              <p className="text-primary font-semibold text-sm">{cat.count}</p>
+              <p className="text-primary-foreground/50 text-sm mb-4">{cat.description}</p>
+              <p className="text-accent font-semibold text-sm">{cat.count}</p>
             </motion.div>
           ))}
         </div>
