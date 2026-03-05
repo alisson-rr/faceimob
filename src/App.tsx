@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
@@ -15,35 +16,45 @@ import DataManagement from "@/pages/DataManagement";
 import SettingsPage from "@/pages/Settings";
 import Norteador from "@/pages/Norteador";
 import Links from "@/pages/Links";
+import CcaPipeline from "@/pages/CcaPipeline";
+import AdminPermissions from "@/pages/AdminPermissions";
+import AdminTeams from "@/pages/AdminTeams";
+import AdminDevelopers from "@/pages/AdminDevelopers";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/pipeline" element={<Pipeline />} />
-            <Route path="/leads" element={<Leads />} />
-            <Route path="/norteador" element={<Norteador />} />
-            <Route path="/marketing" element={<Marketing />} />
-            <Route path="/team" element={<Team />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/links" element={<Links />} />
-            <Route path="/data" element={<DataManagement />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route element={<AppLayout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/pipeline" element={<Pipeline />} />
+              <Route path="/cca" element={<CcaPipeline />} />
+              <Route path="/leads" element={<Leads />} />
+              <Route path="/norteador" element={<Norteador />} />
+              <Route path="/marketing" element={<Marketing />} />
+              <Route path="/team" element={<Team />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/links" element={<Links />} />
+              <Route path="/data" element={<DataManagement />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/admin/permissions" element={<AdminPermissions />} />
+              <Route path="/admin/teams" element={<AdminTeams />} />
+              <Route path="/admin/developers" element={<AdminDevelopers />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 

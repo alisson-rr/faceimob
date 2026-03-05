@@ -1,6 +1,7 @@
 import {
   LayoutDashboard, GitBranch, Users, UserPlus, Megaphone,
   UserCircle, Database, Settings, LogOut, Compass, Link2, Sun, Moon,
+  CreditCard, Shield, Building2, UsersRound,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -15,16 +16,24 @@ import logoSymbol from "@/assets/logo-faceimob-symbol-white.png";
 import logoSymbolDark from "@/assets/logo-faceimob-symbol.png";
 import { useTheme } from "@/hooks/useTheme";
 import { useCallback, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const mainNav = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Pipeline", url: "/pipeline", icon: GitBranch },
-  { title: "Leads", url: "/leads", icon: UserPlus },
-  { title: "Norteador", url: "/norteador", icon: Compass },
-  { title: "Marketing", url: "/marketing", icon: Megaphone },
-  { title: "Equipe", url: "/team", icon: Users },
-  { title: "Pessoal", url: "/profile", icon: UserCircle },
-  { title: "Links", url: "/links", icon: Link2 },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "Pipeline", url: "/pipeline", icon: GitBranch, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "CCA Pipeline", url: "/cca", icon: CreditCard, roles: ['admin', 'cca', 'partner'] },
+  { title: "Leads", url: "/leads", icon: UserPlus, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "Norteador", url: "/norteador", icon: Compass, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "Marketing", url: "/marketing", icon: Megaphone, roles: ['admin', 'partner', 'director', 'manager'] },
+  { title: "Equipe", url: "/team", icon: Users, roles: ['admin', 'partner', 'director', 'manager'] },
+  { title: "Pessoal", url: "/profile", icon: UserCircle, roles: ['admin', 'partner', 'director', 'manager', 'broker', 'cca'] },
+  { title: "Links", url: "/links", icon: Link2, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+];
+
+const adminNav = [
+  { title: "Permissões", url: "/admin/permissions", icon: Shield },
+  { title: "Equipes", url: "/admin/teams", icon: UsersRound },
+  { title: "Construtoras", url: "/admin/developers", icon: Building2 },
 ];
 
 const systemNav = [
@@ -38,6 +47,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { role } = useAuth();
   const isActive = (path: string) => location.pathname === path;
   const isLight = theme === "light";
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -53,6 +63,9 @@ export function AppSidebar() {
     clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => setOpen(false), 300);
   }, [setOpen]);
+
+  const visibleMainNav = mainNav.filter(item => item.roles.includes(role));
+  const showAdmin = role === 'admin';
 
   return (
     <Sidebar
@@ -73,7 +86,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNav.map((item, i) => (
+              {visibleMainNav.map((item, i) => (
                 <SidebarMenuItem key={item.title} style={{ animationDelay: `${i * 30}ms` }} className="animate-fade-in">
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink to={item.url} end activeClassName="bg-primary/15 text-primary glow-primary">
@@ -86,6 +99,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {showAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administração</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminNav.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                      <NavLink to={item.url} end activeClassName="bg-primary/15 text-primary glow-primary">
+                        <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
+                        {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup>
           <SidebarGroupLabel>Sistema</SidebarGroupLabel>
