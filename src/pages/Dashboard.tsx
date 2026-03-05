@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -7,9 +8,10 @@ import { Calendar } from "@/components/ui/calendar";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Trophy, Filter, RefreshCw, Brain, TrendingUp, AlertTriangle, MessageSquare, Send, Lightbulb, Target, Zap, Bell } from "lucide-react";
-import { mockDeals } from "@/data/mockData";
+import { Calendar as CalendarIcon, Trophy, Filter, RefreshCw, Brain, TrendingUp, AlertTriangle, MessageSquare, Send, Lightbulb, Target, Zap, Bell, Activity, Radio } from "lucide-react";
+import { mockDeals, mockLeads } from "@/data/mockData";
 import { generateInsights, generateForecast, generateFollowUps, generateAlerts, analyzeBrokers, askAssistant } from "@/lib/aiAnalytics";
+import { generatePipelineAlerts, calculateSourceMetrics } from "@/lib/automationEngine";
 import { motion, AnimatePresence } from "framer-motion";
 
 // ── Data ──────────────────────────────────────────────────────
@@ -135,6 +137,8 @@ export default function Dashboard() {
   const followUps = useMemo(() => generateFollowUps(mockDeals), []);
   const alerts = useMemo(() => generateAlerts(mockDeals), []);
   const brokerAnalysis = useMemo(() => analyzeBrokers(mockDeals), []);
+  const pipelineAlerts = useMemo(() => generatePipelineAlerts(mockLeads, mockDeals), []);
+  const sourceMetrics = useMemo(() => calculateSourceMetrics(mockLeads), []);
 
   const handleAssistantSend = () => {
     if (!assistantInput.trim()) return;
@@ -415,6 +419,48 @@ export default function Dashboard() {
           </table>
         </CardContent>
       </Card>
+
+      {/* ── PIPELINE ALERTS + SOURCE METRICS ─────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Card className="glass border-amber-500/30">
+          <CardHeader className="py-2 px-3 flex flex-row items-center gap-2">
+            <Radio className="h-4 w-4 text-amber-400 animate-pulse" />
+            <CardTitle className="text-xs font-semibold text-amber-400">Alertas do Pipeline</CardTitle>
+            <Badge variant="secondary" className="ml-auto text-[10px]">{pipelineAlerts.filter(a => !a.read).length}</Badge>
+          </CardHeader>
+          <CardContent className="p-3 space-y-1.5 max-h-48 overflow-y-auto">
+            {pipelineAlerts.slice(0, 8).map((alert) => (
+              <div key={alert.id} className={cn("p-2 rounded text-xs border flex items-start gap-2",
+                alert.severity === "danger" ? "border-destructive/20 bg-destructive/5" :
+                alert.severity === "warning" ? "border-warning/20 bg-warning/5" : "border-primary/20 bg-primary/5"
+              )}>
+                <span className="text-[10px] font-bold uppercase tracking-wider flex-shrink-0 mt-0.5">{alert.type === "new_lead" ? "🆕" : alert.type === "visit_today" ? "📅" : alert.type === "deal_inactive" ? "⚠️" : "📋"}</span>
+                <div><p className="font-medium">{alert.title}</p><p className="text-muted-foreground">{alert.message}</p></div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="glass border-cyan-500/30">
+          <CardHeader className="py-2 px-3 flex flex-row items-center gap-2">
+            <Activity className="h-4 w-4 text-cyan-400" />
+            <CardTitle className="text-xs font-semibold text-cyan-400">Conversão por Origem</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-xs">
+              <thead><tr className="border-b border-border/30 text-muted-foreground"><th className="p-2 text-left">Origem</th><th className="p-2 text-right">Leads</th><th className="p-2 text-right">Conv.</th><th className="p-2 text-right">%</th></tr></thead>
+              <tbody>{sourceMetrics.map(s => (
+                <tr key={s.source} className="border-b border-border/10">
+                  <td className="p-2">{s.source}</td>
+                  <td className="p-2 text-right">{s.totalLeads}</td>
+                  <td className="p-2 text-right">{s.converted}</td>
+                  <td className="p-2 text-right"><span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", s.conversionRate > 20 ? "bg-emerald-600/20 text-emerald-400" : s.conversionRate > 0 ? "bg-warning/20 text-warning" : "bg-muted text-muted-foreground")}>{s.conversionRate}%</span></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ── AI ASSISTANT PANEL ─────────────────────────────── */}
       <Card className="border-primary/30 glass glow-primary">
