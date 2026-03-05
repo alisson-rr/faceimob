@@ -14,16 +14,234 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cca_deals: {
+        Row: {
+          cca_user_id: string | null
+          created_at: string
+          deal_id: string
+          id: string
+          notes: string | null
+          status: Database["public"]["Enums"]["cca_status"]
+          updated_at: string
+        }
+        Insert: {
+          cca_user_id?: string | null
+          created_at?: string
+          deal_id: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["cca_status"]
+          updated_at?: string
+        }
+        Update: {
+          cca_user_id?: string | null
+          created_at?: string
+          deal_id?: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["cca_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cca_developers: {
+        Row: {
+          created_at: string
+          developer_name: string
+          id: string
+          uses_internal_cca: boolean
+        }
+        Insert: {
+          created_at?: string
+          developer_name: string
+          id?: string
+          uses_internal_cca?: boolean
+        }
+        Update: {
+          created_at?: string
+          developer_name?: string
+          id?: string
+          uses_internal_cca?: boolean
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          active: boolean
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      role_permissions: {
+        Row: {
+          allowed: boolean
+          id: string
+          permission_key: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          allowed?: boolean
+          id?: string
+          permission_key: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          allowed?: boolean
+          id?: string
+          permission_key?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      stage_permissions: {
+        Row: {
+          can_edit: boolean
+          can_move: boolean
+          can_view: boolean
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          stage: string
+        }
+        Insert: {
+          can_edit?: boolean
+          can_move?: boolean
+          can_view?: boolean
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          stage: string
+        }
+        Update: {
+          can_edit?: boolean
+          can_move?: boolean
+          can_view?: boolean
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          stage?: string
+        }
+        Relationships: []
+      }
+      team_assignments: {
+        Row: {
+          created_at: string
+          director_id: string | null
+          id: string
+          manager_id: string | null
+          team_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          director_id?: string | null
+          id?: string
+          manager_id?: string | null
+          team_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          director_id?: string | null
+          id?: string
+          manager_id?: string | null
+          team_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_assignments_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "broker" | "manager" | "director" | "partner" | "admin" | "cca"
+      cca_status:
+        | "credit_analysis"
+        | "pending_documents"
+        | "approved"
+        | "rejected"
+        | "sent_to_agency"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +368,15 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["broker", "manager", "director", "partner", "admin", "cca"],
+      cca_status: [
+        "credit_analysis",
+        "pending_documents",
+        "approved",
+        "rejected",
+        "sent_to_agency",
+      ],
+    },
   },
 } as const
