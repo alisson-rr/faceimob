@@ -1,11 +1,27 @@
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { MotivationalPopup } from "@/components/MotivationalPopup";
+import dianhoAvatar from "@/assets/dianho.png";
+
+const pageTitles: Record<string, string> = {
+  "/dashboard": "Pipeline de Vendas",
+  "/pipeline": "Pipeline",
+  "/leads": "Leads",
+  "/norteador": "Norteador",
+  "/marketing": "Marketing",
+  "/team": "Equipe",
+  "/profile": "Pessoal",
+  "/links": "Links",
+  "/data": "Dados",
+  "/settings": "Configurações",
+};
 
 export default function AppLayout() {
   const [showMotivation, setShowMotivation] = useState(false);
+  const location = useLocation();
+  const pageTitle = pageTitles[location.pathname] || "Faceimob";
 
   useEffect(() => {
     const justLogged = sessionStorage.getItem("faceimob-just-logged");
@@ -21,9 +37,10 @@ export default function AppLayout() {
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 flex items-center border-b border-border/30 glass px-4 sticky top-0 z-30">
-            <SidebarTrigger className="mr-4" />
-            <div className="flex items-center gap-2 ml-auto">
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-sm font-semibold">A</div>
+            <h1 className="text-sm font-semibold text-foreground">{pageTitle}</h1>
+            <div className="flex items-center gap-3 ml-auto">
+              <span className="text-xs text-muted-foreground hidden sm:block">Dianho Silva</span>
+              <img src={dianhoAvatar} alt="User" className="w-8 h-8 rounded-full object-cover border-2 border-primary/30" />
             </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">
