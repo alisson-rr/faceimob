@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { mockDeals as initialDeals, mockBrokers, mockManagers, mockDevelopers, mockProjects, mockGamification } from "@/data/mockData";
 import { DEAL_STAGES, type PipelineDeal, type DealStage } from "@/types/crm";
+import { calcDealProbability } from "@/lib/aiAnalytics";
 import {
   Plus, Download, Search, Filter, Calendar as CalendarIcon,
   TrendingUp, CheckCircle, Clock, FileText, Eye, BarChart3,
@@ -328,7 +329,13 @@ export default function Pipeline() {
                               <span className="text-[11px] font-semibold text-primary">
                                 R$ {deal.deal_value >= 1000000 ? `${(deal.deal_value / 1000000).toFixed(1)}M` : `${(deal.deal_value / 1000).toFixed(0)}k`}
                               </span>
-                              <span className={cn("text-[10px] font-mono", deal.days_in_pipeline > 30 ? "text-destructive" : "text-muted-foreground")}>{deal.days_in_pipeline}d</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn("text-[9px] font-bold px-1 py-0.5 rounded",
+                                  calcDealProbability(deal) >= 60 ? "bg-emerald-600/20 text-emerald-400" :
+                                  calcDealProbability(deal) >= 35 ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"
+                                )}>{calcDealProbability(deal)}%</span>
+                                <span className={cn("text-[10px] font-mono", deal.days_in_pipeline > 30 ? "text-destructive" : "text-muted-foreground")}>{deal.days_in_pipeline}d</span>
+                              </div>
                             </div>
                             <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border/20">
                               <div className="flex items-center gap-1 flex-1">
@@ -500,12 +507,16 @@ export default function Pipeline() {
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-primary" /> Detalhes do Deal</DialogTitle></DialogHeader>
           {detailDeal && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge className={stageColors[detailDeal.stage].badge}>
                   <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", stageColors[detailDeal.stage].dot)} />
                   {DEAL_STAGES.find((s) => s.value === detailDeal.stage)?.label}
                 </Badge>
                 <span className="text-sm text-muted-foreground">{detailDeal.days_in_pipeline} dias</span>
+                <span className={cn("text-xs font-bold px-2 py-0.5 rounded",
+                  calcDealProbability(detailDeal) >= 60 ? "bg-emerald-600/20 text-emerald-400" :
+                  calcDealProbability(detailDeal) >= 35 ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"
+                )}>Probabilidade: {calcDealProbability(detailDeal)}%</span>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Cliente:</span> <span className="font-medium ml-1">{detailDeal.client}</span></div>
