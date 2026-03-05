@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Lock, Mail } from "lucide-react";
+import { motion } from "framer-motion";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
 export default function Login() {
@@ -13,62 +14,75 @@ export default function Login() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    sessionStorage.setItem("faceimob-just-logged", "true");
     navigate("/dashboard");
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/3 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 overflow-hidden">
+      {/* Animated background orbs */}
+      <motion.div
+        animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+        className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/8 rounded-full blur-3xl"
+      />
+      <motion.div
+        animate={{ x: [0, -20, 0], y: [0, 30, 0] }}
+        transition={{ repeat: Infinity, duration: 10, ease: "easeInOut" }}
+        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl"
+      />
+      <motion.div
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/3 rounded-full blur-3xl"
+      />
 
-      <Card className="w-full max-w-md glass-strong glow-primary relative z-10">
-        <CardHeader className="text-center space-y-4">
-          <div className="mx-auto flex items-center justify-center">
-            <img src={logoWhite} alt="Faceimob" className="h-12 object-contain" />
-          </div>
-          <div>
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="relative z-10 w-full max-w-md"
+      >
+        <Card className="glass-strong glow-primary border-primary/20">
+          <CardHeader className="text-center space-y-4">
+            <motion.div
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring" }}
+              className="mx-auto"
+            >
+              <img src={logoWhite} alt="Faceimob" className="h-12 object-contain" />
+            </motion.div>
             <CardDescription className="mt-2">
               Acesse sua plataforma de gestão imobiliária
             </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="email"
-                  placeholder="seu@email.com"
-                  className="pl-10"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="password"
-                  placeholder="Senha"
-                  className="pl-10"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
-            <Button type="submit" className="w-full">
-              Entrar
-            </Button>
-            <button type="button" className="w-full text-sm text-muted-foreground hover:text-primary transition-colors">
-              Esqueceu sua senha?
-            </button>
-          </form>
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.3 }}>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input type="email" placeholder="seu@email.com" className="pl-10 glass-subtle" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </div>
+              </motion.div>
+              <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.4 }}>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input type="password" placeholder="Senha" className="pl-10 glass-subtle" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+              </motion.div>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
+                <Button type="submit" className="w-full glow-primary pulse-glow">
+                  Entrar
+                </Button>
+              </motion.div>
+              <button type="button" className="w-full text-sm text-muted-foreground hover:text-primary transition-colors">
+                Esqueceu sua senha?
+              </button>
+            </form>
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 }
