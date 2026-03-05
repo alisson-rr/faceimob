@@ -52,6 +52,7 @@ export interface PipelineDeal {
   status: string;
   stage: DealStage;
   visit_date?: string;
+  visit_result?: 'pending' | 'completed' | 'cancelled';
   broker1: string;
   broker2?: string;
   manager1: string;
@@ -60,6 +61,7 @@ export interface PipelineDeal {
   days_in_pipeline: number;
   active: boolean;
   created_at: string;
+  notes?: string;
 }
 
 export interface Visit {
