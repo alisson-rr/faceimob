@@ -1,39 +1,27 @@
 import {
-  LayoutDashboard,
-  GitBranch,
-  Users,
-  UserPlus,
-  Megaphone,
-  UserCircle,
-  Database,
-  Settings,
-  LogOut,
+  LayoutDashboard, GitBranch, Users, UserPlus, Megaphone,
+  UserCircle, Database, Settings, LogOut, Compass, Link2,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarFooter,
-  useSidebar,
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
+  SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+  SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
 
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Pipeline", url: "/pipeline", icon: GitBranch },
   { title: "Leads", url: "/leads", icon: UserPlus },
-  { title: "Equipe", url: "/team", icon: Users },
+  { title: "Norteador", url: "/norteador", icon: Compass },
   { title: "Marketing", url: "/marketing", icon: Megaphone },
+  { title: "Equipe", url: "/team", icon: Users },
+  { title: "Pessoal", url: "/profile", icon: UserCircle },
+  { title: "Links", url: "/links", icon: Link2 },
 ];
 
 const systemNav = [
-  { title: "Perfil", url: "/profile", icon: UserCircle },
   { title: "Dados", url: "/data", icon: Database },
   { title: "Configurações", url: "/settings", icon: Settings },
 ];
@@ -42,6 +30,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path;
 
   return (
@@ -96,7 +85,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-destructive hover:text-destructive">
+            <SidebarMenuButton className="text-destructive hover:text-destructive" onClick={() => navigate('/login')}>
               <LogOut className="h-4 w-4" />
               {!collapsed && <span>Sair</span>}
             </SidebarMenuButton>
