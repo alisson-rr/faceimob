@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Building2, Lock, Mail } from "lucide-react";
+import { Lock, Mail } from "lucide-react";
+import logoWhite from "@/assets/logo-faceimob-white.png";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -24,13 +25,10 @@ export default function Login() {
 
       <Card className="w-full max-w-md glass-strong glow-primary relative z-10">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center glow-primary">
-            <Building2 className="h-8 w-8 text-primary" />
+          <div className="mx-auto flex items-center justify-center">
+            <img src={logoWhite} alt="Faceimob" className="h-12 object-contain" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold">
-              <span className="text-primary">Imob</span>CRM
-            </CardTitle>
             <CardDescription className="mt-2">
               Acesse sua plataforma de gestão imobiliária
             </CardDescription>

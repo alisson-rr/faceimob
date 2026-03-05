@@ -9,7 +9,8 @@ import {
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
-import logoFaceimob from "@/assets/logo-faceimob.png";
+import logoFaceimob from "@/assets/logo-faceimob-white.png";
+import logoSymbol from "@/assets/logo-faceimob-symbol-white.png";
 
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -41,9 +42,7 @@ export function AppSidebar() {
           {!collapsed ? (
             <img src={logoFaceimob} alt="Faceimob" className="h-10 object-contain" />
           ) : (
-            <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
-              <span className="text-primary font-bold text-sm">F</span>
-            </div>
+            <img src={logoSymbol} alt="Faceimob" className="w-8 h-8 object-contain" />
           )}
         </div>
 
