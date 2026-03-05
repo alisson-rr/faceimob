@@ -14,6 +14,7 @@ import logoFaceimobDark from "@/assets/logo-faceimob.png";
 import logoSymbol from "@/assets/logo-faceimob-symbol-white.png";
 import logoSymbolDark from "@/assets/logo-faceimob-symbol.png";
 import { useTheme } from "@/hooks/useTheme";
+import { useCallback, useRef } from "react";
 
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -32,22 +33,37 @@ const systemNav = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, setOpen } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const isActive = (path: string) => location.pathname === path;
   const isLight = theme === "light";
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleMouseEnter = useCallback(() => {
+    if (collapsed) {
+      hoverTimer.current = setTimeout(() => setOpen(true), 200);
+    }
+  }, [collapsed, setOpen]);
+
+  const handleMouseLeave = useCallback(() => {
+    clearTimeout(hoverTimer.current);
+  }, []);
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar
+      collapsible="icon"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <SidebarContent>
-        <div className="p-4 flex items-center justify-center">
+        <div className="p-4 flex items-center justify-center transition-all duration-300">
           {!collapsed ? (
-            <img src={isLight ? logoFaceimobDark : logoFaceimob} alt="Faceimob" className="h-10 object-contain transition-all duration-300" />
+            <img src={isLight ? logoFaceimobDark : logoFaceimob} alt="Faceimob" className="h-10 object-contain animate-fade-in" />
           ) : (
-            <img src={isLight ? logoSymbolDark : logoSymbol} alt="Faceimob" className="w-8 h-8 object-contain transition-all duration-300" />
+            <img src={isLight ? logoSymbolDark : logoSymbol} alt="Faceimob" className="w-8 h-8 object-contain animate-scale-in" />
           )}
         </div>
 
@@ -56,11 +72,11 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNav.map((item, i) => (
-                <SidebarMenuItem key={item.title} style={{ animationDelay: `${i * 50}ms` }} className="animate-fade-in">
+                <SidebarMenuItem key={item.title} style={{ animationDelay: `${i * 30}ms` }} className="animate-fade-in">
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink to={item.url} end activeClassName="bg-primary/15 text-primary glow-primary">
                       <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-                      {!collapsed && <span>{item.title}</span>}
+                      {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -77,8 +93,8 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink to={item.url} end activeClassName="bg-primary/15 text-primary glow-primary">
-                      <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
+                      {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -97,7 +113,7 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-destructive hover:text-destructive" onClick={() => navigate('/login')}>
+            <SidebarMenuButton className="text-destructive hover:text-destructive transition-all duration-200" onClick={() => navigate('/login')}>
               <LogOut className="h-4 w-4" />
               {!collapsed && <span>Sair</span>}
             </SidebarMenuButton>
