@@ -43,6 +43,7 @@ export function AppSidebar() {
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const handleMouseEnter = useCallback(() => {
+    clearTimeout(hoverTimer.current);
     if (collapsed) {
       hoverTimer.current = setTimeout(() => setOpen(true), 200);
     }
@@ -50,7 +51,8 @@ export function AppSidebar() {
 
   const handleMouseLeave = useCallback(() => {
     clearTimeout(hoverTimer.current);
-  }, []);
+    hoverTimer.current = setTimeout(() => setOpen(false), 300);
+  }, [setOpen]);
 
   return (
     <Sidebar
