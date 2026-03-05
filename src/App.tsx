@@ -13,6 +13,8 @@ import Marketing from "@/pages/Marketing";
 import Profile from "@/pages/Profile";
 import DataManagement from "@/pages/DataManagement";
 import SettingsPage from "@/pages/Settings";
+import Norteador from "@/pages/Norteador";
+import Links from "@/pages/Links";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,9 +32,11 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/leads" element={<Leads />} />
-            <Route path="/team" element={<Team />} />
+            <Route path="/norteador" element={<Norteador />} />
             <Route path="/marketing" element={<Marketing />} />
+            <Route path="/team" element={<Team />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/links" element={<Links />} />
             <Route path="/data" element={<DataManagement />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
