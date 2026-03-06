@@ -962,6 +962,36 @@ export default function Pipeline() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── NEW LEAD MODAL ─────────────────────────────────── */}
+      <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
+        <DialogContent className="glass-strong max-w-lg">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5 text-primary" /> Novo Lead</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label className="text-sm text-muted-foreground mb-1 block">Nome *</label><Input value={newLeadData.name} onChange={(e) => setNewLeadData(p => ({ ...p, name: e.target.value }))} /></div>
+            <div><label className="text-sm text-muted-foreground mb-1 block">Email</label><Input type="email" value={newLeadData.email} onChange={(e) => setNewLeadData(p => ({ ...p, email: e.target.value }))} /></div>
+            <div><label className="text-sm text-muted-foreground mb-1 block">Telefone</label><Input value={newLeadData.phone} onChange={(e) => setNewLeadData(p => ({ ...p, phone: e.target.value }))} /></div>
+            <div><label className="text-sm text-muted-foreground mb-1 block">WhatsApp</label><Input value={newLeadData.whatsapp} onChange={(e) => setNewLeadData(p => ({ ...p, whatsapp: e.target.value }))} /></div>
+            <div><label className="text-sm text-muted-foreground mb-1 block">Fonte</label>
+              <Select value={newLeadData.source} onValueChange={(v) => setNewLeadData(p => ({ ...p, source: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione a fonte" /></SelectTrigger>
+                <SelectContent>{mockSources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div><label className="text-sm text-muted-foreground mb-1 block">Corretor</label>
+              <Select value={newLeadData.broker_name} onValueChange={(v) => setNewLeadData(p => ({ ...p, broker_name: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectContent>{mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2"><label className="text-sm text-muted-foreground mb-1 block">Observações</label><Textarea value={newLeadData.notes} onChange={(e) => setNewLeadData(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+            <Button onClick={saveNewLead} disabled={!newLeadData.name.trim()}>Criar Lead</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
