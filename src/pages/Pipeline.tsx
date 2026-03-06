@@ -716,8 +716,8 @@ export default function Pipeline() {
                             const sl = tableStageLabels[deal.stage] || tableStageLabels.lead;
                             const statusDate = deal.created_at ? format(parseISO(deal.created_at), "MM/yy") : "";
                             return (
-                              <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
-                                <td className="p-2 text-center"><button onClick={() => openEditDeal(deal)} className="text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button></td>
+                              <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setDetailDeal(deal)}>
+                                <td className="p-2 text-center"><button onClick={(e) => { e.stopPropagation(); openEditDeal(deal); }} className="text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button></td>
                                 <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
                                 <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold text-white", getDeveloperColor(deal.developer))}>{deal.developer.toUpperCase().slice(0, 10)}</span></td>
                                 <td className="p-2 whitespace-nowrap max-w-[120px] truncate">{deal.project.toUpperCase()}</td>
