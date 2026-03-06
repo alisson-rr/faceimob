@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { mockDevelopers, mockProjects, mockSources, mockTeams } from "@/data/mockData";
+import { mockDevelopers, mockProjects, mockSources } from "@/data/mockData";
 import { Plus, X, Copy, ExternalLink, Wifi } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
