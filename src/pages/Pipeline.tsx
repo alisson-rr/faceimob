@@ -877,44 +877,17 @@ export default function Pipeline() {
       </Dialog>
 
       {/* ── DEAL DETAIL MODAL ──────────────────────────────── */}
-      <Dialog open={!!detailDeal} onOpenChange={(o) => !o && setDetailDeal(null)}>
-        <DialogContent className="glass-strong max-w-lg">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-primary" /> Detalhes do Deal</DialogTitle></DialogHeader>
-          {detailDeal && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={stageColors[detailDeal.stage].badge}>
-                  <span className={cn("w-1.5 h-1.5 rounded-full mr-1.5", stageColors[detailDeal.stage].dot)} />
-                  {DEAL_STAGES.find((s) => s.value === detailDeal.stage)?.label}
-                </Badge>
-                <span className="text-sm text-muted-foreground">{detailDeal.days_in_pipeline} dias</span>
-                <span className={cn("text-xs font-bold px-2 py-0.5 rounded",
-                  calcDealProbability(detailDeal) >= 60 ? "bg-emerald-600/20 text-emerald-400" :
-                  calcDealProbability(detailDeal) >= 35 ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"
-                )}>Probabilidade: {calcDealProbability(detailDeal)}%</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-muted-foreground">Cliente:</span> <span className="font-medium ml-1">{detailDeal.client}</span></div>
-                <div><span className="text-muted-foreground">Valor:</span> <span className="font-medium ml-1 text-primary">R$ {detailDeal.deal_value.toLocaleString("pt-BR")}</span></div>
-                <div><span className="text-muted-foreground">Incorporadora:</span> <span className="ml-1">{detailDeal.developer}</span></div>
-                <div><span className="text-muted-foreground">Empreendimento:</span> <span className="ml-1">{detailDeal.project}</span></div>
-                <div><span className="text-muted-foreground">Unidade:</span> <span className="ml-1">{detailDeal.unit}</span></div>
-                <div><span className="text-muted-foreground">Visita:</span> <span className="ml-1">{detailDeal.visit_date || "—"}</span></div>
-                <div><span className="text-muted-foreground">Corretor 1:</span> <span className="ml-1">{detailDeal.broker1}</span></div>
-                <div><span className="text-muted-foreground">Corretor 2:</span> <span className="ml-1">{detailDeal.broker2 || "—"}</span></div>
-                <div><span className="text-muted-foreground">Gerente:</span> <span className="ml-1">{detailDeal.manager1}</span></div>
-                <div><span className="text-muted-foreground">Gerente 2:</span> <span className="ml-1">{detailDeal.manager2 || "—"}</span></div>
-              </div>
-              {detailDeal.notes && <div className="p-3 rounded-lg bg-secondary/50 text-sm"><span className="text-muted-foreground">Notas:</span> {detailDeal.notes}</div>}
-              <div className="flex gap-2 pt-2">
-                <Button size="sm" onClick={() => { openEditDeal(detailDeal); setDetailDeal(null); }}><Pencil className="h-4 w-4 mr-1" /> Editar</Button>
-                <Button size="sm" variant="outline" onClick={() => { setVisitDeal(detailDeal); setDetailDeal(null); }}><CalendarIcon className="h-4 w-4 mr-1" /> Visita</Button>
-                <DialogClose asChild><Button variant="ghost" size="sm">Fechar</Button></DialogClose>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {detailDeal && (
+        <DealDetailModal
+          deal={detailDeal}
+          open={!!detailDeal}
+          onClose={() => setDetailDeal(null)}
+          onSave={(updated) => {
+            setDeals(prev => prev.map(d => d.id === updated.id ? updated : d));
+            setDetailDeal(null);
+          }}
+        />
+      )}
 
       {/* ── DEAL FORM MODAL ────────────────────────────────── */}
       <Dialog open={dealFormOpen} onOpenChange={setDealFormOpen}>
