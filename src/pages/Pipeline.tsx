@@ -358,20 +358,17 @@ export default function Pipeline() {
           {activeTab === "deals" ? (
             <>
               <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-                <Filter className="h-4 w-4 mr-1" /> Filtrar
+                <Filter className="h-4 w-4 mr-1" /> Filtrar Negócio
               </Button>
               <Button size="sm" onClick={openNewDeal}>
                 <Plus className="h-4 w-4 mr-1" /> Adicionar Negócio
               </Button>
               <Button variant="outline" size="sm" onClick={exportCSV}>
-                <Download className="h-4 w-4 mr-1" /> Extrair
+                <Download className="h-4 w-4 mr-1" /> Extrair Negócio
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={() => {
-              // Quick new lead (reuse existing logic from Leads page if needed)
-              toast({ title: "Use a página de Leads para criar novo lead" });
-            }}>
+            <Button size="sm" onClick={() => toast({ title: "Use a página de Leads para criar novo lead" })}>
               <Plus className="h-4 w-4 mr-1" /> Novo Lead
             </Button>
           )}
