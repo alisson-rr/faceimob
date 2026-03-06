@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'manager' | 'broker';
 
-export type DealStage = 'lead' | 'proposal' | 'visit_scheduled' | 'under_analysis' | 'approved' | 'contract' | 'closed';
+export type DealStage = 'incomplete' | 'lead' | 'proposal' | 'visit_scheduled' | 'under_analysis' | 'approved' | 'contract' | 'closed';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
 
@@ -94,6 +94,7 @@ export interface Campaign {
 }
 
 export const DEAL_STAGES: { value: DealStage; label: string }[] = [
+  { value: 'incomplete', label: 'Incompleto' },
   { value: 'lead', label: 'Lead' },
   { value: 'proposal', label: 'Proposta' },
   { value: 'visit_scheduled', label: 'Visita Agendada' },
