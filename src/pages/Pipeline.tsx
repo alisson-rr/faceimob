@@ -18,7 +18,8 @@ import {
   X, Pencil, GripVertical, User, DollarSign,
   CalendarCheck, StickyNote, AlertCircle, ChevronRight,
   ChevronLeft, Trophy, LayoutGrid, List, LogIn, Users,
-  ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus
+  ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus,
+  Lock, AlertTriangle, Target
 } from "lucide-react";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,43 @@ export default function Pipeline() {
   // Drag state
   const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<DealStage | null>(null);
+
+  // ── Close Month state ──
+  const [closeMonthOpen, setCloseMonthOpen] = useState(false);
+  const isAdmin = role === 'admin';
+
+  const handleCloseMonth = () => {
+    const currentMonth = monthFilter;
+    // Stages that stay locked in this month: vendas, offs, distratos (closed + !active)
+    const lockedStages: DealStage[] = ['closed'];
+    
+    setDeals(prev => prev.map(deal => {
+      const dealMonth = deal.month_base || format(parseISO(deal.created_at), "MM/yyyy");
+      if (dealMonth !== currentMonth) return deal;
+      
+      // Vendas, offs, distratos stay in this month
+      if (lockedStages.includes(deal.stage) || !deal.active) {
+        return deal; // stays locked
+      }
+      
+      // All other proposals move to next month with day 05 as base date
+      const [mm, yyyy] = currentMonth.split("/").map(Number);
+      const nextMonth = mm === 12 ? 1 : mm + 1;
+      const nextYear = mm === 12 ? yyyy + 1 : yyyy;
+      const newMonthBase = `${String(nextMonth).padStart(2, "0")}/${nextYear}`;
+      
+      return { ...deal, month_base: newMonthBase };
+    }));
+    
+    // Move filter to next month
+    const [mm, yyyy] = currentMonth.split("/").map(Number);
+    const nextMonth = mm === 12 ? 1 : mm + 1;
+    const nextYear = mm === 12 ? yyyy + 1 : yyyy;
+    setMonthFilter(`${String(nextMonth).padStart(2, "0")}/${nextYear}`);
+    
+    setCloseMonthOpen(false);
+    toast({ title: "✅ Mês fechado com sucesso!", description: `Vendas, offs e distratos ficaram em ${currentMonth}. Propostas movidas para o próximo mês (data base dia 05).` });
+  };
 
   // ── IP Check-in ──
   const handleCheckIn = useCallback(async () => {
