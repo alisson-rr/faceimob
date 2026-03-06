@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,22 +8,25 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { mockDeals as initialDeals, mockBrokers, mockManagers, mockDevelopers, mockProjects, mockGamification } from "@/data/mockData";
-import { DEAL_STAGES, type PipelineDeal, type DealStage } from "@/types/crm";
+import { mockDeals as initialDeals, mockBrokers, mockManagers, mockDevelopers, mockProjects, mockGamification, mockLeads as initialLeads, mockSources } from "@/data/mockData";
+import { DEAL_STAGES, type PipelineDeal, type DealStage, LEAD_STATUSES, type Lead, type LeadStatus } from "@/types/crm";
 import { calcDealProbability } from "@/lib/aiAnalytics";
 import {
   Plus, Download, Search, Filter, Calendar as CalendarIcon,
   TrendingUp, CheckCircle, Clock, FileText, Eye, BarChart3,
   X, Pencil, GripVertical, User, DollarSign,
   CalendarCheck, StickyNote, AlertCircle, ChevronRight,
-  ChevronLeft, Trophy, LayoutGrid, List
+  ChevronLeft, Trophy, LayoutGrid, List, LogIn, Users,
+  ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus
 } from "lucide-react";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ── Stage visual config ──
 const stageColors: Record<DealStage, { bg: string; border: string; header: string; dot: string; badge: string }> = {
+  incomplete:      { bg: "bg-destructive/5", border: "border-destructive/25", header: "bg-destructive/15", dot: "bg-destructive", badge: "bg-destructive/20 text-destructive" },
   lead:            { bg: "bg-muted/20", border: "border-muted-foreground/20", header: "bg-muted/40", dot: "bg-muted-foreground", badge: "bg-muted text-muted-foreground" },
   proposal:        { bg: "bg-primary/5", border: "border-primary/25", header: "bg-primary/15", dot: "bg-primary", badge: "bg-primary/20 text-primary" },
   visit_scheduled: { bg: "bg-warning/5", border: "border-warning/25", header: "bg-warning/15", dot: "bg-warning", badge: "bg-warning/20 text-warning" },
@@ -34,6 +37,7 @@ const stageColors: Record<DealStage, { bg: string; border: string; header: strin
 };
 
 const tableStageLabels: Record<string, { label: string; color: string }> = {
+  incomplete: { label: "INCOMPLETO", color: "bg-destructive text-destructive-foreground" },
   lead: { label: "01. LEAD", color: "bg-muted text-muted-foreground" },
   proposal: { label: "PROPOSTA", color: "bg-primary text-primary-foreground" },
   visit_scheduled: { label: "05. VISITA AGD", color: "bg-cyan-600 text-white" },
@@ -43,13 +47,35 @@ const tableStageLabels: Record<string, { label: string; color: string }> = {
   closed: { label: "08. VIROU NEGOCIO", color: "bg-slate-700 text-white" },
 };
 
+const leadStatusColor: Record<LeadStatus, string> = {
+  new: 'bg-primary/20 text-primary',
+  contacted: 'bg-warning/20 text-warning',
+  qualified: 'bg-success/20 text-success',
+  converted: 'bg-purple-500/20 text-purple-400',
+  lost: 'bg-destructive/20 text-destructive',
+};
+
 const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
   client: "", developer: "", project: "", unit: "", status: "Ativo", stage: "lead",
   broker1: "", broker2: "", manager1: "", manager2: "", deal_value: 0,
   active: true, created_at: new Date().toISOString().slice(0, 10), notes: "",
 };
 
+// ── Allowed IPs for check-in (configurable by admin) ──
+const ALLOWED_IPS = ["*"]; // "*" means allow all for demo; replace with real IPs like ["192.168.1.0/24"]
+
+interface QueueBroker {
+  id: string;
+  name: string;
+  checkedInAt: string;
+}
+
 export default function Pipeline() {
+  const { role } = useAuth();
+  // ── Tab state ──
+  const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
+
+  // ── Deals state ──
   const [deals, setDeals] = useState<PipelineDeal[]>(initialDeals);
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -60,7 +86,24 @@ export default function Pipeline() {
   const [page, setPage] = useState(1);
   const perPage = 15;
 
-  // Modals
+  // ── Leads state ──
+  const [leads, setLeads] = useState<Lead[]>(initialLeads);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [leadStatusFilter, setLeadStatusFilter] = useState("all");
+  const [leadViewMode, setLeadViewMode] = useState<"list" | "grid">("list");
+
+  // ── Queue state ──
+  const [queue, setQueue] = useState<QueueBroker[]>([]);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [userIp, setUserIp] = useState<string | null>(null);
+
+  // ── Convert lead modal ──
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
+  const [convertDoc, setConvertDoc] = useState<File | null>(null);
+  const convertFileRef = useRef<HTMLInputElement>(null);
+
+  // ── Deal modals ──
   const [dealFormOpen, setDealFormOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<PipelineDeal | null>(null);
   const [detailDeal, setDetailDeal] = useState<PipelineDeal | null>(null);
@@ -72,6 +115,81 @@ export default function Pipeline() {
   const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<DealStage | null>(null);
 
+  // ── IP Check-in ──
+  const handleCheckIn = useCallback(async () => {
+    setCheckingIn(true);
+    try {
+      // Fetch user's public IP
+      const res = await fetch("https://api.ipify.org?format=json");
+      const data = await res.json();
+      const ip = data.ip;
+      setUserIp(ip);
+
+      const isAllowed = ALLOWED_IPS.includes("*") || ALLOWED_IPS.some(allowed => ip.startsWith(allowed.replace("/24", "").replace("/16", "")));
+
+      if (!isAllowed) {
+        toast({ title: "❌ Check-in bloqueado", description: `Seu IP (${ip}) não está autorizado. Conecte-se à rede da empresa.`, variant: "destructive" });
+        return;
+      }
+
+      // Check if already in queue
+      const brokerName = "Dianho Silva"; // TODO: use real auth user
+      if (queue.some(q => q.name === brokerName)) {
+        toast({ title: "Já está na fila", description: "Você já fez check-in hoje." });
+        return;
+      }
+
+      setQueue(prev => [...prev, { id: String(Date.now()), name: brokerName, checkedInAt: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) }]);
+      toast({ title: "✅ Check-in realizado!", description: `IP ${ip} verificado. Você está na fila de atendimento.` });
+    } catch {
+      toast({ title: "Erro ao verificar IP", description: "Não foi possível validar seu IP. Tente novamente.", variant: "destructive" });
+    } finally {
+      setCheckingIn(false);
+    }
+  }, [queue]);
+
+  // ── Convert Lead to Deal ──
+  const openConvertLead = (lead: Lead) => {
+    setConvertingLead(lead);
+    setConvertDoc(null);
+    setConvertOpen(true);
+  };
+
+  const confirmConvert = () => {
+    if (!convertingLead) return;
+    if (!convertDoc) {
+      toast({ title: "📎 Documento obrigatório", description: "Anexe pelo menos 1 documento para converter o lead em negócio.", variant: "destructive" });
+      return;
+    }
+
+    // Create deal at "incomplete" stage
+    const newDeal: PipelineDeal = {
+      id: String(Date.now()),
+      client: convertingLead.name,
+      developer: "",
+      project: "",
+      unit: "",
+      status: "Ativo",
+      stage: "incomplete",
+      broker1: convertingLead.broker_name || "",
+      manager1: "",
+      deal_value: 0,
+      days_in_pipeline: 0,
+      active: true,
+      created_at: new Date().toISOString().slice(0, 10),
+      notes: `Convertido do lead. Doc: ${convertDoc.name}`,
+    };
+
+    setDeals(prev => [newDeal, ...prev]);
+    setLeads(prev => prev.map(l => l.id === convertingLead.id ? { ...l, status: "converted" as LeadStatus } : l));
+    setConvertOpen(false);
+    setConvertingLead(null);
+    setConvertDoc(null);
+    setActiveTab("deals");
+    toast({ title: "🎉 Lead convertido em negócio!", description: `"${convertingLead.name}" inserido no pipeline como Incompleto.` });
+  };
+
+  // ── Deal filters ──
   const filtered = useMemo(() => {
     return deals.filter((d) => {
       const s = search.toLowerCase();
@@ -83,7 +201,7 @@ export default function Pipeline() {
   }, [deals, search, developerFilter, brokerFilter]);
 
   const dealsByStage = useMemo(() => {
-    const map: Record<DealStage, PipelineDeal[]> = { lead: [], proposal: [], visit_scheduled: [], under_analysis: [], approved: [], contract: [], closed: [] };
+    const map: Record<DealStage, PipelineDeal[]> = { incomplete: [], lead: [], proposal: [], visit_scheduled: [], under_analysis: [], approved: [], contract: [], closed: [] };
     filtered.filter((d) => d.active).forEach((d) => map[d.stage]?.push(d));
     return map;
   }, [filtered]);
@@ -91,30 +209,25 @@ export default function Pipeline() {
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
-  // Metrics
+  // ── Lead filters ──
+  const filteredLeads = useMemo(() => {
+    return leads.filter(l => {
+      const s = leadSearch.toLowerCase();
+      const matchSearch = !s || l.name.toLowerCase().includes(s) || l.email.toLowerCase().includes(s) || l.phone.includes(s);
+      const matchStatus = leadStatusFilter === "all" || l.status === leadStatusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [leads, leadSearch, leadStatusFilter]);
+
+  // ── Deal metrics ──
   const activeDeals = deals.filter((d) => d.active).length;
-  const underAnalysis = deals.filter((d) => ["under_analysis", "visit_scheduled"].includes(d.stage) && d.active).length;
-  const approvedDeals = deals.filter((d) => d.stage === "approved" && d.active).length;
-  const pendingDeals = deals.filter((d) => d.stage === "lead" && d.active).length;
-  const closedDeals = deals.filter((d) => d.stage === "closed").length;
   const totalVGV = deals.filter((d) => d.active).reduce((a, d) => a + d.deal_value, 0);
 
-  // Analytics
-  const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
-  const avgDaysInPipeline = activeDeals ? deals.filter((d) => d.active).reduce((a, d) => a + d.days_in_pipeline, 0) / activeDeals : 0;
-  const brokerDeals = mockBrokers.map((b) => ({
-    name: b.name,
-    count: deals.filter((d) => d.broker1 === b.name && d.active).length,
-  })).sort((a, b) => b.count - a.count);
-
-  // Leaderboard
-  const leaderboard = [...mockGamification].sort((a, b) => b.points - a.points).slice(0, 3);
-  const medals = ["🥇", "🥈", "🥉"];
-  const medalBgs = [
-    "border-amber-500/40 bg-gradient-to-r from-amber-900/20 to-transparent",
-    "border-gray-400/40 bg-gradient-to-r from-gray-700/20 to-transparent",
-    "border-orange-600/40 bg-gradient-to-r from-orange-900/20 to-transparent",
-  ];
+  // ── Lead metrics ──
+  const totalLeads = leads.length;
+  const newLeads = leads.filter(l => l.status === "new").length;
+  const inContactLeads = leads.filter(l => l.status === "contacted").length;
+  const qualifiedLeads = leads.filter(l => l.status === "qualified").length;
 
   // Drag handlers
   const onDragStart = useCallback((dealId: string) => setDraggedDeal(dealId), []);
@@ -164,342 +277,549 @@ export default function Pipeline() {
     link.click();
   };
 
-  const metrics = [
-    { title: "Negócios Ativos", value: activeDeals, icon: TrendingUp, color: "text-primary" },
-    { title: "Em Análise", value: underAnalysis, icon: BarChart3, color: "text-cyan-400" },
-    { title: "Aprovados", value: approvedDeals, icon: CheckCircle, color: "text-success" },
-    { title: "Pendentes", value: pendingDeals, icon: Clock, color: "text-muted-foreground" },
-    { title: "Fechados", value: closedDeals, icon: FileText, color: "text-purple-400" },
-    { title: "VGV Total", value: `R$ ${(totalVGV / 1000000).toFixed(1)}M`, icon: DollarSign, color: "text-success" },
+  // Analytics data
+  const underAnalysis = deals.filter((d) => ["under_analysis", "visit_scheduled"].includes(d.stage) && d.active).length;
+  const approvedDeals = deals.filter((d) => d.stage === "approved" && d.active).length;
+  const pendingDeals = deals.filter((d) => d.stage === "lead" && d.active).length;
+  const closedDeals = deals.filter((d) => d.stage === "closed").length;
+  const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
+  const avgDaysInPipeline = activeDeals ? deals.filter((d) => d.active).reduce((a, d) => a + d.days_in_pipeline, 0) / activeDeals : 0;
+  const brokerDeals = mockBrokers.map((b) => ({
+    name: b.name,
+    count: deals.filter((d) => d.broker1 === b.name && d.active).length,
+  })).sort((a, b) => b.count - a.count);
+  const leaderboard = [...mockGamification].sort((a, b) => b.points - a.points).slice(0, 3);
+  const medals = ["🥇", "🥈", "🥉"];
+  const medalBgs = [
+    "border-amber-500/40 bg-gradient-to-r from-amber-900/20 to-transparent",
+    "border-gray-400/40 bg-gradient-to-r from-gray-700/20 to-transparent",
+    "border-orange-600/40 bg-gradient-to-r from-orange-900/20 to-transparent",
   ];
 
   return (
     <div className="space-y-4">
-      {/* ── HEADER ─────────────────────────────────────────── */}
+      {/* ── HEADER with TABS ─────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-primary">Pipeline</h1>
+          <div className="flex border border-border rounded-full overflow-hidden">
+            <button
+              onClick={() => setActiveTab("deals")}
+              className={cn("px-4 py-1.5 text-sm font-medium transition-colors",
+                activeTab === "deals" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Negócios
+            </button>
+            <button
+              onClick={() => setActiveTab("leads")}
+              className={cn("px-4 py-1.5 text-sm font-medium transition-colors",
+                activeTab === "leads" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Leads
+            </button>
+          </div>
+        </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-            <Filter className="h-4 w-4 mr-1" /> Filtrar Negócio
-          </Button>
-          <Button size="sm" onClick={openNewDeal}>
-            <Plus className="h-4 w-4 mr-1" /> Adicionar Negócio
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportCSV}>
-            <Download className="h-4 w-4 mr-1" /> Extrair Negócio
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex border border-border rounded-lg overflow-hidden">
-            <button
-              onClick={() => setViewMode("kanban")}
-              className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}
-            >
-              <List className="h-4 w-4" />
-            </button>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setShowAnalytics(!showAnalytics)}>
-            <BarChart3 className="h-4 w-4 mr-1" /> Analytics
-          </Button>
-        </div>
-      </div>
-
-      {/* ── METRICS ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {metrics.map((m) => (
-          <Card key={m.title} className="border-border/50 bg-card/70">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <m.icon className={cn("h-4 w-4", m.color)} />
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.title}</span>
-              </div>
-              <p className="text-xl font-bold">{m.value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* ── LEADERBOARD ────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {leaderboard.map((entry, i) => (
-          <div key={entry.id} className={cn("flex items-center gap-4 p-4 rounded-xl border", medalBgs[i])}>
-            <span className="text-3xl">{medals[i]}</span>
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg font-bold text-muted-foreground">
-              {entry.user_name.charAt(0)}
-            </div>
-            <div>
-              <p className="font-semibold text-sm">{entry.user_name}</p>
-              <p className="text-xs text-amber-400 font-semibold">{entry.points} pontos</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── FILTERS ────────────────────────────────────────── */}
-      {showFilters && (
-        <Card className="bg-card/70 border-border/50">
-          <CardContent className="p-3 flex flex-wrap gap-3">
-            <div className="relative flex-1 min-w-48">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar cliente, projeto, corretor..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-            <Select value={developerFilter} onValueChange={setDeveloperFilter}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Incorporadora" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                {mockDevelopers.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={brokerFilter} onValueChange={setBrokerFilter}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Corretor" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                {mockBrokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button variant="ghost" size="sm" onClick={() => { setDeveloperFilter("all"); setBrokerFilter("all"); setSearch(""); }}>
-              <X className="h-3 w-3 mr-1" /> Limpar
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── MAIN CONTENT ───────────────────────────────────── */}
-      <div className="flex gap-4">
-        <div className="flex-1 overflow-hidden">
-          <h2 className="text-center font-semibold text-base mb-3">Pipeline Faceimob</h2>
-
-          {viewMode === "kanban" ? (
-            /* ═══ KANBAN VIEW ═══ */
-            <div className="overflow-x-auto">
-              <div className="flex gap-3 min-w-max pb-4">
-                {DEAL_STAGES.map((stage) => {
-                  const sc = stageColors[stage.value];
-                  const stageDeals = dealsByStage[stage.value] || [];
-                  const isOver = dragOverStage === stage.value;
-                  return (
-                    <div
-                      key={stage.value}
-                      className={cn(
-                        "w-60 flex-shrink-0 rounded-xl border transition-all",
-                        sc.border,
-                        isOver && "ring-2 ring-primary/50 scale-[1.01]"
-                      )}
-                      onDragOver={(e) => onDragOver(e, stage.value)}
-                      onDragLeave={() => setDragOverStage(null)}
-                      onDrop={() => onDrop(stage.value)}
-                    >
-                      {/* Column Header */}
-                      <div className={cn("p-3 rounded-t-xl flex items-center justify-between", sc.header)}>
-                        <div className="flex items-center gap-2">
-                          <span className={cn("w-2.5 h-2.5 rounded-full", sc.dot)} />
-                          <span className="text-xs font-semibold">{stage.label}</span>
-                        </div>
-                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{stageDeals.length}</Badge>
-                      </div>
-
-                      {/* Cards */}
-                      <div className={cn("p-2 space-y-2 min-h-[180px] max-h-[calc(100vh-420px)] overflow-y-auto", sc.bg)}>
-                        {stageDeals.map((deal) => (
-                          <div
-                            key={deal.id}
-                            draggable
-                            onDragStart={() => onDragStart(deal.id)}
-                            onDragEnd={onDragEnd}
-                            onClick={() => setDetailDeal(deal)}
-                            className={cn(
-                              "p-3 rounded-lg border cursor-grab active:cursor-grabbing transition-all hover:scale-[1.02] hover:shadow-lg",
-                              "bg-card border-border/40 hover:border-primary/30",
-                              draggedDeal === deal.id && "opacity-40 scale-95"
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-2 mb-1.5">
-                              <p className="font-medium text-xs leading-tight">{deal.client}</p>
-                              <GripVertical className="h-3 w-3 text-muted-foreground/40 flex-shrink-0" />
-                            </div>
-                            <p className="text-[10px] text-muted-foreground mb-0.5">{deal.project} • {deal.unit}</p>
-                            <p className="text-[10px] text-muted-foreground/60 mb-2">{deal.developer}</p>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-semibold text-primary">
-                                R$ {deal.deal_value >= 1000000 ? `${(deal.deal_value / 1000000).toFixed(1)}M` : `${(deal.deal_value / 1000).toFixed(0)}k`}
-                              </span>
-                              <div className="flex items-center gap-1.5">
-                                <span className={cn("text-[9px] font-bold px-1 py-0.5 rounded",
-                                  calcDealProbability(deal) >= 60 ? "bg-emerald-600/20 text-emerald-400" :
-                                  calcDealProbability(deal) >= 35 ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"
-                                )}>{calcDealProbability(deal)}%</span>
-                                <span className={cn("text-[10px] font-mono", deal.days_in_pipeline > 30 ? "text-destructive" : "text-muted-foreground")}>{deal.days_in_pipeline}d</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border/20">
-                              <div className="flex items-center gap-1 flex-1">
-                                <User className="h-3 w-3 text-muted-foreground/50" />
-                                <span className="text-[10px] text-muted-foreground truncate">{deal.broker1}</span>
-                              </div>
-                              <div className="flex gap-1">
-                                {deal.visit_date && <CalendarCheck className="h-3 w-3 text-warning" />}
-                                {deal.notes && <StickyNote className="h-3 w-3 text-muted-foreground/40" />}
-                                {deal.days_in_pipeline > 30 && <AlertCircle className="h-3 w-3 text-destructive/50" />}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        {stageDeals.length === 0 && (
-                          <div className="flex items-center justify-center h-20 text-[10px] text-muted-foreground/40 border border-dashed border-border/30 rounded-lg">
-                            Arraste um deal aqui
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            /* ═══ TABLE VIEW ═══ */
+          {activeTab === "deals" ? (
             <>
-              <Card className="border-border/50 bg-card/60 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-border/40 text-muted-foreground">
-                        <th className="p-2 font-medium">Info.</th>
-                        <th className="p-2 font-medium text-left">Status</th>
-                        <th className="p-2 font-medium text-left">Construtora</th>
-                        <th className="p-2 font-medium text-left">Empreendimento</th>
-                        <th className="p-2 font-medium">Unidade</th>
-                        <th className="p-2 font-medium">Dias</th>
-                        <th className="p-2 font-medium text-left">Status 2</th>
-                        <th className="p-2 font-medium">Visita</th>
-                        <th className="p-2 font-medium text-left">Cliente</th>
-                        <th className="p-2 font-medium text-left">Corretor 1</th>
-                        <th className="p-2 font-medium text-left">Corretor 2</th>
-                        <th className="p-2 font-medium text-left">Gerente 1</th>
-                        <th className="p-2 font-medium text-left">Gerente 2</th>
-                        <th className="p-2 font-medium">Off</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginated.map((deal) => {
-                        const sl = tableStageLabels[deal.stage] || tableStageLabels.lead;
-                        const statusDate = deal.created_at ? format(parseISO(deal.created_at), "MM/yy") : "";
-                        return (
-                          <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
-                            <td className="p-2 text-center">
-                              <button onClick={() => openEditDeal(deal)} className="text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button>
-                            </td>
-                            <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
-                            <td className="p-2">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-teal-600">{deal.developer.toUpperCase().slice(0, 8)}</span>
-                            </td>
-                            <td className="p-2 whitespace-nowrap max-w-[120px] truncate">{deal.project.toUpperCase()}</td>
-                            <td className="p-2 text-center">{deal.unit}</td>
-                            <td className="p-2 text-center">
-                              <span className={cn(
-                                "px-1.5 py-0.5 rounded text-[10px] font-bold",
-                                deal.days_in_pipeline > 60 ? "bg-red-600 text-white" :
-                                deal.days_in_pipeline > 30 ? "bg-red-500/70 text-white" :
-                                deal.days_in_pipeline > 14 ? "bg-yellow-600/70 text-white" : "text-foreground"
-                              )}>{deal.days_in_pipeline}</span>
-                            </td>
-                            <td className="p-2">
-                              <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap", sl.color)}>{sl.label}</span>
-                            </td>
-                            <td className="p-2 text-center">
-                              <button onClick={() => setVisitDeal(deal)} className="text-muted-foreground hover:text-primary"><CalendarIcon className="h-3.5 w-3.5" /></button>
-                            </td>
-                            <td className="p-2 whitespace-nowrap max-w-[130px] truncate font-medium">{deal.client.toUpperCase()}</td>
-                            <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker1?.toUpperCase() || "—"}</td>
-                            <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker2?.toUpperCase() || "—"}</td>
-                            <td className="p-2 whitespace-nowrap max-w-[100px] truncate">• {deal.manager1?.toUpperCase() || "—"}</td>
-                            <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.manager2?.toUpperCase() || ""}</td>
-                            <td className="p-2 text-center">
-                              <Switch checked={deal.active} onCheckedChange={() => toggleDealActive(deal.id)} className="scale-75" />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-              {/* Pagination */}
-              <div className="flex items-center justify-center gap-3 mt-3 text-xs text-muted-foreground">
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="hover:text-foreground disabled:opacity-30">
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span>{(page - 1) * perPage + 1} a {Math.min(page * perPage, filtered.length)}</span>
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-foreground disabled:opacity-30">
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
+                <Filter className="h-4 w-4 mr-1" /> Filtrar
+              </Button>
+              <Button size="sm" onClick={openNewDeal}>
+                <Plus className="h-4 w-4 mr-1" /> Adicionar Negócio
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportCSV}>
+                <Download className="h-4 w-4 mr-1" /> Extrair
+              </Button>
             </>
+          ) : (
+            <Button size="sm" onClick={() => {
+              // Quick new lead (reuse existing logic from Leads page if needed)
+              toast({ title: "Use a página de Leads para criar novo lead" });
+            }}>
+              <Plus className="h-4 w-4 mr-1" /> Novo Lead
+            </Button>
           )}
         </div>
+      </div>
 
-        {/* ── ANALYTICS PANEL ────────────────────────────────── */}
-        {showAnalytics && (
-          <div className="w-64 flex-shrink-0 space-y-3">
-            <Card className="bg-card/70 border-border/50">
-              <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conversão por Etapa</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {DEAL_STAGES.slice(0, -1).map((stage, i) => {
-                  const current = dealsByStage[stage.value]?.length || 0;
-                  const next = dealsByStage[DEAL_STAGES[i + 1]?.value]?.length || 0;
-                  const rate = current > 0 ? Math.round((next / current) * 100) : 0;
-                  return (
-                    <div key={stage.value} className="flex items-center gap-2">
-                      <span className={cn("w-2 h-2 rounded-full", stageColors[stage.value].dot)} />
-                      <span className="text-[10px] flex-1">{stage.label}</span>
-                      <div className="flex items-center gap-1">
-                        <ChevronRight className="h-3 w-3 text-muted-foreground/40" />
-                        <span className="text-[10px] font-mono text-muted-foreground">{rate}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card/70 border-border/50">
-              <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Deals por Corretor</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {brokerDeals.slice(0, 5).map((b) => (
-                  <div key={b.name} className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-primary text-[10px] font-bold">{b.name.charAt(0)}</div>
-                    <span className="text-[10px] flex-1 truncate">{b.name}</span>
-                    <span className="text-[10px] font-bold text-primary">{b.count}</span>
+      {/* ── ATTENDANCE QUEUE (Fila de Atendimento) ────────── */}
+      <Card className="glass border-border/50">
+        <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+              <Users className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">Fila de Atendimento</p>
+              <p className="text-xs text-muted-foreground">{queue.length} corretor(es) na fila</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {queue.length > 0 && (
+              <div className="flex -space-x-2">
+                {queue.slice(0, 5).map((q) => (
+                  <div key={q.id} className="w-7 h-7 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center text-[10px] font-bold text-primary" title={`${q.name} - ${q.checkedInAt}`}>
+                    {q.name.charAt(0)}
                   </div>
                 ))}
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card/70 border-border/50">
-              <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Indicadores</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Ticket Médio</p>
-                  <p className="text-sm font-bold">R$ {(avgDealValue / 1000).toFixed(0)}k</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Tempo Médio</p>
-                  <p className="text-sm font-bold">{avgDaysInPipeline.toFixed(0)} dias</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Taxa de Fechamento</p>
-                  <p className="text-sm font-bold">{activeDeals > 0 ? ((closedDeals / (activeDeals + closedDeals)) * 100).toFixed(1) : 0}%</p>
-                </div>
-              </CardContent>
-            </Card>
+                {queue.length > 5 && <div className="w-7 h-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] text-muted-foreground">+{queue.length - 5}</div>}
+              </div>
+            )}
+            <Button
+              size="sm"
+              onClick={handleCheckIn}
+              disabled={checkingIn}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <LogIn className="h-4 w-4 mr-1" />
+              {checkingIn ? "Verificando..." : "Check-in"}
+            </Button>
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
+
+      {activeTab === "deals" ? (
+        <>
+          {/* ── DEAL METRICS ──────────────────────────────── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Total", value: activeDeals, icon: Users, color: "text-muted-foreground" },
+              { label: "Novos", value: pendingDeals, icon: AlertCircle, color: "text-warning" },
+              { label: "Em Atendimento", value: underAnalysis, icon: Clock, color: "text-muted-foreground" },
+              { label: "Qualificados", value: approvedDeals, icon: CheckCircle, color: "text-muted-foreground" },
+            ].map(m => (
+              <Card key={m.label} className="glass border-border/50">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                    <m.icon className={cn("h-5 w-5", m.color)} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{m.value}</p>
+                    <p className="text-xs text-muted-foreground">{m.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* ── SEARCH + VIEW TOGGLE ─────────────────────── */}
+          <Card className="glass border-border/50">
+            <CardContent className="p-3 flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Buscar leads..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
+              </div>
+              {showFilters && (
+                <>
+                  <Select value={developerFilter} onValueChange={setDeveloperFilter}>
+                    <SelectTrigger className="w-40"><SelectValue placeholder="Incorporadora" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {mockDevelopers.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={brokerFilter} onValueChange={setBrokerFilter}>
+                    <SelectTrigger className="w-40"><SelectValue placeholder="Corretor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {mockBrokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground cursor-pointer" onClick={() => setShowFilters(!showFilters)} />
+                <Select value="all"><SelectTrigger className="w-24"><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem></SelectContent></Select>
+                <div className="flex border border-border rounded-lg overflow-hidden">
+                  <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                    <List className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── LEADERBOARD ──────────────────────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {leaderboard.map((entry, i) => (
+              <div key={entry.id} className={cn("flex items-center gap-4 p-4 rounded-xl border", medalBgs[i])}>
+                <span className="text-3xl">{medals[i]}</span>
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg font-bold text-muted-foreground">
+                  {entry.user_name.charAt(0)}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">{entry.user_name}</p>
+                  <p className="text-xs text-amber-400 font-semibold">{entry.points} pontos</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── PIPELINE CONTENT ─────────────────────────── */}
+          <div className="flex gap-4">
+            <div className="flex-1 overflow-hidden">
+              {viewMode === "kanban" ? (
+                <div className="overflow-x-auto">
+                  <div className="flex gap-3 min-w-max pb-4">
+                    {DEAL_STAGES.map((stage) => {
+                      const sc = stageColors[stage.value];
+                      const stageDeals = dealsByStage[stage.value] || [];
+                      const isOver = dragOverStage === stage.value;
+                      return (
+                        <div
+                          key={stage.value}
+                          className={cn("w-60 flex-shrink-0 rounded-xl border transition-all", sc.border, isOver && "ring-2 ring-primary/50 scale-[1.01]")}
+                          onDragOver={(e) => onDragOver(e, stage.value)}
+                          onDragLeave={() => setDragOverStage(null)}
+                          onDrop={() => onDrop(stage.value)}
+                        >
+                          <div className={cn("p-3 rounded-t-xl flex items-center justify-between", sc.header)}>
+                            <div className="flex items-center gap-2">
+                              <span className={cn("w-2.5 h-2.5 rounded-full", sc.dot)} />
+                              <span className="text-xs font-semibold">{stage.label}</span>
+                            </div>
+                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{stageDeals.length}</Badge>
+                          </div>
+                          <div className={cn("p-2 space-y-2 min-h-[180px] max-h-[calc(100vh-420px)] overflow-y-auto", sc.bg)}>
+                            {stageDeals.map((deal) => (
+                              <div
+                                key={deal.id}
+                                draggable
+                                onDragStart={() => onDragStart(deal.id)}
+                                onDragEnd={onDragEnd}
+                                onClick={() => setDetailDeal(deal)}
+                                className={cn(
+                                  "p-3 rounded-lg border cursor-grab active:cursor-grabbing transition-all hover:scale-[1.02] hover:shadow-lg",
+                                  "bg-card border-border/40 hover:border-primary/30",
+                                  draggedDeal === deal.id && "opacity-40 scale-95"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-2 mb-1.5">
+                                  <p className="font-medium text-xs leading-tight">{deal.client}</p>
+                                  <GripVertical className="h-3 w-3 text-muted-foreground/40 flex-shrink-0" />
+                                </div>
+                                <p className="text-[10px] text-muted-foreground mb-0.5">{deal.project} • {deal.unit}</p>
+                                <p className="text-[10px] text-muted-foreground/60 mb-2">{deal.developer}</p>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-semibold text-primary">
+                                    R$ {deal.deal_value >= 1000000 ? `${(deal.deal_value / 1000000).toFixed(1)}M` : `${(deal.deal_value / 1000).toFixed(0)}k`}
+                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={cn("text-[9px] font-bold px-1 py-0.5 rounded",
+                                      calcDealProbability(deal) >= 60 ? "bg-emerald-600/20 text-emerald-400" :
+                                      calcDealProbability(deal) >= 35 ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"
+                                    )}>{calcDealProbability(deal)}%</span>
+                                    <span className={cn("text-[10px] font-mono", deal.days_in_pipeline > 30 ? "text-destructive" : "text-muted-foreground")}>{deal.days_in_pipeline}d</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border/20">
+                                  <div className="flex items-center gap-1 flex-1">
+                                    <User className="h-3 w-3 text-muted-foreground/50" />
+                                    <span className="text-[10px] text-muted-foreground truncate">{deal.broker1}</span>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    {deal.visit_date && <CalendarCheck className="h-3 w-3 text-warning" />}
+                                    {deal.notes && <StickyNote className="h-3 w-3 text-muted-foreground/40" />}
+                                    {deal.days_in_pipeline > 30 && <AlertCircle className="h-3 w-3 text-destructive/50" />}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            {stageDeals.length === 0 && (
+                              <div className="flex items-center justify-center h-20 text-[10px] text-muted-foreground/40 border border-dashed border-border/30 rounded-lg">
+                                Arraste um deal aqui
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Card className="border-border/50 bg-card/60 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border/40 text-muted-foreground">
+                            <th className="p-2 font-medium">Info.</th>
+                            <th className="p-2 font-medium text-left">Status</th>
+                            <th className="p-2 font-medium text-left">Construtora</th>
+                            <th className="p-2 font-medium text-left">Empreendimento</th>
+                            <th className="p-2 font-medium">Unidade</th>
+                            <th className="p-2 font-medium">Dias</th>
+                            <th className="p-2 font-medium text-left">Status 2</th>
+                            <th className="p-2 font-medium">Visita</th>
+                            <th className="p-2 font-medium text-left">Cliente</th>
+                            <th className="p-2 font-medium text-left">Corretor 1</th>
+                            <th className="p-2 font-medium text-left">Corretor 2</th>
+                            <th className="p-2 font-medium text-left">Gerente 1</th>
+                            <th className="p-2 font-medium text-left">Gerente 2</th>
+                            <th className="p-2 font-medium">Off</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginated.map((deal) => {
+                            const sl = tableStageLabels[deal.stage] || tableStageLabels.lead;
+                            const statusDate = deal.created_at ? format(parseISO(deal.created_at), "MM/yy") : "";
+                            return (
+                              <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
+                                <td className="p-2 text-center"><button onClick={() => openEditDeal(deal)} className="text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button></td>
+                                <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
+                                <td className="p-2"><span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-teal-600">{deal.developer.toUpperCase().slice(0, 8)}</span></td>
+                                <td className="p-2 whitespace-nowrap max-w-[120px] truncate">{deal.project.toUpperCase()}</td>
+                                <td className="p-2 text-center">{deal.unit}</td>
+                                <td className="p-2 text-center">
+                                  <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold",
+                                    deal.days_in_pipeline > 60 ? "bg-red-600 text-white" :
+                                    deal.days_in_pipeline > 30 ? "bg-red-500/70 text-white" :
+                                    deal.days_in_pipeline > 14 ? "bg-yellow-600/70 text-white" : "text-foreground"
+                                  )}>{deal.days_in_pipeline}</span>
+                                </td>
+                                <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap", sl.color)}>{sl.label}</span></td>
+                                <td className="p-2 text-center"><button onClick={() => setVisitDeal(deal)} className="text-muted-foreground hover:text-primary"><CalendarIcon className="h-3.5 w-3.5" /></button></td>
+                                <td className="p-2 whitespace-nowrap max-w-[130px] truncate font-medium">{deal.client.toUpperCase()}</td>
+                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker1?.toUpperCase() || "—"}</td>
+                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker2?.toUpperCase() || "—"}</td>
+                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">• {deal.manager1?.toUpperCase() || "—"}</td>
+                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.manager2?.toUpperCase() || ""}</td>
+                                <td className="p-2 text-center"><Switch checked={deal.active} onCheckedChange={() => toggleDealActive(deal.id)} className="scale-75" /></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                  <div className="flex items-center justify-center gap-3 mt-3 text-xs text-muted-foreground">
+                    <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="hover:text-foreground disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+                    <span>{(page - 1) * perPage + 1} a {Math.min(page * perPage, filtered.length)}</span>
+                    <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-foreground disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Analytics Panel */}
+            {showAnalytics && (
+              <div className="w-64 flex-shrink-0 space-y-3">
+                <Card className="bg-card/70 border-border/50">
+                  <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conversão por Etapa</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {DEAL_STAGES.slice(0, -1).map((stage, i) => {
+                      const current = dealsByStage[stage.value]?.length || 0;
+                      const next = dealsByStage[DEAL_STAGES[i + 1]?.value]?.length || 0;
+                      const rate = current > 0 ? Math.round((next / current) * 100) : 0;
+                      return (
+                        <div key={stage.value} className="flex items-center gap-2">
+                          <span className={cn("w-2 h-2 rounded-full", stageColors[stage.value].dot)} />
+                          <span className="text-[10px] flex-1">{stage.label}</span>
+                          <div className="flex items-center gap-1">
+                            <ChevronRight className="h-3 w-3 text-muted-foreground/40" />
+                            <span className="text-[10px] font-mono text-muted-foreground">{rate}%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+                <Card className="bg-card/70 border-border/50">
+                  <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Deals por Corretor</CardTitle></CardHeader>
+                  <CardContent className="space-y-2">
+                    {brokerDeals.slice(0, 5).map((b) => (
+                      <div key={b.name} className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-primary text-[10px] font-bold">{b.name.charAt(0)}</div>
+                        <span className="text-[10px] flex-1 truncate">{b.name}</span>
+                        <span className="text-[10px] font-bold text-primary">{b.count}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+                <Card className="bg-card/70 border-border/50">
+                  <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Indicadores</CardTitle></CardHeader>
+                  <CardContent className="space-y-3">
+                    <div><p className="text-[10px] text-muted-foreground">Ticket Médio</p><p className="text-sm font-bold">R$ {(avgDealValue / 1000).toFixed(0)}k</p></div>
+                    <div><p className="text-[10px] text-muted-foreground">Tempo Médio</p><p className="text-sm font-bold">{avgDaysInPipeline.toFixed(0)} dias</p></div>
+                    <div><p className="text-[10px] text-muted-foreground">Taxa de Fechamento</p><p className="text-sm font-bold">{activeDeals > 0 ? ((closedDeals / (activeDeals + closedDeals)) * 100).toFixed(1) : 0}%</p></div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
+
+          {/* Analytics toggle */}
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setShowAnalytics(!showAnalytics)}>
+              <BarChart3 className="h-4 w-4 mr-1" /> Analytics
+            </Button>
+          </div>
+        </>
+      ) : (
+        /* ═══ LEADS TAB ═══ */
+        <>
+          {/* Lead Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Total", value: totalLeads, icon: Users, color: "text-muted-foreground" },
+              { label: "Novos", value: newLeads, icon: AlertCircle, color: "text-warning" },
+              { label: "Em Atendimento", value: inContactLeads, icon: Clock, color: "text-muted-foreground" },
+              { label: "Qualificados", value: qualifiedLeads, icon: CheckCircle, color: "text-muted-foreground" },
+            ].map(m => (
+              <Card key={m.label} className="glass border-border/50">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                    <m.icon className={cn("h-5 w-5", m.color)} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{m.value}</p>
+                    <p className="text-xs text-muted-foreground">{m.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Lead Search */}
+          <Card className="glass border-border/50">
+            <CardContent className="p-3 flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Buscar leads..." className="pl-10" value={leadSearch} onChange={(e) => setLeadSearch(e.target.value)} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <Select value={leadStatusFilter} onValueChange={setLeadStatusFilter}>
+                  <SelectTrigger className="w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {LEAD_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="flex border border-border rounded-lg overflow-hidden">
+                  <button onClick={() => setLeadViewMode("list")} className={cn("p-1.5 transition-colors", leadViewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                    <List className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => setLeadViewMode("grid")} className={cn("p-1.5 transition-colors", leadViewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Lead List */}
+          <div className="space-y-2">
+            {filteredLeads.map((lead) => (
+              <Card key={lead.id} className="glass hover:bg-secondary/30 transition-colors group">
+                <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-1 h-10 rounded-full bg-primary" />
+                    <div>
+                      <p className="font-semibold text-sm">{lead.name}</p>
+                      <p className="text-xs text-muted-foreground">{lead.source} • {lead.broker_name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge className={cn("text-[10px]", leadStatusColor[lead.status])}>
+                      {LEAD_STATUSES.find(s => s.value === lead.status)?.label}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{lead.created_at?.slice(11, 16) || lead.created_at}</span>
+                    <span className="text-xs text-muted-foreground">{lead.broker_name}</span>
+                    {lead.status !== "converted" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openConvertLead(lead)}
+                        className="text-success hover:text-success opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Converter em negócio"
+                      >
+                        <ArrowRightCircle className="h-4 w-4 mr-1" /> Converter
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {filteredLeads.length === 0 && <div className="text-center p-8 text-muted-foreground">Nenhum lead encontrado.</div>}
+          </div>
+        </>
+      )}
+
+      {/* ── CONVERT LEAD MODAL ─────────────────────────────── */}
+      <Dialog open={convertOpen} onOpenChange={setConvertOpen}>
+        <DialogContent className="glass-strong max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightCircle className="h-5 w-5 text-success" />
+              Converter Lead em Negócio
+            </DialogTitle>
+          </DialogHeader>
+          {convertingLead && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <p className="text-sm font-medium">{convertingLead.name}</p>
+                <p className="text-xs text-muted-foreground">{convertingLead.email} • {convertingLead.phone}</p>
+                <p className="text-xs text-muted-foreground">Origem: {convertingLead.source} • Corretor: {convertingLead.broker_name}</p>
+              </div>
+
+              <div className="p-3 rounded-lg border border-warning/30 bg-warning/5">
+                <p className="text-xs text-warning font-medium flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  O negócio será inserido no status "Incompleto"
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">É necessário anexar pelo menos 1 documento para converter.</p>
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground mb-2 block">Documento obrigatório *</label>
+                <input
+                  ref={convertFileRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => setConvertDoc(e.target.files?.[0] || null)}
+                />
+                <div
+                  onClick={() => convertFileRef.current?.click()}
+                  className={cn(
+                    "border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors",
+                    convertDoc ? "border-success/50 bg-success/5" : "border-border hover:border-primary/50"
+                  )}
+                >
+                  {convertDoc ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Paperclip className="h-4 w-4 text-success" />
+                      <span className="text-sm text-success font-medium">{convertDoc.name}</span>
+                      <button onClick={(e) => { e.stopPropagation(); setConvertDoc(null); }} className="text-muted-foreground hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <Paperclip className="h-6 w-6 text-muted-foreground mx-auto mb-1" />
+                      <p className="text-xs text-muted-foreground">Clique para anexar documento</p>
+                      <p className="text-[10px] text-muted-foreground">PDF, imagem, ou qualquer arquivo</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter>
+                <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+                <Button onClick={confirmConvert} disabled={!convertDoc} className="bg-success hover:bg-success/90 text-success-foreground">
+                  <ArrowRightCircle className="h-4 w-4 mr-1" /> Converter em Negócio
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ── DEAL DETAIL MODAL ──────────────────────────────── */}
       <Dialog open={!!detailDeal} onOpenChange={(o) => !o && setDetailDeal(null)}>
