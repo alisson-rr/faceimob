@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, GitBranch, Users, UserPlus, Megaphone,
   UserCircle, Database, Settings, LogOut, Compass, Link2, Sun, Moon,
-  CreditCard, Shield, Building2, UsersRound,
+  CreditCard, Shield, Building2, UsersRound, Trophy,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -28,6 +28,7 @@ const mainNav = [
   { title: "Equipe", url: "/team", icon: Users, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Pessoal", url: "/profile", icon: UserCircle, roles: ['admin', 'partner', 'director', 'manager', 'broker', 'cca'] },
   { title: "Links", url: "/links", icon: Link2, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "Gamificação", url: "/gamification", icon: Trophy, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
 ];
 
 const adminNav = [

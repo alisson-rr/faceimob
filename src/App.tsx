@@ -20,6 +20,7 @@ import CcaPipeline from "@/pages/CcaPipeline";
 import AdminPermissions from "@/pages/AdminPermissions";
 import AdminTeams from "@/pages/AdminTeams";
 import AdminDevelopers from "@/pages/AdminDevelopers";
+import Gamification from "@/pages/Gamification";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/admin/permissions" element={<AdminPermissions />} />
               <Route path="/admin/teams" element={<AdminTeams />} />
               <Route path="/admin/developers" element={<AdminDevelopers />} />
+              <Route path="/gamification" element={<Gamification />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
