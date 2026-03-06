@@ -92,8 +92,16 @@ export default function Pipeline() {
   const [showFilters, setShowFilters] = useState(false);
   const [developerFilter, setDeveloperFilter] = useState("all");
   const [brokerFilter, setBrokerFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
+  const [status2Filter, setStatus2Filter] = useState("all");
+  const [managerFilter, setManagerFilter] = useState("all");
+  const [clientNameFilter, setClientNameFilter] = useState("");
+  const [clientName2Filter, setClientName2Filter] = useState("");
+  const [cpfFilter, setCpfFilter] = useState("");
+  const [cpf2Filter, setCpf2Filter] = useState("");
+  const [monthFilter, setMonthFilter] = useState(format(new Date(), "MM/yyyy"));
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "table">("table");
   const [page, setPage] = useState(1);
   const perPage = 15;
 
