@@ -3,7 +3,7 @@ import { mockBrokers, mockGamification } from "@/data/mockData";
 
 // ── Deal Probability Score ───────────────────────────────────
 const stageProbability: Record<DealStage, number> = {
-  lead: 10, proposal: 25, visit_scheduled: 40,
+  incomplete: 5, lead: 10, proposal: 25, visit_scheduled: 40,
   under_analysis: 55, approved: 75, contract: 90, closed: 100,
 };
 
