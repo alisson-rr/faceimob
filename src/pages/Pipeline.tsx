@@ -113,6 +113,10 @@ export default function Pipeline() {
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
   const [leadViewMode, setLeadViewMode] = useState<"list" | "grid">("list");
 
+  // ── New Lead modal ──
+  const [newLeadOpen, setNewLeadOpen] = useState(false);
+  const [newLeadData, setNewLeadData] = useState({ name: "", phone: "", whatsapp: "", email: "", source: "", broker_name: "", notes: "" });
+
   // ── Queue state ──
   const [queue, setQueue] = useState<QueueBroker[]>([]);
   const [checkingIn, setCheckingIn] = useState(false);
