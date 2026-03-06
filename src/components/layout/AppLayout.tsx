@@ -53,6 +53,7 @@ export default function AppLayout() {
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 flex items-center border-b border-border/30 glass px-4 sticky top-0 z-30">
+            <SidebarTrigger className="mr-2 md:hidden" />
             <h1 className="text-sm font-semibold text-foreground">{pageTitle}</h1>
             <div className="flex items-center gap-3 ml-auto">
               <RoleSwitcher />
