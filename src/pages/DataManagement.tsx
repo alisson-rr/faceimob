@@ -84,7 +84,6 @@ export default function DataManagement() {
           <TabsTrigger value="developers">Incorporadoras</TabsTrigger>
           <TabsTrigger value="projects">Empreendimentos</TabsTrigger>
           <TabsTrigger value="sources">Fontes</TabsTrigger>
-          <TabsTrigger value="teams">Times</TabsTrigger>
           <TabsTrigger value="ips">IPs Check-in</TabsTrigger>
           <TabsTrigger value="integrations">Integrações</TabsTrigger>
         </TabsList>
@@ -97,9 +96,6 @@ export default function DataManagement() {
         </TabsContent>
         <TabsContent value="sources" className="mt-4">
           <Card className="glass"><CardContent className="p-4"><DataList title="Fonte" items={mockSources} /></CardContent></Card>
-        </TabsContent>
-        <TabsContent value="teams" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Time" items={mockTeams} /></CardContent></Card>
         </TabsContent>
 
         {/* IP Configuration */}
