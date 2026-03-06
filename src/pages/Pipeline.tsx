@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import DealDetailModal from "@/components/DealDetailModal";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -70,6 +71,7 @@ const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
   client: "", developer: "", project: "", unit: "", status: "Ativo", stage: "lead",
   broker1: "", broker2: "", manager1: "", manager2: "", deal_value: 0,
   active: true, created_at: new Date().toISOString().slice(0, 10), notes: "",
+  history: [],
 };
 
 // ── Allowed IPs for check-in (configurable by admin) ──
