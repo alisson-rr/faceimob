@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { mockDevelopers, mockProjects, mockSources, mockTeams } from "@/data/mockData";
+import { mockDevelopers, mockProjects, mockSources } from "@/data/mockData";
 import { Plus, X, Copy, ExternalLink, Wifi } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
@@ -84,7 +84,6 @@ export default function DataManagement() {
           <TabsTrigger value="developers">Incorporadoras</TabsTrigger>
           <TabsTrigger value="projects">Empreendimentos</TabsTrigger>
           <TabsTrigger value="sources">Fontes</TabsTrigger>
-          <TabsTrigger value="teams">Times</TabsTrigger>
           <TabsTrigger value="ips">IPs Check-in</TabsTrigger>
           <TabsTrigger value="integrations">Integrações</TabsTrigger>
         </TabsList>
@@ -97,9 +96,6 @@ export default function DataManagement() {
         </TabsContent>
         <TabsContent value="sources" className="mt-4">
           <Card className="glass"><CardContent className="p-4"><DataList title="Fonte" items={mockSources} /></CardContent></Card>
-        </TabsContent>
-        <TabsContent value="teams" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Time" items={mockTeams} /></CardContent></Card>
         </TabsContent>
 
         {/* IP Configuration */}
