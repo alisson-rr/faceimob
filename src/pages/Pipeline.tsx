@@ -280,6 +280,27 @@ export default function Pipeline() {
   const openNewDeal = () => { setEditingDeal(null); setFormData(emptyDeal); setDealFormOpen(true); };
   const openEditDeal = (deal: PipelineDeal) => { setEditingDeal(deal); setFormData(deal); setDealFormOpen(true); };
 
+  const saveNewLead = () => {
+    if (!newLeadData.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
+    const newLead: Lead = {
+      id: String(Date.now()),
+      name: newLeadData.name,
+      phone: newLeadData.phone,
+      whatsapp: newLeadData.whatsapp || newLeadData.phone,
+      email: newLeadData.email,
+      source: newLeadData.source,
+      broker_id: "",
+      broker_name: newLeadData.broker_name,
+      status: "new" as LeadStatus,
+      notes: newLeadData.notes,
+      created_at: new Date().toISOString(),
+    };
+    setLeads(prev => [newLead, ...prev]);
+    setNewLeadOpen(false);
+    setNewLeadData({ name: "", phone: "", whatsapp: "", email: "", source: "", broker_name: "", notes: "" });
+    toast({ title: "✅ Lead criado com sucesso!" });
+  };
+
   const saveDeal = () => {
     if (editingDeal) {
       setDeals((prev) => prev.map((d) => d.id === editingDeal.id ? { ...d, ...formData, days_in_pipeline: differenceInDays(new Date(), parseISO(formData.created_at)) } : d));
