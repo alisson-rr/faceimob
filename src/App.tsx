@@ -8,7 +8,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Pipeline from "@/pages/Pipeline";
-import Leads from "@/pages/Leads";
+
 import Team from "@/pages/Team";
 import Marketing from "@/pages/Marketing";
 import Profile from "@/pages/Profile";
@@ -39,7 +39,7 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/cca" element={<CcaPipeline />} />
-              <Route path="/leads" element={<Leads />} />
+              <Route path="/leads" element={<Navigate to="/pipeline" replace />} />
               <Route path="/norteador" element={<Norteador />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/team" element={<Team />} />

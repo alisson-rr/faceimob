@@ -370,7 +370,7 @@ export default function Pipeline() {
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={() => toast({ title: "Use a página de Leads para criar novo lead" })}>
+            <Button size="sm" onClick={() => setNewLeadOpen(true)}>
               <Plus className="h-4 w-4 mr-1" /> Novo Lead
             </Button>
           )}
