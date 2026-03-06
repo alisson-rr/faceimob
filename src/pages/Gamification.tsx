@@ -215,8 +215,8 @@ export default function Gamification() {
         )}
 
         {isAdmin && isCurrentMonth && !isClosed && (
-          <Button variant="destructive" size="sm" onClick={handleCloseGame} className="gap-1">
-            <Lock className="h-4 w-4" /> Fechar Game
+          <Button variant="destructive" size="sm" onClick={() => setCloseConfirmOpen(true)} className="gap-1">
+            <Target className="h-4 w-4" /> Fechar Game
           </Button>
         )}
 
@@ -398,6 +398,39 @@ export default function Gamification() {
           ))}
         </TabsContent>
       </Tabs>
+
+      {/* ── CLOSE GAME CONFIRMATION DIALOG ─── */}
+      <Dialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
+        <DialogContent className="glass-strong max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-destructive" />
+              Fechar Game do Mês
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Ao fechar o game, a pontuação será congelada para{' '}
+              <strong className="text-foreground">{getMonthLabel(now)}</strong>{' '}
+              e um novo mês será criado com pontuações zeradas.
+            </p>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                Esta ação não pode ser desfeita. O mês pode ser fechado mesmo após o dia 05 do mês seguinte.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={handleCloseGame}>
+              Confirmar Fechamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
