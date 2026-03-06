@@ -215,9 +215,19 @@ export default function Pipeline() {
       const matchSearch = !s || d.client.toLowerCase().includes(s) || d.project.toLowerCase().includes(s) || d.broker1.toLowerCase().includes(s);
       const matchDev = developerFilter === "all" || d.developer === developerFilter;
       const matchBroker = brokerFilter === "all" || d.broker1 === brokerFilter;
-      return matchSearch && matchDev && matchBroker;
+      const matchStage = stageFilter === "all" || d.stage === stageFilter;
+      const matchStatus2 = status2Filter === "all" || d.stage === status2Filter;
+      const matchManager = managerFilter === "all" || d.manager1 === managerFilter;
+      const matchClient = !clientNameFilter || d.client.toLowerCase().includes(clientNameFilter.toLowerCase());
+      return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient;
+    }).sort((a, b) => {
+      // Sort by developer first, then by stage index
+      const devCmp = a.developer.localeCompare(b.developer);
+      if (devCmp !== 0) return devCmp;
+      const stageOrder = DEAL_STAGES.map(s => s.value);
+      return stageOrder.indexOf(a.stage) - stageOrder.indexOf(b.stage);
     });
-  }, [deals, search, developerFilter, brokerFilter]);
+  }, [deals, search, developerFilter, brokerFilter, stageFilter, status2Filter, managerFilter, clientNameFilter]);
 
   const dealsByStage = useMemo(() => {
     const map: Record<DealStage, PipelineDeal[]> = { incomplete: [], lead: [], proposal: [], visit_scheduled: [], under_analysis: [], approved: [], contract: [], closed: [] };
