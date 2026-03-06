@@ -75,8 +75,13 @@ const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
   history: [],
 };
 
-// ── Allowed IPs for check-in (configurable by admin) ──
-const ALLOWED_IPS = ["*"]; // "*" means allow all for demo; replace with real IPs like ["192.168.1.0/24"]
+// ── Allowed IPs for check-in (loaded from localStorage, configurable in Dados) ──
+const getStoredIPs = (): string[] => {
+  try {
+    const stored = localStorage.getItem("allowed_ips");
+    return stored ? JSON.parse(stored) : [];
+  } catch { return []; }
+};
 
 interface QueueBroker {
   id: string;
@@ -178,25 +183,27 @@ export default function Pipeline() {
     toast({ title: "✅ Mês fechado com sucesso!", description: `Vendas, offs e distratos ficaram em ${currentMonth}. Propostas movidas para o próximo mês (data base dia 05).` });
   };
 
-  // ── IP Check-in ──
+  // ── IP Check-in / Checkout ──
+  const brokerName = "Dianho Silva"; // TODO: use real auth user
+  const isInQueue = queue.some(q => q.name === brokerName);
+
   const handleCheckIn = useCallback(async () => {
     setCheckingIn(true);
     try {
-      // Fetch user's public IP
       const res = await fetch("https://api.ipify.org?format=json");
       const data = await res.json();
       const ip = data.ip;
       setUserIp(ip);
 
-      const isAllowed = ALLOWED_IPS.includes("*") || ALLOWED_IPS.some(allowed => ip.startsWith(allowed.replace("/24", "").replace("/16", "")));
+      const allowedIPs = getStoredIPs();
+      const hasConfiguredIPs = allowedIPs.some(aip => aip.trim() !== "");
+      const isAllowed = !hasConfiguredIPs || allowedIPs.some(allowed => allowed.trim() && ip.startsWith(allowed.trim()));
 
       if (!isAllowed) {
         toast({ title: "❌ Check-in bloqueado", description: `Seu IP (${ip}) não está autorizado. Conecte-se à rede da empresa.`, variant: "destructive" });
         return;
       }
 
-      // Check if already in queue
-      const brokerName = "Dianho Silva"; // TODO: use real auth user
       if (queue.some(q => q.name === brokerName)) {
         toast({ title: "Já está na fila", description: "Você já fez check-in hoje." });
         return;
@@ -210,6 +217,11 @@ export default function Pipeline() {
       setCheckingIn(false);
     }
   }, [queue]);
+
+  const handleCheckOut = useCallback(() => {
+    setQueue(prev => prev.filter(q => q.name !== brokerName));
+    toast({ title: "👋 Check-out realizado!", description: "Você saiu da fila de atendimento." });
+  }, []);
 
   // ── Convert Lead to Deal ──
   const openConvertLead = (lead: Lead) => {
@@ -468,15 +480,26 @@ export default function Pipeline() {
                 {queue.length > 5 && <div className="w-7 h-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] text-muted-foreground">+{queue.length - 5}</div>}
               </div>
             )}
-            <Button
-              size="sm"
-              onClick={handleCheckIn}
-              disabled={checkingIn}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              <LogIn className="h-4 w-4 mr-1" />
-              {checkingIn ? "Verificando..." : "Check-in"}
-            </Button>
+            {isInQueue ? (
+              <Button
+                size="sm"
+                onClick={handleCheckOut}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                <LogIn className="h-4 w-4 mr-1" />
+                Check-out
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={handleCheckIn}
+                disabled={checkingIn}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                <LogIn className="h-4 w-4 mr-1" />
+                {checkingIn ? "Verificando..." : "Check-in"}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

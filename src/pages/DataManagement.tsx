@@ -3,11 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { mockDevelopers, mockProjects, mockSources, mockTeams } from "@/data/mockData";
-import { Plus, X, Copy, ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { Plus, X, Copy, ExternalLink, Wifi } from "lucide-react";
+import { useState, useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
 
-function DataList({ title, items: initialItems }: { title: string; items: string[] }) {
+interface DataListProps {
+  title: string;
+  items: string[];
+}
+
+function DataList({ title, items: initialItems }: DataListProps) {
   const [items, setItems] = useState(initialItems);
   const [newItem, setNewItem] = useState("");
 
@@ -41,6 +46,27 @@ function DataList({ title, items: initialItems }: { title: string; items: string
 export default function DataManagement() {
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-ads-webhook`;
 
+  // IP Management
+  const [allowedIPs, setAllowedIPs] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem("allowed_ips");
+      return stored ? JSON.parse(stored) : ["", "", "", "", ""];
+    } catch { return ["", "", "", "", ""]; }
+  });
+
+  const updateIP = (index: number, value: string) => {
+    setAllowedIPs(prev => {
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
+    });
+  };
+
+  const saveIPs = () => {
+    localStorage.setItem("allowed_ips", JSON.stringify(allowedIPs));
+    toast({ title: "✅ IPs salvos!", description: "Os IPs permitidos para check-in foram atualizados." });
+  };
+
   const copyWebhookUrl = () => {
     navigator.clipboard.writeText(webhookUrl);
     toast({ title: "URL copiada!", description: "Cole esta URL na configuração do Meta Ads." });
@@ -59,6 +85,7 @@ export default function DataManagement() {
           <TabsTrigger value="projects">Empreendimentos</TabsTrigger>
           <TabsTrigger value="sources">Fontes</TabsTrigger>
           <TabsTrigger value="teams">Times</TabsTrigger>
+          <TabsTrigger value="ips">IPs Check-in</TabsTrigger>
           <TabsTrigger value="integrations">Integrações</TabsTrigger>
         </TabsList>
 
@@ -74,6 +101,39 @@ export default function DataManagement() {
         <TabsContent value="teams" className="mt-4">
           <Card className="glass"><CardContent className="p-4"><DataList title="Time" items={mockTeams} /></CardContent></Card>
         </TabsContent>
+
+        {/* IP Configuration */}
+        <TabsContent value="ips" className="mt-4">
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Wifi className="h-5 w-5 text-primary" /> IPs Permitidos para Check-in
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Insira até 5 endereços IP autorizados para o check-in na fila de atendimento.
+                Se nenhum IP for preenchido, o check-in será liberado de qualquer local.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {allowedIPs.map((ip, i) => (
+                  <div key={i}>
+                    <label className="text-xs text-muted-foreground mb-1 block">IP {i + 1}</label>
+                    <Input
+                      value={ip}
+                      onChange={(e) => updateIP(i, e.target.value)}
+                      placeholder={`Ex: 192.168.1.${i + 1}`}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+              <Button size="sm" onClick={saveIPs}>Salvar IPs</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Integrations - keep existing */}
         <TabsContent value="integrations" className="mt-4">
           <Card className="glass">
             <CardHeader>
@@ -84,7 +144,6 @@ export default function DataManagement() {
                 Configure o webhook abaixo no <strong>Meta Business Suite</strong> para receber leads automaticamente no pipeline. 
                 Cada novo lead gera uma notificação em tempo real.
               </p>
-
               <div className="space-y-2">
                 <label className="text-sm font-medium">URL do Webhook</label>
                 <div className="flex gap-2">
@@ -94,12 +153,10 @@ export default function DataManagement() {
                   </Button>
                 </div>
               </div>
-
               <div className="space-y-2">
                 <label className="text-sm font-medium">Token de Verificação</label>
                 <Input readOnly value="faceimob_meta_verify" className="font-mono text-xs" />
               </div>
-
               <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <p className="text-xs text-muted-foreground">
                   <strong>Como configurar:</strong><br />
@@ -110,7 +167,6 @@ export default function DataManagement() {
                   5. Cada lead preenchido no Meta Ads será criado automaticamente no Pipeline
                 </p>
               </div>
-
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" asChild>
                   <a href="https://business.facebook.com/" target="_blank" rel="noreferrer">
