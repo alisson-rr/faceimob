@@ -43,25 +43,75 @@ export interface Lead {
   notes: string;
 }
 
+export interface DealHistoryEntry {
+  id: string;
+  user_name: string;
+  text: string;
+  timestamp: string; // ISO string
+}
+
 export interface PipelineDeal {
   id: string;
   client: string;
+  cpf?: string;
+  contato?: string;
+  email_client?: string;
+  numero_pis?: string;
+  estado_civil?: string;
+  naturalidade?: string;
+  cotista?: string;
+  dependente?: string;
+  data_admissao?: string;
+  referencia_cch?: string;
+  cep?: string;
+  // 2nd client (compra conjunta)
+  has_second_client?: boolean;
+  client2?: string;
+  cpf2?: string;
+  contato2?: string;
+  email_client2?: string;
+  numero_pis2?: string;
+  estado_civil2?: string;
+  naturalidade2?: string;
+  cotista2?: string;
+  dependente2?: string;
+  data_admissao2?: string;
+  referencia_cch2?: string;
+  cep2?: string;
+  // Renda informal
+  has_informal_income?: boolean;
+  segmento_atividade?: string;
+  forma_atuacao?: string;
+  tempo_atividade?: string;
+  forma_divulgacao?: string;
+  declara_ir?: string;
+  rendimento_mensal?: string;
+  observacoes_renda?: string;
+  // Core
   developer: string;
   project: string;
   unit: string;
   status: string;
   stage: DealStage;
+  lead_origin?: string;
+  month_base?: string; // MM/YYYY - data base do negócio
   visit_date?: string;
   visit_result?: 'pending' | 'completed' | 'cancelled';
   broker1: string;
   broker2?: string;
+  broker3?: string;
   manager1: string;
   manager2?: string;
+  manager3?: string;
+  vgv_bruto?: number;
+  perc_desconto?: string;
+  vgv_liquido?: number;
   deal_value: number;
   days_in_pipeline: number;
   active: boolean;
   created_at: string;
   notes?: string;
+  history?: DealHistoryEntry[];
 }
 
 export interface Visit {
