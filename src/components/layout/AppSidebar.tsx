@@ -22,7 +22,7 @@ const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Pipeline", url: "/pipeline", icon: GitBranch, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "CCA Pipeline", url: "/cca", icon: CreditCard, roles: ['admin', 'cca', 'partner'] },
-  { title: "Leads", url: "/leads", icon: UserPlus, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  
   { title: "Norteador", url: "/norteador", icon: Compass, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Marketing", url: "/marketing", icon: Megaphone, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Equipe", url: "/team", icon: Users, roles: ['admin', 'partner', 'director', 'manager'] },
