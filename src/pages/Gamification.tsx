@@ -127,6 +127,7 @@ export default function Gamification() {
   ]);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
   const currentScores = useMemo(() => computeScores(), []);
   const isCurrentMonth = selectedMonth === currentMonthKey;
@@ -145,6 +146,7 @@ export default function Gamification() {
       closedAt: new Date().toISOString(),
       scores: [...currentScores],
     }]);
+    setCloseConfirmOpen(false);
     toast.success(`Game "${label}" fechado com sucesso! Novo game iniciado.`);
   };
 
