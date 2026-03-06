@@ -24,6 +24,17 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
+// ── Developer color map (distinct colors per developer) ──
+const developerColors: Record<string, string> = {
+  Cyrela: "bg-teal-600",
+  MRV: "bg-amber-600",
+  Tenda: "bg-rose-600",
+  Eztec: "bg-violet-600",
+  Direcional: "bg-sky-600",
+  Even: "bg-lime-600",
+};
+const getDeveloperColor = (dev: string) => developerColors[dev] || "bg-muted";
+
 // ── Stage visual config ──
 const stageColors: Record<DealStage, { bg: string; border: string; header: string; dot: string; badge: string }> = {
   incomplete:      { bg: "bg-destructive/5", border: "border-destructive/25", header: "bg-destructive/15", dot: "bg-destructive", badge: "bg-destructive/20 text-destructive" },
