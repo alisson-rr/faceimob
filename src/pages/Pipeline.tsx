@@ -309,8 +309,12 @@ export default function Pipeline() {
   // Analytics data
   const underAnalysis = deals.filter((d) => ["under_analysis", "visit_scheduled"].includes(d.stage) && d.active).length;
   const approvedDeals = deals.filter((d) => d.stage === "approved" && d.active).length;
+  const approvedCond = deals.filter((d) => d.stage === "contract" && d.active).length;
   const pendingDeals = deals.filter((d) => d.stage === "lead" && d.active).length;
   const closedDeals = deals.filter((d) => d.stage === "closed").length;
+  const agileDeals = deals.filter((d) => d.stage === "visit_scheduled" && d.active).length;
+  const proposalsToday = deals.filter((d) => d.stage === "proposal" && d.created_at === format(new Date(), "yyyy-MM-dd")).length;
+  const proposalsPeriod = deals.filter((d) => d.stage === "proposal" && d.active).length;
   const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
   const avgDaysInPipeline = activeDeals ? deals.filter((d) => d.active).reduce((a, d) => a + d.days_in_pipeline, 0) / activeDeals : 0;
   const brokerDeals = mockBrokers.map((b) => ({
