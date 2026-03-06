@@ -431,6 +431,11 @@ export default function Pipeline() {
               <Button variant="outline" size="sm" onClick={exportCSV}>
                 <Download className="h-4 w-4 mr-1" /> Extrair Negócio
               </Button>
+              {isAdmin && (
+                <Button variant="destructive" size="sm" onClick={() => setCloseMonthOpen(true)}>
+                  <Target className="h-4 w-4 mr-1" /> Fechar Mês
+                </Button>
+              )}
             </>
           ) : (
             <Button size="sm" onClick={() => setNewLeadOpen(true)}>
