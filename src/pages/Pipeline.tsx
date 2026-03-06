@@ -1035,6 +1035,43 @@ export default function Pipeline() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── CLOSE MONTH CONFIRMATION DIALOG ─── */}
+      <Dialog open={closeMonthOpen} onOpenChange={setCloseMonthOpen}>
+        <DialogContent className="glass-strong max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-destructive" />
+              Fechar Mês do Pipeline
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Ao fechar o mês, as <strong className="text-foreground">vendas, offs e distratos</strong> de{' '}
+              <strong className="text-foreground">{monthFilter}</strong>{' '}
+              ficarão congelados neste mês.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Todas as outras propostas (Status 1 — Proposta) serão movidas para o{' '}
+              <strong className="text-foreground">mês seguinte</strong> com data base no dia <strong className="text-foreground">05</strong>.
+            </p>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                Esta ação não pode ser desfeita. Verifique se todos os negócios estão com o status correto antes de fechar.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={handleCloseMonth}>
+              Confirmar Fechamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
