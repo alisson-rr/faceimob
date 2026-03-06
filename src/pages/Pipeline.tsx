@@ -18,7 +18,8 @@ import {
   X, Pencil, GripVertical, User, DollarSign,
   CalendarCheck, StickyNote, AlertCircle, ChevronRight,
   ChevronLeft, Trophy, LayoutGrid, List, LogIn, Users,
-  ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus
+  ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus,
+  Lock, AlertTriangle, Target
 } from "lucide-react";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,43 @@ export default function Pipeline() {
   // Drag state
   const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<DealStage | null>(null);
+
+  // ── Close Month state ──
+  const [closeMonthOpen, setCloseMonthOpen] = useState(false);
+  const isAdmin = role === 'admin';
+
+  const handleCloseMonth = () => {
+    const currentMonth = monthFilter;
+    // Stages that stay locked in this month: vendas, offs, distratos (closed + !active)
+    const lockedStages: DealStage[] = ['closed'];
+    
+    setDeals(prev => prev.map(deal => {
+      const dealMonth = deal.month_base || format(parseISO(deal.created_at), "MM/yyyy");
+      if (dealMonth !== currentMonth) return deal;
+      
+      // Vendas, offs, distratos stay in this month
+      if (lockedStages.includes(deal.stage) || !deal.active) {
+        return deal; // stays locked
+      }
+      
+      // All other proposals move to next month with day 05 as base date
+      const [mm, yyyy] = currentMonth.split("/").map(Number);
+      const nextMonth = mm === 12 ? 1 : mm + 1;
+      const nextYear = mm === 12 ? yyyy + 1 : yyyy;
+      const newMonthBase = `${String(nextMonth).padStart(2, "0")}/${nextYear}`;
+      
+      return { ...deal, month_base: newMonthBase };
+    }));
+    
+    // Move filter to next month
+    const [mm, yyyy] = currentMonth.split("/").map(Number);
+    const nextMonth = mm === 12 ? 1 : mm + 1;
+    const nextYear = mm === 12 ? yyyy + 1 : yyyy;
+    setMonthFilter(`${String(nextMonth).padStart(2, "0")}/${nextYear}`);
+    
+    setCloseMonthOpen(false);
+    toast({ title: "✅ Mês fechado com sucesso!", description: `Vendas, offs e distratos ficaram em ${currentMonth}. Propostas movidas para o próximo mês (data base dia 05).` });
+  };
 
   // ── IP Check-in ──
   const handleCheckIn = useCallback(async () => {
@@ -393,6 +431,11 @@ export default function Pipeline() {
               <Button variant="outline" size="sm" onClick={exportCSV}>
                 <Download className="h-4 w-4 mr-1" /> Extrair Negócio
               </Button>
+              {isAdmin && (
+                <Button variant="destructive" size="sm" onClick={() => setCloseMonthOpen(true)}>
+                  <Target className="h-4 w-4 mr-1" /> Fechar Mês
+                </Button>
+              )}
             </>
           ) : (
             <Button size="sm" onClick={() => setNewLeadOpen(true)}>
@@ -989,6 +1032,43 @@ export default function Pipeline() {
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button onClick={saveNewLead} disabled={!newLeadData.name.trim()}>Criar Lead</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── CLOSE MONTH CONFIRMATION DIALOG ─── */}
+      <Dialog open={closeMonthOpen} onOpenChange={setCloseMonthOpen}>
+        <DialogContent className="glass-strong max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-destructive" />
+              Fechar Mês do Pipeline
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Ao fechar o mês, as <strong className="text-foreground">vendas, offs e distratos</strong> de{' '}
+              <strong className="text-foreground">{monthFilter}</strong>{' '}
+              ficarão congelados neste mês.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Todas as outras propostas (Status 1 — Proposta) serão movidas para o{' '}
+              <strong className="text-foreground">mês seguinte</strong> com data base no dia <strong className="text-foreground">05</strong>.
+            </p>
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                Esta ação não pode ser desfeita. Verifique se todos os negócios estão com o status correto antes de fechar.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={handleCloseMonth}>
+              Confirmar Fechamento
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
