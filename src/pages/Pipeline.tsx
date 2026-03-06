@@ -413,67 +413,90 @@ export default function Pipeline() {
 
       {activeTab === "deals" ? (
         <>
-          {/* ── DEAL METRICS ──────────────────────────────── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Total", value: activeDeals, icon: Users, color: "text-muted-foreground" },
-              { label: "Novos", value: pendingDeals, icon: AlertCircle, color: "text-warning" },
-              { label: "Em Atendimento", value: underAnalysis, icon: Clock, color: "text-muted-foreground" },
-              { label: "Qualificados", value: approvedDeals, icon: CheckCircle, color: "text-muted-foreground" },
-            ].map(m => (
-              <Card key={m.label} className="glass border-border/50">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                    <m.icon className={cn("h-5 w-5", m.color)} />
+          {/* ── FILTER PANEL + METRICS ────────────────────── */}
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Filter Panel */}
+            {showFilters && (
+              <Card className="glass border-primary/30 flex-shrink-0 lg:w-[520px]">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold">Filtrar Negócio</span>
+                    <button onClick={() => setShowFilters(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold">{m.value}</p>
-                    <p className="text-xs text-muted-foreground">{m.label}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select value={stageFilter} onValueChange={setStageFilter}>
+                      <SelectTrigger><SelectValue placeholder="PROPOSTA" /></SelectTrigger>
+                      <SelectContent>{[{ value: "all", label: "Todos Status" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={status2Filter} onValueChange={setStatus2Filter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher Status 2" /></SelectTrigger>
+                      <SelectContent>{[{ value: "all", label: "Todos Status 2" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} placeholder="03/2026" />
+                    <Select value={developerFilter} onValueChange={setDeveloperFilter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher uma Construtora" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todas Construtoras</SelectItem>{mockDevelopers.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={managerFilter} onValueChange={setManagerFilter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher Gerente 1" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{mockManagers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={brokerFilter} onValueChange={setBrokerFilter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher Corretor 1" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input placeholder="Filtrar por nome cliente" value={clientNameFilter} onChange={(e) => setClientNameFilter(e.target.value)} />
+                    <Input placeholder="Filtrar por nome 2º cliente" value={clientName2Filter} onChange={(e) => setClientName2Filter(e.target.value)} />
+                    <Input placeholder="Filtrar por CPF Cliente" value={cpfFilter} onChange={(e) => setCpfFilter(e.target.value)} />
+                    <Input placeholder="Filtrar por CPF 2º Cliente" value={cpf2Filter} onChange={(e) => setCpf2Filter(e.target.value)} />
+                  </div>
+                  <div className="flex justify-end mt-3">
+                    <Button variant="ghost" size="sm" onClick={() => { setStageFilter("all"); setStatus2Filter("all"); setDeveloperFilter("all"); setBrokerFilter("all"); setManagerFilter("all"); setClientNameFilter(""); setClientName2Filter(""); setCpfFilter(""); setCpf2Filter(""); setSearch(""); }}>
+                      <X className="h-3 w-3 mr-1" /> Limpar Filtros
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            ))}
-          </div>
+            )}
 
-          {/* ── SEARCH + VIEW TOGGLE ─────────────────────── */}
-          <Card className="glass border-border/50">
-            <CardContent className="p-3 flex flex-col sm:flex-row items-center gap-3">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar leads..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
-              </div>
-              {showFilters && (
-                <>
-                  <Select value={developerFilter} onValueChange={setDeveloperFilter}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Incorporadora" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      {mockDevelopers.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={brokerFilter} onValueChange={setBrokerFilter}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Corretor" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      {mockBrokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground cursor-pointer" onClick={() => setShowFilters(!showFilters)} />
-                <Select value="all"><SelectTrigger className="w-24"><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem></SelectContent></Select>
-                <div className="flex border border-border rounded-lg overflow-hidden">
-                  <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <List className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
+            {/* Right side: Actions + Metrics summary */}
+            <div className="flex-1 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={openNewDeal}><Plus className="h-4 w-4 mr-1" /> Adicionar Negócio</Button>
+                  <Button variant="outline" size="sm" onClick={exportCSV}><Download className="h-4 w-4 mr-1" /> Extrair Negócio</Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex border border-border rounded-lg overflow-hidden">
+                    <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                      <List className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                      <LayoutGrid className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Inline Metrics */}
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <span className="px-2 py-1 rounded border border-primary/50 text-primary font-bold">Negócios Ativos: {activeDeals}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Aprovado Total: {approvedDeals}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Aprovado Cond.: {approvedCond}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Em análise: {underAnalysis}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Esteira Ágil: {agileDeals}</span>
+                <span className="px-2 py-1 rounded border border-warning/50 text-warning font-bold">Pendentes: {pendingDeals}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Propostas Hoje: {proposalsToday}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Propostas período: {proposalsPeriod}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick search bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Buscar cliente, projeto, corretor..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
 
           {/* ── LEADERBOARD ──────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
