@@ -24,6 +24,17 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
+// ── Developer color map (distinct colors per developer) ──
+const developerColors: Record<string, string> = {
+  Cyrela: "bg-teal-600",
+  MRV: "bg-amber-600",
+  Tenda: "bg-rose-600",
+  Eztec: "bg-violet-600",
+  Direcional: "bg-sky-600",
+  Even: "bg-lime-600",
+};
+const getDeveloperColor = (dev: string) => developerColors[dev] || "bg-muted";
+
 // ── Stage visual config ──
 const stageColors: Record<DealStage, { bg: string; border: string; header: string; dot: string; badge: string }> = {
   incomplete:      { bg: "bg-destructive/5", border: "border-destructive/25", header: "bg-destructive/15", dot: "bg-destructive", badge: "bg-destructive/20 text-destructive" },
@@ -81,8 +92,16 @@ export default function Pipeline() {
   const [showFilters, setShowFilters] = useState(false);
   const [developerFilter, setDeveloperFilter] = useState("all");
   const [brokerFilter, setBrokerFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState("all");
+  const [status2Filter, setStatus2Filter] = useState("all");
+  const [managerFilter, setManagerFilter] = useState("all");
+  const [clientNameFilter, setClientNameFilter] = useState("");
+  const [clientName2Filter, setClientName2Filter] = useState("");
+  const [cpfFilter, setCpfFilter] = useState("");
+  const [cpf2Filter, setCpf2Filter] = useState("");
+  const [monthFilter, setMonthFilter] = useState(format(new Date(), "MM/yyyy"));
   const [showAnalytics, setShowAnalytics] = useState(false);
-  const [viewMode, setViewMode] = useState<"kanban" | "table">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "table">("table");
   const [page, setPage] = useState(1);
   const perPage = 15;
 
@@ -196,9 +215,19 @@ export default function Pipeline() {
       const matchSearch = !s || d.client.toLowerCase().includes(s) || d.project.toLowerCase().includes(s) || d.broker1.toLowerCase().includes(s);
       const matchDev = developerFilter === "all" || d.developer === developerFilter;
       const matchBroker = brokerFilter === "all" || d.broker1 === brokerFilter;
-      return matchSearch && matchDev && matchBroker;
+      const matchStage = stageFilter === "all" || d.stage === stageFilter;
+      const matchStatus2 = status2Filter === "all" || d.stage === status2Filter;
+      const matchManager = managerFilter === "all" || d.manager1 === managerFilter;
+      const matchClient = !clientNameFilter || d.client.toLowerCase().includes(clientNameFilter.toLowerCase());
+      return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient;
+    }).sort((a, b) => {
+      // Sort by developer first, then by stage index
+      const devCmp = a.developer.localeCompare(b.developer);
+      if (devCmp !== 0) return devCmp;
+      const stageOrder = DEAL_STAGES.map(s => s.value);
+      return stageOrder.indexOf(a.stage) - stageOrder.indexOf(b.stage);
     });
-  }, [deals, search, developerFilter, brokerFilter]);
+  }, [deals, search, developerFilter, brokerFilter, stageFilter, status2Filter, managerFilter, clientNameFilter]);
 
   const dealsByStage = useMemo(() => {
     const map: Record<DealStage, PipelineDeal[]> = { incomplete: [], lead: [], proposal: [], visit_scheduled: [], under_analysis: [], approved: [], contract: [], closed: [] };
@@ -280,8 +309,12 @@ export default function Pipeline() {
   // Analytics data
   const underAnalysis = deals.filter((d) => ["under_analysis", "visit_scheduled"].includes(d.stage) && d.active).length;
   const approvedDeals = deals.filter((d) => d.stage === "approved" && d.active).length;
+  const approvedCond = deals.filter((d) => d.stage === "contract" && d.active).length;
   const pendingDeals = deals.filter((d) => d.stage === "lead" && d.active).length;
   const closedDeals = deals.filter((d) => d.stage === "closed").length;
+  const agileDeals = deals.filter((d) => d.stage === "visit_scheduled" && d.active).length;
+  const proposalsToday = deals.filter((d) => d.stage === "proposal" && d.created_at === format(new Date(), "yyyy-MM-dd")).length;
+  const proposalsPeriod = deals.filter((d) => d.stage === "proposal" && d.active).length;
   const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
   const avgDaysInPipeline = activeDeals ? deals.filter((d) => d.active).reduce((a, d) => a + d.days_in_pipeline, 0) / activeDeals : 0;
   const brokerDeals = mockBrokers.map((b) => ({
@@ -325,20 +358,17 @@ export default function Pipeline() {
           {activeTab === "deals" ? (
             <>
               <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-                <Filter className="h-4 w-4 mr-1" /> Filtrar
+                <Filter className="h-4 w-4 mr-1" /> Filtrar Negócio
               </Button>
               <Button size="sm" onClick={openNewDeal}>
                 <Plus className="h-4 w-4 mr-1" /> Adicionar Negócio
               </Button>
               <Button variant="outline" size="sm" onClick={exportCSV}>
-                <Download className="h-4 w-4 mr-1" /> Extrair
+                <Download className="h-4 w-4 mr-1" /> Extrair Negócio
               </Button>
             </>
           ) : (
-            <Button size="sm" onClick={() => {
-              // Quick new lead (reuse existing logic from Leads page if needed)
-              toast({ title: "Use a página de Leads para criar novo lead" });
-            }}>
+            <Button size="sm" onClick={() => toast({ title: "Use a página de Leads para criar novo lead" })}>
               <Plus className="h-4 w-4 mr-1" /> Novo Lead
             </Button>
           )}
@@ -383,67 +413,90 @@ export default function Pipeline() {
 
       {activeTab === "deals" ? (
         <>
-          {/* ── DEAL METRICS ──────────────────────────────── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Total", value: activeDeals, icon: Users, color: "text-muted-foreground" },
-              { label: "Novos", value: pendingDeals, icon: AlertCircle, color: "text-warning" },
-              { label: "Em Atendimento", value: underAnalysis, icon: Clock, color: "text-muted-foreground" },
-              { label: "Qualificados", value: approvedDeals, icon: CheckCircle, color: "text-muted-foreground" },
-            ].map(m => (
-              <Card key={m.label} className="glass border-border/50">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                    <m.icon className={cn("h-5 w-5", m.color)} />
+          {/* ── FILTER PANEL + METRICS ────────────────────── */}
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Filter Panel */}
+            {showFilters && (
+              <Card className="glass border-primary/30 flex-shrink-0 lg:w-[520px]">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold">Filtrar Negócio</span>
+                    <button onClick={() => setShowFilters(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold">{m.value}</p>
-                    <p className="text-xs text-muted-foreground">{m.label}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select value={stageFilter} onValueChange={setStageFilter}>
+                      <SelectTrigger><SelectValue placeholder="PROPOSTA" /></SelectTrigger>
+                      <SelectContent>{[{ value: "all", label: "Todos Status" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={status2Filter} onValueChange={setStatus2Filter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher Status 2" /></SelectTrigger>
+                      <SelectContent>{[{ value: "all", label: "Todos Status 2" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} placeholder="03/2026" />
+                    <Select value={developerFilter} onValueChange={setDeveloperFilter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher uma Construtora" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todas Construtoras</SelectItem>{mockDevelopers.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={managerFilter} onValueChange={setManagerFilter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher Gerente 1" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{mockManagers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={brokerFilter} onValueChange={setBrokerFilter}>
+                      <SelectTrigger><SelectValue placeholder="Escolher Corretor 1" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Input placeholder="Filtrar por nome cliente" value={clientNameFilter} onChange={(e) => setClientNameFilter(e.target.value)} />
+                    <Input placeholder="Filtrar por nome 2º cliente" value={clientName2Filter} onChange={(e) => setClientName2Filter(e.target.value)} />
+                    <Input placeholder="Filtrar por CPF Cliente" value={cpfFilter} onChange={(e) => setCpfFilter(e.target.value)} />
+                    <Input placeholder="Filtrar por CPF 2º Cliente" value={cpf2Filter} onChange={(e) => setCpf2Filter(e.target.value)} />
+                  </div>
+                  <div className="flex justify-end mt-3">
+                    <Button variant="ghost" size="sm" onClick={() => { setStageFilter("all"); setStatus2Filter("all"); setDeveloperFilter("all"); setBrokerFilter("all"); setManagerFilter("all"); setClientNameFilter(""); setClientName2Filter(""); setCpfFilter(""); setCpf2Filter(""); setSearch(""); }}>
+                      <X className="h-3 w-3 mr-1" /> Limpar Filtros
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            ))}
-          </div>
+            )}
 
-          {/* ── SEARCH + VIEW TOGGLE ─────────────────────── */}
-          <Card className="glass border-border/50">
-            <CardContent className="p-3 flex flex-col sm:flex-row items-center gap-3">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar leads..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
-              </div>
-              {showFilters && (
-                <>
-                  <Select value={developerFilter} onValueChange={setDeveloperFilter}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Incorporadora" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas</SelectItem>
-                      {mockDevelopers.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={brokerFilter} onValueChange={setBrokerFilter}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Corretor" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      {mockBrokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground cursor-pointer" onClick={() => setShowFilters(!showFilters)} />
-                <Select value="all"><SelectTrigger className="w-24"><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem></SelectContent></Select>
-                <div className="flex border border-border rounded-lg overflow-hidden">
-                  <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <List className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
+            {/* Right side: Actions + Metrics summary */}
+            <div className="flex-1 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={openNewDeal}><Plus className="h-4 w-4 mr-1" /> Adicionar Negócio</Button>
+                  <Button variant="outline" size="sm" onClick={exportCSV}><Download className="h-4 w-4 mr-1" /> Extrair Negócio</Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex border border-border rounded-lg overflow-hidden">
+                    <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                      <List className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                      <LayoutGrid className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Inline Metrics */}
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                <span className="px-2 py-1 rounded border border-primary/50 text-primary font-bold">Negócios Ativos: {activeDeals}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Aprovado Total: {approvedDeals}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Aprovado Cond.: {approvedCond}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Em análise: {underAnalysis}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Esteira Ágil: {agileDeals}</span>
+                <span className="px-2 py-1 rounded border border-warning/50 text-warning font-bold">Pendentes: {pendingDeals}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Propostas Hoje: {proposalsToday}</span>
+                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Propostas período: {proposalsPeriod}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick search bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Buscar cliente, projeto, corretor..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
 
           {/* ── LEADERBOARD ──────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -573,7 +626,7 @@ export default function Pipeline() {
                               <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors">
                                 <td className="p-2 text-center"><button onClick={() => openEditDeal(deal)} className="text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button></td>
                                 <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
-                                <td className="p-2"><span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-teal-600">{deal.developer.toUpperCase().slice(0, 8)}</span></td>
+                                <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold text-white", getDeveloperColor(deal.developer))}>{deal.developer.toUpperCase().slice(0, 10)}</span></td>
                                 <td className="p-2 whitespace-nowrap max-w-[120px] truncate">{deal.project.toUpperCase()}</td>
                                 <td className="p-2 text-center">{deal.unit}</td>
                                 <td className="p-2 text-center">
