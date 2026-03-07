@@ -86,6 +86,15 @@ const managerTeams = [
   },
 ];
 
+const directorTeams = [
+  {
+    directors: [
+      { rank: 65, meta: 63, pct: "78%", pctColor: "bg-blue-500", name: "Carlos Mendes", leads: 3112, agd: 0, neg: 0, vendas: 48, vgv: "R$16.488.093,52", cm: 99 },
+      { rank: 40, meta: 40, pct: "45%", pctColor: "bg-amber-500", name: "Roberto Almeida", leads: 1850, agd: 0, neg: 0, vendas: 22, vgv: "R$7.250.000,00", cm: 55 },
+    ],
+  },
+];
+
 const brokerRanking = [
   { pos: 1, name: "Lucas de Domingos", leads: 85, vendas: 0, agd: 0, neg: 0, qtdVendas: 1, vgv: "R$1.000.000,00", cm: 0 },
   { pos: 2, name: "Sandra Carvalho", leads: 3, vendas: 0, agd: 0, neg: 0, qtdVendas: 0, vgv: "R$245.000,00", cm: 0 },
