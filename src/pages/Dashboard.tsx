@@ -86,6 +86,15 @@ const managerTeams = [
   },
 ];
 
+const directorTeams = [
+  {
+    directors: [
+      { rank: 65, meta: 63, pct: "78%", pctColor: "bg-blue-500", name: "Carlos Mendes", leads: 3112, agd: 0, neg: 0, vendas: 48, vgv: "R$16.488.093,52", cm: 99 },
+      { rank: 40, meta: 40, pct: "45%", pctColor: "bg-amber-500", name: "Roberto Almeida", leads: 1850, agd: 0, neg: 0, vendas: 22, vgv: "R$7.250.000,00", cm: 55 },
+    ],
+  },
+];
+
 const brokerRanking = [
   { pos: 1, name: "Lucas de Domingos", leads: 85, vendas: 0, agd: 0, neg: 0, qtdVendas: 1, vgv: "R$1.000.000,00", cm: 0 },
   { pos: 2, name: "Sandra Carvalho", leads: 3, vendas: 0, agd: 0, neg: 0, qtdVendas: 0, vgv: "R$245.000,00", cm: 0 },
@@ -427,6 +436,37 @@ export default function Dashboard() {
                   <td className="p-2 text-right font-semibold text-primary">{m.vendas}</td>
                   <td className="p-2 text-right text-blue-300 text-[11px]">{m.vgv}</td>
                   <td className="p-2 text-right">{m.cm}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </CardContent>
+        </Card>
+      ))}
+
+      {/* ── DIRECTOR TEAM TABLES ───────────────────────────── */}
+      {directorTeams.map((team, ti) => (
+        <Card key={`dir-${ti}`} className="bg-card border-primary/20">
+          <CardHeader className="py-2 px-3">
+            <CardTitle className="text-xs font-semibold text-primary flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-primary" />
+              Ranking de Diretores
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="border-b border-border/30 text-muted-foreground"><th className="p-2 text-right font-medium">Meta</th><th className="p-2 text-right font-medium">Mede</th><th className="p-2 font-medium">% Imóble</th><th className="p-2 font-medium">Diretor</th><th className="p-2 text-right font-medium">Leads</th><th className="p-2 text-right font-medium">Agd</th><th className="p-2 text-right font-medium">Neg.</th><th className="p-2 text-right font-medium">Vendas</th><th className="p-2 text-right font-medium">VGV</th><th className="p-2 text-right font-medium">CM</th></tr></thead>
+              <tbody>{team.directors.map((d, di) => (
+                <tr key={di} className="border-b border-border/10 hover:bg-primary/5">
+                  <td className="p-2 text-right">{d.rank}</td>
+                  <td className="p-2 text-right">{d.meta}</td>
+                  <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold text-white", d.pctColor)}>{d.pct}</span></td>
+                  <td className="p-2 font-medium">{d.name}</td>
+                  <td className={cn("p-2 text-right font-semibold", d.leads > 2000 ? "text-primary" : "text-amber-400")}>{d.leads}</td>
+                  <td className="p-2 text-right text-red-400">{d.agd}</td>
+                  <td className="p-2 text-right text-red-400">{d.neg}</td>
+                  <td className="p-2 text-right font-semibold text-primary">{d.vendas}</td>
+                  <td className="p-2 text-right text-blue-300 text-[11px]">{d.vgv}</td>
+                  <td className="p-2 text-right">{d.cm}</td>
                 </tr>
               ))}</tbody>
             </table>
