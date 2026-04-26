@@ -244,17 +244,17 @@ export default function Leads() {
     e.target.value = '';
   };
 
-  const importCSV = () => {
+  const importCSV = async () => {
     if (csvPreview.length < 2) return;
     const headers = csvPreview[0].map(h => h.toLowerCase());
     const nameIdx = headers.findIndex(h => h.includes('nome') || h.includes('name'));
     const phoneIdx = headers.findIndex(h => h.includes('telefone') || h.includes('phone'));
     const emailIdx = headers.findIndex(h => h.includes('email'));
     const sourceIdx = headers.findIndex(h => h.includes('origem') || h.includes('source'));
-    const newLeads: Lead[] = csvPreview.slice(1).filter(r => r.length > 1).map((row, i) => {
+    
+    const newLeadsData = csvPreview.slice(1).filter(r => r.length > 1).map((row, i) => {
       const auto = autoAssignBroker();
       return {
-        id: String(Date.now() + i),
         name: row[nameIdx] || row[0] || '',
         phone: row[phoneIdx] || row[1] || '',
         whatsapp: row[phoneIdx] || row[1] || '',
@@ -262,15 +262,29 @@ export default function Leads() {
         source: row[sourceIdx] || 'CSV Import',
         broker_id: auto.id,
         broker_name: auto.name,
-        created_at: new Date().toISOString().slice(0, 10),
-        status: 'new' as LeadStatus,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        status: 'new',
         notes: 'Importado via CSV - auto-atribuído',
       };
     });
-    setLeads(prev => [...newLeads, ...prev]);
-    setCsvOpen(false);
-    setCsvPreview([]);
-    toast({ title: `${newLeads.length} leads importados e auto-atribuídos` });
+
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(newLeadsData)
+        .select();
+
+      if (error) throw error;
+
+      setLeads(prev => [...(data as Lead[]), ...prev]);
+      setCsvOpen(false);
+      setCsvPreview([]);
+      toast({ title: `${data?.length} leads importados e auto-atribuídos` });
+    } catch (err) {
+      console.error("Error importing CSV:", err);
+      toast({ variant: "destructive", title: "Erro na importação", description: "Não foi possível salvar os leads no banco de dados." });
+    }
   };
 
   // Metrics
