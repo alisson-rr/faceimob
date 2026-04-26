@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-// ── Data from Image ──
+// ── Data from Image 1 ──
 const summaryMetrics = [
   { label: "Leads Gerados", value: "2611" },
   { label: "Propostas", value: "121" },
@@ -61,48 +61,49 @@ const managerRanking = [
   { metaRem: 8, meta: 8, pct: 13, name: "Susana Cristina", leads: 263, agil: 4, neg: 1, vendas: 1, vgv: "R$240.500,00", off: 20 },
   { metaRem: 8, meta: 8, pct: 0, name: "Veronica Oliveira", leads: 17, agil: 2, neg: 0, vendas: 0, vgv: "R$0,00", off: 2 },
 ];
-64: 
-65: const leadSources = [
-66:   { label: "Leadfy", value: 5 },
-67:   { label: "Lead Próprio", value: 31 },
-68:   { label: "Lead Loja", value: 2 },
-69:   { label: "Lead Feirão", value: 1 },
-70:   { label: "Lead Indicação", value: 6 },
-71: ];
-72: 
-73: const ccaStatus = [
-74:   { label: "Aprovado Total", value: 42, color: "text-blue-400" },
-75:   { label: "Aprovado Condicionado", value: 6, color: "text-blue-500" },
-76:   { label: "Análise p/ virar Negócio", value: 0, color: "text-green-500" },
-77:   { label: "Assinado no Banco", value: 0, color: "text-blue-400" },
-78:   { label: "Pendente p/ virar negócio", value: 0, color: "text-amber-500" },
-79:   { label: "Pendente", value: 29, color: "text-amber-600" },
-80: ];
-81: 
-82: const staffData = [
-83:   { label: "Sócios", value: 2 },
-84:   { label: "Adm", value: 1 },
-85:   { label: "Administrativo", value: 6 },
-86:   { label: "Diretor", value: 5 },
-87:   { label: "Gerentes", value: 9 },
-88:   { label: "Corretores Ativos", value: 80, color: "text-green-500" },
-89:   { label: "Serviços Gerais", value: 1 },
-90: ];
-91: 
-92: const staffSummary = [
-93:   { label: "Total", value: 100, bgColor: "bg-[#1e1b4b]" },
-94:   { label: "Corretores com Vendas", value: 26, bgColor: "bg-green-600" },
-95:   { label: "Corretores sem Vendas", value: 54, bgColor: "bg-red-600" },
-96:   { label: "% Corretores com Vendas", value: "33 %", bgColor: "bg-amber-500" },
-97: ];
-98: 
-99: const generalRanking = [
-100:   { pos: "1°", name: "Junior Moraes", leads: 70, visitas: 0, agil: 4, neg: 0, vendas: 5, vgv: "R$1.110.513,08", off: 15 },
-101:   { pos: "2°", name: "Leonardo Vallier", leads: 57, visitas: 0, agil: 3, neg: 0, vendas: 4, vgv: "R$894.896,80", off: 14 },
-102:   { pos: "3°", name: "Gabriel Dutra", leads: 10, visitas: 0, agil: 7, neg: 0, vendas: 4, vgv: "R$855.300,00", off: 12 },
-103:   { pos: "4°", name: "Parceiro Externo", leads: 0, visitas: 0, agil: 4, neg: 0, vendas: 3, vgv: "R$801.000,00", off: 5 },
-104:   { pos: "5°", name: "Kayteane Botelho Araujo", leads: 0, visitas: 0, agil: 4, neg: 0, vendas: 2, vgv: "R$483.000,00", off: 3 },
-105: ];
+
+// ── Data from Image 2 ──
+const leadSources = [
+  { label: "Leadfy", value: 5 },
+  { label: "Lead Próprio", value: 31 },
+  { label: "Lead Loja", value: 2 },
+  { label: "Lead Feirão", value: 1 },
+  { label: "Lead Indicação", value: 6 },
+];
+
+const ccaStatus = [
+  { label: "Aprovado Total", value: 42, color: "text-blue-400" },
+  { label: "Aprovado Condicionado", value: 6, color: "text-blue-500" },
+  { label: "Análise p/ virar Negócio", value: 0, color: "text-green-500" },
+  { label: "Assinado no Banco", value: 0, color: "text-blue-400" },
+  { label: "Pendente p/ virar negócio", value: 0, color: "text-amber-500" },
+  { label: "Pendente", value: 29, color: "text-amber-600" },
+];
+
+const staffData = [
+  { label: "Sócios", value: 2 },
+  { label: "Adm", value: 1 },
+  { label: "Administrativo", value: 6 },
+  { label: "Diretor", value: 5 },
+  { label: "Gerentes", value: 9 },
+  { label: "Corretores Ativos", value: 80, color: "text-green-500" },
+  { label: "Serviços Gerais", value: 1 },
+];
+
+const staffSummary = [
+  { label: "Total", value: 100, bgColor: "bg-[#1e1b4b]" },
+  { label: "Corretores com Vendas", value: 26, bgColor: "bg-green-600" },
+  { label: "Corretores sem Vendas", value: 54, bgColor: "bg-red-600" },
+  { label: "% Corretores com Vendas", value: "33 %", bgColor: "bg-amber-500" },
+];
+
+const generalRanking = [
+  { pos: "1°", name: "Junior Moraes", leads: 70, visitas: 0, agil: 4, neg: 0, vendas: 5, vgv: "R$1.110.513,08", off: 15 },
+  { pos: "2°", name: "Leonardo Vallier", leads: 57, visitas: 0, agil: 3, neg: 0, vendas: 4, vgv: "R$894.896,80", off: 14 },
+  { pos: "3°", name: "Gabriel Dutra", leads: 10, visitas: 0, agil: 7, neg: 0, vendas: 4, vgv: "R$855.300,00", off: 12 },
+  { pos: "4°", name: "Parceiro Externo", leads: 0, visitas: 0, agil: 4, neg: 0, vendas: 3, vgv: "R$801.000,00", off: 5 },
+  { pos: "5°", name: "Kayteane Botelho Araujo", leads: 0, visitas: 0, agil: 4, neg: 0, vendas: 2, vgv: "R$483.000,00", off: 3 },
+];
 
 export default function Dashboard() {
   return (
@@ -327,6 +328,137 @@ export default function Dashboard() {
                     </td>
                     <td className="p-2 text-center">
                       <span className="bg-gray-800 text-gray-500 px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">{row.neg}</span>
+                    </td>
+                    <td className="p-2 text-center bg-green-900/20">
+                      <span className="bg-green-600 text-white px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">{row.vendas}</span>
+                    </td>
+                    <td className="p-2 text-right bg-green-900/20 font-bold text-green-400">{row.vgv}</td>
+                    <td className="p-2 text-center font-bold text-gray-500">{row.off}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── NEW SECTION FROM SECOND IMAGE ── */}
+      <div className="space-y-6 pt-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Origem dos Leads */}
+          <Card className="bg-[#1e1b4b] border-white/10">
+            <CardHeader className="py-2">
+              <CardTitle className="text-center text-amber-500 text-sm font-bold">Origem dos Leads</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-xs">
+              {leadSources.map((item) => (
+                <div key={item.label} className="flex justify-between items-center py-1 border-b border-white/5 last:border-0">
+                  <span className="text-gray-300">{item.label}</span>
+                  <span className="font-bold">{item.value}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Status CCA */}
+          <Card className="bg-[#1e1b4b] border-white/10">
+            <CardHeader className="py-2">
+              <CardTitle className="text-center text-amber-500 text-sm font-bold">Status CCA</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-xs">
+              {ccaStatus.map((item) => (
+                <div key={item.label} className="flex justify-between items-center py-1 border-b border-white/5 last:border-0">
+                  <span className={cn("font-medium", item.color)}>{item.label}</span>
+                  <span className="font-bold">{item.value}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Período e Staff */}
+        <div className="flex flex-col items-center space-y-4">
+          <div className="text-center">
+            <p className="text-xs font-bold text-gray-300 mb-2">Escolher Período</p>
+            <div className="bg-[#312e81] px-8 py-2 rounded-md text-sm font-bold">
+              04/2026 , 04/2026
+            </div>
+          </div>
+
+          {/* Staff Card */}
+          <Card className="bg-[#1e1b4b] border-white/10 w-full max-w-sm">
+            <CardHeader className="py-2">
+              <CardTitle className="text-center text-amber-500 text-sm font-bold">Staff</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="px-4 pb-2 space-y-1 text-xs">
+                {staffData.map((item) => (
+                  <div key={item.label} className="flex justify-between items-center py-1 border-b border-white/5 last:border-0">
+                    <span className={cn("text-gray-300", item.color)}>{item.label}</span>
+                    <span className="font-bold">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-xs">
+                {staffSummary.map((item) => (
+                  <div key={item.label} className={cn("flex justify-between items-center px-4 py-1.5 font-bold", item.bgColor)}>
+                    <span>{item.label}</span>
+                    <span>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Ranking Geral */}
+        <Card className="bg-[#1e1b4b] border-white/10 overflow-hidden">
+          <CardHeader className="py-3 bg-[#1e1b4b] border-b border-white/5">
+            <CardTitle className="text-center text-amber-500 text-sm font-bold">Ranking Geral</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead className="bg-[#312e81]/50 text-white font-bold border-b border-white/10">
+                <tr>
+                  <th className="p-2 text-left"></th>
+                  <th className="p-2 text-left">Corretor</th>
+                  <th className="p-2 text-center">Leads</th>
+                  <th className="p-2 text-center">Visitas</th>
+                  <th className="p-2 text-center">Agil</th>
+                  <th className="p-2 text-center">Neg.</th>
+                  <th className="p-2 text-center bg-green-900/20">Vendas</th>
+                  <th className="p-2 text-right bg-green-900/20">VGV</th>
+                  <th className="p-2 text-center">Off</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {generalRanking.map((row, i) => (
+                  <tr key={i} className="hover:bg-white/5 transition-colors">
+                    <td className="p-2 text-left font-bold text-gray-400">{row.pos}</td>
+                    <td className="p-2 font-medium">{row.name}</td>
+                    <td className="p-2 text-center">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block",
+                        row.leads > 0 ? "bg-red-700 text-white" : "bg-transparent text-gray-500"
+                      )}>{row.leads}</span>
+                    </td>
+                    <td className="p-2 text-center">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block",
+                        row.visitas > 0 ? "bg-red-700 text-white" : "bg-transparent text-gray-500"
+                      )}>{row.visitas}</span>
+                    </td>
+                    <td className="p-2 text-center">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block",
+                        row.agil > 0 ? "bg-red-700 text-white" : "bg-transparent text-gray-500"
+                      )}>{row.agil}</span>
+                    </td>
+                    <td className="p-2 text-center">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block",
+                        row.neg > 0 ? "bg-red-700 text-white" : "bg-transparent text-gray-500"
+                      )}>{row.neg}</span>
                     </td>
                     <td className="p-2 text-center bg-green-900/20">
                       <span className="bg-green-600 text-white px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">{row.vendas}</span>
