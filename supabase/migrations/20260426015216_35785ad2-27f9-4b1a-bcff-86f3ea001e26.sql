@@ -1,0 +1,1 @@
+ALTER TABLE brokers DROP CONSTRAINT IF EXISTS brokers_email_key;
