@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { mockDeals } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -54,8 +53,13 @@ export default function CcaPipeline() {
     async function fetchCcaDeals() {
       setLoading(true);
       try {
-        // Fetch deals from developers handled by CCA
-        const { data, error } = await supabase
+        const { data: ccaDeals, error: ccaError } = await supabase
+          .from('cca_deals')
+          .select('*');
+
+        if (ccaError) throw ccaError;
+
+        const { data: dealsData, error: dealsError } = await supabase
           .from('deals')
           .select(`
             *,
@@ -64,18 +68,21 @@ export default function CcaPipeline() {
           .in('developer', ccaDevelopers)
           .eq('active', true);
 
-        if (error) throw error;
+        if (dealsError) throw dealsError;
 
-        const mapped: CcaDeal[] = (data || []).map(d => ({
-          dealId: d.id,
-          client: d.client,
-          developer: d.developer || '',
-          project: d.project || '',
-          broker: (d.broker1 as any)?.name || '',
-          value: d.deal_value || 0,
-          stage: 'credit_analysis' as CcaStage,
-          notes: d.notes || '',
-        }));
+        const mapped: CcaDeal[] = (dealsData || []).map(d => {
+          const cca = (ccaDeals || []).find(c => c.deal_id === d.id);
+          return {
+            dealId: d.id,
+            client: d.client,
+            developer: d.developer || '',
+            project: d.project || '',
+            broker: (d.broker1 as any)?.name || '',
+            value: d.deal_value || 0,
+            stage: (cca?.status as CcaStage) || 'credit_analysis',
+            notes: cca?.notes || d.notes || '',
+          };
+        });
         setDeals(mapped);
       } catch (err) {
         console.error("Error fetching CCA deals:", err);
@@ -103,7 +110,7 @@ export default function CcaPipeline() {
     setActionNotes("");
   };
 
-  const confirmAction = () => {
+  const confirmAction = async () => {
     if (!actionDeal || !actionType) return;
     const newStage: CcaStage =
       actionType === 'approve' ? 'approved' :
@@ -111,19 +118,36 @@ export default function CcaPipeline() {
       actionType === 'request_docs' ? 'pending_documents' :
       'sent_to_agency';
 
-    setDeals(prev => prev.map(d =>
-      d.dealId === actionDeal.dealId ? { ...d, stage: newStage, notes: actionNotes } : d
-    ));
+    try {
+      // Upsert into cca_deals
+      const { error } = await supabase
+        .from('cca_deals')
+        .upsert({
+          deal_id: actionDeal.dealId,
+          status: newStage,
+          notes: actionNotes,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'deal_id' });
 
-    const labels = {
-      approve: 'Crédito aprovado',
-      reject: 'Crédito rejeitado',
-      request_docs: 'Documentos solicitados',
-      send_agency: 'Enviado à agência',
-    };
-    toast({ title: labels[actionType], description: `${actionDeal.client} - ${actionDeal.developer}` });
-    setActionDeal(null);
-    setActionType(null);
+      if (error) throw error;
+
+      setDeals(prev => prev.map(d =>
+        d.dealId === actionDeal.dealId ? { ...d, stage: newStage, notes: actionNotes } : d
+      ));
+
+      const labels = {
+        approve: 'Crédito aprovado',
+        reject: 'Crédito rejeitado',
+        request_docs: 'Documentos solicitados',
+        send_agency: 'Enviado à agência',
+      };
+      toast({ title: labels[actionType], description: `${actionDeal.client} - ${actionDeal.developer}` });
+      setActionDeal(null);
+      setActionType(null);
+    } catch (err) {
+      console.error("Error updating CCA stage:", err);
+      toast({ variant: "destructive", title: "Erro ao salvar", description: "Não foi possível atualizar o status no CCA." });
+    }
   };
 
   const metrics = [
