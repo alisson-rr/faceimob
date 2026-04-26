@@ -98,11 +98,11 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const currentDeals = filteredDeals;
-    const leads = currentDeals.filter(d => d.stage === 'lead').length;
-    const propostas = currentDeals.filter(d => d.stage === 'proposal').length;
-    const negocios = currentDeals.filter(d => d.active).length;
-    const off = currentDeals.filter(d => !d.active).length;
-    const vendas = currentDeals.filter(d => d.stage === 'closed' && d.active).length;
+    const leads = currentDeals.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
+    const propostas = currentDeals.filter(d => ['proposal', 'contract'].includes(d.stage)).length;
+    const negocios = currentDeals.length;
+    const off = currentDeals.filter(d => !d.active && d.stage === 'lost').length;
+    const vendas = currentDeals.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
     const vgv = currentDeals.filter(d => d.active).reduce((acc, d) => acc + (d.deal_value || 0), 0);
     
     // Construtora breakdown
@@ -110,12 +110,12 @@ export default function Dashboard() {
     currentDeals.forEach(d => {
       const dev = d.developer || 'N/A';
       if (!construtoraMap[dev]) construtoraMap[dev] = { unidades: 0, vgv: 0, propostas: 0, negocios: 0 };
-      if (d.stage === 'closed' && d.active) {
+      if ((d.stage === 'closed' || d.stage === 'contract') && d.active !== false) {
         construtoraMap[dev].unidades++;
         construtoraMap[dev].vgv += (d.deal_value || 0);
       }
-      if (d.stage === 'proposal') construtoraMap[dev].propostas++;
-      if (d.active) construtoraMap[dev].negocios++;
+      if (d.stage === 'proposal' || d.stage === 'contract') construtoraMap[dev].propostas++;
+      construtoraMap[dev].negocios++;
     });
 
     const vendasTable = Object.entries(construtoraMap)
@@ -138,14 +138,14 @@ export default function Dashboard() {
       const bNames = [d.broker1, d.broker2].filter(Boolean) as string[];
       bNames.forEach(name => {
         if (!brokerStats[name]) brokerStats[name] = { name, leads: 0, agil: 0, neg: 0, vendas: 0, vgv: 0, off: 0 };
-        if (d.stage === 'lead') brokerStats[name].leads++;
+        if (['lead', 'incomplete'].includes(d.stage)) brokerStats[name].leads++;
         if (d.stage === 'under_analysis') brokerStats[name].agil++;
-        if (d.active) brokerStats[name].neg++;
-        if (d.stage === 'closed' && d.active) {
+        brokerStats[name].neg++;
+        if (d.stage === 'closed' || d.stage === 'contract') {
           brokerStats[name].vendas++;
           brokerStats[name].vgv += (d.deal_value || 0);
         }
-        if (!d.active) brokerStats[name].off++;
+        if (d.stage === 'lost') brokerStats[name].off++;
       });
     });
 
