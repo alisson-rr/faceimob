@@ -150,12 +150,11 @@ export default function Dashboard() {
     });
 
     const generalRanking = Object.values(brokerStats)
-      .filter(b => b.leads > 0 || b.vendas > 0 || b.neg > 0) // Only show brokers with activity
       .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv)
       .slice(0, 10);
 
     return { leads, propostas, negocios, off, vendas, vgv, vendasTable, propostasTable, generalRanking };
-  }, [filteredDeals, brokers]);
+  }, [filteredDeals, brokerStats]);
 
   // Diretoria Ranking Mock Logic (since we don't have directorship in DB yet)
   const diretoriaWinners = useMemo(() => {
