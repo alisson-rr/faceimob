@@ -1,13 +1,18 @@
 import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { PipelineDeal } from "@/types/crm";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format, parseISO } from "date-fns";
+import { Trophy, Crown, Medal } from "lucide-react";
 
 export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
 
   useEffect(() => {
     async function fetchData() {
@@ -42,17 +47,39 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    deals.forEach(d => {
+      const month = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null);
+      if (month) months.add(month);
+    });
+    return Array.from(months).sort((a, b) => {
+      const [m1, y1] = a.split("/").map(Number);
+      const [m2, y2] = b.split("/").map(Number);
+      return y2 - y1 || m2 - m1;
+    });
+  }, [deals]);
+
+  const filteredDeals = useMemo(() => {
+    if (selectedMonth === "all") return deals;
+    return deals.filter(d => {
+      const month = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null);
+      return month === selectedMonth;
+    });
+  }, [deals, selectedMonth]);
+
   const stats = useMemo(() => {
-    const leads = deals.filter(d => d.stage === 'lead').length;
-    const propostas = deals.filter(d => d.stage === 'proposal').length;
-    const negocios = deals.filter(d => d.active).length;
-    const off = deals.filter(d => !d.active).length;
-    const vendas = deals.filter(d => d.stage === 'closed' && d.active).length;
-    const vgv = deals.filter(d => d.active).reduce((acc, d) => acc + (d.deal_value || 0), 0);
+    const currentDeals = filteredDeals;
+    const leads = currentDeals.filter(d => d.stage === 'lead').length;
+    const propostas = currentDeals.filter(d => d.stage === 'proposal').length;
+    const negocios = currentDeals.filter(d => d.active).length;
+    const off = currentDeals.filter(d => !d.active).length;
+    const vendas = currentDeals.filter(d => d.stage === 'closed' && d.active).length;
+    const vgv = currentDeals.filter(d => d.active).reduce((acc, d) => acc + (d.deal_value || 0), 0);
     
     // Construtora breakdown
     const construtoraMap: Record<string, { unidades: number; vgv: number; propostas: number; negocios: number }> = {};
-    deals.forEach(d => {
+    currentDeals.forEach(d => {
       const dev = d.developer || 'N/A';
       if (!construtoraMap[dev]) construtoraMap[dev] = { unidades: 0, vgv: 0, propostas: 0, negocios: 0 };
       if (d.stage === 'closed' && d.active) {
@@ -79,7 +106,7 @@ export default function Dashboard() {
       brokerStats[b.name] = { name: b.name, leads: 0, agil: 0, neg: 0, vendas: 0, vgv: 0, off: 0 };
     });
 
-    deals.forEach(d => {
+    currentDeals.forEach(d => {
       const bNames = [d.broker1, d.broker2].filter(Boolean) as string[];
       bNames.forEach(name => {
         if (!brokerStats[name]) brokerStats[name] = { name, leads: 0, agil: 0, neg: 0, vendas: 0, vgv: 0, off: 0 };
@@ -99,7 +126,18 @@ export default function Dashboard() {
       .slice(0, 10);
 
     return { leads, propostas, negocios, off, vendas, vgv, vendasTable, propostasTable, generalRanking };
-  }, [deals, brokers]);
+  }, [filteredDeals, brokers]);
+
+  // Diretoria Ranking Mock Logic (since we don't have directorship in DB yet)
+  const diretoriaWinners = useMemo(() => {
+    // Mock directorships if not in DB
+    const dirs = ["Diretoria A", "Diretoria B", "Diretoria C"];
+    return dirs.map(dir => {
+      // Find top broker for this mock directory (randomly assigned for now)
+      const top = stats.generalRanking[Math.floor(Math.random() * 3)] || stats.generalRanking[0];
+      return { dir, name: top?.name || "---", points: top?.vendas || 0 };
+    });
+  }, [stats.generalRanking]);
 
   const summaryMetrics = [
     { label: "Leads Gerados", value: stats.leads.toString() },
@@ -114,6 +152,39 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white p-4 space-y-6">
+      {/* ── STICKY DIRECTORY WINNERS ── */}
+      <div className="sticky top-0 z-40 bg-[#020617]/90 backdrop-blur-md py-2 border-b border-white/5 -mx-4 px-4">
+        <div className="flex flex-wrap items-center justify-center gap-6">
+          {diretoriaWinners.map((w, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{w.dir}</span>
+                <div className="flex items-center gap-2">
+                  <Crown className="h-4 w-4 text-warning" />
+                  <span className="text-sm font-bold truncate max-w-[120px]">{w.name}</span>
+                  <Badge variant="outline" className="text-[10px] py-0 h-4 border-warning/30 text-warning">{w.points} vendas</Badge>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── MONTH SELECTOR ── */}
+      <div className="flex justify-end">
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="w-[180px] bg-[#1e1b4b] border-white/10 text-xs">
+            <SelectValue placeholder="Selecionar Mês" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1e1b4b] border-white/10 text-white">
+            <SelectItem value="all">Todos os Meses</SelectItem>
+            {availableMonths.map(m => (
+              <SelectItem key={m} value={m}>{m}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* ── TOP SUMMARY CARDS ── */}
       <div className="flex flex-wrap items-stretch justify-center gap-2">
         {summaryMetrics.map((m) => (
