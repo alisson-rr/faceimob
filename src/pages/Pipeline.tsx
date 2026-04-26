@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import DealDetailModal from "@/components/DealDetailModal";
@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { mockDeals as initialDeals, mockBrokers, mockManagers, mockDevelopers, mockProjects, mockGamification, mockLeads as initialLeads, mockSources } from "@/data/mockData";
-import { DEAL_STAGES, type PipelineDeal, type DealStage, LEAD_STATUSES, type Lead, type LeadStatus } from "@/types/crm";
+import { mockDeals as initialDeals, mockDevelopers, mockProjects, mockGamification, mockLeads as initialLeads, mockSources } from "@/data/mockData";
+import { DEAL_STAGES, type PipelineDeal, type DealStage, LEAD_STATUSES, type Lead, type LeadStatus, type Broker } from "@/types/crm";
 import { calcDealProbability } from "@/lib/aiAnalytics";
 import {
   Plus, Download, Search, Filter, Calendar as CalendarIcon,
@@ -19,12 +19,13 @@ import {
   CalendarCheck, StickyNote, AlertCircle, ChevronRight,
   ChevronLeft, Trophy, LayoutGrid, List, LogIn, Users,
   ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus,
-  Lock, AlertTriangle, Target
+  Lock, AlertTriangle, Target, RefreshCw
 } from "lucide-react";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 // ── Developer color map (distinct colors per developer) ──
 const developerColors: Record<string, string> = {
@@ -93,6 +94,38 @@ export default function Pipeline() {
   const { role } = useAuth();
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
+
+  // ── Brokers state ──
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [loadingBrokers, setLoadingBrokers] = useState(true);
+
+  const fetchBrokers = useCallback(async () => {
+    setLoadingBrokers(true);
+    try {
+      const { data, error } = await supabase.from('brokers').select('*').order('name');
+      if (error) throw error;
+      
+      const mappedBrokers: Broker[] = (data || []).map(b => ({
+        id: b.id,
+        name: b.name,
+        active: true, // DB column doesn't exist yet, defaulting
+        monthly_sales: 0,
+        monthly_vgv: 0,
+        team: 'Default'
+      }));
+      
+      setBrokers(mappedBrokers);
+    } catch (error) {
+      console.error('Error fetching brokers:', error);
+      toast({ title: "Erro ao carregar corretores", variant: "destructive" });
+    } finally {
+      setLoadingBrokers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBrokers();
+  }, [fetchBrokers]);
 
   // ── Deals state ──
   const [deals, setDeals] = useState<PipelineDeal[]>(initialDeals);
@@ -394,11 +427,15 @@ export default function Pipeline() {
   const proposalsPeriod = deals.filter((d) => d.stage === "proposal" && d.active).length;
   const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
   const avgDaysInPipeline = activeDeals ? deals.filter((d) => d.active).reduce((a, d) => a + d.days_in_pipeline, 0) / activeDeals : 0;
-  const brokerDeals = mockBrokers.map((b) => ({
+  const brokerDeals = brokers.map((b) => ({
     name: b.name,
     count: deals.filter((d) => d.broker1 === b.name && d.active).length,
   })).sort((a, b) => b.count - a.count);
-  const leaderboard = [...mockGamification].sort((a, b) => b.points - a.points).slice(0, 3);
+  const leaderboard = brokers.slice(0, 3).map((b, i) => ({
+    id: b.id,
+    user_name: b.name,
+    points: 1000 - (i * 100), // Placeholder logic
+  }));
   const medals = ["🥇", "🥈", "🥉"];
   const medalBgs = [
     "border-amber-500/40 bg-gradient-to-r from-amber-900/20 to-transparent",
@@ -532,11 +569,11 @@ export default function Pipeline() {
                     </Select>
                     <Select value={managerFilter} onValueChange={setManagerFilter}>
                       <SelectTrigger><SelectValue placeholder="Escolher Gerente 1" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{mockManagers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
+                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{brokers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
                     </Select>
                     <Select value={brokerFilter} onValueChange={setBrokerFilter}>
                       <SelectTrigger><SelectValue placeholder="Escolher Corretor 1" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
+                      <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{brokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
                     </Select>
                     <Input placeholder="Filtrar por nome cliente" value={clientNameFilter} onChange={(e) => setClientNameFilter(e.target.value)} />
                     <Input placeholder="Filtrar por nome 2º cliente" value={clientName2Filter} onChange={(e) => setClientName2Filter(e.target.value)} />
@@ -992,13 +1029,13 @@ export default function Pipeline() {
               <Select value={formData.project} onValueChange={(v) => setFormData((p) => ({ ...p, project: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{mockProjects.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Unidade</label><Input value={formData.unit} onChange={(e) => setFormData((p) => ({ ...p, unit: e.target.value }))} /></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Corretor 1</label>
-              <Select value={formData.broker1} onValueChange={(v) => setFormData((p) => ({ ...p, broker1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{mockBrokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.broker1} onValueChange={(v) => setFormData((p) => ({ ...p, broker1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{brokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Corretor 2</label>
-              <Select value={formData.broker2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, broker2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{mockBrokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.broker2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, broker2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{brokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Gerente 1</label>
-              <Select value={formData.manager1} onValueChange={(v) => setFormData((p) => ({ ...p, manager1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{mockManagers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.manager1} onValueChange={(v) => setFormData((p) => ({ ...p, manager1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{brokers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Gerente 2</label>
-              <Select value={formData.manager2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, manager2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{mockManagers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.manager2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, manager2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{brokers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Valor</label><Input type="number" value={formData.deal_value} onChange={(e) => setFormData((p) => ({ ...p, deal_value: Number(e.target.value) }))} /></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Etapa</label>
               <Select value={formData.stage} onValueChange={(v) => setFormData((p) => ({ ...p, stage: v as DealStage }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent></Select></div>
@@ -1047,7 +1084,7 @@ export default function Pipeline() {
             <div><label className="text-sm text-muted-foreground mb-1 block">Corretor</label>
               <Select value={newLeadData.broker_name} onValueChange={(v) => setNewLeadData(p => ({ ...p, broker_name: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{brokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="sm:col-span-2"><label className="text-sm text-muted-foreground mb-1 block">Observações</label><Textarea value={newLeadData.notes} onChange={(e) => setNewLeadData(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>
