@@ -43,11 +43,24 @@ const roleLabels: Record<string, string> = {
 
 export default function AppLayout() {
   const [showMotivation, setShowMotivation] = useState(false);
+  const [topBrokers, setTopBrokers] = useState<TopBroker[]>([]);
   const location = useLocation();
   const pageTitle = pageTitles[location.pathname] || "Faceimob";
   const { role } = useAuth();
 
   useEffect(() => {
+    const fetchTopBrokers = async () => {
+      const { data } = await supabase.from('brokers').select('id, name').limit(3);
+      if (data) {
+        setTopBrokers(data.map((b, i) => ({
+          id: b.id,
+          name: b.name,
+          points: 1000 - (i * 100)
+        })));
+      }
+    };
+    fetchTopBrokers();
+
     const justLogged = sessionStorage.getItem("faceimob-just-logged");
     if (justLogged === "true") {
       setShowMotivation(true);
