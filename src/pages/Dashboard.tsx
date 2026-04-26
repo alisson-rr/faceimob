@@ -12,28 +12,25 @@ export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<string>("04/2026");
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
         console.log("Fetching dashboard data...");
-        const [dealsRes, brokersRes] = await Promise.all([
-          supabase.from('deals').select(`
-            *,
-            broker1:brokers!deals_broker1_id_fkey(name),
-            broker2:brokers!deals_broker2_id_fkey(name)
-          `),
-          supabase.from('brokers').select('id, name')
-        ]);
+        const { data: dealsData, error: dealsError } = await supabase.from('deals').select('*');
+        const { data: brokersData, error: brokersError } = await supabase.from('brokers').select('id, name');
 
-        if (dealsRes.error) throw dealsRes.error;
-        if (brokersRes.error) throw brokersRes.error;
+        if (dealsError) throw dealsError;
+        if (brokersError) throw brokersError;
 
-        console.log("Deals fetched:", dealsRes.data?.length);
+        console.log("Deals raw:", dealsData?.length);
+        console.log("Deals sample:", dealsData?.[0]);
 
-        const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => {
+        console.log("Deals fetched:", dealsData?.length);
+
+        const mappedDeals: PipelineDeal[] = (dealsData || []).map(d => {
           const deal = d as any;
           let monthBase = deal.month_base;
           
@@ -50,21 +47,21 @@ export default function Dashboard() {
         });
 
         setDeals(mappedDeals);
-        setBrokers(brokersRes.data || []);
+        setBrokers(brokersData || []);
 
         // Define o mês atual como padrão se houver dados para ele
         const currentMonthStr = format(new Date(), "MM/yyyy");
         const hasCurrentMonth = mappedDeals.some(d => d.month_base === currentMonthStr);
+        
         if (hasCurrentMonth) {
           setSelectedMonth(currentMonthStr);
         } else if (mappedDeals.length > 0) {
-          // Se não tiver mês atual, pega o mês mais recente disponível
-          const sortedMonths = [...new Set(mappedDeals.map(d => d.month_base).filter(Boolean))].sort((a, b) => {
-            const [m1, y1] = a!.split("/").map(Number);
-            const [m2, y2] = b!.split("/").map(Number);
+          const sortedMonths = [...new Set(mappedDeals.map(d => d.month_base).filter(Boolean) as string[])].sort((a, b) => {
+            const [m1, y1] = a.split("/").map(Number);
+            const [m2, y2] = b.split("/").map(Number);
             return y2 - y1 || m2 - m1;
           });
-          if (sortedMonths[0]) setSelectedMonth(sortedMonths[0]!);
+          if (sortedMonths[0]) setSelectedMonth(sortedMonths[0]);
         }
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
@@ -98,11 +95,11 @@ export default function Dashboard() {
 
   const stats = useMemo(() => {
     const currentDeals = filteredDeals;
-    const leads = currentDeals.filter(d => d.stage === 'lead').length;
-    const propostas = currentDeals.filter(d => d.stage === 'proposal').length;
-    const negocios = currentDeals.filter(d => d.active).length;
+    const leads = currentDeals.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
+    const propostas = currentDeals.filter(d => ['proposal', 'contract'].includes(d.stage)).length;
+    const negocios = currentDeals.length;
     const off = currentDeals.filter(d => !d.active).length;
-    const vendas = currentDeals.filter(d => d.stage === 'closed' && d.active).length;
+    const vendas = currentDeals.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
     const vgv = currentDeals.filter(d => d.active).reduce((acc, d) => acc + (d.deal_value || 0), 0);
     
     // Construtora breakdown
@@ -110,12 +107,12 @@ export default function Dashboard() {
     currentDeals.forEach(d => {
       const dev = d.developer || 'N/A';
       if (!construtoraMap[dev]) construtoraMap[dev] = { unidades: 0, vgv: 0, propostas: 0, negocios: 0 };
-      if (d.stage === 'closed' && d.active) {
+      if ((d.stage === 'closed' || d.stage === 'contract') && d.active !== false) {
         construtoraMap[dev].unidades++;
         construtoraMap[dev].vgv += (d.deal_value || 0);
       }
-      if (d.stage === 'proposal') construtoraMap[dev].propostas++;
-      if (d.active) construtoraMap[dev].negocios++;
+      if (d.stage === 'proposal' || d.stage === 'contract') construtoraMap[dev].propostas++;
+      construtoraMap[dev].negocios++;
     });
 
     const vendasTable = Object.entries(construtoraMap)
@@ -138,10 +135,10 @@ export default function Dashboard() {
       const bNames = [d.broker1, d.broker2].filter(Boolean) as string[];
       bNames.forEach(name => {
         if (!brokerStats[name]) brokerStats[name] = { name, leads: 0, agil: 0, neg: 0, vendas: 0, vgv: 0, off: 0 };
-        if (d.stage === 'lead') brokerStats[name].leads++;
+        if (['lead', 'incomplete'].includes(d.stage)) brokerStats[name].leads++;
         if (d.stage === 'under_analysis') brokerStats[name].agil++;
-        if (d.active) brokerStats[name].neg++;
-        if (d.stage === 'closed' && d.active) {
+        brokerStats[name].neg++;
+        if (d.stage === 'closed' || d.stage === 'contract') {
           brokerStats[name].vendas++;
           brokerStats[name].vgv += (d.deal_value || 0);
         }
