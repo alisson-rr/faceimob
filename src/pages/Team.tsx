@@ -13,9 +13,10 @@ import { mockManagers as initialManagers, mockTeams as initialTeams, mockDeals, 
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useCallback } from "react";
 import type { Broker, Manager, PipelineDeal } from "@/types/crm";
-import { Plus, Pencil, Users, ChevronDown, Crown, Medal, X, Shield, UserCog, Briefcase, Star, Loader2 } from "lucide-react";
+import { Plus, Pencil, Users, ChevronDown, Crown, Medal, X, Shield, UserCog, Briefcase, Star, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { format, parseISO, differenceInDays } from 'date-fns';
 
 // ── Types for new entities ──
 interface TeamEntity { id: string; name: string; }

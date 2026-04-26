@@ -55,11 +55,18 @@ export default function AppLayout() {
       if (!brokers) return;
 
       // 2. Get all deals to calculate points
-      const { data: deals } = await supabase.from('deals').select('broker1, broker2, stage, active, deal_value');
+      const { data: deals } = await supabase.from('deals').select(`
+        stage, active, deal_value,
+        broker1:brokers!deals_broker1_id_fkey(name),
+        broker2:brokers!deals_broker2_id_fkey(name)
+      `);
       
       // 3. Simple scoring logic for top ranking
       const scores = brokers.map(b => {
-        const bDeals = (deals || []).filter(d => d.broker1 === b.name || d.broker2 === b.name);
+        const bDeals = (deals || []).filter(d => 
+          ((d.broker1 as any)?.name === b.name) || 
+          ((d.broker2 as any)?.name === b.name)
+        );
         const points = bDeals.reduce((acc, d) => {
           if (d.stage === 'closed' && d.active) return acc + 700;
           if (d.stage === 'approved') return acc + 250;

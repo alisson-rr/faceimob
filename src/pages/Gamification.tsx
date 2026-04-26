@@ -6,13 +6,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target } from 'lucide-react';
+import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { mockBrokers as fallbackBrokers, mockDeals as fallbackDeals, mockManagers as fallbackManagers } from '@/data/mockData';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { useEffect, useCallback } from 'react';
 import { PipelineDeal, Broker } from '@/types/crm';
+import { format, parseISO, differenceInDays } from 'date-fns';
 
 // Scoring weights based on pipeline movements
 const SCORING = {
@@ -113,6 +114,7 @@ const MedalIcon = ({ position }: { position: number }) => {
 
 export default function Gamification() {
   const { role } = useAuth();
+  const { toast } = useToast();
   const isAdmin = role === 'admin';
 
   const now = new Date();
@@ -179,7 +181,7 @@ export default function Gamification() {
       scores: [...currentScores],
     }]);
     setCloseConfirmOpen(false);
-    toast.success(`Game "${label}" fechado com sucesso! Novo game iniciado.`);
+    toast({ title: `Game "${label}" fechado com sucesso! Novo game iniciado.` });
   };
 
   const monthOptions = useMemo(() => {
