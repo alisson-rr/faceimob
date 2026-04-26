@@ -5,14 +5,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { mockDevelopers, mockProjects, mockSources } from "@/data/mockData";
 import { Plus, X, Copy, ExternalLink, Wifi } from "lucide-react";
 import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
 interface DataListProps {
   title: string;
   items: string[];
+  onAdd?: (item: string) => void;
+  onRemove?: (item: string) => void;
 }
 
-function DataList({ title, items: initialItems }: DataListProps) {
+function DataList({ title, items: initialItems, onAdd, onRemove }: DataListProps) {
   const [items, setItems] = useState(initialItems);
   const [newItem, setNewItem] = useState("");
 
@@ -44,6 +47,33 @@ function DataList({ title, items: initialItems }: DataListProps) {
 }
 
 export default function DataManagement() {
+  const [developers, setDevelopers] = useState<string[]>([]);
+  const [projects, setProjects] = useState<string[]>([]);
+  const [sources, setSources] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const { data: deals } = await supabase.from('deals').select('developer, project');
+        const { data: leads } = await supabase.from('leads').select('source');
+
+        const devs = Array.from(new Set((deals || []).map(d => d.developer).filter(Boolean))) as string[];
+        const projs = Array.from(new Set((deals || []).map(d => d.project).filter(Boolean))) as string[];
+        const srcs = Array.from(new Set((leads || []).map(l => l.source).filter(Boolean))) as string[];
+
+        setDevelopers(devs.length > 0 ? devs : mockDevelopers);
+        setProjects(projs.length > 0 ? projs : mockProjects);
+        setSources(srcs.length > 0 ? srcs : mockSources);
+      } catch (err) {
+        console.error("Error fetching data management:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-ads-webhook`;
 
   // IP Management
@@ -89,13 +119,13 @@ export default function DataManagement() {
         </TabsList>
 
         <TabsContent value="developers" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Incorporadora" items={mockDevelopers} /></CardContent></Card>
+          <Card className="glass"><CardContent className="p-4"><DataList title="Incorporadora" items={developers} /></CardContent></Card>
         </TabsContent>
         <TabsContent value="projects" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Empreendimento" items={mockProjects} /></CardContent></Card>
+          <Card className="glass"><CardContent className="p-4"><DataList title="Empreendimento" items={projects} /></CardContent></Card>
         </TabsContent>
         <TabsContent value="sources" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Fonte" items={mockSources} /></CardContent></Card>
+          <Card className="glass"><CardContent className="p-4"><DataList title="Fonte" items={sources} /></CardContent></Card>
         </TabsContent>
 
         {/* IP Configuration */}
