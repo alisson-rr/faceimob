@@ -61,6 +61,48 @@ const managerRanking = [
   { metaRem: 8, meta: 8, pct: 13, name: "Susana Cristina", leads: 263, agil: 4, neg: 1, vendas: 1, vgv: "R$240.500,00", off: 20 },
   { metaRem: 8, meta: 8, pct: 0, name: "Veronica Oliveira", leads: 17, agil: 2, neg: 0, vendas: 0, vgv: "R$0,00", off: 2 },
 ];
+64: 
+65: const leadSources = [
+66:   { label: "Leadfy", value: 5 },
+67:   { label: "Lead Próprio", value: 31 },
+68:   { label: "Lead Loja", value: 2 },
+69:   { label: "Lead Feirão", value: 1 },
+70:   { label: "Lead Indicação", value: 6 },
+71: ];
+72: 
+73: const ccaStatus = [
+74:   { label: "Aprovado Total", value: 42, color: "text-blue-400" },
+75:   { label: "Aprovado Condicionado", value: 6, color: "text-blue-500" },
+76:   { label: "Análise p/ virar Negócio", value: 0, color: "text-green-500" },
+77:   { label: "Assinado no Banco", value: 0, color: "text-blue-400" },
+78:   { label: "Pendente p/ virar negócio", value: 0, color: "text-amber-500" },
+79:   { label: "Pendente", value: 29, color: "text-amber-600" },
+80: ];
+81: 
+82: const staffData = [
+83:   { label: "Sócios", value: 2 },
+84:   { label: "Adm", value: 1 },
+85:   { label: "Administrativo", value: 6 },
+86:   { label: "Diretor", value: 5 },
+87:   { label: "Gerentes", value: 9 },
+88:   { label: "Corretores Ativos", value: 80, color: "text-green-500" },
+89:   { label: "Serviços Gerais", value: 1 },
+90: ];
+91: 
+92: const staffSummary = [
+93:   { label: "Total", value: 100, bgColor: "bg-[#1e1b4b]" },
+94:   { label: "Corretores com Vendas", value: 26, bgColor: "bg-green-600" },
+95:   { label: "Corretores sem Vendas", value: 54, bgColor: "bg-red-600" },
+96:   { label: "% Corretores com Vendas", value: "33 %", bgColor: "bg-amber-500" },
+97: ];
+98: 
+99: const generalRanking = [
+100:   { pos: "1°", name: "Junior Moraes", leads: 70, visitas: 0, agil: 4, neg: 0, vendas: 5, vgv: "R$1.110.513,08", off: 15 },
+101:   { pos: "2°", name: "Leonardo Vallier", leads: 57, visitas: 0, agil: 3, neg: 0, vendas: 4, vgv: "R$894.896,80", off: 14 },
+102:   { pos: "3°", name: "Gabriel Dutra", leads: 10, visitas: 0, agil: 7, neg: 0, vendas: 4, vgv: "R$855.300,00", off: 12 },
+103:   { pos: "4°", name: "Parceiro Externo", leads: 0, visitas: 0, agil: 4, neg: 0, vendas: 3, vgv: "R$801.000,00", off: 5 },
+104:   { pos: "5°", name: "Kayteane Botelho Araujo", leads: 0, visitas: 0, agil: 4, neg: 0, vendas: 2, vgv: "R$483.000,00", off: 3 },
+105: ];
 
 export default function Dashboard() {
   return (
