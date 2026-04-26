@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<string>("04/2026");
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
 
   useEffect(() => {
     async function fetchData() {
@@ -55,16 +55,16 @@ export default function Dashboard() {
         // Define o mês atual como padrão se houver dados para ele
         const currentMonthStr = format(new Date(), "MM/yyyy");
         const hasCurrentMonth = mappedDeals.some(d => d.month_base === currentMonthStr);
+        
         if (hasCurrentMonth) {
           setSelectedMonth(currentMonthStr);
         } else if (mappedDeals.length > 0) {
-          // Se não tiver mês atual, pega o mês mais recente disponível
-          const sortedMonths = [...new Set(mappedDeals.map(d => d.month_base).filter(Boolean))].sort((a, b) => {
-            const [m1, y1] = a!.split("/").map(Number);
-            const [m2, y2] = b!.split("/").map(Number);
+          const sortedMonths = [...new Set(mappedDeals.map(d => d.month_base).filter(Boolean) as string[])].sort((a, b) => {
+            const [m1, y1] = a.split("/").map(Number);
+            const [m2, y2] = b.split("/").map(Number);
             return y2 - y1 || m2 - m1;
           });
-          if (sortedMonths[0]) setSelectedMonth(sortedMonths[0]!);
+          if (sortedMonths[0]) setSelectedMonth(sortedMonths[0]);
         }
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
