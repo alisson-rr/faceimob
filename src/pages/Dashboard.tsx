@@ -51,12 +51,15 @@ export default function Dashboard() {
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     deals.forEach(d => {
-      const month = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null);
-      if (month) months.add(month);
+      if (d.month_base) months.add(d.month_base);
     });
     return Array.from(months).sort((a, b) => {
-      const [m1, y1] = a.split("/").map(Number);
-      const [m2, y2] = b.split("/").map(Number);
+      const partsA = a.split("/");
+      const partsB = b.split("/");
+      const m1 = parseInt(partsA[0]);
+      const y1 = parseInt(partsA[1]);
+      const m2 = parseInt(partsB[0]);
+      const y2 = parseInt(partsB[1]);
       return y2 - y1 || m2 - m1;
     });
   }, [deals]);
