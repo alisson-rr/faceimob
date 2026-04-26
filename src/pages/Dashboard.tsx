@@ -9,7 +9,7 @@ import { Trophy, Crown, Medal } from "lucide-react";
 
 export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
-  const [brokers, setBrokers] = useState<{ id: string; name: string; team?: string }[]>([]);
+  const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
 
