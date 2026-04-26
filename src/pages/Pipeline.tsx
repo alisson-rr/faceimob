@@ -1084,7 +1084,7 @@ export default function Pipeline() {
             <div><label className="text-sm text-muted-foreground mb-1 block">Corretor</label>
               <Select value={newLeadData.broker_name} onValueChange={(v) => setNewLeadData(p => ({ ...p, broker_name: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{brokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="sm:col-span-2"><label className="text-sm text-muted-foreground mb-1 block">Observações</label><Textarea value={newLeadData.notes} onChange={(e) => setNewLeadData(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>
