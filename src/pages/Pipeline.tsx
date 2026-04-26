@@ -104,7 +104,17 @@ export default function Pipeline() {
     try {
       const { data, error } = await supabase.from('brokers').select('*').order('name');
       if (error) throw error;
-      setBrokers(data || []);
+      
+      const mappedBrokers: Broker[] = (data || []).map(b => ({
+        id: b.id,
+        name: b.name,
+        active: true, // DB column doesn't exist yet, defaulting
+        monthly_sales: 0,
+        monthly_vgv: 0,
+        team: 'Default'
+      }));
+      
+      setBrokers(mappedBrokers);
     } catch (error) {
       console.error('Error fetching brokers:', error);
       toast({ title: "Erro ao carregar corretores", variant: "destructive" });
