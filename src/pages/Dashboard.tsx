@@ -19,21 +19,18 @@ export default function Dashboard() {
       setLoading(true);
       try {
         console.log("Fetching dashboard data...");
-        const [dealsRes, brokersRes] = await Promise.all([
-          supabase.from('deals').select(`
-            *,
-            broker1:brokers!deals_broker1_id_fkey(name),
-            broker2:brokers!deals_broker2_id_fkey(name)
-          `),
-          supabase.from('brokers').select('id, name')
-        ]);
+        const { data: dealsData, error: dealsError } = await supabase.from('deals').select('*');
+        const { data: brokersData, error: brokersError } = await supabase.from('brokers').select('id, name');
 
-        if (dealsRes.error) throw dealsRes.error;
-        if (brokersRes.error) throw brokersRes.error;
+        if (dealsError) throw dealsError;
+        if (brokersError) throw brokersError;
 
-        console.log("Deals fetched:", dealsRes.data?.length);
+        console.log("Deals raw:", dealsData?.length);
+        console.log("Deals sample:", dealsData?.[0]);
 
-        const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => {
+        console.log("Deals fetched:", dealsData?.length);
+
+        const mappedDeals: PipelineDeal[] = (dealsData || []).map(d => {
           const deal = d as any;
           let monthBase = deal.month_base;
           
@@ -50,7 +47,7 @@ export default function Dashboard() {
         });
 
         setDeals(mappedDeals);
-        setBrokers(brokersRes.data || []);
+        setBrokers(brokersData || []);
 
         // Define o mês atual como padrão se houver dados para ele
         const currentMonthStr = format(new Date(), "MM/yyyy");
