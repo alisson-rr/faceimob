@@ -154,7 +154,7 @@ export default function Dashboard() {
       .slice(0, 10);
 
     return { leads, propostas, negocios, off, vendas, vgv, vendasTable, propostasTable, generalRanking };
-  }, [filteredDeals, brokerStats]);
+  }, [filteredDeals, brokers]);
 
   // Diretoria Ranking Mock Logic (since we don't have directorship in DB yet)
   const diretoriaWinners = useMemo(() => {
