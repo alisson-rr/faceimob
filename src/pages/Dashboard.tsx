@@ -32,7 +32,7 @@ export default function Dashboard() {
         console.log("Deals fetched:", dealsRes.data?.length);
 
         const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => {
-          let monthBase = d.month_base;
+          let monthBase = (d as any).month_base;
           
           if (!monthBase && d.created_at) {
             monthBase = format(parseISO(d.created_at), "MM/yyyy");
@@ -40,11 +40,11 @@ export default function Dashboard() {
           
           return {
             ...d,
-            broker1: (d.broker1 as any)?.name || (d as any).broker_name || 'Sem Corretor',
-            broker2: (d.broker2 as any)?.name || undefined,
+            broker1: (d as any).broker1?.name || (d as any).broker_name || 'Sem Corretor',
+            broker2: (d as any).broker2?.name || undefined,
             month_base: monthBase
-          };
-        }) as any[];
+          } as unknown as PipelineDeal;
+        });
 
         setDeals(mappedDeals);
         setBrokers(brokersRes.data || []);
