@@ -8,8 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockBrokers, mockDeals, mockManagers } from '@/data/mockData';
-import { toast } from 'sonner';
+import { mockBrokers as fallbackBrokers, mockDeals as fallbackDeals, mockManagers as fallbackManagers } from '@/data/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
+import { useEffect, useCallback } from 'react';
+import { PipelineDeal, Broker } from '@/types/crm';
 
 // Scoring weights based on pipeline movements
 const SCORING = {
@@ -56,15 +59,15 @@ interface BrokerScore {
   };
 }
 
-function computeScores(): BrokerScore[] {
-  return mockBrokers.filter(b => b.active).map(broker => {
-    const brokerDeals = mockDeals.filter(d => d.broker1 === broker.name || d.broker2 === broker.name);
+function computeScores(brokers: Broker[], deals: PipelineDeal[], managers: any[]): BrokerScore[] {
+  return brokers.filter(b => b.active).map(broker => {
+    const brokerDeals = deals.filter(d => d.broker1 === broker.name || d.broker2 === broker.name);
     const incompletos = brokerDeals.filter(d => d.stage === 'incomplete').length;
     const esteiras = brokerDeals.filter(d => d.stage === 'under_analysis').length;
     const aprovados = brokerDeals.filter(d => d.stage === 'approved').length;
     const vendas = brokerDeals.filter(d => d.stage === 'closed' && d.active).length;
     const distratos = brokerDeals.filter(d => d.stage === 'closed' && !d.active).length;
-    const totalVgv = brokerDeals.reduce((s, d) => s + d.deal_value, 0);
+    const totalVgv = brokerDeals.reduce((s, d) => s + (d.deal_value || 0), 0);
 
     const points =
       incompletos * SCORING.incomplete_with_doc +
@@ -73,13 +76,13 @@ function computeScores(): BrokerScore[] {
       vendas * SCORING.venda +
       distratos * SCORING.distrato_penalty;
 
-    const manager = mockManagers.find(m => m.team === broker.team);
-    const director = DIRECTORS.find(d => d.teams.includes(broker.team));
+    const manager = managers.find(m => m.team === broker.team);
+    const director = DIRECTORS.find(d => d.teams.includes(broker.team || ''));
 
     return {
       brokerId: broker.id,
       brokerName: broker.name,
-      team: broker.team,
+      team: broker.team || 'Default',
       managerId: manager?.id,
       managerName: manager?.name,
       directorshipId: director?.id,
@@ -115,21 +118,50 @@ export default function Gamification() {
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  const [closedGames, setClosedGames] = useState<GameRecord[]>([
-    {
-      id: 'game-jan-2026',
-      month: '2026-01',
-      label: 'Janeiro 2026',
-      closed: true,
-      closedAt: '2026-02-05T10:00:00',
-      scores: computeScores(),
-    },
-  ]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [deals, setDeals] = useState<PipelineDeal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchRealData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [brokersRes, dealsRes] = await Promise.all([
+        supabase.from('brokers').select('*').order('name'),
+        supabase.from('deals').select('*')
+      ]);
+
+      if (brokersRes.error) throw brokersRes.error;
+      if (dealsRes.error) throw dealsRes.error;
+
+      const mappedBrokers: Broker[] = (brokersRes.data || []).map(b => ({
+        id: b.id,
+        name: b.name,
+        active: true,
+        monthly_sales: 0,
+        monthly_vgv: 0,
+        team: 'Default'
+      }));
+
+      setBrokers(mappedBrokers);
+      setDeals(dealsRes.data as PipelineDeal[]);
+    } catch (error) {
+      console.error('Error fetching game data:', error);
+      toast({ title: "Erro ao carregar dados do Game", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRealData();
+  }, [fetchRealData]);
+
+  const [closedGames, setClosedGames] = useState<GameRecord[]>([]);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
-  const currentScores = useMemo(() => computeScores(), []);
+  const currentScores = useMemo(() => computeScores(brokers, deals, []), [brokers, deals]);
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const closedGame = closedGames.find(g => g.month === selectedMonth);
   const scores = closedGame ? closedGame.scores : currentScores;
@@ -183,6 +215,12 @@ export default function Gamification() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {loading && (
+        <div className="flex items-center justify-center p-8">
+          <RefreshCw className="h-8 w-8 animate-spin text-warning" />
+          <span className="ml-2">Carregando dados reais...</span>
+        </div>
+      )}
       {/* Header */}
       <div className="text-center space-y-2">
         <div className="flex items-center justify-center gap-3">
