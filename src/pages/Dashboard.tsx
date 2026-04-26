@@ -32,8 +32,9 @@ export default function Dashboard() {
 
         const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
           ...d,
-          broker1: (d.broker1 as any)?.name || '',
+          broker1: (d.broker1 as any)?.name || 'Sem Corretor',
           broker2: (d.broker2 as any)?.name || undefined,
+          month_base: d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null)
         })) as any[];
 
         setDeals(mappedDeals);
@@ -50,22 +51,22 @@ export default function Dashboard() {
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     deals.forEach(d => {
-      const month = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null);
-      if (month) months.add(month);
+      if (d.month_base) months.add(d.month_base);
     });
     return Array.from(months).sort((a, b) => {
-      const [m1, y1] = a.split("/").map(Number);
-      const [m2, y2] = b.split("/").map(Number);
+      const partsA = a.split("/");
+      const partsB = b.split("/");
+      const m1 = parseInt(partsA[0]);
+      const y1 = parseInt(partsA[1]);
+      const m2 = parseInt(partsB[0]);
+      const y2 = parseInt(partsB[1]);
       return y2 - y1 || m2 - m1;
     });
   }, [deals]);
 
   const filteredDeals = useMemo(() => {
     if (selectedMonth === "all") return deals;
-    return deals.filter(d => {
-      const month = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null);
-      return month === selectedMonth;
-    });
+    return deals.filter(d => d.month_base === selectedMonth);
   }, [deals, selectedMonth]);
 
   const stats = useMemo(() => {
@@ -122,6 +123,7 @@ export default function Dashboard() {
     });
 
     const generalRanking = Object.values(brokerStats)
+      .filter(b => b.leads > 0 || b.vendas > 0 || b.neg > 0) // Only show brokers with activity
       .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv)
       .slice(0, 10);
 
