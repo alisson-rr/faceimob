@@ -3,11 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { PipelineDeal } from "@/types/crm";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format, parseISO } from "date-fns";
+import { Trophy, Crown, Medal } from "lucide-react";
 
 export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
-  const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
+  const [brokers, setBrokers] = useState<{ id: string; name: string; team?: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
 
   useEffect(() => {
     async function fetchData() {
