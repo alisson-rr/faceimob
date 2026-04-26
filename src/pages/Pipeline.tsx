@@ -569,11 +569,11 @@ export default function Pipeline() {
                     </Select>
                     <Select value={managerFilter} onValueChange={setManagerFilter}>
                       <SelectTrigger><SelectValue placeholder="Escolher Gerente 1" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{mockManagers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
+                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{brokers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
                     </Select>
                     <Select value={brokerFilter} onValueChange={setBrokerFilter}>
                       <SelectTrigger><SelectValue placeholder="Escolher Corretor 1" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
+                      <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{brokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
                     </Select>
                     <Input placeholder="Filtrar por nome cliente" value={clientNameFilter} onChange={(e) => setClientNameFilter(e.target.value)} />
                     <Input placeholder="Filtrar por nome 2º cliente" value={clientName2Filter} onChange={(e) => setClientName2Filter(e.target.value)} />
