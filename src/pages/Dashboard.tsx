@@ -101,7 +101,7 @@ export default function Dashboard() {
     const leads = currentDeals.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
     const propostas = currentDeals.filter(d => ['proposal', 'contract'].includes(d.stage)).length;
     const negocios = currentDeals.length;
-    const off = currentDeals.filter(d => !d.active && d.stage === 'lost').length;
+    const off = currentDeals.filter(d => !d.active).length;
     const vendas = currentDeals.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
     const vgv = currentDeals.filter(d => d.active).reduce((acc, d) => acc + (d.deal_value || 0), 0);
     
@@ -145,7 +145,7 @@ export default function Dashboard() {
           brokerStats[name].vendas++;
           brokerStats[name].vgv += (d.deal_value || 0);
         }
-        if (d.stage === 'lost') brokerStats[name].off++;
+        if (!d.active) brokerStats[name].off++;
       });
     });
 
