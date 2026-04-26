@@ -18,6 +18,7 @@ export default function Dashboard() {
     async function fetchData() {
       setLoading(true);
       try {
+        console.log("Fetching dashboard data...");
         const [dealsRes, brokersRes] = await Promise.all([
           supabase.from('deals').select(`
             *,
@@ -30,15 +31,40 @@ export default function Dashboard() {
         if (dealsRes.error) throw dealsRes.error;
         if (brokersRes.error) throw brokersRes.error;
 
-        const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
-          ...d,
-          broker1: (d.broker1 as any)?.name || 'Sem Corretor',
-          broker2: (d.broker2 as any)?.name || undefined,
-          month_base: d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null)
-        })) as any[];
+        console.log("Deals fetched:", dealsRes.data?.length);
+
+        const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => {
+          let monthBase = d.month_base;
+          
+          if (!monthBase && d.created_at) {
+            monthBase = format(parseISO(d.created_at), "MM/yyyy");
+          }
+          
+          return {
+            ...d,
+            broker1: (d.broker1 as any)?.name || d.broker_name || 'Sem Corretor',
+            broker2: (d.broker2 as any)?.name || undefined,
+            month_base: monthBase
+          };
+        }) as any[];
 
         setDeals(mappedDeals);
         setBrokers(brokersRes.data || []);
+
+        // Define o mês atual como padrão se houver dados para ele
+        const currentMonthStr = format(new Date(), "MM/yyyy");
+        const hasCurrentMonth = mappedDeals.some(d => d.month_base === currentMonthStr);
+        if (hasCurrentMonth) {
+          setSelectedMonth(currentMonthStr);
+        } else if (mappedDeals.length > 0) {
+          // Se não tiver mês atual, pega o mês mais recente disponível
+          const sortedMonths = [...new Set(mappedDeals.map(d => d.month_base).filter(Boolean))].sort((a, b) => {
+            const [m1, y1] = a!.split("/").map(Number);
+            const [m2, y2] = b!.split("/").map(Number);
+            return y2 - y1 || m2 - m1;
+          });
+          if (sortedMonths[0]) setSelectedMonth(sortedMonths[0]!);
+        }
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
       } finally {
