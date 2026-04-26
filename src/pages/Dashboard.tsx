@@ -151,6 +151,39 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-white p-4 space-y-6">
+      {/* ── STICKY DIRECTORY WINNERS ── */}
+      <div className="sticky top-0 z-40 bg-[#020617]/90 backdrop-blur-md py-2 border-b border-white/5 -mx-4 px-4">
+        <div className="flex flex-wrap items-center justify-center gap-6">
+          {diretoriaWinners.map((w, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{w.dir}</span>
+                <div className="flex items-center gap-2">
+                  <Crown className="h-4 w-4 text-warning" />
+                  <span className="text-sm font-bold truncate max-w-[120px]">{w.name}</span>
+                  <Badge variant="outline" className="text-[10px] py-0 h-4 border-warning/30 text-warning">{w.points} vendas</Badge>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── MONTH SELECTOR ── */}
+      <div className="flex justify-end">
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="w-[180px] bg-[#1e1b4b] border-white/10 text-xs">
+            <SelectValue placeholder="Selecionar Mês" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1e1b4b] border-white/10 text-white">
+            <SelectItem value="all">Todos os Meses</SelectItem>
+            {availableMonths.map(m => (
+              <SelectItem key={m} value={m}>{m}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* ── TOP SUMMARY CARDS ── */}
       <div className="flex flex-wrap items-stretch justify-center gap-2">
         {summaryMetrics.map((m) => (
