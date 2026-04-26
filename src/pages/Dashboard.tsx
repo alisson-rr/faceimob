@@ -34,6 +34,7 @@ export default function Dashboard() {
           ...d,
           broker1: (d.broker1 as any)?.name || 'Sem Corretor',
           broker2: (d.broker2 as any)?.name || undefined,
+          month_base: d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null)
         })) as any[];
 
         setDeals(mappedDeals);
