@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      brokers: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       cca_deals: {
         Row: {
           cca_user_id: string | null
@@ -64,6 +94,104 @@ export type Database = {
           uses_internal_cca?: boolean
         }
         Relationships: []
+      }
+      deals: {
+        Row: {
+          active: boolean | null
+          broker1_id: string | null
+          broker2_id: string | null
+          client: string
+          created_at: string | null
+          deal_value: number | null
+          developer: string | null
+          history: Json | null
+          id: string
+          manager1_id: string | null
+          manager2_id: string | null
+          month_base: string | null
+          notes: string | null
+          project: string | null
+          stage: Database["public"]["Enums"]["deal_stage"] | null
+          status: string | null
+          unit: string | null
+          updated_at: string | null
+          visit_date: string | null
+          visit_result: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          broker1_id?: string | null
+          broker2_id?: string | null
+          client: string
+          created_at?: string | null
+          deal_value?: number | null
+          developer?: string | null
+          history?: Json | null
+          id?: string
+          manager1_id?: string | null
+          manager2_id?: string | null
+          month_base?: string | null
+          notes?: string | null
+          project?: string | null
+          stage?: Database["public"]["Enums"]["deal_stage"] | null
+          status?: string | null
+          unit?: string | null
+          updated_at?: string | null
+          visit_date?: string | null
+          visit_result?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          broker1_id?: string | null
+          broker2_id?: string | null
+          client?: string
+          created_at?: string | null
+          deal_value?: number | null
+          developer?: string | null
+          history?: Json | null
+          id?: string
+          manager1_id?: string | null
+          manager2_id?: string | null
+          month_base?: string | null
+          notes?: string | null
+          project?: string | null
+          stage?: Database["public"]["Enums"]["deal_stage"] | null
+          status?: string | null
+          unit?: string | null
+          updated_at?: string | null
+          visit_date?: string | null
+          visit_result?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deals_broker1_id_fkey"
+            columns: ["broker1_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_broker2_id_fkey"
+            columns: ["broker2_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_manager1_id_fkey"
+            columns: ["manager1_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_manager2_id_fkey"
+            columns: ["manager2_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       leads: {
         Row: {
@@ -314,6 +442,16 @@ export type Database = {
         | "approved"
         | "rejected"
         | "sent_to_agency"
+      deal_stage:
+        | "incomplete"
+        | "lead"
+        | "proposal"
+        | "visit_scheduled"
+        | "under_analysis"
+        | "approved"
+        | "contract"
+        | "closed"
+      lead_status: "new" | "contacted" | "qualified" | "converted" | "lost"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -449,6 +587,17 @@ export const Constants = {
         "rejected",
         "sent_to_agency",
       ],
+      deal_stage: [
+        "incomplete",
+        "lead",
+        "proposal",
+        "visit_scheduled",
+        "under_analysis",
+        "approved",
+        "contract",
+        "closed",
+      ],
+      lead_status: ["new", "contacted", "qualified", "converted", "lost"],
     },
   },
 } as const
