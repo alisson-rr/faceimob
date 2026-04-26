@@ -122,6 +122,7 @@ export default function Dashboard() {
     });
 
     const generalRanking = Object.values(brokerStats)
+      .filter(b => b.leads > 0 || b.vendas > 0 || b.neg > 0) // Only show brokers with activity
       .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv)
       .slice(0, 10);
 
