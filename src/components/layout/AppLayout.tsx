@@ -6,6 +6,14 @@ import { MotivationalPopup } from "@/components/MotivationalPopup";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import dianhoAvatar from "@/assets/dianho.png";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { Trophy } from "lucide-react";
+
+interface TopBroker {
+  id: string;
+  name: string;
+  points: number;
+}
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Pipeline de Vendas",
