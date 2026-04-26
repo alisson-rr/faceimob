@@ -20,10 +20,10 @@ export default function Dashboard() {
         const [dealsRes, brokersRes] = await Promise.all([
           supabase.from('deals').select(`
             *,
-            broker1:brokers!deals_broker1_id_fkey(name, team),
-            broker2:brokers!deals_broker2_id_fkey(name, team)
+            broker1:brokers!deals_broker1_id_fkey(name),
+            broker2:brokers!deals_broker2_id_fkey(name)
           `),
-          supabase.from('brokers').select('id, name, team')
+          supabase.from('brokers').select('id, name')
         ]);
 
         if (dealsRes.error) throw dealsRes.error;
