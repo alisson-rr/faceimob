@@ -12,7 +12,7 @@ export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("04/2026");
 
   useEffect(() => {
     async function fetchData() {
