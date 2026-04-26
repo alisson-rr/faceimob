@@ -10,37 +10,41 @@ import { toast } from "@/hooks/use-toast";
 
 interface DataListProps {
   title: string;
+  table: 'deals' | 'leads';
+  column: string;
   items: string[];
-  onAdd?: (item: string) => void;
-  onRemove?: (item: string) => void;
+  onUpdate: () => void;
 }
 
-function DataList({ title, items: initialItems, onAdd, onRemove }: DataListProps) {
-  const [items, setItems] = useState(initialItems);
+function DataList({ title, table, column, items, onUpdate }: DataListProps) {
   const [newItem, setNewItem] = useState("");
 
-  const addItem = () => {
-    if (newItem.trim()) {
-      setItems([...items, newItem.trim()]);
-      setNewItem("");
-    }
+  const addItem = async () => {
+    if (!newItem.trim()) return;
+    toast({ title: "Funcionalidade limitada", description: "A adição manual via Gestão de Dados requer novos registros vinculados." });
+    setNewItem("");
   };
 
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <Input placeholder={`Novo ${title.toLowerCase()}...`} value={newItem} onChange={e => setNewItem(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem()} />
-        <Button size="sm" onClick={addItem}><Plus className="h-4 w-4" /></Button>
+        <Input 
+          placeholder={`Novo ${title.toLowerCase()}... (Apenas leitura dos dados existentes)`} 
+          value={newItem} 
+          onChange={e => setNewItem(e.target.value)} 
+          disabled
+        />
+        <Button size="sm" disabled><Plus className="h-4 w-4" /></Button>
       </div>
       <div className="space-y-1">
         {items.map((item, i) => (
           <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
             <span className="text-sm">{item}</span>
-            <button onClick={() => setItems(items.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive">
-              <X className="h-3 w-3" />
-            </button>
           </div>
         ))}
+        {items.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">Nenhum dado encontrado no banco.</p>
+        )}
       </div>
     </div>
   );
@@ -53,27 +57,28 @@ export default function DataManagement() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const { data: deals } = await supabase.from('deals').select('developer, project');
-        const { data: leads } = await supabase.from('leads').select('source');
-
-        const devs = Array.from(new Set((deals || []).map(d => d.developer).filter(Boolean))) as string[];
-        const projs = Array.from(new Set((deals || []).map(d => d.project).filter(Boolean))) as string[];
-        const srcs = Array.from(new Set((leads || []).map(l => l.source).filter(Boolean))) as string[];
-
-        setDevelopers(devs.length > 0 ? devs : mockDevelopers);
-        setProjects(projs.length > 0 ? projs : mockProjects);
-        setSources(srcs.length > 0 ? srcs : mockSources);
-      } catch (err) {
-        console.error("Error fetching data management:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchData();
   }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    try {
+      const { data: deals } = await supabase.from('deals').select('developer, project');
+      const { data: leads } = await supabase.from('leads').select('source');
+
+      const devs = Array.from(new Set((deals || []).map(d => d.developer).filter(Boolean))) as string[];
+      const projs = Array.from(new Set((deals || []).map(d => d.project).filter(Boolean))) as string[];
+      const srcs = Array.from(new Set((leads || []).map(l => l.source).filter(Boolean))) as string[];
+
+      setDevelopers(devs.sort());
+      setProjects(projs.sort());
+      setSources(srcs.sort());
+    } catch (err) {
+      console.error("Error fetching data management:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-ads-webhook`;
 
   // IP Management
@@ -119,13 +124,13 @@ export default function DataManagement() {
         </TabsList>
 
         <TabsContent value="developers" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Incorporadora" items={developers} /></CardContent></Card>
+          <Card className="glass"><CardContent className="p-4"><DataList title="Incorporadora" table="deals" column="developer" items={developers} onUpdate={fetchData} /></CardContent></Card>
         </TabsContent>
         <TabsContent value="projects" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Empreendimento" items={projects} /></CardContent></Card>
+          <Card className="glass"><CardContent className="p-4"><DataList title="Empreendimento" table="deals" column="project" items={projects} onUpdate={fetchData} /></CardContent></Card>
         </TabsContent>
         <TabsContent value="sources" className="mt-4">
-          <Card className="glass"><CardContent className="p-4"><DataList title="Fonte" items={sources} /></CardContent></Card>
+          <Card className="glass"><CardContent className="p-4"><DataList title="Fonte" table="leads" column="source" items={sources} onUpdate={fetchData} /></CardContent></Card>
         </TabsContent>
 
         {/* IP Configuration */}
