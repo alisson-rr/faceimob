@@ -9,20 +9,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { mockBrokers as initialBrokers, mockManagers as initialManagers, mockTeams as initialTeams, mockDeals, mockLeads } from "@/data/mockData";
-import type { Broker, Manager } from "@/types/crm";
-import { Plus, Pencil, Users, ChevronDown, Crown, Medal, X, Shield, UserCog, Briefcase, Star } from "lucide-react";
+import { mockManagers as initialManagers, mockTeams as initialTeams, mockDeals, mockLeads } from "@/data/mockData";
+import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useCallback } from "react";
+import type { Broker, Manager, PipelineDeal } from "@/types/crm";
+import { Plus, Pencil, Users, ChevronDown, Crown, Medal, X, Shield, UserCog, Briefcase, Star, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { format, parseISO, differenceInDays } from 'date-fns';
 
 // ── Types for new entities ──
 interface TeamEntity { id: string; name: string; }
 interface PersonEntity { id: string; name: string; team: string; active: boolean; }
 
 // ── Team stats helpers ──
-function getTeamStats(teamName: string, brokers: Broker[]) {
+function getTeamStats(teamName: string, brokers: Broker[], allDeals: PipelineDeal[]) {
   const teamBrokerNames = brokers.filter(b => b.team === teamName).map(b => b.name);
-  const teamDeals = mockDeals.filter(d => teamBrokerNames.includes(d.broker1));
+  const teamDeals = allDeals.filter(d => teamBrokerNames.includes(d.broker1));
   const teamLeadsList = mockLeads.filter(l => teamBrokerNames.includes(l.broker_name || ""));
   const leads = teamLeadsList.length;
   const propostas = teamDeals.filter(d => d.stage === "proposal").length;
@@ -32,13 +35,13 @@ function getTeamStats(teamName: string, brokers: Broker[]) {
   return { leads, propostas, negocios, vendas, conversao };
 }
 
-function getBrokerRanking(teamName: string, brokers: Broker[]) {
+function getBrokerRanking(teamName: string, brokers: Broker[], allDeals: PipelineDeal[]) {
   return brokers
     .filter(b => b.team === teamName && b.active)
     .map(b => {
-      const brokerDeals = mockDeals.filter(d => d.broker1 === b.name);
+      const brokerDeals = allDeals.filter(d => d.broker1 === b.name);
       const vendas = brokerDeals.filter(d => d.stage === "closed").length;
-      const vgv = brokerDeals.reduce((s, d) => s + d.deal_value, 0);
+      const vgv = brokerDeals.reduce((s, d) => s + (d.deal_value || 0), 0);
       return { ...b, vendas, vgv };
     })
     .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
@@ -106,7 +109,59 @@ function PersonList({ items, onAdd, onEdit, onToggle, icon: Icon, color }: {
 }
 
 export default function Team() {
-  const [brokers, setBrokers] = useState<Broker[]>(initialBrokers);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [deals, setDeals] = useState<PipelineDeal[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchRealData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [brokersRes, dealsRes] = await Promise.all([
+        supabase.from('brokers').select('*').order('name'),
+        supabase.from('deals').select(`
+          *,
+          broker1:brokers!deals_broker1_id_fkey(name),
+          broker2:brokers!deals_broker2_id_fkey(name),
+          manager1:brokers!deals_manager1_id_fkey(name),
+          manager2:brokers!deals_manager2_id_fkey(name)
+        `)
+      ]);
+
+      if (brokersRes.error) throw brokersRes.error;
+      if (dealsRes.error) throw dealsRes.error;
+
+      const mappedBrokers: Broker[] = (brokersRes.data || []).map(b => ({
+        id: b.id,
+        name: b.name,
+        active: true,
+        monthly_sales: 0,
+        monthly_vgv: 0,
+        team: 'Default'
+      }));
+
+      const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
+        ...d,
+        broker1: (d.broker1 as any)?.name || '',
+        broker2: (d.broker2 as any)?.name || undefined,
+        manager1: (d.manager1 as any)?.name || '',
+        manager2: (d.manager2 as any)?.name || undefined,
+        days_in_pipeline: differenceInDays(new Date(), parseISO(d.created_at || new Date().toISOString())),
+      })) as any[];
+
+      setBrokers(mappedBrokers);
+      setDeals(mappedDeals);
+    } catch (error) {
+      console.error('Error fetching team data:', error);
+      toast({ title: "Erro ao carregar dados", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRealData();
+  }, [fetchRealData]);
+
   const [managers, setManagers] = useState<Manager[]>(initialManagers);
   const [teams, setTeams] = useState<TeamEntity[]>(initialTeams.map((t, i) => ({ id: String(i), name: t })));
   const [directors, setDirectors] = useState<PersonEntity[]>([]);
@@ -236,8 +291,8 @@ export default function Team() {
 
   const uniqueTeams = useMemo(() => teamNames, [teamNames]);
   const teamComparison = useMemo(() =>
-    uniqueTeams.map(t => ({ name: t, ...getTeamStats(t, brokers) })),
-    [uniqueTeams, brokers]
+    uniqueTeams.map(t => ({ name: t, ...getTeamStats(t, brokers, deals) })),
+    [uniqueTeams, brokers, deals]
   );
 
   return (
@@ -245,6 +300,12 @@ export default function Team() {
       <div>
         <h1 className="text-2xl font-bold">Equipes</h1>
         <p className="text-muted-foreground">Gestão de equipes e pessoal</p>
+        {loading && (
+          <div className="flex items-center mt-2 text-primary">
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <span className="text-sm">Carregando dados do banco...</span>
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="teams">
@@ -267,8 +328,8 @@ export default function Team() {
           {/* Team cards grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {teams.map(team => {
-              const stats = getTeamStats(team.name, brokers);
-              const ranking = getBrokerRanking(team.name, brokers);
+              const stats = getTeamStats(team.name, brokers, deals);
+              const ranking = getBrokerRanking(team.name, brokers, deals);
               return (
                 <Collapsible key={team.id}>
                   <Card className="glass border-primary/30 hover:border-primary/60 transition-colors">
