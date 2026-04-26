@@ -89,7 +89,7 @@ export default function Leads() {
   const openNew = () => { setEditingLead(null); setFormData(emptyLead); setFormOpen(true); };
   const openEdit = (lead: Lead) => { setEditingLead(lead); setFormData({ ...lead, broker_name: lead.broker_name || '' }); setFormOpen(true); };
 
-  const saveLead = () => {
+  const saveLead = async () => {
     let broker = mockBrokers.find(b => b.id === formData.broker_id);
 
     // Auto-assign if no broker selected (new leads only)
@@ -98,41 +98,86 @@ export default function Leads() {
       broker = mockBrokers.find(b => b.id === auto.id);
       formData.broker_id = auto.id;
       formData.broker_name = auto.name;
-      toast({ title: "🤖 Auto-atribuição", description: `Corretor ${auto.name} atribuído automaticamente.` });
     }
 
-    if (editingLead) {
-      setLeads(prev => prev.map(l => l.id === editingLead.id ? { ...l, ...formData, broker_name: broker?.name || l.broker_name } : l));
-    } else {
-      const newLead: Lead = {
-        ...formData,
-        id: String(Date.now()),
-        created_at: new Date().toISOString().slice(0, 10),
-        broker_name: broker?.name || formData.broker_name || '',
-      };
-      setLeads(prev => [newLead, ...prev]);
+    try {
+      if (editingLead) {
+        const { error } = await supabase
+          .from('leads')
+          .update({
+            ...formData,
+            broker_name: broker?.name || formData.broker_name || '',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingLead.id);
+        
+        if (error) throw error;
+        setLeads(prev => prev.map(l => l.id === editingLead.id ? { ...l, ...formData, broker_name: broker?.name || l.broker_name } : l));
+      } else {
+        const { data, error } = await supabase
+          .from('leads')
+          .insert([{
+            ...formData,
+            broker_name: broker?.name || formData.broker_name || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }])
+          .select()
+          .single();
 
-      // Generate automation tasks
-      const newTasks = generateLeadTasks(newLead);
-      setTasks(prev => [...newTasks, ...prev]);
-      toast({ title: "⚡ Automação", description: `${newTasks.length} tarefas criadas automaticamente.` });
+        if (error) throw error;
+        setLeads(prev => [data as Lead, ...prev]);
+
+        // Generate automation tasks (client-side only for now)
+        const newTasks = generateLeadTasks(data as Lead);
+        setTasks(prev => [...newTasks, ...prev]);
+        toast({ title: "⚡ Automação", description: `${newTasks.length} tarefas criadas automaticamente.` });
+      }
+      setFormOpen(false);
+      toast({ title: editingLead ? "Lead atualizado" : "Lead criado com sucesso" });
+    } catch (err) {
+      console.error("Error saving lead:", err);
+      toast({ variant: "destructive", title: "Erro ao salvar", description: "Ocorreu um problema ao persistir os dados." });
     }
-    setFormOpen(false);
-    toast({ title: editingLead ? "Lead atualizado" : "Lead criado com sucesso" });
   };
 
-  const doAssign = () => {
+  const doAssign = async () => {
     if (!assignOpen || !assignBroker) return;
     const broker = mockBrokers.find(b => b.id === assignBroker);
-    setLeads(prev => prev.map(l => l.id === assignOpen.id ? { ...l, broker_id: assignBroker, broker_name: broker?.name || '' } : l));
-    setAssignOpen(null);
-    setAssignBroker("");
-    toast({ title: "Corretor atribuído com sucesso" });
+    
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({ broker_id: assignBroker, broker_name: broker?.name || '', updated_at: new Date().toISOString() })
+        .eq('id', assignOpen.id);
+      
+      if (error) throw error;
+      
+      setLeads(prev => prev.map(l => l.id === assignOpen.id ? { ...l, broker_id: assignBroker, broker_name: broker?.name || '' } : l));
+      setAssignOpen(null);
+      setAssignBroker("");
+      toast({ title: "Corretor atribuído com sucesso" });
+    } catch (err) {
+      console.error("Error assigning broker:", err);
+      toast({ variant: "destructive", title: "Erro ao atribuir", description: "Não foi possível salvar a alteração." });
+    }
   };
 
-  const convertToDeal = (lead: Lead) => {
-    setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: 'converted' as LeadStatus } : l));
-    toast({ title: `Lead "${lead.name}" convertido em deal`, description: "Acesse o Pipeline para gerenciar o negócio." });
+  const convertToDeal = async (lead: Lead) => {
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({ status: 'converted' as LeadStatus, updated_at: new Date().toISOString() })
+        .eq('id', lead.id);
+      
+      if (error) throw error;
+      
+      setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, status: 'converted' as LeadStatus } : l));
+      toast({ title: `Lead "${lead.name}" convertido em deal`, description: "Acesse o Pipeline para gerenciar o negócio." });
+    } catch (err) {
+      console.error("Error converting lead:", err);
+      toast({ variant: "destructive", title: "Erro ao converter", description: "Não foi possível atualizar o status." });
+    }
   };
 
   // WhatsApp
@@ -199,17 +244,17 @@ export default function Leads() {
     e.target.value = '';
   };
 
-  const importCSV = () => {
+  const importCSV = async () => {
     if (csvPreview.length < 2) return;
     const headers = csvPreview[0].map(h => h.toLowerCase());
     const nameIdx = headers.findIndex(h => h.includes('nome') || h.includes('name'));
     const phoneIdx = headers.findIndex(h => h.includes('telefone') || h.includes('phone'));
     const emailIdx = headers.findIndex(h => h.includes('email'));
     const sourceIdx = headers.findIndex(h => h.includes('origem') || h.includes('source'));
-    const newLeads: Lead[] = csvPreview.slice(1).filter(r => r.length > 1).map((row, i) => {
+    
+    const newLeadsData = csvPreview.slice(1).filter(r => r.length > 1).map((row, i) => {
       const auto = autoAssignBroker();
       return {
-        id: String(Date.now() + i),
         name: row[nameIdx] || row[0] || '',
         phone: row[phoneIdx] || row[1] || '',
         whatsapp: row[phoneIdx] || row[1] || '',
@@ -217,15 +262,29 @@ export default function Leads() {
         source: row[sourceIdx] || 'CSV Import',
         broker_id: auto.id,
         broker_name: auto.name,
-        created_at: new Date().toISOString().slice(0, 10),
-        status: 'new' as LeadStatus,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        status: 'new',
         notes: 'Importado via CSV - auto-atribuído',
       };
     });
-    setLeads(prev => [...newLeads, ...prev]);
-    setCsvOpen(false);
-    setCsvPreview([]);
-    toast({ title: `${newLeads.length} leads importados e auto-atribuídos` });
+
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(newLeadsData)
+        .select();
+
+      if (error) throw error;
+
+      setLeads(prev => [...(data as Lead[]), ...prev]);
+      setCsvOpen(false);
+      setCsvPreview([]);
+      toast({ title: `${data?.length} leads importados e auto-atribuídos` });
+    } catch (err) {
+      console.error("Error importing CSV:", err);
+      toast({ variant: "destructive", title: "Erro na importação", description: "Não foi possível salvar os leads no banco de dados." });
+    }
   };
 
   // Metrics
