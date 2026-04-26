@@ -95,6 +95,28 @@ export default function Pipeline() {
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
 
+  // ── Brokers state ──
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [loadingBrokers, setLoadingBrokers] = useState(true);
+
+  const fetchBrokers = useCallback(async () => {
+    setLoadingBrokers(true);
+    try {
+      const { data, error } = await supabase.from('brokers').select('*').order('name');
+      if (error) throw error;
+      setBrokers(data || []);
+    } catch (error) {
+      console.error('Error fetching brokers:', error);
+      toast({ title: "Erro ao carregar corretores", variant: "destructive" });
+    } finally {
+      setLoadingBrokers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBrokers();
+  }, [fetchBrokers]);
+
   // ── Deals state ──
   const [deals, setDeals] = useState<PipelineDeal[]>(initialDeals);
   const [search, setSearch] = useState("");
