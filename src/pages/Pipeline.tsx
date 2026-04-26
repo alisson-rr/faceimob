@@ -133,10 +133,10 @@ export default function Pipeline() {
         .from('deals')
         .select(`
           *,
-          broker1:broker1_id(name),
-          broker2:broker2_id(name),
-          manager1:manager1_id(name),
-          manager2:manager2_id(name)
+          broker1:brokers!deals_broker1_id_fkey(name),
+          broker2:brokers!deals_broker2_id_fkey(name),
+          manager1:brokers!deals_manager1_id_fkey(name),
+          manager2:brokers!deals_manager2_id_fkey(name)
         `)
         .order('created_at', { ascending: false });
 
@@ -144,13 +144,14 @@ export default function Pipeline() {
 
       const mappedDeals: PipelineDeal[] = (data || []).map(d => ({
         ...d,
-        broker1: d.broker1?.name || '',
-        broker2: d.broker2?.name || undefined,
-        manager1: d.manager1?.name || '',
-        manager2: d.manager2?.name || undefined,
+        broker1: (d.broker1 as any)?.name || '',
+        broker2: (d.broker2 as any)?.name || undefined,
+        manager1: (d.manager1 as any)?.name || '',
+        manager2: (d.manager2 as any)?.name || undefined,
+        visit_result: d.visit_result as "pending" | "completed" | "cancelled" | undefined,
         days_in_pipeline: differenceInDays(new Date(), parseISO(d.created_at || new Date().toISOString())),
         history: d.history ? (d.history as any) : []
-      }));
+      })) as PipelineDeal[];
 
       setDeals(mappedDeals);
     } catch (error) {
