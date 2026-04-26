@@ -178,7 +178,7 @@ export default function Pipeline() {
   const [clientName2Filter, setClientName2Filter] = useState("");
   const [cpfFilter, setCpfFilter] = useState("");
   const [cpf2Filter, setCpf2Filter] = useState("");
-  const [monthFilter, setMonthFilter] = useState(format(new Date(), "MM/yyyy"));
+  const [monthFilter, setMonthFilter] = useState("all");
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [viewMode, setViewMode] = useState<"kanban" | "table">("table");
   const [page, setPage] = useState(1);
@@ -339,17 +339,19 @@ export default function Pipeline() {
   const filtered = useMemo(() => {
     return deals.filter((d) => {
       const s = search.toLowerCase();
-      const matchSearch = !s || d.client.toLowerCase().includes(s) || d.project.toLowerCase().includes(s) || d.broker1.toLowerCase().includes(s);
+      const matchSearch = !s || d.client.toLowerCase().includes(s) || (d.project?.toLowerCase() || "").includes(s) || (d.broker1?.toLowerCase() || "").includes(s);
       const matchDev = developerFilter === "all" || d.developer === developerFilter;
       const matchBroker = brokerFilter === "all" || d.broker1 === brokerFilter;
       const matchStage = stageFilter === "all" || d.stage === stageFilter;
       const matchStatus2 = status2Filter === "all" || d.stage === status2Filter;
       const matchManager = managerFilter === "all" || d.manager1 === managerFilter;
       const matchClient = !clientNameFilter || d.client.toLowerCase().includes(clientNameFilter.toLowerCase());
-      return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient;
+      const dealMonth = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : "");
+      const matchMonth = monthFilter === "all" || dealMonth === monthFilter;
+      return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient && matchMonth;
     }).sort((a, b) => {
       // Sort by developer first, then by stage index
-      const devCmp = a.developer.localeCompare(b.developer);
+      const devCmp = (a.developer || "").localeCompare(b.developer || "");
       if (devCmp !== 0) return devCmp;
       const stageOrder = DEAL_STAGES.map(s => s.value);
       return stageOrder.indexOf(a.stage) - stageOrder.indexOf(b.stage);
@@ -377,7 +379,7 @@ export default function Pipeline() {
 
   // ── Deal metrics ──
   const activeDeals = deals.filter((d) => d.active).length;
-  const totalVGV = deals.filter((d) => d.active).reduce((a, d) => a + d.deal_value, 0);
+  const totalVGV = deals.filter((d) => d.active).reduce((a, d) => a + (d.deal_value || 0), 0);
 
   // ── Lead metrics ──
   const totalLeads = leads.length;
