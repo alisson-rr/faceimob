@@ -427,11 +427,15 @@ export default function Pipeline() {
   const proposalsPeriod = deals.filter((d) => d.stage === "proposal" && d.active).length;
   const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
   const avgDaysInPipeline = activeDeals ? deals.filter((d) => d.active).reduce((a, d) => a + d.days_in_pipeline, 0) / activeDeals : 0;
-  const brokerDeals = mockBrokers.map((b) => ({
+  const brokerDeals = brokers.map((b) => ({
     name: b.name,
     count: deals.filter((d) => d.broker1 === b.name && d.active).length,
   })).sort((a, b) => b.count - a.count);
-  const leaderboard = [...mockGamification].sort((a, b) => b.points - a.points).slice(0, 3);
+  const leaderboard = brokers.slice(0, 3).map((b, i) => ({
+    id: b.id,
+    user_name: b.name,
+    points: 1000 - (i * 100), // Placeholder logic
+  }));
   const medals = ["🥇", "🥈", "🥉"];
   const medalBgs = [
     "border-amber-500/40 bg-gradient-to-r from-amber-900/20 to-transparent",
