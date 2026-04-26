@@ -32,7 +32,7 @@ export default function Dashboard() {
 
         const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
           ...d,
-          broker1: (d.broker1 as any)?.name || d.client?.split(' - ')[1] || 'Broker Indefinido',
+          broker1: (d.broker1 as any)?.name || 'Sem Corretor',
           broker2: (d.broker2 as any)?.name || undefined,
         })) as any[];
 
