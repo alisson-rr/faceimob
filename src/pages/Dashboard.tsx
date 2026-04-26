@@ -42,7 +42,7 @@ export default function Dashboard() {
           
           return {
             ...d,
-            broker1: (d.broker1 as any)?.name || d.broker_name || 'Sem Corretor',
+            broker1: (d.broker1 as any)?.name || (d as any).broker_name || 'Sem Corretor',
             broker2: (d.broker2 as any)?.name || undefined,
             month_base: monthBase
           };
