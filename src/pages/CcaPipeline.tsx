@@ -46,23 +46,44 @@ const stageLabels: Record<CcaStage, string> = {
 };
 
 export default function CcaPipeline() {
-  // Filter deals that require CCA (from ccaDevelopers)
-  const initialCcaDeals: CcaDeal[] = useMemo(() =>
-    mockDeals
-      .filter(d => ccaDevelopers.includes(d.developer) && d.active)
-      .map(d => ({
-        dealId: d.id,
-        client: d.client,
-        developer: d.developer,
-        project: d.project,
-        broker: d.broker1,
-        value: d.deal_value,
-        stage: 'credit_analysis' as CcaStage,
-        notes: '',
-      })),
-  []);
+  const [deals, setDeals] = useState<CcaDeal[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [deals, setDeals] = useState<CcaDeal[]>(initialCcaDeals);
+  useEffect(() => {
+    async function fetchCcaDeals() {
+      setLoading(true);
+      try {
+        // Fetch deals from developers handled by CCA
+        const { data, error } = await supabase
+          .from('deals')
+          .select(`
+            *,
+            broker1:brokers!deals_broker1_id_fkey(name)
+          `)
+          .in('developer', ccaDevelopers)
+          .eq('active', true);
+
+        if (error) throw error;
+
+        const mapped: CcaDeal[] = (data || []).map(d => ({
+          dealId: d.id,
+          client: d.client,
+          developer: d.developer || '',
+          project: d.project || '',
+          broker: (d.broker1 as any)?.name || '',
+          value: d.deal_value || 0,
+          stage: 'credit_analysis' as CcaStage,
+          notes: d.notes || '',
+        }));
+        setDeals(mapped);
+      } catch (err) {
+        console.error("Error fetching CCA deals:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCcaDeals();
+  }, []);
   const [actionDeal, setActionDeal] = useState<CcaDeal | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | 'request_docs' | 'send_agency' | null>(null);
   const [actionNotes, setActionNotes] = useState("");
@@ -117,7 +138,7 @@ export default function CcaPipeline() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold">Pipeline CCA</h1>
-        <p className="text-xs text-muted-foreground">Correspondente Bancário — Workflow de Aprovação de Crédito</p>
+        <p className="text-xs text-muted-foreground">Correspondente Bancário {loading && "• Carregando..."}</p>
       </div>
 
       {/* Metrics */}

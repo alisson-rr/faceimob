@@ -36,7 +36,24 @@ const emptyLead = {
 };
 
 export default function Leads() {
-  const [leads, setLeads] = useState<Lead[]>(initialLeads);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchLeads() {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        setLeads(data as Lead[]);
+      } catch (err) {
+        console.error("Error fetching leads:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchLeads();
+  }, []);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -223,7 +240,7 @@ export default function Leads() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">Leads <Zap className="h-5 w-5 text-primary" /></h1>
-          <p className="text-muted-foreground">{filtered.length} de {totalLeads} leads • {pendingTasks} tarefas pendentes</p>
+          <p className="text-muted-foreground">{filtered.length} de {totalLeads} leads {loading && "• Carregando..."}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSVFile} />
