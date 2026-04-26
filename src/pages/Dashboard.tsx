@@ -66,10 +66,7 @@ export default function Dashboard() {
 
   const filteredDeals = useMemo(() => {
     if (selectedMonth === "all") return deals;
-    return deals.filter(d => {
-      const month = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null);
-      return month === selectedMonth;
-    });
+    return deals.filter(d => d.month_base === selectedMonth);
   }, [deals, selectedMonth]);
 
   const stats = useMemo(() => {
