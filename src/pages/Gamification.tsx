@@ -129,7 +129,13 @@ export default function Gamification() {
     try {
       const [brokersRes, dealsRes] = await Promise.all([
         supabase.from('brokers').select('*').order('name'),
-        supabase.from('deals').select('*')
+        supabase.from('deals').select(`
+          *,
+          broker1:brokers!deals_broker1_id_fkey(name),
+          broker2:brokers!deals_broker2_id_fkey(name),
+          manager1:brokers!deals_manager1_id_fkey(name),
+          manager2:brokers!deals_manager2_id_fkey(name)
+        `)
       ]);
 
       if (brokersRes.error) throw brokersRes.error;
@@ -144,8 +150,17 @@ export default function Gamification() {
         team: 'Default'
       }));
 
+      const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
+        ...d,
+        broker1: (d.broker1 as any)?.name || '',
+        broker2: (d.broker2 as any)?.name || undefined,
+        manager1: (d.manager1 as any)?.name || '',
+        manager2: (d.manager2 as any)?.name || undefined,
+        days_in_pipeline: differenceInDays(new Date(), parseISO(d.created_at || new Date().toISOString())),
+      })) as any[];
+
       setBrokers(mappedBrokers);
-      setDeals(dealsRes.data as PipelineDeal[]);
+      setDeals(mappedDeals);
     } catch (error) {
       console.error('Error fetching game data:', error);
       toast({ title: "Erro ao carregar dados do Game", variant: "destructive" });
