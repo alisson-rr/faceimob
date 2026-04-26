@@ -108,7 +108,7 @@ export default function Pipeline() {
       const mappedBrokers: Broker[] = (data || []).map(b => ({
         id: b.id,
         name: b.name,
-        active: true, // DB column doesn't exist yet, defaulting
+        active: true,
         monthly_sales: 0,
         monthly_vgv: 0,
         team: 'Default'
@@ -117,18 +117,55 @@ export default function Pipeline() {
       setBrokers(mappedBrokers);
     } catch (error) {
       console.error('Error fetching brokers:', error);
-      toast({ title: "Erro ao carregar corretores", variant: "destructive" });
     } finally {
       setLoadingBrokers(false);
     }
   }, []);
 
+  // ── Deals state ──
+  const [deals, setDeals] = useState<PipelineDeal[]>([]);
+  const [loadingDeals, setLoadingDeals] = useState(true);
+
+  const fetchDeals = useCallback(async () => {
+    setLoadingDeals(true);
+    try {
+      const { data, error } = await supabase
+        .from('deals')
+        .select(`
+          *,
+          broker1:broker1_id(name),
+          broker2:broker2_id(name),
+          manager1:manager1_id(name),
+          manager2:manager2_id(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const mappedDeals: PipelineDeal[] = (data || []).map(d => ({
+        ...d,
+        broker1: d.broker1?.name || '',
+        broker2: d.broker2?.name || undefined,
+        manager1: d.manager1?.name || '',
+        manager2: d.manager2?.name || undefined,
+        days_in_pipeline: differenceInDays(new Date(), parseISO(d.created_at || new Date().toISOString())),
+        history: d.history ? (d.history as any) : []
+      }));
+
+      setDeals(mappedDeals);
+    } catch (error) {
+      console.error('Error fetching deals:', error);
+      toast({ title: "Erro ao carregar negócios", variant: "destructive" });
+    } finally {
+      setLoadingDeals(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchBrokers();
-  }, [fetchBrokers]);
+    fetchDeals();
+  }, [fetchBrokers, fetchDeals]);
 
-  // ── Deals state ──
-  const [deals, setDeals] = useState<PipelineDeal[]>(initialDeals);
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [developerFilter, setDeveloperFilter] = useState("all");
