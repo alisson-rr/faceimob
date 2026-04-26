@@ -12,12 +12,13 @@ export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("04/2026");
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
+        console.log("Fetching dashboard data...");
         const [dealsRes, brokersRes] = await Promise.all([
           supabase.from('deals').select(`
             *,
@@ -30,15 +31,41 @@ export default function Dashboard() {
         if (dealsRes.error) throw dealsRes.error;
         if (brokersRes.error) throw brokersRes.error;
 
-        const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
-          ...d,
-          broker1: (d.broker1 as any)?.name || 'Sem Corretor',
-          broker2: (d.broker2 as any)?.name || undefined,
-          month_base: d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : null)
-        })) as any[];
+        console.log("Deals fetched:", dealsRes.data?.length);
+
+        const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => {
+          const deal = d as any;
+          let monthBase = deal.month_base;
+          
+          if (!monthBase && deal.created_at) {
+            monthBase = format(parseISO(deal.created_at), "MM/yyyy");
+          }
+          
+          return {
+            ...deal,
+            broker1: deal.broker1?.name || deal.broker_name || 'Sem Corretor',
+            broker2: deal.broker2?.name || undefined,
+            month_base: monthBase
+          } as unknown as PipelineDeal;
+        });
 
         setDeals(mappedDeals);
         setBrokers(brokersRes.data || []);
+
+        // Define o mês atual como padrão se houver dados para ele
+        const currentMonthStr = format(new Date(), "MM/yyyy");
+        const hasCurrentMonth = mappedDeals.some(d => d.month_base === currentMonthStr);
+        if (hasCurrentMonth) {
+          setSelectedMonth(currentMonthStr);
+        } else if (mappedDeals.length > 0) {
+          // Se não tiver mês atual, pega o mês mais recente disponível
+          const sortedMonths = [...new Set(mappedDeals.map(d => d.month_base).filter(Boolean))].sort((a, b) => {
+            const [m1, y1] = a!.split("/").map(Number);
+            const [m2, y2] = b!.split("/").map(Number);
+            return y2 - y1 || m2 - m1;
+          });
+          if (sortedMonths[0]) setSelectedMonth(sortedMonths[0]!);
+        }
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
       } finally {
@@ -123,7 +150,6 @@ export default function Dashboard() {
     });
 
     const generalRanking = Object.values(brokerStats)
-      .filter(b => b.leads > 0 || b.vendas > 0 || b.neg > 0) // Only show brokers with activity
       .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv)
       .slice(0, 10);
 
