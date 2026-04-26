@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import DealDetailModal from "@/components/DealDetailModal";
@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { mockDeals as initialDeals, mockBrokers, mockManagers, mockDevelopers, mockProjects, mockGamification, mockLeads as initialLeads, mockSources } from "@/data/mockData";
-import { DEAL_STAGES, type PipelineDeal, type DealStage, LEAD_STATUSES, type Lead, type LeadStatus } from "@/types/crm";
+import { mockDeals as initialDeals, mockDevelopers, mockProjects, mockGamification, mockLeads as initialLeads, mockSources } from "@/data/mockData";
+import { DEAL_STAGES, type PipelineDeal, type DealStage, LEAD_STATUSES, type Lead, type LeadStatus, type Broker } from "@/types/crm";
 import { calcDealProbability } from "@/lib/aiAnalytics";
 import {
   Plus, Download, Search, Filter, Calendar as CalendarIcon,
@@ -19,12 +19,13 @@ import {
   CalendarCheck, StickyNote, AlertCircle, ChevronRight,
   ChevronLeft, Trophy, LayoutGrid, List, LogIn, Users,
   ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus,
-  Lock, AlertTriangle, Target
+  Lock, AlertTriangle, Target, RefreshCw
 } from "lucide-react";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 // ── Developer color map (distinct colors per developer) ──
 const developerColors: Record<string, string> = {
