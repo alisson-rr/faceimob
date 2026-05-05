@@ -79,7 +79,17 @@ export default function CcaPipeline() {
 
       const mapped: CcaDeal[] = (dealsData || []).map(d => {
         const cca = (ccaDeals || []).find(c => c.deal_id === d.id);
-        const stage = stagesData?.find(s => s.name === cca?.status) || stagesData?.[0];
+        
+        // Map enum to stage name
+        const statusMap: Record<string, string> = {
+          'credit_analysis': 'Análise de Crédito',
+          'pending_documents': 'Pendente',
+          'approved': 'Aprovado Total',
+          'sent_to_agency': 'Enviado à Agência'
+        };
+
+        const currentStatusName = cca?.status ? (statusMap[cca.status] || cca.status) : 'Análise de Crédito';
+        const stage = stagesData?.find(s => s.name === currentStatusName) || stagesData?.[0];
         
         return {
           dealId: d.id,
