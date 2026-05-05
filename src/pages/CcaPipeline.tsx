@@ -35,7 +35,7 @@ interface CcaDeal {
 }
 
 // Developers handled by internal CCA
-const ccaDevelopers = ['MRV', 'Tenda', 'Direcional'];
+const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
 export default function CcaPipeline() {
   const [deals, setDeals] = useState<CcaDeal[]>([]);
