@@ -90,6 +90,42 @@ interface QueueBroker {
   checkedInAt: string;
 }
 
+function CcaStatusBadge({ dealId }: { dealId: string }) {
+  const [status, setStatus] = useState<string | null>(null);
+  const [stages, setStages] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function getStatus() {
+      const { data: ccaData } = await supabase
+        .from('cca_deals' as any)
+        .select('status')
+        .eq('deal_id', dealId)
+        .maybeSingle();
+      
+      if (ccaData) setStatus((ccaData as any).status);
+
+      const { data: stagesData } = await supabase
+        .from('cca_stages' as any)
+        .select('*');
+      
+      if (stagesData) setStages(stagesData);
+    }
+    getStatus();
+  }, [dealId]);
+
+  if (!status) return null;
+
+  const stage = stages.find(s => s.name === status);
+  const colorClass = stage?.color || "text-primary";
+
+  return (
+    <div className="flex items-center gap-1 mt-0.5 border-t border-border/10 pt-0.5">
+      <div className={cn("h-1.5 w-1.5 rounded-full", colorClass.replace('text-', 'bg-'))} />
+      <span className={cn("text-[8px] font-bold uppercase", colorClass)}>{status}</span>
+    </div>
+  );
+}
+
 export default function Pipeline() {
   const { role } = useAuth();
   // ── Tab state ──

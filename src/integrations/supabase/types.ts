@@ -95,6 +95,33 @@ export type Database = {
         }
         Relationships: []
       }
+      cca_stages: {
+        Row: {
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          order: number | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          order?: number | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          order?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       deals: {
         Row: {
           active: boolean | null
