@@ -102,7 +102,7 @@ function CcaStatusBadge({ dealId }: { dealId: string }) {
         .eq('deal_id', dealId)
         .maybeSingle();
       
-      if (ccaData) setStatus(ccaData.status);
+      if (ccaData) setStatus((ccaData as any).status);
 
       const { data: stagesData } = await supabase
         .from('cca_stages' as any)
