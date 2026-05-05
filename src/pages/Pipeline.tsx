@@ -27,6 +27,8 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 
+const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
+
 // ── Developer color map (distinct colors per developer) ──
 const developerColors: Record<string, string> = {
   Cyrela: "bg-teal-600",
@@ -427,14 +429,49 @@ export default function Pipeline() {
   const onDragStart = useCallback((dealId: string) => setDraggedDeal(dealId), []);
   const onDragEnd = useCallback(() => { setDraggedDeal(null); setDragOverStage(null); }, []);
   const onDragOver = useCallback((e: React.DragEvent, stage: DealStage) => { e.preventDefault(); setDragOverStage(stage); }, []);
-  const onDrop = useCallback((stage: DealStage) => {
+  const onDrop = useCallback(async (stage: DealStage) => {
     if (draggedDeal) {
+      const deal = deals.find(d => d.id === draggedDeal);
+      if (!deal) return;
+
+      const oldStage = deal.stage;
+      
+      // Update local state
       setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage } : d));
-      toast({ title: `Deal movido para ${DEAL_STAGES.find((s) => s.value === stage)?.label}` });
+      
+      // Update Supabase
+      try {
+        const { error } = await supabase
+          .from('deals')
+          .update({ stage })
+          .eq('id', draggedDeal);
+        
+        if (error) throw error;
+
+        // Auto-duplicate to CCA if moved to under_analysis and is a CCA developer
+        if (stage === 'under_analysis' && oldStage !== 'under_analysis' && ccaDevelopers.includes(deal.developer || '')) {
+          const { error: ccaError } = await supabase
+            .from('cca_deals' as any)
+            .insert({
+              deal_id: draggedDeal,
+              status: 'credit_analysis',
+              notes: 'Movido automaticamente do pipeline principal'
+            } as any);
+          
+          if (!ccaError) {
+            toast({ title: "Enviado para o Pipeline CCA" });
+          }
+        }
+
+        toast({ title: `Deal movido para ${DEAL_STAGES.find((s) => s.value === stage)?.label}` });
+      } catch (err) {
+        console.error("Error updating deal stage:", err);
+        toast({ variant: "destructive", title: "Erro ao salvar", description: "O status não foi atualizado no servidor." });
+      }
     }
     setDraggedDeal(null);
     setDragOverStage(null);
-  }, [draggedDeal]);
+  }, [draggedDeal, deals]);
 
   const openNewDeal = () => { setEditingDeal(null); setFormData(emptyDeal); setDealFormOpen(true); };
   const openEditDeal = (deal: PipelineDeal) => { setEditingDeal(deal); setFormData(deal); setDealFormOpen(true); };
