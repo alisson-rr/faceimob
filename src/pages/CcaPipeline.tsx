@@ -129,13 +129,13 @@ export default function CcaPipeline() {
 
     try {
       const { error } = await supabase
-        .from('cca_deals')
+        .from('cca_deals' as any)
         .upsert({
           deal_id: actionDeal.dealId,
           status: targetStage.name,
           notes: actionNotes,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'deal_id' });
+        } as any, { onConflict: 'deal_id' });
 
       if (error) throw error;
 
