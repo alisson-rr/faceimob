@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { type DealStage } from "@/types/crm";
 import {
   FileCheck, FileX, FilePlus, Send, AlertCircle,
   CheckCircle, Clock, XCircle, Building2, User, DollarSign,
