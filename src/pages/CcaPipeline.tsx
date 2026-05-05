@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { type DealStage } from "@/types/crm";
 import {
   FileCheck, FileX, FilePlus, Send, AlertCircle,
   CheckCircle, Clock, XCircle, Building2, User, DollarSign,
@@ -159,6 +160,23 @@ export default function CcaPipeline() {
         } as any, { onConflict: 'deal_id' });
 
       if (error) throw error;
+
+      // UPDATE MAIN PIPELINE STATUS
+      // If approved total -> set main deal to approved
+      // If approved cond -> set main deal to contract
+      // If sent to agency -> set main deal to closed (optional, depends on workflow)
+      let mainStageUpdate: DealStage | null = null;
+      if (targetStage.name === 'Aprovado Total') mainStageUpdate = 'approved';
+      else if (targetStage.name === 'Aprovado Cond') mainStageUpdate = 'contract';
+      
+      if (mainStageUpdate) {
+        await supabase
+          .from('deals')
+          .update({ stage: mainStageUpdate })
+          .eq('id', actionDeal.dealId);
+        
+        toast({ title: "Status do Pipeline atualizado" });
+      }
 
       setDeals(prev => prev.map(d =>
         d.dealId === actionDeal.dealId ? { ...d, stageId: targetStage.id, stageName: targetStage.name, notes: actionNotes } : d
