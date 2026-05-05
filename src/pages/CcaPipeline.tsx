@@ -35,7 +35,7 @@ interface CcaDeal {
 }
 
 // Developers handled by internal CCA
-const ccaDevelopers = ['MRV', 'Tenda', 'Direcional'];
+const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
 export default function CcaPipeline() {
   const [deals, setDeals] = useState<CcaDeal[]>([]);
@@ -79,7 +79,17 @@ export default function CcaPipeline() {
 
       const mapped: CcaDeal[] = (dealsData || []).map(d => {
         const cca = (ccaDeals || []).find(c => c.deal_id === d.id);
-        const stage = stagesData?.find(s => s.name === cca?.status) || stagesData?.[0];
+        
+        // Map enum to stage name
+        const statusMap: Record<string, string> = {
+          'credit_analysis': 'Análise de Crédito',
+          'pending_documents': 'Pendente',
+          'approved': 'Aprovado Total',
+          'sent_to_agency': 'Enviado à Agência'
+        };
+
+        const currentStatusName = cca?.status ? (statusMap[cca.status] || cca.status) : 'Análise de Crédito';
+        const stage = stagesData?.find(s => s.name === currentStatusName) || stagesData?.[0];
         
         return {
           dealId: d.id,
@@ -128,11 +138,22 @@ export default function CcaPipeline() {
     if (!actionDeal || !targetStage) return;
 
     try {
+      // Map stage name back to enum
+      const nameToEnum: Record<string, string> = {
+        'Análise de Crédito': 'credit_analysis',
+        'Pendente': 'pending_documents',
+        'Aprovado Total': 'approved',
+        'Enviado à Agência': 'sent_to_agency',
+        'Aprovado Cond': 'approved' // Example fallback
+      };
+
+      const statusEnum = nameToEnum[targetStage.name] || 'credit_analysis';
+
       const { error } = await supabase
         .from('cca_deals' as any)
         .upsert({
           deal_id: actionDeal.dealId,
-          status: targetStage.name,
+          status: statusEnum,
           notes: actionNotes,
           updated_at: new Date().toISOString()
         } as any, { onConflict: 'deal_id' });
