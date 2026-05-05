@@ -5,15 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import {
   FileCheck, FileX, FilePlus, Send, AlertCircle,
-  CheckCircle, Clock, XCircle, Building2, User, DollarSign
+  CheckCircle, Clock, XCircle, Building2, User, DollarSign,
+  Plus, Settings, Pencil, Trash2, GripVertical
 } from "lucide-react";
 
-type CcaStage = 'credit_analysis' | 'pending_documents' | 'approved' | 'rejected' | 'sent_to_agency';
+interface CcaStage {
+  id: string;
+  name: string;
+  color: string;
+  order: number;
+}
 
 interface CcaDeal {
   dealId: string;
@@ -22,109 +29,110 @@ interface CcaDeal {
   project: string;
   broker: string;
   value: number;
-  stage: CcaStage;
+  stageId: string;
+  stageName: string;
   notes: string;
 }
-
-const CCA_STAGES: { value: CcaStage; label: string; icon: React.ElementType; color: string; bg: string }[] = [
-  { value: 'credit_analysis', label: 'Análise de Crédito', icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
-  { value: 'pending_documents', label: 'Pendência de Documentos', icon: FilePlus, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' },
-  { value: 'approved', label: 'Aprovado', icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' },
-  { value: 'rejected', label: 'Rejeitado', icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' },
-  { value: 'sent_to_agency', label: 'Enviado à Agência', icon: Send, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
-];
 
 // Developers handled by internal CCA
 const ccaDevelopers = ['MRV', 'Tenda', 'Direcional'];
 
-const stageLabels: Record<CcaStage, string> = {
-  credit_analysis: 'Análise de Crédito',
-  pending_documents: 'Pendência Docs',
-  approved: 'Aprovado',
-  rejected: 'Rejeitado',
-  sent_to_agency: 'Enviado Agência',
-};
-
 export default function CcaPipeline() {
   const [deals, setDeals] = useState<CcaDeal[]>([]);
+  const [stages, setStages] = useState<CcaStage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showStageSettings, setShowStageSettings] = useState(false);
+  const [editingStage, setEditingStage] = useState<CcaStage | null>(null);
+  const [newStageName, setNewStageName] = useState("");
+  const [newStageColor, setNewStageColor] = useState("text-primary");
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // Fetch stages
+      const { data: stagesData, error: stagesError } = await supabase
+        .from('cca_stages')
+        .select('*')
+        .order('order');
+      
+      if (stagesError) throw stagesError;
+      setStages(stagesData || []);
+
+      // Fetch CCA deals status
+      const { data: ccaDeals, error: ccaError } = await supabase
+        .from('cca_deals')
+        .select('*');
+
+      if (ccaError) throw ccaError;
+
+      // Fetch relevant deals
+      const { data: dealsData, error: dealsError } = await supabase
+        .from('deals')
+        .select(`
+          *,
+          broker1:brokers!deals_broker1_id_fkey(name)
+        `)
+        .in('developer', ccaDevelopers)
+        .eq('active', true);
+
+      if (dealsError) throw dealsError;
+
+      const mapped: CcaDeal[] = (dealsData || []).map(d => {
+        const cca = (ccaDeals || []).find(c => c.deal_id === d.id);
+        const stage = stagesData?.find(s => s.name === cca?.status) || stagesData?.[0];
+        
+        return {
+          dealId: d.id,
+          client: d.client,
+          developer: d.developer || '',
+          project: d.project || '',
+          broker: (d.broker1 as any)?.name || '',
+          value: d.deal_value || 0,
+          stageId: stage?.id || '',
+          stageName: stage?.name || 'Análise de Crédito',
+          notes: cca?.notes || d.notes || '',
+        };
+      });
+      setDeals(mapped);
+    } catch (err) {
+      console.error("Error fetching CCA data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchCcaDeals() {
-      setLoading(true);
-      try {
-        const { data: ccaDeals, error: ccaError } = await supabase
-          .from('cca_deals')
-          .select('*');
-
-        if (ccaError) throw ccaError;
-
-        const { data: dealsData, error: dealsError } = await supabase
-          .from('deals')
-          .select(`
-            *,
-            broker1:brokers!deals_broker1_id_fkey(name)
-          `)
-          .in('developer', ccaDevelopers)
-          .eq('active', true);
-
-        if (dealsError) throw dealsError;
-
-        const mapped: CcaDeal[] = (dealsData || []).map(d => {
-          const cca = (ccaDeals || []).find(c => c.deal_id === d.id);
-          return {
-            dealId: d.id,
-            client: d.client,
-            developer: d.developer || '',
-            project: d.project || '',
-            broker: (d.broker1 as any)?.name || '',
-            value: d.deal_value || 0,
-            stage: (cca?.status as CcaStage) || 'credit_analysis',
-            notes: cca?.notes || d.notes || '',
-          };
-        });
-        setDeals(mapped);
-      } catch (err) {
-        console.error("Error fetching CCA deals:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchCcaDeals();
+    fetchData();
   }, []);
+
   const [actionDeal, setActionDeal] = useState<CcaDeal | null>(null);
-  const [actionType, setActionType] = useState<'approve' | 'reject' | 'request_docs' | 'send_agency' | null>(null);
+  const [targetStage, setTargetStage] = useState<CcaStage | null>(null);
   const [actionNotes, setActionNotes] = useState("");
 
   const dealsByStage = useMemo(() => {
-    const map: Record<CcaStage, CcaDeal[]> = {
-      credit_analysis: [], pending_documents: [], approved: [], rejected: [], sent_to_agency: [],
-    };
-    deals.forEach(d => map[d.stage]?.push(d));
+    const map: Record<string, CcaDeal[]> = {};
+    stages.forEach(s => map[s.id] = []);
+    deals.forEach(d => {
+      if (map[d.stageId]) map[d.stageId].push(d);
+    });
     return map;
-  }, [deals]);
+  }, [deals, stages]);
 
-  const handleAction = (deal: CcaDeal, type: typeof actionType) => {
+  const handleAction = (deal: CcaDeal, stage: CcaStage) => {
     setActionDeal(deal);
-    setActionType(type);
-    setActionNotes("");
+    setTargetStage(stage);
+    setActionNotes(deal.notes || "");
   };
 
   const confirmAction = async () => {
-    if (!actionDeal || !actionType) return;
-    const newStage: CcaStage =
-      actionType === 'approve' ? 'approved' :
-      actionType === 'reject' ? 'rejected' :
-      actionType === 'request_docs' ? 'pending_documents' :
-      'sent_to_agency';
+    if (!actionDeal || !targetStage) return;
 
     try {
-      // Upsert into cca_deals
       const { error } = await supabase
         .from('cca_deals')
         .upsert({
           deal_id: actionDeal.dealId,
-          status: newStage,
+          status: targetStage.name,
           notes: actionNotes,
           updated_at: new Date().toISOString()
         }, { onConflict: 'deal_id' });
@@ -132,69 +140,94 @@ export default function CcaPipeline() {
       if (error) throw error;
 
       setDeals(prev => prev.map(d =>
-        d.dealId === actionDeal.dealId ? { ...d, stage: newStage, notes: actionNotes } : d
+        d.dealId === actionDeal.dealId ? { ...d, stageId: targetStage.id, stageName: targetStage.name, notes: actionNotes } : d
       ));
 
-      const labels = {
-        approve: 'Crédito aprovado',
-        reject: 'Crédito rejeitado',
-        request_docs: 'Documentos solicitados',
-        send_agency: 'Enviado à agência',
-      };
-      toast({ title: labels[actionType], description: `${actionDeal.client} - ${actionDeal.developer}` });
+      toast({ title: "Status atualizado", description: `${actionDeal.client} movido para ${targetStage.name}` });
       setActionDeal(null);
-      setActionType(null);
+      setTargetStage(null);
     } catch (err) {
       console.error("Error updating CCA stage:", err);
-      toast({ variant: "destructive", title: "Erro ao salvar", description: "Não foi possível atualizar o status no CCA." });
+      toast({ variant: "destructive", title: "Erro ao salvar", description: "Não foi possível atualizar o status." });
     }
   };
 
-  const metrics = [
-    { label: 'Em Análise', value: dealsByStage.credit_analysis.length, color: 'text-amber-400' },
-    { label: 'Pendência Docs', value: dealsByStage.pending_documents.length, color: 'text-blue-400' },
-    { label: 'Aprovados', value: dealsByStage.approved.length, color: 'text-emerald-400' },
-    { label: 'Rejeitados', value: dealsByStage.rejected.length, color: 'text-red-400' },
-    { label: 'Na Agência', value: dealsByStage.sent_to_agency.length, color: 'text-purple-400' },
-  ];
+  const handleSaveStage = async () => {
+    if (!newStageName) return;
+    try {
+      if (editingStage) {
+        const { error } = await supabase
+          .from('cca_stages')
+          .update({ name: newStageName, color: newStageColor })
+          .eq('id', editingStage.id);
+        if (error) throw error;
+        toast({ title: "Estágio atualizado" });
+      } else {
+        const { error } = await supabase
+          .from('cca_stages')
+          .insert({ name: newStageName, color: newStageColor, order: stages.length });
+        if (error) throw error;
+        toast({ title: "Estágio criado" });
+      }
+      setNewStageName("");
+      setEditingStage(null);
+      fetchData();
+    } catch (err) {
+      console.error("Error saving stage:", err);
+    }
+  };
+
+  const handleDeleteStage = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este estágio?")) return;
+    try {
+      const { error } = await supabase.from('cca_stages').delete().eq('id', id);
+      if (error) throw error;
+      toast({ title: "Estágio excluído" });
+      fetchData();
+    } catch (err) {
+      console.error("Error deleting stage:", err);
+    }
+  };
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold">Pipeline CCA</h1>
-        <p className="text-xs text-muted-foreground">Correspondente Bancário {loading && "• Carregando..."}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold">Pipeline CCA</h1>
+          <p className="text-xs text-muted-foreground">Correspondente Bancário {loading && "• Carregando..."}</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setShowStageSettings(true)}>
+          <Settings className="h-4 w-4 mr-2" /> Gerenciar Estágios
+        </Button>
       </div>
 
-      {/* Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {metrics.map(m => (
-          <Card key={m.label} className="border-border/50 bg-card/70">
+        {stages.map(s => (
+          <Card key={s.id} className="border-border/50 bg-card/70">
             <CardContent className="p-3 text-center">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{m.label}</span>
-              <p className={cn("text-2xl font-bold", m.color)}>{m.value}</p>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.name}</span>
+              <p className={cn("text-2xl font-bold", s.color)}>{dealsByStage[s.id]?.length || 0}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Kanban */}
       <div className="overflow-x-auto">
         <div className="flex gap-3 min-w-max pb-4">
-          {CCA_STAGES.map(stage => {
-            const stageDeals = dealsByStage[stage.value] || [];
+          {stages.map(stage => {
+            const stageDeals = dealsByStage[stage.id] || [];
             return (
-              <div key={stage.value} className={cn("w-64 flex-shrink-0 rounded-xl border", stage.bg)}>
-                <div className="p-3 flex items-center justify-between">
+              <div key={stage.id} className={cn("w-64 flex-shrink-0 rounded-xl border bg-muted/5 border-border/20")}>
+                <div className="p-3 flex items-center justify-between border-b border-border/10">
                   <div className="flex items-center gap-2">
-                    <stage.icon className={cn("h-4 w-4", stage.color)} />
-                    <span className="text-xs font-semibold">{stage.label}</span>
+                    <div className={cn("h-2 w-2 rounded-full", stage.color.replace('text-', 'bg-'))} />
+                    <span className="text-xs font-semibold">{stage.name}</span>
                   </div>
                   <Badge variant="secondary" className="text-[10px] h-5">{stageDeals.length}</Badge>
                 </div>
                 <div className="p-2 space-y-2 min-h-[200px] max-h-[calc(100vh-350px)] overflow-y-auto">
                   {stageDeals.map(deal => (
-                    <Card key={deal.dealId} className="border-border/40 bg-card hover:border-primary/30 transition-all">
+                    <Card key={deal.dealId} className="border-border/40 bg-card hover:border-primary/30 transition-all group">
                       <CardContent className="p-3 space-y-2">
                         <div className="flex items-start justify-between">
                           <p className="text-xs font-semibold">{deal.client}</p>
@@ -205,38 +238,19 @@ export default function CcaPipeline() {
                           <div className="flex items-center gap-1"><User className="h-3 w-3" />{deal.broker}</div>
                           <div className="flex items-center gap-1"><DollarSign className="h-3 w-3" />R$ {deal.value.toLocaleString('pt-BR')}</div>
                         </div>
-                        {deal.notes && <p className="text-[10px] text-muted-foreground italic border-t border-border/20 pt-1">{deal.notes}</p>}
-
-                        {/* Actions based on stage */}
-                        <div className="flex gap-1 flex-wrap pt-1">
-                          {stage.value === 'credit_analysis' && (
-                            <>
-                              <Button size="sm" variant="outline" className="text-[9px] h-6 px-2" onClick={() => handleAction(deal, 'approve')}>
-                                <CheckCircle className="h-3 w-3 mr-1" /> Aprovar
-                              </Button>
-                              <Button size="sm" variant="outline" className="text-[9px] h-6 px-2" onClick={() => handleAction(deal, 'request_docs')}>
-                                <FilePlus className="h-3 w-3 mr-1" /> Docs
-                              </Button>
-                              <Button size="sm" variant="outline" className="text-[9px] h-6 px-2 text-red-400" onClick={() => handleAction(deal, 'reject')}>
-                                <XCircle className="h-3 w-3 mr-1" /> Rejeitar
-                              </Button>
-                            </>
-                          )}
-                          {stage.value === 'pending_documents' && (
-                            <>
-                              <Button size="sm" variant="outline" className="text-[9px] h-6 px-2" onClick={() => handleAction(deal, 'approve')}>
-                                <CheckCircle className="h-3 w-3 mr-1" /> Aprovar
-                              </Button>
-                              <Button size="sm" variant="outline" className="text-[9px] h-6 px-2 text-red-400" onClick={() => handleAction(deal, 'reject')}>
-                                <XCircle className="h-3 w-3 mr-1" /> Rejeitar
-                              </Button>
-                            </>
-                          )}
-                          {stage.value === 'approved' && (
-                            <Button size="sm" variant="outline" className="text-[9px] h-6 px-2" onClick={() => handleAction(deal, 'send_agency')}>
-                              <Send className="h-3 w-3 mr-1" /> Enviar Agência
+                        
+                        <div className="flex gap-1 flex-wrap pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {stages.filter(s => s.id !== stage.id).map(nextStage => (
+                            <Button 
+                              key={nextStage.id} 
+                              size="sm" 
+                              variant="outline" 
+                              className="text-[8px] h-5 px-1" 
+                              onClick={() => handleAction(deal, nextStage)}
+                            >
+                              Mover p/ {nextStage.name}
                             </Button>
-                          )}
+                          ))}
                         </div>
                       </CardContent>
                     </Card>
@@ -251,25 +265,61 @@ export default function CcaPipeline() {
         </div>
       </div>
 
-      {/* Action Dialog */}
-      <Dialog open={!!actionDeal} onOpenChange={() => { setActionDeal(null); setActionType(null); }}>
+      <Dialog open={showStageSettings} onOpenChange={setShowStageSettings}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Gerenciar Estágios do CCA</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex gap-2">
+              <Input 
+                placeholder="Nome do novo estágio" 
+                value={newStageName} 
+                onChange={e => setNewStageName(e.target.value)} 
+                className="text-xs"
+              />
+              <Select value={newStageColor} onValueChange={setNewStageColor}>
+                <SelectTrigger className="w-[120px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text-amber-400">Amarelo</SelectItem>
+                  <SelectItem value="text-blue-400">Azul</SelectItem>
+                  <SelectItem value="text-emerald-400">Verde</SelectItem>
+                  <SelectItem value="text-red-400">Vermelho</SelectItem>
+                  <SelectItem value="text-purple-400">Roxo</SelectItem>
+                  <SelectItem value="text-primary">Padrao</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" onClick={handleSaveStage}><Plus className="h-4 w-4" /></Button>
+            </div>
+            <div className="space-y-2">
+              {stages.map(s => (
+                <div key={s.id} className="flex items-center justify-between p-2 rounded-lg border border-border/50 bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <GripVertical className="h-3 w-3 text-muted-foreground" />
+                    <span className={cn("text-xs font-medium", s.color)}>{s.name}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setEditingStage(s); setNewStageName(s.name); setNewStageColor(s.color); }}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => handleDeleteStage(s.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!actionDeal} onOpenChange={() => { setActionDeal(null); setTargetStage(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-sm">
-              {actionType === 'approve' && '✅ Aprovar Crédito'}
-              {actionType === 'reject' && '❌ Rejeitar Crédito'}
-              {actionType === 'request_docs' && '📄 Solicitar Documentos'}
-              {actionType === 'send_agency' && '🏦 Enviar à Agência'}
-            </DialogTitle>
+            <DialogTitle className="text-sm">Mover para {targetStage?.name}</DialogTitle>
           </DialogHeader>
           {actionDeal && (
             <div className="space-y-3">
-              <div className="text-xs space-y-1">
-                <p><strong>Cliente:</strong> {actionDeal.client}</p>
-                <p><strong>Construtora:</strong> {actionDeal.developer}</p>
-                <p><strong>Projeto:</strong> {actionDeal.project}</p>
-                <p><strong>Valor:</strong> R$ {actionDeal.value.toLocaleString('pt-BR')}</p>
-              </div>
               <Textarea
                 placeholder="Observações..."
                 value={actionNotes}
@@ -280,7 +330,7 @@ export default function CcaPipeline() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setActionDeal(null); setActionType(null); }}>Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setActionDeal(null)}>Cancelar</Button>
             <Button size="sm" onClick={confirmAction}>Confirmar</Button>
           </DialogFooter>
         </DialogContent>
@@ -288,3 +338,4 @@ export default function CcaPipeline() {
     </div>
   );
 }
+
