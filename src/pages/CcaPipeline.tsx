@@ -138,11 +138,22 @@ export default function CcaPipeline() {
     if (!actionDeal || !targetStage) return;
 
     try {
+      // Map stage name back to enum
+      const nameToEnum: Record<string, string> = {
+        'Análise de Crédito': 'credit_analysis',
+        'Pendente': 'pending_documents',
+        'Aprovado Total': 'approved',
+        'Enviado à Agência': 'sent_to_agency',
+        'Aprovado Cond': 'approved' // Example fallback
+      };
+
+      const statusEnum = nameToEnum[targetStage.name] || 'credit_analysis';
+
       const { error } = await supabase
         .from('cca_deals' as any)
         .upsert({
           deal_id: actionDeal.dealId,
-          status: targetStage.name,
+          status: statusEnum,
           notes: actionNotes,
           updated_at: new Date().toISOString()
         } as any, { onConflict: 'deal_id' });
