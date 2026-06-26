@@ -276,8 +276,8 @@ export default function Gamification() {
         )}
 
         {isAdmin && isCurrentMonth && !isClosed && (
-          <Button variant="destructive" size="sm" onClick={() => setCloseConfirmOpen(true)} className="gap-1">
-            <Target className="h-4 w-4" /> Fechar Game
+          <Button variant="destructive" size="sm" onClick={() => { setPendingScoring(scoring); setCloseConfirmOpen(true); }} className="gap-1">
+            <Target className="h-4 w-4" /> Fechar Gameficação
           </Button>
         )}
 
