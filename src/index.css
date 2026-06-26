@@ -125,6 +125,19 @@
   .pulse-glow {
     animation: pulseGlow 2s ease-in-out infinite;
   }
+  .font-display { font-family: 'Instrument Serif', serif; letter-spacing: -0.02em; }
+  .font-sans-premium { font-family: 'Inter', sans-serif; }
+  .text-balance { text-wrap: balance; }
+  .shadow-premium { box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px -8px rgba(15,23,42,.08), 0 24px 48px -24px rgba(15,23,42,.12); }
+  .shadow-premium-lg { box-shadow: 0 2px 4px rgba(0,0,0,.04), 0 16px 40px -12px rgba(15,23,42,.12), 0 32px 64px -24px rgba(15,23,42,.18); }
+  .gradient-premium { background-image: radial-gradient(1200px 600px at -10% -20%, hsl(217 91% 60% / .08), transparent 60%), radial-gradient(900px 500px at 110% 10%, hsl(36 90% 51% / .07), transparent 60%); }
+  .gradient-accent { background-image: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 45%)); }
+  .gradient-warm { background-image: linear-gradient(135deg, hsl(36 95% 58%), hsl(20 90% 55%)); }
+  .ring-soft { box-shadow: 0 0 0 1px hsl(220 10% 100% / .06), 0 1px 0 hsl(220 10% 100% / .04) inset; }
+  .stagger-1 { animation-delay: 60ms; } .stagger-2 { animation-delay: 120ms; }
+  .stagger-3 { animation-delay: 180ms; } .stagger-4 { animation-delay: 240ms; }
+  .stagger-5 { animation-delay: 300ms; } .stagger-6 { animation-delay: 360ms; }
+  .ease-premium { transition-timing-function: cubic-bezier(.22,1,.36,1); }
 }
 
 @keyframes shimmer {
