@@ -888,7 +888,11 @@ export default function Pipeline() {
                 </div>
               ) : (
                 <>
-                  <Card className="border-border/50 bg-card/60 overflow-hidden">
+                  <Card className="border-2 border-primary/40 bg-card/60 overflow-hidden rounded-lg">
+                    {/* Header bar */}
+                    <div className="bg-primary/10 border-b-2 border-primary/40 text-center py-2">
+                      <h2 className="text-sm font-bold text-foreground tracking-wide">Pipeline Faceimob</h2>
+                    </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
@@ -911,11 +915,23 @@ export default function Pipeline() {
                         </thead>
                         <tbody>
                           {paginated.map((deal) => {
-                            const sl = tableStageLabels[deal.stage] || tableStageLabels.lead;
                             const statusDate = deal.created_at ? format(parseISO(deal.created_at), "MM/yy") : "";
+                            const status2Label = (deal.status && deal.status !== "Ativo" && deal.status !== "OFF")
+                              ? deal.status
+                              : (tableStageLabels[deal.stage]?.label || "PROPOSTA");
+                            const status2Color = faceimobStatusColor(status2Label);
+                            const stripeColor =
+                              deal.days_in_pipeline > 60 ? "bg-red-600" :
+                              deal.days_in_pipeline > 30 ? "bg-orange-500" :
+                              deal.days_in_pipeline > 14 ? "bg-yellow-500" : "bg-emerald-500";
                             return (
                               <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setDetailDeal(deal)}>
-                                <td className="p-2 text-center"><button onClick={(e) => { e.stopPropagation(); openEditDeal(deal); }} className="text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button></td>
+                                <td className="p-0 text-center relative w-10">
+                                  <div className={cn("absolute left-0 top-0 bottom-0 w-1.5", stripeColor)} />
+                                  <button onClick={(e) => { e.stopPropagation(); openEditDeal(deal); }} className="text-primary hover:text-primary/80 ml-1.5 p-2">
+                                    <ArrowRightCircle className="h-4 w-4" />
+                                  </button>
+                                </td>
                                 <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
                                 <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold text-white", getDeveloperColor(deal.developer))}>{deal.developer.toUpperCase().slice(0, 10)}</span></td>
                                 <td className="p-2 whitespace-nowrap max-w-[120px] truncate">{deal.project.toUpperCase()}</td>
@@ -927,14 +943,27 @@ export default function Pipeline() {
                                     deal.days_in_pipeline > 14 ? "bg-yellow-600/70 text-white" : "text-foreground"
                                   )}>{deal.days_in_pipeline}</span>
                                 </td>
-                                <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap", sl.color)}>{sl.label}</span></td>
-                                <td className="p-2 text-center"><button onClick={() => setVisitDeal(deal)} className="text-muted-foreground hover:text-primary"><CalendarIcon className="h-3.5 w-3.5" /></button></td>
+                                <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                                  <Select value={status2Label} onValueChange={(v) => updateDealStatus(deal.id, v)}>
+                                    <SelectTrigger className={cn("h-6 px-2 py-0 text-[10px] font-bold border-0 rounded gap-1 whitespace-nowrap min-w-[140px]", status2Color)}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-80">
+                                      {FACEIMOB_STATUSES.map(s => (
+                                        <SelectItem key={s.label} value={s.label} className="text-[11px]">
+                                          <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-bold", s.color)}>{s.label}</span>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button onClick={() => setVisitDeal(deal)} className={cn("hover:text-primary", deal.visit_date ? "text-destructive" : "text-muted-foreground")}><CalendarIcon className="h-3.5 w-3.5" /></button></td>
                                 <td className="p-2 whitespace-nowrap max-w-[130px] truncate font-medium">{deal.client.toUpperCase()}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker1?.toUpperCase() || "—"}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker2?.toUpperCase() || "—"}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">• {deal.manager1?.toUpperCase() || "—"}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.manager2?.toUpperCase() || ""}</td>
-                                <td className="p-2 text-center"><Switch checked={deal.active} onCheckedChange={() => toggleDealActive(deal.id)} className="scale-75" /></td>
+                                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><Switch checked={deal.active} onCheckedChange={() => toggleDealActive(deal.id)} className="scale-75" /></td>
                               </tr>
                             );
                           })}
