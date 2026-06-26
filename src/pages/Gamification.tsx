@@ -15,14 +15,15 @@ import { useEffect, useCallback } from 'react';
 import { PipelineDeal, Broker } from '@/types/crm';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
-// Scoring weights based on pipeline movements
-const SCORING = {
-  incomplete_with_doc: 50,     // Incompleto (com documento anexado)
-  envio_esteira_agil: 200,     // Envio Esteira Ágil
-  approved: 250,               // Aprovado Total ou Condicionado
-  venda: 700,                  // Venda no Status 1
-  distrato_penalty: -700,      // Distrato ou Queda
+// Default scoring weights based on pipeline movements
+const DEFAULT_SCORING = {
+  incomplete_with_doc: 10,
+  envio_esteira_agil: 140,
+  approved: 250,
+  venda: 600,
+  distrato_penalty: -600,
 };
+type ScoringConfig = typeof DEFAULT_SCORING;
 
 // Directors (3 directorships)
 const DIRECTORS = [
