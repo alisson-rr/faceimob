@@ -175,11 +175,13 @@ export default function Gamification() {
   }, [fetchRealData]);
 
   const [closedGames, setClosedGames] = useState<GameRecord[]>([]);
+  const [scoring, setScoring] = useState<ScoringConfig>(DEFAULT_SCORING);
+  const [pendingScoring, setPendingScoring] = useState<ScoringConfig>(DEFAULT_SCORING);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
-  const currentScores = useMemo(() => computeScores(brokers, deals, []), [brokers, deals]);
+  const currentScores = useMemo(() => computeScores(brokers, deals, [], scoring), [brokers, deals, scoring]);
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const closedGame = closedGames.find(g => g.month === selectedMonth);
   const scores = closedGame ? closedGame.scores : currentScores;
