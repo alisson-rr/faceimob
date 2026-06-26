@@ -15,6 +15,7 @@ import {
   Zap, Send, Bot, Clock, BarChart3
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import * as XLSX from "xlsx";
 import { toast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
