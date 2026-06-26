@@ -6,6 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { mockBrokers as fallbackBrokers, mockDeals as fallbackDeals, mockManagers as fallbackManagers } from '@/data/mockData';
@@ -15,14 +17,15 @@ import { useEffect, useCallback } from 'react';
 import { PipelineDeal, Broker } from '@/types/crm';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
-// Scoring weights based on pipeline movements
-const SCORING = {
-  incomplete_with_doc: 50,     // Incompleto (com documento anexado)
-  envio_esteira_agil: 200,     // Envio Esteira Ágil
-  approved: 250,               // Aprovado Total ou Condicionado
-  venda: 700,                  // Venda no Status 1
-  distrato_penalty: -700,      // Distrato ou Queda
+// Default scoring weights based on pipeline movements
+const DEFAULT_SCORING = {
+  incomplete_with_doc: 10,
+  envio_esteira_agil: 140,
+  approved: 250,
+  venda: 600,
+  distrato_penalty: -600,
 };
+type ScoringConfig = typeof DEFAULT_SCORING;
 
 // Directors (3 directorships)
 const DIRECTORS = [
@@ -60,7 +63,7 @@ interface BrokerScore {
   };
 }
 
-function computeScores(brokers: Broker[], deals: PipelineDeal[], managers: any[]): BrokerScore[] {
+function computeScores(brokers: Broker[], deals: PipelineDeal[], managers: any[], SCORING: ScoringConfig): BrokerScore[] {
   return brokers.filter(b => b.active).map(broker => {
     const brokerDeals = deals.filter(d => d.broker1 === broker.name || d.broker2 === broker.name);
     const incompletos = brokerDeals.filter(d => d.stage === 'incomplete').length;
@@ -174,11 +177,13 @@ export default function Gamification() {
   }, [fetchRealData]);
 
   const [closedGames, setClosedGames] = useState<GameRecord[]>([]);
+  const [scoring, setScoring] = useState<ScoringConfig>(DEFAULT_SCORING);
+  const [pendingScoring, setPendingScoring] = useState<ScoringConfig>(DEFAULT_SCORING);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
-  const currentScores = useMemo(() => computeScores(brokers, deals, []), [brokers, deals]);
+  const currentScores = useMemo(() => computeScores(brokers, deals, [], scoring), [brokers, deals, scoring]);
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const closedGame = closedGames.find(g => g.month === selectedMonth);
   const scores = closedGame ? closedGame.scores : currentScores;
@@ -195,8 +200,9 @@ export default function Gamification() {
       closedAt: new Date().toISOString(),
       scores: [...currentScores],
     }]);
+    setScoring(pendingScoring);
     setCloseConfirmOpen(false);
-    toast({ title: `Game "${label}" fechado com sucesso! Novo game iniciado.` });
+    toast({ title: `Game "${label}" fechado! Nova pontuação aplicada ao próximo ciclo.` });
   };
 
   const monthOptions = useMemo(() => {
@@ -270,8 +276,8 @@ export default function Gamification() {
         )}
 
         {isAdmin && isCurrentMonth && !isClosed && (
-          <Button variant="destructive" size="sm" onClick={() => setCloseConfirmOpen(true)} className="gap-1">
-            <Target className="h-4 w-4" /> Fechar Game
+          <Button variant="destructive" size="sm" onClick={() => { setPendingScoring(scoring); setCloseConfirmOpen(true); }} className="gap-1">
+            <Target className="h-4 w-4" /> Fechar Gameficação
           </Button>
         )}
 
@@ -291,11 +297,11 @@ export default function Gamification() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 text-xs">
-            <Badge variant="secondary" className="gap-1">Incompleto (c/ doc): <span className="text-warning font-bold">{SCORING.incomplete_with_doc} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Envio Esteira Ágil: <span className="text-primary font-bold">{SCORING.envio_esteira_agil} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Aprovado: <span className="text-green-400 font-bold">{SCORING.approved} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Venda: <span className="text-yellow-400 font-bold">{SCORING.venda} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Distrato/Queda: <span className="text-destructive font-bold">{SCORING.distrato_penalty} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Incompleto (c/ doc): <span className="text-warning font-bold">{scoring.incomplete_with_doc} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Envio Esteira Ágil: <span className="text-primary font-bold">{scoring.envio_esteira_agil} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Aprovado: <span className="text-green-400 font-bold">{scoring.approved} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Venda: <span className="text-yellow-400 font-bold">{scoring.venda} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Distrato/Queda: <span className="text-destructive font-bold">{scoring.distrato_penalty} pts</span></Badge>
           </div>
         </CardContent>
       </Card>
@@ -456,23 +462,42 @@ export default function Gamification() {
 
       {/* ── CLOSE GAME CONFIRMATION DIALOG ─── */}
       <Dialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
-        <DialogContent className="glass-strong max-w-md">
+        <DialogContent className="glass-strong max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Target className="h-5 w-5 text-destructive" />
-              Fechar Game do Mês
+              Fechar Gameficação & Definir Próximo Ciclo
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Ao fechar o game, a pontuação será congelada para{' '}
-              <strong className="text-foreground">{getMonthLabel(now)}</strong>{' '}
-              e um novo mês será criado com pontuações zeradas.
+              Congela a pontuação de <strong className="text-foreground">{getMonthLabel(now)}</strong> e inicia um novo ciclo com os pontos definidos abaixo para cada movimento.
             </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['incomplete_with_doc', 'Incompleto (c/ doc)'],
+                ['envio_esteira_agil', 'Envio Esteira Ágil'],
+                ['approved', 'Aprovado'],
+                ['venda', 'Venda'],
+                ['distrato_penalty', 'Distrato/Queda'],
+              ] as [keyof ScoringConfig, string][]).map(([key, label]) => (
+                <div key={key} className="space-y-1">
+                  <Label className="text-xs">{label}</Label>
+                  <Input
+                    type="number"
+                    value={pendingScoring[key]}
+                    onChange={(e) => setPendingScoring(p => ({ ...p, [key]: Number(e.target.value) }))}
+                    className="h-8"
+                  />
+                </div>
+              ))}
+            </div>
+
             <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
               <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
               <p className="text-xs text-muted-foreground">
-                Esta ação não pode ser desfeita. O mês pode ser fechado mesmo após o dia 05 do mês seguinte.
+                Esta ação não pode ser desfeita. As novas pontuações valem a partir do próximo ciclo.
               </p>
             </div>
           </div>
