@@ -331,12 +331,12 @@ export default function Leads() {
           <p className="text-muted-foreground">{filtered.length} de {totalLeads} leads {loading && "• Carregando..."}</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCSVFile} />
+          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleCSVFile} />
           <Button variant="outline" size="sm" onClick={() => setShowSourceMetrics(!showSourceMetrics)}>
             <BarChart3 className="h-4 w-4 mr-2" /> Origens
           </Button>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-            <Upload className="h-4 w-4 mr-2" /> Importar CSV
+            <Upload className="h-4 w-4 mr-2" /> Importar Leadfy (CSV/XLSX)
           </Button>
           <Button size="sm" onClick={openNew}>
             <Plus className="h-4 w-4 mr-2" /> Novo Lead
