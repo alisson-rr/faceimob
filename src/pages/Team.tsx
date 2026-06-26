@@ -162,9 +162,22 @@ export default function Team() {
     fetchRealData();
   }, [fetchRealData]);
 
-  const [managers, setManagers] = useState<Manager[]>(initialManagers);
-  const [teams, setTeams] = useState<TeamEntity[]>(initialTeams.map((t, i) => ({ id: String(i), name: t })));
-  const [directors, setDirectors] = useState<PersonEntity[]>([]);
+  const ARCHIMEDES_TEAMS = ['Archimedes', 'Susana', 'José Portilho', 'Alexandre'];
+  const FABIO_TEAMS = ['Zona Sul', 'Victor', 'Verônica', 'Daiane'];
+  const MAURICIO_TEAMS = ['Mauricio', 'Leonardo', 'Alisson'];
+  const ALL_TEAMS = [...ARCHIMEDES_TEAMS, ...FABIO_TEAMS, ...MAURICIO_TEAMS];
+
+  const [managers, setManagers] = useState<Manager[]>(
+    MAURICIO_TEAMS.map((t, i) => ({ id: `mgr-${i}`, name: t, team: t, active: true } as Manager))
+  );
+  const [teams, setTeams] = useState<TeamEntity[]>(
+    ALL_TEAMS.map((t, i) => ({ id: String(i), name: t }))
+  );
+  const [directors, setDirectors] = useState<PersonEntity[]>([
+    { id: 'dir-1', name: 'Archimedes', team: ARCHIMEDES_TEAMS.join(', '), active: true },
+    { id: 'dir-2', name: 'Fabio', team: FABIO_TEAMS.join(', '), active: true },
+    { id: 'dir-3', name: 'Mauricio', team: MAURICIO_TEAMS.join(', '), active: true },
+  ]);
   const [ccaUsers, setCcaUsers] = useState<PersonEntity[]>([]);
   const [partners, setPartners] = useState<PersonEntity[]>([]);
   const [admins, setAdmins] = useState<PersonEntity[]>([]);
