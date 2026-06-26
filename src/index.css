@@ -7,7 +7,7 @@
 
 @layer base {
   :root {
-    --background: 220 10% 10%;
+    --background: 280 10% 4%;
     --foreground: 220 15% 90%;
     --card: 220 10% 14%;
     --card-foreground: 220 15% 90%;
@@ -31,7 +31,7 @@
     --success-foreground: 0 0% 100%;
     --warning: 36 90% 51%;
     --warning-foreground: 0 0% 0%;
-    --sidebar-background: 220 12% 8%;
+    --sidebar-background: 280 10% 4%;
     --sidebar-foreground: 220 15% 90%;
     --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
@@ -83,9 +83,24 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Garet', sans-serif;
+    background-color: #0a090b;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Garet', sans-serif;
+  }
+  /* Smooth sidebar transitions */
+  [data-sidebar="sidebar"],
+  [data-sidebar="menu-button"],
+  [data-sidebar="menu-item"],
+  [data-sidebar="group"] {
+    transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1),
+                background-color 250ms ease,
+                color 200ms ease,
+                padding 250ms ease,
+                opacity 250ms ease;
+  }
+  [data-sidebar="sidebar"] * {
+    transition: opacity 250ms ease, color 200ms ease, background-color 200ms ease;
   }
 }
 
