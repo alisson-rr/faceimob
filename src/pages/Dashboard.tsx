@@ -42,6 +42,15 @@ type Broker = { id: string; name: string; role?: string | null; manager_id?: str
 const brl = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 }).format(n);
 
+// Design tokens (locked: Midnight Indigo + Space Grotesk / DM Sans)
+const display = "font-['Space_Grotesk']";
+const panel =
+  "rounded-3xl bg-[#141432]/60 backdrop-blur-xl border border-[#1e1e5a] shadow-[0_0_40px_-12px_rgba(79,70,229,0.25)]";
+const panelGrad =
+  "rounded-3xl bg-gradient-to-br from-[#141432] to-[#1e1e5a]/40 border border-[#1e1e5a] relative overflow-hidden";
+const headerCell = "text-[10px] uppercase tracking-widest text-slate-500";
+const rowHover = "hover:bg-[#4f46e5]/5 transition-colors ease-[cubic-bezier(.22,1,.36,1)]";
+
 export default function Dashboard() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
@@ -89,7 +98,6 @@ export default function Dashboard() {
     return { vendas, propostas, negocios, off, vgv, meta, pct };
   }, [filtered]);
 
-  // Vendas / Propostas / Metas por construtora
   const byDev = useMemo(() => {
     return DEVELOPERS.map((dev) => {
       const ds = filtered.filter((d) => (d.developer || "").toUpperCase() === dev);
@@ -104,15 +112,11 @@ export default function Dashboard() {
     });
   }, [filtered]);
 
-  const directors = ["Fabio Roldão", "Archimedes Neff", "Mauricio Vieira"];
-  const directorRows = useMemo(() => {
-    // mock metrics blended with real broker count
-    return [
-      { name: "Fabio Roldão", semCompras: 23, meta: 28, pct: 54, leads: 540, agil: 27, neg: 36, vendas: 13, vgv: 13649027.85, off: 1 },
-      { name: "Archimedes Neff", semCompras: 26, meta: 29, pct: 67, leads: 778, agil: 38, neg: 7, vendas: 3, vgv: 4524752.36, off: 22 },
-      { name: "Mauricio Vieira", semCompras: 25, meta: 35, pct: 31, leads: 657, agil: 24, neg: 3, vendas: 11, vgv: 12259027.06, off: 11 },
-    ];
-  }, []);
+  const directorRows = [
+    { name: "Fabio Roldão", sem: 23, meta: 28, pct: 54, leads: 540, agil: 27, neg: 36, vendas: 13, vgv: 13649027.85, off: 1 },
+    { name: "Archimedes Neff", sem: 26, meta: 29, pct: 67, leads: 778, agil: 38, neg: 7, vendas: 3, vgv: 4524752.36, off: 22 },
+    { name: "Mauricio Vieira", sem: 25, meta: 35, pct: 31, leads: 657, agil: 24, neg: 3, vendas: 11, vgv: 12259027.06, off: 11 },
+  ];
 
   const managerRows = [
     { name: "José Portilho", sem: 0, meta: 8, pct: 113, leads: 175, agil: 6, neg: 9, vendas: 9, vgv: 8853376.91, off: 0 },
@@ -130,7 +134,15 @@ export default function Dashboard() {
     [leadsCount]
   );
 
-  const ccaCounts: Record<string, number> = { "Aprovado Total": 0, "Aprovado Condicionado": 4, "Análise de Viabilidade": 6, "Assinatura no Banco": 9, "Pendente de Viabilidade": 9, "Reprovado": 0, "Pendente": 11 };
+  const ccaCounts: Record<string, number> = {
+    "Aprovado Total": 0,
+    "Aprovado Condicionado": 4,
+    "Análise de Viabilidade": 6,
+    "Assinatura no Banco": 9,
+    "Pendente de Viabilidade": 9,
+    "Reprovado": 0,
+    "Pendente": 11,
+  };
 
   const rankingGeral = useMemo(() => {
     const rows = brokers.map((b) => {
@@ -149,194 +161,256 @@ export default function Dashboard() {
     return rows.sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
   }, [brokers, filtered]);
 
-  const cellRed = "bg-rose-900/60 text-rose-100";
-  const cellGreen = "bg-emerald-800/60 text-emerald-100";
-  const cellAmber = "bg-amber-500/80 text-slate-900";
+  const cellGood = "bg-emerald-500/15 text-emerald-300";
+  const cellWarn = "bg-amber-500/15 text-amber-300";
+  const cellBad = "bg-rose-500/15 text-rose-300";
+  const cellOf = (n: number, good = true) =>
+    n > 0 ? (good ? cellGood : cellBad) : good ? cellBad : cellGood;
+
+  const kpis = [
+    { l: "Leads Gerados", v: leadsCount || 0, accent: "text-sky-400" },
+    { l: "Propostas", v: stats.propostas, accent: "text-indigo-400" },
+    { l: "Negócios", v: stats.negocios, accent: "text-amber-300", glow: true },
+    { l: "OFF", v: stats.off, accent: "text-slate-300" },
+    { l: "Vendas", v: stats.vendas, accent: "text-emerald-400" },
+    { l: "VGV", v: brl(stats.vgv || 0), accent: "text-white", small: true },
+    { l: "Meta", v: `${stats.pct}%`, accent: "text-[#4f46e5]", bar: stats.pct },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#0a0f1f] text-slate-100 p-4 md:p-6 font-sans-premium">
-      <div className="max-w-[1400px] mx-auto space-y-5">
-        {/* Period Selector */}
-        <div className="flex items-center justify-between">
-          <h1 className="font-display text-2xl">Dashboard</h1>
+    <div className="min-h-screen bg-[#0a0a1a] font-['DM_Sans'] text-slate-300 p-4 md:p-6 relative overflow-hidden">
+      {/* Ambient indigo glows */}
+      <div className="pointer-events-none absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#4f46e5]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-40 w-[600px] h-[600px] rounded-full bg-[#1e1e5a]/30 blur-3xl" />
+
+      <div className="relative max-w-[1500px] mx-auto space-y-6 animate-in fade-in duration-700">
+        {/* Header */}
+        <header className="flex items-end justify-between">
+          <div>
+            <h1 className={cn(display, "text-3xl font-bold text-white tracking-tight")}>
+              Dashboard de Performance
+            </h1>
+            <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest">
+              Acompanhamento em tempo real · {month === "all" ? "Todos os meses" : month}
+            </p>
+          </div>
           <Select value={month} onValueChange={setMonth}>
-            <SelectTrigger className="w-[200px] bg-[#101935] border-[#1f2a4a] text-slate-200">
+            <SelectTrigger className="w-[220px] bg-[#141432]/60 backdrop-blur-xl border border-[#1e1e5a] text-slate-200 rounded-xl">
               <SelectValue placeholder="Período" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-[#141432] border-[#1e1e5a] text-slate-200">
               <SelectItem value="all">Todos os meses</SelectItem>
-              {months.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+              {months.map((m) => (
+                <SelectItem key={m} value={m}>{m}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        </div>
+        </header>
 
-        {/* TOP KPI STRIP */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {[
-            { l: "Leads Gerados", v: leadsCount || 1975 },
-            { l: "Propostas", v: stats.propostas || 109 },
-            { l: "Negócios", v: stats.negocios || 6, hl: true },
-            { l: "OFF", v: stats.off || 116 },
-            { l: "Vendas", v: stats.vendas || 45 },
-            { l: "VGV", v: brl(stats.vgv || 10312830.18) },
-            { l: "Meta", v: stats.meta, sub: `Sem Atingir % ${stats.pct}%` },
-          ].map((k, i) => (
-            <div key={i} className={cn(
-              "rounded-lg p-3 text-center border",
-              k.hl ? "border-amber-500 bg-amber-500/10" : "border-[#1f2a4a] bg-[#101935]"
-            )}>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">{k.l}</div>
-              <div className={cn("font-display text-xl mt-1", k.hl && "text-amber-400")}>{k.v}</div>
-              {k.sub && <div className="text-[9px] text-amber-400 mt-1">{k.sub}</div>}
+        {/* KPIs */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          {kpis.map((k, i) => (
+            <div
+              key={k.l}
+              className={cn(
+                panelGrad,
+                "p-5 group hover:-translate-y-0.5 transition-all duration-500 ease-[cubic-bezier(.22,1,.36,1)]",
+                k.glow && "ring-1 ring-amber-400/30",
+              )}
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#4f46e5]/10 blur-3xl group-hover:bg-[#4f46e5]/25 transition-all" />
+              <span className={cn("text-[10px] font-bold uppercase tracking-widest block mb-2", k.accent)}>{k.l}</span>
+              <div className={cn(display, "font-bold text-white", k.small ? "text-lg" : "text-2xl")}>{k.v}</div>
+              {k.bar !== undefined && (
+                <div className="mt-3 h-1 w-full bg-[#0a0a1a] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#4f46e5] rounded-full shadow-[0_0_10px_#4f46e5] transition-all duration-1000"
+                    style={{ width: `${Math.min(100, k.bar)}%` }}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>
 
-        {/* THREE TABLES */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Vendas */}
-          <div className="rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-            <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a]">Vendas</div>
-            <table className="w-full text-xs">
-              <thead className="text-slate-400">
-                <tr><th className="px-2 py-1.5 text-left">Construtora</th><th className="px-2 py-1.5">Quantid.</th><th className="px-2 py-1.5 text-right">VGV</th></tr>
-              </thead>
-              <tbody>
-                {byDev.map((r) => (
-                  <tr key={r.dev} className="border-t border-[#1f2a4a]">
-                    <td className="px-2 py-1">{r.dev}</td>
-                    <td className="px-2 py-1 text-center">{r.vendas}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {/* Propostas */}
-          <div className="rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-            <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a]">Propostas</div>
-            <table className="w-full text-xs">
-              <thead className="text-slate-400">
-                <tr><th className="px-2 py-1.5 text-left">Const.</th><th className="px-2 py-1.5">Prop</th><th className="px-2 py-1.5">Neg</th><th className="px-2 py-1.5 text-right">VGV</th></tr>
-              </thead>
-              <tbody>
-                {byDev.map((r) => (
-                  <tr key={r.dev} className="border-t border-[#1f2a4a]">
-                    <td className="px-2 py-1">{r.dev}</td>
-                    <td className="px-2 py-1 text-center">{r.prop}</td>
-                    <td className="px-2 py-1 text-center">{r.neg}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{r.propVgv > 0 ? brl(r.propVgv) : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {/* Metas */}
-          <div className="rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-            <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a]">Metas</div>
-            <table className="w-full text-xs">
-              <thead className="text-slate-400">
-                <tr><th className="px-2 py-1.5 text-left">Const.</th><th className="px-2 py-1.5">Meta</th><th className="px-2 py-1.5">%</th><th className="px-2 py-1.5">Vendido</th></tr>
-              </thead>
-              <tbody>
-                {byDev.map((r) => (
-                  <tr key={r.dev} className="border-t border-[#1f2a4a]">
-                    <td className="px-2 py-1">{r.dev}</td>
-                    <td className="px-2 py-1 text-center">{r.meta}</td>
-                    <td className={cn("px-2 py-1 text-center", r.pctMeta >= 100 ? cellGreen : r.pctMeta > 0 ? cellAmber : cellRed)}>{r.pctMeta}%</td>
-                    <td className="px-2 py-1 text-center">{r.vendido}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* DIRETORES */}
-        <RankCard
-          title="Diretores"
-          rows={directorRows.map((r) => ({
-            ...r,
-            sem: r.semCompras,
-          }))}
-        />
-
-        {/* GERENTES */}
-        <RankCard title="Gerentes" rows={managerRows} />
-
-        {/* SOURCES + CCA + PERIOD + STAFF */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-            <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a] text-sky-300">Origem dos Leads</div>
-            <table className="w-full text-xs">
-              <tbody>
-                {SOURCES.map((s) => (
-                  <tr key={s} className="border-t border-[#1f2a4a]">
-                    <td className="px-3 py-1.5 text-slate-300">{s}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{(sourceCounts as any)[s] ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-            <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a] text-sky-300">Status CCA</div>
-            <table className="w-full text-xs">
-              <tbody>
-                {CCA_STATUSES.map((s) => (
-                  <tr key={s} className="border-t border-[#1f2a4a]">
-                    <td className="px-3 py-1.5 text-slate-300">{s}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{ccaCounts[s] ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* STAFF */}
-        <div className="max-w-md mx-auto rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-          <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a] text-amber-300">Staff</div>
-          <table className="w-full text-xs">
-            <tbody>
-              {STAFF_ROWS.map(([l, v]) => (
-                <tr key={l} className="border-t border-[#1f2a4a]">
-                  <td className="px-3 py-1.5">{l}</td>
-                  <td className={cn("px-3 py-1.5 text-right tabular-nums", l === "Total" && "bg-amber-500/80 text-slate-900 font-bold")}>{v}</td>
+        {/* Vendas / Propostas / Metas */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <PanelTable title="Vendas" subtitle="Por construtora">
+            <thead>
+              <tr className={headerCell}>
+                <th className="px-5 py-3 text-left font-semibold">Construtora</th>
+                <th className="px-5 py-3 font-semibold">Qtd</th>
+                <th className="px-5 py-3 text-right font-semibold">VGV</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e1e5a]/40">
+              {byDev.map((r) => (
+                <tr key={r.dev} className={rowHover}>
+                  <td className="px-5 py-2.5 text-white text-sm font-medium">{r.dev}</td>
+                  <td className="px-5 py-2.5 text-center text-sm">{r.vendas}</td>
+                  <td className="px-5 py-2.5 text-right tabular-nums text-sm text-[#4f46e5] font-semibold">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </PanelTable>
+
+          <PanelTable title="Propostas" subtitle="Pipeline ativo">
+            <thead>
+              <tr className={headerCell}>
+                <th className="px-5 py-3 text-left font-semibold">Const.</th>
+                <th className="px-5 py-3 font-semibold">Prop</th>
+                <th className="px-5 py-3 font-semibold">Neg</th>
+                <th className="px-5 py-3 text-right font-semibold">VGV</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e1e5a]/40">
+              {byDev.map((r) => (
+                <tr key={r.dev} className={rowHover}>
+                  <td className="px-5 py-2.5 text-white text-sm font-medium">{r.dev}</td>
+                  <td className="px-5 py-2.5 text-center text-sm">{r.prop}</td>
+                  <td className="px-5 py-2.5 text-center text-sm">{r.neg}</td>
+                  <td className="px-5 py-2.5 text-right tabular-nums text-sm">{r.propVgv > 0 ? brl(r.propVgv) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </PanelTable>
+
+          <PanelTable title="Metas" subtitle="Atingimento">
+            <thead>
+              <tr className={headerCell}>
+                <th className="px-5 py-3 text-left font-semibold">Const.</th>
+                <th className="px-5 py-3 font-semibold">Meta</th>
+                <th className="px-5 py-3 font-semibold">%</th>
+                <th className="px-5 py-3 font-semibold">Vendido</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1e1e5a]/40">
+              {byDev.map((r) => (
+                <tr key={r.dev} className={rowHover}>
+                  <td className="px-5 py-2.5 text-white text-sm font-medium">{r.dev}</td>
+                  <td className="px-5 py-2.5 text-center text-sm">{r.meta}</td>
+                  <td className="px-5 py-2.5 text-center">
+                    <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.pctMeta >= 100 ? cellGood : r.pctMeta > 0 ? cellWarn : cellBad)}>{r.pctMeta}%</span>
+                  </td>
+                  <td className="px-5 py-2.5 text-center text-sm">{r.vendido}</td>
+                </tr>
+              ))}
+            </tbody>
+          </PanelTable>
         </div>
 
-        {/* RANKING GERAL */}
-        <div className="rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-          <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a]">Ranking Geral</div>
-          <div className="overflow-x-auto max-h-[500px]">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-[#101935] text-slate-400">
-                <tr>
-                  <th className="px-2 py-1.5">#</th>
-                  <th className="px-2 py-1.5 text-left">Corretor</th>
-                  <th className="px-2 py-1.5">Leads</th>
-                  <th className="px-2 py-1.5">Vendas</th>
-                  <th className="px-2 py-1.5">Ágil</th>
-                  <th className="px-2 py-1.5">Neg.</th>
-                  <th className="px-2 py-1.5 text-right">VGV</th>
-                  <th className="px-2 py-1.5">Off</th>
+        {/* Diretores & Gerentes */}
+        <RankCard title="Ranking Diretores" rows={directorRows} kind="Diretor" />
+        <RankCard title="Ranking Gerentes" rows={managerRows} kind="Gerente" />
+
+        {/* Origem + CCA + Staff */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className={cn(panel, "p-6")}>
+            <h3 className={cn(headerCell, "mb-5 font-bold")}>Origem dos Leads</h3>
+            <div className="space-y-3">
+              {SOURCES.map((s) => {
+                const v = (sourceCounts as any)[s] ?? 0;
+                const max = Math.max(...Object.values(sourceCounts).map(Number));
+                const pct = max ? (v / max) * 100 : 0;
+                return (
+                  <div key={s}>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="text-slate-300">{s}</span>
+                      <span className="text-white font-bold tabular-nums">{v}</span>
+                    </div>
+                    <div className="h-1.5 bg-[#0a0a1a] rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-[#4f46e5] to-indigo-400 rounded-full transition-all duration-1000" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={cn(panel, "p-6")}>
+            <h3 className={cn(headerCell, "mb-5 font-bold")}>Status CCA</h3>
+            <div className="space-y-3">
+              {CCA_STATUSES.map((s) => (
+                <div key={s} className="flex items-center justify-between py-1.5 border-b border-[#1e1e5a]/40 last:border-0">
+                  <span className="text-xs text-slate-400">{s}</span>
+                  <span className="text-sm font-bold text-white tabular-nums">{ccaCounts[s] ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className={cn(panel, "p-6")}>
+            <h3 className={cn(headerCell, "mb-5 font-bold text-amber-300")}>Staff</h3>
+            <div className="space-y-2">
+              {STAFF_ROWS.map(([l, v]) => (
+                <div
+                  key={l}
+                  className={cn(
+                    "flex items-center justify-between px-3 py-2 rounded-lg",
+                    l === "Total" ? "bg-gradient-to-r from-[#4f46e5]/30 to-transparent border border-[#4f46e5]/30" : "hover:bg-[#1e1e5a]/30 transition-colors",
+                  )}
+                >
+                  <span className={cn("text-xs", l === "Total" ? "text-white font-bold uppercase tracking-wider" : "text-slate-300")}>{l}</span>
+                  <span className={cn("tabular-nums font-bold", l === "Total" ? "text-white text-lg " + display : "text-sm text-white")}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Ranking Geral */}
+        <div className={cn(panel, "overflow-hidden")}>
+          <div className="px-6 py-4 border-b border-[#1e1e5a] flex justify-between items-center bg-[#1e1e5a]/20">
+            <h3 className={cn(display, "font-bold text-white")}>Ranking Geral</h3>
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest">{rankingGeral.length} corretores</span>
+          </div>
+          <div className="overflow-x-auto max-h-[520px]">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-[#141432] backdrop-blur-xl">
+                <tr className={cn(headerCell, "border-b border-[#1e1e5a]/50")}>
+                  <th className="px-5 py-3 font-semibold">#</th>
+                  <th className="px-5 py-3 text-left font-semibold">Corretor</th>
+                  <th className="px-5 py-3 font-semibold">Leads</th>
+                  <th className="px-5 py-3 font-semibold">Vendas</th>
+                  <th className="px-5 py-3 font-semibold">Ágil</th>
+                  <th className="px-5 py-3 font-semibold">Neg.</th>
+                  <th className="px-5 py-3 text-right font-semibold">VGV</th>
+                  <th className="px-5 py-3 font-semibold">Off</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[#1e1e5a]/30">
                 {rankingGeral.map((r, i) => (
-                  <tr key={i} className="border-t border-[#1f2a4a]">
-                    <td className="px-2 py-1 text-center text-slate-400">{i + 1}º</td>
-                    <td className="px-2 py-1">{r.name}</td>
-                    <td className={cn("px-2 py-1 text-center", r.leads > 0 ? cellGreen : cellRed)}>{r.leads}</td>
-                    <td className={cn("px-2 py-1 text-center", r.vendas > 0 ? cellGreen : cellRed)}>{r.vendas}</td>
-                    <td className={cn("px-2 py-1 text-center", r.agil > 0 ? cellGreen : cellRed)}>{r.agil}</td>
-                    <td className={cn("px-2 py-1 text-center", r.neg > 0 ? cellGreen : cellRed)}>{r.neg}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{r.vgv > 0 ? brl(r.vgv) : "R$0,00"}</td>
-                    <td className={cn("px-2 py-1 text-center", r.off > 0 ? cellRed : cellGreen)}>{r.off}</td>
+                  <tr key={i} className={rowHover}>
+                    <td className="px-5 py-2.5 text-center">
+                      <span className={cn(display, "font-bold", i < 3 ? "text-[#4f46e5]" : "text-slate-500")}>
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center text-[10px] font-bold text-indigo-100">
+                          {r.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                        </div>
+                        <span className="text-white font-medium">{r.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-center">
+                      <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.leads))}>{r.leads}</span>
+                    </td>
+                    <td className="px-5 py-2.5 text-center">
+                      <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.vendas))}>{r.vendas}</span>
+                    </td>
+                    <td className="px-5 py-2.5 text-center">
+                      <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.agil))}>{r.agil}</span>
+                    </td>
+                    <td className="px-5 py-2.5 text-center">
+                      <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.neg))}>{r.neg}</span>
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular-nums text-white font-semibold">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
+                    <td className="px-5 py-2.5 text-center">
+                      <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.off, false))}>{r.off}</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -348,39 +422,65 @@ export default function Dashboard() {
   );
 }
 
-function RankCard({ title, rows }: { title: string; rows: any[] }) {
+function PanelTable({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg bg-[#101935] border border-[#1f2a4a] overflow-hidden">
-      <div className="text-center py-2 text-sm font-semibold border-b border-[#1f2a4a] text-sky-300">{title}</div>
+    <div className={cn(panel, "overflow-hidden")}>
+      <div className="px-5 py-4 border-b border-[#1e1e5a] flex items-end justify-between bg-[#1e1e5a]/20">
+        <h3 className={cn(display, "font-bold text-white text-sm")}>{title}</h3>
+        {subtitle && <span className="text-[10px] uppercase tracking-widest text-slate-500">{subtitle}</span>}
+      </div>
+      <table className="w-full">{children}</table>
+    </div>
+  );
+}
+
+function RankCard({ title, rows, kind }: { title: string; rows: any[]; kind: string }) {
+  const cellGood = "bg-emerald-500/15 text-emerald-300";
+  const cellWarn = "bg-amber-500/15 text-amber-300";
+  const cellBad = "bg-rose-500/15 text-rose-300";
+  return (
+    <div className={cn(panel, "overflow-hidden")}>
+      <div className="px-6 py-4 border-b border-[#1e1e5a] flex justify-between items-center bg-[#1e1e5a]/20">
+        <h3 className={cn(display, "font-bold text-white")}>{title}</h3>
+        <span className="px-2 py-0.5 rounded-md bg-[#4f46e5]/20 text-[#a5a3f0] text-[10px] font-bold uppercase tracking-widest">{rows.length} {kind}s</span>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead className="text-slate-400">
+        <table className="w-full text-sm">
+          <thead className="text-[10px] uppercase tracking-widest text-slate-500 border-b border-[#1e1e5a]/50">
             <tr>
-              <th className="px-2 py-1.5">Sem Compras</th>
-              <th className="px-2 py-1.5">Meta</th>
-              <th className="px-2 py-1.5">% Atingida</th>
-              <th className="px-2 py-1.5 text-left">{title === "Diretores" ? "Diretor" : "Gerente"}</th>
-              <th className="px-2 py-1.5">Leads</th>
-              <th className="px-2 py-1.5">Ágil</th>
-              <th className="px-2 py-1.5">Neg.</th>
-              <th className="px-2 py-1.5">Vendas</th>
-              <th className="px-2 py-1.5 text-right">VGV</th>
-              <th className="px-2 py-1.5">Off</th>
+              <th className="px-5 py-3 font-semibold">Sem Compras</th>
+              <th className="px-5 py-3 font-semibold">Meta</th>
+              <th className="px-5 py-3 font-semibold">% Atingida</th>
+              <th className="px-5 py-3 text-left font-semibold">{kind}</th>
+              <th className="px-5 py-3 font-semibold">Leads</th>
+              <th className="px-5 py-3 font-semibold">Ágil</th>
+              <th className="px-5 py-3 font-semibold">Neg.</th>
+              <th className="px-5 py-3 font-semibold">Vendas</th>
+              <th className="px-5 py-3 text-right font-semibold">VGV</th>
+              <th className="px-5 py-3 font-semibold">Off</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[#1e1e5a]/30">
             {rows.map((r, i) => (
-              <tr key={i} className="border-t border-[#1f2a4a]">
-                <td className="px-2 py-1 text-center bg-amber-500/30 text-amber-200">{r.sem}</td>
-                <td className="px-2 py-1 text-center">{r.meta}</td>
-                <td className={cn("px-2 py-1 text-center", r.pct >= 100 ? "bg-emerald-800/60 text-emerald-100" : r.pct >= 50 ? "bg-amber-500/80 text-slate-900" : "bg-rose-900/60 text-rose-100")}>{r.pct}%</td>
-                <td className="px-2 py-1 text-amber-300">{r.name}</td>
-                <td className="px-2 py-1 text-center">{r.leads}</td>
-                <td className="px-2 py-1 text-center bg-amber-500/20">{r.agil}</td>
-                <td className="px-2 py-1 text-center">{r.neg}</td>
-                <td className="px-2 py-1 text-center bg-emerald-800/40">{r.vendas}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{r.vgv > 0 ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(r.vgv) : "—"}</td>
-                <td className={cn("px-2 py-1 text-center", r.off > 0 ? "bg-rose-900/60" : "bg-emerald-800/40")}>{r.off}</td>
+              <tr key={i} className="hover:bg-[#4f46e5]/5 transition-colors">
+                <td className="px-5 py-2.5 text-center">
+                  <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.sem > 0 ? cellWarn : cellGood)}>{r.sem}</span>
+                </td>
+                <td className="px-5 py-2.5 text-center text-white">{r.meta}</td>
+                <td className="px-5 py-2.5 text-center">
+                  <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.pct >= 100 ? cellGood : r.pct >= 50 ? cellWarn : cellBad)}>{r.pct}%</span>
+                </td>
+                <td className="px-5 py-2.5 text-white font-medium">{r.name}</td>
+                <td className="px-5 py-2.5 text-center">{r.leads}</td>
+                <td className="px-5 py-2.5 text-center">{r.agil}</td>
+                <td className="px-5 py-2.5 text-center">{r.neg}</td>
+                <td className="px-5 py-2.5 text-center">
+                  <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-300">{r.vendas}</span>
+                </td>
+                <td className="px-5 py-2.5 text-right tabular-nums text-[#4f46e5] font-semibold">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
+                <td className="px-5 py-2.5 text-center">
+                  <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.off > 0 ? cellBad : cellGood)}>{r.off}</span>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -389,3 +489,7 @@ function RankCard({ title, rows }: { title: string; rows: any[] }) {
     </div>
   );
 }
+
+const brlFmt = (n: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
+export { brlFmt };
