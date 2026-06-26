@@ -200,8 +200,9 @@ export default function Gamification() {
       closedAt: new Date().toISOString(),
       scores: [...currentScores],
     }]);
+    setScoring(pendingScoring);
     setCloseConfirmOpen(false);
-    toast({ title: `Game "${label}" fechado com sucesso! Novo game iniciado.` });
+    toast({ title: `Game "${label}" fechado! Nova pontuação aplicada ao próximo ciclo.` });
   };
 
   const monthOptions = useMemo(() => {
