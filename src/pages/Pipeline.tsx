@@ -63,6 +63,43 @@ const tableStageLabels: Record<string, { label: string; color: string }> = {
   closed: { label: "08. VIROU NEGOCIO", color: "bg-slate-700 text-white" },
 };
 
+// ── Faceimob status list (Status 2 column) ──
+const FACEIMOB_STATUSES: { label: string; color: string }[] = [
+  { label: "01. RC EMITIDA", color: "bg-orange-500 text-white" },
+  { label: "02. ASS. BANCO", color: "bg-blue-600 text-white" },
+  { label: "03. ASSINADO", color: "bg-emerald-600 text-white" },
+  { label: "04. EM CONTRATO", color: "bg-red-500 text-white" },
+  { label: "05. RP APROVADO", color: "bg-emerald-700 text-white" },
+  { label: "06. ENVIO DE RP", color: "bg-cyan-600 text-white" },
+  { label: "07. APROV. AG. CONT.", color: "bg-amber-600 text-white" },
+  { label: "08. VIROU NEGÓCIO", color: "bg-slate-700 text-white" },
+  { label: "09. APROV. TOTAL", color: "bg-blue-700 text-white" },
+  { label: "10. APROV. COND.", color: "bg-red-600 text-white" },
+  { label: "11. AG. RET. AGENCIA", color: "bg-orange-600 text-white" },
+  { label: "12. EM PROCESSAMENTO", color: "bg-purple-600 text-white" },
+  { label: "13. ESTEIRA AGIL", color: "bg-teal-600 text-white" },
+  { label: "14. PENDENTE P/ VIRAR NEGÓCIO", color: "bg-yellow-600 text-white" },
+  { label: "15. ANÁLISE P/ VIRAR NEGÓCIO", color: "bg-amber-700 text-white" },
+  { label: "15. INTERNALIZADO", color: "bg-indigo-600 text-white" },
+  { label: "16. PENDENTE", color: "bg-yellow-700 text-white" },
+  { label: "17. DISTRATO", color: "bg-rose-700 text-white" },
+  { label: "18. QUEDA", color: "bg-red-700 text-white" },
+  { label: "19. REPROVADO", color: "bg-red-800 text-white" },
+  { label: "20. BACEN", color: "bg-fuchsia-700 text-white" },
+  { label: "21. RESTRIÇÃO", color: "bg-pink-700 text-white" },
+  { label: "ANÁLISE P/ POTENCIAL", color: "bg-cyan-700 text-white" },
+  { label: "ANÁLISE EXTERNA", color: "bg-sky-700 text-white" },
+  { label: "MUDAR CONSTRUTORA P/ NEGÓCIO", color: "bg-violet-700 text-white" },
+  { label: "APROV. TOT. RESTRIÇÃO", color: "bg-rose-600 text-white" },
+  { label: "RET. ESTEIRA AGIL", color: "bg-teal-700 text-white" },
+  { label: "PENDENTE C/ RESTRIÇÃO", color: "bg-amber-800 text-white" },
+  { label: "INCOMPLETO", color: "bg-destructive text-destructive-foreground" },
+  { label: "COMPRA ASSISTIDA", color: "bg-emerald-800 text-white" },
+  { label: "PROPOSTA", color: "bg-primary text-primary-foreground" },
+];
+const faceimobStatusColor = (label: string) =>
+  FACEIMOB_STATUSES.find(s => s.label === label)?.color || "bg-muted text-muted-foreground";
+
 const leadStatusColor: Record<LeadStatus, string> = {
   new: 'bg-primary/20 text-primary',
   contacted: 'bg-warning/20 text-warning',
@@ -511,6 +548,17 @@ export default function Pipeline() {
     setDeals((prev) => prev.map((d) => d.id === dealId ? { ...d, active: !d.active } : d));
   };
 
+  const updateDealStatus = async (dealId: string, newStatus: string) => {
+    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, status: newStatus } : d));
+    try {
+      const { error } = await supabase.from('deals').update({ status: newStatus }).eq('id', dealId);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error updating status:", err);
+      toast({ variant: "destructive", title: "Erro ao salvar status" });
+    }
+  };
+
   const scheduleVisit = () => {
     if (!visitDeal || !visitDate) return;
     setDeals((prev) => prev.map((d) => d.id === visitDeal.id ? { ...d, visit_date: format(visitDate, "yyyy-MM-dd"), visit_result: "pending", stage: "visit_scheduled" as DealStage } : d));
@@ -840,7 +888,11 @@ export default function Pipeline() {
                 </div>
               ) : (
                 <>
-                  <Card className="border-border/50 bg-card/60 overflow-hidden">
+                  <Card className="border-2 border-primary/40 bg-card/60 overflow-hidden rounded-lg">
+                    {/* Header bar */}
+                    <div className="bg-primary/10 border-b-2 border-primary/40 text-center py-2">
+                      <h2 className="text-sm font-bold text-foreground tracking-wide">Pipeline Faceimob</h2>
+                    </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
@@ -863,11 +915,23 @@ export default function Pipeline() {
                         </thead>
                         <tbody>
                           {paginated.map((deal) => {
-                            const sl = tableStageLabels[deal.stage] || tableStageLabels.lead;
                             const statusDate = deal.created_at ? format(parseISO(deal.created_at), "MM/yy") : "";
+                            const status2Label = (deal.status && deal.status !== "Ativo" && deal.status !== "OFF")
+                              ? deal.status
+                              : (tableStageLabels[deal.stage]?.label || "PROPOSTA");
+                            const status2Color = faceimobStatusColor(status2Label);
+                            const stripeColor =
+                              deal.days_in_pipeline > 60 ? "bg-red-600" :
+                              deal.days_in_pipeline > 30 ? "bg-orange-500" :
+                              deal.days_in_pipeline > 14 ? "bg-yellow-500" : "bg-emerald-500";
                             return (
                               <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setDetailDeal(deal)}>
-                                <td className="p-2 text-center"><button onClick={(e) => { e.stopPropagation(); openEditDeal(deal); }} className="text-muted-foreground hover:text-primary"><Pencil className="h-3.5 w-3.5" /></button></td>
+                                <td className="p-0 text-center relative w-10">
+                                  <div className={cn("absolute left-0 top-0 bottom-0 w-1.5", stripeColor)} />
+                                  <button onClick={(e) => { e.stopPropagation(); openEditDeal(deal); }} className="text-primary hover:text-primary/80 ml-1.5 p-2">
+                                    <ArrowRightCircle className="h-4 w-4" />
+                                  </button>
+                                </td>
                                 <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
                                 <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold text-white", getDeveloperColor(deal.developer))}>{deal.developer.toUpperCase().slice(0, 10)}</span></td>
                                 <td className="p-2 whitespace-nowrap max-w-[120px] truncate">{deal.project.toUpperCase()}</td>
@@ -879,14 +943,27 @@ export default function Pipeline() {
                                     deal.days_in_pipeline > 14 ? "bg-yellow-600/70 text-white" : "text-foreground"
                                   )}>{deal.days_in_pipeline}</span>
                                 </td>
-                                <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap", sl.color)}>{sl.label}</span></td>
-                                <td className="p-2 text-center"><button onClick={() => setVisitDeal(deal)} className="text-muted-foreground hover:text-primary"><CalendarIcon className="h-3.5 w-3.5" /></button></td>
+                                <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                                  <Select value={status2Label} onValueChange={(v) => updateDealStatus(deal.id, v)}>
+                                    <SelectTrigger className={cn("h-6 px-2 py-0 text-[10px] font-bold border-0 rounded gap-1 whitespace-nowrap min-w-[140px]", status2Color)}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-80">
+                                      {FACEIMOB_STATUSES.map(s => (
+                                        <SelectItem key={s.label} value={s.label} className="text-[11px]">
+                                          <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-bold", s.color)}>{s.label}</span>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </td>
+                                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button onClick={() => setVisitDeal(deal)} className={cn("hover:text-primary", deal.visit_date ? "text-destructive" : "text-muted-foreground")}><CalendarIcon className="h-3.5 w-3.5" /></button></td>
                                 <td className="p-2 whitespace-nowrap max-w-[130px] truncate font-medium">{deal.client.toUpperCase()}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker1?.toUpperCase() || "—"}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker2?.toUpperCase() || "—"}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">• {deal.manager1?.toUpperCase() || "—"}</td>
                                 <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.manager2?.toUpperCase() || ""}</td>
-                                <td className="p-2 text-center"><Switch checked={deal.active} onCheckedChange={() => toggleDealActive(deal.id)} className="scale-75" /></td>
+                                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><Switch checked={deal.active} onCheckedChange={() => toggleDealActive(deal.id)} className="scale-75" /></td>
                               </tr>
                             );
                           })}
