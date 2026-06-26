@@ -49,13 +49,23 @@ export default function Dashboard() {
     [deals, selectedMonth]
   );
 
+  const [leadsCount, setLeadsCount] = useState(0);
+  useEffect(() => {
+    (async () => {
+      const { count } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+      setLeadsCount(count || 0);
+    })();
+  }, []);
+
   const stats = useMemo(() => {
     const vendas = filtered.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
     const vgv = filtered.filter(d => d.active !== false).reduce((a, d) => a + (d.deal_value || 0), 0);
-    const leads = filtered.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
-    const propostas = filtered.filter(d => ['proposal', 'contract'].includes(d.stage)).length;
-    const negocios = filtered.length;
-    const meta = 80;
+    const propostas = filtered.filter(d => ['proposal', 'contract', 'approved'].includes(d.stage)).length;
+    const negocios = filtered.filter(d => !['lead', 'incomplete'].includes(d.stage as string)).length;
+    const off = filtered.filter(d => d.active === false).length;
+    const leadsGerados = leadsCount || filtered.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
+    const leads = leadsGerados;
+    const meta = 92;
     const pct = Math.min(100, Math.round((vendas / meta) * 100));
 
     const year = new Date().getFullYear();
@@ -68,9 +78,7 @@ export default function Dashboard() {
       if (d.stage === 'closed' || d.stage === 'contract') byMonth[idx].vendas++;
       if (d.stage === 'proposal' || d.stage === 'contract') byMonth[idx].propostas++;
     });
-
     const area = byMonth.map(m => ({ name: m.name, valor: m.vendas * 250000 }));
-
     const bMap: Record<string, number> = {};
     filtered.forEach(d => {
       if (d.stage === 'closed' || d.stage === 'contract') {
@@ -78,11 +86,10 @@ export default function Dashboard() {
         bMap[n] = (bMap[n] || 0) + 1;
       }
     });
-    const top = Object.entries(bMap).sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([name, v]) => ({ name, v }));
+    const top = Object.entries(bMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, v]) => ({ name, v }));
 
-    return { vendas, vgv, leads, propostas, negocios, meta, pct, byMonth, area, top };
-  }, [filtered, deals]);
+    return { vendas, vgv, leads, leadsGerados, off, propostas, negocios, meta, pct, byMonth, area, top };
+  }, [filtered, deals, leadsCount]);
 
   const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
 
@@ -162,6 +169,30 @@ export default function Dashboard() {
               </SelectContent>
             </Select>
           </header>
+
+          {/* TOP METRICS STRIP (Faceimob) */}
+          <Card className="p-4 rounded-2xl border-0 bg-card/80 backdrop-blur-xl shadow-premium animate-fade-in">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {[
+                { l: "Leads Gerados", v: stats.leadsGerados.toLocaleString('pt-BR') },
+                { l: "Propostas", v: stats.propostas.toLocaleString('pt-BR') },
+                { l: "Negócios", v: stats.negocios.toLocaleString('pt-BR'), accent: "amber" },
+                { l: "OFF", v: stats.off.toLocaleString('pt-BR') },
+                { l: "Vendas", v: stats.vendas.toLocaleString('pt-BR') },
+                { l: "VGV", v: brl(stats.vgv) },
+                { l: "Meta", v: `${stats.meta}`, sub: `${stats.pct}%` },
+              ].map((m, i) => (
+                <div key={i} className={cn(
+                  "rounded-xl px-3 py-2 border text-center",
+                  m.accent === "amber" ? "border-amber-400/50 bg-amber-400/10" : "border-border/50 bg-muted/30"
+                )}>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{m.l}</div>
+                  <div className="font-display text-lg text-foreground leading-tight">{m.v}</div>
+                  {m.sub && <div className="text-[10px] text-amber-400 font-medium">{m.sub}</div>}
+                </div>
+              ))}
+            </div>
+          </Card>
 
           {/* KPI ROW */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
