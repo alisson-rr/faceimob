@@ -49,40 +49,27 @@ export default function Dashboard() {
     [deals, selectedMonth]
   );
 
+  const [leadsCount, setLeadsCount] = useState(0);
+  useEffect(() => {
+    (async () => {
+      const { count } = await supabase.from('leads').select('*', { count: 'exact', head: true });
+      setLeadsCount(count || 0);
+    })();
+  }, []);
+
   const stats = useMemo(() => {
     const vendas = filtered.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
     const vgv = filtered.filter(d => d.active !== false).reduce((a, d) => a + (d.deal_value || 0), 0);
-    const leads = filtered.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
-    const propostas = filtered.filter(d => ['proposal', 'contract'].includes(d.stage)).length;
-    const negocios = filtered.length;
-    const meta = 80;
+    const propostas = filtered.filter(d => ['proposal', 'contract', 'approved'].includes(d.stage)).length;
+    const negocios = filtered.filter(d => !['lead', 'incomplete', 'lost'].includes(d.stage)).length;
+    const off = filtered.filter(d => d.stage === 'lost' || d.active === false).length;
+    const leadsGerados = leadsCount || filtered.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
+    const leads = leadsGerados;
+    const meta = 92;
     const pct = Math.min(100, Math.round((vendas / meta) * 100));
-
-    const year = new Date().getFullYear();
-    const byMonth = Array.from({ length: 12 }, (_, i) => ({ name: MONTH_LABELS[i], vendas: 0, propostas: 0 }));
-    deals.forEach(d => {
-      if (!d.month_base) return;
-      const [mm, yy] = d.month_base.split("/").map(Number);
-      if (yy !== year) return;
-      const idx = mm - 1;
-      if (d.stage === 'closed' || d.stage === 'contract') byMonth[idx].vendas++;
-      if (d.stage === 'proposal' || d.stage === 'contract') byMonth[idx].propostas++;
-    });
-
-    const area = byMonth.map(m => ({ name: m.name, valor: m.vendas * 250000 }));
-
-    const bMap: Record<string, number> = {};
-    filtered.forEach(d => {
-      if (d.stage === 'closed' || d.stage === 'contract') {
-        const n = d.broker1 || '—';
-        bMap[n] = (bMap[n] || 0) + 1;
-      }
-    });
-    const top = Object.entries(bMap).sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([name, v]) => ({ name, v }));
-
-    return { vendas, vgv, leads, propostas, negocios, meta, pct, byMonth, area, top };
-  }, [filtered, deals]);
+...
+    return { vendas, vgv, leads, leadsGerados, off, propostas, negocios, meta, pct, byMonth, area, top };
+  }, [filtered, deals, leadsCount]);
 
   const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
 
