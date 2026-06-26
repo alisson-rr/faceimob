@@ -61,7 +61,7 @@ interface BrokerScore {
   };
 }
 
-function computeScores(brokers: Broker[], deals: PipelineDeal[], managers: any[]): BrokerScore[] {
+function computeScores(brokers: Broker[], deals: PipelineDeal[], managers: any[], SCORING: ScoringConfig): BrokerScore[] {
   return brokers.filter(b => b.active).map(broker => {
     const brokerDeals = deals.filter(d => d.broker1 === broker.name || d.broker2 === broker.name);
     const incompletos = brokerDeals.filter(d => d.stage === 'incomplete').length;
