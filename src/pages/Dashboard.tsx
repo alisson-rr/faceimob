@@ -170,6 +170,30 @@ export default function Dashboard() {
             </Select>
           </header>
 
+          {/* TOP METRICS STRIP (Faceimob) */}
+          <Card className="p-4 rounded-2xl border-0 bg-card/80 backdrop-blur-xl shadow-premium animate-fade-in">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {[
+                { l: "Leads Gerados", v: stats.leadsGerados.toLocaleString('pt-BR') },
+                { l: "Propostas", v: stats.propostas.toLocaleString('pt-BR') },
+                { l: "Negócios", v: stats.negocios.toLocaleString('pt-BR'), accent: "amber" },
+                { l: "OFF", v: stats.off.toLocaleString('pt-BR') },
+                { l: "Vendas", v: stats.vendas.toLocaleString('pt-BR') },
+                { l: "VGV", v: brl(stats.vgv) },
+                { l: "Meta", v: `${stats.meta}`, sub: `${stats.pct}%` },
+              ].map((m, i) => (
+                <div key={i} className={cn(
+                  "rounded-xl px-3 py-2 border text-center",
+                  m.accent === "amber" ? "border-amber-400/50 bg-amber-400/10" : "border-border/50 bg-muted/30"
+                )}>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{m.l}</div>
+                  <div className="font-display text-lg text-foreground leading-tight">{m.v}</div>
+                  {m.sub && <div className="text-[10px] text-amber-400 font-medium">{m.sub}</div>}
+                </div>
+              ))}
+            </div>
+          </Card>
+
           {/* KPI ROW */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {kpis.map((k, i) => (
