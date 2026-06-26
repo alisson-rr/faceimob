@@ -462,23 +462,42 @@ export default function Gamification() {
 
       {/* ── CLOSE GAME CONFIRMATION DIALOG ─── */}
       <Dialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
-        <DialogContent className="glass-strong max-w-md">
+        <DialogContent className="glass-strong max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Target className="h-5 w-5 text-destructive" />
-              Fechar Game do Mês
+              Fechar Gameficação & Definir Próximo Ciclo
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Ao fechar o game, a pontuação será congelada para{' '}
-              <strong className="text-foreground">{getMonthLabel(now)}</strong>{' '}
-              e um novo mês será criado com pontuações zeradas.
+              Congela a pontuação de <strong className="text-foreground">{getMonthLabel(now)}</strong> e inicia um novo ciclo com os pontos definidos abaixo para cada movimento.
             </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['incomplete_with_doc', 'Incompleto (c/ doc)'],
+                ['envio_esteira_agil', 'Envio Esteira Ágil'],
+                ['approved', 'Aprovado'],
+                ['venda', 'Venda'],
+                ['distrato_penalty', 'Distrato/Queda'],
+              ] as [keyof ScoringConfig, string][]).map(([key, label]) => (
+                <div key={key} className="space-y-1">
+                  <Label className="text-xs">{label}</Label>
+                  <Input
+                    type="number"
+                    value={pendingScoring[key]}
+                    onChange={(e) => setPendingScoring(p => ({ ...p, [key]: Number(e.target.value) }))}
+                    className="h-8"
+                  />
+                </div>
+              ))}
+            </div>
+
             <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
               <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
               <p className="text-xs text-muted-foreground">
-                Esta ação não pode ser desfeita. O mês pode ser fechado mesmo após o dia 05 do mês seguinte.
+                Esta ação não pode ser desfeita. As novas pontuações valem a partir do próximo ciclo.
               </p>
             </div>
           </div>
