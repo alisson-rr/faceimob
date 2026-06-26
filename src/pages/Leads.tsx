@@ -235,38 +235,64 @@ export default function Leads() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const rows = text.split('\n').map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-      setCsvPreview(rows.slice(0, 11));
+      let rows: string[][] = [];
+      if (isExcel) {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+        rows = json.map(r => r.map((c: any) => String(c ?? '').trim()));
+      } else {
+        const text = ev.target?.result as string;
+        rows = text.split(/\r?\n/).map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
+      }
+      setCsvPreview(rows.filter(r => r.some(c => c)).slice(0, 11));
       setCsvOpen(true);
     };
-    reader.readAsText(file);
+    if (isExcel) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const mapLeadfyStatus = (s: string): LeadStatus => {
+    const v = (s || '').toLowerCase();
+    if (v.includes('negocia')) return 'qualified';
+    if (v.includes('perd')) return 'lost';
+    if (v.includes('vend') || v.includes('convert')) return 'converted';
+    if (v.includes('contat')) return 'contacted';
+    return 'new';
   };
 
   const importCSV = async () => {
     if (csvPreview.length < 2) return;
-    const headers = csvPreview[0].map(h => h.toLowerCase());
-    const nameIdx = headers.findIndex(h => h.includes('nome') || h.includes('name'));
-    const phoneIdx = headers.findIndex(h => h.includes('telefone') || h.includes('phone'));
-    const emailIdx = headers.findIndex(h => h.includes('email'));
-    const sourceIdx = headers.findIndex(h => h.includes('origem') || h.includes('source'));
-    
-    const newLeadsData = csvPreview.slice(1).filter(r => r.length > 1).map((row, i) => {
-      const auto = autoAssignBroker();
+    const headers = csvPreview[0].map(h => h.toLowerCase().trim());
+    const find = (...keys: string[]) => headers.findIndex(h => keys.some(k => h.includes(k)));
+    const nameIdx = find('cliente', 'nome', 'name');
+    const phoneIdx = find('telefone', 'phone', 'whatsapp', 'canal');
+    const emailIdx = find('email', 'e-mail');
+    const sourceIdx = find('fonte', 'origem', 'source');
+    const brokerIdx = find('corretor');
+    const statusIdx = find('status');
+    const notesIdx = find('observaç', 'mensagem', 'obs');
+
+    const newLeadsData = csvPreview.slice(1).filter(r => r.length > 1 && (r[nameIdx] || r[0])).map((row) => {
+      const brokerName = brokerIdx >= 0 ? row[brokerIdx] : '';
+      const matched = brokerName ? mockBrokers.find(b => b.name.toLowerCase() === brokerName.toLowerCase()) : null;
+      const broker = matched || mockBrokers.find(b => b.id === autoAssignBroker().id);
       return {
-        name: row[nameIdx] || row[0] || '',
-        phone: row[phoneIdx] || row[1] || '',
-        whatsapp: row[phoneIdx] || row[1] || '',
-        email: row[emailIdx] || row[2] || '',
-        source: row[sourceIdx] || 'CSV Import',
-        broker_id: auto.id,
-        broker_name: auto.name,
+        name: (nameIdx >= 0 ? row[nameIdx] : row[0]) || '',
+        phone: phoneIdx >= 0 ? row[phoneIdx] : '',
+        whatsapp: phoneIdx >= 0 ? row[phoneIdx] : '',
+        email: emailIdx >= 0 ? row[emailIdx] : '',
+        source: (sourceIdx >= 0 ? row[sourceIdx] : '') || 'Leadfy',
+        broker_id: broker?.id || '',
+        broker_name: broker?.name || brokerName || '',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        status: 'new',
-        notes: 'Importado via CSV - auto-atribuído',
+        status: statusIdx >= 0 ? mapLeadfyStatus(row[statusIdx]) : 'new',
+        notes: notesIdx >= 0 ? row[notesIdx] : 'Importado via Leadfy',
       };
     });
 
@@ -281,12 +307,13 @@ export default function Leads() {
       setLeads(prev => [...(data as Lead[]), ...prev]);
       setCsvOpen(false);
       setCsvPreview([]);
-      toast({ title: `${data?.length} leads importados e auto-atribuídos` });
+      toast({ title: `${data?.length} leads importados do Leadfy` });
     } catch (err) {
-      console.error("Error importing CSV:", err);
+      console.error("Error importing leads:", err);
       toast({ variant: "destructive", title: "Erro na importação", description: "Não foi possível salvar os leads no banco de dados." });
     }
   };
+
 
   // Metrics
   const totalLeads = leads.length;
