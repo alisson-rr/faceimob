@@ -1,391 +1,251 @@
 import { useState, useMemo, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { PipelineDeal } from "@/types/crm";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
-import { Trophy, Crown, Medal } from "lucide-react";
+import { DollarSign, Share2, ThumbsUp, Star, Crown } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, PieChart, Pie, Cell, Legend,
+} from "recharts";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+
+const MONTH_LABELS = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
 
 export default function Dashboard() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [brokers, setBrokers] = useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
 
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      try {
-        console.log("Fetching dashboard data...");
-        const { data: dealsData, error: dealsError } = await supabase.from('deals').select('*');
-        const { data: brokersData, error: brokersError } = await supabase.from('brokers').select('id, name');
-
-        if (dealsError) throw dealsError;
-        if (brokersError) throw brokersError;
-
-        console.log("Deals raw:", dealsData?.length);
-        console.log("Deals sample:", dealsData?.[0]);
-
-        console.log("Deals fetched:", dealsData?.length);
-
-        const mappedDeals: PipelineDeal[] = (dealsData || []).map(d => {
-          const deal = d as any;
-          let monthBase = deal.month_base;
-          
-          if (!monthBase && deal.created_at) {
-            monthBase = format(parseISO(deal.created_at), "MM/yyyy");
-          }
-          
-          return {
-            ...deal,
-            broker1: deal.broker1?.name || deal.broker_name || 'Sem Corretor',
-            broker2: deal.broker2?.name || undefined,
-            month_base: monthBase
-          } as unknown as PipelineDeal;
-        });
-
-        setDeals(mappedDeals);
-        setBrokers(brokersData || []);
-
-        // Define o mês atual como padrão se houver dados para ele
-        const currentMonthStr = format(new Date(), "MM/yyyy");
-        const hasCurrentMonth = mappedDeals.some(d => d.month_base === currentMonthStr);
-        
-        if (hasCurrentMonth) {
-          setSelectedMonth(currentMonthStr);
-        } else if (mappedDeals.length > 0) {
-          const sortedMonths = [...new Set(mappedDeals.map(d => d.month_base).filter(Boolean) as string[])].sort((a, b) => {
-            const [m1, y1] = a.split("/").map(Number);
-            const [m2, y2] = b.split("/").map(Number);
-            return y2 - y1 || m2 - m1;
-          });
-          if (sortedMonths[0]) setSelectedMonth(sortedMonths[0]);
-        }
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
+    (async () => {
+      const { data: dealsData } = await supabase.from('deals').select('*');
+      const { data: brokersData } = await supabase.from('brokers').select('id, name');
+      const mapped: PipelineDeal[] = (dealsData || []).map((d: any) => {
+        let m = d.month_base;
+        if (!m && d.created_at) m = format(parseISO(d.created_at), "MM/yyyy");
+        return { ...d, broker1: d.broker_name || 'Sem Corretor', month_base: m } as unknown as PipelineDeal;
+      });
+      setDeals(mapped);
+      setBrokers(brokersData || []);
+    })();
   }, []);
 
   const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    deals.forEach(d => {
-      if (d.month_base) months.add(d.month_base);
-    });
-    return Array.from(months).sort((a, b) => {
-      const partsA = a.split("/");
-      const partsB = b.split("/");
-      const m1 = parseInt(partsA[0]);
-      const y1 = parseInt(partsA[1]);
-      const m2 = parseInt(partsB[0]);
-      const y2 = parseInt(partsB[1]);
-      return y2 - y1 || m2 - m1;
+    const s = new Set<string>();
+    deals.forEach(d => d.month_base && s.add(d.month_base));
+    return Array.from(s).sort((a, b) => {
+      const [ma, ya] = a.split("/").map(Number);
+      const [mb, yb] = b.split("/").map(Number);
+      return yb - ya || mb - ma;
     });
   }, [deals]);
 
-  const filteredDeals = useMemo(() => {
-    if (selectedMonth === "all") return deals;
-    return deals.filter(d => d.month_base === selectedMonth);
-  }, [deals, selectedMonth]);
+  const filtered = useMemo(
+    () => selectedMonth === "all" ? deals : deals.filter(d => d.month_base === selectedMonth),
+    [deals, selectedMonth]
+  );
 
   const stats = useMemo(() => {
-    const currentDeals = filteredDeals;
-    const leads = currentDeals.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
-    const propostas = currentDeals.filter(d => ['proposal', 'contract'].includes(d.stage)).length;
-    const negocios = currentDeals.length;
-    const off = currentDeals.filter(d => !d.active).length;
-    const vendas = currentDeals.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
-    const vgv = currentDeals.filter(d => d.active).reduce((acc, d) => acc + (d.deal_value || 0), 0);
-    
-    // Construtora breakdown
-    const construtoraMap: Record<string, { unidades: number; vgv: number; propostas: number; negocios: number }> = {};
-    currentDeals.forEach(d => {
-      const dev = d.developer || 'N/A';
-      if (!construtoraMap[dev]) construtoraMap[dev] = { unidades: 0, vgv: 0, propostas: 0, negocios: 0 };
-      if ((d.stage === 'closed' || d.stage === 'contract') && d.active !== false) {
-        construtoraMap[dev].unidades++;
-        construtoraMap[dev].vgv += (d.deal_value || 0);
+    const vendas = filtered.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
+    const vgv = filtered.filter(d => d.active !== false).reduce((a, d) => a + (d.deal_value || 0), 0);
+    const leads = filtered.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
+    const propostas = filtered.filter(d => ['proposal', 'contract'].includes(d.stage)).length;
+    const negocios = filtered.length;
+    const meta = 80;
+    const pct = Math.min(100, Math.round((vendas / meta) * 100));
+
+    // monthly bars for current year
+    const year = new Date().getFullYear();
+    const byMonth = Array.from({ length: 12 }, (_, i) => ({ name: MONTH_LABELS[i], vendas: 0, propostas: 0 }));
+    deals.forEach(d => {
+      if (!d.month_base) return;
+      const [mm, yy] = d.month_base.split("/").map(Number);
+      if (yy !== year) return;
+      const idx = mm - 1;
+      if (d.stage === 'closed' || d.stage === 'contract') byMonth[idx].vendas++;
+      if (d.stage === 'proposal' || d.stage === 'contract') byMonth[idx].propostas++;
+    });
+
+    // area: vgv evolution by month
+    const area = byMonth.map(m => ({ name: m.name, valor: m.vendas * 250000 }));
+
+    // top brokers
+    const bMap: Record<string, number> = {};
+    filtered.forEach(d => {
+      if (d.stage === 'closed' || d.stage === 'contract') {
+        const n = d.broker1 || '—';
+        bMap[n] = (bMap[n] || 0) + 1;
       }
-      if (d.stage === 'proposal' || d.stage === 'contract') construtoraMap[dev].propostas++;
-      construtoraMap[dev].negocios++;
     });
+    const top = Object.entries(bMap).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([name, v]) => ({ name, v }));
 
-    const vendasTable = Object.entries(construtoraMap)
-      .filter(([_, v]) => v.unidades > 0)
-      .map(([k, v]) => ({ construtora: k, unidades: v.unidades, vgv: v.vgv }))
-      .sort((a, b) => b.unidades - a.unidades);
+    return { vendas, vgv, leads, propostas, negocios, meta, pct, byMonth, area, top };
+  }, [filtered, deals]);
 
-    const propostasTable = Object.entries(construtoraMap)
-      .filter(([_, v]) => v.propostas > 0)
-      .map(([k, v]) => ({ const: k, prop: v.propostas, neg: v.negocios, vgv: v.vgv }))
-      .sort((a, b) => b.prop - a.prop);
+  const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(n);
 
-    // Broker ranking
-    const brokerStats: Record<string, { name: string; leads: number; agil: number; neg: number; vendas: number; vgv: number; off: number }> = {};
-    brokers.forEach(b => {
-      brokerStats[b.name] = { name: b.name, leads: 0, agil: 0, neg: 0, vendas: 0, vgv: 0, off: 0 };
-    });
-
-    currentDeals.forEach(d => {
-      const bNames = [d.broker1, d.broker2].filter(Boolean) as string[];
-      bNames.forEach(name => {
-        if (!brokerStats[name]) brokerStats[name] = { name, leads: 0, agil: 0, neg: 0, vendas: 0, vgv: 0, off: 0 };
-        if (['lead', 'incomplete'].includes(d.stage)) brokerStats[name].leads++;
-        if (d.stage === 'under_analysis') brokerStats[name].agil++;
-        brokerStats[name].neg++;
-        if (d.stage === 'closed' || d.stage === 'contract') {
-          brokerStats[name].vendas++;
-          brokerStats[name].vgv += (d.deal_value || 0);
-        }
-        if (!d.active) brokerStats[name].off++;
-      });
-    });
-
-    const generalRanking = Object.values(brokerStats)
-      .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv)
-      .slice(0, 10);
-
-    return { leads, propostas, negocios, off, vendas, vgv, vendasTable, propostasTable, generalRanking };
-  }, [filteredDeals, brokers]);
-
-  // Diretoria Ranking Mock Logic (since we don't have directorship in DB yet)
-  const diretoriaWinners = useMemo(() => {
-    // Mock directorships if not in DB
-    const dirs = ["Diretoria A", "Diretoria B", "Diretoria C"];
-    return dirs.map(dir => {
-      // Find top broker for this mock directory (randomly assigned for now)
-      const top = stats.generalRanking[Math.floor(Math.random() * 3)] || stats.generalRanking[0];
-      return { dir, name: top?.name || "---", points: top?.vendas || 0 };
-    });
-  }, [stats.generalRanking]);
-
-  const summaryMetrics = [
-    { label: "Leads Gerados", value: stats.leads.toString() },
-    { label: "Propostas", value: stats.propostas.toString() },
-    { label: "Negócios", value: stats.negocios.toString() },
-    { label: "OFF", value: stats.off.toString() },
-    { label: "Vendas", value: stats.vendas.toString() },
+  const kpis = [
+    { label: "VGV", value: brl(stats.vgv), icon: DollarSign, accent: true },
+    { label: "Negócios", value: stats.negocios.toLocaleString('pt-BR'), icon: Share2 },
+    { label: "Propostas", value: stats.propostas.toLocaleString('pt-BR'), icon: ThumbsUp },
+    { label: "Vendas", value: stats.vendas.toLocaleString('pt-BR'), icon: Star },
   ];
 
-  const vgvValue = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.vgv);
-  const metaMetric = { label: "Meta", value: "80", percent: Math.round((stats.vendas / 80) * 100) };
+  const donutData = [
+    { name: 'Atingido', value: stats.pct },
+    { name: 'Restante', value: 100 - stats.pct },
+  ];
+  const DONUT_COLORS = ['#f59e0b', '#1e293b'];
+
+  const topBroker = stats.top[0];
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white p-4 space-y-6">
-      {/* ── STICKY DIRECTORY WINNERS ── */}
-      <div className="sticky top-0 z-40 bg-[#020617]/90 backdrop-blur-md py-2 border-b border-white/5 -mx-4 px-4">
-        <div className="flex flex-wrap items-center justify-center gap-6">
-          {diretoriaWinners.map((w, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div className="flex flex-col">
-                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{w.dir}</span>
-                <div className="flex items-center gap-2">
-                  <Crown className="h-4 w-4 text-warning" />
-                  <span className="text-sm font-bold truncate max-w-[120px]">{w.name}</span>
-                  <Badge variant="outline" className="text-[10px] py-0 h-4 border-warning/30 text-warning">{w.points} vendas</Badge>
+    <div className="min-h-screen bg-slate-100 dark:bg-[#020617] p-4 md:p-6">
+      <div className="grid grid-cols-12 gap-4 max-w-[1600px] mx-auto">
+        {/* SIDEBAR-LIKE PROFILE */}
+        <aside className="col-span-12 md:col-span-3 bg-[#1e3a5f] text-white rounded-2xl p-6 flex flex-col items-center text-center">
+          <div className="w-24 h-24 rounded-full bg-white/10 border-4 border-white/20 flex items-center justify-center mb-3">
+            <Crown className="h-10 w-10 text-amber-300" />
+          </div>
+          <h2 className="text-lg font-bold">{topBroker?.name || "Faceimob"}</h2>
+          <p className="text-xs text-white/60 mb-6">Top performer do período</p>
+
+          <div className="w-full space-y-2 text-sm">
+            {[
+              { l: "Dashboard", href: "/dashboard" },
+              { l: "Pipeline", href: "/pipeline" },
+              { l: "CCA", href: "/cca" },
+              { l: "Equipes", href: "/team" },
+              { l: "Marketing", href: "/marketing" },
+              { l: "Gamificação", href: "/gamification" },
+            ].map(i => (
+              <a key={i.href} href={i.href} className="block text-left px-4 py-2 rounded-lg hover:bg-white/10 transition">
+                {i.l}
+              </a>
+            ))}
+          </div>
+        </aside>
+
+        {/* MAIN */}
+        <main className="col-span-12 md:col-span-9 space-y-4">
+          {/* HEADER */}
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Dashboard</h1>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="w-[180px] bg-white dark:bg-[#1e1b4b]"><SelectValue placeholder="Mês" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os Meses</SelectItem>
+                {availableMonths.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* KPI ROW */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {kpis.map((k, i) => (
+              <Card key={i} className={`p-5 rounded-2xl border-0 shadow-sm ${k.accent ? 'bg-[#1e3a5f] text-white' : 'bg-white dark:bg-[#1e1b4b] dark:text-white'}`}>
+                <div className="flex items-start justify-between mb-2">
+                  <span className={`text-sm font-semibold ${k.accent ? 'text-white/80' : 'text-slate-600 dark:text-slate-300'}`}>{k.label}</span>
+                  <div className={`h-7 w-7 rounded-full flex items-center justify-center ${k.accent ? 'bg-amber-400 text-[#1e3a5f]' : 'bg-amber-100 text-amber-600'}`}>
+                    <k.icon className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="text-3xl font-bold tracking-tight">{k.value}</div>
+              </Card>
+            ))}
+          </div>
+
+          {/* CHART + DONUT */}
+          <div className="grid grid-cols-12 gap-4">
+            <Card className="col-span-12 lg:col-span-8 p-5 rounded-2xl border-0 shadow-sm bg-white dark:bg-[#1e1b4b]">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-slate-800 dark:text-white">Resultado mensal</h3>
+                <Button size="sm" className="bg-amber-400 hover:bg-amber-500 text-[#1e3a5f] rounded-full h-7 px-4 text-xs font-bold">Ver agora</Button>
+              </div>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={stats.byMonth}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                  <Tooltip />
+                  <Bar dataKey="propostas" name="Propostas" fill="#1e3a5f" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="vendas" name="Vendas" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+
+            <Card className="col-span-12 lg:col-span-4 p-5 rounded-2xl border-0 shadow-sm bg-white dark:bg-[#1e1b4b]">
+              <h3 className="font-bold text-slate-800 dark:text-white mb-2">Meta</h3>
+              <div className="relative">
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={donutData} innerRadius={55} outerRadius={80} dataKey="value" startAngle={90} endAngle={-270}>
+                      {donutData.map((_, i) => <Cell key={i} fill={DONUT_COLORS[i]} />)}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="text-3xl font-bold text-slate-800 dark:text-white">{stats.pct}%</span>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── MONTH SELECTOR ── */}
-      <div className="flex justify-end">
-        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-          <SelectTrigger className="w-[180px] bg-[#1e1b4b] border-white/10 text-xs">
-            <SelectValue placeholder="Selecionar Mês" />
-          </SelectTrigger>
-          <SelectContent className="bg-[#1e1b4b] border-white/10 text-white">
-            <SelectItem value="all">Todos os Meses</SelectItem>
-            {availableMonths.map(m => (
-              <SelectItem key={m} value={m}>{m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* ── TOP SUMMARY CARDS ── */}
-      <div className="flex flex-wrap items-stretch justify-center gap-2">
-        {summaryMetrics.map((m) => (
-          <div key={m.label} className="bg-[#1e1b4b] border border-white/5 rounded-md px-6 py-4 text-center flex flex-col justify-center min-w-[120px]">
-            <span className="text-[10px] text-gray-400 uppercase font-bold mb-1">{m.label}</span>
-            <span className="text-3xl font-bold">{m.value}</span>
+              <ul className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+                <li>Vendas: <b>{stats.vendas}</b> / {stats.meta}</li>
+                <li>Leads: <b>{stats.leads}</b></li>
+                <li>Propostas: <b>{stats.propostas}</b></li>
+              </ul>
+              <Button size="sm" className="mt-3 w-full bg-amber-400 hover:bg-amber-500 text-[#1e3a5f] rounded-full h-7 text-xs font-bold">Ver agora</Button>
+            </Card>
           </div>
-        ))}
-        
-        <div className="bg-[#1e1b4b] border border-white/5 rounded-md px-10 py-4 text-center flex flex-col justify-center min-w-[280px]">
-          <span className="text-[10px] text-gray-400 uppercase font-bold mb-1">VGV</span>
-          <span className="text-3xl font-bold text-white tracking-tight">{vgvValue}</span>
-        </div>
 
-        <div className="bg-[#1e1b4b] border border-white/5 rounded-md px-6 py-4 text-center flex flex-col justify-center min-w-[150px]">
-          <span className="text-[10px] text-gray-400 uppercase font-bold mb-1">{metaMetric.label}</span>
-          <span className="text-3xl font-bold">{metaMetric.value}</span>
-          <div className="mt-2 space-y-1">
-            <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
-              <div 
-                className="bg-primary h-full rounded-full" 
-                style={{ width: `${metaMetric.percent}%` }}
-              />
-            </div>
-            <span className="text-[10px] text-gray-400 uppercase font-bold">Meta Atingida %</span>
-            <span className="block text-[10px] font-bold">{metaMetric.percent}%</span>
+          {/* AREA + CALENDAR */}
+          <div className="grid grid-cols-12 gap-4">
+            <Card className="col-span-12 lg:col-span-8 p-5 rounded-2xl border-0 shadow-sm bg-white dark:bg-[#1e1b4b]">
+              <div className="flex items-center gap-4 mb-2 text-xs text-slate-600 dark:text-slate-300">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" /> VGV</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#1e3a5f]" /> Tendência</span>
+              </div>
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={stats.area}>
+                  <defs>
+                    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.6} />
+                      <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#94a3b8" />
+                  <Tooltip formatter={(v: number) => brl(v)} />
+                  <Area type="monotone" dataKey="valor" stroke="#f59e0b" fill="url(#g1)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Card>
+
+            <Card className="col-span-12 lg:col-span-4 p-3 rounded-2xl border-0 shadow-sm bg-white dark:bg-[#1e1b4b] flex items-center justify-center">
+              <Calendar mode="single" className="rounded-md" />
+            </Card>
           </div>
-        </div>
-      </div>
 
-      {/* ── MIDDLE ROW: Vendas, Propostas, Metas ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Vendas */}
-        <Card className="bg-[#1e1b4b] border-white/5 overflow-hidden">
-          <CardHeader className="py-2 px-4 bg-[#312e81]/30 border-b border-white/5">
-            <CardTitle className="text-xs font-bold text-white uppercase text-center">Vendas</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 h-[220px] overflow-y-auto">
-            <table className="w-full text-[11px]">
-              <thead className="sticky top-0 bg-[#1e1b4b] text-gray-400 font-bold border-b border-white/5">
-                <tr>
-                  <th className="p-2 text-left">Construtora</th>
-                  <th className="p-2 text-center">Unidade</th>
-                  <th className="p-2 text-right">VGV</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {stats.vendasTable.map((row, i) => (
-                  <tr key={i} className="hover:bg-white/5 transition-colors">
-                    <td className="p-2 font-medium">{row.construtora}</td>
-                    <td className="p-2 text-center font-bold text-blue-400">{row.unidades}</td>
-                    <td className="p-2 text-right text-gray-300">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(row.vgv)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-
-        {/* Propostas */}
-        <Card className="bg-[#1e1b4b] border-white/5 overflow-hidden">
-          <CardHeader className="py-2 px-4 bg-[#312e81]/30 border-b border-white/5">
-            <CardTitle className="text-xs font-bold text-white uppercase text-center">Propostas</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 h-[220px] overflow-y-auto">
-            <table className="w-full text-[11px]">
-              <thead className="sticky top-0 bg-[#1e1b4b] text-gray-400 font-bold border-b border-white/5">
-                <tr>
-                  <th className="p-2 text-left">Const.</th>
-                  <th className="p-2 text-center">Prop.</th>
-                  <th className="p-2 text-center">Neg.</th>
-                  <th className="p-2 text-right">VGV</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {stats.propostasTable.map((row, i) => (
-                  <tr key={i} className="hover:bg-white/5 transition-colors">
-                    <td className="p-2 font-medium">{row.const}</td>
-                    <td className="p-2 text-center font-bold text-blue-400">{row.prop}</td>
-                    <td className="p-2 text-center font-bold text-cyan-400">{row.neg}</td>
-                    <td className="p-2 text-right text-gray-300">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(row.vgv)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-
-        {/* Metas */}
-        <Card className="bg-[#1e1b4b] border-white/5 overflow-hidden">
-          <CardHeader className="py-2 px-4 bg-[#312e81]/30 border-b border-white/5">
-            <CardTitle className="text-xs font-bold text-white uppercase text-center">Metas</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 h-[220px] overflow-y-auto">
-            <table className="w-full text-[11px]">
-              <thead className="sticky top-0 bg-[#1e1b4b] text-gray-400 font-bold border-b border-white/5">
-                <tr>
-                  <th className="p-2 text-left">Construtora</th>
-                  <th className="p-2 text-center">Meta</th>
-                  <th className="p-2 text-center">%</th>
-                  <th className="p-2 text-right">Obtido</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {stats.vendasTable.slice(0, 5).map((row, i) => {
-                  const meta = 24;
-                  const pct = Math.round((row.unidades / meta) * 100);
-                  return (
-                    <tr key={i} className="hover:bg-white/5 transition-colors">
-                      <td className="p-2 font-medium">{row.construtora}</td>
-                      <td className="p-2 text-center font-bold">{meta}</td>
-                      <td className="p-2 text-center">
-                        <span className={cn(
-                          "px-1.5 py-0.5 rounded text-[10px] font-bold text-white",
-                          pct >= 50 ? "bg-amber-600" : "bg-red-600"
-                        )}>
-                          {pct}%
-                        </span>
-                      </td>
-                      <td className="p-2 text-right font-bold text-blue-400">{row.unidades}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── RANKING TABLES ── */}
-      <div className="space-y-4">
-        {/* Ranking de Gerentes */}
-        <Card className="bg-[#1e1b4b] border-white/5 overflow-hidden">
-          <CardContent className="p-0">
-            <table className="w-full text-[11px]">
-              <thead className="bg-[#1e1b4b] text-[#fbbf24] font-bold border-b border-white/5 uppercase">
-                <tr>
-                  <th className="p-2 text-center whitespace-nowrap font-black">#</th>
-                  <th className="p-2 text-left min-w-[120px] font-black text-gray-300">Ranking Geral</th>
-                  <th className="p-2 text-center font-black">Leads</th>
-                  <th className="p-2 text-center font-black">Visitas</th>
-                  <th className="p-2 text-center font-black">Agil</th>
-                  <th className="p-2 text-center font-black">Neg.</th>
-                  <th className="p-2 text-center bg-green-900/20 font-black">Vendas</th>
-                  <th className="p-2 text-right bg-green-900/20 font-black">VGV</th>
-                  <th className="p-2 text-center font-black">Off</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {stats.generalRanking.map((row, i) => (
-                  <tr key={i} className="hover:bg-white/5 transition-colors">
-                    <td className="p-2 text-center font-bold text-[#fbbf24]">{i + 1}º</td>
-                    <td className="p-2 font-medium">{row.name}</td>
-                    <td className="p-2 text-center">
-                      <span className="bg-[#fbbf24] text-black px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">{row.leads}</span>
-                    </td>
-                    <td className="p-2 text-center">
-                      <span className="bg-gray-600 text-white px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">0</span>
-                    </td>
-                    <td className="p-2 text-center">
-                      <span className="bg-gray-600 text-white px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">{row.agil}</span>
-                    </td>
-                    <td className="p-2 text-center">
-                      <span className="bg-red-700 text-white px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">{row.neg}</span>
-                    </td>
-                    <td className="p-2 text-center bg-green-900/20">
-                      <span className="bg-green-600 text-white px-2 py-0.5 rounded-sm font-bold min-w-[30px] inline-block">{row.vendas}</span>
-                    </td>
-                    <td className="p-2 text-right bg-green-900/20 font-bold text-green-400">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(row.vgv)}</td>
-                    <td className="p-2 text-center font-bold text-gray-500">{row.off}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+          {/* TOP RANKING */}
+          <Card className="p-5 rounded-2xl border-0 shadow-sm bg-white dark:bg-[#1e1b4b]">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-3">Top Corretores do Período</h3>
+            <div className="space-y-2">
+              {stats.top.length === 0 && <p className="text-sm text-slate-500">Sem vendas no período.</p>}
+              {stats.top.map((t, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="w-6 text-xs font-bold text-amber-500">{i + 1}º</span>
+                  <span className="flex-1 text-sm text-slate-700 dark:text-slate-200 font-medium">{t.name}</span>
+                  <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    <div className="h-full bg-amber-400" style={{ width: `${(t.v / stats.top[0].v) * 100}%` }} />
+                  </div>
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200 w-10 text-right">{t.v}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </main>
       </div>
     </div>
   );
