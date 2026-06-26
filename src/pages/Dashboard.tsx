@@ -67,7 +67,27 @@ export default function Dashboard() {
     const leads = leadsGerados;
     const meta = 92;
     const pct = Math.min(100, Math.round((vendas / meta) * 100));
-...
+
+    const year = new Date().getFullYear();
+    const byMonth = Array.from({ length: 12 }, (_, i) => ({ name: MONTH_LABELS[i], vendas: 0, propostas: 0 }));
+    deals.forEach(d => {
+      if (!d.month_base) return;
+      const [mm, yy] = d.month_base.split("/").map(Number);
+      if (yy !== year) return;
+      const idx = mm - 1;
+      if (d.stage === 'closed' || d.stage === 'contract') byMonth[idx].vendas++;
+      if (d.stage === 'proposal' || d.stage === 'contract') byMonth[idx].propostas++;
+    });
+    const area = byMonth.map(m => ({ name: m.name, valor: m.vendas * 250000 }));
+    const bMap: Record<string, number> = {};
+    filtered.forEach(d => {
+      if (d.stage === 'closed' || d.stage === 'contract') {
+        const n = d.broker1 || '—';
+        bMap[n] = (bMap[n] || 0) + 1;
+      }
+    });
+    const top = Object.entries(bMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, v]) => ({ name, v }));
+
     return { vendas, vgv, leads, leadsGerados, off, propostas, negocios, meta, pct, byMonth, area, top };
   }, [filtered, deals, leadsCount]);
 
