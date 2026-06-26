@@ -1,15 +1,13 @@
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { UserCircle, Mail, Phone, Shield, Plus, Pencil, Search, Eye, EyeOff } from "lucide-react";
+import { Pencil, Trash2, Download, X, UserPlus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { mockBrokers, mockManagers } from "@/data/mockData";
+import { mockBrokers } from "@/data/mockData";
 import { toast } from "@/hooks/use-toast";
 
 const ROLES = [
@@ -18,19 +16,25 @@ const ROLES = [
   { value: "director", label: "Diretor" },
   { value: "cca", label: "CCA" },
   { value: "admin", label: "Administrador" },
-  { value: "partner", label: "Sócio" },
+  { value: "adm", label: "Adm" },
+  { value: "administrativo", label: "Administrativo" },
+  { value: "servicos", label: "Serviços Gerais" },
 ];
 
-const DIRECTORS = ["André Martins", "Paula Ferreira", "Lucas Andrade"];
+const DIRECTORS = ["Archimedes", "Fabio Batista", "Mauricio"];
+const TEAMS = ["Alexandre", "Alisson", "Daiane Dias", "Jose Portilho", "Leonardo", "Susana", "Veronica", "Victor", "Archimedes", "Zona Sul", "Mauricio"];
+const HABILITACOES = ["CRECI", "Estágio", "Não Possui (Estágio)", "OAB", "Outro"];
 
 interface Collaborator {
   id: string;
   nickname: string;
   fullName: string;
   email: string;
+  password: string;
   team: string;
+  director: string;
   birthDate: string;
-  license: string;
+  habilitacao: string;
   creci: string;
   entryDate: string;
   cpf: string;
@@ -38,141 +42,256 @@ interface Collaborator {
   address: string;
   role: string;
   division: string;
-  director: string;
   referral: string;
   active: boolean;
-  username: string;
-  password: string;
+  isCCA?: boolean;
 }
+
+const genPwd = () => Math.random().toString(36).slice(-8);
 
 const initialCollaborators: Collaborator[] = mockBrokers.filter(b => b.active).map((b, i) => ({
   id: b.id,
   nickname: b.name.split(" ")[0],
   fullName: b.name,
-  email: `${b.name.split(" ")[0].toLowerCase()}@faceimob.com.br`,
-  team: b.team,
+  email: `${b.name.toLowerCase().replace(/\s+/g, ".")}@faceimob.com.br`,
+  password: genPwd(),
+  team: b.team || TEAMS[i % TEAMS.length],
+  director: DIRECTORS[i % 3],
   birthDate: "",
-  license: "CRECI",
-  creci: String(80000 + i),
+  habilitacao: i % 5 === 0 ? "Estágio" : "CRECI",
+  creci: String(60000 + i * 7),
   entryDate: "2025-01-15",
   cpf: "",
-  phone: "",
+  phone: `5198${String(1000000 + i * 13).slice(-7)}`,
   address: "",
   role: "broker",
   division: "1",
-  director: DIRECTORS[i % 3],
-  referral: "",
+  referral: i % 3 === 0 ? "Gabriel Dutra" : "",
   active: true,
-  username: b.name.split(" ")[0].toLowerCase(),
-  password: "123456",
 }));
+
+const habBadge = (h: string) => {
+  if (h === "Estágio") return "bg-amber-700/60 text-amber-100";
+  if (h.includes("Não Possui")) return "bg-red-700/60 text-red-100";
+  return "text-foreground";
+};
 
 export default function Profile() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const [collaborators, setCollaborators] = useState<Collaborator[]>(initialCollaborators);
-  const [search, setSearch] = useState("");
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingCollab, setEditingCollab] = useState<Collaborator | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
 
-  const emptyCollab: Collaborator = {
-    id: "", nickname: "", fullName: "", email: "", team: "", birthDate: "",
-    license: "CRECI", creci: "", entryDate: new Date().toISOString().slice(0, 10),
-    cpf: "", phone: "", address: "", role: "broker", division: "1",
-    director: DIRECTORS[0], referral: "", active: true, username: "", password: "",
-  };
+  const [filterGerencia, setFilterGerencia] = useState<string>("all");
+  const [filterHab, setFilterHab] = useState<string>("all");
+  const [filterNomeCorretor, setFilterNomeCorretor] = useState("");
+  const [filterNomeColab, setFilterNomeColab] = useState("");
 
-  const filtered = useMemo(() =>
-    collaborators.filter(c => {
-      const s = search.toLowerCase();
-      return !s || c.fullName.toLowerCase().includes(s) || c.nickname.toLowerCase().includes(s) || c.email.toLowerCase().includes(s);
-    }), [collaborators, search]);
+  const [dlgColab, setDlgColab] = useState(false);
+  const [dlgCCA, setDlgCCA] = useState(false);
+  const [editing, setEditing] = useState<Collaborator | null>(null);
 
-  const openNew = () => { setEditingCollab(null); setEditOpen(true); setShowPassword(false); };
-  const openEdit = (c: Collaborator) => { setEditingCollab(c); setEditOpen(true); setShowPassword(false); };
+  const emptyForm = (cca = false): Collaborator => ({
+    id: String(Date.now()), nickname: "", fullName: "", email: "", password: genPwd(),
+    team: "", director: DIRECTORS[0], birthDate: "", habilitacao: cca ? "" : "CRECI",
+    creci: "", entryDate: new Date().toISOString().slice(0, 10), cpf: "", phone: "",
+    address: "", role: cca ? "cca" : "broker", division: "1", referral: "", active: true, isCCA: cca,
+  });
 
-  const [formData, setFormData] = useState<Collaborator>(emptyCollab);
+  const [form, setForm] = useState<Collaborator>(emptyForm());
 
-  const handleOpen = (c: Collaborator | null) => {
-    setFormData(c ? { ...c } : { ...emptyCollab, id: String(Date.now()) });
-  };
+  const filtered = useMemo(() => collaborators.filter(c => {
+    if (filterGerencia !== "all" && c.director !== filterGerencia) return false;
+    if (filterHab !== "all" && c.habilitacao !== filterHab) return false;
+    if (filterNomeCorretor && !c.fullName.toLowerCase().includes(filterNomeCorretor.toLowerCase())) return false;
+    if (filterNomeColab && !c.nickname.toLowerCase().includes(filterNomeColab.toLowerCase())) return false;
+    return true;
+  }), [collaborators, filterGerencia, filterHab, filterNomeCorretor, filterNomeColab]);
+
+  // Team summary
+  const teamSummary = useMemo(() => {
+    const map = new Map<string, number>();
+    collaborators.filter(c => c.role === "broker").forEach(c => {
+      map.set(c.team, (map.get(c.team) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([team, corretores]) => ({
+      team, corretores, meta: 8, metaPorCorretor: corretores ? +(8 / corretores).toFixed(1) : 0,
+    }));
+  }, [collaborators]);
+
+  // Role summary
+  const roleSummary = useMemo(() => {
+    const count = (r: string) => collaborators.filter(c => c.role === r && c.active).length;
+    return {
+      gerentes: count("manager"),
+      corretores: count("broker"),
+      diretores: count("director"),
+      adm: count("adm") + count("admin"),
+      administrativo: count("administrativo"),
+      servicos: count("servicos"),
+      total: collaborators.filter(c => c.active).length,
+    };
+  }, [collaborators]);
+
+  const openNew = (cca: boolean) => { setEditing(null); setForm(emptyForm(cca)); cca ? setDlgCCA(true) : setDlgColab(true); };
+  const openEdit = (c: Collaborator) => { setEditing(c); setForm({ ...c }); c.isCCA ? setDlgCCA(true) : setDlgColab(true); };
 
   const save = () => {
-    if (!formData.fullName.trim()) {
-      toast({ title: "Nome obrigatório", variant: "destructive" });
-      return;
-    }
-    if (editingCollab) {
-      setCollaborators(prev => prev.map(c => c.id === editingCollab.id ? formData : c));
-    } else {
-      setCollaborators(prev => [...prev, formData]);
-    }
-    setEditOpen(false);
-    toast({ title: editingCollab ? "Colaborador atualizado" : "Colaborador cadastrado" });
+    if (!form.fullName.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
+    if (editing) setCollaborators(prev => prev.map(c => c.id === editing.id ? form : c));
+    else setCollaborators(prev => [...prev, form]);
+    setDlgColab(false); setDlgCCA(false);
+    toast({ title: editing ? "Atualizado" : "Cadastrado" });
   };
 
-  // When dialog opens, sync formData
-  const onOpenChange = (open: boolean) => {
-    if (!open) { setEditOpen(false); return; }
+  const del = (id: string) => {
+    setCollaborators(prev => prev.filter(c => c.id !== id));
+    toast({ title: "Removido" });
+  };
+
+  const downloadCSV = () => {
+    const headers = ["Colaborador", "Diretor", "Gerência", "Email", "Celular", "Indicação", "Habilitação", "Ativo"];
+    const rows = filtered.map(c => [c.nickname, c.director, c.team, c.email, c.phone, c.referral, c.habilitacao, c.active ? "Sim" : "Não"]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v ?? ""}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "colaboradores.csv"; a.click();
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Pessoal</h1>
-          <p className="text-muted-foreground">Gerencie os colaboradores do sistema</p>
-        </div>
-        {isAdmin && (
-          <Button size="sm" onClick={() => { openNew(); handleOpen(null); }}>
-            <Plus className="h-4 w-4 mr-1" /> Novo Colaborador
+      {/* Top action buttons */}
+      <div className="flex justify-center gap-3">
+        <Button onClick={() => openNew(false)} className="bg-transparent border-2 border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 px-6">
+          Adicionar Colaborador
+        </Button>
+        <Button onClick={() => openNew(true)} className="bg-transparent border-2 border-amber-500 text-amber-400 hover:bg-amber-500/10 px-6">
+          Adicionar CCA
+        </Button>
+      </div>
+
+      {/* Top summary cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="glass p-0 overflow-hidden lg:col-span-2">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-border/50">
+                <TableHead className="text-center">Equipe</TableHead>
+                <TableHead className="text-center">Corretores</TableHead>
+                <TableHead className="text-center">Meta p/ corret</TableHead>
+                <TableHead className="text-center">Meta</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teamSummary.map(t => (
+                <TableRow key={t.team}>
+                  <TableCell className="text-center py-1.5">{t.team}</TableCell>
+                  <TableCell className="text-center py-1.5">{t.corretores}</TableCell>
+                  <TableCell className="text-center py-1.5">{t.metaPorCorretor}</TableCell>
+                  <TableCell className="text-center py-1.5">{t.meta}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+
+        <Card className="glass p-4 space-y-2">
+          {[
+            ["Gerentes", roleSummary.gerentes, "text-foreground"],
+            ["Corretores", roleSummary.corretores, "text-amber-500"],
+            ["Diretor", roleSummary.diretores, "text-foreground"],
+            ["Adm", roleSummary.adm, "text-foreground"],
+            ["Administrativo", roleSummary.administrativo, "text-foreground"],
+            ["Serviços Gerais", roleSummary.servicos, "text-muted-foreground"],
+            ["Total", roleSummary.total, "text-amber-500"],
+          ].map(([label, val, color]) => (
+            <div key={label as string} className={`flex justify-between border-b border-border/30 py-1.5 ${color as string}`}>
+              <span className="font-semibold">{label as string}</span>
+              <span>{val as number}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {/* Filter + Download */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <Card className="glass p-4 lg:col-span-2 relative">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">Filtrar Colaboradores</h3>
+            <button onClick={() => { setFilterGerencia("all"); setFilterHab("all"); setFilterNomeCorretor(""); setFilterNomeColab(""); }}>
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select value={filterGerencia} onValueChange={setFilterGerencia}>
+              <SelectTrigger className="rounded-full border-amber-600/40"><SelectValue placeholder="Escolher Gerência" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas Gerências</SelectItem>
+                {DIRECTORS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input placeholder="Filtrar por nome Corretor" className="rounded-full border-amber-600/40" value={filterNomeCorretor} onChange={e => setFilterNomeCorretor(e.target.value)} />
+            <Select value={filterHab} onValueChange={setFilterHab}>
+              <SelectTrigger className="rounded-full border-amber-600/40"><SelectValue placeholder="Escolher Habilitação" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas Habilitações</SelectItem>
+                {HABILITACOES.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input placeholder="Filtrar por nome Colaborador" className="rounded-full border-amber-600/40" value={filterNomeColab} onChange={e => setFilterNomeColab(e.target.value)} />
+          </div>
+        </Card>
+
+        <div className="flex justify-end">
+          <Button onClick={downloadCSV} className="bg-primary hover:bg-primary/90 px-6 py-6">
+            Baixar Lista <Download className="ml-2 h-4 w-4" />
           </Button>
-        )}
+        </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Buscar colaborador..." className="pl-10" value={search} onChange={e => setSearch(e.target.value)} />
-      </div>
-
-      {/* Table */}
-      <Card className="glass overflow-hidden">
+      {/* Main table */}
+      <Card className="glass p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Colaborador</TableHead>
-                <TableHead>Nome Completo</TableHead>
+                <TableHead>Colaboradores</TableHead>
+                <TableHead>Diretor</TableHead>
+                <TableHead>Gerência</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Função</TableHead>
-                <TableHead>Equipe</TableHead>
+                <TableHead>Senha</TableHead>
                 <TableHead>Celular</TableHead>
-                <TableHead>CRECI</TableHead>
+                <TableHead>Indicação</TableHead>
+                <TableHead>Habilitação</TableHead>
+                <TableHead className="text-center">Editar</TableHead>
+                <TableHead className="text-center">Deletar</TableHead>
                 <TableHead className="text-center">Ativo</TableHead>
-                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map(c => (
-                <TableRow key={c.id} className="cursor-pointer hover:bg-secondary/30" onClick={() => { openEdit(c); handleOpen(c); }}>
+                <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.nickname}</TableCell>
-                  <TableCell>{c.fullName}</TableCell>
-                  <TableCell className="text-muted-foreground text-xs">{c.email}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {ROLES.find(r => r.value === c.role)?.label || c.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{c.team}</TableCell>
+                  <TableCell className="text-xs">{c.director}</TableCell>
+                  <TableCell className="text-xs">{c.team}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{c.email}</TableCell>
+                  <TableCell className="text-xs font-mono">{c.password}</TableCell>
                   <TableCell className="text-xs">{c.phone}</TableCell>
-                  <TableCell className="text-xs">{c.creci}</TableCell>
-                  <TableCell className="text-center">
-                    <span className={`w-2 h-2 rounded-full inline-block ${c.active ? "bg-emerald-500" : "bg-destructive"}`} />
-                  </TableCell>
+                  <TableCell className="text-xs">{c.referral}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm"><Pencil className="h-3 w-3" /></Button>
+                    <span className={`text-xs px-2 py-1 rounded ${habBadge(c.habilitacao)}`}>
+                      {c.habilitacao === "CRECI" ? c.creci : c.habilitacao}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {isAdmin && <Button variant="ghost" size="sm" onClick={() => openEdit(c)}><Pencil className="h-3.5 w-3.5 text-blue-400" /></Button>}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {isAdmin && <Button variant="ghost" size="sm" onClick={() => del(c.id)}><Trash2 className="h-3.5 w-3.5 text-red-400" /></Button>}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span className={`text-xs px-3 py-1 rounded ${c.active ? "bg-emerald-700/60 text-emerald-100" : "bg-red-700/60 text-red-100"}`}>
+                      {c.active ? "Ativo" : "Inativo"}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}
@@ -181,142 +300,96 @@ export default function Profile() {
         </div>
       </Card>
 
-      {/* Edit / New Collaborator Dialog */}
-      <Dialog open={editOpen} onOpenChange={(o) => { if (!o) setEditOpen(false); }}>
+      {/* Novo Colaborador Dialog */}
+      <Dialog open={dlgColab} onOpenChange={setDlgColab}>
         <DialogContent className="glass-strong max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingCollab ? "Editar Colaborador" : "Novo Colaborador"}</DialogTitle>
+            <DialogTitle>{editing ? "Editar Colaborador" : "Novo Colaborador"}</DialogTitle>
           </DialogHeader>
 
-          {/* Avatar placeholder */}
-          <div className="flex justify-center mb-2">
-            <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-bold">
-              {formData.nickname?.charAt(0) || "?"}
+          <div className="flex justify-center my-2">
+            <div className="w-28 h-28 rounded-full border-2 border-dashed border-border flex items-center justify-center text-center text-[10px] text-muted-foreground px-2">
+              Clique para carregar<br />foto de perfil
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Colaborador</label>
-              <Input value={formData.nickname} onChange={e => setFormData(p => ({ ...p, nickname: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Nome Completo</label>
-              <Input value={formData.fullName} onChange={e => setFormData(p => ({ ...p, fullName: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Email</label>
-              <Input type="email" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Equipe</label>
-              <Input value={formData.team} onChange={e => setFormData(p => ({ ...p, team: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Nascimento</label>
-              <Input value={formData.birthDate} onChange={e => setFormData(p => ({ ...p, birthDate: e.target.value }))} placeholder="DD/MM/AAAA" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Habilitação</label>
-              <Select value={formData.license} onValueChange={v => setFormData(p => ({ ...p, license: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CRECI">CRECI</SelectItem>
-                  <SelectItem value="OAB">OAB</SelectItem>
-                  <SelectItem value="CRC">CRC</SelectItem>
-                  <SelectItem value="Outro">Outro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-3">
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">CRECI / Registro</label>
-              <Input value={formData.creci} onChange={e => setFormData(p => ({ ...p, creci: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Entrada</label>
-              <Input type="date" value={formData.entryDate} onChange={e => setFormData(p => ({ ...p, entryDate: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">CPF</label>
-              <Input value={formData.cpf} onChange={e => setFormData(p => ({ ...p, cpf: e.target.value }))} placeholder="000.000.000-00" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Celular</label>
-              <Input value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))} placeholder="(00) 00000-0000" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Endereço</label>
-              <Input value={formData.address} onChange={e => setFormData(p => ({ ...p, address: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Função</label>
-              <Select value={formData.role} onValueChange={v => setFormData(p => ({ ...p, role: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Divisão</label>
-              <Input value={formData.division} onChange={e => setFormData(p => ({ ...p, division: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Diretor</label>
-              <Select value={formData.director} onValueChange={v => setFormData(p => ({ ...p, director: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {DIRECTORS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block font-semibold">Indicação</label>
-              <Input value={formData.referral} onChange={e => setFormData(p => ({ ...p, referral: e.target.value }))} placeholder="Inserir indicação" />
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Colaborador"><Input placeholder="Inserir nome colaborador" value={form.nickname} onChange={e => setForm(p => ({ ...p, nickname: e.target.value }))} /></Field>
+            <Field label="Nome Completo"><Input placeholder="Inserir nome completo" value={form.fullName} onChange={e => setForm(p => ({ ...p, fullName: e.target.value }))} /></Field>
+            <Field label="Email"><Input placeholder="Inserir email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></Field>
 
-            {/* User credentials */}
-            <div className="sm:col-span-3 border-t border-border pt-4 mt-2">
-              <p className="text-sm font-semibold mb-3">Acesso ao Sistema</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block font-semibold">Usuário (login)</label>
-                  <Input value={formData.username} onChange={e => setFormData(p => ({ ...p, username: e.target.value }))} placeholder="nome.sobrenome" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block font-semibold">Senha</label>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      value={formData.password}
-                      onChange={e => setFormData(p => ({ ...p, password: e.target.value }))}
-                      placeholder="••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <Field label="Função">
+              <Select value={form.role} onValueChange={v => setForm(p => ({ ...p, role: v }))}>
+                <SelectTrigger><SelectValue placeholder="Escolher função" /></SelectTrigger>
+                <SelectContent>{ROLES.map(r => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Equipe">
+              <Select value={form.team} onValueChange={v => setForm(p => ({ ...p, team: v }))}>
+                <SelectTrigger><SelectValue placeholder="Escolher equipe" /></SelectTrigger>
+                <SelectContent>{TEAMS.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field label="Habilitação">
+              <Select value={form.habilitacao} onValueChange={v => setForm(p => ({ ...p, habilitacao: v }))}>
+                <SelectTrigger><SelectValue placeholder="Escolher Habilitação" /></SelectTrigger>
+                <SelectContent>{HABILITACOES.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
 
-            {/* Active toggle */}
-            <div className="sm:col-span-3 flex items-center gap-3 mt-2">
-              <label className="text-xs font-semibold">Ativo</label>
-              <Switch checked={formData.active} onCheckedChange={v => setFormData(p => ({ ...p, active: v }))} />
-            </div>
+            <div className="sm:col-span-3"><Field label="Indicação"><Input placeholder="Inserir indicação" value={form.referral} onChange={e => setForm(p => ({ ...p, referral: e.target.value }))} /></Field></div>
+
+            <Field label="Entrada"><Input type="date" value={form.entryDate} onChange={e => setForm(p => ({ ...p, entryDate: e.target.value }))} /></Field>
+            <Field label="CPF"><Input placeholder="Inserir CPF" value={form.cpf} onChange={e => setForm(p => ({ ...p, cpf: e.target.value }))} /></Field>
+            <Field label="Celular"><Input placeholder="Inserir celular" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></Field>
+            <Field label="Endereço"><Input placeholder="Inserir endereço" value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} /></Field>
+            <Field label="Divisão"><Input placeholder="Inserir divisão" value={form.division} onChange={e => setForm(p => ({ ...p, division: e.target.value }))} /></Field>
+            <Field label="Nascimento"><Input placeholder="DD/MM/AAAA" value={form.birthDate} onChange={e => setForm(p => ({ ...p, birthDate: e.target.value }))} /></Field>
           </div>
 
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-            <Button onClick={save}>Confirmar Alterações</Button>
-          </DialogFooter>
+          <div className="flex justify-center gap-3 pt-4">
+            <Button variant="outline" className="border-red-500 text-red-400 hover:bg-red-500/10 px-8" onClick={() => setDlgColab(false)}>Cancelar</Button>
+            <Button className="bg-transparent border-2 border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 px-8" onClick={save}>
+              <UserPlus className="h-4 w-4 mr-2" /> {editing ? "Salvar" : "Adicionar Colaborador"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
+
+      {/* Novo CCA Dialog */}
+      <Dialog open={dlgCCA} onOpenChange={setDlgCCA}>
+        <DialogContent className="glass-strong max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Novo CCA</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Colaborador"><Input placeholder="Inserir nome colaborador" value={form.nickname} onChange={e => setForm(p => ({ ...p, nickname: e.target.value }))} /></Field>
+            <Field label="Nome Completo"><Input placeholder="Inserir nome completo" value={form.fullName} onChange={e => setForm(p => ({ ...p, fullName: e.target.value }))} /></Field>
+            <Field label="Email"><Input placeholder="Inserir email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></Field>
+            <Field label="Entrada"><Input type="date" value={form.entryDate} onChange={e => setForm(p => ({ ...p, entryDate: e.target.value }))} /></Field>
+            <Field label="CPF"><Input placeholder="Inserir CPF" value={form.cpf} onChange={e => setForm(p => ({ ...p, cpf: e.target.value }))} /></Field>
+            <Field label="Celular"><Input placeholder="Inserir celular" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></Field>
+            <Field label="Endereço"><Input placeholder="Inserir endereço" value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} /></Field>
+            <Field label="Divisão"><Input placeholder="Inserir divisão" value={form.division} onChange={e => setForm(p => ({ ...p, division: e.target.value }))} /></Field>
+            <Field label="Nascimento"><Input placeholder="DD/MM/AAAA" value={form.birthDate} onChange={e => setForm(p => ({ ...p, birthDate: e.target.value }))} /></Field>
+          </div>
+          <div className="flex justify-center gap-3 pt-4">
+            <Button variant="outline" className="border-red-500 text-red-400 hover:bg-red-500/10 px-8" onClick={() => setDlgCCA(false)}>Cancelar</Button>
+            <Button className="bg-transparent border-2 border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 px-8" onClick={save}>
+              Adicionar CCA
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="text-xs text-foreground mb-1 block font-semibold">{label}</label>
+      {children}
     </div>
   );
 }
