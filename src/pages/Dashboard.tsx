@@ -61,8 +61,8 @@ export default function Dashboard() {
     const vendas = filtered.filter(d => d.stage === 'closed' || d.stage === 'contract').length;
     const vgv = filtered.filter(d => d.active !== false).reduce((a, d) => a + (d.deal_value || 0), 0);
     const propostas = filtered.filter(d => ['proposal', 'contract', 'approved'].includes(d.stage)).length;
-    const negocios = filtered.filter(d => !['lead', 'incomplete', 'lost'].includes(d.stage)).length;
-    const off = filtered.filter(d => d.stage === 'lost' || d.active === false).length;
+    const negocios = filtered.filter(d => !['lead', 'incomplete'].includes(d.stage as string)).length;
+    const off = filtered.filter(d => d.active === false).length;
     const leadsGerados = leadsCount || filtered.filter(d => ['lead', 'incomplete'].includes(d.stage)).length;
     const leads = leadsGerados;
     const meta = 92;
