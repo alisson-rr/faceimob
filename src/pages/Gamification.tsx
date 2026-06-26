@@ -294,11 +294,11 @@ export default function Gamification() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 text-xs">
-            <Badge variant="secondary" className="gap-1">Incompleto (c/ doc): <span className="text-warning font-bold">{SCORING.incomplete_with_doc} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Envio Esteira Ágil: <span className="text-primary font-bold">{SCORING.envio_esteira_agil} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Aprovado: <span className="text-green-400 font-bold">{SCORING.approved} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Venda: <span className="text-yellow-400 font-bold">{SCORING.venda} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Distrato/Queda: <span className="text-destructive font-bold">{SCORING.distrato_penalty} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Incompleto (c/ doc): <span className="text-warning font-bold">{scoring.incomplete_with_doc} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Envio Esteira Ágil: <span className="text-primary font-bold">{scoring.envio_esteira_agil} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Aprovado: <span className="text-green-400 font-bold">{scoring.approved} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Venda: <span className="text-yellow-400 font-bold">{scoring.venda} pts</span></Badge>
+            <Badge variant="secondary" className="gap-1">Distrato/Queda: <span className="text-destructive font-bold">{scoring.distrato_penalty} pts</span></Badge>
           </div>
         </CardContent>
       </Card>
