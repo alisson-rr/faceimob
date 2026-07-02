@@ -31,8 +31,10 @@ const STAFF_ROWS = [
 
 type Deal = {
   id: string;
+  client: string | null;
   developer: string | null;
   stage: string;
+  status: string | null;
   deal_value: number | null;
   active: boolean | null;
   month_base: string | null;
