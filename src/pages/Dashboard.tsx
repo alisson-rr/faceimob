@@ -569,9 +569,9 @@ function VendasTab({
 }
 
 const PODIUM = [
-  { bg: "from-[#FFD700] to-[#B8860B]", ring: "ring-[#FFD700]", ic: Crown,  label: "Ouro"   },
-  { bg: "from-[#C0C0C0] to-[#6E6E6E]", ring: "ring-[#C0C0C0]", ic: Medal,  label: "Prata"  },
-  { bg: "from-[#CD7F32] to-[#6B3E1A]", ring: "ring-[#CD7F32]", ic: Award,  label: "Bronze" },
+  { color: "#F5B301", glow: "#F5B30166", ic: Crown, label: "Ouro"   },
+  { color: "#C0C0C0", glow: "#C0C0C066", ic: Medal, label: "Prata"  },
+  { color: "#CD7F32", glow: "#CD7F3266", ic: Award, label: "Bronze" },
 ];
 
 function RankingBlock({
@@ -585,49 +585,73 @@ function RankingBlock({
   const rest = rows.slice(3);
   return (
     <div className={cn(panel, "overflow-hidden")}>
-      <div className="p-5 border-b border-white/5 flex justify-between items-center">
-        <h3 className="font-bold uppercase tracking-widest text-sm">{title}</h3>
+      <div className="p-5 border-b border-white/5 flex items-center gap-2">
+        <Trophy className="w-4 h-4 text-[#F5B301]" />
+        <h3 className="font-bold uppercase tracking-widest text-sm flex-1">{title}</h3>
         <span className="text-[10px] text-[#3B82F6] uppercase font-bold tracking-widest">
-          {rows.length} · ordenado por vendas, VGV como desempate
+          {rows.length} · vendas · VGV desempate
         </span>
       </div>
 
-      {/* Podium */}
+      {/* Podium — legendary game style */}
       {top3.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5">
           {top3.map((r, i) => {
             const P = PODIUM[i];
             return (
               <motion.div
                 key={r.name + i}
-                initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                initial={{ opacity: 0, y: 24, scale: 0.92 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.5, delay: i * 0.1, type: "spring" }}
-                className={cn(
-                  "relative rounded-2xl p-4 bg-gradient-to-br border border-white/10 ring-2 shadow-2xl overflow-hidden",
-                  P.bg, P.ring,
-                )}
-                style={{ boxShadow: `0 20px 40px -15px ${i === 0 ? "#FFD70066" : i === 1 ? "#C0C0C066" : "#CD7F3266"}` }}
+                transition={{ duration: 0.55, delay: i * 0.12, type: "spring", stiffness: 120 }}
+                whileHover={{ y: -4 }}
+                className="relative rounded-2xl overflow-hidden border h-[280px] flex flex-col"
+                style={{
+                  background: `linear-gradient(180deg, #0F1524 0%, #0F1524 25%, ${P.color}66 75%, ${P.color} 100%)`,
+                  borderColor: `${P.color}66`,
+                  boxShadow: `0 0 0 1px ${P.color}33, 0 25px 50px -12px ${P.glow}, inset 0 1px 0 rgba(255,255,255,0.08)`,
+                }}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-black/40" />
-                <div className="relative flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center ring-2 ring-white/20">
-                    <P.ic className="w-6 h-6 text-white drop-shadow" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/80">#{i + 1} · {P.label}</p>
-                    <p className="text-white font-bold text-sm truncate drop-shadow">{r.name}</p>
-                  </div>
+                {/* soft outer glow */}
+                <div
+                  className="absolute -inset-1 rounded-2xl blur-xl opacity-40 -z-10"
+                  style={{ background: `radial-gradient(circle at 50% 100%, ${P.color}, transparent 70%)` }}
+                />
+                {/* corner icon */}
+                <div className="absolute top-3 left-3">
+                  <P.ic className="w-5 h-5 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]" style={{ color: P.color }} />
                 </div>
-                <div className="relative mt-4 flex items-end justify-between">
-                  <div>
-                    <p className="text-[9px] uppercase tracking-widest text-white/70 font-bold">Vendas</p>
-                    <p className="text-3xl font-black text-white drop-shadow tabular-nums">{r.vendas}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] uppercase tracking-widest text-white/70 font-bold">VGV</p>
-                    <p className="text-sm font-bold text-white tabular-nums">{brl(r.vgv)}</p>
-                  </div>
+                <div className="absolute top-3 right-3 text-[9px] uppercase tracking-widest font-black opacity-70" style={{ color: P.color }}>
+                  #{i + 1} · {P.label}
+                </div>
+
+                {/* content */}
+                <div className="relative flex-1 flex flex-col items-center justify-center text-center px-4 pt-8">
+                  <h4
+                    className="text-xl md:text-2xl font-black tracking-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)] truncate max-w-full"
+                    style={{ color: P.color }}
+                  >
+                    {r.name}
+                  </h4>
+                  <p className="mt-1 text-xs text-white/70 font-medium">Ranking Mensal</p>
+
+                  <p
+                    className="mt-5 text-5xl font-black tabular-nums drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
+                    style={{ color: P.color }}
+                  >
+                    {r.vendas}
+                  </p>
+                  <p className="text-xs text-white/70 font-semibold -mt-1">vendas</p>
+                </div>
+
+                {/* footer bar */}
+                <div
+                  className="relative py-3 text-center border-t"
+                  style={{ borderColor: "rgba(0,0,0,0.35)", background: "rgba(0,0,0,0.25)" }}
+                >
+                  <p className="text-white font-black text-base drop-shadow tabular-nums">
+                    {r.vgv > 0 ? brl(r.vgv) : "R$ 0"} <span className="text-white/70 font-bold text-xs uppercase tracking-widest ml-1">VGV</span>
+                  </p>
                 </div>
               </motion.div>
             );
