@@ -433,7 +433,7 @@ export default function Dashboard() {
           >
             {tab === "geral" && <GeralTab byDev={byDev} />}
             {tab === "propostas" && (
-              <PropostasTab byDev={byDev} sources={sourceData} ccaCounts={ccaCounts} />
+              <PropostasTab byDev={byDev} sources={sourceData} ccaCounts={ccaCounts} staffRows={staffRows} />
             )}
             {tab === "vendas" && (
               <VendasTab directors={rankDirectors} managers={rankManagers} brokers={rankBrokers} />
