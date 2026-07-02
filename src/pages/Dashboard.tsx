@@ -44,9 +44,9 @@ const brl = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 }).format(n);
 
 // Legendary Gold tokens
-const GOLD = "#E8B84A";
+const GOLD = "#3B82F6";
 const panel = "rounded-2xl bg-[#0F0F0F] border border-white/5";
-const panelGold = "rounded-2xl bg-[#0F0F0F] border border-[#E8B84A]/20 shadow-[0_0_40px_rgba(232,184,74,0.05)]";
+const panelGold = "rounded-2xl bg-[#0F0F0F] border border-[#3B82F6]/20 shadow-[0_0_40px_rgba(59,130,246,0.05)]";
 const headerCell = "text-[10px] uppercase tracking-widest text-white/30 font-bold";
 const rowHover = "hover:bg-white/[0.02] transition-colors";
 
@@ -161,7 +161,7 @@ export default function Dashboard() {
   }, [brokers, filtered]);
 
   const cellGood = "bg-emerald-500/15 text-emerald-300";
-  const cellWarn = "bg-[#E8B84A]/15 text-[#E8B84A]";
+  const cellWarn = "bg-[#3B82F6]/15 text-[#3B82F6]";
   const cellBad = "bg-rose-500/15 text-rose-300";
   const cellOf = (n: number, good = true) =>
     n > 0 ? (good ? cellGood : cellBad) : good ? cellBad : cellGood;
@@ -187,7 +187,7 @@ export default function Dashboard() {
               className={cn(
                 "px-6 py-2 text-sm font-semibold whitespace-nowrap transition-colors border-b-2",
                 i === 0
-                  ? "border-[#E8B84A] text-[#E8B84A]"
+                  ? "border-[#3B82F6] text-[#3B82F6]"
                   : "border-transparent text-white/40 hover:text-white",
               )}
             >
@@ -213,7 +213,7 @@ export default function Dashboard() {
         <div className={cn(panelGold, "relative overflow-hidden p-6")}>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-5">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#E8B84A] to-[#B45309] flex items-center justify-center shadow-[0_0_20px_rgba(232,184,74,0.3)]">
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#3B82F6] to-[#1E3A8A] flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)]">
                 <Trophy className="w-8 h-8 text-black" strokeWidth={2.5} />
               </div>
               <div>
@@ -223,9 +223,9 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <div className="inline-flex items-center gap-2 bg-[#E8B84A]/10 border border-[#E8B84A]/40 px-4 py-2 rounded-full self-start md:self-auto">
-              <span className="w-2 h-2 rounded-full bg-[#E8B84A] animate-pulse" />
-              <span className="text-[#E8B84A] text-xs font-black tracking-widest uppercase">Nível Lendário</span>
+            <div className="inline-flex items-center gap-2 bg-[#3B82F6]/10 border border-[#3B82F6]/40 px-4 py-2 rounded-full self-start md:self-auto">
+              <span className="w-2 h-2 rounded-full bg-[#3B82F6] animate-pulse" />
+              <span className="text-[#3B82F6] text-xs font-black tracking-widest uppercase">Nível Lendário</span>
             </div>
           </div>
         </div>
@@ -238,13 +238,13 @@ export default function Dashboard() {
               className={cn(
                 "bg-[#0F0F0F] border p-5 rounded-xl transition-all relative overflow-hidden",
                 k.popular
-                  ? "border-l-2 border-l-[#E8B84A] border-white/5"
-                  : "border-white/5 hover:border-[#E8B84A]/30",
+                  ? "border-l-2 border-l-[#3B82F6] border-white/5"
+                  : "border-white/5 hover:border-[#3B82F6]/30",
               )}
             >
               {k.popular && (
                 <div className="absolute top-0 right-0 p-2">
-                  <span className="bg-[#E8B84A] text-black text-[9px] px-2 py-0.5 font-black rounded uppercase">Popular</span>
+                  <span className="bg-[#3B82F6] text-black text-[9px] px-2 py-0.5 font-black rounded uppercase">Popular</span>
                 </div>
               )}
               <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mb-2">{k.l}</p>
@@ -252,12 +252,12 @@ export default function Dashboard() {
               {k.bar !== undefined ? (
                 <div className="w-full bg-white/5 h-1.5 rounded-full mt-3">
                   <div
-                    className="bg-gradient-to-r from-[#E8B84A] to-[#F59E0B] h-full rounded-full shadow-[0_0_10px_rgba(232,184,74,0.5)] transition-all duration-1000"
+                    className="bg-gradient-to-r from-[#3B82F6] to-[#1E40AF] h-full rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-1000"
                     style={{ width: `${Math.min(100, k.bar)}%` }}
                   />
                 </div>
               ) : (
-                <p className="text-[#E8B84A]/70 text-[10px] mt-2 font-semibold uppercase tracking-wider">{k.sub}</p>
+                <p className="text-[#3B82F6]/70 text-[10px] mt-2 font-semibold uppercase tracking-wider">{k.sub}</p>
               )}
             </div>
           ))}
@@ -278,7 +278,7 @@ export default function Dashboard() {
                 <tr key={r.dev} className={cn("border-b border-white/5 last:border-0", rowHover)}>
                   <td className="px-5 py-3 text-white text-sm font-medium">{r.dev}</td>
                   <td className="px-5 py-3 text-center text-sm">{r.vendas}</td>
-                  <td className="px-5 py-3 text-right tabular-nums text-sm text-[#E8B84A] font-semibold font-mono">
+                  <td className="px-5 py-3 text-right tabular-nums text-sm text-[#3B82F6] font-semibold font-mono">
                     {r.vgv > 0 ? brl(r.vgv) : "—"}
                   </td>
                 </tr>
@@ -353,7 +353,7 @@ export default function Dashboard() {
                       <span className="text-white font-bold tabular-nums">{v}</span>
                     </div>
                     <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-[#E8B84A] to-[#F59E0B] rounded-full transition-all duration-1000 shadow-[0_0_8px_rgba(232,184,74,0.4)]" style={{ width: `${pct}%` }} />
+                      <div className="h-full bg-gradient-to-r from-[#3B82F6] to-[#1E40AF] rounded-full transition-all duration-1000 shadow-[0_0_8px_rgba(59,130,246,0.4)]" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -374,7 +374,7 @@ export default function Dashboard() {
           </div>
 
           <div className={cn(panel, "p-6")}>
-            <h3 className={cn(headerCell, "mb-5 text-[#E8B84A]")}>Staff</h3>
+            <h3 className={cn(headerCell, "mb-5 text-[#3B82F6]")}>Staff</h3>
             <div className="space-y-1.5">
               {STAFF_ROWS.map(([l, v]) => (
                 <div
@@ -382,11 +382,11 @@ export default function Dashboard() {
                   className={cn(
                     "flex items-center justify-between px-3 py-2 rounded-lg",
                     l === "Total"
-                      ? "bg-gradient-to-r from-[#E8B84A]/20 to-transparent border border-[#E8B84A]/30"
+                      ? "bg-gradient-to-r from-[#3B82F6]/20 to-transparent border border-[#3B82F6]/30"
                       : "hover:bg-white/[0.03] transition-colors",
                   )}
                 >
-                  <span className={cn("text-xs", l === "Total" ? "text-[#E8B84A] font-black uppercase tracking-widest" : "text-white/70")}>{l}</span>
+                  <span className={cn("text-xs", l === "Total" ? "text-[#3B82F6] font-black uppercase tracking-widest" : "text-white/70")}>{l}</span>
                   <span className={cn("tabular-nums font-bold", l === "Total" ? "text-white text-lg" : "text-sm text-white")}>{v}</span>
                 </div>
               ))}
@@ -404,8 +404,8 @@ export default function Dashboard() {
                 className={cn(
                   "flex-1 rounded-t-sm transition-all",
                   h === 100
-                    ? "bg-gradient-to-t from-[#E8B84A]/30 to-[#E8B84A] shadow-[0_0_15px_rgba(232,184,74,0.4)]"
-                    : "bg-white/5 hover:bg-[#E8B84A]/40",
+                    ? "bg-gradient-to-t from-[#3B82F6]/30 to-[#3B82F6] shadow-[0_0_15px_rgba(59,130,246,0.4)]"
+                    : "bg-white/5 hover:bg-[#3B82F6]/40",
                 )}
                 style={{ height: `${h}%` }}
               />
@@ -422,7 +422,7 @@ export default function Dashboard() {
         <div className={cn(panel, "overflow-hidden")}>
           <div className="p-6 border-b border-white/5 flex justify-between items-center">
             <h3 className="font-bold uppercase tracking-widest text-sm">Ranking Geral</h3>
-            <span className="text-[10px] text-[#E8B84A] uppercase font-bold tracking-widest">
+            <span className="text-[10px] text-[#3B82F6] uppercase font-bold tracking-widest">
               {rankingGeral.length} corretores
             </span>
           </div>
@@ -448,9 +448,9 @@ export default function Dashboard() {
                         className={cn(
                           "w-7 h-7 inline-flex items-center justify-center rounded font-black text-xs",
                           i === 0
-                            ? "bg-gradient-to-r from-[#E8B84A] to-[#B45309] text-black"
+                            ? "bg-gradient-to-r from-[#3B82F6] to-[#1E3A8A] text-black"
                             : i < 3
-                            ? "border border-[#E8B84A]/40 text-[#E8B84A]"
+                            ? "border border-[#3B82F6]/40 text-[#3B82F6]"
                             : "border border-white/10 text-white/40",
                         )}
                       >
@@ -477,7 +477,7 @@ export default function Dashboard() {
                     <td className="px-5 py-3 text-center">
                       <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.neg))}>{r.neg}</span>
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-[#E8B84A] font-semibold font-mono">
+                    <td className="px-5 py-3 text-right tabular-nums text-[#3B82F6] font-semibold font-mono">
                       {r.vgv > 0 ? brl(r.vgv) : "—"}
                     </td>
                     <td className="px-5 py-3 text-center">
@@ -499,7 +499,7 @@ function PanelTable({ title, subtitle, children }: { title: string; subtitle?: s
     <div className="bg-[#0F0F0F] border border-white/5 rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-white/5 flex items-end justify-between">
         <h3 className="font-bold uppercase tracking-widest text-white text-sm">{title}</h3>
-        {subtitle && <span className="text-[10px] uppercase tracking-widest text-[#E8B84A]/70 font-bold">{subtitle}</span>}
+        {subtitle && <span className="text-[10px] uppercase tracking-widest text-[#3B82F6]/70 font-bold">{subtitle}</span>}
       </div>
       <table className="w-full border-collapse">{children}</table>
     </div>
@@ -508,13 +508,13 @@ function PanelTable({ title, subtitle, children }: { title: string; subtitle?: s
 
 function RankCard({ title, rows, kind }: { title: string; rows: any[]; kind: string }) {
   const cellGood = "bg-emerald-500/15 text-emerald-300";
-  const cellWarn = "bg-[#E8B84A]/15 text-[#E8B84A]";
+  const cellWarn = "bg-[#3B82F6]/15 text-[#3B82F6]";
   const cellBad = "bg-rose-500/15 text-rose-300";
   return (
     <div className="bg-[#0F0F0F] border border-white/5 rounded-2xl overflow-hidden">
       <div className="p-6 border-b border-white/5 flex justify-between items-center">
         <h3 className="font-bold uppercase tracking-widest text-sm">{title}</h3>
-        <span className="px-3 py-1 rounded-full bg-[#E8B84A]/10 border border-[#E8B84A]/30 text-[#E8B84A] text-[10px] font-black uppercase tracking-widest">
+        <span className="px-3 py-1 rounded-full bg-[#3B82F6]/10 border border-[#3B82F6]/30 text-[#3B82F6] text-[10px] font-black uppercase tracking-widest">
           {rows.length} {kind}s
         </span>
       </div>
@@ -530,7 +530,7 @@ function RankCard({ title, rows, kind }: { title: string; rows: any[]; kind: str
               <th className="px-5 py-4">Ágil</th>
               <th className="px-5 py-4">Neg.</th>
               <th className="px-5 py-4">Vendas</th>
-              <th className="px-5 py-4 text-right text-[#E8B84A]">VGV</th>
+              <th className="px-5 py-4 text-right text-[#3B82F6]">VGV</th>
               <th className="px-5 py-4">Off</th>
             </tr>
           </thead>
@@ -551,7 +551,7 @@ function RankCard({ title, rows, kind }: { title: string; rows: any[]; kind: str
                 <td className="px-5 py-3 text-center">
                   <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-300">{r.vendas}</span>
                 </td>
-                <td className="px-5 py-3 text-right tabular-nums text-[#E8B84A] font-semibold font-mono">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
+                <td className="px-5 py-3 text-right tabular-nums text-[#3B82F6] font-semibold font-mono">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
                 <td className="px-5 py-3 text-center">
                   <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.off > 0 ? cellBad : cellGood)}>{r.off}</span>
                 </td>
