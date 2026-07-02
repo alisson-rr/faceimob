@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
+import { Trophy } from "lucide-react";
 
 const DEVELOPERS = ["VASCO", "TENDA", "MRV", "MELNICK", "LYX", "MAB", "ABACO", "MCG", "MITRANA"];
 const SOURCES = ["Leadfy", "Lead Próprio", "Lead Loja", "Lead Padrão", "Lead Indicação"];
@@ -42,14 +43,12 @@ type Broker = { id: string; name: string; role?: string | null; manager_id?: str
 const brl = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 }).format(n);
 
-// Design tokens (locked: Midnight Indigo + Space Grotesk / DM Sans)
-const display = "font-['Space_Grotesk']";
-const panel =
-  "rounded-3xl bg-[#141432]/60 backdrop-blur-xl border border-[#1e1e5a] shadow-[0_0_40px_-12px_rgba(79,70,229,0.25)]";
-const panelGrad =
-  "rounded-3xl bg-gradient-to-br from-[#141432] to-[#1e1e5a]/40 border border-[#1e1e5a] relative overflow-hidden";
-const headerCell = "text-[10px] uppercase tracking-widest text-slate-500";
-const rowHover = "hover:bg-[#4f46e5]/5 transition-colors ease-[cubic-bezier(.22,1,.36,1)]";
+// Legendary Gold tokens
+const GOLD = "#E8B84A";
+const panel = "rounded-2xl bg-[#0F0F0F] border border-white/5";
+const panelGold = "rounded-2xl bg-[#0F0F0F] border border-[#E8B84A]/20 shadow-[0_0_40px_rgba(232,184,74,0.05)]";
+const headerCell = "text-[10px] uppercase tracking-widest text-white/30 font-bold";
+const rowHover = "hover:bg-white/[0.02] transition-colors";
 
 export default function Dashboard() {
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -162,73 +161,103 @@ export default function Dashboard() {
   }, [brokers, filtered]);
 
   const cellGood = "bg-emerald-500/15 text-emerald-300";
-  const cellWarn = "bg-amber-500/15 text-amber-300";
+  const cellWarn = "bg-[#E8B84A]/15 text-[#E8B84A]";
   const cellBad = "bg-rose-500/15 text-rose-300";
   const cellOf = (n: number, good = true) =>
     n > 0 ? (good ? cellGood : cellBad) : good ? cellBad : cellGood;
 
   const kpis = [
-    { l: "Leads Gerados", v: leadsCount || 0, accent: "text-sky-400" },
-    { l: "Propostas", v: stats.propostas, accent: "text-indigo-400" },
-    { l: "Negócios", v: stats.negocios, accent: "text-amber-300", glow: true },
-    { l: "OFF", v: stats.off, accent: "text-slate-300" },
-    { l: "Vendas", v: stats.vendas, accent: "text-emerald-400" },
-    { l: "VGV", v: brl(stats.vgv || 0), accent: "text-white", small: true },
-    { l: "Meta", v: `${stats.pct}%`, accent: "text-[#4f46e5]", bar: stats.pct },
+    { l: "Leads Gerados", v: leadsCount || 0, sub: "Base ativa" },
+    { l: "Propostas", v: stats.propostas, sub: "Em análise" },
+    { l: "Negócios", v: stats.negocios, sub: "Ativos", popular: true },
+    { l: "OFF", v: stats.off, sub: "Descartados" },
+    { l: "Vendas", v: stats.vendas, sub: "Fechadas" },
+    { l: "VGV", v: brl(stats.vgv || 0), sub: "Volume geral", small: true },
+    { l: "Meta", v: `${stats.pct}%`, sub: `${stats.vendas}/${stats.meta}`, bar: stats.pct },
   ];
 
   return (
-    <div className="min-h-screen bg-[#0a0a1a] font-['DM_Sans'] text-slate-300 p-4 md:p-6 relative overflow-hidden">
-      {/* Ambient indigo glows */}
-      <div className="pointer-events-none absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#4f46e5]/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-40 w-[600px] h-[600px] rounded-full bg-[#1e1e5a]/30 blur-3xl" />
-
-      <div className="relative max-w-[1500px] mx-auto space-y-6 animate-in fade-in duration-700">
-        {/* Header */}
-        <header className="flex items-end justify-between">
-          <div>
-            <h1 className={cn(display, "text-3xl font-bold text-white tracking-tight")}>
-              Dashboard de Performance
-            </h1>
-            <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest">
-              Acompanhamento em tempo real · {month === "all" ? "Todos os meses" : month}
-            </p>
+    <div className="min-h-screen bg-[#050505] font-['Inter',sans-serif] text-white p-4 md:p-8">
+      <div className="max-w-[1500px] mx-auto flex flex-col gap-6 animate-in fade-in duration-500">
+        {/* Tabs Top */}
+        <div className="flex items-center gap-1 border-b border-white/5 pb-1 overflow-x-auto">
+          {["Visão Geral", "Vendas", "Propostas", "Metas"].map((t, i) => (
+            <button
+              key={t}
+              className={cn(
+                "px-6 py-2 text-sm font-semibold whitespace-nowrap transition-colors border-b-2",
+                i === 0
+                  ? "border-[#E8B84A] text-[#E8B84A]"
+                  : "border-transparent text-white/40 hover:text-white",
+              )}
+            >
+              {t}
+            </button>
+          ))}
+          <div className="ml-auto pl-4 pb-1">
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="w-[200px] bg-[#0F0F0F] border border-white/10 text-white/80 rounded-lg h-9">
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0F0F0F] border-white/10 text-white/80">
+                <SelectItem value="all">Todos os meses</SelectItem>
+                {months.map((m) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={month} onValueChange={setMonth}>
-            <SelectTrigger className="w-[220px] bg-[#141432]/60 backdrop-blur-xl border border-[#1e1e5a] text-slate-200 rounded-xl">
-              <SelectValue placeholder="Período" />
-            </SelectTrigger>
-            <SelectContent className="bg-[#141432] border-[#1e1e5a] text-slate-200">
-              <SelectItem value="all">Todos os meses</SelectItem>
-              {months.map((m) => (
-                <SelectItem key={m} value={m}>{m}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </header>
+        </div>
+
+        {/* Header Card */}
+        <div className={cn(panelGold, "relative overflow-hidden p-6")}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-5">
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-[#E8B84A] to-[#B45309] flex items-center justify-center shadow-[0_0_20px_rgba(232,184,74,0.3)]">
+                <Trophy className="w-8 h-8 text-black" strokeWidth={2.5} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight uppercase">Dashboard CRM</h1>
+                <p className="text-white/50 text-sm uppercase tracking-widest font-medium">
+                  Consolidado · {month === "all" ? "Todos os meses" : month}
+                </p>
+              </div>
+            </div>
+            <div className="inline-flex items-center gap-2 bg-[#E8B84A]/10 border border-[#E8B84A]/40 px-4 py-2 rounded-full self-start md:self-auto">
+              <span className="w-2 h-2 rounded-full bg-[#E8B84A] animate-pulse" />
+              <span className="text-[#E8B84A] text-xs font-black tracking-widest uppercase">Nível Lendário</span>
+            </div>
+          </div>
+        </div>
 
         {/* KPIs */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-          {kpis.map((k, i) => (
+          {kpis.map((k) => (
             <div
               key={k.l}
               className={cn(
-                panelGrad,
-                "p-5 group hover:-translate-y-0.5 transition-all duration-500 ease-[cubic-bezier(.22,1,.36,1)]",
-                k.glow && "ring-1 ring-amber-400/30",
+                "bg-[#0F0F0F] border p-5 rounded-xl transition-all relative overflow-hidden",
+                k.popular
+                  ? "border-l-2 border-l-[#E8B84A] border-white/5"
+                  : "border-white/5 hover:border-[#E8B84A]/30",
               )}
-              style={{ animationDelay: `${i * 60}ms` }}
             >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-[#4f46e5]/10 blur-3xl group-hover:bg-[#4f46e5]/25 transition-all" />
-              <span className={cn("text-[10px] font-bold uppercase tracking-widest block mb-2", k.accent)}>{k.l}</span>
-              <div className={cn(display, "font-bold text-white", k.small ? "text-lg" : "text-2xl")}>{k.v}</div>
-              {k.bar !== undefined && (
-                <div className="mt-3 h-1 w-full bg-[#0a0a1a] rounded-full overflow-hidden">
+              {k.popular && (
+                <div className="absolute top-0 right-0 p-2">
+                  <span className="bg-[#E8B84A] text-black text-[9px] px-2 py-0.5 font-black rounded uppercase">Popular</span>
+                </div>
+              )}
+              <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mb-2">{k.l}</p>
+              <p className={cn("font-extrabold text-white", k.small ? "text-lg" : "text-2xl")}>{k.v}</p>
+              {k.bar !== undefined ? (
+                <div className="w-full bg-white/5 h-1.5 rounded-full mt-3">
                   <div
-                    className="h-full bg-[#4f46e5] rounded-full shadow-[0_0_10px_#4f46e5] transition-all duration-1000"
+                    className="bg-gradient-to-r from-[#E8B84A] to-[#F59E0B] h-full rounded-full shadow-[0_0_10px_rgba(232,184,74,0.5)] transition-all duration-1000"
                     style={{ width: `${Math.min(100, k.bar)}%` }}
                   />
                 </div>
+              ) : (
+                <p className="text-[#E8B84A]/70 text-[10px] mt-2 font-semibold uppercase tracking-wider">{k.sub}</p>
               )}
             </div>
           ))}
@@ -239,17 +268,19 @@ export default function Dashboard() {
           <PanelTable title="Vendas" subtitle="Por construtora">
             <thead>
               <tr className={headerCell}>
-                <th className="px-5 py-3 text-left font-semibold">Construtora</th>
-                <th className="px-5 py-3 font-semibold">Qtd</th>
-                <th className="px-5 py-3 text-right font-semibold">VGV</th>
+                <th className="px-5 py-3 text-left">Construtora</th>
+                <th className="px-5 py-3">Qtd</th>
+                <th className="px-5 py-3 text-right">VGV</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1e1e5a]/40">
+            <tbody>
               {byDev.map((r) => (
-                <tr key={r.dev} className={rowHover}>
-                  <td className="px-5 py-2.5 text-white text-sm font-medium">{r.dev}</td>
-                  <td className="px-5 py-2.5 text-center text-sm">{r.vendas}</td>
-                  <td className="px-5 py-2.5 text-right tabular-nums text-sm text-[#4f46e5] font-semibold">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
+                <tr key={r.dev} className={cn("border-b border-white/5 last:border-0", rowHover)}>
+                  <td className="px-5 py-3 text-white text-sm font-medium">{r.dev}</td>
+                  <td className="px-5 py-3 text-center text-sm">{r.vendas}</td>
+                  <td className="px-5 py-3 text-right tabular-nums text-sm text-[#E8B84A] font-semibold font-mono">
+                    {r.vgv > 0 ? brl(r.vgv) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -258,19 +289,21 @@ export default function Dashboard() {
           <PanelTable title="Propostas" subtitle="Pipeline ativo">
             <thead>
               <tr className={headerCell}>
-                <th className="px-5 py-3 text-left font-semibold">Const.</th>
-                <th className="px-5 py-3 font-semibold">Prop</th>
-                <th className="px-5 py-3 font-semibold">Neg</th>
-                <th className="px-5 py-3 text-right font-semibold">VGV</th>
+                <th className="px-5 py-3 text-left">Const.</th>
+                <th className="px-5 py-3">Prop</th>
+                <th className="px-5 py-3">Neg</th>
+                <th className="px-5 py-3 text-right">VGV</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1e1e5a]/40">
+            <tbody>
               {byDev.map((r) => (
-                <tr key={r.dev} className={rowHover}>
-                  <td className="px-5 py-2.5 text-white text-sm font-medium">{r.dev}</td>
-                  <td className="px-5 py-2.5 text-center text-sm">{r.prop}</td>
-                  <td className="px-5 py-2.5 text-center text-sm">{r.neg}</td>
-                  <td className="px-5 py-2.5 text-right tabular-nums text-sm">{r.propVgv > 0 ? brl(r.propVgv) : "—"}</td>
+                <tr key={r.dev} className={cn("border-b border-white/5 last:border-0", rowHover)}>
+                  <td className="px-5 py-3 text-white text-sm font-medium">{r.dev}</td>
+                  <td className="px-5 py-3 text-center text-sm">{r.prop}</td>
+                  <td className="px-5 py-3 text-center text-sm">{r.neg}</td>
+                  <td className="px-5 py-3 text-right tabular-nums text-sm font-mono text-white/80">
+                    {r.propVgv > 0 ? brl(r.propVgv) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -279,21 +312,21 @@ export default function Dashboard() {
           <PanelTable title="Metas" subtitle="Atingimento">
             <thead>
               <tr className={headerCell}>
-                <th className="px-5 py-3 text-left font-semibold">Const.</th>
-                <th className="px-5 py-3 font-semibold">Meta</th>
-                <th className="px-5 py-3 font-semibold">%</th>
-                <th className="px-5 py-3 font-semibold">Vendido</th>
+                <th className="px-5 py-3 text-left">Const.</th>
+                <th className="px-5 py-3">Meta</th>
+                <th className="px-5 py-3">%</th>
+                <th className="px-5 py-3">Vendido</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1e1e5a]/40">
+            <tbody>
               {byDev.map((r) => (
-                <tr key={r.dev} className={rowHover}>
-                  <td className="px-5 py-2.5 text-white text-sm font-medium">{r.dev}</td>
-                  <td className="px-5 py-2.5 text-center text-sm">{r.meta}</td>
-                  <td className="px-5 py-2.5 text-center">
+                <tr key={r.dev} className={cn("border-b border-white/5 last:border-0", rowHover)}>
+                  <td className="px-5 py-3 text-white text-sm font-medium">{r.dev}</td>
+                  <td className="px-5 py-3 text-center text-sm">{r.meta}</td>
+                  <td className="px-5 py-3 text-center">
                     <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.pctMeta >= 100 ? cellGood : r.pctMeta > 0 ? cellWarn : cellBad)}>{r.pctMeta}%</span>
                   </td>
-                  <td className="px-5 py-2.5 text-center text-sm">{r.vendido}</td>
+                  <td className="px-5 py-3 text-center text-sm">{r.vendido}</td>
                 </tr>
               ))}
             </tbody>
@@ -307,7 +340,7 @@ export default function Dashboard() {
         {/* Origem + CCA + Staff */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className={cn(panel, "p-6")}>
-            <h3 className={cn(headerCell, "mb-5 font-bold")}>Origem dos Leads</h3>
+            <h3 className={cn(headerCell, "mb-5")}>Origem dos Leads</h3>
             <div className="space-y-3">
               {SOURCES.map((s) => {
                 const v = (sourceCounts as any)[s] ?? 0;
@@ -316,11 +349,11 @@ export default function Dashboard() {
                 return (
                   <div key={s}>
                     <div className="flex justify-between text-xs mb-1.5">
-                      <span className="text-slate-300">{s}</span>
+                      <span className="text-white/70">{s}</span>
                       <span className="text-white font-bold tabular-nums">{v}</span>
                     </div>
-                    <div className="h-1.5 bg-[#0a0a1a] rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-[#4f46e5] to-indigo-400 rounded-full transition-all duration-1000" style={{ width: `${pct}%` }} />
+                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-[#E8B84A] to-[#F59E0B] rounded-full transition-all duration-1000 shadow-[0_0_8px_rgba(232,184,74,0.4)]" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -329,11 +362,11 @@ export default function Dashboard() {
           </div>
 
           <div className={cn(panel, "p-6")}>
-            <h3 className={cn(headerCell, "mb-5 font-bold")}>Status CCA</h3>
-            <div className="space-y-3">
+            <h3 className={cn(headerCell, "mb-5")}>Status CCA</h3>
+            <div className="space-y-1">
               {CCA_STATUSES.map((s) => (
-                <div key={s} className="flex items-center justify-between py-1.5 border-b border-[#1e1e5a]/40 last:border-0">
-                  <span className="text-xs text-slate-400">{s}</span>
+                <div key={s} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                  <span className="text-xs text-white/60">{s}</span>
                   <span className="text-sm font-bold text-white tabular-nums">{ccaCounts[s] ?? 0}</span>
                 </div>
               ))}
@@ -341,74 +374,113 @@ export default function Dashboard() {
           </div>
 
           <div className={cn(panel, "p-6")}>
-            <h3 className={cn(headerCell, "mb-5 font-bold text-amber-300")}>Staff</h3>
-            <div className="space-y-2">
+            <h3 className={cn(headerCell, "mb-5 text-[#E8B84A]")}>Staff</h3>
+            <div className="space-y-1.5">
               {STAFF_ROWS.map(([l, v]) => (
                 <div
                   key={l}
                   className={cn(
                     "flex items-center justify-between px-3 py-2 rounded-lg",
-                    l === "Total" ? "bg-gradient-to-r from-[#4f46e5]/30 to-transparent border border-[#4f46e5]/30" : "hover:bg-[#1e1e5a]/30 transition-colors",
+                    l === "Total"
+                      ? "bg-gradient-to-r from-[#E8B84A]/20 to-transparent border border-[#E8B84A]/30"
+                      : "hover:bg-white/[0.03] transition-colors",
                   )}
                 >
-                  <span className={cn("text-xs", l === "Total" ? "text-white font-bold uppercase tracking-wider" : "text-slate-300")}>{l}</span>
-                  <span className={cn("tabular-nums font-bold", l === "Total" ? "text-white text-lg " + display : "text-sm text-white")}>{v}</span>
+                  <span className={cn("text-xs", l === "Total" ? "text-[#E8B84A] font-black uppercase tracking-widest" : "text-white/70")}>{l}</span>
+                  <span className={cn("tabular-nums font-bold", l === "Total" ? "text-white text-lg" : "text-sm text-white")}>{v}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
+        {/* Metas Globais Bar Chart */}
+        <div className={cn(panel, "p-6")}>
+          <h3 className={cn(headerCell, "mb-5")}>Desempenho Semanal · Metas Globais</h3>
+          <div className="flex items-end gap-2 h-40 mb-4">
+            {[40, 65, 55, 90, 100, 45, 30].map((h, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "flex-1 rounded-t-sm transition-all",
+                  h === 100
+                    ? "bg-gradient-to-t from-[#E8B84A]/30 to-[#E8B84A] shadow-[0_0_15px_rgba(232,184,74,0.4)]"
+                    : "bg-white/5 hover:bg-[#E8B84A]/40",
+                )}
+                style={{ height: `${h}%` }}
+              />
+            ))}
+          </div>
+          <div className="flex justify-between text-[10px] text-white/30 font-bold uppercase tracking-widest">
+            {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
+              <span key={d} className="flex-1 text-center">{d}</span>
+            ))}
+          </div>
+        </div>
+
         {/* Ranking Geral */}
         <div className={cn(panel, "overflow-hidden")}>
-          <div className="px-6 py-4 border-b border-[#1e1e5a] flex justify-between items-center bg-[#1e1e5a]/20">
-            <h3 className={cn(display, "font-bold text-white")}>Ranking Geral</h3>
-            <span className="text-[10px] text-slate-500 uppercase tracking-widest">{rankingGeral.length} corretores</span>
+          <div className="p-6 border-b border-white/5 flex justify-between items-center">
+            <h3 className="font-bold uppercase tracking-widest text-sm">Ranking Geral</h3>
+            <span className="text-[10px] text-[#E8B84A] uppercase font-bold tracking-widest">
+              {rankingGeral.length} corretores
+            </span>
           </div>
           <div className="overflow-x-auto max-h-[520px]">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-[#141432] backdrop-blur-xl">
-                <tr className={cn(headerCell, "border-b border-[#1e1e5a]/50")}>
-                  <th className="px-5 py-3 font-semibold">#</th>
-                  <th className="px-5 py-3 text-left font-semibold">Corretor</th>
-                  <th className="px-5 py-3 font-semibold">Leads</th>
-                  <th className="px-5 py-3 font-semibold">Vendas</th>
-                  <th className="px-5 py-3 font-semibold">Ágil</th>
-                  <th className="px-5 py-3 font-semibold">Neg.</th>
-                  <th className="px-5 py-3 text-right font-semibold">VGV</th>
-                  <th className="px-5 py-3 font-semibold">Off</th>
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0 z-10 bg-[#0F0F0F]">
+                <tr className={cn(headerCell, "border-b border-white/5")}>
+                  <th className="px-5 py-4 text-left">#</th>
+                  <th className="px-5 py-4 text-left">Corretor</th>
+                  <th className="px-5 py-4">Leads</th>
+                  <th className="px-5 py-4">Vendas</th>
+                  <th className="px-5 py-4">Ágil</th>
+                  <th className="px-5 py-4">Neg.</th>
+                  <th className="px-5 py-4 text-right">VGV</th>
+                  <th className="px-5 py-4">Off</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1e1e5a]/30">
+              <tbody>
                 {rankingGeral.map((r, i) => (
-                  <tr key={i} className={rowHover}>
-                    <td className="px-5 py-2.5 text-center">
-                      <span className={cn(display, "font-bold", i < 3 ? "text-[#4f46e5]" : "text-slate-500")}>
+                  <tr key={i} className={cn("border-b border-white/5 last:border-0", rowHover)}>
+                    <td className="px-5 py-3">
+                      <span
+                        className={cn(
+                          "w-7 h-7 inline-flex items-center justify-center rounded font-black text-xs",
+                          i === 0
+                            ? "bg-gradient-to-r from-[#E8B84A] to-[#B45309] text-black"
+                            : i < 3
+                            ? "border border-[#E8B84A]/40 text-[#E8B84A]"
+                            : "border border-white/10 text-white/40",
+                        )}
+                      >
                         {String(i + 1).padStart(2, "0")}
                       </span>
                     </td>
-                    <td className="px-5 py-2.5">
+                    <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-900/50 border border-indigo-700/50 flex items-center justify-center text-[10px] font-bold text-indigo-100">
+                        <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-bold text-white/80">
                           {r.name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
                         </div>
                         <span className="text-white font-medium">{r.name}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-2.5 text-center">
+                    <td className="px-5 py-3 text-center">
                       <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.leads))}>{r.leads}</span>
                     </td>
-                    <td className="px-5 py-2.5 text-center">
+                    <td className="px-5 py-3 text-center">
                       <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.vendas))}>{r.vendas}</span>
                     </td>
-                    <td className="px-5 py-2.5 text-center">
+                    <td className="px-5 py-3 text-center">
                       <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.agil))}>{r.agil}</span>
                     </td>
-                    <td className="px-5 py-2.5 text-center">
+                    <td className="px-5 py-3 text-center">
                       <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.neg))}>{r.neg}</span>
                     </td>
-                    <td className="px-5 py-2.5 text-right tabular-nums text-white font-semibold">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
-                    <td className="px-5 py-2.5 text-center">
+                    <td className="px-5 py-3 text-right tabular-nums text-[#E8B84A] font-semibold font-mono">
+                      {r.vgv > 0 ? brl(r.vgv) : "—"}
+                    </td>
+                    <td className="px-5 py-3 text-center">
                       <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", cellOf(r.off, false))}>{r.off}</span>
                     </td>
                   </tr>
@@ -424,61 +496,63 @@ export default function Dashboard() {
 
 function PanelTable({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className={cn(panel, "overflow-hidden")}>
-      <div className="px-5 py-4 border-b border-[#1e1e5a] flex items-end justify-between bg-[#1e1e5a]/20">
-        <h3 className={cn(display, "font-bold text-white text-sm")}>{title}</h3>
-        {subtitle && <span className="text-[10px] uppercase tracking-widest text-slate-500">{subtitle}</span>}
+    <div className="bg-[#0F0F0F] border border-white/5 rounded-2xl overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/5 flex items-end justify-between">
+        <h3 className="font-bold uppercase tracking-widest text-white text-sm">{title}</h3>
+        {subtitle && <span className="text-[10px] uppercase tracking-widest text-[#E8B84A]/70 font-bold">{subtitle}</span>}
       </div>
-      <table className="w-full">{children}</table>
+      <table className="w-full border-collapse">{children}</table>
     </div>
   );
 }
 
 function RankCard({ title, rows, kind }: { title: string; rows: any[]; kind: string }) {
   const cellGood = "bg-emerald-500/15 text-emerald-300";
-  const cellWarn = "bg-amber-500/15 text-amber-300";
+  const cellWarn = "bg-[#E8B84A]/15 text-[#E8B84A]";
   const cellBad = "bg-rose-500/15 text-rose-300";
   return (
-    <div className={cn(panel, "overflow-hidden")}>
-      <div className="px-6 py-4 border-b border-[#1e1e5a] flex justify-between items-center bg-[#1e1e5a]/20">
-        <h3 className={cn(display, "font-bold text-white")}>{title}</h3>
-        <span className="px-2 py-0.5 rounded-md bg-[#4f46e5]/20 text-[#a5a3f0] text-[10px] font-bold uppercase tracking-widest">{rows.length} {kind}s</span>
+    <div className="bg-[#0F0F0F] border border-white/5 rounded-2xl overflow-hidden">
+      <div className="p-6 border-b border-white/5 flex justify-between items-center">
+        <h3 className="font-bold uppercase tracking-widest text-sm">{title}</h3>
+        <span className="px-3 py-1 rounded-full bg-[#E8B84A]/10 border border-[#E8B84A]/30 text-[#E8B84A] text-[10px] font-black uppercase tracking-widest">
+          {rows.length} {kind}s
+        </span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-[10px] uppercase tracking-widest text-slate-500 border-b border-[#1e1e5a]/50">
-            <tr>
-              <th className="px-5 py-3 font-semibold">Sem Compras</th>
-              <th className="px-5 py-3 font-semibold">Meta</th>
-              <th className="px-5 py-3 font-semibold">% Atingida</th>
-              <th className="px-5 py-3 text-left font-semibold">{kind}</th>
-              <th className="px-5 py-3 font-semibold">Leads</th>
-              <th className="px-5 py-3 font-semibold">Ágil</th>
-              <th className="px-5 py-3 font-semibold">Neg.</th>
-              <th className="px-5 py-3 font-semibold">Vendas</th>
-              <th className="px-5 py-3 text-right font-semibold">VGV</th>
-              <th className="px-5 py-3 font-semibold">Off</th>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-widest text-white/30 font-bold border-b border-white/5">
+              <th className="px-5 py-4">Sem Compras</th>
+              <th className="px-5 py-4">Meta</th>
+              <th className="px-5 py-4">% Atingida</th>
+              <th className="px-5 py-4 text-left">{kind}</th>
+              <th className="px-5 py-4">Leads</th>
+              <th className="px-5 py-4">Ágil</th>
+              <th className="px-5 py-4">Neg.</th>
+              <th className="px-5 py-4">Vendas</th>
+              <th className="px-5 py-4 text-right text-[#E8B84A]">VGV</th>
+              <th className="px-5 py-4">Off</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#1e1e5a]/30">
+          <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className="hover:bg-[#4f46e5]/5 transition-colors">
-                <td className="px-5 py-2.5 text-center">
+              <tr key={i} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                <td className="px-5 py-3 text-center">
                   <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.sem > 0 ? cellWarn : cellGood)}>{r.sem}</span>
                 </td>
-                <td className="px-5 py-2.5 text-center text-white">{r.meta}</td>
-                <td className="px-5 py-2.5 text-center">
+                <td className="px-5 py-3 text-center text-white">{r.meta}</td>
+                <td className="px-5 py-3 text-center">
                   <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.pct >= 100 ? cellGood : r.pct >= 50 ? cellWarn : cellBad)}>{r.pct}%</span>
                 </td>
-                <td className="px-5 py-2.5 text-white font-medium">{r.name}</td>
-                <td className="px-5 py-2.5 text-center">{r.leads}</td>
-                <td className="px-5 py-2.5 text-center">{r.agil}</td>
-                <td className="px-5 py-2.5 text-center">{r.neg}</td>
-                <td className="px-5 py-2.5 text-center">
+                <td className="px-5 py-3 text-white font-medium">{r.name}</td>
+                <td className="px-5 py-3 text-center">{r.leads}</td>
+                <td className="px-5 py-3 text-center">{r.agil}</td>
+                <td className="px-5 py-3 text-center">{r.neg}</td>
+                <td className="px-5 py-3 text-center">
                   <span className="inline-block px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-300">{r.vendas}</span>
                 </td>
-                <td className="px-5 py-2.5 text-right tabular-nums text-[#4f46e5] font-semibold">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
-                <td className="px-5 py-2.5 text-center">
+                <td className="px-5 py-3 text-right tabular-nums text-[#E8B84A] font-semibold font-mono">{r.vgv > 0 ? brl(r.vgv) : "—"}</td>
+                <td className="px-5 py-3 text-center">
                   <span className={cn("inline-block px-2 py-0.5 rounded-md text-xs font-bold", r.off > 0 ? cellBad : cellGood)}>{r.off}</span>
                 </td>
               </tr>
