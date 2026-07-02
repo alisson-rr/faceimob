@@ -439,7 +439,7 @@ export default function Dashboard() {
           </div>
           <div className="overflow-x-auto max-h-[520px]">
             <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 z-10 bg-[#0F0F0F]">
+              <thead className="sticky top-0 z-10 bg-[#0B0D12]/95 backdrop-blur-md">
                 <tr className={cn(headerCell, "border-b border-white/5")}>
                   <th className="px-5 py-4 text-left">#</th>
                   <th className="px-5 py-4 text-left">Corretor</th>
@@ -507,7 +507,7 @@ export default function Dashboard() {
 
 function PanelTable({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-[#0F0F0F] border border-white/5 rounded-2xl overflow-hidden">
+    <div className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm shadow-[0_10px_40px_-15px_rgba(0,0,0,0.5)]">
       <div className="px-5 py-4 border-b border-white/5 flex items-end justify-between">
         <h3 className="font-bold uppercase tracking-widest text-white text-sm">{title}</h3>
         {subtitle && <span className="text-[10px] uppercase tracking-widest text-[#3B82F6]/70 font-bold">{subtitle}</span>}
@@ -522,7 +522,7 @@ function RankCard({ title, rows, kind }: { title: string; rows: any[]; kind: str
   const cellWarn = "bg-[#3B82F6]/15 text-[#3B82F6]";
   const cellBad = "bg-rose-500/15 text-rose-300";
   return (
-    <div className="bg-[#0F0F0F] border border-white/5 rounded-2xl overflow-hidden">
+    <div className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm shadow-[0_10px_40px_-15px_rgba(0,0,0,0.5)]">
       <div className="p-6 border-b border-white/5 flex justify-between items-center">
         <h3 className="font-bold uppercase tracking-widest text-sm">{title}</h3>
         <span className="px-3 py-1 rounded-full bg-[#3B82F6]/10 border border-[#3B82F6]/30 text-[#3B82F6] text-[10px] font-black uppercase tracking-widest">
