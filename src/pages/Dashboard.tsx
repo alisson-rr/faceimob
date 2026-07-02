@@ -248,6 +248,7 @@ export default function Dashboard() {
     queryKey: ["dashboard", "leads_by_source"],
     queryFn: async () => {
       const data = await fetchAll("leads", "source");
+      const counts = new Map<string, number>();
       (data || []).forEach((r: any) => {
         const s = (r.source || "Sem origem").toString();
         counts.set(s, (counts.get(s) || 0) + 1);
