@@ -247,9 +247,7 @@ export default function Dashboard() {
   const { data: leadsBySource = [] } = useQuery({
     queryKey: ["dashboard", "leads_by_source"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("leads").select("source");
-      if (error) throw error;
-      const counts = new Map<string, number>();
+      const data = await fetchAll("leads", "source");
       (data || []).forEach((r: any) => {
         const s = (r.source || "Sem origem").toString();
         counts.set(s, (counts.get(s) || 0) + 1);
