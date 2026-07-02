@@ -43,12 +43,12 @@ type Broker = { id: string; name: string; role?: string | null; manager_id?: str
 const brl = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 }).format(n);
 
-// Legendary Gold tokens
+// Premium design tokens
 const GOLD = "#3B82F6";
-const panel = "rounded-2xl bg-[#0F0F0F] border border-white/5";
-const panelGold = "rounded-2xl bg-[#0F0F0F] border border-[#3B82F6]/20 shadow-[0_0_40px_rgba(59,130,246,0.05)]";
-const headerCell = "text-[10px] uppercase tracking-widest text-white/30 font-bold";
-const rowHover = "hover:bg-white/[0.02] transition-colors";
+const panel = "rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-sm shadow-[0_10px_40px_-15px_rgba(0,0,0,0.5)]";
+const panelGold = "rounded-2xl bg-white/[0.03] border border-[#3B82F6]/20 backdrop-blur-sm shadow-[0_0_50px_-10px_rgba(59,130,246,0.15)]";
+const headerCell = "text-[10px] uppercase tracking-[0.18em] text-white/40 font-bold";
+const rowHover = "hover:bg-white/[0.03] transition-colors duration-200";
 
 export default function Dashboard() {
   const [deals, setDeals] = useState<Deal[]>([]);
