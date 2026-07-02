@@ -131,6 +131,7 @@ export type Database = {
           created_at: string | null
           deal_value: number | null
           developer: string | null
+          director1_id: string | null
           history: Json | null
           id: string
           manager1_id: string | null
@@ -153,6 +154,7 @@ export type Database = {
           created_at?: string | null
           deal_value?: number | null
           developer?: string | null
+          director1_id?: string | null
           history?: Json | null
           id?: string
           manager1_id?: string | null
@@ -175,6 +177,7 @@ export type Database = {
           created_at?: string | null
           deal_value?: number | null
           developer?: string | null
+          director1_id?: string | null
           history?: Json | null
           id?: string
           manager1_id?: string | null
@@ -200,6 +203,13 @@ export type Database = {
           {
             foreignKeyName: "deals_broker2_id_fkey"
             columns: ["broker2_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_director1_id_fkey"
+            columns: ["director1_id"]
             isOneToOne: false
             referencedRelation: "brokers"
             referencedColumns: ["id"]
