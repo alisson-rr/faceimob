@@ -59,19 +59,19 @@
     --destructive-foreground: 0 0% 100%;
     --border: 220 14% 88%;
     --input: 220 14% 88%;
-    --ring: 224 100% 59%;
+    --ring: 217 91% 60%;
     --success: 145 63% 42%;
     --success-foreground: 0 0% 100%;
     --warning: 36 90% 51%;
     --warning-foreground: 0 0% 0%;
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 224 60% 15%;
-    --sidebar-primary: 224 100% 59%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 14% 95%;
     --sidebar-accent-foreground: 224 60% 15%;
     --sidebar-border: 220 14% 90%;
-    --sidebar-ring: 224 100% 59%;
+    --sidebar-ring: 217 91% 60%;
   }
 }
 
@@ -116,7 +116,7 @@
     @apply bg-card/20 backdrop-blur-lg border border-border/20;
   }
   .glow-primary {
-    box-shadow: 0 0 20px hsl(224 100% 59% / 0.2), 0 0 60px hsl(224 100% 59% / 0.08);
+    box-shadow: 0 0 20px hsl(217 91% 60% / 0.2), 0 0 60px hsl(217 91% 60% / 0.08);
   }
   .glow-success {
     box-shadow: 0 0 20px hsl(145 63% 49% / 0.2);
@@ -128,7 +128,7 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      hsl(224 100% 59% / 0.06) 50%,
+      hsl(217 91% 60% / 0.06) 50%,
       transparent 100%
     );
     background-size: 200% 100%;
@@ -166,8 +166,8 @@
 }
 
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 20px hsl(224 100% 59% / 0.15); }
-  50% { box-shadow: 0 0 40px hsl(224 100% 59% / 0.3); }
+  0%, 100% { box-shadow: 0 0 20px hsl(217 91% 60% / 0.15); }
+  50% { box-shadow: 0 0 40px hsl(217 91% 60% / 0.3); }
 }
 
 @keyframes slideUp {
