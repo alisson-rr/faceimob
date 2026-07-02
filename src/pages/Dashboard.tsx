@@ -160,16 +160,16 @@ export default function Dashboard() {
   const byDev = useMemo(() => {
     return DEVELOPERS.map((dev) => {
       const ds = filtered.filter((d) => (d.developer || "").toUpperCase() === dev);
-      const v = ds.filter((d) => d.stage === "closed" || d.stage === "contract");
-      const p = ds.filter((d) => ["proposal", "contract", "approved"].includes(d.stage));
-      const n = ds.filter((d) => !["lead", "incomplete"].includes(d.stage));
+      const v = ds.filter((d) => isResultado(d.status));
+      const p = ds.filter((d) => isProducao(d.status));
+      const perdas = ds.filter((d) => normalizeStatus(d.status) === "QUEDA" || distratoPosteriorIds.has(d.id));
       const vgv = v.reduce((a, d) => a + (d.deal_value || 0), 0);
       const propVgv = p.reduce((a, d) => a + (d.deal_value || 0), 0);
       const meta = 10;
       const pctMeta = Math.round((v.length / meta) * 100);
-      return { dev, vendas: v.length, vgv, prop: p.length, neg: n.length, propVgv, meta, pctMeta, vendido: v.length };
+      return { dev, vendas: v.length, vgv, prop: p.length, neg: v.length + p.length, propVgv, meta, pctMeta, vendido: v.length, perdas: perdas.length };
     });
-  }, [filtered]);
+  }, [filtered, distratoPosteriorIds]);
 
   const directorRows = [
     { name: "Fabio Roldão", sem: 23, meta: 28, pct: 54, leads: 540, agil: 27, neg: 36, vendas: 13, vgv: 13649027.85, off: 1 },
