@@ -206,19 +206,21 @@ export default function Dashboard() {
   const rankingGeral = useMemo(() => {
     const rows = brokers.map((b) => {
       const ds = filtered.filter((d) => d.broker1_id === b.id);
-      const v = ds.filter((d) => d.stage === "closed" || d.stage === "contract");
+      const v = ds.filter((d) => isResultado(d.status));
+      const p = ds.filter((d) => isProducao(d.status));
+      const perdas = ds.filter((d) => normalizeStatus(d.status) === "QUEDA" || distratoPosteriorIds.has(d.id));
       return {
         name: b.name,
         leads: ds.length,
         vendas: v.length,
-        agil: ds.filter((d) => d.stage === "approved").length,
-        neg: ds.filter((d) => !["lead", "incomplete"].includes(d.stage)).length,
+        agil: p.length,
+        neg: v.length + p.length,
         vgv: v.reduce((a, d) => a + (d.deal_value || 0), 0),
-        off: ds.filter((d) => d.active === false).length,
+        off: perdas.length,
       };
     });
     return rows.sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, [brokers, filtered]);
+  }, [brokers, filtered, distratoPosteriorIds]);
 
   const cellGood = "bg-emerald-500/15 text-emerald-300";
   const cellWarn = "bg-[#3B82F6]/15 text-[#3B82F6]";
