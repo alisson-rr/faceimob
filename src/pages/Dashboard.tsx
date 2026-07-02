@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Trophy, Users, FileText, TrendingUp, XCircle, CheckCircle2, DollarSign, Target } from "lucide-react";
+import { isResultado, isProducao, isPerda, normalizeStatus, pickOpenMonth, compareMonth } from "@/lib/dealStatus";
 
 const DEVELOPERS = ["VASCO", "TENDA", "MRV", "MELNICK", "LYX", "MAB", "ABACO", "MCG", "MITRANA"];
 const SOURCES = ["Leadfy", "Lead Próprio", "Lead Loja", "Lead Padrão", "Lead Indicação"];
