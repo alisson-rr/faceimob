@@ -1,0 +1,1 @@
+ALTER TABLE public.cca_deals ADD CONSTRAINT cca_deals_deal_id_unique UNIQUE (deal_id);
