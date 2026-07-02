@@ -479,11 +479,12 @@ function GeralTab({ byDev }: { byDev: any[] }) {
 
 // ─── Tab: Propostas ─────────────────────────────────────────────────────────
 function PropostasTab({
-  byDev, sources, ccaCounts,
+  byDev, sources, ccaCounts, staffRows,
 }: {
   byDev: any[];
   sources: { name: string; v: number; color: string }[];
   ccaCounts: Record<string, number>;
+  staffRows: readonly (readonly [string, number, string])[];
 }) {
   return (
     <>
