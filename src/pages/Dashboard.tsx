@@ -228,13 +228,14 @@ export default function Dashboard() {
   const cellOf = (n: number, good = true) =>
     n > 0 ? (good ? cellGood : cellBad) : good ? cellBad : cellGood;
 
+  const isMonthClosed = activeMonth !== "all" && closedMonths.includes(activeMonth);
   const kpis = [
     { l: "Leads Gerados", v: leadsCount || 0, sub: "Base ativa", Icon: Users },
-    { l: "Propostas", v: stats.propostas, sub: "Em análise", Icon: FileText },
-    { l: "Negócios", v: stats.negocios, sub: "Ativos", popular: true, Icon: TrendingUp },
-    { l: "OFF", v: stats.off, sub: "Descartados", Icon: XCircle },
-    { l: "Vendas", v: stats.vendas, sub: "Fechadas", Icon: CheckCircle2 },
-    { l: "VGV", v: brl(stats.vgv || 0), sub: "Volume geral", small: true, Icon: DollarSign },
+    { l: "Produção", v: stats.propostas, sub: "Propostas", Icon: FileText },
+    { l: "Resultado", v: stats.vendas, sub: "Vendas", popular: true, Icon: TrendingUp },
+    { l: "Perdas", v: stats.perdas, sub: "Quedas + distratos", Icon: XCircle },
+    { l: "Negócios", v: stats.negocios, sub: "Vendas + propostas", Icon: CheckCircle2 },
+    { l: "VGV", v: brl(stats.vgv || 0), sub: "Volume vendido", small: true, Icon: DollarSign },
     { l: "Meta", v: `${stats.pct}%`, sub: `${stats.vendas}/${stats.meta}`, bar: stats.pct, Icon: Target },
   ];
 
