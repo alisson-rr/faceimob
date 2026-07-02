@@ -179,57 +179,102 @@ export default function Dashboard() {
     });
   }, [filtered]);
 
-  // Aggregations per role
+  const brokerMap = useMemo(() => {
+    const m = new Map<string, string>();
+    brokers.forEach((b) => m.set(b.id, b.name));
+    return m;
+  }, [brokers]);
+
+  // Aggregations per role — 100% real deals data.
   const rankBrokers = useMemo(() => {
-    return brokers
-      .map((b) => {
-        const ds = filtered.filter((d) => d.broker1_id === b.id);
-        const v = ds.filter((d) => isResultado(d.status));
-        const vgv = v.reduce((a, d) => a + (d.deal_value || 0), 0);
-        return { name: b.name, vendas: v.length, vgv };
-      })
-      .filter((r) => r.vendas > 0 || r.vgv > 0)
-      .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, [brokers, filtered]);
+    const map = new Map<string, { name: string; vendas: number; vgv: number }>();
+    filtered.forEach((d) => {
+      if (!isResultado(d.status) || !d.broker1_id) return;
+      const name = brokerMap.get(d.broker1_id) || "(sem nome)";
+      const e = map.get(d.broker1_id) || { name, vendas: 0, vgv: 0 };
+      e.vendas += 1;
+      e.vgv += d.deal_value || 0;
+      map.set(d.broker1_id, e);
+    });
+    return Array.from(map.values()).sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
+  }, [filtered, brokerMap]);
 
   const rankManagers = useMemo(() => {
-    const managers = brokers.filter((b) => (b.role || "").toLowerCase().includes("gerente"));
     const map = new Map<string, { name: string; vendas: number; vgv: number }>();
-    managers.forEach((m) => map.set(m.id, { name: m.name, vendas: 0, vgv: 0 }));
     filtered.forEach((d) => {
       if (!isResultado(d.status) || !d.manager1_id) return;
-      const entry = map.get(d.manager1_id);
-      if (entry) { entry.vendas += 1; entry.vgv += d.deal_value || 0; }
+      const name = brokerMap.get(d.manager1_id) || "(gerente)";
+      const e = map.get(d.manager1_id) || { name, vendas: 0, vgv: 0 };
+      e.vendas += 1;
+      e.vgv += d.deal_value || 0;
+      map.set(d.manager1_id, e);
     });
-    return Array.from(map.values())
-      .filter((r) => r.vendas > 0 || r.vgv > 0)
-      .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, [brokers, filtered]);
+    return Array.from(map.values()).sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
+  }, [filtered, brokerMap]);
 
   const rankDirectors = useMemo(() => {
-    // Fallback estático (dados de diretores ainda não vêm da base).
-    return [
-      { name: "Fabio Roldão", vendas: 13, vgv: 13649027.85 },
-      { name: "Mauricio Vieira", vendas: 11, vgv: 12259027.06 },
-      { name: "Archimedes Neff", vendas: 3, vgv: 4524752.36 },
-    ].sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, []);
+    const map = new Map<string, { name: string; vendas: number; vgv: number }>();
+    filtered.forEach((d: any) => {
+      if (!isResultado(d.status) || !d.director1_id) return;
+      const name = brokerMap.get(d.director1_id) || "(diretor)";
+      const e = map.get(d.director1_id) || { name, vendas: 0, vgv: 0 };
+      e.vendas += 1;
+      e.vgv += d.deal_value || 0;
+      map.set(d.director1_id, e);
+    });
+    return Array.from(map.values()).sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
+  }, [filtered, brokerMap]);
 
-  // Sources & CCA (parcialmente mock).
+  // Real leads by source
+  const { data: leadsBySource = [] } = useQuery({
+    queryKey: ["dashboard", "leads_by_source"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("leads").select("source");
+      if (error) throw error;
+      const counts = new Map<string, number>();
+      (data || []).forEach((r: any) => {
+        const s = (r.source || "Sem origem").toString();
+        counts.set(s, (counts.get(s) || 0) + 1);
+      });
+      return Array.from(counts.entries()).map(([name, v]) => ({ name, v }));
+    },
+    staleTime: 60_000,
+  });
   const sourceData = useMemo(
-    () => [
-      { name: "Leadfy", v: leadsCount, color: SOURCE_COLORS[0] },
-      { name: "Lead Próprio", v: 23, color: SOURCE_COLORS[1] },
-      { name: "Lead Loja", v: 9, color: SOURCE_COLORS[2] },
-      { name: "Lead Padrão", v: 5, color: SOURCE_COLORS[3] },
-      { name: "Lead Indicação", v: 50, color: SOURCE_COLORS[4] },
-    ],
-    [leadsCount],
+    () => leadsBySource.map((s, i) => ({ ...s, color: SOURCE_COLORS[i % SOURCE_COLORS.length] })),
+    [leadsBySource],
   );
-  const ccaCounts: Record<string, number> = {
-    "Aprovado Total": 0, "Aprovado Condicionado": 4, "Análise de Viabilidade": 6,
-    "Assinatura no Banco": 9, "Pendente de Viabilidade": 9, "Reprovado": 0, "Pendente": 11,
-  };
+
+  // Real CCA counts by status
+  const { data: ccaCounts = {} } = useQuery({
+    queryKey: ["dashboard", "cca_counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("cca_deals").select("status");
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      (data || []).forEach((r: any) => {
+        const s = (r.status || "pendente").toString();
+        counts[s] = (counts[s] || 0) + 1;
+      });
+      return counts;
+    },
+    staleTime: 60_000,
+  });
+
+  // Real staff counts
+  const staffRows = useMemo(() => {
+    const active = brokers.filter((b) => (b as any).active !== false).length;
+    const managerIds = new Set(brokers.map((b: any) => b.manager_id).filter(Boolean));
+    const directorIds = new Set(brokers.map((b: any) => b.director_id).filter(Boolean));
+    return [
+      ["Corretores", brokers.length, "#10B981"],
+      ["Ativos", active, "#3B82F6"],
+      ["Gerentes", managerIds.size, "#EC4899"],
+      ["Diretores", directorIds.size, "#F59E0B"],
+      ["Total", brokers.length, "#F97316"],
+    ] as const;
+  }, [brokers]);
+
 
   // Monthly series for "Metas" chart
   const monthlyByYear = useMemo(() => {
