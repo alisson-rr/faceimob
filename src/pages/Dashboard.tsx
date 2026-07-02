@@ -266,8 +266,7 @@ export default function Dashboard() {
   const { data: ccaCounts = {} } = useQuery({
     queryKey: ["dashboard", "cca_counts"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("cca_deals").select("status");
-      if (error) throw error;
+      const data = await fetchAll("cca_deals", "status");
       const counts: Record<string, number> = {};
       (data || []).forEach((r: any) => {
         const s = (r.status || "pendente").toString();
