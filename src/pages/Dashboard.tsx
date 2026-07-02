@@ -300,7 +300,7 @@ export default function Dashboard() {
                 <p className="text-[#60A5FA] text-[11px] uppercase tracking-[0.2em] font-semibold">Visão Geral</p>
                 <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">Dashboard CRM</h1>
                 <p className="text-white/50 text-sm font-medium">
-                  Consolidado · {month === "all" ? "Todos os meses" : month}
+                  Consolidado · {activeMonth === "all" ? "Todos os meses" : activeMonth}{isMonthClosed ? " · fechado" : ""}
                 </p>
               </div>
             </div>
