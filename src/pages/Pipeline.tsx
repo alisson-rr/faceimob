@@ -684,8 +684,8 @@ export default function Pipeline() {
                 <Download className="h-4 w-4 mr-1" /> Extrair Negócio
               </Button>
               {isAdmin && (
-                <Button variant="destructive" size="sm" onClick={() => setCloseMonthOpen(true)}>
-                  <Target className="h-4 w-4 mr-1" /> Fechar Mês
+                <Button variant="destructive" size="sm" onClick={() => setCloseMonthOpen(true)} disabled={isMonthClosed}>
+                  <Target className="h-4 w-4 mr-1" /> {isMonthClosed ? `${monthFilter} fechado` : "Fechar Mês"}
                 </Button>
               )}
             </>
