@@ -261,15 +261,27 @@ export default function Dashboard() {
               {t}
             </button>
           ))}
-          <div className="ml-auto pl-4 pb-1">
-            <Select value={month} onValueChange={setMonth}>
+          <div className="ml-auto pl-4 pb-1 flex items-center gap-2">
+            {activeMonth !== "all" && (
+              <span className={cn(
+                "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border",
+                isMonthClosed
+                  ? "bg-white/[0.04] border-white/15 text-white/60"
+                  : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+              )}>
+                {isMonthClosed ? "Fechado" : "Aberto"}
+              </span>
+            )}
+            <Select value={activeMonth} onValueChange={setMonth}>
               <SelectTrigger className="w-[200px] bg-white/[0.03] border border-white/10 text-white/80 rounded-xl h-9 backdrop-blur-md hover:border-white/20 transition-colors">
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent className="bg-[#0B0D12] border-white/10 text-white/80">
                 <SelectItem value="all">Todos os meses</SelectItem>
                 {months.map((m) => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                  <SelectItem key={m} value={m}>
+                    {m} {closedMonths.includes(m) ? "· fechado" : ""}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
