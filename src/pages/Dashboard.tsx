@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Trophy, Users, FileText, TrendingUp, XCircle, CheckCircle2, DollarSign, Target } from "lucide-react";
+import { isResultado, isProducao, isPerda, normalizeStatus, pickOpenMonth, compareMonth } from "@/lib/dealStatus";
 
 const DEVELOPERS = ["VASCO", "TENDA", "MRV", "MELNICK", "LYX", "MAB", "ABACO", "MCG", "MITRANA"];
 const SOURCES = ["Leadfy", "Lead Próprio", "Lead Loja", "Lead Padrão", "Lead Indicação"];
@@ -30,8 +31,10 @@ const STAFF_ROWS = [
 
 type Deal = {
   id: string;
+  client: string | null;
   developer: string | null;
   stage: string;
+  status: string | null;
   deal_value: number | null;
   active: boolean | null;
   month_base: string | null;
@@ -52,7 +55,7 @@ const headerCell = "text-[10px] uppercase tracking-[0.18em] text-white/40 font-b
 const rowHover = "hover:bg-white/[0.03] transition-colors duration-200";
 
 export default function Dashboard() {
-  const [month, setMonth] = useState("all");
+  const [month, setMonth] = useState<string | null>(null);
 
   const { data: deals = [] } = useQuery({
     queryKey: ["dashboard", "deals"],
@@ -87,46 +90,86 @@ export default function Dashboard() {
     staleTime: 60_000,
   });
 
+  const { data: closedMonths = [] } = useQuery({
+    queryKey: ["closed_months"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("closed_months" as any).select("month_base");
+      if (error) throw error;
+      return ((data as any[]) || []).map((r) => r.month_base as string);
+    },
+    staleTime: 60_000,
+  });
 
   const months = useMemo(() => {
     const s = new Set<string>();
     deals.forEach((d) => d.month_base && s.add(d.month_base));
-    return Array.from(s).sort((a, b) => {
-      const [ma, ya] = a.split("/").map(Number);
-      const [mb, yb] = b.split("/").map(Number);
-      return yb - ya || mb - ma;
-    });
+    return Array.from(s).sort((a, b) => compareMonth(b, a));
   }, [deals]);
 
+  // Default to most recent OPEN month (skip already-closed months).
+  useEffect(() => {
+    if (month === null && months.length > 0) {
+      setMonth(pickOpenMonth(months, closedMonths));
+    }
+  }, [month, months, closedMonths]);
+
+  const activeMonth = month ?? "all";
+
   const filtered = useMemo(
-    () => (month === "all" ? deals : deals.filter((d) => d.month_base === month)),
-    [deals, month]
+    () => (activeMonth === "all" ? deals : deals.filter((d) => d.month_base === activeMonth)),
+    [deals, activeMonth]
   );
 
+  // "Distrato posterior à venda" — precisa considerar TODOS os deals para o cliente,
+  // não só os do mês filtrado, e testar se há uma VENDA em mês anterior.
+  const distratoPosteriorIds = useMemo(() => {
+    const vendasPorCliente = new Map<string, string[]>(); // client -> months onde teve VENDA
+    deals.forEach((d) => {
+      if (isResultado(d.status) && d.client && d.month_base) {
+        const arr = vendasPorCliente.get(d.client) || [];
+        arr.push(d.month_base);
+        vendasPorCliente.set(d.client, arr);
+      }
+    });
+    const ids = new Set<string>();
+    deals.forEach((d) => {
+      if (normalizeStatus(d.status) === "DISTRATO" && d.client && d.month_base) {
+        const vendas = vendasPorCliente.get(d.client) || [];
+        if (vendas.some((vm) => compareMonth(vm, d.month_base!) < 0)) {
+          ids.add(d.id);
+        }
+      }
+    });
+    return ids;
+  }, [deals]);
+
   const stats = useMemo(() => {
-    const vendas = filtered.filter((d) => d.stage === "closed" || d.stage === "contract").length;
-    const propostas = filtered.filter((d) => ["proposal", "contract", "approved"].includes(d.stage)).length;
-    const negocios = filtered.filter((d) => !["lead", "incomplete"].includes(d.stage)).length;
-    const off = filtered.filter((d) => d.active === false).length;
-    const vgv = filtered.filter((d) => d.active !== false).reduce((a, d) => a + (d.deal_value || 0), 0);
+    const vendas = filtered.filter((d) => isResultado(d.status)).length;
+    const propostas = filtered.filter((d) => isProducao(d.status)).length;
+    const quedas = filtered.filter((d) => normalizeStatus(d.status) === "QUEDA").length;
+    const distratos = filtered.filter((d) => distratoPosteriorIds.has(d.id)).length;
+    const perdas = quedas + distratos;
+    const negocios = vendas + propostas;
+    const off = filtered.filter((d) => normalizeStatus(d.status) === "OFF").length;
+    const vgv = filtered.filter((d) => isResultado(d.status)).reduce((a, d) => a + (d.deal_value || 0), 0);
     const meta = 92;
     const pct = Math.min(999, Math.round((vendas / meta) * 100));
-    return { vendas, propostas, negocios, off, vgv, meta, pct };
-  }, [filtered]);
+    return { vendas, propostas, negocios, off, perdas, vgv, meta, pct };
+  }, [filtered, distratoPosteriorIds]);
 
   const byDev = useMemo(() => {
     return DEVELOPERS.map((dev) => {
       const ds = filtered.filter((d) => (d.developer || "").toUpperCase() === dev);
-      const v = ds.filter((d) => d.stage === "closed" || d.stage === "contract");
-      const p = ds.filter((d) => ["proposal", "contract", "approved"].includes(d.stage));
-      const n = ds.filter((d) => !["lead", "incomplete"].includes(d.stage));
+      const v = ds.filter((d) => isResultado(d.status));
+      const p = ds.filter((d) => isProducao(d.status));
+      const perdas = ds.filter((d) => normalizeStatus(d.status) === "QUEDA" || distratoPosteriorIds.has(d.id));
       const vgv = v.reduce((a, d) => a + (d.deal_value || 0), 0);
       const propVgv = p.reduce((a, d) => a + (d.deal_value || 0), 0);
       const meta = 10;
       const pctMeta = Math.round((v.length / meta) * 100);
-      return { dev, vendas: v.length, vgv, prop: p.length, neg: n.length, propVgv, meta, pctMeta, vendido: v.length };
+      return { dev, vendas: v.length, vgv, prop: p.length, neg: v.length + p.length, propVgv, meta, pctMeta, vendido: v.length, perdas: perdas.length };
     });
-  }, [filtered]);
+  }, [filtered, distratoPosteriorIds]);
 
   const directorRows = [
     { name: "Fabio Roldão", sem: 23, meta: 28, pct: 54, leads: 540, agil: 27, neg: 36, vendas: 13, vgv: 13649027.85, off: 1 },
@@ -163,19 +206,21 @@ export default function Dashboard() {
   const rankingGeral = useMemo(() => {
     const rows = brokers.map((b) => {
       const ds = filtered.filter((d) => d.broker1_id === b.id);
-      const v = ds.filter((d) => d.stage === "closed" || d.stage === "contract");
+      const v = ds.filter((d) => isResultado(d.status));
+      const p = ds.filter((d) => isProducao(d.status));
+      const perdas = ds.filter((d) => normalizeStatus(d.status) === "QUEDA" || distratoPosteriorIds.has(d.id));
       return {
         name: b.name,
         leads: ds.length,
         vendas: v.length,
-        agil: ds.filter((d) => d.stage === "approved").length,
-        neg: ds.filter((d) => !["lead", "incomplete"].includes(d.stage)).length,
+        agil: p.length,
+        neg: v.length + p.length,
         vgv: v.reduce((a, d) => a + (d.deal_value || 0), 0),
-        off: ds.filter((d) => d.active === false).length,
+        off: perdas.length,
       };
     });
     return rows.sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, [brokers, filtered]);
+  }, [brokers, filtered, distratoPosteriorIds]);
 
   const cellGood = "bg-emerald-500/15 text-emerald-300";
   const cellWarn = "bg-[#3B82F6]/15 text-[#3B82F6]";
@@ -183,13 +228,14 @@ export default function Dashboard() {
   const cellOf = (n: number, good = true) =>
     n > 0 ? (good ? cellGood : cellBad) : good ? cellBad : cellGood;
 
+  const isMonthClosed = activeMonth !== "all" && closedMonths.includes(activeMonth);
   const kpis = [
     { l: "Leads Gerados", v: leadsCount || 0, sub: "Base ativa", Icon: Users },
-    { l: "Propostas", v: stats.propostas, sub: "Em análise", Icon: FileText },
-    { l: "Negócios", v: stats.negocios, sub: "Ativos", popular: true, Icon: TrendingUp },
-    { l: "OFF", v: stats.off, sub: "Descartados", Icon: XCircle },
-    { l: "Vendas", v: stats.vendas, sub: "Fechadas", Icon: CheckCircle2 },
-    { l: "VGV", v: brl(stats.vgv || 0), sub: "Volume geral", small: true, Icon: DollarSign },
+    { l: "Produção", v: stats.propostas, sub: "Propostas", Icon: FileText },
+    { l: "Resultado", v: stats.vendas, sub: "Vendas", popular: true, Icon: TrendingUp },
+    { l: "Perdas", v: stats.perdas, sub: "Quedas + distratos", Icon: XCircle },
+    { l: "Negócios", v: stats.negocios, sub: "Vendas + propostas", Icon: CheckCircle2 },
+    { l: "VGV", v: brl(stats.vgv || 0), sub: "Volume vendido", small: true, Icon: DollarSign },
     { l: "Meta", v: `${stats.pct}%`, sub: `${stats.vendas}/${stats.meta}`, bar: stats.pct, Icon: Target },
   ];
 
@@ -215,15 +261,27 @@ export default function Dashboard() {
               {t}
             </button>
           ))}
-          <div className="ml-auto pl-4 pb-1">
-            <Select value={month} onValueChange={setMonth}>
+          <div className="ml-auto pl-4 pb-1 flex items-center gap-2">
+            {activeMonth !== "all" && (
+              <span className={cn(
+                "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border",
+                isMonthClosed
+                  ? "bg-white/[0.04] border-white/15 text-white/60"
+                  : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+              )}>
+                {isMonthClosed ? "Fechado" : "Aberto"}
+              </span>
+            )}
+            <Select value={activeMonth} onValueChange={setMonth}>
               <SelectTrigger className="w-[200px] bg-white/[0.03] border border-white/10 text-white/80 rounded-xl h-9 backdrop-blur-md hover:border-white/20 transition-colors">
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent className="bg-[#0B0D12] border-white/10 text-white/80">
                 <SelectItem value="all">Todos os meses</SelectItem>
                 {months.map((m) => (
-                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                  <SelectItem key={m} value={m}>
+                    {m} {closedMonths.includes(m) ? "· fechado" : ""}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -242,7 +300,7 @@ export default function Dashboard() {
                 <p className="text-[#60A5FA] text-[11px] uppercase tracking-[0.2em] font-semibold">Visão Geral</p>
                 <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">Dashboard CRM</h1>
                 <p className="text-white/50 text-sm font-medium">
-                  Consolidado · {month === "all" ? "Todos os meses" : month}
+                  Consolidado · {activeMonth === "all" ? "Todos os meses" : activeMonth}{isMonthClosed ? " · fechado" : ""}
                 </p>
               </div>
             </div>
