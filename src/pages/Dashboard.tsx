@@ -551,9 +551,11 @@ function PropostasTab({
       <section>
         <SectionHeader icon={<Layers className="w-4 h-4" />} title="Status CCA" caption="Situação dos processos" />
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-          {CCA_STATUSES.map((s, i) => {
-            const color = CCA_COLORS[s];
-            const v = ccaCounts[s] ?? 0;
+          {Object.entries(ccaCounts).length === 0 && (
+            <p className="text-white/40 text-xs col-span-full">Sem processos CCA cadastrados.</p>
+          )}
+          {Object.entries(ccaCounts).map(([s, v], i) => {
+            const color = CCA_COLORS[s] || SOURCE_COLORS[i % SOURCE_COLORS.length];
             return (
               <motion.div
                 key={s}
@@ -573,6 +575,7 @@ function PropostasTab({
           })}
         </div>
       </section>
+
 
       {/* Staff */}
       <section>
