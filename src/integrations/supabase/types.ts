@@ -16,33 +16,60 @@ export type Database = {
     Tables: {
       brokers: {
         Row: {
+          active: boolean
           avatar_url: string | null
           created_at: string | null
+          director_id: string | null
           email: string | null
           id: string
+          manager_id: string | null
           name: string
           phone: string | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
+          active?: boolean
           avatar_url?: string | null
           created_at?: string | null
+          director_id?: string | null
           email?: string | null
           id?: string
+          manager_id?: string | null
           name: string
           phone?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
+          active?: boolean
           avatar_url?: string | null
           created_at?: string | null
+          director_id?: string | null
           email?: string | null
           id?: string
+          manager_id?: string | null
           name?: string
           phone?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "brokers_director_id_fkey"
+            columns: ["director_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brokers_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cca_deals: {
         Row: {
@@ -134,10 +161,14 @@ export type Database = {
           director1_id: string | null
           history: Json | null
           id: string
+          last_interaction_at: string
           manager1_id: string | null
           manager2_id: string | null
           month_base: string | null
           notes: string | null
+          notified_24h: boolean
+          notified_48h: boolean
+          notified_72h: boolean
           project: string | null
           stage: Database["public"]["Enums"]["deal_stage"] | null
           status: string | null
@@ -157,10 +188,14 @@ export type Database = {
           director1_id?: string | null
           history?: Json | null
           id?: string
+          last_interaction_at?: string
           manager1_id?: string | null
           manager2_id?: string | null
           month_base?: string | null
           notes?: string | null
+          notified_24h?: boolean
+          notified_48h?: boolean
+          notified_72h?: boolean
           project?: string | null
           stage?: Database["public"]["Enums"]["deal_stage"] | null
           status?: string | null
@@ -180,10 +215,14 @@ export type Database = {
           director1_id?: string | null
           history?: Json | null
           id?: string
+          last_interaction_at?: string
           manager1_id?: string | null
           manager2_id?: string | null
           month_base?: string | null
           notes?: string | null
+          notified_24h?: boolean
+          notified_48h?: boolean
+          notified_72h?: boolean
           project?: string | null
           stage?: Database["public"]["Enums"]["deal_stage"] | null
           status?: string | null
@@ -383,6 +422,63 @@ export type Database = {
         }
         Relationships: []
       }
+      tasks: {
+        Row: {
+          assigned_user_id: string | null
+          auto_generated: boolean
+          broker_id: string | null
+          created_at: string
+          deal_id: string | null
+          description: string | null
+          done: boolean
+          due_date: string | null
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_user_id?: string | null
+          auto_generated?: boolean
+          broker_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          description?: string | null
+          done?: boolean
+          due_date?: string | null
+          id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_user_id?: string | null
+          auto_generated?: boolean
+          broker_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          description?: string | null
+          done?: boolean
+          due_date?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_assignments: {
         Row: {
           created_at: string
@@ -459,6 +555,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_deal_inactivity: { Args: never; Returns: undefined }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
