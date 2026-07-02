@@ -55,7 +55,7 @@ const headerCell = "text-[10px] uppercase tracking-[0.18em] text-white/40 font-b
 const rowHover = "hover:bg-white/[0.03] transition-colors duration-200";
 
 export default function Dashboard() {
-  const [month, setMonth] = useState("all");
+  const [month, setMonth] = useState<string | null>(null);
 
   const { data: deals = [] } = useQuery({
     queryKey: ["dashboard", "deals"],
@@ -90,32 +90,72 @@ export default function Dashboard() {
     staleTime: 60_000,
   });
 
+  const { data: closedMonths = [] } = useQuery({
+    queryKey: ["closed_months"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("closed_months" as any).select("month_base");
+      if (error) throw error;
+      return ((data as any[]) || []).map((r) => r.month_base as string);
+    },
+    staleTime: 60_000,
+  });
 
   const months = useMemo(() => {
     const s = new Set<string>();
     deals.forEach((d) => d.month_base && s.add(d.month_base));
-    return Array.from(s).sort((a, b) => {
-      const [ma, ya] = a.split("/").map(Number);
-      const [mb, yb] = b.split("/").map(Number);
-      return yb - ya || mb - ma;
-    });
+    return Array.from(s).sort((a, b) => compareMonth(b, a));
   }, [deals]);
 
+  // Default to most recent OPEN month (skip already-closed months).
+  useEffect(() => {
+    if (month === null && months.length > 0) {
+      setMonth(pickOpenMonth(months, closedMonths));
+    }
+  }, [month, months, closedMonths]);
+
+  const activeMonth = month ?? "all";
+
   const filtered = useMemo(
-    () => (month === "all" ? deals : deals.filter((d) => d.month_base === month)),
-    [deals, month]
+    () => (activeMonth === "all" ? deals : deals.filter((d) => d.month_base === activeMonth)),
+    [deals, activeMonth]
   );
 
+  // "Distrato posterior à venda" — precisa considerar TODOS os deals para o cliente,
+  // não só os do mês filtrado, e testar se há uma VENDA em mês anterior.
+  const distratoPosteriorIds = useMemo(() => {
+    const vendasPorCliente = new Map<string, string[]>(); // client -> months onde teve VENDA
+    deals.forEach((d) => {
+      if (isResultado(d.status) && d.client && d.month_base) {
+        const arr = vendasPorCliente.get(d.client) || [];
+        arr.push(d.month_base);
+        vendasPorCliente.set(d.client, arr);
+      }
+    });
+    const ids = new Set<string>();
+    deals.forEach((d) => {
+      if (normalizeStatus(d.status) === "DISTRATO" && d.client && d.month_base) {
+        const vendas = vendasPorCliente.get(d.client) || [];
+        if (vendas.some((vm) => compareMonth(vm, d.month_base!) < 0)) {
+          ids.add(d.id);
+        }
+      }
+    });
+    return ids;
+  }, [deals]);
+
   const stats = useMemo(() => {
-    const vendas = filtered.filter((d) => d.stage === "closed" || d.stage === "contract").length;
-    const propostas = filtered.filter((d) => ["proposal", "contract", "approved"].includes(d.stage)).length;
-    const negocios = filtered.filter((d) => !["lead", "incomplete"].includes(d.stage)).length;
-    const off = filtered.filter((d) => d.active === false).length;
-    const vgv = filtered.filter((d) => d.active !== false).reduce((a, d) => a + (d.deal_value || 0), 0);
+    const vendas = filtered.filter((d) => isResultado(d.status)).length;
+    const propostas = filtered.filter((d) => isProducao(d.status)).length;
+    const quedas = filtered.filter((d) => normalizeStatus(d.status) === "QUEDA").length;
+    const distratos = filtered.filter((d) => distratoPosteriorIds.has(d.id)).length;
+    const perdas = quedas + distratos;
+    const negocios = vendas + propostas;
+    const off = filtered.filter((d) => normalizeStatus(d.status) === "OFF").length;
+    const vgv = filtered.filter((d) => isResultado(d.status)).reduce((a, d) => a + (d.deal_value || 0), 0);
     const meta = 92;
     const pct = Math.min(999, Math.round((vendas / meta) * 100));
-    return { vendas, propostas, negocios, off, vgv, meta, pct };
-  }, [filtered]);
+    return { vendas, propostas, negocios, off, perdas, vgv, meta, pct };
+  }, [filtered, distratoPosteriorIds]);
 
   const byDev = useMemo(() => {
     return DEVELOPERS.map((dev) => {
