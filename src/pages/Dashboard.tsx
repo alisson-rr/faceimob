@@ -524,6 +524,26 @@ function PropostasTab({
         </div>
       </section>
 
+      {/* Ranking horizontal de propostas por construtora */}
+      <section>
+        <SectionHeader icon={<Building2 className="w-4 h-4" />} title="Ranking de Propostas" caption="Ordenado do maior para o menor" />
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4" style={{ height: Math.max(180, byDev.length * 38 + 40) }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              layout="vertical"
+              data={[...byDev].sort((a, b) => b.prop - a.prop).map((d) => ({ name: d.dev, Propostas: d.prop, fill: d.prop === 0 ? "#EF4444" : d.color }))}
+              margin={{ top: 4, right: 24, left: 8, bottom: 4 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
+              <XAxis type="number" stroke="rgba(255,255,255,0.4)" fontSize={11} allowDecimals={false} />
+              <YAxis type="category" dataKey="name" stroke="rgba(255,255,255,0.6)" fontSize={11} width={90} />
+              <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#0F1524", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }} />
+              <Bar dataKey="Propostas" radius={[0, 6, 6, 0]} animationDuration={900} label={{ position: "right", fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
       {/* Origem de leads (cards) */}
       <section>
         <SectionHeader icon={<Flame className="w-4 h-4" />} title="Origem de Leads" caption="Distribuição por canal" />
