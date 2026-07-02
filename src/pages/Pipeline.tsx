@@ -297,39 +297,76 @@ export default function Pipeline() {
   // ── Close Month state ──
   const [closeMonthOpen, setCloseMonthOpen] = useState(false);
   const isAdmin = role === 'admin';
+  const queryClient = useQueryClient();
 
-  const handleCloseMonth = () => {
+  const { data: closedMonths = [] } = useQuery({
+    queryKey: ["closed_months"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("closed_months" as any).select("month_base");
+      if (error) throw error;
+      return ((data as any[]) || []).map((r) => r.month_base as string);
+    },
+    staleTime: 60_000,
+  });
+  const isMonthClosed = closedMonths.includes(monthFilter);
+
+  const handleCloseMonth = async () => {
     const currentMonth = monthFilter;
-    // Stages that stay locked in this month: vendas, offs, distratos (closed + !active)
-    const lockedStages: DealStage[] = ['closed'];
-    
-    setDeals(prev => prev.map(deal => {
-      const dealMonth = deal.month_base || format(parseISO(deal.created_at), "MM/yyyy");
-      if (dealMonth !== currentMonth) return deal;
-      
-      // Vendas, offs, distratos stay in this month
-      if (lockedStages.includes(deal.stage) || !deal.active) {
-        return deal; // stays locked
+    const nextBase = nextMonthBase(currentMonth);
+    try {
+      // Migra apenas PROPOSTA para o próximo mês (VENDA/QUEDA/DISTRATO/OFF ficam)
+      const { data: toMigrate, error: selErr } = await supabase
+        .from("deals")
+        .select("id,status")
+        .eq("month_base", currentMonth);
+      if (selErr) throw selErr;
+
+      const migrateIds = (toMigrate || [])
+        .filter((d: any) => normalizeStatus(d.status) === "PROPOSTA")
+        .map((d: any) => d.id);
+
+      if (migrateIds.length > 0) {
+        const { error: updErr } = await supabase
+          .from("deals")
+          .update({ month_base: nextBase })
+          .in("id", migrateIds);
+        if (updErr) throw updErr;
       }
-      
-      // All other proposals move to next month with day 05 as base date
-      const [mm, yyyy] = currentMonth.split("/").map(Number);
-      const nextMonth = mm === 12 ? 1 : mm + 1;
-      const nextYear = mm === 12 ? yyyy + 1 : yyyy;
-      const newMonthBase = `${String(nextMonth).padStart(2, "0")}/${nextYear}`;
-      
-      return { ...deal, month_base: newMonthBase };
-    }));
-    
-    // Move filter to next month
-    const [mm, yyyy] = currentMonth.split("/").map(Number);
-    const nextMonth = mm === 12 ? 1 : mm + 1;
-    const nextYear = mm === 12 ? yyyy + 1 : yyyy;
-    setMonthFilter(`${String(nextMonth).padStart(2, "0")}/${nextYear}`);
-    
-    setCloseMonthOpen(false);
-    toast({ title: "✅ Mês fechado com sucesso!", description: `Vendas, offs e distratos ficaram em ${currentMonth}. Propostas movidas para o próximo mês (data base dia 05).` });
+
+      // Marca o mês como fechado
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: insErr } = await supabase
+        .from("closed_months" as any)
+        .insert({ month_base: currentMonth, closed_by: user?.id });
+      if (insErr && !String(insErr.message).includes("duplicate")) throw insErr;
+
+      // Reflete localmente
+      setDeals(prev => prev.map(deal => {
+        const dealMonth = deal.month_base || format(parseISO(deal.created_at), "MM/yyyy");
+        if (dealMonth !== currentMonth) return deal;
+        if (normalizeStatus(deal.status) === "PROPOSTA") {
+          return { ...deal, month_base: nextBase };
+        }
+        return deal;
+      }));
+
+      await queryClient.invalidateQueries({ queryKey: ["closed_months"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", "deals"] });
+      setMonthFilter(nextBase);
+      setCloseMonthOpen(false);
+      toast({
+        title: "✅ Mês fechado com sucesso!",
+        description: `${currentMonth} está congelado. ${migrateIds.length} proposta(s) movida(s) para ${nextBase}.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "Erro ao fechar mês",
+        description: e?.message || "Tente novamente.",
+        variant: "destructive",
+      });
+    }
   };
+
 
   // ── IP Check-in / Checkout ──
   const brokerName = "Dianho Silva"; // TODO: use real auth user
