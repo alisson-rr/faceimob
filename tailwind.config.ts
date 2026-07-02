@@ -14,8 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Garet", "sans-serif"],
-        display: ["Garet", "sans-serif"],
+        sans: ["Arial", "sans-serif"],
+        display: ["Arial", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
