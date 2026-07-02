@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -51,25 +52,41 @@ const headerCell = "text-[10px] uppercase tracking-[0.18em] text-white/40 font-b
 const rowHover = "hover:bg-white/[0.03] transition-colors duration-200";
 
 export default function Dashboard() {
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [leadsCount, setLeadsCount] = useState(0);
   const [month, setMonth] = useState("all");
 
-  useEffect(() => {
-    (async () => {
-      const { data: d } = await supabase.from("deals").select("*");
-      const { data: b } = await supabase.from("brokers").select("*");
-      const { count } = await supabase.from("leads").select("*", { count: "exact", head: true });
-      const mapped = (d || []).map((x: any) => ({
+  const { data: deals = [] } = useQuery({
+    queryKey: ["dashboard", "deals"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("deals").select("*");
+      if (error) throw error;
+      return (data || []).map((x: any) => ({
         ...x,
         month_base: x.month_base || (x.created_at ? format(parseISO(x.created_at), "MM/yyyy") : null),
-      }));
-      setDeals(mapped as Deal[]);
-      setBrokers((b || []) as Broker[]);
-      setLeadsCount(count || 0);
-    })();
-  }, []);
+      })) as Deal[];
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: brokers = [] } = useQuery({
+    queryKey: ["dashboard", "brokers"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("brokers").select("*");
+      if (error) throw error;
+      return (data || []) as Broker[];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: leadsCount = 0 } = useQuery({
+    queryKey: ["dashboard", "leadsCount"],
+    queryFn: async () => {
+      const { count, error } = await supabase.from("leads").select("*", { count: "exact", head: true });
+      if (error) throw error;
+      return count || 0;
+    },
+    staleTime: 60_000,
+  });
+
 
   const months = useMemo(() => {
     const s = new Set<string>();
