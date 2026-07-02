@@ -71,23 +71,29 @@ export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("geral");
 
+  // Fetch ALL rows from a table, bypassing PostgREST's 1000-row cap via paging
+  const fetchAll = async (table: string, columns = "*") => {
+    const pageSize = 1000;
+    let from = 0;
+    const all: any[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from(table as any)
+        .select(columns)
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      const chunk = (data as any[]) || [];
+      all.push(...chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  };
+
   const { data: deals = [] } = useQuery({
     queryKey: ["dashboard", "deals"],
     queryFn: async () => {
-      const pageSize = 1000;
-      let from = 0;
-      const all: any[] = [];
-      while (true) {
-        const { data, error } = await supabase
-          .from("deals")
-          .select("*")
-          .range(from, from + pageSize - 1);
-        if (error) throw error;
-        const chunk = data || [];
-        all.push(...chunk);
-        if (chunk.length < pageSize) break;
-        from += pageSize;
-      }
+      const all = await fetchAll("deals", "*");
       return all.map((x: any) => ({
         ...x,
         month_base: x.month_base || (x.created_at ? format(parseISO(x.created_at), "MM/yyyy") : null),
@@ -241,8 +247,7 @@ export default function Dashboard() {
   const { data: leadsBySource = [] } = useQuery({
     queryKey: ["dashboard", "leads_by_source"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("leads").select("source");
-      if (error) throw error;
+      const data = await fetchAll("leads", "source");
       const counts = new Map<string, number>();
       (data || []).forEach((r: any) => {
         const s = (r.source || "Sem origem").toString();
@@ -261,8 +266,7 @@ export default function Dashboard() {
   const { data: ccaCounts = {} } = useQuery({
     queryKey: ["dashboard", "cca_counts"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("cca_deals").select("status");
-      if (error) throw error;
+      const data = await fetchAll("cca_deals", "status");
       const counts: Record<string, number> = {};
       (data || []).forEach((r: any) => {
         const s = (r.status || "pendente").toString();
