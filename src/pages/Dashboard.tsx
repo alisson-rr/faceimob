@@ -581,7 +581,7 @@ function PropostasTab({
       <section>
         <SectionHeader icon={<UserCog className="w-4 h-4" />} title="Staff" caption="Composição do time" />
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-          {STAFF_ROWS.map(([l, v, color]) => (
+          {staffRows.map(([l, v, color]) => (
             <div
               key={l as string}
               className="p-3 rounded-xl border backdrop-blur-sm"
