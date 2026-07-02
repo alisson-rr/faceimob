@@ -74,9 +74,21 @@ export default function Dashboard() {
   const { data: deals = [] } = useQuery({
     queryKey: ["dashboard", "deals"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("deals").select("*");
-      if (error) throw error;
-      return (data || []).map((x: any) => ({
+      const pageSize = 1000;
+      let from = 0;
+      const all: any[] = [];
+      while (true) {
+        const { data, error } = await supabase
+          .from("deals")
+          .select("*")
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const chunk = data || [];
+        all.push(...chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+      }
+      return all.map((x: any) => ({
         ...x,
         month_base: x.month_base || (x.created_at ? format(parseISO(x.created_at), "MM/yyyy") : null),
       })) as Deal[];
