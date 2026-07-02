@@ -149,6 +149,24 @@ export type Database = {
         }
         Relationships: []
       }
+      closed_months: {
+        Row: {
+          closed_at: string
+          closed_by: string | null
+          month_base: string
+        }
+        Insert: {
+          closed_at?: string
+          closed_by?: string | null
+          month_base: string
+        }
+        Update: {
+          closed_at?: string
+          closed_by?: string | null
+          month_base?: string
+        }
+        Relationships: []
+      }
       deals: {
         Row: {
           active: boolean | null
