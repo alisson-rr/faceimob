@@ -67,34 +67,35 @@ const tableStageLabels: Record<string, { label: string; color: string }> = {
 
 // ── Faceimob status list (Status 2 column) ──
 const FACEIMOB_STATUSES: { label: string; color: string }[] = [
-  { label: "01. RC EMITIDA", color: "bg-orange-500 text-white" },
   { label: "02. ASS. BANCO", color: "bg-blue-600 text-white" },
   { label: "03. ASSINADO", color: "bg-emerald-600 text-white" },
   { label: "04. EM CONTRATO", color: "bg-red-500 text-white" },
   { label: "05. RP APROVADO", color: "bg-emerald-700 text-white" },
   { label: "06. ENVIO DE RP", color: "bg-cyan-600 text-white" },
-  { label: "07. APROV. AG. CONT.", color: "bg-amber-600 text-white" },
   { label: "08. VIROU NEGÓCIO", color: "bg-slate-700 text-white" },
+  { label: "14. PENDENTE P/ VIRAR NEGÓCIO", color: "bg-yellow-600 text-white" },
+  { label: "15. ANÁLISE P/ VIRAR NEGÓCIO", color: "bg-amber-700 text-white" },
+  { label: "ANÁLISE P/ POTENCIAL", color: "bg-cyan-700 text-white" },
+  { label: "ANÁLISE EXTERNA", color: "bg-sky-700 text-white" },
+  { label: "MUDAR CONSTRUTORA P/ NEGÓCIO", color: "bg-violet-700 text-white" },
   { label: "09. APROV. TOTAL", color: "bg-blue-700 text-white" },
   { label: "10. APROV. COND.", color: "bg-red-600 text-white" },
+  { label: "07. APROV. AG. CONT.", color: "bg-amber-600 text-white" },
+  { label: "APROV. TOT. RESTRIÇÃO", color: "bg-rose-600 text-white" },
+  { label: "APROV. COND. RESTRIÇÃO", color: "bg-rose-500 text-white" },
+  { label: "APROVADO POTENCIAL", color: "bg-emerald-500 text-white" },
   { label: "11. AG. RET. AGENCIA", color: "bg-orange-600 text-white" },
   { label: "12. EM PROCESSAMENTO", color: "bg-purple-600 text-white" },
   { label: "13. ESTEIRA AGIL", color: "bg-teal-600 text-white" },
-  { label: "14. PENDENTE P/ VIRAR NEGÓCIO", color: "bg-yellow-600 text-white" },
-  { label: "15. ANÁLISE P/ VIRAR NEGÓCIO", color: "bg-amber-700 text-white" },
+  { label: "RET. ESTEIRA AGIL", color: "bg-teal-700 text-white" },
   { label: "15. INTERNALIZADO", color: "bg-indigo-600 text-white" },
+  { label: "PENDENTE C/ RESTRIÇÃO", color: "bg-amber-800 text-white" },
   { label: "16. PENDENTE", color: "bg-yellow-700 text-white" },
   { label: "17. DISTRATO", color: "bg-rose-700 text-white" },
   { label: "18. QUEDA", color: "bg-red-700 text-white" },
   { label: "19. REPROVADO", color: "bg-red-800 text-white" },
   { label: "20. BACEN", color: "bg-fuchsia-700 text-white" },
   { label: "21. RESTRIÇÃO", color: "bg-pink-700 text-white" },
-  { label: "ANÁLISE P/ POTENCIAL", color: "bg-cyan-700 text-white" },
-  { label: "ANÁLISE EXTERNA", color: "bg-sky-700 text-white" },
-  { label: "MUDAR CONSTRUTORA P/ NEGÓCIO", color: "bg-violet-700 text-white" },
-  { label: "APROV. TOT. RESTRIÇÃO", color: "bg-rose-600 text-white" },
-  { label: "RET. ESTEIRA AGIL", color: "bg-teal-700 text-white" },
-  { label: "PENDENTE C/ RESTRIÇÃO", color: "bg-amber-800 text-white" },
   { label: "INCOMPLETO", color: "bg-destructive text-destructive-foreground" },
   { label: "COMPRA ASSISTIDA", color: "bg-emerald-800 text-white" },
   { label: "PROPOSTA", color: "bg-primary text-primary-foreground" },
@@ -464,14 +465,14 @@ export default function Pipeline() {
       const matchMonth = monthFilter === "all" || dealMonth === monthFilter;
       return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient && matchMonth;
     }).sort((a, b) => {
-      // Sort by status (Status 2) first, then by developer
+      // Sort by Construtora first, then Status 2 in the FACEIMOB_STATUSES order
+      const devCmp = (a.developer || "").localeCompare(b.developer || "");
+      if (devCmp !== 0) return devCmp;
       const statusOrder = FACEIMOB_STATUSES.map(s => s.label);
       const aStatus = (a.status && a.status !== "Ativo" && a.status !== "OFF") ? a.status : (tableStageLabels[a.stage]?.label || "PROPOSTA");
       const bStatus = (b.status && b.status !== "Ativo" && b.status !== "OFF") ? b.status : (tableStageLabels[b.stage]?.label || "PROPOSTA");
       const aIdx = statusOrder.indexOf(aStatus); const bIdx = statusOrder.indexOf(bStatus);
-      const sCmp = (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
-      if (sCmp !== 0) return sCmp;
-      return (a.developer || "").localeCompare(b.developer || "");
+      return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
     });
   }, [deals, search, developerFilter, brokerFilter, stageFilter, status2Filter, managerFilter, clientNameFilter]);
 
