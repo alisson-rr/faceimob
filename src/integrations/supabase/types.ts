@@ -167,6 +167,107 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_broker_entries: {
+        Row: {
+          analises: number
+          aprovados: number
+          atendimentos: number
+          broker_id: string | null
+          broker_name: string
+          created_at: string
+          id: string
+          leads: number
+          propostas: number
+          report_id: string
+          vendas: number
+          visitas_agendadas: number
+          visitas_realizadas: number
+        }
+        Insert: {
+          analises?: number
+          aprovados?: number
+          atendimentos?: number
+          broker_id?: string | null
+          broker_name: string
+          created_at?: string
+          id?: string
+          leads?: number
+          propostas?: number
+          report_id: string
+          vendas?: number
+          visitas_agendadas?: number
+          visitas_realizadas?: number
+        }
+        Update: {
+          analises?: number
+          aprovados?: number
+          atendimentos?: number
+          broker_id?: string | null
+          broker_name?: string
+          created_at?: string
+          id?: string
+          leads?: number
+          propostas?: number
+          report_id?: string
+          vendas?: number
+          visitas_agendadas?: number
+          visitas_realizadas?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_broker_entries_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_broker_entries_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "daily_team_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_team_reports: {
+        Row: {
+          created_at: string
+          filled_by_name: string | null
+          id: string
+          notes: string | null
+          report_date: string
+          team_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          filled_by_name?: string | null
+          id?: string
+          notes?: string | null
+          report_date: string
+          team_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          filled_by_name?: string | null
+          id?: string
+          notes?: string | null
+          report_date?: string
+          team_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_team_reports_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dashboard_bi_cache: {
         Row: {
           id: boolean
@@ -550,6 +651,38 @@ export type Database = {
           },
         ]
       }
+      team_pins: {
+        Row: {
+          active: boolean
+          created_at: string
+          pin_hash: string
+          team_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          pin_hash: string
+          team_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          pin_hash?: string
+          team_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_pins_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: true
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teams: {
         Row: {
           created_at: string
@@ -592,6 +725,21 @@ export type Database = {
     }
     Functions: {
       check_deal_inactivity: { Args: never; Returns: undefined }
+      get_team_public_info: {
+        Args: { _team_id: string }
+        Returns: {
+          has_pin: boolean
+          team_id: string
+          team_name: string
+        }[]
+      }
+      get_team_roster: {
+        Args: { _team_id: string }
+        Returns: {
+          broker_id: string
+          broker_name: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
