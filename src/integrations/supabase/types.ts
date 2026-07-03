@@ -25,6 +25,7 @@ export type Database = {
           manager_id: string | null
           name: string
           phone: string | null
+          role: string
           updated_at: string | null
           user_id: string | null
         }
@@ -38,6 +39,7 @@ export type Database = {
           manager_id?: string | null
           name: string
           phone?: string | null
+          role?: string
           updated_at?: string | null
           user_id?: string | null
         }
@@ -51,6 +53,7 @@ export type Database = {
           manager_id?: string | null
           name?: string
           phone?: string | null
+          role?: string
           updated_at?: string | null
           user_id?: string | null
         }
