@@ -54,6 +54,8 @@ const App = () => (
               <Route path="/admin/permissions" element={<AdminPermissions />} />
               <Route path="/admin/teams" element={<AdminTeams />} />
               <Route path="/admin/developers" element={<AdminDevelopers />} />
+              <Route path="/admin/daily-teams" element={<AdminDailyTeams />} />
+              <Route path="/admin/daily-bi" element={<DailyBI />} />
               <Route path="/gamification" element={<Gamification />} />
             </Route>
             <Route path="*" element={<NotFound />} />
