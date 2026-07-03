@@ -574,6 +574,7 @@ export type Database = {
     }
     Functions: {
       check_deal_inactivity: { Args: never; Returns: undefined }
+      get_dashboard_bi: { Args: never; Returns: Json }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
