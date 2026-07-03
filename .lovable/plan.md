@@ -1,66 +1,100 @@
 
-## Diagnóstico
+## O que vamos construir
 
-No banco já existe tudo o que precisamos, só falta a semântica correta:
+Um sistema de **Check-in Diário por Equipe** onde gerentes lançam, por corretor, os números do dia via link público protegido por PIN. Um **Dashboard Semanal (ADM)** compila segunda→domingo e compara ao **Funil Ideal 100 / 10 / 4 / 2**. Visual no tema "game lendário" já usado no app.
 
-- Tabela `deals` tem 2.066 registros importados via CSV, com `status` (Status 1) preenchido: **VENDA (426), PROPOSTA (312), DISTRATO (16), OFF (1.312)** e `month_base` no formato `MM/AAAA`. Nenhum valor **QUEDA** foi importado ainda.
-- 40 deals estão sem `broker1_id` (sem correspondência de nome) e existem **4 corretores "fantasmas"** com nome numérico (ex.: `1715461816131x...`) — sobra da importação.
-- Pipeline já tem um botão "Fechar mês" que move propostas para o mês seguinte, mas hoje ele funciona por `stage` (não por `status`) e não bloqueia edição das vendas antigas.
-- Dashboard começa com filtro `"all"` (todos os meses) — usuário quer que abra no **mês corrente aberto**.
+---
 
-## O que vou implementar
+## 1. Banco de dados (Lovable Cloud)
 
-### 1. Limpeza de dados (uma migração + um insert)
-- Reatribuir para `NULL` os deals dos 4 brokers numerados e apagar esses brokers.
-- Nenhum dado é perdido — os deals continuam visíveis, apenas sem corretor.
+Três novas tabelas:
 
-### 2. Semântica oficial de "Status 1"
-Fonte única da verdade em `src/lib/dealStatus.ts`:
+- **`team_pins`** — PIN por equipe (link público seguro)
+  - `team_id` (FK teams), `pin_hash`, `active`
+- **`daily_team_reports`** — lançamento diário agregado
+  - `team_id`, `report_date`, `filled_by_name`, `notes` (texto livre)
+  - unique(team_id, report_date)
+- **`daily_broker_entries`** — números por corretor no dia
+  - `report_id` (FK), `broker_id`, campos abaixo
 
-| Status 1  | Categoria no Dashboard | Regra                                         |
-|-----------|------------------------|-----------------------------------------------|
-| VENDA     | **Resultado**          | Conta no mês em que virou venda               |
-| PROPOSTA  | **Produção**           | Conta no mês corrente; migra ao próximo no fechamento |
-| QUEDA     | **Perda**              | Só válida no **mesmo mês** da venda           |
-| DISTRATO  | **Perda**              | Válido em **mês posterior** à venda           |
-| OFF       | (ignorado)             | Não conta em nenhuma categoria                |
+Campos numéricos por corretor (todos INT, default 0):
+`leads`, `atendimentos`, `propostas`, `visitas_agendadas`, `visitas_realizadas`, `analises`, `aprovados`, `vendas`
 
-Adiciono **QUEDA** como opção no seletor de Status 1 (Pipeline).
+RLS:
+- Público (anon) pode **inserir** em `daily_team_reports` / `daily_broker_entries` **somente** via edge function que valida PIN.
+- Leitura só para authenticated (admin/diretor).
 
-### 3. Dashboard
-- Filtro de mês passa a abrir por padrão no **mês corrente aberto** (o mais recente não-fechado).
-- Cards do topo passam a usar as categorias acima:
-  - "Vendas do mês" = count(VENDA em `month_base` = mês selecionado)
-  - "Produção" = count(PROPOSTA)
-  - "Perdas" = count(QUEDA no mês) + count(DISTRATO cujo mês é posterior à venda daquele cliente)
-  - VGV segue apenas VENDA.
-- Tabelas por corretor/construtora também respeitam a nova semântica.
+Uma **edge function `submit-daily-report`** valida `team_id + pin` → grava report + entries com service role. Isso protege PIN e evita abuso.
 
-### 4. Fechamento de mês (Pipeline)
-- Nova tabela `closed_months(month_base text primary key, closed_at, closed_by)` para marcar meses fechados. Só admin escreve.
-- Ao fechar um mês:
-  - VENDA e QUEDA daquele mês ficam **imutáveis** e viram "Resultado".
-  - PROPOSTA daquele mês migra para o mês seguinte (`month_base` = próximo MM/AAAA, mantém o resto).
-  - DISTRATO permanece onde foi lançado.
-- Botão "Fechar mês" fica **admin-only** e usa `status` (não `stage`) para decidir o que migra.
-- **Junho/2026 fica aberto** para o usuário testar o fechamento.
+## 2. Página pública `/daily/:teamSlug`
 
-### 5. Corretores importados
-- Manter o comportamento atual (deals sem match ficam com `broker1_id = NULL`).
-- Nunca criar brokers com nome numérico daqui pra frente — o script de import já filtra, então mudança é só a limpeza retroativa do item 1.
+Fluxo em 3 passos:
+1. Digita PIN → valida via edge function
+2. Escolhe a data (default: hoje) e nome de quem preenche
+3. Lista **corretores ativos da equipe** (buscados via função pública `get_team_roster`) com 8 inputs numéricos cada + campo de observações do dia
+4. Submit → toast de sucesso com "XP ganho" (tema game)
 
-## Arquivos
+Se já existe report do dia → carrega para edição.
 
-**Novos**
-- `supabase/migrations/…_closed_months.sql` — tabela + RLS + índice em `deals(status, month_base)`
-- `src/lib/dealStatus.ts` — enum, categorização, helpers `isResultado / isProducao / isPerda`
-- `src/hooks/useClosedMonths.ts` — TanStack Query para meses fechados
+## 3. Cadastro de corretores em equipes
 
-**Editados**
-- `src/pages/Dashboard.tsx` — default no mês corrente aberto + KPIs usando as categorias
-- `src/pages/Pipeline.tsx` — adiciona "QUEDA" no seletor; fluxo de fechamento usa `status` e grava em `closed_months`
-- Migração de dados (insert tool): remover brokers numerados
+Reaproveitar a página `/equipes` (Admin) — já existe `team_assignments`. Adicionar:
+- Botão "Gerar/Renovar PIN" por equipe (retorna PIN de 6 dígitos uma vez)
+- Botão "Copiar link público" (`/daily/<team_id>`)
 
-## Fora do escopo (agora)
-- Migrar Pipeline/Leads para TanStack Query (fizemos só o Dashboard, seguimos depois).
-- Notificações externas do fechamento — ficamos com o toast in-app existente.
+## 4. Dashboard Admin `/admin/daily-bi`
+
+Filtro: seletor de semana (segunda–domingo, default: semana atual).
+
+**KPIs (soma da semana):** Leads, Análises, Aprovados, Vendas, Visitas, Propostas.
+
+**Comparativo Funil Ideal** (o coração da tela):
+
+```text
+Ideal (base = leads reais)   Real
+Leads      100%   ████████   100%
+Análises    10%   █░░░░░░░   X%
+Aprovados    4%   █░░░░░░░   Y%
+Vendas       2%   █░░░░░░░   Z%
+```
+
+Para cada etapa: barra "Ideal" vs barra "Real", % de aderência, e badge (Acima / No alvo / Abaixo).
+
+**Rankings da semana:**
+- Equipes por vendas / aderência ao funil
+- Top corretores (vendas, conversão leads→venda)
+
+**Tabela detalhada:** dia × equipe com todos os campos.
+
+Export CSV da semana.
+
+## 5. Navegação
+
+- Sidebar (admin): novo item **"Diário das Equipes"** → `/admin/daily-bi`
+- Página `/equipes`: seção "Link público de preenchimento" por equipe
+- `/daily/:teamId` fica fora do AppLayout (rota pública, sem sidebar)
+
+## 6. Visual — Tema Game Lendário
+
+Reutiliza tokens já existentes (`#0F0E19`, `#1C264B`, glassmorphism). Adições específicas para essa área:
+- Header do formulário público com "aura" gradiente animada e título "Missão Diária da Equipe"
+- Cada corretor = "card de personagem" com ícone de classe
+- Ao submeter: animação de "XP +N" + confete curto
+- Dashboard: barras do funil com brilho neon (verde = acima do ideal, âmbar = no alvo, vermelho = abaixo)
+- Ícones lucide: `Swords`, `Trophy`, `Target`, `Flame`
+
+---
+
+## Detalhes técnicos
+
+- Migração cria as 3 tabelas + GRANTs + RLS + função `get_team_roster(team_id uuid)` SECURITY DEFINER que retorna `[{broker_id, name}]` para uso público (sem PII sensível).
+- Edge function `submit-daily-report` (verify_jwt=false) com Zod validando payload e comparando `pin_hash` via `crypto.subtle`.
+- Semana ISO calculada no front (date-fns `startOfWeek`/`endOfWeek` com `weekStartsOn: 1`).
+- Query React Query com `queryKey: ["daily-bi", weekStart]`.
+- Sem alterações no Dashboard principal existente.
+
+## Fora de escopo (pergunto se quiser depois)
+
+- Notificação automática ao gerente que esqueceu de preencher.
+- Metas customizadas por equipe (por enquanto o ideal 100/10/4/2 é global).
+- Histórico multi-semanas com gráfico de tendência.

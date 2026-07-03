@@ -21,6 +21,9 @@ import AdminPermissions from "@/pages/AdminPermissions";
 import AdminTeams from "@/pages/AdminTeams";
 import AdminDevelopers from "@/pages/AdminDevelopers";
 import Gamification from "@/pages/Gamification";
+import DailyReport from "@/pages/DailyReport";
+import DailyBI from "@/pages/DailyBI";
+import AdminDailyTeams from "@/pages/AdminDailyTeams";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +37,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/daily/:teamId" element={<DailyReport />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
@@ -50,6 +54,8 @@ const App = () => (
               <Route path="/admin/permissions" element={<AdminPermissions />} />
               <Route path="/admin/teams" element={<AdminTeams />} />
               <Route path="/admin/developers" element={<AdminDevelopers />} />
+              <Route path="/admin/daily-teams" element={<AdminDailyTeams />} />
+              <Route path="/admin/daily-bi" element={<DailyBI />} />
               <Route path="/gamification" element={<Gamification />} />
             </Route>
             <Route path="*" element={<NotFound />} />
