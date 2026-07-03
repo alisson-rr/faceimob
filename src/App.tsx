@@ -21,6 +21,9 @@ import AdminPermissions from "@/pages/AdminPermissions";
 import AdminTeams from "@/pages/AdminTeams";
 import AdminDevelopers from "@/pages/AdminDevelopers";
 import Gamification from "@/pages/Gamification";
+import DailyReport from "@/pages/DailyReport";
+import DailyBI from "@/pages/DailyBI";
+import AdminDailyTeams from "@/pages/AdminDailyTeams";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
