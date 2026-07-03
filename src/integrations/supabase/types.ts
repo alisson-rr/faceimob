@@ -167,6 +167,24 @@ export type Database = {
         }
         Relationships: []
       }
+      dashboard_bi_cache: {
+        Row: {
+          id: boolean
+          payload: Json
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          payload?: Json
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          payload?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       deals: {
         Row: {
           active: boolean | null
@@ -585,6 +603,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      rebuild_dashboard_bi_cache: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "broker" | "manager" | "director" | "partner" | "admin" | "cca"

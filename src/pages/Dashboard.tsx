@@ -54,8 +54,17 @@ type Deal = {
   id: string; client: string | null; developer: string | null; stage: string;
   status: string | null; deal_value: number | null; active: boolean | null;
   month_base: string | null; broker1_id: string | null; manager1_id: string | null; created_at: string;
+  broker1_name?: string | null; manager1_name?: string | null; director1_id?: string | null; director1_name?: string | null;
 };
 type Broker = { id: string; name: string; role?: string | null; manager_id?: string | null; team?: string | null };
+type DashboardBiPayload = {
+  deals?: Deal[];
+  leadsBySource?: { name: string; v: number }[];
+  leadsCount?: number;
+  ccaCounts?: Record<string, number>;
+  staff?: { brokersTotal?: number; active?: number; managers?: number; directors?: number };
+  closedMonths?: string[];
+};
 
 const brl = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
@@ -71,66 +80,29 @@ export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("geral");
 
-  // Fetch ALL rows from a table, bypassing PostgREST's 1000-row cap via paging
-  const fetchAll = async (table: string, columns = "*") => {
-    const pageSize = 1000;
-    let from = 0;
-    const all: any[] = [];
-    while (true) {
+  const { data: bi = {} as DashboardBiPayload } = useQuery({
+    queryKey: ["dashboard", "bi-cache"],
+    queryFn: async () => {
       const { data, error } = await supabase
-        .from(table as any)
-        .select(columns)
-        .range(from, from + pageSize - 1);
+        .from("dashboard_bi_cache" as any)
+        .select("payload")
+        .eq("id", true)
+        .maybeSingle();
       if (error) throw error;
-      const chunk = (data as any[]) || [];
-      all.push(...chunk);
-      if (chunk.length < pageSize) break;
-      from += pageSize;
-    }
-    return all;
-  };
-
-  const { data: deals = [] } = useQuery({
-    queryKey: ["dashboard", "deals"],
-    queryFn: async () => {
-      const all = await fetchAll("deals", "*");
-      return all.map((x: any) => ({
-        ...x,
-        month_base: x.month_base || (x.created_at ? format(parseISO(x.created_at), "MM/yyyy") : null),
-      })) as Deal[];
+      return ((data as any)?.payload || {}) as DashboardBiPayload;
     },
     staleTime: 60_000,
   });
 
-  const { data: brokers = [] } = useQuery({
-    queryKey: ["dashboard", "brokers"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("brokers").select("*");
-      if (error) throw error;
-      return (data || []) as Broker[];
-    },
-    staleTime: 5 * 60_000,
-  });
+  const deals = useMemo(() => {
+    return (bi.deals || []).map((x: any) => ({
+      ...x,
+      month_base: x.month_base || (x.created_at ? format(parseISO(x.created_at), "MM/yyyy") : null),
+    })) as Deal[];
+  }, [bi.deals]);
 
-  const { data: leadsCount = 0 } = useQuery({
-    queryKey: ["dashboard", "leadsCount"],
-    queryFn: async () => {
-      const { count, error } = await supabase.from("leads").select("*", { count: "exact", head: true });
-      if (error) throw error;
-      return count || 0;
-    },
-    staleTime: 60_000,
-  });
-
-  const { data: closedMonths = [] } = useQuery({
-    queryKey: ["closed_months"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("closed_months" as any).select("month_base");
-      if (error) throw error;
-      return ((data as any[]) || []).map((r) => r.month_base as string);
-    },
-    staleTime: 60_000,
-  });
+  const leadsCount = bi.leadsCount || 0;
+  const closedMonths = bi.closedMonths || [];
 
   const months = useMemo(() => {
     const s = new Set<string>();
@@ -197,99 +169,68 @@ export default function Dashboard() {
     });
   }, [filtered]);
 
-  const brokerMap = useMemo(() => {
-    const m = new Map<string, string>();
-    brokers.forEach((b) => m.set(b.id, b.name));
-    return m;
-  }, [brokers]);
-
   // Aggregations per role — 100% real deals data.
   const rankBrokers = useMemo(() => {
     const map = new Map<string, { name: string; vendas: number; vgv: number }>();
     filtered.forEach((d) => {
       if (!isResultado(d.status) || !d.broker1_id) return;
-      const name = brokerMap.get(d.broker1_id) || "(sem nome)";
+      const name = d.broker1_name || "(sem nome)";
       const e = map.get(d.broker1_id) || { name, vendas: 0, vgv: 0 };
       e.vendas += 1;
       e.vgv += d.deal_value || 0;
       map.set(d.broker1_id, e);
     });
     return Array.from(map.values()).sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, [filtered, brokerMap]);
+  }, [filtered]);
 
   const rankManagers = useMemo(() => {
     const map = new Map<string, { name: string; vendas: number; vgv: number }>();
     filtered.forEach((d) => {
       if (!isResultado(d.status) || !d.manager1_id) return;
-      const name = brokerMap.get(d.manager1_id) || "(gerente)";
+      const name = d.manager1_name || "(gerente)";
       const e = map.get(d.manager1_id) || { name, vendas: 0, vgv: 0 };
       e.vendas += 1;
       e.vgv += d.deal_value || 0;
       map.set(d.manager1_id, e);
     });
     return Array.from(map.values()).sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, [filtered, brokerMap]);
+  }, [filtered]);
 
   const rankDirectors = useMemo(() => {
     const map = new Map<string, { name: string; vendas: number; vgv: number }>();
-    filtered.forEach((d: any) => {
+    filtered.forEach((d) => {
       if (!isResultado(d.status) || !d.director1_id) return;
-      const name = brokerMap.get(d.director1_id) || "(diretor)";
+      const name = d.director1_name || "(diretor)";
       const e = map.get(d.director1_id) || { name, vendas: 0, vgv: 0 };
       e.vendas += 1;
       e.vgv += d.deal_value || 0;
       map.set(d.director1_id, e);
     });
     return Array.from(map.values()).sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
-  }, [filtered, brokerMap]);
+  }, [filtered]);
 
   // Real leads by source
-  const { data: leadsBySource = [] } = useQuery({
-    queryKey: ["dashboard", "leads_by_source"],
-    queryFn: async () => {
-      const data = await fetchAll("leads", "source");
-      const counts = new Map<string, number>();
-      (data || []).forEach((r: any) => {
-        const s = (r.source || "Sem origem").toString();
-        counts.set(s, (counts.get(s) || 0) + 1);
-      });
-      return Array.from(counts.entries()).map(([name, v]) => ({ name, v }));
-    },
-    staleTime: 60_000,
-  });
+  const leadsBySource = bi.leadsBySource || [];
   const sourceData = useMemo(
     () => leadsBySource.map((s, i) => ({ ...s, color: SOURCE_COLORS[i % SOURCE_COLORS.length] })),
     [leadsBySource],
   );
 
   // Real CCA counts by status
-  const { data: ccaCounts = {} } = useQuery({
-    queryKey: ["dashboard", "cca_counts"],
-    queryFn: async () => {
-      const data = await fetchAll("cca_deals", "status");
-      const counts: Record<string, number> = {};
-      (data || []).forEach((r: any) => {
-        const s = (r.status || "pendente").toString();
-        counts[s] = (counts[s] || 0) + 1;
-      });
-      return counts;
-    },
-    staleTime: 60_000,
-  });
+  const ccaCounts = bi.ccaCounts || {};
 
   // Real staff counts
   const staffRows = useMemo(() => {
-    const active = brokers.filter((b) => (b as any).active !== false).length;
-    const managerIds = new Set(brokers.map((b: any) => b.manager_id).filter(Boolean));
-    const directorIds = new Set(brokers.map((b: any) => b.director_id).filter(Boolean));
+    const staff = bi.staff || {};
+    const total = staff.brokersTotal || 0;
     return [
-      ["Corretores", brokers.length, "#10B981"],
-      ["Ativos", active, "#3B82F6"],
-      ["Gerentes", managerIds.size, "#EC4899"],
-      ["Diretores", directorIds.size, "#F59E0B"],
-      ["Total", brokers.length, "#F97316"],
+      ["Corretores", total, "#10B981"],
+      ["Ativos", staff.active || 0, "#3B82F6"],
+      ["Gerentes", staff.managers || 0, "#EC4899"],
+      ["Diretores", staff.directors || 0, "#F59E0B"],
+      ["Total", total, "#F97316"],
     ] as const;
-  }, [brokers]);
+  }, [bi.staff]);
 
 
   // Monthly series for "Metas" chart
