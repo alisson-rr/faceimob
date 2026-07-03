@@ -21,6 +21,7 @@ export type Database = {
           created_at: string | null
           director_id: string | null
           email: string | null
+          habilitation: string | null
           id: string
           manager_id: string | null
           name: string
@@ -35,6 +36,7 @@ export type Database = {
           created_at?: string | null
           director_id?: string | null
           email?: string | null
+          habilitation?: string | null
           id?: string
           manager_id?: string | null
           name: string
@@ -49,6 +51,7 @@ export type Database = {
           created_at?: string | null
           director_id?: string | null
           email?: string | null
+          habilitation?: string | null
           id?: string
           manager_id?: string | null
           name?: string
