@@ -15,6 +15,15 @@ interface TopBroker {
   points: number;
 }
 
+interface DashboardDealSummary {
+  id: string;
+  status?: string | null;
+  stage?: string | null;
+  active?: boolean | null;
+  broker1_id?: string | null;
+  broker1_name?: string | null;
+}
+
 const pageTitles: Record<string, string> = {
   "/dashboard": "Pipeline de Vendas",
   "/pipeline": "Pipeline",
@@ -50,32 +59,31 @@ export default function AppLayout() {
 
   useEffect(() => {
     const fetchTopBrokers = async () => {
-      // 1. Get all brokers
-      const { data: brokers } = await supabase.from('brokers').select('id, name');
-      if (!brokers) return;
+      const { data, error } = await supabase
+        .from("dashboard_bi_cache" as any)
+        .select("payload")
+        .eq("id", true)
+        .maybeSingle();
+      if (error) return;
 
-      // 2. Get all deals to calculate points
-      const { data: deals } = await supabase.from('deals').select(`
-        stage, active, deal_value,
-        broker1:brokers!deals_broker1_id_fkey(name),
-        broker2:brokers!deals_broker2_id_fkey(name)
-      `);
-      
-      // 3. Simple scoring logic for top ranking
-      const scores = brokers.map(b => {
-        const bDeals = (deals || []).filter(d => 
-          ((d.broker1 as any)?.name === b.name) || 
-          ((d.broker2 as any)?.name === b.name)
-        );
-        const points = bDeals.reduce((acc, d) => {
-          if (d.stage === 'closed' && d.active) return acc + 700;
-          if (d.stage === 'approved') return acc + 250;
-          return acc + 50;
-        }, 0);
-        return { ...b, points };
-      }).sort((a, b) => b.points - a.points).slice(0, 3);
+      const deals = (((data as any)?.payload?.deals || []) as DashboardDealSummary[]);
+      const scores = new Map<string, TopBroker>();
 
-      setTopBrokers(scores);
+      deals.forEach((deal) => {
+        if (!deal.broker1_id) return;
+        const current = scores.get(deal.broker1_id) || {
+          id: deal.broker1_id,
+          name: deal.broker1_name || "Corretor",
+          points: 0,
+        };
+        const status = (deal.status || "").toUpperCase();
+        if (status === "VENDA" && deal.active !== false) current.points += 700;
+        else if (deal.stage === "approved") current.points += 250;
+        else current.points += 50;
+        scores.set(deal.broker1_id, current);
+      });
+
+      setTopBrokers(Array.from(scores.values()).sort((a, b) => b.points - a.points).slice(0, 3));
     };
     fetchTopBrokers();
 
