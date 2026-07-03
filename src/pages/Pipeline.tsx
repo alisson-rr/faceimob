@@ -465,14 +465,14 @@ export default function Pipeline() {
       const matchMonth = monthFilter === "all" || dealMonth === monthFilter;
       return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient && matchMonth;
     }).sort((a, b) => {
-      // Sort by status (Status 2) first, then by developer
+      // Sort by Construtora first, then Status 2 in the FACEIMOB_STATUSES order
+      const devCmp = (a.developer || "").localeCompare(b.developer || "");
+      if (devCmp !== 0) return devCmp;
       const statusOrder = FACEIMOB_STATUSES.map(s => s.label);
       const aStatus = (a.status && a.status !== "Ativo" && a.status !== "OFF") ? a.status : (tableStageLabels[a.stage]?.label || "PROPOSTA");
       const bStatus = (b.status && b.status !== "Ativo" && b.status !== "OFF") ? b.status : (tableStageLabels[b.stage]?.label || "PROPOSTA");
       const aIdx = statusOrder.indexOf(aStatus); const bIdx = statusOrder.indexOf(bStatus);
-      const sCmp = (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
-      if (sCmp !== 0) return sCmp;
-      return (a.developer || "").localeCompare(b.developer || "");
+      return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
     });
   }, [deals, search, developerFilter, brokerFilter, stageFilter, status2Filter, managerFilter, clientNameFilter]);
 
