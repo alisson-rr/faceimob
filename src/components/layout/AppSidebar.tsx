@@ -35,6 +35,8 @@ const adminNav = [
   { title: "Permissões", url: "/admin/permissions", icon: Shield },
   { title: "Equipes", url: "/admin/teams", icon: UsersRound },
   { title: "Construtoras", url: "/admin/developers", icon: Building2 },
+  { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound },
+  { title: "Diário — BI", url: "/admin/daily-bi", icon: Swords },
 ];
 
 const systemNav = [
