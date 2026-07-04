@@ -43,21 +43,10 @@ export default function DailyReport() {
   useEffect(() => {
     if (!teamId) return;
     (async () => {
-      const { data } = await supabase.rpc("get_team_public_info", { _team_id: teamId });
-      if (data && data[0]) setTeam(data[0] as TeamInfo);
+      const { data } = await supabase.functions.invoke("daily-team-info", { body: { team_id: teamId } });
+      if (data?.info) setTeam(data.info as TeamInfo);
     })();
   }, [teamId]);
-
-  const loadRoster = async () => {
-    const { data } = await supabase.rpc("get_team_roster", { _team_id: teamId });
-    const list = (data as Roster[]) ?? [];
-    setRoster(list);
-    const initial: EntryState = {};
-    list.forEach((b) => {
-      initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
-    });
-    setEntries(initial);
-  };
 
   const totals = useMemo(() => {
     const t: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
@@ -69,9 +58,18 @@ export default function DailyReport() {
 
   const handleUnlock = async () => {
     if (!pin || pin.length < 4) return toast({ title: "Digite o PIN da equipe" });
-    // Optimistic unlock — real validation happens at submit
+    const { data, error } = await supabase.functions.invoke("daily-team-info", { body: { team_id: teamId, pin } });
+    if (error || !data?.pin_ok) {
+      return toast({ title: "PIN incorreto", variant: "destructive" });
+    }
+    const list = (data.roster as Roster[]) ?? [];
+    setRoster(list);
+    const initial: EntryState = {};
+    list.forEach((b) => {
+      initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
+    });
+    setEntries(initial);
     setUnlocked(true);
-    await loadRoster();
   };
 
   const setField = (bid: string, key: FieldKey, val: string) => {
