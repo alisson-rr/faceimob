@@ -34,7 +34,25 @@ export type EditableBroker = {
   division?: string | null;
   indication?: string | null;
   login_email?: string | null;
+  login_password_plain?: string | null;
+  login_email_confirmed?: boolean | null;
+  badge_requested?: boolean | null;
+  badge_requested_at?: string | null;
+  badge_delivered_at?: string | null;
 };
+
+function slug(s: string) {
+  return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+function suggestEmail(full: string | null | undefined, fallback?: string | null) {
+  const src = (full || fallback || "").trim();
+  if (!src) return "";
+  const parts = src.split(/\s+/).filter(Boolean);
+  const first = slug(parts[0] || "");
+  const last = slug(parts[parts.length - 1] || "");
+  const local = first && last && first !== last ? `${first}.${last}` : first || last;
+  return local ? `${local}@faceimob.com.br` : "";
+}
 
 const ROLES = ["broker", "manager", "director", "cca", "admin", "partner"];
 
