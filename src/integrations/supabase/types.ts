@@ -693,19 +693,30 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          manager_id: string | null
           name: string
         }
         Insert: {
           created_at?: string
           id?: string
+          manager_id?: string | null
           name: string
         }
         Update: {
           created_at?: string
           id?: string
+          manager_id?: string | null
           name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "teams_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
