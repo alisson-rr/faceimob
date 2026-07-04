@@ -74,7 +74,7 @@ const panel =
 const headerCell = "text-[10px] uppercase tracking-[0.18em] text-white/40 font-bold";
 
 // ─── Component ──────────────────────────────────────────────────────────────
-type TabKey = "geral" | "propostas" | "vendas" | "metas";
+type TabKey = "geral" | "propostas" | "vendas" | "metas" | "leads";
 
 export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
