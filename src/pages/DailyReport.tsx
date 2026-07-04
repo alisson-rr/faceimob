@@ -167,29 +167,29 @@ export default function DailyReport() {
             {roster.length === 0 ? (
               <Card className="p-8 text-center text-sm text-muted-foreground">Nenhum corretor vinculado a esta equipe.</Card>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {roster.map((b, i) => (
-                  <Card key={b.broker_id} className="border-primary/20 bg-card/60 backdrop-blur-xl hover:border-primary/50 transition group">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center gap-3">
-                        <div className="relative w-11 h-11 rounded-lg bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-lg border border-primary/40">
-                          {b.broker_name.charAt(0).toUpperCase()}
-                          <Shield className="absolute -bottom-1 -right-1 h-4 w-4 text-cyan-400 bg-background rounded-full p-0.5" />
+              <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
+                <div className="hidden md:grid grid-cols-[minmax(180px,1.4fr)_repeat(6,minmax(70px,1fr))_70px] gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground">
+                  <span>Corretor</span>
+                  {FIELDS.map((f) => <span key={f.key} className={`text-center ${f.color}`}>{f.label}</span>)}
+                  <span className="text-center">Total</span>
+                </div>
+                <div className="divide-y divide-border/30">
+                  {roster.map((b) => {
+                    const total = FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0);
+                    return (
+                      <div
+                        key={b.broker_id}
+                        className="grid grid-cols-2 md:grid-cols-[minmax(180px,1.4fr)_repeat(6,minmax(70px,1fr))_70px] gap-2 px-3 py-2 items-center hover:bg-primary/5 transition"
+                      >
+                        <div className="flex items-center gap-2 col-span-2 md:col-span-1">
+                          <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-sm border border-primary/40 shrink-0">
+                            {b.broker_name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-xs font-medium truncate">{b.broker_name}</span>
                         </div>
-                        <div className="flex-1">
-                          <CardTitle className="text-sm">{b.broker_name}</CardTitle>
-                          <p className="text-[10px] text-muted-foreground">Nível {Math.floor(i / 2) + 1} · Guerreiro</p>
-                        </div>
-                        <Badge variant="outline" className="text-[10px]">
-                          {FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0)} ações
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-4 gap-2">
                         {FIELDS.map((f) => (
-                          <div key={f.key}>
-                            <label className={`text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
+                          <div key={f.key} className="flex flex-col md:block">
+                            <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
                             <Input
                               type="number" min={0}
                               value={entries[b.broker_id]?.[f.key] ?? 0}
@@ -198,11 +198,12 @@ export default function DailyReport() {
                             />
                           </div>
                         ))}
+                        <Badge variant="outline" className="text-[10px] justify-center col-span-2 md:col-span-1">{total}</Badge>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              </Card>
             )}
 
             <Card className="border-primary/20 bg-card/60 backdrop-blur-xl">
