@@ -13,6 +13,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
+import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
+
 interface BrokerRow {
   id: string;
   name: string;
@@ -21,6 +23,7 @@ interface BrokerRow {
   director_id: string | null;
   active: boolean;
   user_id: string | null;
+  avatar_url?: string | null;
 }
 
 const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
@@ -35,9 +38,8 @@ export default function Equipes() {
   const [teamsByMgr, setTeamsByMgr] = useState<Record<string, { id: string; display_name: string | null }>>({});
   const [teamNameDrafts, setTeamNameDrafts] = useState<Record<string, string>>({});
 
-  // individual edit
-  const [editDlg, setEditDlg] = useState<{ type: "manager" | "broker"; member: BrokerRow } | null>(null);
-  const [editTarget, setEditTarget] = useState("");
+  // individual edit — full profile modal
+  const [profileEdit, setProfileEdit] = useState<EditableBroker | null>(null);
 
   // bulk assign
   const [bulk, setBulk] = useState<{ column: "manager" | "broker" } | null>(null);
@@ -112,26 +114,9 @@ export default function Equipes() {
   const filter = (list: BrokerRow[]) =>
     list.filter(b => (search ? b.name.toLowerCase().includes(search.toLowerCase()) : true));
 
-  const openEdit = (type: "manager" | "broker", m: BrokerRow) => {
-    setEditDlg({ type, member: m });
-    setEditTarget(type === "broker" ? m.manager_id ?? "" : m.director_id ?? "");
-  };
-
-  const saveEdit = async () => {
-    if (!editDlg || !editTarget) return;
-    setSaving(true);
-    const patch: any = editDlg.type === "broker"
-      ? { manager_id: editTarget, director_id: managers.find(m => m.id === editTarget)?.director_id ?? null }
-      : { director_id: editTarget };
-    const { error } = await supabase.from("brokers").update(patch).eq("id", editDlg.member.id);
-    if (!error && editDlg.type === "manager") {
-      await supabase.from("brokers").update({ director_id: editTarget }).eq("manager_id", editDlg.member.id);
-    }
-    setSaving(false);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
-    toast({ title: "Vínculo atualizado" });
-    setEditDlg(null); setEditTarget("");
-    load();
+  const openEdit = async (_type: "manager" | "broker", m: BrokerRow) => {
+    const { data } = await supabase.from("brokers").select("*").eq("id", m.id).maybeSingle();
+    setProfileEdit((data as any) || (m as any));
   };
 
   const openBulk = (column: "manager" | "broker") => {
@@ -380,33 +365,17 @@ export default function Equipes() {
         </CardContent>
       </Card>
 
-      {/* Individual edit dialog */}
-      <Dialog open={!!editDlg} onOpenChange={(o) => !o && setEditDlg(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-sm">
-              {editDlg?.type === "broker" ? "Atribuir Gerente" : "Atribuir Diretor"}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Membro: <strong>{editDlg?.member.name}</strong>
-            </DialogDescription>
-          </DialogHeader>
-          <Select value={editTarget} onValueChange={setEditTarget}>
-            <SelectTrigger className="text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-            <SelectContent>
-              {(editDlg?.type === "broker" ? managers : directors).map(o => (
-                <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setEditDlg(null)}>Cancelar</Button>
-            <Button size="sm" onClick={saveEdit} disabled={saving || !editTarget}>
-              {saving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />} Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Profile edit modal */}
+      <BrokerEditModal
+        open={!!profileEdit}
+        broker={profileEdit}
+        managers={managers.map(m => ({ id: m.id, name: m.name }))}
+        directors={directors.map(d => ({ id: d.id, name: d.name }))}
+        isAdmin={role === "admin"}
+        onClose={() => setProfileEdit(null)}
+        onSaved={() => { setProfileEdit(null); load(); }}
+      />
+
 
       {/* Bulk assign dialog */}
       <Dialog open={!!bulk} onOpenChange={(o) => !o && setBulk(null)}>

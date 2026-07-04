@@ -4,7 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { MotivationalPopup } from "@/components/MotivationalPopup";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
-import dianhoAvatar from "@/assets/dianho.png";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Trophy } from "lucide-react";
@@ -53,9 +53,16 @@ const roleLabels: Record<string, string> = {
 export default function AppLayout() {
   const [showMotivation, setShowMotivation] = useState(false);
   const [topBrokers, setTopBrokers] = useState<TopBroker[]>([]);
+  const [me, setMe] = useState<{ name: string; avatar_url: string | null } | null>(null);
   const location = useLocation();
   const pageTitle = pageTitles[location.pathname] || "Faceimob";
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+
+  useEffect(() => {
+    if (!user?.id) { setMe(null); return; }
+    supabase.from("brokers").select("name, avatar_url").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => data && setMe(data as any));
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchTopBrokers = async () => {
@@ -117,8 +124,14 @@ export default function AppLayout() {
 
             <div className="flex items-center gap-3 ml-auto">
               <RoleSwitcher />
-              <span className="text-xs text-muted-foreground hidden sm:block">Dianho Silva</span>
-              <img src={dianhoAvatar} alt="User" className="w-8 h-8 rounded-full object-cover border-2 border-primary/30" />
+              <span className="text-xs text-muted-foreground hidden sm:block">{me?.name || user?.email || "Usuário"}</span>
+              {me?.avatar_url ? (
+                <img src={me.avatar_url} alt="User" className="w-8 h-8 rounded-full object-cover border-2 border-primary/30" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-primary/20 border-2 border-primary/30 flex items-center justify-center text-xs font-bold text-primary">
+                  {(me?.name || user?.email || "U").charAt(0).toUpperCase()}
+                </div>
+              )}
             </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">

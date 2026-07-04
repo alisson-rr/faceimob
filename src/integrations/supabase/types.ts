@@ -97,12 +97,23 @@ export type Database = {
       brokers: {
         Row: {
           active: boolean
+          address: string | null
           avatar_url: string | null
+          birth_date: string | null
+          celular: string | null
+          cpf: string | null
           created_at: string | null
+          creci: string | null
           director_id: string | null
+          division: string | null
           email: string | null
+          entry_date: string | null
+          full_name: string | null
           habilitation: string | null
           id: string
+          indication: string | null
+          login_email: string | null
+          login_provisioned_at: string | null
           manager_id: string | null
           name: string
           phone: string | null
@@ -112,12 +123,23 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          address?: string | null
           avatar_url?: string | null
+          birth_date?: string | null
+          celular?: string | null
+          cpf?: string | null
           created_at?: string | null
+          creci?: string | null
           director_id?: string | null
+          division?: string | null
           email?: string | null
+          entry_date?: string | null
+          full_name?: string | null
           habilitation?: string | null
           id?: string
+          indication?: string | null
+          login_email?: string | null
+          login_provisioned_at?: string | null
           manager_id?: string | null
           name: string
           phone?: string | null
@@ -127,12 +149,23 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          address?: string | null
           avatar_url?: string | null
+          birth_date?: string | null
+          celular?: string | null
+          cpf?: string | null
           created_at?: string | null
+          creci?: string | null
           director_id?: string | null
+          division?: string | null
           email?: string | null
+          entry_date?: string | null
+          full_name?: string | null
           habilitation?: string | null
           id?: string
+          indication?: string | null
+          login_email?: string | null
+          login_provisioned_at?: string | null
           manager_id?: string | null
           name?: string
           phone?: string | null
