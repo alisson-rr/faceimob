@@ -427,6 +427,17 @@ export default function DailyReport() {
                         Este dia já foi preenchido — alterações vão sobrescrever o checkpoint.
                       </div>
                     )}
+                    {emptyBrokers.length > 0 && (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold text-amber-300">
+                            {emptyBrokers.length} de {roster.length} corretor{emptyBrokers.length === 1 ? "" : "es"} sem lançamentos
+                          </p>
+                          <p className="text-muted-foreground mt-0.5">{emptyBrokers.map((b) => b.broker_name).join(" • ")}</p>
+                        </div>
+                      </div>
+                    )}
                     <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
                       <div
                         className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
