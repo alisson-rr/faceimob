@@ -32,6 +32,8 @@ export default function Equipes() {
   const [rows, setRows] = useState<BrokerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [teamsByMgr, setTeamsByMgr] = useState<Record<string, { id: string; display_name: string | null }>>({});
+  const [teamNameDrafts, setTeamNameDrafts] = useState<Record<string, string>>({});
 
   // individual edit
   const [editDlg, setEditDlg] = useState<{ type: "manager" | "broker"; member: BrokerRow } | null>(null);
@@ -53,10 +55,38 @@ export default function Equipes() {
       .order("name");
     if (error) toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
     setRows((data as any) || []);
+    const { data: teamsData } = await supabase.from("teams").select("id,manager_id,display_name,name");
+    const map: Record<string, { id: string; display_name: string | null }> = {};
+    const drafts: Record<string, string> = {};
+    (teamsData || []).forEach((t: any) => {
+      if (t.manager_id) {
+        map[t.manager_id] = { id: t.id, display_name: t.display_name };
+        drafts[t.manager_id] = t.display_name ?? "";
+      }
+    });
+    setTeamsByMgr(map);
+    setTeamNameDrafts(drafts);
     setLoading(false);
   };
 
+  const saveTeamName = async (managerId: string, managerName: string) => {
+    const name = (teamNameDrafts[managerId] ?? "").trim();
+    const existing = teamsByMgr[managerId];
+    if (existing) {
+      const { error } = await supabase.from("teams").update({ display_name: name || null }).eq("id", existing.id);
+      if (error) return toast({ title: "Falha ao salvar", description: error.message, variant: "destructive" });
+      setTeamsByMgr(p => ({ ...p, [managerId]: { ...existing, display_name: name || null } }));
+    } else {
+      const { data, error } = await supabase.from("teams").insert({ manager_id: managerId, name: managerName, display_name: name || null }).select("id").single();
+      if (error) return toast({ title: "Falha ao criar equipe", description: error.message, variant: "destructive" });
+      setTeamsByMgr(p => ({ ...p, [managerId]: { id: data.id, display_name: name || null } }));
+    }
+    toast({ title: "Nome da equipe salvo" });
+  };
+
   useEffect(() => { load(); }, []);
+
+
 
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
   const managers = useMemo(() => rows.filter(r => r.role === "manager"), [rows]);
@@ -242,21 +272,38 @@ export default function Equipes() {
               {filter(managers).filter(inScope).map(m => {
                 const dir = directors.find(d => d.id === m.director_id);
                 return (
-                  <div key={m.id} className="p-2 rounded-lg border border-border/30 bg-cyan-500/5 flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">{initials(m.name)}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{m.name}</p>
-                      <p className={cn("text-[10px] truncate", dir ? "text-blue-400" : "text-muted-foreground")}>
-                        {dir ? `↑ ${dir.name}` : "Sem diretor"}
-                      </p>
+                  <div key={m.id} className="p-2 rounded-lg border border-border/30 bg-cyan-500/5 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">{initials(m.name)}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{m.name}</p>
+                        <p className={cn("text-[10px] truncate", dir ? "text-blue-400" : "text-muted-foreground")}>
+                          {dir ? `↑ ${dir.name}` : "Sem diretor"}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400">
+                        {brokers.filter(b => b.manager_id === m.id).length}
+                      </Badge>
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", m)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
-                    <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400">
-                      {brokers.filter(b => b.manager_id === m.id).length}
-                    </Badge>
                     {canEdit && (
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", m)}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] uppercase text-muted-foreground shrink-0">Equipe</span>
+                        <Input
+                          value={teamNameDrafts[m.id] ?? ""}
+                          onChange={(e) => setTeamNameDrafts(p => ({ ...p, [m.id]: e.target.value }))}
+                          onBlur={() => {
+                            const current = teamsByMgr[m.id]?.display_name ?? "";
+                            if ((teamNameDrafts[m.id] ?? "") !== current) saveTeamName(m.id, m.name);
+                          }}
+                          placeholder={`Equipe ${m.name.split(" ")[0]}`}
+                          className="h-6 text-[11px] px-2"
+                        />
+                      </div>
                     )}
                   </div>
                 );

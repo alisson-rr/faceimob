@@ -1,52 +1,56 @@
 ## Objetivo
-Consolidar as três páginas ("Equipe", "Pessoal", "Gestão de Equipes") numa única rota `/equipes` que mostra tudo na mesma tela e permite reorganizar a hierarquia com um modal em massa. Todos os dados vêm de `brokers` (fonte única), então qualquer alteração feita aqui já se reflete em todo o CRM automaticamente.
+Substituir o "BI Diário" pelo módulo **Checkpoint**, que mede o funil semanal (seg→dom) de cada equipe com metas percentuais, permite editar o nome da equipe na página Equipes e libera acesso ao diretor apenas das equipes dos seus gerentes.
 
-## Nova página `/equipes` (rota única)
-Layout empilhado, sem abas:
+## 1. Banco de dados
 
-```text
-┌───────────────────────────────────────────────────────────┐
-│ 1. Meu Perfil (usuário logado)                            │
-│    nome, e-mail, CRECI, CPF, tel, cargo, foto             │
-├───────────────────────────────────────────────────────────┤
-│ 2. Hierarquia (3 colunas)                                 │
-│    Diretores (3) │ Gerentes (9) │ Corretores (73)         │
-│                                                            │
-│    [Vincular em massa] ← botão topo da coluna              │
-│    (só aparece para Admin e Diretor)                       │
-├───────────────────────────────────────────────────────────┤
-│ 3. Performance por Equipe                                 │
-│    Cards de cada gerente com métricas + ranking top       │
-│    (conteúdo atual do Team.tsx, simplificado)             │
-└───────────────────────────────────────────────────────────┘
-```
+**Nova coluna** em `teams`:
+- `display_name TEXT` — nome customizado da equipe (fallback: nome do gerente).
 
-## Modal "Vincular em massa"
-- Aberto pelo botão no topo da coluna Gerentes ou Corretores.
-- Passo 1: escolher o superior (Diretor se estiver na coluna de Gerentes; Gerente se estiver na de Corretores).
-- Passo 2: checkbox list com todos os membros da coluna, filtro por nome. Já vem marcado quem hoje está vinculado a esse superior.
-- Passo 3: "Aplicar" atualiza `brokers.manager_id` (ou `director_id`) para todos os selecionados numa única chamada `.in('id', ids)`.
-- Ao vincular corretores a um gerente, o `director_id` é propagado automaticamente do gerente escolhido.
-- Toast de confirmação e recarregamento.
+**Novos campos** em `daily_broker_entries` (já existe com leads/atendimentos/propostas/visitas/análises/aprovados/vendas):
+- `ligacoes INT DEFAULT 0`
+- `coleta_docs INT DEFAULT 0`
+- `analise_enviada INT` — se distinto de `analises`; senão reusar `analises` como "enviada".
 
-O ícone de lápis atual (edição individual) continua funcionando para ajustes pontuais.
+Decisão: reusar `analises` como "Análise enviada", `aprovados` como "Análise aprovada", `vendas` como "Venda". Adicionar apenas `ligacoes` e `coleta_docs`.
 
-## Permissões
-- Botão "Vincular em massa" e ícone de lápis visíveis apenas se `role in ('admin','director')`.
-- Diretores editam somente sua própria árvore (managers e brokers com `director_id = próprio broker.id`).
-- Admins editam tudo.
+**Nova tabela** `checkpoint_targets` (metas percentuais globais/por equipe, editáveis por admin):
+- `team_id UUID NULL` (NULL = default global), `analise_enviada_pct NUMERIC DEFAULT 10`, `aprovada_pct NUMERIC DEFAULT 40`, `venda_pct NUMERIC DEFAULT 50`.
+- RLS: leitura autenticada; escrita admin.
 
-## Sincronização com Equipe/Pessoal
-Como Team.tsx já lê de `brokers` e Profile.tsx lê de `profiles`, unificar em `/equipes` significa apenas remover as rotas duplicadas e trazer o conteúdo para dentro da nova página. Nenhuma migração de dados é necessária.
+## 2. Página Equipes (`src/pages/Equipes.tsx`)
+- Ao lado de cada gerente na coluna "Gerentes", campo inline editável **"Nome da equipe"** (admin/diretor). Persiste em `teams.display_name` (upsert por `manager_id`).
+- Se vazio, exibe `Equipe {nome do gerente}`.
+
+## 3. Formulário público (`/daily/:teamId/:slug`, `DailyReport.tsx`)
+- Trocar/renomear campos visíveis para os 6 do Checkpoint: **Leads, Ligações, Coleta docs, Análise enviada, Análise aprovada, Venda**.
+- Cabeçalho usa `teams.display_name` quando existir.
+- Edge function `submit-daily-report` aceita os 2 novos campos (`ligacoes`, `coleta_docs`).
+
+## 4. Novo módulo Checkpoint (`src/pages/Checkpoint.tsx`)
+Substitui `/bi-diario` no menu (mantém rota antiga como redirect).
+
+Layout:
+- Seletor de **semana** (padrão: semana corrente seg→dom) com navegação « »
+- Filtro de equipe (admin vê todas; diretor vê só equipes dos seus gerentes; gerente vê a sua).
+- Card por equipe com:
+  - Funil horizontal: Leads → Análise enviada → Aprovada → Venda mostrando valor absoluto + % vs Leads.
+  - Barras auxiliares: Ligações e Coleta docs (contadores, sem %).
+  - Metas: `enviada ≥ 10%`, `aprovada ≥ 40% das enviadas`, `venda ≥ 50% das aprovadas`.
+  - Badge vermelho "Abaixo do ideal" em cada etapa que não bateu a meta.
+
+## 5. Permissões
+- Admin: todas as equipes.
+- Diretor: filtra `teams` cujo `manager` tem `director_id = auth.uid()` (via broker.user_id).
+- Gerente: sua equipe.
+- Corretor: bloqueado no menu.
+
+## 6. Navegação
+- Sidebar: item "BI Diário" → **Checkpoint**, ícone `Target`.
+- Rota nova `/checkpoint`, redirect de `/bi-diario`.
 
 ## Detalhes técnicos
-- Nova página: `src/pages/Equipes.tsx` (substitui Team, Profile e AdminTeams).
-- Sidebar (`AppSidebar.tsx`): remover itens "Equipe", "Pessoal" e "Equipes" (admin) → um único item **"Equipes"** apontando para `/equipes`, visível para todos os papéis.
-- `App.tsx`: rota `/equipes`; redirecionar `/team`, `/profile` e `/admin/teams` → `/equipes` para não quebrar links salvos.
-- Arquivos antigos (`Team.tsx`, `Profile.tsx`, `AdminTeams.tsx`) removidos.
-- Query do "Meu Perfil": `profiles` filtrado por `auth.uid()`, formulário edita nome, telefone, CRECI, CPF, foto (mesma lógica atual).
-- Modal de massa: componente único `BulkAssignDialog` reutilizado nas duas colunas.
-
-## Fora do escopo
-- Não altero regras de RLS nem schema do banco (a permissão de update em `brokers` já existe).
-- Não mexo em Pipeline, CCA, Marketing.
+- Semana = ISO seg-dom via `date-fns` (`startOfWeek(d,{weekStartsOn:1})` / `endOfWeek`).
+- Agregação client-side sobre `daily_team_reports` + `daily_broker_entries` filtrado por `report_date` no range e `team_id IN (equipes visíveis)`.
+- `checkpoint_targets` lidas uma vez; merge global+específica.
+- Alertas: componente `<FunnelStep />` com estado `ok|warn` conforme `actualPct < targetPct`.
+- Sem mudança em tipos gerados até o usuário aprovar a migration.

@@ -155,6 +155,44 @@ export type Database = {
         }
         Relationships: []
       }
+      checkpoint_targets: {
+        Row: {
+          analise_enviada_pct: number
+          aprovada_pct: number
+          created_at: string
+          id: string
+          team_id: string | null
+          updated_at: string
+          venda_pct: number
+        }
+        Insert: {
+          analise_enviada_pct?: number
+          aprovada_pct?: number
+          created_at?: string
+          id?: string
+          team_id?: string | null
+          updated_at?: string
+          venda_pct?: number
+        }
+        Update: {
+          analise_enviada_pct?: number
+          aprovada_pct?: number
+          created_at?: string
+          id?: string
+          team_id?: string | null
+          updated_at?: string
+          venda_pct?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkpoint_targets_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: true
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       closed_months: {
         Row: {
           closed_at: string
@@ -180,9 +218,11 @@ export type Database = {
           atendimentos: number
           broker_id: string | null
           broker_name: string
+          coleta_docs: number
           created_at: string
           id: string
           leads: number
+          ligacoes: number
           propostas: number
           report_id: string
           vendas: number
@@ -195,9 +235,11 @@ export type Database = {
           atendimentos?: number
           broker_id?: string | null
           broker_name: string
+          coleta_docs?: number
           created_at?: string
           id?: string
           leads?: number
+          ligacoes?: number
           propostas?: number
           report_id: string
           vendas?: number
@@ -210,9 +252,11 @@ export type Database = {
           atendimentos?: number
           broker_id?: string | null
           broker_name?: string
+          coleta_docs?: number
           created_at?: string
           id?: string
           leads?: number
+          ligacoes?: number
           propostas?: number
           report_id?: string
           vendas?: number
@@ -695,18 +739,21 @@ export type Database = {
       teams: {
         Row: {
           created_at: string
+          display_name: string | null
           id: string
           manager_id: string | null
           name: string
         }
         Insert: {
           created_at?: string
+          display_name?: string | null
           id?: string
           manager_id?: string | null
           name: string
         }
         Update: {
           created_at?: string
+          display_name?: string | null
           id?: string
           manager_id?: string | null
           name?: string
