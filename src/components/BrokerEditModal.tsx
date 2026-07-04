@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { Camera, KeyRound, Loader2, Copy, Check } from "lucide-react";
+import { Camera, KeyRound, Loader2, Copy, Check, IdCard, Sparkles } from "lucide-react";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
 type Manager = { id: string; name: string };
