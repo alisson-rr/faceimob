@@ -66,7 +66,7 @@ export default function DailyReport() {
     const filledSet = new Set(filledDates);
     const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
     const missing = days
-      .filter(d => !isAfter(d, today) && !isWeekend(d))
+      .filter(d => !isAfter(d, today))
       .map(d => format(d, "yyyy-MM-dd"))
       .filter(d => !filledSet.has(d));
     setMissingDays(missing);
