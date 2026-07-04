@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Users, Pencil, Link2, Search, Crown, Shield, UserCog, User, Loader2 } from "lucide-react";
+import { Users, Pencil, Link2, Search, Crown, Shield, UserCog, User, Loader2, Eye, EyeOff, Copy, Check, KeyRound } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -48,6 +48,53 @@ export default function Equipes() {
   const [bulkFilter, setBulkFilter] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Admin-only: credentials of each broker/manager/director
+  const [creds, setCreds] = useState<Record<string, { email: string | null; password: string | null }>>({});
+  const [showPw, setShowPw] = useState<Set<string>>(new Set());
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const isAdmin = role === "admin";
+
+  const togglePw = (id: string) =>
+    setShowPw(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const copyValue = async (key: string, val: string) => {
+    if (!val) return;
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1200);
+    } catch {}
+  };
+
+  const CredLine = ({ id }: { id: string }) => {
+    if (!isAdmin) return null;
+    const c = creds[id];
+    if (!c || (!c.email && !c.password)) return null;
+    const visible = showPw.has(id);
+    return (
+      <div className="flex items-center gap-1 mt-1 rounded-md bg-background/60 border border-border/30 px-1.5 py-1">
+        <KeyRound className="h-3 w-3 text-primary shrink-0" />
+        <code className="text-[10px] truncate flex-1" title={c.email || ""}>{c.email || "—"}</code>
+        <span className="text-muted-foreground text-[10px]">·</span>
+        <code className="text-[10px] font-mono">{c.password ? (visible ? c.password : "••••••••") : "—"}</code>
+        {c.password && (
+          <button type="button" onClick={() => togglePw(id)} className="text-muted-foreground hover:text-foreground p-0.5" title={visible ? "Ocultar" : "Mostrar"}>
+            {visible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </button>
+        )}
+        {c.password && (
+          <button type="button" onClick={() => copyValue(`pw-${id}`, c.password!)} className="text-muted-foreground hover:text-foreground p-0.5" title="Copiar senha">
+            {copiedKey === `pw-${id}` ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -87,6 +134,26 @@ export default function Equipes() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Admin: fetch credentials for all brokers so they can be shown on each card
+  useEffect(() => {
+    if (!isAdmin || rows.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        rows.map(async r => {
+          const { data } = await supabase.rpc("get_broker_private", { _id: r.id });
+          const row: any = Array.isArray(data) ? data[0] : data;
+          return [r.id, { email: row?.login_email ?? null, password: row?.login_password_plain ?? null }] as const;
+        })
+      );
+      if (cancelled) return;
+      const map: Record<string, { email: string | null; password: string | null }> = {};
+      entries.forEach(([id, v]) => { map[id] = v; });
+      setCreds(map);
+    })();
+    return () => { cancelled = true; };
+  }, [isAdmin, rows]);
 
 
 
@@ -294,6 +361,7 @@ export default function Equipes() {
                         />
                       </div>
                     )}
+                    <CredLine id={m.id} />
                   </div>
                 );
               })}
@@ -316,19 +384,22 @@ export default function Equipes() {
               {filter(brokers).filter(inScope).map(b => {
                 const mgr = managers.find(m => m.id === b.manager_id);
                 return (
-                  <div key={b.id} className="p-2 rounded-lg border border-border/30 bg-emerald-500/5 flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400">{initials(b.name)}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{b.name}</p>
-                      <p className={cn("text-[10px] truncate", mgr ? "text-cyan-400" : "text-muted-foreground")}>
-                        {mgr ? `↑ ${mgr.name}` : "Sem gerente"}
-                      </p>
+                  <div key={b.id} className="p-2 rounded-lg border border-border/30 bg-emerald-500/5 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400">{initials(b.name)}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{b.name}</p>
+                        <p className={cn("text-[10px] truncate", mgr ? "text-cyan-400" : "text-muted-foreground")}>
+                          {mgr ? `↑ ${mgr.name}` : "Sem gerente"}
+                        </p>
+                      </div>
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("broker", b)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
-                    {canEdit && (
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("broker", b)}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                    )}
+                    <CredLine id={b.id} />
                   </div>
                 );
               })}
