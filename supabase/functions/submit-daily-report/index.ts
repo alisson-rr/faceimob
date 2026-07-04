@@ -2,19 +2,20 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { z } from "npm:zod@3.23.8";
 
+const half = z.number().min(0).max(9999).multipleOf(0.5).default(0);
 const EntrySchema = z.object({
   broker_id: z.string().uuid().nullable().optional(),
   broker_name: z.string().min(1).max(120),
-  leads: z.number().int().min(0).max(9999).default(0),
-  ligacoes: z.number().int().min(0).max(9999).default(0),
-  coleta_docs: z.number().int().min(0).max(9999).default(0),
-  atendimentos: z.number().int().min(0).max(9999).default(0),
-  propostas: z.number().int().min(0).max(9999).default(0),
-  visitas_agendadas: z.number().int().min(0).max(9999).default(0),
-  visitas_realizadas: z.number().int().min(0).max(9999).default(0),
-  analises: z.number().int().min(0).max(9999).default(0),
-  aprovados: z.number().int().min(0).max(9999).default(0),
-  vendas: z.number().int().min(0).max(9999).default(0),
+  leads: half,
+  ligacoes: half,
+  coleta_docs: half,
+  atendimentos: half,
+  propostas: half,
+  visitas_agendadas: half,
+  visitas_realizadas: half,
+  analises: half,
+  aprovados: half,
+  vendas: half,
 });
 
 const BodySchema = z.object({
