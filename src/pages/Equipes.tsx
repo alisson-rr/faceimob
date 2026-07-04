@@ -384,19 +384,22 @@ export default function Equipes() {
               {filter(brokers).filter(inScope).map(b => {
                 const mgr = managers.find(m => m.id === b.manager_id);
                 return (
-                  <div key={b.id} className="p-2 rounded-lg border border-border/30 bg-emerald-500/5 flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400">{initials(b.name)}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{b.name}</p>
-                      <p className={cn("text-[10px] truncate", mgr ? "text-cyan-400" : "text-muted-foreground")}>
-                        {mgr ? `↑ ${mgr.name}` : "Sem gerente"}
-                      </p>
+                  <div key={b.id} className="p-2 rounded-lg border border-border/30 bg-emerald-500/5 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400">{initials(b.name)}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{b.name}</p>
+                        <p className={cn("text-[10px] truncate", mgr ? "text-cyan-400" : "text-muted-foreground")}>
+                          {mgr ? `↑ ${mgr.name}` : "Sem gerente"}
+                        </p>
+                      </div>
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("broker", b)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
-                    {canEdit && (
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("broker", b)}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                    )}
+                    <CredLine id={b.id} />
                   </div>
                 );
               })}
