@@ -97,6 +97,7 @@ export default function DailyReport() {
     const { data } = await supabase.rpc("get_daily_team_report" as any, { _team_id: resolvedTeamId, _date: targetDate });
     setDate(targetDate);
     setHistoryOpen(false);
+    setFormOpen(true);
     if ((data as any)?.exists) {
       const list = ((data as any).entries || []) as any[];
       const next: EntryState = {};
@@ -107,6 +108,13 @@ export default function DailyReport() {
       setEntries(next);
       setNotes((data as any).notes || "");
       setFilledBy((data as any).filled_by_name || "");
+    } else {
+      // dia sem checkpoint: zera formulário
+      setEntries(roster.reduce((acc, b) => {
+        acc[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
+        return acc;
+      }, {} as EntryState));
+      setNotes("");
     }
     setLoadingDay(false);
   };
