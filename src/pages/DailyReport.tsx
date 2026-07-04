@@ -363,7 +363,7 @@ export default function DailyReport() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2 justify-items-center max-w-3xl mx-auto">
                   {FIELDS.map(f => (
                     <div key={f.key} className="px-2 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-center">
                       <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
@@ -429,8 +429,7 @@ export default function DailyReport() {
                     )}
                     <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
                       <div
-                        className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground"
-                        style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
+                        className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                       >
                         <span>Corretor</span>
                         {FIELDS.map((f) => <span key={f.key} className={`text-center ${f.color}`}>{f.label}</span>)}
@@ -442,10 +441,9 @@ export default function DailyReport() {
                           return (
                             <div
                               key={b.broker_id}
-                              className="grid grid-cols-2 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition"
-                              style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
+                              className="grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                             >
-                              <div className="flex items-center gap-2 col-span-2 md:col-span-1 min-w-0">
+                              <div className="flex items-center gap-2 col-span-3 md:col-span-1 min-w-0">
                                 <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
                                   {b.broker_name.charAt(0).toUpperCase()}
                                 </div>
@@ -453,17 +451,18 @@ export default function DailyReport() {
                               </div>
                               {FIELDS.map((f) => (
                                 <div key={f.key} className="flex flex-col md:block min-w-0">
-                                  <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
+                                  <label className={`md:hidden text-[9px] uppercase font-bold ${f.color} truncate`}>{f.label}</label>
                                   <Input
                                     type="number" min={0} step={0.5}
+                                    inputMode="decimal"
                                     value={entries[b.broker_id]?.[f.key] ? entries[b.broker_id][f.key] : ""}
                                     onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
                                     placeholder="0"
-                                    className="h-8 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40"
+                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40"
                                   />
                                 </div>
                               ))}
-                              <Badge variant="outline" className="text-[10px] justify-center col-span-2 md:col-span-1">{total}</Badge>
+                              <Badge variant="outline" className="text-[10px] justify-center col-span-3 md:col-span-1">Total {total}</Badge>
                             </div>
                           );
                         })}
@@ -493,20 +492,24 @@ export default function DailyReport() {
 
                 {/* Totals + submit */}
                 <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
-                  <CardContent className="p-4 flex flex-wrap items-center gap-4">
-                    {FIELDS.map((f) => (
-                      <div key={f.key} className="text-center">
-                        <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
-                        <p className={`text-lg font-black ${f.color}`}>{totals[f.key]}</p>
-                      </div>
-                    ))}
-                    <Button size="lg" variant="outline" onClick={() => setFormOpen(false)} className="ml-auto">
-                      Fechar
-                    </Button>
-                    <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
-                      {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                      Salvar Checkpoint
-                    </Button>
+                  <CardContent className="p-4 flex flex-col items-center gap-3">
+                    <div className="grid grid-cols-4 md:grid-cols-8 gap-3 justify-items-center w-full max-w-2xl">
+                      {FIELDS.map((f) => (
+                        <div key={f.key} className="text-center min-w-0">
+                          <p className="text-[9px] uppercase text-muted-foreground truncate">{f.label}</p>
+                          <p className={`text-lg font-black ${f.color}`}>{totals[f.key]}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2 w-full">
+                      <Button size="lg" variant="outline" onClick={() => setFormOpen(false)}>
+                        Fechar
+                      </Button>
+                      <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
+                        {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                        Salvar Checkpoint
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </>
