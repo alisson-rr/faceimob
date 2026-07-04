@@ -26,8 +26,13 @@ const FIELDS = [
 type FieldKey = typeof FIELDS[number]["key"];
 type EntryState = Record<string, Record<FieldKey, number>>;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function DailyReport() {
-  const { teamId } = useParams<{ teamId: string }>();
+  const params = useParams<{ teamId?: string; slug?: string }>();
+  const identifier = params.teamId || params.slug || "";
+  const isUuid = UUID_RE.test(identifier);
+  const [resolvedTeamId, setResolvedTeamId] = useState<string | null>(isUuid ? identifier : null);
   const [team, setTeam] = useState<TeamInfo | null>(null);
   const [pin, setPin] = useState("");
   const [unlocked, setUnlocked] = useState(false);
@@ -40,12 +45,16 @@ export default function DailyReport() {
   const [xpBurst, setXpBurst] = useState(0);
 
   useEffect(() => {
-    if (!teamId) return;
+    if (!identifier) return;
     (async () => {
-      const { data } = await supabase.functions.invoke("daily-team-info", { body: { team_id: teamId } });
-      if (data?.info) setTeam(data.info as TeamInfo);
+      const body = isUuid ? { team_id: identifier } : { slug: identifier };
+      const { data } = await supabase.functions.invoke("daily-team-info", { body });
+      if (data?.info) {
+        setTeam(data.info as TeamInfo);
+        if ((data.info as any).team_id) setResolvedTeamId((data.info as any).team_id);
+      }
     })();
-  }, [teamId]);
+  }, [identifier, isUuid]);
 
   const totals = useMemo(() => {
     const t: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
@@ -57,10 +66,15 @@ export default function DailyReport() {
 
   const handleUnlock = async () => {
     if (!pin || pin.length < 4) return toast({ title: "Digite o PIN da equipe" });
-    const { data, error } = await supabase.functions.invoke("daily-team-info", { body: { team_id: teamId, pin } });
+    const body: any = { pin };
+    if (resolvedTeamId) body.team_id = resolvedTeamId;
+    else if (isUuid) body.team_id = identifier;
+    else body.slug = identifier;
+    const { data, error } = await supabase.functions.invoke("daily-team-info", { body });
     if (error || !data?.pin_ok) {
       return toast({ title: "PIN incorreto", variant: "destructive" });
     }
+    if ((data.info as any)?.team_id) setResolvedTeamId((data.info as any).team_id);
     const list = (data.roster as Roster[]) ?? [];
     setRoster(list);
     const initial: EntryState = {};
