@@ -222,40 +222,112 @@ export function BrokerEditModal({
         </div>
 
         {/* Access */}
-        {isAdmin && (
+        {isAdmin && (() => {
+          const suggested = suggestEmail(form.full_name, form.name);
+          const currentEmail = (form.login_email || "").trim();
+          const emailConfirmed = !!form.login_email_confirmed && !!currentEmail;
+          const savedPassword = form.login_password_plain || null;
+          return (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="text-sm font-semibold flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" /> Acesso ao sistema</div>
+            <div className="text-sm font-semibold flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" /> Acesso ao sistema</div>
+
+            {/* Email suggestion */}
+            <div className="rounded-md border bg-background/60 p-2 space-y-2">
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <Sparkles className="h-3 w-3 text-primary" /> Sugestão
+                <code className="text-foreground">{suggested || "preencha o nome completo"}</code>
+                {suggested && (
+                  <>
+                    <Button type="button" size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("sug", suggested)}>
+                      {copied === "sug" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]"
+                      onClick={() => { upd("login_email", suggested); upd("login_email_confirmed", false); }}>
+                      Usar sugestão
+                    </Button>
+                  </>
+                )}
+              </div>
               <div className="flex items-center gap-2">
-                {!form.user_id ? (
-                  <Button size="sm" onClick={() => provision(false)} disabled={provisioning}>
-                    {provisioning ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <KeyRound className="h-3 w-3 mr-1" />}
-                    Criar acesso
-                  </Button>
+                <Input placeholder="e-mail de login" value={form.login_email || ""}
+                  onChange={e => { upd("login_email", e.target.value); upd("login_email_confirmed", false); }} />
+                {emailConfirmed ? (
+                  <span className="text-[11px] text-emerald-400 whitespace-nowrap flex items-center gap-1"><Check className="h-3 w-3" /> confirmado</span>
                 ) : (
-                  <Button size="sm" variant="outline" onClick={() => provision(true)} disabled={provisioning}>
-                    {provisioning ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <KeyRound className="h-3 w-3 mr-1" />}
-                    Redefinir senha
+                  <Button type="button" size="sm" variant="secondary" disabled={!currentEmail}
+                    onClick={() => upd("login_email_confirmed", true)}>
+                    Confirmar
                   </Button>
                 )}
               </div>
+              <p className="text-[10px] text-muted-foreground">
+                Confirme o e-mail antes de gerar o acesso — o endereço pode já existir. Salve as alterações após confirmar.
+              </p>
             </div>
-            <Input placeholder="e-mail de login (padrão: nome@faceimob.com.br)" value={form.login_email || ""} onChange={e => upd("login_email", e.target.value)} />
-            {form.user_id && !creds && <p className="text-[11px] text-emerald-400">✔ Acesso já provisionado ({form.login_email || form.email})</p>}
-            {creds && (
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2">
+              {!form.user_id ? (
+                <Button size="sm" onClick={() => provision(false)} disabled={provisioning || !emailConfirmed}>
+                  {provisioning ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <KeyRound className="h-3 w-3 mr-1" />}
+                  Criar acesso
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => provision(true)} disabled={provisioning || !emailConfirmed}>
+                  {provisioning ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <KeyRound className="h-3 w-3 mr-1" />}
+                  Redefinir senha
+                </Button>
+              )}
+            </div>
+            {!emailConfirmed && <p className="text-[11px] text-amber-400">Confirme o e-mail para liberar a criação do acesso.</p>}
+
+            {/* Persistent credentials */}
+            {(creds || (form.user_id && savedPassword)) && (
               <div className="rounded-md bg-background/60 border p-2 text-xs space-y-1">
-                <p className="font-semibold text-emerald-400">Compartilhe estes dados com o colaborador:</p>
-                <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">Email:</span> <code className="flex-1">{creds.email}</code>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("email", creds.email)}>{copied === "email" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
+                <p className="font-semibold text-emerald-400">Credenciais do colaborador:</p>
+                <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">Email:</span>
+                  <code className="flex-1">{creds?.email || form.login_email}</code>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("email", creds?.email || form.login_email || "")}>{copied === "email" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
                 </div>
-                <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">Senha:</span> <code className="flex-1">{creds.password}</code>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("pw", creds.password)}>{copied === "pw" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
+                <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">Senha:</span>
+                  <code className="flex-1">{creds?.password || savedPassword}</code>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("pw", creds?.password || savedPassword || "")}>{copied === "pw" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
                 </div>
-                <p className="text-[10px] text-muted-foreground">A senha só é exibida agora — anote ou copie.</p>
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
+
+        {/* Badge (crachá) */}
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold flex items-center gap-2"><IdCard className="h-4 w-4 text-amber-400" /> Crachá</div>
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">Solicitado</Label>
+              <Switch checked={!!form.badge_requested} onCheckedChange={v => {
+                upd("badge_requested", v);
+                if (v && !form.badge_requested_at) upd("badge_requested_at", new Date().toISOString().slice(0, 10));
+              }} />
+            </div>
+          </div>
+          {form.badge_requested && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Data da solicitação">
+                <Input type="date" value={form.badge_requested_at || ""} onChange={e => upd("badge_requested_at", e.target.value)} />
+              </Field>
+              <Field label="Data de entrega">
+                <Input type="date" value={form.badge_delivered_at || ""} onChange={e => upd("badge_delivered_at", e.target.value)} />
+              </Field>
+              {form.badge_requested_at && !form.badge_delivered_at && (
+                <p className="col-span-2 text-[11px] text-amber-400">⏳ Crachá solicitado em {form.badge_requested_at} — aguardando entrega.</p>
+              )}
+              {form.badge_delivered_at && (
+                <p className="col-span-2 text-[11px] text-emerald-400">✔ Entregue em {form.badge_delivered_at}.</p>
+              )}
+            </div>
+          )}
+        </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
