@@ -51,6 +51,11 @@ export default function DailyReport() {
   const [monthTotals, setMonthTotals] = useState<Record<FieldKey, number>>(() => FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>));
   const [missingDays, setMissingDays] = useState<string[]>([]);
   const [loadingMonth, setLoadingMonth] = useState(false);
+  const [filledDates, setFilledDates] = useState<string[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingDay, setLoadingDay] = useState(false);
+
+
 
   const loadMonth = async (tid: string) => {
     setLoadingMonth(true);
