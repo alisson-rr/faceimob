@@ -216,14 +216,19 @@ export default function DailyReport() {
                           <TooltipTrigger asChild>
                             <button type="button"><Info className="h-3 w-3 text-muted-foreground hover:text-yellow-400" /></button>
                           </TooltipTrigger>
-                          <TooltipContent side="bottom" className="text-xs max-w-[220px]">
-                            <p className="font-bold mb-1">Como o XP é calculado:</p>
+                          <TooltipContent side="bottom" className="text-xs max-w-[260px]">
+                            <p className="font-bold mb-1">O que é o XP do checkpoint?</p>
+                            <p className="mb-2 text-muted-foreground">
+                              É a pontuação da sua equipe no dia. Cada ação da equipe soma XP e forma um placar visível para diretoria — quanto mais consistente o gerente registrar os checkpoints, maior o XP acumulado no mês e melhor a posição no ranking de gerentes.
+                            </p>
+                            <p className="font-bold mb-1">Como é calculado:</p>
                             <ul className="space-y-0.5">
                               <li>• Venda = <b>100 XP</b></li>
                               <li>• Análise aprovada = <b>40 XP</b></li>
                               <li>• Análise enviada = <b>10 XP</b></li>
                               <li>• Lead recebido = <b>1 XP</b></li>
                             </ul>
+                            <p className="mt-2 text-[10px] text-muted-foreground">Incentivo: recompensa o gerente que mantém a equipe ativa e o pipeline avançando — não só vendas, mas cada passo do funil conta.</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
