@@ -32,6 +32,8 @@ export default function Equipes() {
   const [rows, setRows] = useState<BrokerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [teamsByMgr, setTeamsByMgr] = useState<Record<string, { id: string; display_name: string | null }>>({});
+  const [teamNameDrafts, setTeamNameDrafts] = useState<Record<string, string>>({});
 
   // individual edit
   const [editDlg, setEditDlg] = useState<{ type: "manager" | "broker"; member: BrokerRow } | null>(null);
