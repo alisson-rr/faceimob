@@ -773,60 +773,39 @@ export default function Pipeline() {
               </Card>
             )}
 
-            {/* Right side: Actions + Metrics summary */}
-            <div className="flex-1 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={openNewDeal}><Plus className="h-4 w-4 mr-1" /> Adicionar Negócio</Button>
-                  <Button variant="outline" size="sm" onClick={exportCSV}><Download className="h-4 w-4 mr-1" /> Extrair Negócio</Button>
+            {/* Right side: compact metrics + view toggle */}
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Buscar cliente, projeto, corretor..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex border border-border rounded-lg overflow-hidden">
-                    <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                      <List className="h-4 w-4" />
-                    </button>
-                    <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                      <LayoutGrid className="h-4 w-4" />
-                    </button>
-                  </div>
+                <div className="flex border border-border rounded-lg overflow-hidden">
+                  <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                    <List className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
 
-              {/* Inline Metrics */}
-              <div className="flex flex-wrap gap-2 text-[11px]">
-                <span className="px-2 py-1 rounded border border-primary/50 text-primary font-bold">Negócios Ativos: {activeDeals}</span>
-                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Aprovado Total: {approvedDeals}</span>
-                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Aprovado Cond.: {approvedCond}</span>
-                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Em análise: {underAnalysis}</span>
-                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Esteira Ágil: {agileDeals}</span>
-                <span className="px-2 py-1 rounded border border-warning/50 text-warning font-bold">Pendentes: {pendingDeals}</span>
-                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Propostas Hoje: {proposalsToday}</span>
-                <span className="px-2 py-1 rounded border border-border text-muted-foreground">Propostas período: {proposalsPeriod}</span>
+              {/* Compact inline metrics */}
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <span><span className="text-primary font-semibold">{activeDeals}</span> ativos</span>
+                <span>•</span>
+                <span><span className="text-foreground font-medium">{approvedDeals}</span> aprov. total</span>
+                <span><span className="text-foreground font-medium">{approvedCond}</span> aprov. cond.</span>
+                <span><span className="text-foreground font-medium">{underAnalysis}</span> em análise</span>
+                <span><span className="text-warning font-semibold">{pendingDeals}</span> pendentes</span>
+                <span>•</span>
+                <span><span className="text-foreground font-medium">{proposalsToday}</span> hoje</span>
+                <span><span className="text-foreground font-medium">{proposalsPeriod}</span> no período</span>
               </div>
             </div>
           </div>
 
-          {/* Quick search bar */}
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Buscar cliente, projeto, corretor..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
 
-          {/* ── LEADERBOARD ──────────────────────────────── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {leaderboard.map((entry, i) => (
-              <div key={entry.id} className={cn("flex items-center gap-4 p-4 rounded-xl border", medalBgs[i])}>
-                <span className="text-3xl">{medals[i]}</span>
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg font-bold text-muted-foreground">
-                  {entry.user_name.charAt(0)}
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">{entry.user_name}</p>
-                  <p className="text-xs text-amber-400 font-semibold">{entry.points} pontos</p>
-                </div>
-              </div>
-            ))}
-          </div>
 
           {/* ── PIPELINE CONTENT ─────────────────────────── */}
           <div className="flex gap-4">
