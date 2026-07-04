@@ -142,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (!session?.user) setLoading(false);
+      setLoading(false);
     });
 
     // Then check existing session
@@ -162,7 +162,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Set demo profile
     setProfile({ name: 'Dianho Silva', email: 'dianho@faceimob.com', avatar_url: null });
-    setLoading(false);
 
     return () => subscription.unsubscribe();
   }, []);
