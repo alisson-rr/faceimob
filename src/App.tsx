@@ -54,13 +54,14 @@ const App = () => (
               <Route path="/leads" element={<Navigate to="/pipeline" replace />} />
               <Route path="/norteador" element={<Norteador />} />
               <Route path="/marketing" element={<Marketing />} />
-              <Route path="/team" element={<Team />} />
-              <Route path="/profile" element={<Profile />} />
+              <Route path="/equipes" element={<Equipes />} />
+              <Route path="/team" element={<Navigate to="/equipes" replace />} />
+              <Route path="/profile" element={<Navigate to="/equipes" replace />} />
               <Route path="/links" element={<Links />} />
               <Route path="/data" element={<DataManagement />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/admin/permissions" element={<AdminPermissions />} />
-              <Route path="/admin/teams" element={<AdminTeams />} />
+              <Route path="/admin/teams" element={<Navigate to="/equipes" replace />} />
               <Route path="/admin/developers" element={<AdminDevelopers />} />
               <Route path="/admin/daily-teams" element={<AdminDailyTeams />} />
               <Route path="/admin/daily-bi" element={<DailyBI />} />
