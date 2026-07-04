@@ -11,37 +11,53 @@ export function useAppUpdateAvailable() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.location.hostname === "localhost") return;
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") return;
 
     let initial: string | null = null;
+    let cancelled = false;
 
-    const fetchHash = async (): Promise<string | null> => {
+    const fetchSignature = async (): Promise<string | null> => {
       try {
-        const res = await fetch(`${window.location.origin}/index.html`, { cache: "no-store" });
+        const url = `${window.location.origin}/index.html?_=${Date.now()}`;
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) return null;
         const html = await res.text();
-        const m = html.match(/\/assets\/[A-Za-z0-9_-]+\.js/);
-        return m ? m[0] : null;
+        // Coleta TODOS os assets referenciados (js/css) — mais robusto que 1 bundle só
+        const matches = html.match(/\/assets\/[A-Za-z0-9_-]+\.(?:js|css)/g);
+        if (matches && matches.length) return matches.sort().join("|");
+        // Fallback: comprimento do HTML (muda quando o build muda)
+        return `len:${html.length}`;
       } catch {
         return null;
       }
     };
 
-    (async () => {
-      initial = await fetchHash();
-    })();
+    const init = async () => {
+      for (let i = 0; i < 5 && !cancelled; i++) {
+        const s = await fetchSignature();
+        if (s) { initial = s; return; }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    };
+    init();
 
     const check = async () => {
-      const current = await fetchHash();
-      if (current && initial && current !== initial) setHasUpdate(true);
+      if (!initial) { await init(); return; }
+      const current = await fetchSignature();
+      if (current && current !== initial) setHasUpdate(true);
     };
 
-    const interval = window.setInterval(check, 60_000);
+    const interval = window.setInterval(check, 30_000);
     const onFocus = () => check();
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
+      cancelled = true;
       window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
