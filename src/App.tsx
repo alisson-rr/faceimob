@@ -25,6 +25,7 @@ import Checkpoint from "@/pages/Checkpoint";
 import AdminDailyTeams from "@/pages/AdminDailyTeams";
 import Checkin from "@/pages/Checkin";
 import AdminAllowedIps from "@/pages/AdminAllowedIps";
+import MetaAdsSetup from "@/pages/MetaAdsSetup";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -72,6 +73,7 @@ const App = () => (
               <Route path="/checkpoint" element={<Checkpoint />} />
               <Route path="/checkin" element={<Checkin />} />
               <Route path="/admin/allowed-ips" element={<AdminAllowedIps />} />
+              <Route path="/admin/meta-ads" element={<MetaAdsSetup />} />
               <Route path="/admin/daily-bi" element={<Navigate to="/checkpoint" replace />} />
               <Route path="/gamification" element={<Gamification />} />
             </Route>
