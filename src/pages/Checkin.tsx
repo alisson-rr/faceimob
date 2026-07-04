@@ -53,8 +53,21 @@ export default function Checkin() {
   const action = async (act: "checkin" | "checkout") => {
     setLoading(true);
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess?.session) throw new Error("Você precisa estar logado. Faça login novamente.");
       const { data, error } = await supabase.functions.invoke("broker-checkin", { body: { action: act } });
-      if (error) throw new Error(error.message);
+      if (error) {
+        // Try to read the real error message from the function response body
+        let msg = error.message;
+        try {
+          const ctx: any = (error as any).context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
+        throw new Error(msg);
+      }
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success(act === "checkin" ? "Check-in realizado!" : "Check-out realizado!");
       await load();
