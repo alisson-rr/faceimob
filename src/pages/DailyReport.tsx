@@ -443,7 +443,7 @@ export default function DailyReport() {
                               key={b.broker_id}
                               className="grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                             >
-                              <div className="flex items-center gap-2 col-span-2 md:col-span-1 min-w-0">
+                              <div className="flex items-center gap-2 col-span-3 md:col-span-1 min-w-0">
                                 <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
                                   {b.broker_name.charAt(0).toUpperCase()}
                                 </div>
@@ -451,17 +451,18 @@ export default function DailyReport() {
                               </div>
                               {FIELDS.map((f) => (
                                 <div key={f.key} className="flex flex-col md:block min-w-0">
-                                  <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
+                                  <label className={`md:hidden text-[9px] uppercase font-bold ${f.color} truncate`}>{f.label}</label>
                                   <Input
                                     type="number" min={0} step={0.5}
+                                    inputMode="decimal"
                                     value={entries[b.broker_id]?.[f.key] ? entries[b.broker_id][f.key] : ""}
                                     onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
                                     placeholder="0"
-                                    className="h-8 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40"
+                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40"
                                   />
                                 </div>
                               ))}
-                              <Badge variant="outline" className="text-[10px] justify-center col-span-2 md:col-span-1">{total}</Badge>
+                              <Badge variant="outline" className="text-[10px] justify-center col-span-3 md:col-span-1">Total {total}</Badge>
                             </div>
                           );
                         })}
