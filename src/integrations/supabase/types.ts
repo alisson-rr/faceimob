@@ -99,6 +99,9 @@ export type Database = {
           active: boolean
           address: string | null
           avatar_url: string | null
+          badge_delivered_at: string | null
+          badge_requested: boolean
+          badge_requested_at: string | null
           birth_date: string | null
           celular: string | null
           cpf: string | null
@@ -113,6 +116,8 @@ export type Database = {
           id: string
           indication: string | null
           login_email: string | null
+          login_email_confirmed: boolean
+          login_password_plain: string | null
           login_provisioned_at: string | null
           manager_id: string | null
           name: string
@@ -125,6 +130,9 @@ export type Database = {
           active?: boolean
           address?: string | null
           avatar_url?: string | null
+          badge_delivered_at?: string | null
+          badge_requested?: boolean
+          badge_requested_at?: string | null
           birth_date?: string | null
           celular?: string | null
           cpf?: string | null
@@ -139,6 +147,8 @@ export type Database = {
           id?: string
           indication?: string | null
           login_email?: string | null
+          login_email_confirmed?: boolean
+          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           name: string
@@ -151,6 +161,9 @@ export type Database = {
           active?: boolean
           address?: string | null
           avatar_url?: string | null
+          badge_delivered_at?: string | null
+          badge_requested?: boolean
+          badge_requested_at?: string | null
           birth_date?: string | null
           celular?: string | null
           cpf?: string | null
@@ -165,6 +178,8 @@ export type Database = {
           id?: string
           indication?: string | null
           login_email?: string | null
+          login_email_confirmed?: boolean
+          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           name?: string
