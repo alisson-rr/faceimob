@@ -125,7 +125,9 @@ export default function DailyReport() {
   };
 
   const setField = (bid: string, key: FieldKey, val: string) => {
-    const n = Math.max(0, Math.min(9999, parseInt(val || "0", 10) || 0));
+    const raw = parseFloat((val || "0").replace(",", ".")) || 0;
+    // aceita apenas incrementos de 0.5
+    const n = Math.max(0, Math.min(9999, Math.round(raw * 2) / 2));
     setEntries((prev) => ({ ...prev, [bid]: { ...prev[bid], [key]: n } }));
   };
 
