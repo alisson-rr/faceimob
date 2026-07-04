@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
@@ -28,6 +28,16 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function RequireAuth() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return <div className="min-h-screen grid place-items-center bg-background text-sm text-muted-foreground">Carregando...</div>;
+  }
+
+  return session ? <AppLayout /> : <Navigate to="/login" replace />;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -39,7 +49,7 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/daily/:teamId" element={<DailyReport />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route element={<AppLayout />}>
+            <Route element={<RequireAuth />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/cca" element={<CcaPipeline />} />

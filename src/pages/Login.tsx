@@ -6,14 +6,34 @@ import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/
 import { Lock, Mail } from "lucide-react";
 import { motion } from "framer-motion";
 import logoWhite from "@/assets/logo-faceimob-white.png";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    setLoading(false);
+    if (error) {
+      toast({
+        title: "Não foi possível entrar",
+        description: "Confira seu e-mail e senha.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     sessionStorage.setItem("faceimob-just-logged", "true");
     navigate("/dashboard");
   };
@@ -72,8 +92,8 @@ export default function Login() {
                 </div>
               </motion.div>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-                <Button type="submit" className="w-full glow-primary pulse-glow">
-                  Entrar
+                <Button type="submit" className="w-full glow-primary pulse-glow" disabled={loading}>
+                  {loading ? "Entrando..." : "Entrar"}
                 </Button>
               </motion.div>
               <button type="button" className="w-full text-sm text-muted-foreground hover:text-primary transition-colors">

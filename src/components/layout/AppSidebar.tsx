@@ -50,7 +50,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { role } = useAuth();
+  const { role, signOut } = useAuth();
   const isActive = (path: string) => location.pathname === path;
   const isLight = theme === "light";
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -151,7 +151,7 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-destructive hover:text-destructive transition-all duration-200" onClick={() => navigate('/login')}>
+            <SidebarMenuButton className="text-destructive hover:text-destructive transition-all duration-200" onClick={async () => { await signOut(); navigate('/login'); }}>
               <LogOut className="h-4 w-4" />
               {!collapsed && <span>Sair</span>}
             </SidebarMenuButton>
