@@ -34,7 +34,6 @@ export type EditableBroker = {
   division?: string | null;
   indication?: string | null;
   login_email?: string | null;
-  login_password_plain?: string | null;
   login_email_confirmed?: boolean | null;
   badge_requested?: boolean | null;
   badge_requested_at?: string | null;
@@ -137,7 +136,7 @@ export function BrokerEditModal({
       setCreds({ email: (data as any).email, password: (data as any).password });
       upd("user_id", (data as any).user_id);
       upd("login_email", (data as any).email);
-      upd("login_password_plain", (data as any).password);
+      // password is shown once (in `creds`) and never persisted
       toast({ title: reset ? "Senha redefinida" : "Acesso criado com sucesso" });
       onSaved();
     } catch (e: any) {
@@ -245,7 +244,7 @@ export function BrokerEditModal({
           const suggested = suggestEmail(form.full_name, form.name);
           const currentEmail = (form.login_email || "").trim();
           const emailConfirmed = !!form.login_email_confirmed && !!currentEmail;
-          const savedPassword = form.login_password_plain || null;
+          const savedPassword: string | null = null;
           return (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
             <div className="text-sm font-semibold flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" /> Acesso ao sistema</div>

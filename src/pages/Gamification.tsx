@@ -131,7 +131,7 @@ export default function Gamification() {
     setLoading(true);
     try {
       const [brokersRes, dealsRes] = await Promise.all([
-        supabase.from('brokers').select('*').order('name'),
+        supabase.from('brokers').select('id,name,active,user_id,manager_id,director_id').order('name'),
         supabase.from('deals').select(`
           *,
           broker1:brokers!deals_broker1_id_fkey(name),

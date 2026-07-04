@@ -117,7 +117,6 @@ export type Database = {
           indication: string | null
           login_email: string | null
           login_email_confirmed: boolean
-          login_password_plain: string | null
           login_provisioned_at: string | null
           manager_id: string | null
           name: string
@@ -148,7 +147,6 @@ export type Database = {
           indication?: string | null
           login_email?: string | null
           login_email_confirmed?: boolean
-          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           name: string
@@ -179,7 +177,6 @@ export type Database = {
           indication?: string | null
           login_email?: string | null
           login_email_confirmed?: boolean
-          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           name?: string
@@ -957,6 +954,21 @@ export type Database = {
     Functions: {
       auto_checkout_slot: { Args: { _slot: string }; Returns: undefined }
       check_deal_inactivity: { Args: never; Returns: undefined }
+      get_broker_private: {
+        Args: { _id: string }
+        Returns: {
+          address: string
+          birth_date: string
+          celular: string
+          cpf: string
+          email: string
+          id: string
+          login_email: string
+          login_email_confirmed: boolean
+          login_provisioned_at: string
+          phone: string
+        }[]
+      }
       get_team_public_info: {
         Args: { _team_id: string }
         Returns: {
