@@ -197,7 +197,7 @@ export default function DailyReport() {
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
                 <CardContent className="p-3">
                   <label className="text-[10px] uppercase text-muted-foreground">Data</label>
-                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs" />
+                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:invert-[.75] [&::-webkit-calendar-picker-indicator]:sepia [&::-webkit-calendar-picker-indicator]:saturate-[6] [&::-webkit-calendar-picker-indicator]:hue-rotate-[358deg] [&::-webkit-calendar-picker-indicator]:brightness-[1.1] [&::-webkit-calendar-picker-indicator]:cursor-pointer" />
                 </CardContent>
               </Card>
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
@@ -206,16 +206,69 @@ export default function DailyReport() {
                   <Input value={filledBy} onChange={(e) => setFilledBy(e.target.value)} placeholder="Seu nome" className="h-8 text-xs" />
                 </CardContent>
               </Card>
-              <Card className="border-yellow-400/40 bg-yellow-400/5 backdrop-blur-xl">
-                <CardContent className="p-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase text-muted-foreground">XP acumulado</p>
-                    <p className="text-xl font-black text-yellow-400">{xpEarned.toLocaleString()}</p>
-                  </div>
-                  <Trophy className="h-8 w-8 text-yellow-400" />
-                </CardContent>
-              </Card>
+              <TooltipProvider>
+                <Card className="border-yellow-400/40 bg-yellow-400/5 backdrop-blur-xl">
+                  <CardContent className="p-3 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <p className="text-[10px] uppercase text-muted-foreground">XP do checkpoint</p>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button"><Info className="h-3 w-3 text-muted-foreground hover:text-yellow-400" /></button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="text-xs max-w-[220px]">
+                            <p className="font-bold mb-1">Como o XP é calculado:</p>
+                            <ul className="space-y-0.5">
+                              <li>• Venda = <b>100 XP</b></li>
+                              <li>• Análise aprovada = <b>40 XP</b></li>
+                              <li>• Análise enviada = <b>10 XP</b></li>
+                              <li>• Lead recebido = <b>1 XP</b></li>
+                            </ul>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xl font-black text-yellow-400">{xpEarned.toLocaleString()}</p>
+                    </div>
+                    <Trophy className="h-8 w-8 text-yellow-400" />
+                  </CardContent>
+                </Card>
+              </TooltipProvider>
             </div>
+
+            {/* Month funnel + missing days */}
+            <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-cyan-400" /> Funil do mês ({format(new Date(), "MMMM", { locale: ptBR })})
+                </CardTitle>
+                <Button size="sm" variant="outline" onClick={() => resolvedTeamId && loadMonth(resolvedTeamId)} disabled={loadingMonth} className="h-7 text-xs">
+                  {loadingMonth ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                  Atualizar
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                  {FIELDS.map(f => (
+                    <div key={f.key} className="px-2 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-center">
+                      <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
+                      <p className={`text-lg font-black ${f.color}`}>{monthTotals[f.key]}</p>
+                    </div>
+                  ))}
+                </div>
+                {missingDays.length > 0 && (
+                  <div className="rounded-md border border-rose-500/40 bg-rose-500/5 p-2 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <p className="font-bold text-rose-400">Checkpoint não efetuado ({missingDays.length} {missingDays.length === 1 ? "dia" : "dias"}):</p>
+                      <p className="text-muted-foreground mt-0.5">
+                        {missingDays.map(d => format(parseISO(d), "dd/MM", { locale: ptBR })).join(" • ")}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
 
             {/* Broker cards */}
             {roster.length === 0 ? (
