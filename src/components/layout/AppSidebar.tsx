@@ -25,8 +25,7 @@ const mainNav = [
   
   { title: "Norteador", url: "/norteador", icon: Compass, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Marketing", url: "/marketing", icon: Megaphone, roles: ['admin', 'partner', 'director', 'manager'] },
-  { title: "Equipe", url: "/team", icon: Users, roles: ['admin', 'partner', 'director', 'manager'] },
-  { title: "Pessoal", url: "/profile", icon: UserCircle, roles: ['admin', 'partner', 'director', 'manager', 'broker', 'cca'] },
+  { title: "Equipes", url: "/equipes", icon: Users, roles: ['admin', 'partner', 'director', 'manager', 'broker', 'cca'] },
   { title: "Links", url: "/links", icon: Link2, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Gamificação", url: "/gamification", icon: Trophy, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
 ];
