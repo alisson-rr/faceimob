@@ -20,6 +20,8 @@ const FIELDS = [
   { key: "leads", label: "Leads", color: "text-cyan-400" },
   { key: "ligacoes", label: "Ligações", color: "text-sky-400" },
   { key: "coleta_docs", label: "Coleta Docs", color: "text-indigo-400" },
+  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-fuchsia-400" },
+  { key: "visitas_realizadas", label: "Visita Real.", color: "text-pink-400" },
   { key: "analises", label: "Análise Env.", color: "text-amber-400" },
   { key: "aprovados", label: "Análise Aprov.", color: "text-emerald-400" },
   { key: "vendas", label: "Venda", color: "text-yellow-400" },
