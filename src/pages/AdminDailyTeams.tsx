@@ -65,7 +65,7 @@ export default function AdminDailyTeams() {
     qc.invalidateQueries({ queryKey: ["daily-teams"] });
   };
 
-  const linkFor = (t: any) => `${window.location.origin}/daily/${t.id}/${managerSlug(t.name)}`;
+  const linkFor = (t: any) => `${window.location.origin}/daily/${managerSlug(t.display_name || t.name)}`;
 
   const copy = (text: string, label = "Link") => {
     navigator.clipboard.writeText(text);
