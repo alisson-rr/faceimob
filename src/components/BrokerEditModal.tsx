@@ -34,6 +34,7 @@ export type EditableBroker = {
   division?: string | null;
   indication?: string | null;
   login_email?: string | null;
+  login_password_plain?: string | null;
   login_email_confirmed?: boolean | null;
   badge_requested?: boolean | null;
   badge_requested_at?: string | null;
