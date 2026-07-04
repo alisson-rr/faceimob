@@ -6,6 +6,8 @@ const EntrySchema = z.object({
   broker_id: z.string().uuid().nullable().optional(),
   broker_name: z.string().min(1).max(120),
   leads: z.number().int().min(0).max(9999).default(0),
+  ligacoes: z.number().int().min(0).max(9999).default(0),
+  coleta_docs: z.number().int().min(0).max(9999).default(0),
   atendimentos: z.number().int().min(0).max(9999).default(0),
   propostas: z.number().int().min(0).max(9999).default(0),
   visitas_agendadas: z.number().int().min(0).max(9999).default(0),
