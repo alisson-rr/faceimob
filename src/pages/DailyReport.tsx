@@ -492,20 +492,24 @@ export default function DailyReport() {
 
                 {/* Totals + submit */}
                 <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
-                  <CardContent className="p-4 flex flex-wrap items-center gap-4">
-                    {FIELDS.map((f) => (
-                      <div key={f.key} className="text-center">
-                        <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
-                        <p className={`text-lg font-black ${f.color}`}>{totals[f.key]}</p>
-                      </div>
-                    ))}
-                    <Button size="lg" variant="outline" onClick={() => setFormOpen(false)} className="ml-auto">
-                      Fechar
-                    </Button>
-                    <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
-                      {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                      Salvar Checkpoint
-                    </Button>
+                  <CardContent className="p-4 flex flex-col items-center gap-3">
+                    <div className="grid grid-cols-4 md:grid-cols-8 gap-3 justify-items-center w-full max-w-2xl">
+                      {FIELDS.map((f) => (
+                        <div key={f.key} className="text-center min-w-0">
+                          <p className="text-[9px] uppercase text-muted-foreground truncate">{f.label}</p>
+                          <p className={`text-lg font-black ${f.color}`}>{totals[f.key]}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2 w-full">
+                      <Button size="lg" variant="outline" onClick={() => setFormOpen(false)}>
+                        Fechar
+                      </Button>
+                      <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
+                        {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                        Salvar Checkpoint
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </>
