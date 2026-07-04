@@ -66,7 +66,8 @@ const App = () => (
               <Route path="/admin/teams" element={<Navigate to="/equipes" replace />} />
               <Route path="/admin/developers" element={<AdminDevelopers />} />
               <Route path="/admin/daily-teams" element={<AdminDailyTeams />} />
-              <Route path="/admin/daily-bi" element={<DailyBI />} />
+              <Route path="/checkpoint" element={<Checkpoint />} />
+              <Route path="/admin/daily-bi" element={<Navigate to="/checkpoint" replace />} />
               <Route path="/gamification" element={<Gamification />} />
             </Route>
             <Route path="*" element={<NotFound />} />
