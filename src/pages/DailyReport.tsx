@@ -277,7 +277,10 @@ export default function DailyReport() {
               <Card className="p-8 text-center text-sm text-muted-foreground">Nenhum corretor vinculado a esta equipe.</Card>
             ) : (
               <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
-                <div className="hidden md:grid grid-cols-[minmax(180px,1.4fr)_repeat(6,minmax(70px,1fr))_70px] gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground">
+                <div
+                  className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground"
+                  style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
+                >
                   <span>Corretor</span>
                   {FIELDS.map((f) => <span key={f.key} className={`text-center ${f.color}`}>{f.label}</span>)}
                   <span className="text-center">Total</span>
@@ -288,22 +291,23 @@ export default function DailyReport() {
                     return (
                       <div
                         key={b.broker_id}
-                        className="grid grid-cols-2 md:grid-cols-[minmax(180px,1.4fr)_repeat(6,minmax(70px,1fr))_70px] gap-2 px-3 py-2 items-center hover:bg-primary/5 transition"
+                        className="grid grid-cols-2 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition"
+                        style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
                       >
-                        <div className="flex items-center gap-2 col-span-2 md:col-span-1">
-                          <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-sm border border-primary/40 shrink-0">
+                        <div className="flex items-center gap-2 col-span-2 md:col-span-1 min-w-0">
+                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
                             {b.broker_name.charAt(0).toUpperCase()}
                           </div>
                           <span className="text-xs font-medium truncate">{b.broker_name}</span>
                         </div>
                         {FIELDS.map((f) => (
-                          <div key={f.key} className="flex flex-col md:block">
+                          <div key={f.key} className="flex flex-col md:block min-w-0">
                             <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
                             <Input
                               type="number" min={0} step={0.5}
                               value={entries[b.broker_id]?.[f.key] ?? 0}
                               onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
-                              className="h-8 text-center text-sm font-bold px-1"
+                              className="h-8 text-center text-xs font-bold px-1"
                             />
                           </div>
                         ))}
