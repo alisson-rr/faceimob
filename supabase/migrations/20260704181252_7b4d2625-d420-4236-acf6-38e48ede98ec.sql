@@ -1,0 +1,1 @@
+ALTER TABLE public.team_pins ADD COLUMN IF NOT EXISTS pin_plain text;

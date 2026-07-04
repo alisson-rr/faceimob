@@ -662,6 +662,7 @@ export type Database = {
           active: boolean
           created_at: string
           pin_hash: string
+          pin_plain: string | null
           team_id: string
           updated_at: string
         }
@@ -669,6 +670,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           pin_hash: string
+          pin_plain?: string | null
           team_id: string
           updated_at?: string
         }
@@ -676,6 +678,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           pin_hash?: string
+          pin_plain?: string | null
           team_id?: string
           updated_at?: string
         }
