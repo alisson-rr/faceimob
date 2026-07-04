@@ -84,6 +84,10 @@ export default function Equipes() {
     toast({ title: "Nome da equipe salvo" });
   };
 
+  useEffect(() => { load(); }, []);
+
+
+
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
   const managers = useMemo(() => rows.filter(r => r.role === "manager"), [rows]);
   const brokers = useMemo(() => rows.filter(r => r.role === "broker"), [rows]);
