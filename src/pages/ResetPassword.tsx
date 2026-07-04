@@ -26,11 +26,23 @@ export default function ResetPassword() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 8) return toast({ title: "Senha muito curta", description: "Use ao menos 8 caracteres.", variant: "destructive" });
+    if (password.length < 10) return toast({ title: "Senha muito curta", description: "Use ao menos 10 caracteres, misturando letras, números e símbolos.", variant: "destructive" });
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+      return toast({ title: "Senha fraca", description: "Inclua maiúscula, minúscula, número e símbolo.", variant: "destructive" });
+    }
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password });
     setLoading(false);
-    if (error) return toast({ title: "Falha ao redefinir", description: error.message, variant: "destructive" });
+    if (error) {
+      const weak = /weak|pwned|known/i.test(error.message);
+      return toast({
+        title: "Falha ao redefinir",
+        description: weak
+          ? "Essa senha já vazou em outros sites e não é segura. Escolha uma senha única, com maiúsculas, minúsculas, números e símbolos."
+          : error.message,
+        variant: "destructive",
+      });
+    }
     toast({ title: "Senha atualizada", description: "Faça login com a nova senha." });
     await supabase.auth.signOut();
     navigate("/login");
@@ -59,6 +71,9 @@ export default function ResetPassword() {
                 {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            <p className="text-[11px] text-muted-foreground -mt-2">
+              Use ao menos 10 caracteres com maiúscula, minúscula, número e símbolo. Evite senhas comuns (ex.: <code>Face@1234</code>).
+            </p>
             <Button type="submit" className="w-full" disabled={loading || !ready}>
               {loading ? "Salvando..." : ready ? "Redefinir senha" : "Aguardando link válido..."}
             </Button>
