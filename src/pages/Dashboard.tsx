@@ -392,15 +392,15 @@ export default function Dashboard() {
 function GeralTab({ byDev }: { byDev: any[] }) {
   const data = byDev.map((d) => ({ name: d.dev, Vendas: d.vendas, Propostas: d.prop, fill: d.color }));
   return (
-    <div className={cn(panel, "p-5")}>
-      <div className="flex items-center justify-between mb-4">
+    <div className={cn(panel, "p-4")}>
+      <div className="flex items-center justify-between mb-2">
         <div>
           <h3 className="font-bold text-sm">Panorama por Construtora</h3>
-          <p className="text-white/40 text-xs">Vendas vs Propostas · mês corrente</p>
+          <p className="text-white/40 text-[10px]">Vendas vs Propostas · mês corrente</p>
         </div>
         <Layers className="w-4 h-4 text-[#3B82F6]" />
       </div>
-      <div className="h-[280px]">
+      <div className="h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
