@@ -39,7 +39,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 overflow-hidden">
+    <div className="h-[100svh] w-full flex items-center justify-center bg-background p-4 overflow-hidden relative">
       {/* Animated background orbs */}
       <motion.div
         animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
