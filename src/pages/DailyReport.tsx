@@ -16,13 +16,11 @@ type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
 
 const FIELDS = [
   { key: "leads", label: "Leads", color: "text-cyan-400" },
-  { key: "atendimentos", label: "Atendimentos", color: "text-sky-400" },
-  { key: "propostas", label: "Propostas", color: "text-indigo-400" },
-  { key: "visitas_agendadas", label: "Visitas Agend.", color: "text-violet-400" },
-  { key: "visitas_realizadas", label: "Visitas Realiz.", color: "text-fuchsia-400" },
-  { key: "analises", label: "Análises", color: "text-amber-400" },
-  { key: "aprovados", label: "Aprovados", color: "text-emerald-400" },
-  { key: "vendas", label: "Vendas", color: "text-yellow-400" },
+  { key: "ligacoes", label: "Ligações", color: "text-sky-400" },
+  { key: "coleta_docs", label: "Coleta Docs", color: "text-indigo-400" },
+  { key: "analises", label: "Análise Env.", color: "text-amber-400" },
+  { key: "aprovados", label: "Análise Aprov.", color: "text-emerald-400" },
+  { key: "vendas", label: "Venda", color: "text-yellow-400" },
 ] as const;
 
 type FieldKey = typeof FIELDS[number]["key"];
