@@ -38,7 +38,7 @@ export default function AdminDailyTeams() {
     queryFn: async () => {
       const { data } = await supabase
         .from("teams")
-        .select("id, name, team_pins(active, pin_plain)")
+        .select("id, name, display_name, team_pins(active, pin_plain)")
         .order("name");
       return data ?? [];
     },
