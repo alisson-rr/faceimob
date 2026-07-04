@@ -94,7 +94,7 @@ export default function DailyReport() {
     if (!filledBy.trim()) return toast({ title: "Informe seu nome" });
     setSubmitting(true);
     const payload = {
-      team_id: teamId, pin, report_date: date, filled_by_name: filledBy, notes: notes || null,
+      team_id: resolvedTeamId, pin, report_date: date, filled_by_name: filledBy, notes: notes || null,
       entries: roster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })),
     };
     const { data, error } = await supabase.functions.invoke("submit-daily-report", { body: payload });
