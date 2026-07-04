@@ -160,18 +160,18 @@ export default function DailyReport() {
         <header className="text-center space-y-3">
           <img src={logoWhite} alt="Faceimob" className="h-12 mx-auto object-contain" />
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs uppercase tracking-widest">
-            <Swords className="h-3 w-3 text-primary" /> Missão Diária
+            <Swords className="h-3 w-3 text-primary" /> Checkpoint Diário
           </div>
           <h1 className="text-4xl font-black bg-gradient-to-r from-primary via-cyan-400 to-fuchsia-400 bg-clip-text text-transparent">
             {team?.team_name ?? "Carregando equipe..."}
           </h1>
-          <p className="text-xs text-muted-foreground">Registre a performance da guilda de hoje</p>
+          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de hoje</p>
         </header>
 
         {!unlocked ? (
           <Card className="max-w-md mx-auto border-primary/30 bg-card/60 backdrop-blur-xl">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg"><Lock className="h-4 w-4 text-primary" /> Portão da Guilda</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-lg"><Lock className="h-4 w-4 text-primary" /> Acesso da Equipe</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">Digite o PIN entregue pela administração.</p>
