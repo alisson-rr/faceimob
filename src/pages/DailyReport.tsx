@@ -331,7 +331,7 @@ export default function DailyReport() {
                 ))}
                 <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="ml-auto bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
                   {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                  Concluir Missão
+                  Salvar Checkpoint
                 </Button>
               </CardContent>
             </Card>
