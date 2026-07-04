@@ -272,21 +272,38 @@ export default function Equipes() {
               {filter(managers).filter(inScope).map(m => {
                 const dir = directors.find(d => d.id === m.director_id);
                 return (
-                  <div key={m.id} className="p-2 rounded-lg border border-border/30 bg-cyan-500/5 flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">{initials(m.name)}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{m.name}</p>
-                      <p className={cn("text-[10px] truncate", dir ? "text-blue-400" : "text-muted-foreground")}>
-                        {dir ? `↑ ${dir.name}` : "Sem diretor"}
-                      </p>
+                  <div key={m.id} className="p-2 rounded-lg border border-border/30 bg-cyan-500/5 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">{initials(m.name)}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{m.name}</p>
+                        <p className={cn("text-[10px] truncate", dir ? "text-blue-400" : "text-muted-foreground")}>
+                          {dir ? `↑ ${dir.name}` : "Sem diretor"}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400">
+                        {brokers.filter(b => b.manager_id === m.id).length}
+                      </Badge>
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", m)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
-                    <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400">
-                      {brokers.filter(b => b.manager_id === m.id).length}
-                    </Badge>
                     {canEdit && (
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", m)}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] uppercase text-muted-foreground shrink-0">Equipe</span>
+                        <Input
+                          value={teamNameDrafts[m.id] ?? ""}
+                          onChange={(e) => setTeamNameDrafts(p => ({ ...p, [m.id]: e.target.value }))}
+                          onBlur={() => {
+                            const current = teamsByMgr[m.id]?.display_name ?? "";
+                            if ((teamNameDrafts[m.id] ?? "") !== current) saveTeamName(m.id, m.name);
+                          }}
+                          placeholder={`Equipe ${m.name.split(" ")[0]}`}
+                          className="h-6 text-[11px] px-2"
+                        />
+                      </div>
                     )}
                   </div>
                 );
