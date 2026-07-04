@@ -361,6 +361,7 @@ export default function Equipes() {
                         />
                       </div>
                     )}
+                    <CredLine id={m.id} />
                   </div>
                 );
               })}
