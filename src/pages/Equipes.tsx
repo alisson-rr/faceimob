@@ -38,9 +38,8 @@ export default function Equipes() {
   const [teamsByMgr, setTeamsByMgr] = useState<Record<string, { id: string; display_name: string | null }>>({});
   const [teamNameDrafts, setTeamNameDrafts] = useState<Record<string, string>>({});
 
-  // individual edit
-  const [editDlg, setEditDlg] = useState<{ type: "manager" | "broker"; member: BrokerRow } | null>(null);
-  const [editTarget, setEditTarget] = useState("");
+  // individual edit — full profile modal
+  const [profileEdit, setProfileEdit] = useState<EditableBroker | null>(null);
 
   // bulk assign
   const [bulk, setBulk] = useState<{ column: "manager" | "broker" } | null>(null);
