@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp } from "lucide-react";
+import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -50,6 +51,11 @@ export default function DailyReport() {
   const [monthTotals, setMonthTotals] = useState<Record<FieldKey, number>>(() => FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>));
   const [missingDays, setMissingDays] = useState<string[]>([]);
   const [loadingMonth, setLoadingMonth] = useState(false);
+  const [filledDates, setFilledDates] = useState<string[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingDay, setLoadingDay] = useState(false);
+
+
 
   const loadMonth = async (tid: string) => {
     setLoadingMonth(true);
@@ -63,6 +69,7 @@ export default function DailyReport() {
       filledDates = ((data as any).filled_dates || []) as string[];
     }
     setMonthTotals(mt);
+    setFilledDates(filledDates);
     const filledSet = new Set(filledDates);
     const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
     const missing = days
@@ -73,14 +80,36 @@ export default function DailyReport() {
     setLoadingMonth(false);
   };
 
-  // Ao trocar a data, limpa os valores digitados para não confundir com o dia salvo anteriormente
+  const loadDay = async (targetDate: string) => {
+    if (!resolvedTeamId) return;
+    setLoadingDay(true);
+    const { data } = await supabase.rpc("get_daily_team_report" as any, { _team_id: resolvedTeamId, _date: targetDate });
+    setDate(targetDate);
+    setHistoryOpen(false);
+    if ((data as any)?.exists) {
+      const list = ((data as any).entries || []) as any[];
+      const next: EntryState = {};
+      roster.forEach((b) => {
+        const found = list.find((e) => e.broker_id === b.broker_id);
+        next[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: Number(found?.[f.key]) || 0 }), {} as Record<FieldKey, number>);
+      });
+      setEntries(next);
+      setNotes((data as any).notes || "");
+      setFilledBy((data as any).filled_by_name || "");
+    }
+    setLoadingDay(false);
+  };
+
+  // Ao trocar a data para um dia AINDA NÃO preenchido, limpa o formulário.
+  // Se o dia já tem checkpoint salvo, o loadDay carrega os valores.
   useEffect(() => {
     if (!roster.length) return;
+    if (filledDates.includes(date)) return;
     setEntries(roster.reduce((acc, b) => {
       acc[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
       return acc;
     }, {} as EntryState));
-  }, [date]);
+  }, [date, roster, filledDates]);
 
   useEffect(() => {
     if (!identifier) return;
@@ -252,10 +281,56 @@ export default function DailyReport() {
                   </CardTitle>
                   <p className="text-[10px] text-muted-foreground mt-0.5">Período considerado: segunda a domingo</p>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => resolvedTeamId && loadMonth(resolvedTeamId)} disabled={loadingMonth} className="h-7 text-xs">
-                  {loadingMonth ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
-                  Atualizar
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline" className="h-7 text-xs">
+                        <History className="h-3 w-3 mr-1" /> Histórico
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-base">
+                          <History className="h-4 w-4" /> Histórico do mês
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> Preenchido</span>
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" /> Não preenchido</span>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1.5">
+                          {eachDayOfInterval({ start: startOfMonth(new Date()), end: new Date() }).map((d) => {
+                            const ds = format(d, "yyyy-MM-dd");
+                            const done = filledDates.includes(ds);
+                            return (
+                              <button
+                                key={ds}
+                                onClick={() => loadDay(ds)}
+                                disabled={loadingDay}
+                                className={`relative aspect-square rounded-md text-xs font-bold flex flex-col items-center justify-center transition border ${
+                                  done
+                                    ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/25"
+                                    : "bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"
+                                }`}
+                                title={done ? "Preenchido — clique para editar" : "Não preenchido"}
+                              >
+                                <span className="text-sm leading-none">{format(d, "dd")}</span>
+                                <span className="text-[8px] uppercase mt-0.5 opacity-70">{format(d, "EEE", { locale: ptBR })}</span>
+                                {done && <Pencil className="absolute top-0.5 right-0.5 h-2.5 w-2.5 opacity-70" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {loadingDay && <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Carregando…</p>}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Button size="sm" variant="outline" onClick={() => resolvedTeamId && loadMonth(resolvedTeamId)} disabled={loadingMonth} className="h-7 text-xs">
+                    {loadingMonth ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                    Atualizar
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2">

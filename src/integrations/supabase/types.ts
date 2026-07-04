@@ -977,6 +977,10 @@ export type Database = {
         Args: { _team_id: string }
         Returns: Json
       }
+      get_daily_team_report: {
+        Args: { _date: string; _team_id: string }
+        Returns: Json
+      }
       get_team_public_info: {
         Args: { _team_id: string }
         Returns: {
