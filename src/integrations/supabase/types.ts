@@ -14,6 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
+      allowed_ips: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          ip: unknown
+          label: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ip: unknown
+          label?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ip?: unknown
+          label?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      broker_checkins: {
+        Row: {
+          auto_checkout: boolean
+          broker_id: string
+          checked_in_at: string
+          checked_out_at: string | null
+          created_at: string
+          id: string
+          ip: unknown
+          leads_received: number
+          slot: string
+          user_id: string | null
+          work_date: string
+        }
+        Insert: {
+          auto_checkout?: boolean
+          broker_id: string
+          checked_in_at?: string
+          checked_out_at?: string | null
+          created_at?: string
+          id?: string
+          ip?: unknown
+          leads_received?: number
+          slot: string
+          user_id?: string | null
+          work_date?: string
+        }
+        Update: {
+          auto_checkout?: boolean
+          broker_id?: string
+          checked_in_at?: string
+          checked_out_at?: string | null
+          created_at?: string
+          id?: string
+          ip?: unknown
+          leads_received?: number
+          slot?: string
+          user_id?: string | null
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_checkins_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brokers: {
         Row: {
           active: boolean
@@ -456,6 +536,42 @@ export type Database = {
           },
         ]
       }
+      distribution_windows: {
+        Row: {
+          active: boolean
+          checkin_start: string
+          checkout_time: string
+          created_at: string
+          distribution_start: string
+          id: string
+          label: string
+          slot: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          checkin_start: string
+          checkout_time: string
+          created_at?: string
+          distribution_start: string
+          id?: string
+          label: string
+          slot: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          checkin_start?: string
+          checkout_time?: string
+          created_at?: string
+          distribution_start?: string
+          id?: string
+          label?: string
+          slot?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           broker_id: string | null
@@ -791,6 +907,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_checkout_slot: { Args: { _slot: string }; Returns: undefined }
       check_deal_inactivity: { Args: never; Returns: undefined }
       get_team_public_info: {
         Args: { _team_id: string }
