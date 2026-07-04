@@ -180,7 +180,7 @@ export default function Pipeline() {
   const fetchBrokers = useCallback(async () => {
     setLoadingBrokers(true);
     try {
-      const { data, error } = await supabase.from('brokers').select('*').order('name');
+      const { data, error } = await supabase.from('brokers').select('id,name,active,user_id,manager_id,director_id').order('name');
       if (error) throw error;
       
       const mappedBrokers: Broker[] = (data || []).map(b => ({
