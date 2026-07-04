@@ -100,14 +100,16 @@ export default function DailyReport() {
     setLoadingDay(false);
   };
 
-  // Ao trocar a data, limpa os valores digitados para não confundir com o dia salvo anteriormente
+  // Ao trocar a data para um dia AINDA NÃO preenchido, limpa o formulário.
+  // Se o dia já tem checkpoint salvo, o loadDay carrega os valores.
   useEffect(() => {
     if (!roster.length) return;
+    if (filledDates.includes(date)) return;
     setEntries(roster.reduce((acc, b) => {
       acc[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
       return acc;
     }, {} as EntryState));
-  }, [date]);
+  }, [date, roster, filledDates]);
 
   useEffect(() => {
     if (!identifier) return;
