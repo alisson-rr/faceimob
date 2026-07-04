@@ -136,7 +136,7 @@ export function BrokerEditModal({
       setCreds({ email: (data as any).email, password: (data as any).password });
       upd("user_id", (data as any).user_id);
       upd("login_email", (data as any).email);
-      upd("login_password_plain", (data as any).password);
+      // password is shown once (in `creds`) and never persisted
       toast({ title: reset ? "Senha redefinida" : "Acesso criado com sucesso" });
       onSaved();
     } catch (e: any) {
