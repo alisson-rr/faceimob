@@ -107,7 +107,7 @@ export default function DailyReport() {
     setTimeout(() => setXpBurst(0), 3000);
   };
 
-  if (!teamId) return <div className="p-8 text-center">Equipe inválida.</div>;
+  if (!identifier) return <div className="p-8 text-center">Equipe inválida.</div>;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0F0E19] via-[#12122a] to-[#0F0E19] text-foreground">
