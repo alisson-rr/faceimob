@@ -69,6 +69,7 @@ export default function DailyReport() {
       filledDates = ((data as any).filled_dates || []) as string[];
     }
     setMonthTotals(mt);
+    setFilledDates(filledDates);
     const filledSet = new Set(filledDates);
     const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
     const missing = days
@@ -77,6 +78,26 @@ export default function DailyReport() {
       .filter(d => !filledSet.has(d));
     setMissingDays(missing);
     setLoadingMonth(false);
+  };
+
+  const loadDay = async (targetDate: string) => {
+    if (!resolvedTeamId) return;
+    setLoadingDay(true);
+    const { data } = await supabase.rpc("get_daily_team_report" as any, { _team_id: resolvedTeamId, _date: targetDate });
+    setDate(targetDate);
+    setHistoryOpen(false);
+    if ((data as any)?.exists) {
+      const list = ((data as any).entries || []) as any[];
+      const next: EntryState = {};
+      roster.forEach((b) => {
+        const found = list.find((e) => e.broker_id === b.broker_id);
+        next[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: Number(found?.[f.key]) || 0 }), {} as Record<FieldKey, number>);
+      });
+      setEntries(next);
+      setNotes((data as any).notes || "");
+      setFilledBy((data as any).filled_by_name || "");
+    }
+    setLoadingDay(false);
   };
 
   // Ao trocar a data, limpa os valores digitados para não confundir com o dia salvo anteriormente
