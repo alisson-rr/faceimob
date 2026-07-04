@@ -142,8 +142,9 @@ export default function DailyReport() {
       return toast({ title: "Falha ao enviar", description: (data as any)?.error || error?.message, variant: "destructive" });
     }
     setXpBurst(xpEarned);
-    toast({ title: `🎮 Missão concluída! +${xpEarned} XP`, description: "Dados da equipe registrados." });
+    toast({ title: `🎯 Checkpoint concluído! +${xpEarned} XP`, description: "Dados da equipe registrados." });
     setTimeout(() => setXpBurst(0), 3000);
+    if (resolvedTeamId) loadMonth(resolvedTeamId);
   };
 
   if (!identifier) return <div className="p-8 text-center">Equipe inválida.</div>;
