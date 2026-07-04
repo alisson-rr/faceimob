@@ -429,8 +429,7 @@ export default function DailyReport() {
                     )}
                     <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
                       <div
-                        className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground"
-                        style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
+                        className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                       >
                         <span>Corretor</span>
                         {FIELDS.map((f) => <span key={f.key} className={`text-center ${f.color}`}>{f.label}</span>)}
@@ -442,8 +441,7 @@ export default function DailyReport() {
                           return (
                             <div
                               key={b.broker_id}
-                              className="grid grid-cols-2 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition"
-                              style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
+                              className="grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                             >
                               <div className="flex items-center gap-2 col-span-2 md:col-span-1 min-w-0">
                                 <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
