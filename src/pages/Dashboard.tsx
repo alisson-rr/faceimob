@@ -445,41 +445,6 @@ function PropostasTab({
 }) {
   return (
     <>
-      {/* Propostas por construtora - cards coloridos */}
-      <section>
-        <SectionHeader icon={<Building2 className="w-4 h-4" />} title="Propostas por Construtora" caption="Vermelho quando zerado" />
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          {byDev.map((d, i) => {
-            const zero = d.prop === 0;
-            const color = zero ? "#EF4444" : d.color;
-            return (
-              <motion.div
-                key={d.dev}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.3, delay: i * 0.04 }}
-                className="relative p-4 rounded-xl border backdrop-blur-sm overflow-hidden"
-                style={{
-                  background: `linear-gradient(135deg, ${color}22, ${color}08)`,
-                  borderColor: `${color}55`,
-                  boxShadow: `0 10px 30px -10px ${color}55`,
-                }}
-              >
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-white/80 text-[10px] uppercase font-bold tracking-widest">{d.dev}</span>
-                  <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: color }}>
-                    <FileText className="w-3 h-3 text-white" />
-                  </div>
-                </div>
-                <p className="text-3xl font-black tabular-nums" style={{ color }}>{d.prop}</p>
-                <p className="text-white/40 text-[10px] mt-1 uppercase tracking-widest">
-                  {zero ? "Sem propostas" : `${brl(d.propVgv)} VGV`}
-                </p>
-              </motion.div>
-            );
-          })}
-        </div>
-      </section>
 
       {/* Ranking horizontal de propostas por construtora */}
       <section>
