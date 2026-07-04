@@ -13,6 +13,7 @@ import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO }
 import { ptBR } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import logoWhite from "@/assets/logo-faceimob-white.png";
+import { UpdateBanner } from "@/components/UpdateNotifier";
 
 type Roster = { broker_id: string; broker_name: string };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
@@ -199,6 +200,8 @@ export default function DailyReport() {
           </h1>
           <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de hoje</p>
         </header>
+
+        <UpdateBanner />
 
         {!unlocked ? (
           <Card className="max-w-md mx-auto border-primary/30 bg-card/60 backdrop-blur-xl">
