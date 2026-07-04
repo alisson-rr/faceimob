@@ -115,8 +115,12 @@ export default function Equipes() {
     list.filter(b => (search ? b.name.toLowerCase().includes(search.toLowerCase()) : true));
 
   const openEdit = async (_type: "manager" | "broker", m: BrokerRow) => {
-    const { data } = await supabase.from("brokers").select("*").eq("id", m.id).maybeSingle();
-    setProfileEdit((data as any) || (m as any));
+    const { data } = await supabase.from("brokers")
+      .select("id,name,full_name,avatar_url,role,manager_id,director_id,active,user_id,habilitation,creci,entry_date,division,indication,badge_requested,badge_requested_at,badge_delivered_at")
+      .eq("id", m.id).maybeSingle();
+    const { data: priv } = await supabase.rpc("get_broker_private", { _id: m.id });
+    const merged = { ...(data as any), ...((priv?.[0] as any) || {}) };
+    setProfileEdit(merged || (m as any));
   };
 
   const openBulk = (column: "manager" | "broker") => {
