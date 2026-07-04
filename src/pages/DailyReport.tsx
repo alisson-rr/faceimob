@@ -468,8 +468,10 @@ export default function DailyReport() {
                                     inputMode="decimal"
                                     value={entries[b.broker_id]?.[f.key] ? entries[b.broker_id][f.key] : ""}
                                     onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
+                                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                    onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault(); }}
                                     placeholder="0"
-                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40"
+                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0"
                                   />
                                 </div>
                               ))}
