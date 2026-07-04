@@ -448,9 +448,10 @@ export default function DailyReport() {
                                   <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
                                   <Input
                                     type="number" min={0} step={0.5}
-                                    value={entries[b.broker_id]?.[f.key] ?? 0}
+                                    value={entries[b.broker_id]?.[f.key] ? entries[b.broker_id][f.key] : ""}
                                     onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
-                                    className="h-8 text-center text-xs font-bold px-1"
+                                    placeholder="0"
+                                    className="h-8 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40"
                                   />
                                 </div>
                               ))}
