@@ -746,4 +746,145 @@ function SectionHeader({ icon, title, caption }: { icon: React.ReactNode; title:
   );
 }
 
+// ─── Tab: Leads ─────────────────────────────────────────────────────────────
+function LeadsTab() {
+  const { data: leads = [], isLoading } = useQuery({
+    queryKey: ["dashboard", "leads-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id,name,source,status,broker_name,created_at")
+        .order("created_at", { ascending: false })
+        .limit(2000);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+
+  const total = leads.length;
+  const now = new Date();
+  const today = leads.filter((l) => new Date(l.created_at).toDateString() === now.toDateString()).length;
+  const last7 = leads.filter((l) => (now.getTime() - new Date(l.created_at).getTime()) / 86400000 <= 7).length;
+  const converted = leads.filter((l) => (l.status || "").toLowerCase() === "converted").length;
+  const convRate = total ? Math.round((converted / total) * 100) : 0;
+
+  const bySource = useMemo(() => {
+    const m: Record<string, number> = {};
+    leads.forEach((l: any) => { const k = l.source || "Sem origem"; m[k] = (m[k] || 0) + 1; });
+    return Object.entries(m).map(([name, v], i) => ({ name, v, fill: SOURCE_COLORS[i % SOURCE_COLORS.length] }))
+      .sort((a, b) => b.v - a.v);
+  }, [leads]);
+
+  const byStatus = useMemo(() => {
+    const m: Record<string, number> = {};
+    leads.forEach((l: any) => { const k = l.status || "new"; m[k] = (m[k] || 0) + 1; });
+    return Object.entries(m).map(([name, v]) => ({ name, v }));
+  }, [leads]);
+
+  const byBroker = useMemo(() => {
+    const m: Record<string, number> = {};
+    leads.forEach((l: any) => { const k = l.broker_name || "Não atribuído"; m[k] = (m[k] || 0) + 1; });
+    return Object.entries(m).map(([name, v]) => ({ name, v })).sort((a, b) => b.v - a.v).slice(0, 10);
+  }, [leads]);
+
+  const byDay = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      m[format(d, "dd/MM")] = 0;
+    }
+    leads.forEach((l: any) => {
+      const k = format(new Date(l.created_at), "dd/MM");
+      if (k in m) m[k]++;
+    });
+    return Object.entries(m).map(([name, v]) => ({ name, v }));
+  }, [leads]);
+
+  const kpis = [
+    { l: "Total de Leads", v: total, color: "#3B82F6", Icon: Users },
+    { l: "Hoje", v: today, color: "#10B981", Icon: Flame },
+    { l: "Últimos 7 dias", v: last7, color: "#F59E0B", Icon: TrendingUp },
+    { l: "Convertidos", v: `${converted} · ${convRate}%`, color: "#8B5CF6", Icon: CheckCircle2 },
+  ];
+
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {kpis.map((k) => (
+          <div key={k.l} className="p-3 rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur-sm">
+            <div className="flex justify-between items-center mb-1">
+              <p className="text-white/50 text-[9px] font-bold uppercase tracking-widest">{k.l}</p>
+              <k.Icon className="w-3.5 h-3.5" style={{ color: k.color }} />
+            </div>
+            <p className="text-2xl font-black tabular-nums" style={{ color: k.color }}>{k.v}</p>
+          </div>
+        ))}
+      </div>
+
+      <section>
+        <SectionHeader icon={<TrendingUp className="w-4 h-4" />} title="Leads por dia" caption="Últimos 14 dias" />
+        <div className={cn(panel, "p-3 h-[240px]")}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={byDay}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <XAxis dataKey="name" stroke="rgba(255,255,255,0.4)" fontSize={11} />
+              <YAxis stroke="rgba(255,255,255,0.4)" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "#0B0D12", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} />
+              <Line type="monotone" dataKey="v" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      <section>
+        <SectionHeader icon={<Flame className="w-4 h-4" />} title="Por Origem" caption="Canais de aquisição" />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {bySource.length === 0 && <p className="text-white/40 text-xs col-span-full">Nenhum lead ainda. Conecte o Meta Ads em Marketing.</p>}
+          {bySource.map((s) => (
+            <div key={s.name} className="p-3 rounded-xl border backdrop-blur-sm"
+              style={{ background: `linear-gradient(135deg, ${s.fill}22, ${s.fill}08)`, borderColor: `${s.fill}55` }}>
+              <p className="text-white/70 text-[10px] uppercase font-bold tracking-widest">{s.name}</p>
+              <p className="text-2xl font-black tabular-nums mt-2" style={{ color: s.fill }}>{s.v}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <SectionHeader icon={<Layers className="w-4 h-4" />} title="Por Status" caption="Situação atual" />
+        <div className={cn(panel, "p-3 h-[240px]")}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={byStatus}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+              <XAxis dataKey="name" stroke="rgba(255,255,255,0.4)" fontSize={11} />
+              <YAxis stroke="rgba(255,255,255,0.4)" fontSize={11} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "#0B0D12", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} />
+              <Bar dataKey="v" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      <section>
+        <SectionHeader icon={<Users className="w-4 h-4" />} title="Top Corretores por Leads" caption="Top 10" />
+        <div className={cn(panel, "p-3")} style={{ height: Math.max(180, byBroker.length * 32 + 40) }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart layout="vertical" data={byBroker} margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+              <XAxis type="number" stroke="rgba(255,255,255,0.4)" fontSize={11} allowDecimals={false} />
+              <YAxis type="category" dataKey="name" stroke="rgba(255,255,255,0.6)" fontSize={11} width={120} />
+              <Tooltip contentStyle={{ background: "#0B0D12", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }} />
+              <Bar dataKey="v" fill="#10B981" radius={[0, 6, 6, 0]} label={{ position: "right", fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      {isLoading && <p className="text-white/40 text-xs">Carregando leads…</p>}
+    </>
+  );
+}
+
+
 export const brlFmt = brl;
