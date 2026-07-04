@@ -45,6 +45,41 @@ export default function DailyReport() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   const [xpBurst, setXpBurst] = useState(0);
+  const [monthTotals, setMonthTotals] = useState<Record<FieldKey, number>>(() => FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>));
+  const [missingDays, setMissingDays] = useState<string[]>([]);
+  const [loadingMonth, setLoadingMonth] = useState(false);
+
+  const loadMonth = async (tid: string) => {
+    setLoadingMonth(true);
+    const today = new Date();
+    const from = format(startOfMonth(today), "yyyy-MM-dd");
+    const to = format(today, "yyyy-MM-dd");
+    const { data: reps } = await supabase
+      .from("daily_team_reports")
+      .select("id, report_date")
+      .eq("team_id", tid)
+      .gte("report_date", from)
+      .lte("report_date", to);
+    const reports = (reps as any[]) || [];
+    const ids = reports.map(r => r.id);
+    let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
+    if (ids.length) {
+      const { data: ent } = await supabase
+        .from("daily_broker_entries")
+        .select("report_id,leads,ligacoes,coleta_docs,analises,aprovados,vendas")
+        .in("report_id", ids);
+      (ent || []).forEach((e: any) => FIELDS.forEach(f => { mt[f.key] += Number(e[f.key]) || 0; }));
+    }
+    setMonthTotals(mt);
+    const filledDates = new Set(reports.map(r => r.report_date));
+    const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
+    const missing = days
+      .filter(d => !isAfter(d, today) && !isWeekend(d))
+      .map(d => format(d, "yyyy-MM-dd"))
+      .filter(d => !filledDates.has(d));
+    setMissingDays(missing);
+    setLoadingMonth(false);
+  };
 
   useEffect(() => {
     if (!identifier) return;
