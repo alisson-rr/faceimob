@@ -21,6 +21,7 @@ import AdminDevelopers from "@/pages/AdminDevelopers";
 import Gamification from "@/pages/Gamification";
 import DailyReport from "@/pages/DailyReport";
 import DailyBI from "@/pages/DailyBI";
+import Checkpoint from "@/pages/Checkpoint";
 import AdminDailyTeams from "@/pages/AdminDailyTeams";
 import NotFound from "./pages/NotFound";
 
