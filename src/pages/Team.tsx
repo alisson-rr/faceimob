@@ -110,6 +110,8 @@ function PersonList({ items, onAdd, onEdit, onToggle, icon: Icon, color }: {
 
 export default function Team() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [managersFromDb, setManagersFromDb] = useState<Manager[]>([]);
+  const [directorsFromDb, setDirectorsFromDb] = useState<PersonEntity[]>([]);
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -130,14 +132,37 @@ export default function Team() {
       if (brokersRes.error) throw brokersRes.error;
       if (dealsRes.error) throw dealsRes.error;
 
-      const mappedBrokers: Broker[] = (brokersRes.data || []).map(b => ({
-        id: b.id,
-        name: b.name,
-        active: true,
-        monthly_sales: 0,
-        monthly_vgv: 0,
-        team: 'Default'
-      }));
+      const all = brokersRes.data || [];
+      const managerById = new Map(all.map((b: any) => [b.id, b.name]));
+
+      const mappedBrokers: Broker[] = all
+        .filter((b: any) => (b.role || 'broker') === 'broker')
+        .map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          active: b.active !== false,
+          monthly_sales: 0,
+          monthly_vgv: 0,
+          team: managerById.get(b.manager_id) || 'Sem time',
+        }));
+
+      const mappedManagers: Manager[] = all
+        .filter((b: any) => b.role === 'manager')
+        .map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          team: b.name,
+          active: b.active !== false,
+        } as Manager));
+
+      const mappedDirectors: PersonEntity[] = all
+        .filter((b: any) => b.role === 'director')
+        .map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          team: '',
+          active: b.active !== false,
+        }));
 
       const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
         ...d,
@@ -149,6 +174,8 @@ export default function Team() {
       })) as any[];
 
       setBrokers(mappedBrokers);
+      setManagersFromDb(mappedManagers);
+      setDirectorsFromDb(mappedDirectors);
       setDeals(mappedDeals);
     } catch (error) {
       console.error('Error fetching team data:', error);
@@ -157,6 +184,7 @@ export default function Team() {
       setLoading(false);
     }
   }, []);
+
 
   useEffect(() => {
     fetchRealData();
@@ -167,17 +195,15 @@ export default function Team() {
   const MAURICIO_TEAMS = ['Mauricio', 'Leonardo', 'Alisson'];
   const ALL_TEAMS = [...ARCHIMEDES_TEAMS, ...FABIO_TEAMS, ...MAURICIO_TEAMS];
 
-  const [managers, setManagers] = useState<Manager[]>(
-    MAURICIO_TEAMS.map((t, i) => ({ id: `mgr-${i}`, name: t, team: t, active: true } as Manager))
-  );
+  const [managers, setManagers] = useState<Manager[]>([]);
   const [teams, setTeams] = useState<TeamEntity[]>(
     ALL_TEAMS.map((t, i) => ({ id: String(i), name: t }))
   );
-  const [directors, setDirectors] = useState<PersonEntity[]>([
-    { id: 'dir-1', name: 'Archimedes', team: ARCHIMEDES_TEAMS.join(', '), active: true },
-    { id: 'dir-2', name: 'Fabio', team: FABIO_TEAMS.join(', '), active: true },
-    { id: 'dir-3', name: 'Mauricio', team: MAURICIO_TEAMS.join(', '), active: true },
-  ]);
+  const [directors, setDirectors] = useState<PersonEntity[]>([]);
+
+  useEffect(() => { setManagers(managersFromDb); }, [managersFromDb]);
+  useEffect(() => { setDirectors(directorsFromDb); }, [directorsFromDb]);
+
   const [ccaUsers, setCcaUsers] = useState<PersonEntity[]>([]);
   const [partners, setPartners] = useState<PersonEntity[]>([]);
   const [admins, setAdmins] = useState<PersonEntity[]>([]);
