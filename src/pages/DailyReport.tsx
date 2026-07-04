@@ -305,7 +305,7 @@ export default function DailyReport() {
                           <div key={f.key} className="flex flex-col md:block">
                             <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
                             <Input
-                              type="number" min={0}
+                              type="number" min={0} step={0.5}
                               value={entries[b.broker_id]?.[f.key] ?? 0}
                               onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
                               className="h-8 text-center text-sm font-bold px-1"
