@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import logoWhite from "@/assets/logo-faceimob-white.png";
 
 type Roster = { broker_id: string; broker_name: string };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
