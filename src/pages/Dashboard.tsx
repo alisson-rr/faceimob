@@ -281,6 +281,7 @@ export default function Dashboard() {
             ["geral", "Visão Geral"],
             ["propostas", "Propostas"],
             ["vendas", "Vendas"],
+            ["leads", "Leads"],
             ["metas", "Metas"],
           ] as [TabKey, string][]).map(([k, label]) => (
             <button
