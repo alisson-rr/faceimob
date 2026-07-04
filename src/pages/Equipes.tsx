@@ -114,26 +114,9 @@ export default function Equipes() {
   const filter = (list: BrokerRow[]) =>
     list.filter(b => (search ? b.name.toLowerCase().includes(search.toLowerCase()) : true));
 
-  const openEdit = (type: "manager" | "broker", m: BrokerRow) => {
-    setEditDlg({ type, member: m });
-    setEditTarget(type === "broker" ? m.manager_id ?? "" : m.director_id ?? "");
-  };
-
-  const saveEdit = async () => {
-    if (!editDlg || !editTarget) return;
-    setSaving(true);
-    const patch: any = editDlg.type === "broker"
-      ? { manager_id: editTarget, director_id: managers.find(m => m.id === editTarget)?.director_id ?? null }
-      : { director_id: editTarget };
-    const { error } = await supabase.from("brokers").update(patch).eq("id", editDlg.member.id);
-    if (!error && editDlg.type === "manager") {
-      await supabase.from("brokers").update({ director_id: editTarget }).eq("manager_id", editDlg.member.id);
-    }
-    setSaving(false);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
-    toast({ title: "Vínculo atualizado" });
-    setEditDlg(null); setEditTarget("");
-    load();
+  const openEdit = async (_type: "manager" | "broker", m: BrokerRow) => {
+    const { data } = await supabase.from("brokers").select("*").eq("id", m.id).maybeSingle();
+    setProfileEdit((data as any) || (m as any));
   };
 
   const openBulk = (column: "manager" | "broker") => {
