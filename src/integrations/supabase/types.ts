@@ -973,6 +973,10 @@ export type Database = {
           phone: string
         }[]
       }
+      get_daily_team_month_summary: {
+        Args: { _team_id: string }
+        Returns: Json
+      }
       get_team_public_info: {
         Args: { _team_id: string }
         Returns: {
