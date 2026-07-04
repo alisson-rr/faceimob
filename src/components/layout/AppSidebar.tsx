@@ -56,13 +56,13 @@ export function AppSidebar() {
   const handleMouseEnter = useCallback(() => {
     clearTimeout(hoverTimer.current);
     if (collapsed) {
-      hoverTimer.current = setTimeout(() => setOpen(true), 200);
+      hoverTimer.current = setTimeout(() => setOpen(true), 350);
     }
   }, [collapsed, setOpen]);
 
   const handleMouseLeave = useCallback(() => {
     clearTimeout(hoverTimer.current);
-    hoverTimer.current = setTimeout(() => setOpen(false), 300);
+    hoverTimer.current = setTimeout(() => setOpen(false), 500);
   }, [setOpen]);
 
   const visibleMainNav = mainNav.filter(item => item.roles.includes(role));
