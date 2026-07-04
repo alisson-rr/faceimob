@@ -55,10 +55,34 @@ export default function Equipes() {
       .order("name");
     if (error) toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
     setRows((data as any) || []);
+    const { data: teamsData } = await supabase.from("teams").select("id,manager_id,display_name,name");
+    const map: Record<string, { id: string; display_name: string | null }> = {};
+    const drafts: Record<string, string> = {};
+    (teamsData || []).forEach((t: any) => {
+      if (t.manager_id) {
+        map[t.manager_id] = { id: t.id, display_name: t.display_name };
+        drafts[t.manager_id] = t.display_name ?? "";
+      }
+    });
+    setTeamsByMgr(map);
+    setTeamNameDrafts(drafts);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  const saveTeamName = async (managerId: string, managerName: string) => {
+    const name = (teamNameDrafts[managerId] ?? "").trim();
+    const existing = teamsByMgr[managerId];
+    if (existing) {
+      const { error } = await supabase.from("teams").update({ display_name: name || null }).eq("id", existing.id);
+      if (error) return toast({ title: "Falha ao salvar", description: error.message, variant: "destructive" });
+      setTeamsByMgr(p => ({ ...p, [managerId]: { ...existing, display_name: name || null } }));
+    } else {
+      const { data, error } = await supabase.from("teams").insert({ manager_id: managerId, name: managerName, display_name: name || null }).select("id").single();
+      if (error) return toast({ title: "Falha ao criar equipe", description: error.message, variant: "destructive" });
+      setTeamsByMgr(p => ({ ...p, [managerId]: { id: data.id, display_name: name || null } }));
+    }
+    toast({ title: "Nome da equipe salvo" });
+  };
 
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
   const managers = useMemo(() => rows.filter(r => r.role === "manager"), [rows]);
