@@ -954,6 +954,21 @@ export type Database = {
     Functions: {
       auto_checkout_slot: { Args: { _slot: string }; Returns: undefined }
       check_deal_inactivity: { Args: never; Returns: undefined }
+      get_broker_private: {
+        Args: { _id: string }
+        Returns: {
+          address: string
+          birth_date: string
+          celular: string
+          cpf: string
+          email: string
+          id: string
+          login_email: string
+          login_email_confirmed: boolean
+          login_provisioned_at: string
+          phone: string
+        }[]
+      }
       get_team_public_info: {
         Args: { _team_id: string }
         Returns: {
@@ -979,23 +994,6 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
-      }
-      list_brokers_directory: {
-        Args: never
-        Returns: {
-          active: boolean
-          avatar_url: string
-          creci: string
-          director_id: string
-          division: string
-          entry_date: string
-          full_name: string
-          id: string
-          manager_id: string
-          name: string
-          role: string
-          user_id: string
-        }[]
       }
       rebuild_dashboard_bi_cache: { Args: never; Returns: undefined }
     }
