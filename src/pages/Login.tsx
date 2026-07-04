@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
-import { Lock, Mail } from "lucide-react";
+import { Lock, Mail, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +13,21 @@ export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+
+  const handleForgot = async () => {
+    const target = email.trim();
+    if (!target) return toast({ title: "Informe seu e-mail", description: "Digite o e-mail no campo acima e clique em 'Esqueceu sua senha?'.", variant: "destructive" });
+    setSendingReset(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(target, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setSendingReset(false);
+    if (error) return toast({ title: "Falha ao enviar", description: error.message, variant: "destructive" });
+    toast({ title: "E-mail enviado", description: "Verifique sua caixa de entrada para redefinir a senha." });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,7 +102,21 @@ export default function Login() {
               <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.4 }}>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input type="password" placeholder="Senha" className="pl-10 glass-subtle" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Senha"
+                    className="pl-10 pr-10 glass-subtle"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </motion.div>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
@@ -96,8 +124,13 @@ export default function Login() {
                   {loading ? "Entrando..." : "Entrar"}
                 </Button>
               </motion.div>
-              <button type="button" className="w-full text-sm text-muted-foreground hover:text-primary transition-colors">
-                Esqueceu sua senha?
+              <button
+                type="button"
+                onClick={handleForgot}
+                disabled={sendingReset}
+                className="w-full text-sm text-muted-foreground hover:text-primary transition-colors disabled:opacity-60"
+              >
+                {sendingReset ? "Enviando..." : "Esqueceu sua senha?"}
               </button>
             </form>
           </CardContent>
