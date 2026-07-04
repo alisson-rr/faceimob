@@ -120,6 +120,8 @@ export default function DailyReport() {
     });
     setEntries(initial);
     setUnlocked(true);
+    const tid = (data.info as any)?.team_id || resolvedTeamId;
+    if (tid) loadMonth(tid);
   };
 
   const setField = (bid: string, key: FieldKey, val: string) => {
