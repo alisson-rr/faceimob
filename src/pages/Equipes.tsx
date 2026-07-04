@@ -345,22 +345,22 @@ export default function Equipes() {
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
             {teamStats.map(t => (
-              <div key={t.manager.id} className="p-3 rounded-lg border border-border/30 bg-secondary/20">
+              <div key={t.manager.id} className="shrink-0 w-[280px] snap-start p-3 rounded-lg border border-border/30 bg-secondary/20">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">{initials(t.manager.name)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate">{t.manager.name}</p>
                     <p className="text-[10px] text-muted-foreground truncate">{t.director?.name ?? "—"}</p>
                   </div>
-                  <Badge className="text-[10px] bg-emerald-600/20 text-emerald-400 border-emerald-500/30">{t.size} corretores</Badge>
+                  <Badge className="text-[10px] bg-emerald-600/20 text-emerald-400 border-emerald-500/30 shrink-0">{t.size}</Badge>
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {t.brokers.slice(0, 6).map(b => (
+                  {t.brokers.map(b => (
                     <span key={b.id} className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
                   ))}
-                  {t.brokers.length > 6 && <span className="text-[10px] text-muted-foreground">+{t.brokers.length - 6}</span>}
+                  {t.brokers.length === 0 && <span className="text-[10px] text-muted-foreground">Sem corretores</span>}
                 </div>
               </div>
             ))}
