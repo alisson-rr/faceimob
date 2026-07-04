@@ -17,7 +17,6 @@ import Norteador from "@/pages/Norteador";
 import Links from "@/pages/Links";
 import CcaPipeline from "@/pages/CcaPipeline";
 import AdminPermissions from "@/pages/AdminPermissions";
-import AdminTeams from "@/pages/AdminTeams";
 import AdminDevelopers from "@/pages/AdminDevelopers";
 import Gamification from "@/pages/Gamification";
 import DailyReport from "@/pages/DailyReport";
