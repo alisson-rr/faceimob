@@ -46,6 +46,7 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/daily/:teamId" element={<DailyReport />} />
+            <Route path="/daily/:teamId/:slug" element={<DailyReport />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<RequireAuth />}>
               <Route path="/dashboard" element={<Dashboard />} />
