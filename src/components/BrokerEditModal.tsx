@@ -116,16 +116,36 @@ export function BrokerEditModal({
 
   const provision = async (reset = false) => {
     setProvisioning(true); setCreds(null);
-    const { data, error } = await supabase.functions.invoke("provision-broker-user", {
-      body: { broker_id: form.id, email: form.login_email || form.email, reset },
-    });
-    setProvisioning(false);
-    if (error || (data as any)?.error) {
-      return toast({ title: "Falha", description: (data as any)?.error || error?.message, variant: "destructive" });
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess?.session) throw new Error("Sessão expirada. Faça login novamente.");
+      const { data, error } = await supabase.functions.invoke("provision-broker-user", {
+        body: { broker_id: form.id, email: form.login_email || form.email, reset },
+        headers: { Authorization: `Bearer ${sess.session.access_token}` },
+      });
+      if (error) {
+        let msg = error.message;
+        try {
+          const ctx: any = (error as any).context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
+        throw new Error(msg);
+      }
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setCreds({ email: (data as any).email, password: (data as any).password });
+      upd("user_id", (data as any).user_id);
+      upd("login_email", (data as any).email);
+      upd("login_password_plain", (data as any).password);
+      toast({ title: reset ? "Senha redefinida" : "Acesso criado com sucesso" });
+      onSaved();
+    } catch (e: any) {
+      toast({ title: "Falha ao criar acesso", description: e.message, variant: "destructive" });
+    } finally {
+      setProvisioning(false);
     }
-    setCreds({ email: (data as any).email, password: (data as any).password });
-    toast({ title: reset ? "Senha redefinida" : "Acesso criado com sucesso" });
-    onSaved();
   };
 
   const copy = (label: string, val: string) => {
