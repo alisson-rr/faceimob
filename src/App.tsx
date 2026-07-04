@@ -22,6 +22,8 @@ import Gamification from "@/pages/Gamification";
 import DailyReport from "@/pages/DailyReport";
 import Checkpoint from "@/pages/Checkpoint";
 import AdminDailyTeams from "@/pages/AdminDailyTeams";
+import Checkin from "@/pages/Checkin";
+import AdminAllowedIps from "@/pages/AdminAllowedIps";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -66,6 +68,8 @@ const App = () => (
               <Route path="/admin/developers" element={<AdminDevelopers />} />
               <Route path="/admin/daily-teams" element={<AdminDailyTeams />} />
               <Route path="/checkpoint" element={<Checkpoint />} />
+              <Route path="/checkin" element={<Checkin />} />
+              <Route path="/admin/allowed-ips" element={<AdminAllowedIps />} />
               <Route path="/admin/daily-bi" element={<Navigate to="/checkpoint" replace />} />
               <Route path="/gamification" element={<Gamification />} />
             </Route>
