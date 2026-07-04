@@ -29,12 +29,14 @@ const mainNav = [
   { title: "Links", url: "/links", icon: Link2, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Gamificação", url: "/gamification", icon: Trophy, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Checkpoint", url: "/checkpoint", icon: Target, roles: ['admin', 'partner', 'director', 'manager'] },
+  { title: "Check-in", url: "/checkin", icon: LogIn, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
 ];
 
 const adminNav = [
   { title: "Permissões", url: "/admin/permissions", icon: Shield },
   { title: "Construtoras", url: "/admin/developers", icon: Building2 },
   { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound },
+  { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe },
 ];
 
 const systemNav = [
