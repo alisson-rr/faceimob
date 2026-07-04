@@ -479,6 +479,18 @@ export default function DailyReport() {
                   </CardContent>
                 </Card>
 
+                {emptyBrokers.length > 0 && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-amber-300">
+                        {emptyBrokers.length} de {roster.length} corretor{emptyBrokers.length === 1 ? "" : "es"} sem lançamentos
+                      </p>
+                      <p className="text-muted-foreground mt-0.5">{emptyBrokers.map((b) => b.broker_name).join(" • ")}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Totals + submit */}
                 <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
                   <CardContent className="p-4 flex flex-wrap items-center gap-4">
