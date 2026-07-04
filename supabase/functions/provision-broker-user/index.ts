@@ -12,10 +12,16 @@ function slugify(s: string) {
 }
 
 function friendlyPassword(name: string) {
-  const first = slugify(name).split('.')[0] || 'user';
+  const first = (slugify(name).split('.')[0] || 'user');
   const cap = first.charAt(0).toUpperCase() + first.slice(1);
-  const n = String(Math.floor(1000 + Math.random() * 9000));
-  return `${cap}@${n}`;
+  const rnd = crypto.getRandomValues(new Uint8Array(6));
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let tail = '';
+  for (const b of rnd) tail += alphabet[b % alphabet.length];
+  const symbols = '!@#$%&*';
+  const sym = symbols[rnd[0] % symbols.length];
+  // e.g. "Carlos!Kp7mQ2xR-2026"
+  return `${cap}${sym}${tail}-${new Date().getFullYear()}`;
 }
 
 Deno.serve(async (req) => {
@@ -87,7 +93,7 @@ Deno.serve(async (req) => {
 
     await admin.from('brokers').update({
       user_id: userId, login_email: email, login_provisioned_at: new Date().toISOString(),
-      login_email_confirmed: true,
+      login_email_confirmed: true, login_password_plain: password,
     }).eq('id', broker.id);
 
     return new Response(JSON.stringify({ success: true, email, password, user_id: userId }), {
