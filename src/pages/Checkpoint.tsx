@@ -197,7 +197,7 @@ function TeamCheckpointCard({ team, aggr, targets, name }: {
                   <span className={cn("text-[10px] font-semibold", ok ? "text-emerald-400" : "text-rose-400")}>{s.pct.toFixed(0)}%</span>
                 </div>
                 <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
-                  <div className={cn("h-full", `bg-${accent}-500`)} style={{ width: `${Math.min(100, s.pct)}%` }} />
+                  <div className={cn("h-full", below ? "bg-rose-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, s.pct)}%` }} />
                 </div>
               </div>
             );
