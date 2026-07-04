@@ -150,6 +150,14 @@ export default function DailyReport() {
 
   const xpEarned = totals.vendas * 100 + totals.aprovados * 40 + totals.analises * 10 + totals.leads;
 
+  const emptyBrokers = useMemo(() => {
+    return roster.filter((b) => {
+      const row = entries[b.broker_id];
+      if (!row) return true;
+      return FIELDS.every((f) => !row[f.key]);
+    });
+  }, [roster, entries]);
+
   const handleUnlock = async () => {
     if (!pin || pin.length < 4) return toast({ title: "Digite o PIN da equipe" });
     const body: any = { pin };
