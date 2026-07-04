@@ -135,6 +135,26 @@ export default function Equipes() {
 
   useEffect(() => { load(); }, []);
 
+  // Admin: fetch credentials for all brokers so they can be shown on each card
+  useEffect(() => {
+    if (!isAdmin || rows.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        rows.map(async r => {
+          const { data } = await supabase.rpc("get_broker_private", { _id: r.id });
+          const row: any = Array.isArray(data) ? data[0] : data;
+          return [r.id, { email: row?.login_email ?? null, password: row?.login_password_plain ?? null }] as const;
+        })
+      );
+      if (cancelled) return;
+      const map: Record<string, { email: string | null; password: string | null }> = {};
+      entries.forEach(([id, v]) => { map[id] = v; });
+      setCreds(map);
+    })();
+    return () => { cancelled = true; };
+  }, [isAdmin, rows]);
+
 
 
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
