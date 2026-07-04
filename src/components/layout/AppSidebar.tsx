@@ -56,13 +56,13 @@ export function AppSidebar() {
   const handleMouseEnter = useCallback(() => {
     clearTimeout(hoverTimer.current);
     if (collapsed) {
-      hoverTimer.current = setTimeout(() => setOpen(true), 200);
+      hoverTimer.current = setTimeout(() => setOpen(true), 350);
     }
   }, [collapsed, setOpen]);
 
   const handleMouseLeave = useCallback(() => {
     clearTimeout(hoverTimer.current);
-    hoverTimer.current = setTimeout(() => setOpen(false), 300);
+    hoverTimer.current = setTimeout(() => setOpen(false), 500);
   }, [setOpen]);
 
   const visibleMainNav = mainNav.filter(item => item.roles.includes(role));
@@ -90,7 +90,7 @@ export function AppSidebar() {
               {visibleMainNav.map((item, i) => (
                 <SidebarMenuItem key={item.title} style={{ animationDelay: `${i * 30}ms` }} className="animate-fade-in">
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <NavLink to={item.url} end activeClassName="bg-primary/15 text-primary glow-primary">
+                    <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">
                       <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
                       {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
                     </NavLink>
@@ -109,7 +109,7 @@ export function AppSidebar() {
                 {adminNav.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                      <NavLink to={item.url} end activeClassName="bg-primary/15 text-primary glow-primary">
+                      <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">
                         <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
                         {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
                       </NavLink>
@@ -128,7 +128,7 @@ export function AppSidebar() {
               {systemNav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <NavLink to={item.url} end activeClassName="bg-primary/15 text-primary glow-primary">
+                    <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">
                       <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
                       {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
                     </NavLink>

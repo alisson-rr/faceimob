@@ -95,7 +95,7 @@ export default function AppLayout() {
   }, []);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider style={{ "--sidebar-width": "13rem", "--sidebar-width-icon": "3.25rem" } as React.CSSProperties}>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
