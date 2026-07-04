@@ -9,9 +9,8 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Pipeline from "@/pages/Pipeline";
 
-import Team from "@/pages/Team";
+import Equipes from "@/pages/Equipes";
 import Marketing from "@/pages/Marketing";
-import Profile from "@/pages/Profile";
 import DataManagement from "@/pages/DataManagement";
 import SettingsPage from "@/pages/Settings";
 import Norteador from "@/pages/Norteador";
