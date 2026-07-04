@@ -118,22 +118,21 @@ export function BrokerEditModal({
     setProvisioning(true); setCreds(null);
     try {
       const { data: sess } = await supabase.auth.getSession();
-      if (!sess?.session) throw new Error("Sessão expirada. Faça login novamente.");
-      const { data, error } = await supabase.functions.invoke("provision-broker-user", {
-        body: { broker_id: form.id, email: form.login_email || form.email, reset },
-        headers: { Authorization: `Bearer ${sess.session.access_token}` },
+      const accessToken = sess?.session?.access_token;
+      if (!accessToken) throw new Error("Sessão expirada. Faça login novamente.");
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/provision-broker-user`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ broker_id: form.id, email: form.login_email || form.email, reset }),
       });
-      if (error) {
-        let msg = error.message;
-        try {
-          const ctx: any = (error as any).context;
-          if (ctx && typeof ctx.json === "function") {
-            const body = await ctx.json();
-            if (body?.error) msg = body.error;
-          }
-        } catch {}
-        throw new Error(msg);
-      }
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((data as any)?.error || `Falha na função (${response.status})`);
       if ((data as any)?.error) throw new Error((data as any).error);
       setCreds({ email: (data as any).email, password: (data as any).password });
       upd("user_id", (data as any).user_id);
