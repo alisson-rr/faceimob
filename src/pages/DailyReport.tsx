@@ -55,6 +55,16 @@ export default function DailyReport() {
   const [filledDates, setFilledDates] = useState<string[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [loadingDay, setLoadingDay] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const todayFilled = filledDates.includes(todayStr);
+
+  const openTodayForm = async () => {
+    setDate(todayStr);
+    setFormOpen(true);
+    await loadDay(todayStr);
+  };
 
 
 
