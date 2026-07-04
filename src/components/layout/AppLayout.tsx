@@ -124,8 +124,14 @@ export default function AppLayout() {
 
             <div className="flex items-center gap-3 ml-auto">
               <RoleSwitcher />
-              <span className="text-xs text-muted-foreground hidden sm:block">Dianho Silva</span>
-              <img src={dianhoAvatar} alt="User" className="w-8 h-8 rounded-full object-cover border-2 border-primary/30" />
+              <span className="text-xs text-muted-foreground hidden sm:block">{me?.name || user?.email || "Usuário"}</span>
+              {me?.avatar_url ? (
+                <img src={me.avatar_url} alt="User" className="w-8 h-8 rounded-full object-cover border-2 border-primary/30" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-primary/20 border-2 border-primary/30 flex items-center justify-center text-xs font-bold text-primary">
+                  {(me?.name || user?.email || "U").charAt(0).toUpperCase()}
+                </div>
+              )}
             </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">
