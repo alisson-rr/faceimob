@@ -13,6 +13,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
+import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
+
 interface BrokerRow {
   id: string;
   name: string;
@@ -21,6 +23,7 @@ interface BrokerRow {
   director_id: string | null;
   active: boolean;
   user_id: string | null;
+  avatar_url?: string | null;
 }
 
 const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
