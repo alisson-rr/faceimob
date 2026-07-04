@@ -698,52 +698,32 @@ export default function Pipeline() {
         </div>
       </div>
 
-      {/* ── ATTENDANCE QUEUE (Fila de Atendimento) ────────── */}
-      <Card className="glass border-border/50">
-        <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-              <Users className="h-5 w-5 text-muted-foreground" />
+      {/* ── ATTENDANCE QUEUE (compact) ────────── */}
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Users className="h-3.5 w-3.5" />
+          <span>Fila: <span className="font-semibold text-foreground">{queue.length}</span></span>
+          {queue.length > 0 && (
+            <div className="flex -space-x-1.5 ml-1">
+              {queue.slice(0, 5).map((q) => (
+                <div key={q.id} className="w-5 h-5 rounded-full bg-primary/20 border border-background flex items-center justify-center text-[9px] font-bold text-primary" title={`${q.name} - ${q.checkedInAt}`}>
+                  {q.name.charAt(0)}
+                </div>
+              ))}
+              {queue.length > 5 && <div className="w-5 h-5 rounded-full bg-muted border border-background flex items-center justify-center text-[9px] text-muted-foreground">+{queue.length - 5}</div>}
             </div>
-            <div>
-              <p className="font-semibold text-sm">Fila de Atendimento</p>
-              <p className="text-xs text-muted-foreground">{queue.length} corretor(es) na fila</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {queue.length > 0 && (
-              <div className="flex -space-x-2">
-                {queue.slice(0, 5).map((q) => (
-                  <div key={q.id} className="w-7 h-7 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center text-[10px] font-bold text-primary" title={`${q.name} - ${q.checkedInAt}`}>
-                    {q.name.charAt(0)}
-                  </div>
-                ))}
-                {queue.length > 5 && <div className="w-7 h-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] text-muted-foreground">+{queue.length - 5}</div>}
-              </div>
-            )}
-            {isInQueue ? (
-              <Button
-                size="sm"
-                onClick={handleCheckOut}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                <LogIn className="h-4 w-4 mr-1" />
-                Check-out
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={handleCheckIn}
-                disabled={checkingIn}
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-              >
-                <LogIn className="h-4 w-4 mr-1" />
-                {checkingIn ? "Verificando..." : "Check-in"}
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+          )}
+        </div>
+        {isInQueue ? (
+          <Button size="sm" variant="ghost" onClick={handleCheckOut} className="h-7 text-xs text-destructive hover:text-destructive">
+            <LogIn className="h-3.5 w-3.5 mr-1" /> Check-out
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={handleCheckIn} disabled={checkingIn} className="h-7 text-xs text-emerald-500 hover:text-emerald-500">
+            <LogIn className="h-3.5 w-3.5 mr-1" /> {checkingIn ? "..." : "Check-in"}
+          </Button>
+        )}
+      </div>
 
       {activeTab === "deals" ? (
         <>
