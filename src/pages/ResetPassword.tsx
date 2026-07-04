@@ -71,6 +71,9 @@ export default function ResetPassword() {
                 {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            <p className="text-[11px] text-muted-foreground -mt-2">
+              Use ao menos 10 caracteres com maiúscula, minúscula, número e símbolo. Evite senhas comuns (ex.: <code>Face@1234</code>).
+            </p>
             <Button type="submit" className="w-full" disabled={loading || !ready}>
               {loading ? "Salvando..." : ready ? "Redefinir senha" : "Aguardando link válido..."}
             </Button>
