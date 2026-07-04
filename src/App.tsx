@@ -25,6 +25,7 @@ import Checkpoint from "@/pages/Checkpoint";
 import AdminDailyTeams from "@/pages/AdminDailyTeams";
 import Checkin from "@/pages/Checkin";
 import AdminAllowedIps from "@/pages/AdminAllowedIps";
+import MetaAdsSetup from "@/pages/MetaAdsSetup";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
