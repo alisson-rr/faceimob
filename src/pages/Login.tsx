@@ -13,7 +13,21 @@ export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+
+  const handleForgot = async () => {
+    const target = email.trim();
+    if (!target) return toast({ title: "Informe seu e-mail", description: "Digite o e-mail no campo acima e clique em 'Esqueceu sua senha?'.", variant: "destructive" });
+    setSendingReset(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(target, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setSendingReset(false);
+    if (error) return toast({ title: "Falha ao enviar", description: error.message, variant: "destructive" });
+    toast({ title: "E-mail enviado", description: "Verifique sua caixa de entrada para redefinir a senha." });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
