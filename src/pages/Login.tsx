@@ -102,7 +102,21 @@ export default function Login() {
               <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.4 }}>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input type="password" placeholder="Senha" className="pl-10 glass-subtle" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Senha"
+                    className="pl-10 pr-10 glass-subtle"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </motion.div>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
@@ -110,8 +124,13 @@ export default function Login() {
                   {loading ? "Entrando..." : "Entrar"}
                 </Button>
               </motion.div>
-              <button type="button" className="w-full text-sm text-muted-foreground hover:text-primary transition-colors">
-                Esqueceu sua senha?
+              <button
+                type="button"
+                onClick={handleForgot}
+                disabled={sendingReset}
+                className="w-full text-sm text-muted-foreground hover:text-primary transition-colors disabled:opacity-60"
+              >
+                {sendingReset ? "Enviando..." : "Esqueceu sua senha?"}
               </button>
             </form>
           </CardContent>
