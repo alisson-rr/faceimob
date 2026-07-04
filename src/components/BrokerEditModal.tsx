@@ -89,6 +89,11 @@ export function BrokerEditModal({
       habilitation: form.habilitation, creci: form.creci, cpf: form.cpf,
       celular: form.celular, address: form.address, birth_date: form.birth_date || null,
       entry_date: form.entry_date || null, division: form.division, indication: form.indication,
+      login_email: form.login_email || null,
+      login_email_confirmed: !!form.login_email_confirmed,
+      badge_requested: !!form.badge_requested,
+      badge_requested_at: form.badge_requested_at || null,
+      badge_delivered_at: form.badge_delivered_at || null,
     };
     const { error } = await supabase.from("brokers").update(patch).eq("id", form.id);
     setSaving(false);
