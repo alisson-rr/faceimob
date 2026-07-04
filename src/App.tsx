@@ -22,6 +22,8 @@ import Gamification from "@/pages/Gamification";
 import DailyReport from "@/pages/DailyReport";
 import Checkpoint from "@/pages/Checkpoint";
 import AdminDailyTeams from "@/pages/AdminDailyTeams";
+import Checkin from "@/pages/Checkin";
+import AdminAllowedIps from "@/pages/AdminAllowedIps";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
