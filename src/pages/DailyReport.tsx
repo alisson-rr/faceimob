@@ -200,6 +200,8 @@ export default function DailyReport() {
           <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de hoje</p>
         </header>
 
+        <UpdateBanner />
+
         {!unlocked ? (
           <Card className="max-w-md mx-auto border-primary/30 bg-card/60 backdrop-blur-xl">
             <CardHeader>
