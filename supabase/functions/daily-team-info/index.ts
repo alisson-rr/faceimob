@@ -3,9 +3,15 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { z } from "npm:zod@3.23.8";
 
 const Schema = z.object({
-  team_id: z.string().uuid(),
+  team_id: z.string().uuid().optional().nullable(),
+  slug: z.string().min(1).max(120).optional().nullable(),
   pin: z.string().min(4).max(10).optional().nullable(),
 });
+
+function slugify(s: string) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/^equipe\s+/i, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 async function sha256(input: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
