@@ -237,9 +237,12 @@ export default function DailyReport() {
             {/* Month funnel + missing days */}
             <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-cyan-400" /> Funil do mês ({format(new Date(), "MMMM", { locale: ptBR })})
-                </CardTitle>
+                <div>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-cyan-400" /> Funil do mês ({format(new Date(), "MMMM", { locale: ptBR })})
+                  </CardTitle>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Período considerado: segunda a domingo</p>
+                </div>
                 <Button size="sm" variant="outline" onClick={() => resolvedTeamId && loadMonth(resolvedTeamId)} disabled={loadingMonth} className="h-7 text-xs">
                   {loadingMonth ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                   Atualizar
