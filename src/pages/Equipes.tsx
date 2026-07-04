@@ -365,33 +365,17 @@ export default function Equipes() {
         </CardContent>
       </Card>
 
-      {/* Individual edit dialog */}
-      <Dialog open={!!editDlg} onOpenChange={(o) => !o && setEditDlg(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-sm">
-              {editDlg?.type === "broker" ? "Atribuir Gerente" : "Atribuir Diretor"}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Membro: <strong>{editDlg?.member.name}</strong>
-            </DialogDescription>
-          </DialogHeader>
-          <Select value={editTarget} onValueChange={setEditTarget}>
-            <SelectTrigger className="text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-            <SelectContent>
-              {(editDlg?.type === "broker" ? managers : directors).map(o => (
-                <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setEditDlg(null)}>Cancelar</Button>
-            <Button size="sm" onClick={saveEdit} disabled={saving || !editTarget}>
-              {saving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />} Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Profile edit modal */}
+      <BrokerEditModal
+        open={!!profileEdit}
+        broker={profileEdit}
+        managers={managers.map(m => ({ id: m.id, name: m.name }))}
+        directors={directors.map(d => ({ id: d.id, name: d.name }))}
+        isAdmin={role === "admin"}
+        onClose={() => setProfileEdit(null)}
+        onSaved={() => { setProfileEdit(null); load(); }}
+      />
+
 
       {/* Bulk assign dialog */}
       <Dialog open={!!bulk} onOpenChange={(o) => !o && setBulk(null)}>
