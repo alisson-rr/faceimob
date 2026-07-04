@@ -53,9 +53,16 @@ const roleLabels: Record<string, string> = {
 export default function AppLayout() {
   const [showMotivation, setShowMotivation] = useState(false);
   const [topBrokers, setTopBrokers] = useState<TopBroker[]>([]);
+  const [me, setMe] = useState<{ name: string; avatar_url: string | null } | null>(null);
   const location = useLocation();
   const pageTitle = pageTitles[location.pathname] || "Faceimob";
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+
+  useEffect(() => {
+    if (!user?.id) { setMe(null); return; }
+    supabase.from("brokers").select("name, avatar_url").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => data && setMe(data as any));
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchTopBrokers = async () => {
