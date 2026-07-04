@@ -105,7 +105,8 @@ export default function DailyReport() {
       </div>
 
       <div className="relative max-w-6xl mx-auto p-6 space-y-6">
-        <header className="text-center space-y-2">
+        <header className="text-center space-y-3">
+          <img src={logoWhite} alt="Faceimob" className="h-12 mx-auto object-contain" />
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs uppercase tracking-widest">
             <Swords className="h-3 w-3 text-primary" /> Missão Diária
           </div>
