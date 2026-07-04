@@ -117,7 +117,6 @@ export type Database = {
           indication: string | null
           login_email: string | null
           login_email_confirmed: boolean
-          login_password_plain: string | null
           login_provisioned_at: string | null
           manager_id: string | null
           name: string
@@ -148,7 +147,6 @@ export type Database = {
           indication?: string | null
           login_email?: string | null
           login_email_confirmed?: boolean
-          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           name: string
@@ -179,7 +177,6 @@ export type Database = {
           indication?: string | null
           login_email?: string | null
           login_email_confirmed?: boolean
-          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           name?: string
@@ -982,6 +979,23 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      list_brokers_directory: {
+        Args: never
+        Returns: {
+          active: boolean
+          avatar_url: string
+          creci: string
+          director_id: string
+          division: string
+          entry_date: string
+          full_name: string
+          id: string
+          manager_id: string
+          name: string
+          role: string
+          user_id: string
+        }[]
       }
       rebuild_dashboard_bi_cache: { Args: never; Returns: undefined }
     }
