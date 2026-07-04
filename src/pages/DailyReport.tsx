@@ -52,31 +52,21 @@ export default function DailyReport() {
   const loadMonth = async (tid: string) => {
     setLoadingMonth(true);
     const today = new Date();
-    const from = format(startOfMonth(today), "yyyy-MM-dd");
-    const to = format(today, "yyyy-MM-dd");
-    const { data: reps } = await supabase
-      .from("daily_team_reports")
-      .select("id, report_date")
-      .eq("team_id", tid)
-      .gte("report_date", from)
-      .lte("report_date", to);
-    const reports = (reps as any[]) || [];
-    const ids = reports.map(r => r.id);
+    const { data, error } = await supabase.rpc("get_daily_team_month_summary" as any, { _team_id: tid });
     let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
-    if (ids.length) {
-      const { data: ent } = await supabase
-        .from("daily_broker_entries")
-        .select("report_id,leads,ligacoes,coleta_docs,analises,aprovados,vendas")
-        .in("report_id", ids);
-      (ent || []).forEach((e: any) => FIELDS.forEach(f => { mt[f.key] += Number(e[f.key]) || 0; }));
+    let filledDates: string[] = [];
+    if (!error && data) {
+      const totals = (data as any).totals || {};
+      FIELDS.forEach(f => { mt[f.key] = Number(totals[f.key]) || 0; });
+      filledDates = ((data as any).filled_dates || []) as string[];
     }
     setMonthTotals(mt);
-    const filledDates = new Set(reports.map(r => r.report_date));
+    const filledSet = new Set(filledDates);
     const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
     const missing = days
       .filter(d => !isAfter(d, today) && !isWeekend(d))
       .map(d => format(d, "yyyy-MM-dd"))
-      .filter(d => !filledDates.has(d));
+      .filter(d => !filledSet.has(d));
     setMissingDays(missing);
     setLoadingMonth(false);
   };
