@@ -307,6 +307,11 @@ export default function Equipes() {
                   <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400">
                     {managers.filter(m => m.director_id === d.id).length} ger.
                   </Badge>
+                  {canEdit && (
+                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", d)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </CardContent>
