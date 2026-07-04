@@ -48,6 +48,53 @@ export default function Equipes() {
   const [bulkFilter, setBulkFilter] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Admin-only: credentials of each broker/manager/director
+  const [creds, setCreds] = useState<Record<string, { email: string | null; password: string | null }>>({});
+  const [showPw, setShowPw] = useState<Set<string>>(new Set());
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const isAdmin = role === "admin";
+
+  const togglePw = (id: string) =>
+    setShowPw(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
+  const copyValue = async (key: string, val: string) => {
+    if (!val) return;
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1200);
+    } catch {}
+  };
+
+  const CredLine = ({ id }: { id: string }) => {
+    if (!isAdmin) return null;
+    const c = creds[id];
+    if (!c || (!c.email && !c.password)) return null;
+    const visible = showPw.has(id);
+    return (
+      <div className="flex items-center gap-1 mt-1 rounded-md bg-background/60 border border-border/30 px-1.5 py-1">
+        <KeyRound className="h-3 w-3 text-primary shrink-0" />
+        <code className="text-[10px] truncate flex-1" title={c.email || ""}>{c.email || "—"}</code>
+        <span className="text-muted-foreground text-[10px]">·</span>
+        <code className="text-[10px] font-mono">{c.password ? (visible ? c.password : "••••••••") : "—"}</code>
+        {c.password && (
+          <button type="button" onClick={() => togglePw(id)} className="text-muted-foreground hover:text-foreground p-0.5" title={visible ? "Ocultar" : "Mostrar"}>
+            {visible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </button>
+        )}
+        {c.password && (
+          <button type="button" onClick={() => copyValue(`pw-${id}`, c.password!)} className="text-muted-foreground hover:text-foreground p-0.5" title="Copiar senha">
+            {copiedKey === `pw-${id}` ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase
