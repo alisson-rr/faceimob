@@ -60,9 +60,22 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!user?.id) { setMe(null); return; }
-    supabase.from("brokers").select("name, avatar_url").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => data && setMe(data as any));
-  }, [user?.id]);
+    (async () => {
+      const { data: byId } = await supabase
+        .from("brokers").select("name, avatar_url")
+        .eq("user_id", user.id).maybeSingle();
+      if (byId) { setMe(byId as any); return; }
+      if (user.email) {
+        const { data: byEmail } = await supabase
+          .from("brokers").select("name, avatar_url")
+          .or(`login_email.eq.${user.email},email.eq.${user.email}`)
+          .maybeSingle();
+        if (byEmail) { setMe(byEmail as any); return; }
+      }
+      const meta: any = user.user_metadata || {};
+      setMe({ name: meta.name || meta.full_name || user.email || "Usuário", avatar_url: meta.avatar_url || null });
+    })();
+  }, [user?.id, user?.email]);
 
   useEffect(() => {
     const fetchTopBrokers = async () => {
