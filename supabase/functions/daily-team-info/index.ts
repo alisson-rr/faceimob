@@ -37,6 +37,9 @@ Deno.serve(async (req) => {
       });
     }
 
+    const { data: teamRow } = await supabase.from("teams").select("display_name").eq("id", team_id).maybeSingle();
+    if (teamRow?.display_name) (info as any).team_name = teamRow.display_name;
+
     let roster: Array<{ broker_id: string; broker_name: string }> = [];
     let pin_ok = false;
     if (pin) {
