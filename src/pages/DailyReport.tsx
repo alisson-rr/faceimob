@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2 } from "lucide-react";
+import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
 type Roster = { broker_id: string; broker_name: string };
@@ -43,6 +45,41 @@ export default function DailyReport() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   const [xpBurst, setXpBurst] = useState(0);
+  const [monthTotals, setMonthTotals] = useState<Record<FieldKey, number>>(() => FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>));
+  const [missingDays, setMissingDays] = useState<string[]>([]);
+  const [loadingMonth, setLoadingMonth] = useState(false);
+
+  const loadMonth = async (tid: string) => {
+    setLoadingMonth(true);
+    const today = new Date();
+    const from = format(startOfMonth(today), "yyyy-MM-dd");
+    const to = format(today, "yyyy-MM-dd");
+    const { data: reps } = await supabase
+      .from("daily_team_reports")
+      .select("id, report_date")
+      .eq("team_id", tid)
+      .gte("report_date", from)
+      .lte("report_date", to);
+    const reports = (reps as any[]) || [];
+    const ids = reports.map(r => r.id);
+    let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
+    if (ids.length) {
+      const { data: ent } = await supabase
+        .from("daily_broker_entries")
+        .select("report_id,leads,ligacoes,coleta_docs,analises,aprovados,vendas")
+        .in("report_id", ids);
+      (ent || []).forEach((e: any) => FIELDS.forEach(f => { mt[f.key] += Number(e[f.key]) || 0; }));
+    }
+    setMonthTotals(mt);
+    const filledDates = new Set(reports.map(r => r.report_date));
+    const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
+    const missing = days
+      .filter(d => !isAfter(d, today) && !isWeekend(d))
+      .map(d => format(d, "yyyy-MM-dd"))
+      .filter(d => !filledDates.has(d));
+    setMissingDays(missing);
+    setLoadingMonth(false);
+  };
 
   useEffect(() => {
     if (!identifier) return;
@@ -83,6 +120,8 @@ export default function DailyReport() {
     });
     setEntries(initial);
     setUnlocked(true);
+    const tid = (data.info as any)?.team_id || resolvedTeamId;
+    if (tid) loadMonth(tid);
   };
 
   const setField = (bid: string, key: FieldKey, val: string) => {
@@ -103,8 +142,9 @@ export default function DailyReport() {
       return toast({ title: "Falha ao enviar", description: (data as any)?.error || error?.message, variant: "destructive" });
     }
     setXpBurst(xpEarned);
-    toast({ title: `🎮 Missão concluída! +${xpEarned} XP`, description: "Dados da equipe registrados." });
+    toast({ title: `🎯 Checkpoint concluído! +${xpEarned} XP`, description: "Dados da equipe registrados." });
     setTimeout(() => setXpBurst(0), 3000);
+    if (resolvedTeamId) loadMonth(resolvedTeamId);
   };
 
   if (!identifier) return <div className="p-8 text-center">Equipe inválida.</div>;
@@ -120,18 +160,18 @@ export default function DailyReport() {
         <header className="text-center space-y-3">
           <img src={logoWhite} alt="Faceimob" className="h-12 mx-auto object-contain" />
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs uppercase tracking-widest">
-            <Swords className="h-3 w-3 text-primary" /> Missão Diária
+            <Swords className="h-3 w-3 text-primary" /> Checkpoint Diário
           </div>
           <h1 className="text-4xl font-black bg-gradient-to-r from-primary via-cyan-400 to-fuchsia-400 bg-clip-text text-transparent">
             {team?.team_name ?? "Carregando equipe..."}
           </h1>
-          <p className="text-xs text-muted-foreground">Registre a performance da guilda de hoje</p>
+          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de hoje</p>
         </header>
 
         {!unlocked ? (
           <Card className="max-w-md mx-auto border-primary/30 bg-card/60 backdrop-blur-xl">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg"><Lock className="h-4 w-4 text-primary" /> Portão da Guilda</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-lg"><Lock className="h-4 w-4 text-primary" /> Acesso da Equipe</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-xs text-muted-foreground">Digite o PIN entregue pela administração.</p>
@@ -157,7 +197,7 @@ export default function DailyReport() {
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
                 <CardContent className="p-3">
                   <label className="text-[10px] uppercase text-muted-foreground">Data</label>
-                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs" />
+                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:invert-[.75] [&::-webkit-calendar-picker-indicator]:sepia [&::-webkit-calendar-picker-indicator]:saturate-[6] [&::-webkit-calendar-picker-indicator]:hue-rotate-[358deg] [&::-webkit-calendar-picker-indicator]:brightness-[1.1] [&::-webkit-calendar-picker-indicator]:cursor-pointer" />
                 </CardContent>
               </Card>
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
@@ -166,16 +206,69 @@ export default function DailyReport() {
                   <Input value={filledBy} onChange={(e) => setFilledBy(e.target.value)} placeholder="Seu nome" className="h-8 text-xs" />
                 </CardContent>
               </Card>
-              <Card className="border-yellow-400/40 bg-yellow-400/5 backdrop-blur-xl">
-                <CardContent className="p-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase text-muted-foreground">XP acumulado</p>
-                    <p className="text-xl font-black text-yellow-400">{xpEarned.toLocaleString()}</p>
-                  </div>
-                  <Trophy className="h-8 w-8 text-yellow-400" />
-                </CardContent>
-              </Card>
+              <TooltipProvider>
+                <Card className="border-yellow-400/40 bg-yellow-400/5 backdrop-blur-xl">
+                  <CardContent className="p-3 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <p className="text-[10px] uppercase text-muted-foreground">XP do checkpoint</p>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button"><Info className="h-3 w-3 text-muted-foreground hover:text-yellow-400" /></button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="text-xs max-w-[220px]">
+                            <p className="font-bold mb-1">Como o XP é calculado:</p>
+                            <ul className="space-y-0.5">
+                              <li>• Venda = <b>100 XP</b></li>
+                              <li>• Análise aprovada = <b>40 XP</b></li>
+                              <li>• Análise enviada = <b>10 XP</b></li>
+                              <li>• Lead recebido = <b>1 XP</b></li>
+                            </ul>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-xl font-black text-yellow-400">{xpEarned.toLocaleString()}</p>
+                    </div>
+                    <Trophy className="h-8 w-8 text-yellow-400" />
+                  </CardContent>
+                </Card>
+              </TooltipProvider>
             </div>
+
+            {/* Month funnel + missing days */}
+            <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-cyan-400" /> Funil do mês ({format(new Date(), "MMMM", { locale: ptBR })})
+                </CardTitle>
+                <Button size="sm" variant="outline" onClick={() => resolvedTeamId && loadMonth(resolvedTeamId)} disabled={loadingMonth} className="h-7 text-xs">
+                  {loadingMonth ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                  Atualizar
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                  {FIELDS.map(f => (
+                    <div key={f.key} className="px-2 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-center">
+                      <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
+                      <p className={`text-lg font-black ${f.color}`}>{monthTotals[f.key]}</p>
+                    </div>
+                  ))}
+                </div>
+                {missingDays.length > 0 && (
+                  <div className="rounded-md border border-rose-500/40 bg-rose-500/5 p-2 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <p className="font-bold text-rose-400">Checkpoint não efetuado ({missingDays.length} {missingDays.length === 1 ? "dia" : "dias"}):</p>
+                      <p className="text-muted-foreground mt-0.5">
+                        {missingDays.map(d => format(parseISO(d), "dd/MM", { locale: ptBR })).join(" • ")}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
 
             {/* Broker cards */}
             {roster.length === 0 ? (
@@ -238,7 +331,7 @@ export default function DailyReport() {
                 ))}
                 <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="ml-auto bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
                   {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                  Concluir Missão
+                  Salvar Checkpoint
                 </Button>
               </CardContent>
             </Card>
