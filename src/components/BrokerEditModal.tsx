@@ -244,7 +244,7 @@ export function BrokerEditModal({
           const suggested = suggestEmail(form.full_name, form.name);
           const currentEmail = (form.login_email || "").trim();
           const emailConfirmed = !!form.login_email_confirmed && !!currentEmail;
-          const savedPassword = form.login_password_plain || null;
+          const savedPassword: string | null = null;
           return (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
             <div className="text-sm font-semibold flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" /> Acesso ao sistema</div>
