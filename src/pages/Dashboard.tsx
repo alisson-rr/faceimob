@@ -382,6 +382,7 @@ export default function Dashboard() {
             {tab === "metas" && (
               <MetasTab pct={stats.pct} vendas={stats.vendas} meta={stats.meta} monthly={monthlyByYear} />
             )}
+            {tab === "leads" && <LeadsTab />}
           </motion.div>
         </AnimatePresence>
       </div>
