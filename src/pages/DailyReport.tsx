@@ -249,8 +249,9 @@ export default function DailyReport() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
                 <CardContent className="p-3">
-                  <label className="text-[10px] uppercase text-muted-foreground">Data</label>
-                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:invert-[.75] [&::-webkit-calendar-picker-indicator]:sepia [&::-webkit-calendar-picker-indicator]:saturate-[6] [&::-webkit-calendar-picker-indicator]:hue-rotate-[358deg] [&::-webkit-calendar-picker-indicator]:brightness-[1.1] [&::-webkit-calendar-picker-indicator]:cursor-pointer" />
+                  <label className="text-[10px] uppercase text-muted-foreground">Data {formOpen && date !== todayStr ? "(editando)" : "(hoje)"}</label>
+                  <Input type="date" value={date} readOnly disabled className="h-8 text-xs [color-scheme:dark] opacity-70 cursor-not-allowed" />
+
                 </CardContent>
               </Card>
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
