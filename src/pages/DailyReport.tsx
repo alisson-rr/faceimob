@@ -378,75 +378,119 @@ export default function DailyReport() {
             </Card>
 
 
-            {/* Broker cards */}
-            {roster.length === 0 ? (
-              <Card className="p-8 text-center text-sm text-muted-foreground">Nenhum corretor vinculado a esta equipe.</Card>
+            {!formOpen ? (
+              <Card className="border-primary/40 bg-gradient-to-br from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl">
+                <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
+                  <Sparkles className="h-8 w-8 text-primary" />
+                  <div>
+                    <p className="text-sm font-bold">Pronto para registrar o dia?</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Clique abaixo para abrir o checkpoint de <b>hoje ({format(new Date(), "dd/MM", { locale: ptBR })})</b> com todos os corretores da equipe.
+                    </p>
+                    {todayFilled && (
+                      <p className="text-xs text-emerald-400 mt-2 flex items-center justify-center gap-1">
+                        <Info className="h-3 w-3" /> O checkpoint de hoje já foi preenchido — você pode editar os valores.
+                      </p>
+                    )}
+                  </div>
+                  <Button size="lg" onClick={openTodayForm} disabled={loadingDay || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
+                    {loadingDay ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Pencil className="h-4 w-4 mr-2" />}
+                    {todayFilled ? "Editar daily de hoje" : "Preencher o daily"}
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground">Para editar outros dias, use o botão <b>Histórico</b> acima.</p>
+                </CardContent>
+              </Card>
             ) : (
-              <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
-                <div
-                  className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground"
-                  style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
-                >
-                  <span>Corretor</span>
-                  {FIELDS.map((f) => <span key={f.key} className={`text-center ${f.color}`}>{f.label}</span>)}
-                  <span className="text-center">Total</span>
-                </div>
-                <div className="divide-y divide-border/30">
-                  {roster.map((b) => {
-                    const total = FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0);
-                    return (
+              <>
+                {/* Broker cards */}
+                {roster.length === 0 ? (
+                  <Card className="p-8 text-center text-sm text-muted-foreground">Nenhum corretor vinculado a esta equipe.</Card>
+                ) : (
+                  <>
+                    {date !== todayStr && (
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-400" />
+                        Editando um dia anterior: <b>{format(parseISO(date), "dd/MM/yyyy", { locale: ptBR })}</b>
+                      </div>
+                    )}
+                    {date === todayStr && todayFilled && (
+                      <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-2 text-xs flex items-center gap-2">
+                        <Info className="h-4 w-4 text-emerald-400" />
+                        Este dia já foi preenchido — alterações vão sobrescrever o checkpoint.
+                      </div>
+                    )}
+                    <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
                       <div
-                        key={b.broker_id}
-                        className="grid grid-cols-2 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition"
+                        className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground"
                         style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
                       >
-                        <div className="flex items-center gap-2 col-span-2 md:col-span-1 min-w-0">
-                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
-                            {b.broker_name.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="text-xs font-medium truncate">{b.broker_name}</span>
-                        </div>
-                        {FIELDS.map((f) => (
-                          <div key={f.key} className="flex flex-col md:block min-w-0">
-                            <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
-                            <Input
-                              type="number" min={0} step={0.5}
-                              value={entries[b.broker_id]?.[f.key] ?? 0}
-                              onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
-                              className="h-8 text-center text-xs font-bold px-1"
-                            />
-                          </div>
-                        ))}
-                        <Badge variant="outline" className="text-[10px] justify-center col-span-2 md:col-span-1">{total}</Badge>
+                        <span>Corretor</span>
+                        {FIELDS.map((f) => <span key={f.key} className={`text-center ${f.color}`}>{f.label}</span>)}
+                        <span className="text-center">Total</span>
                       </div>
-                    );
-                  })}
-                </div>
-              </Card>
+                      <div className="divide-y divide-border/30">
+                        {roster.map((b) => {
+                          const total = FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0);
+                          return (
+                            <div
+                              key={b.broker_id}
+                              className="grid grid-cols-2 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition"
+                              style={{ gridTemplateColumns: `minmax(160px,1.4fr) repeat(${FIELDS.length}, minmax(60px,1fr)) 64px` }}
+                            >
+                              <div className="flex items-center gap-2 col-span-2 md:col-span-1 min-w-0">
+                                <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
+                                  {b.broker_name.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-xs font-medium truncate">{b.broker_name}</span>
+                              </div>
+                              {FIELDS.map((f) => (
+                                <div key={f.key} className="flex flex-col md:block min-w-0">
+                                  <label className={`md:hidden text-[9px] uppercase font-bold ${f.color}`}>{f.label}</label>
+                                  <Input
+                                    type="number" min={0} step={0.5}
+                                    value={entries[b.broker_id]?.[f.key] ?? 0}
+                                    onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
+                                    className="h-8 text-center text-xs font-bold px-1"
+                                  />
+                                </div>
+                              ))}
+                              <Badge variant="outline" className="text-[10px] justify-center col-span-2 md:col-span-1">{total}</Badge>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  </>
+                )}
+
+                <Card className="border-primary/20 bg-card/60 backdrop-blur-xl">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Flame className="h-4 w-4 text-orange-400" /> Observações do dia</CardTitle></CardHeader>
+                  <CardContent>
+                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Contexto, dificuldades, vitórias..." rows={3} className="text-xs" />
+                  </CardContent>
+                </Card>
+
+                {/* Totals + submit */}
+                <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
+                  <CardContent className="p-4 flex flex-wrap items-center gap-4">
+                    {FIELDS.map((f) => (
+                      <div key={f.key} className="text-center">
+                        <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
+                        <p className={`text-lg font-black ${f.color}`}>{totals[f.key]}</p>
+                      </div>
+                    ))}
+                    <Button size="lg" variant="outline" onClick={() => setFormOpen(false)} className="ml-auto">
+                      Fechar
+                    </Button>
+                    <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
+                      {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                      Salvar Checkpoint
+                    </Button>
+                  </CardContent>
+                </Card>
+              </>
             )}
 
-            <Card className="border-primary/20 bg-card/60 backdrop-blur-xl">
-              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Flame className="h-4 w-4 text-orange-400" /> Observações do dia</CardTitle></CardHeader>
-              <CardContent>
-                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Contexto, dificuldades, vitórias..." rows={3} className="text-xs" />
-              </CardContent>
-            </Card>
-
-            {/* Totals + submit */}
-            <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
-              <CardContent className="p-4 flex flex-wrap items-center gap-4">
-                {FIELDS.map((f) => (
-                  <div key={f.key} className="text-center">
-                    <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
-                    <p className={`text-lg font-black ${f.color}`}>{totals[f.key]}</p>
-                  </div>
-                ))}
-                <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="ml-auto bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
-                  {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                  Salvar Checkpoint
-                </Button>
-              </CardContent>
-            </Card>
           </>
         )}
 
