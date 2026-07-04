@@ -31,13 +31,13 @@ const pageTitles: Record<string, string> = {
   "/leads": "Leads",
   "/norteador": "Norteador",
   "/marketing": "Marketing",
-  "/team": "Equipe",
-  "/profile": "Pessoal",
+  "/equipes": "Equipes",
+  
   "/links": "Links",
   "/data": "Dados",
   "/settings": "Configurações",
   "/admin/permissions": "Permissões",
-  "/admin/teams": "Gestão de Equipes",
+  
   "/admin/developers": "Construtoras & CCA",
 };
 
