@@ -153,64 +153,74 @@ function TeamCheckpointCard({ team, aggr, targets, name }: {
   const pctVendas = aggr.aprovadas ? (aggr.vendas / aggr.aprovadas) * 100 : 0;
 
   const stages = [
-    { label: "Leads", value: aggr.leads, pct: 100, target: 100, color: "cyan" },
-    { label: "Análise Enviada", value: aggr.enviadas, pct: pctEnviadas, target: targets.analise_enviada_pct, color: "amber" },
-    { label: "Análise Aprovada", value: aggr.aprovadas, pct: pctAprovadas, target: targets.aprovada_pct, color: "emerald" },
-    { label: "Venda", value: aggr.vendas, pct: pctVendas, target: targets.venda_pct, color: "yellow" },
+    { label: "Leads", value: aggr.leads, pct: 100, target: 100 },
+    { label: "Análise Enviada", value: aggr.enviadas, pct: pctEnviadas, target: targets.analise_enviada_pct },
+    { label: "Análise Aprovada", value: aggr.aprovadas, pct: pctAprovadas, target: targets.aprovada_pct },
+    { label: "Venda", value: aggr.vendas, pct: pctVendas, target: targets.venda_pct },
   ];
 
-  const anyBelow = stages.slice(1).some(s => s.pct < s.target);
+  const belowStages = stages.slice(1).filter(s => s.pct < s.target);
+  const anyBelow = belowStages.length > 0;
+  const worst = belowStages.sort((a, b) => (a.pct - a.target) - (b.pct - b.target))[0];
 
   return (
     <Card className="border-primary/20 bg-card/60 backdrop-blur-xl">
-      <CardHeader className="pb-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-base flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-primary" /> {name}
+      <CardHeader className="py-2 px-3 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <TrendingUp className="h-3.5 w-3.5 text-primary" /> {name}
         </CardTitle>
         {anyBelow ? (
-          <Badge variant="outline" className="border-rose-500/50 text-rose-400 text-[10px]">
-            <AlertTriangle className="h-3 w-3 mr-1" /> Abaixo do ideal
+          <Badge variant="outline" className="border-rose-500/50 text-rose-400 text-[9px] py-0 h-5">
+            <AlertTriangle className="h-2.5 w-2.5 mr-1" /> Gargalo: {worst.label}
           </Badge>
         ) : (
-          <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 text-[10px]">No ritmo</Badge>
+          <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 text-[9px] py-0 h-5">No ritmo</Badge>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <CardContent className="px-3 pb-3 pt-0 space-y-2">
+        <div className="grid grid-cols-4 gap-1.5">
           {stages.map((s, i) => {
             const below = i > 0 && s.pct < s.target;
+            const ok = i === 0 || s.pct >= s.target;
+            const accent = below ? "rose" : "emerald";
             return (
               <div key={s.label} className={cn(
-                "p-3 rounded-lg border bg-secondary/20 relative",
-                below ? "border-rose-500/50 bg-rose-500/5" : "border-border/40",
+                "px-2 py-1.5 rounded-md border bg-secondary/20 flex flex-col gap-0.5",
+                below ? "border-rose-500/50 bg-rose-500/5" : "border-emerald-500/30",
               )}>
-                <p className="text-[10px] uppercase text-muted-foreground">{s.label}</p>
-                <p className={cn("text-2xl font-black", `text-${s.color}-400`)}>{s.value}</p>
-                <div className="flex items-center justify-between text-[10px] mt-1">
-                  <span className={cn(below ? "text-rose-400" : "text-muted-foreground")}>
-                    {s.pct.toFixed(1)}%
-                  </span>
-                  {i > 0 && <span className="text-muted-foreground">meta {s.target}%</span>}
+                <div className="flex items-baseline justify-between gap-1">
+                  <span className="text-[9px] uppercase text-muted-foreground truncate">{s.label}</span>
+                  {i > 0 && <span className="text-[8px] text-muted-foreground shrink-0">m{s.target}%</span>}
                 </div>
-                <div className="mt-1 h-1 rounded-full bg-border/50 overflow-hidden">
-                  <div className={cn("h-full", below ? "bg-rose-500" : `bg-${s.color}-500`)} style={{ width: `${Math.min(100, s.pct)}%` }} />
+                <div className="flex items-baseline justify-between gap-1">
+                  <span className={cn("text-lg font-black leading-none", ok ? "text-emerald-400" : "text-rose-400")}>{s.value}</span>
+                  <span className={cn("text-[10px] font-semibold", ok ? "text-emerald-400" : "text-rose-400")}>{s.pct.toFixed(0)}%</span>
+                </div>
+                <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
+                  <div className={cn("h-full", below ? "bg-rose-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, s.pct)}%` }} />
                 </div>
               </div>
             );
           })}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-2 rounded-md border border-border/40 bg-secondary/20 flex items-center justify-between">
-            <span className="text-[11px] uppercase text-muted-foreground">Ligações</span>
+        <div className="flex flex-wrap items-center gap-2 text-[10px]">
+          <span className="px-2 py-0.5 rounded border border-border/40 bg-secondary/20">
+            <span className="text-muted-foreground uppercase mr-1">Ligações</span>
             <span className="font-bold text-sky-400">{aggr.ligacoes}</span>
-          </div>
-          <div className="p-2 rounded-md border border-border/40 bg-secondary/20 flex items-center justify-between">
-            <span className="text-[11px] uppercase text-muted-foreground">Coleta de docs</span>
+          </span>
+          <span className="px-2 py-0.5 rounded border border-border/40 bg-secondary/20">
+            <span className="text-muted-foreground uppercase mr-1">Coleta docs</span>
             <span className="font-bold text-indigo-400">{aggr.coleta_docs}</span>
-          </div>
+          </span>
+          {anyBelow && (
+            <span className="ml-auto text-rose-400">
+              ⚠ {worst.label}: {worst.pct.toFixed(1)}% (faltam {(worst.target - worst.pct).toFixed(1)}pp para meta {worst.target}%)
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
+
