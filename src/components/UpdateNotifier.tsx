@@ -13,40 +13,35 @@ export function useAppUpdateAvailable() {
     if (typeof window === "undefined") return;
     if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") return;
 
-    let initial: string | null = null;
-    let cancelled = false;
+    // Assinatura dos assets ATUALMENTE carregados nesta aba (do DOM, não do fetch)
+    const loadedSignature = (() => {
+      const scripts = Array.from(document.querySelectorAll('script[src*="/assets/"]'))
+        .map((s) => new URL((s as HTMLScriptElement).src, window.location.origin).pathname);
+      const links = Array.from(document.querySelectorAll('link[href*="/assets/"]'))
+        .map((l) => new URL((l as HTMLLinkElement).href, window.location.origin).pathname);
+      const all = [...scripts, ...links];
+      return all.length ? all.sort().join("|") : null;
+    })();
 
-    const fetchSignature = async (): Promise<string | null> => {
+    const fetchRemoteSignature = async (): Promise<string | null> => {
       try {
-        const url = `${window.location.origin}/index.html?_=${Date.now()}`;
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(`${window.location.origin}/index.html?_=${Date.now()}`, { cache: "no-store" });
         if (!res.ok) return null;
         const html = await res.text();
-        // Coleta TODOS os assets referenciados (js/css) — mais robusto que 1 bundle só
         const matches = html.match(/\/assets\/[A-Za-z0-9_-]+\.(?:js|css)/g);
-        if (matches && matches.length) return matches.sort().join("|");
-        // Fallback: comprimento do HTML (muda quando o build muda)
-        return `len:${html.length}`;
+        return matches && matches.length ? Array.from(new Set(matches)).sort().join("|") : null;
       } catch {
         return null;
       }
     };
 
-    const init = async () => {
-      for (let i = 0; i < 5 && !cancelled; i++) {
-        const s = await fetchSignature();
-        if (s) { initial = s; return; }
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-    };
-    init();
-
     const check = async () => {
-      if (!initial) { await init(); return; }
-      const current = await fetchSignature();
-      if (current && current !== initial) setHasUpdate(true);
+      if (!loadedSignature) return;
+      const remote = await fetchRemoteSignature();
+      if (remote && remote !== loadedSignature) setHasUpdate(true);
     };
 
+    check(); // primeira checagem imediata
     const interval = window.setInterval(check, 30_000);
     const onFocus = () => check();
     const onVisible = () => { if (document.visibilityState === "visible") check(); };
@@ -54,7 +49,6 @@ export function useAppUpdateAvailable() {
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
-      cancelled = true;
       window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
