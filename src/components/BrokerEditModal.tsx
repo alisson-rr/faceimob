@@ -116,6 +116,23 @@ export function BrokerEditModal({
   const provision = async (reset = false) => {
     setProvisioning(true); setCreds(null);
     try {
+      // 1) Persist current form edits BEFORE provisioning, so nothing is lost
+      const patch = {
+        name: form.name, full_name: form.full_name, email: form.email,
+        role: form.role, manager_id: form.manager_id || null, director_id: form.director_id || null,
+        active: form.active ?? true, avatar_url: form.avatar_url,
+        habilitation: form.habilitation, creci: form.creci, cpf: form.cpf,
+        celular: form.celular, address: form.address, birth_date: form.birth_date || null,
+        entry_date: form.entry_date || null, division: form.division, indication: form.indication,
+        login_email: form.login_email || null,
+        login_email_confirmed: !!form.login_email_confirmed,
+        badge_requested: !!form.badge_requested,
+        badge_requested_at: form.badge_requested_at || null,
+        badge_delivered_at: form.badge_delivered_at || null,
+      };
+      const { error: saveErr } = await supabase.from("brokers").update(patch).eq("id", form.id);
+      if (saveErr) throw new Error(saveErr.message);
+
       const { data: sess } = await supabase.auth.getSession();
       const accessToken = sess?.session?.access_token;
       if (!accessToken) throw new Error("Sessão expirada. Faça login novamente.");
@@ -136,9 +153,9 @@ export function BrokerEditModal({
       setCreds({ email: (data as any).email, password: (data as any).password });
       upd("user_id", (data as any).user_id);
       upd("login_email", (data as any).email);
-      // password is shown once (in `creds`) and never persisted
+      upd("login_password_plain", (data as any).password);
       toast({ title: reset ? "Senha redefinida" : "Acesso criado com sucesso" });
-      onSaved();
+      // Do NOT call onSaved() here — that would close the modal and hide the credentials.
     } catch (e: any) {
       toast({ title: "Falha ao criar acesso", description: e.message, variant: "destructive" });
     } finally {
