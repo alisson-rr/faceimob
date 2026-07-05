@@ -268,10 +268,10 @@ export default function DailyReport() {
 
                 </CardContent>
               </Card>
-              <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
+              <Card className={`bg-card/60 backdrop-blur-xl ${!filledBy.trim() && formOpen ? "border-rose-500/60 ring-2 ring-rose-500/30 animate-pulse" : "border-primary/30"}`}>
                 <CardContent className="p-3">
-                  <label className="text-[10px] uppercase text-muted-foreground">Gerente</label>
-                  <Input value={filledBy} onChange={(e) => setFilledBy(e.target.value)} placeholder="Seu nome" className="h-8 text-xs" />
+                  <label className="text-[10px] uppercase text-muted-foreground">Gerente {!filledBy.trim() && formOpen && <span className="text-rose-400">*obrigatório</span>}</label>
+                  <Input id="filled-by-input" value={filledBy} onChange={(e) => setFilledBy(e.target.value)} placeholder="Seu nome" className="h-8 text-xs" />
                 </CardContent>
               </Card>
               <TooltipProvider>
