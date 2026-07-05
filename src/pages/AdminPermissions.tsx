@@ -86,13 +86,31 @@ const initStagePerms = (): StagePermMap => {
   return m;
 };
 
+type MenuMap = Record<string, Record<string, boolean>>;
+const initMenu = (): MenuMap => {
+  const m: MenuMap = {};
+  roles.forEach(r => {
+    m[r.value] = {};
+    menuItems.forEach(mi => {
+      const adminOnly = ['permissions', 'allowed_ips', 'daily_teams'].includes(mi.key);
+      m[r.value][mi.key] = r.value === 'admin' || (!adminOnly && r.value !== 'cca') || (r.value === 'cca' && mi.key === 'cca');
+    });
+  });
+  return m;
+};
+
 export default function AdminPermissions() {
   const [perms, setPerms] = useState<PermMap>(initPerms);
   const [stagePerms, setStagePerms] = useState<StagePermMap>(initStagePerms);
+  const [menuPerms, setMenuPerms] = useState<MenuMap>(initMenu);
   const [selectedRole, setSelectedRole] = useState<AppRole>('broker');
 
   const togglePerm = (role: string, key: string) => {
     setPerms(prev => ({ ...prev, [role]: { ...prev[role], [key]: !prev[role][key] } }));
+  };
+
+  const toggleMenu = (role: string, key: string) => {
+    setMenuPerms(prev => ({ ...prev, [role]: { ...prev[role], [key]: !prev[role][key] } }));
   };
 
   const toggleStagePerm = (role: string, stage: string, field: 'view' | 'edit' | 'move') => {
@@ -106,14 +124,50 @@ export default function AdminPermissions() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold flex items-center gap-2"><Shield className="h-5 w-5 text-primary" /> Permissões</h1>
-        <p className="text-xs text-muted-foreground">Configure permissões por perfil de acesso</p>
+        <p className="text-xs text-muted-foreground">Configure acesso ao menu e funcionalidades por perfil</p>
       </div>
 
-      <Tabs defaultValue="general">
+      <Tabs defaultValue="menu">
         <TabsList>
-          <TabsTrigger value="general" className="text-xs">Permissões Gerais</TabsTrigger>
-          <TabsTrigger value="stages" className="text-xs">Permissões por Etapa</TabsTrigger>
+          <TabsTrigger value="menu" className="text-xs">Acesso ao Menu</TabsTrigger>
+          <TabsTrigger value="general" className="text-xs">Funcionalidades Gerais</TabsTrigger>
+          <TabsTrigger value="stages" className="text-xs">Funcionalidades · Pipeline</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="menu" className="space-y-4 mt-4">
+          <Card className="border-border/50">
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border/40">
+                    <th className="p-2 text-left font-medium text-muted-foreground">Item do menu</th>
+                    {roles.map(r => (
+                      <th key={r.value} className={cn("p-2 text-center font-medium", r.color)}>{r.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {menuItems.map(mi => (
+                    <tr key={mi.key} className="border-b border-border/10 hover:bg-primary/5">
+                      <td className="p-2 font-medium">{mi.label}</td>
+                      {roles.map(r => (
+                        <td key={r.value} className="p-2 text-center">
+                          <Switch
+                            checked={menuPerms[r.value]?.[mi.key] ?? false}
+                            onCheckedChange={() => toggleMenu(r.value, mi.key)}
+                            disabled={r.value === 'admin'}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+          <p className="text-[10px] text-muted-foreground">Admin sempre tem acesso total. Ajuste os demais perfis conforme necessidade.</p>
+        </TabsContent>
+
 
         <TabsContent value="general" className="space-y-4 mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
