@@ -189,7 +189,13 @@ export default function DailyReport() {
   };
 
   const submit = async () => {
-    if (!filledBy.trim()) return toast({ title: "Informe seu nome" });
+    if (!filledBy.trim()) {
+      toast({ title: "Informe seu nome no campo 'Gerente' antes de salvar", variant: "destructive" });
+      const el = document.getElementById("filled-by-input") as HTMLInputElement | null;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus();
+      return;
+    }
     setSubmitting(true);
     const payload = {
       team_id: resolvedTeamId, pin, report_date: date, filled_by_name: filledBy, notes: notes || null,
@@ -198,7 +204,7 @@ export default function DailyReport() {
     const { data, error } = await supabase.functions.invoke("submit-daily-report", { body: payload });
     setSubmitting(false);
     if (error || (data as any)?.error) {
-      return toast({ title: "Falha ao enviar", description: (data as any)?.error || error?.message, variant: "destructive" });
+      return toast({ title: "Falha ao enviar", description: (data as any)?.error || error?.message || "Erro desconhecido", variant: "destructive" });
     }
     setXpBurst(xpEarned);
     toast({ title: `🎯 Checkpoint concluído! +${xpEarned} XP`, description: "Dados da equipe registrados." });
@@ -262,10 +268,10 @@ export default function DailyReport() {
 
                 </CardContent>
               </Card>
-              <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
+              <Card className={`bg-card/60 backdrop-blur-xl ${!filledBy.trim() && formOpen ? "border-rose-500/60 ring-2 ring-rose-500/30 animate-pulse" : "border-primary/30"}`}>
                 <CardContent className="p-3">
-                  <label className="text-[10px] uppercase text-muted-foreground">Gerente</label>
-                  <Input value={filledBy} onChange={(e) => setFilledBy(e.target.value)} placeholder="Seu nome" className="h-8 text-xs" />
+                  <label className="text-[10px] uppercase text-muted-foreground">Gerente {!filledBy.trim() && formOpen && <span className="text-rose-400">*obrigatório</span>}</label>
+                  <Input id="filled-by-input" value={filledBy} onChange={(e) => setFilledBy(e.target.value)} placeholder="Seu nome" className="h-8 text-xs" />
                 </CardContent>
               </Card>
               <TooltipProvider>
