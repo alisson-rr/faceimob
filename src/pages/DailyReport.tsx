@@ -189,7 +189,13 @@ export default function DailyReport() {
   };
 
   const submit = async () => {
-    if (!filledBy.trim()) return toast({ title: "Informe seu nome" });
+    if (!filledBy.trim()) {
+      toast({ title: "Informe seu nome no campo 'Gerente' antes de salvar", variant: "destructive" });
+      const el = document.getElementById("filled-by-input") as HTMLInputElement | null;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus();
+      return;
+    }
     setSubmitting(true);
     const payload = {
       team_id: resolvedTeamId, pin, report_date: date, filled_by_name: filledBy, notes: notes || null,
@@ -198,7 +204,7 @@ export default function DailyReport() {
     const { data, error } = await supabase.functions.invoke("submit-daily-report", { body: payload });
     setSubmitting(false);
     if (error || (data as any)?.error) {
-      return toast({ title: "Falha ao enviar", description: (data as any)?.error || error?.message, variant: "destructive" });
+      return toast({ title: "Falha ao enviar", description: (data as any)?.error || error?.message || "Erro desconhecido", variant: "destructive" });
     }
     setXpBurst(xpEarned);
     toast({ title: `🎯 Checkpoint concluído! +${xpEarned} XP`, description: "Dados da equipe registrados." });
