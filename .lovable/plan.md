@@ -1,56 +1,55 @@
-## Objetivo
-Substituir o "BI Diário" pelo módulo **Checkpoint**, que mede o funil semanal (seg→dom) de cada equipe com metas percentuais, permite editar o nome da equipe na página Equipes e libera acesso ao diretor apenas das equipes dos seus gerentes.
+## 1. Links (`/links`) e IPs (`/admin-allowed-ips`) — compactar
+- Reduzir KPIs do topo para altura ~64px (números menores, ícones menores, cards mais estreitos).
+- Trocar grid de cards para **linhas horizontais densas** (uma linha por equipe / IP), no estilo tabela-card:
+  - Links: uma linha com [nome da equipe · slug · PIN · último preenchimento · badges de status · botões copiar/QR/regenerar] alinhados horizontalmente. Mais itens visíveis na dobra.
+  - IPs: uma linha com [IP · label · último uso · ativo/desativado · ações] em coluna densa.
+- Manter responsivo (empilha em mobile).
 
-## 1. Banco de dados
+## 2. Permissões (`/admin-permissions`) — 2 níveis
+Estrutura atual: role × módulo (allow/deny). Expandir para:
 
-**Nova coluna** em `teams`:
-- `display_name TEXT` — nome customizado da equipe (fallback: nome do gerente).
+**Nível 1 — Itens de menu** (o que já existe, apenas renomear a seção "Acesso ao menu"):
+Dashboard, Pipeline, Leads, Equipes, Checkpoint, Links, IPs, Marketing, Gamificação, Configurações, etc.
 
-**Novos campos** em `daily_broker_entries` (já existe com leads/atendimentos/propostas/visitas/análises/aprovados/vendas):
-- `ligacoes INT DEFAULT 0`
-- `coleta_docs INT DEFAULT 0`
-- `analise_enviada INT` — se distinto de `analises`; senão reusar `analises` como "enviada".
+**Nível 2 — Funcionalidades por menu** (nova seção "Funcionalidades por módulo"):
+Uma aba por menu principal. Para o **Pipeline**, listar:
+- Ver etapas: checkbox por `deal_stage` (incompleto, documentacao, analise, aprovado, contrato, closed, etc.) por role.
+- Ações: criar deal, editar Status 1, fechar mês, exportar.
+- Persistido em nova tabela `stage_permissions` (já existe) — usar/expandir.
 
-Decisão: reusar `analises` como "Análise enviada", `aprovados` como "Análise aprovada", `vendas` como "Venda". Adicionar apenas `ligacoes` e `coleta_docs`.
+Nova tabela se necessário: `feature_permissions(role, module, feature_key, allowed bool)`.
 
-**Nova tabela** `checkpoint_targets` (metas percentuais globais/por equipe, editáveis por admin):
-- `team_id UUID NULL` (NULL = default global), `analise_enviada_pct NUMERIC DEFAULT 10`, `aprovada_pct NUMERIC DEFAULT 40`, `venda_pct NUMERIC DEFAULT 50`.
-- RLS: leitura autenticada; escrita admin.
-
-## 2. Página Equipes (`src/pages/Equipes.tsx`)
-- Ao lado de cada gerente na coluna "Gerentes", campo inline editável **"Nome da equipe"** (admin/diretor). Persiste em `teams.display_name` (upsert por `manager_id`).
-- Se vazio, exibe `Equipe {nome do gerente}`.
-
-## 3. Formulário público (`/daily/:teamId/:slug`, `DailyReport.tsx`)
-- Trocar/renomear campos visíveis para os 6 do Checkpoint: **Leads, Ligações, Coleta docs, Análise enviada, Análise aprovada, Venda**.
-- Cabeçalho usa `teams.display_name` quando existir.
-- Edge function `submit-daily-report` aceita os 2 novos campos (`ligacoes`, `coleta_docs`).
-
-## 4. Novo módulo Checkpoint (`src/pages/Checkpoint.tsx`)
-Substitui `/bi-diario` no menu (mantém rota antiga como redirect).
+## 3. Dashboard do Diretor (nova tela inicial quando `role='director'`)
+Rota `/director-dashboard` e redirect do `/` para diretor.
 
 Layout:
-- Seletor de **semana** (padrão: semana corrente seg→dom) com navegação « »
-- Filtro de equipe (admin vê todas; diretor vê só equipes dos seus gerentes; gerente vê a sua).
-- Card por equipe com:
-  - Funil horizontal: Leads → Análise enviada → Aprovada → Venda mostrando valor absoluto + % vs Leads.
-  - Barras auxiliares: Ligações e Coleta docs (contadores, sem %).
-  - Metas: `enviada ≥ 10%`, `aprovada ≥ 40% das enviadas`, `venda ≥ 50% das aprovadas`.
-  - Badge vermelho "Abaixo do ideal" em cada etapa que não bateu a meta.
+- Header: nome do diretor + seletor de equipe (todas as equipes cujos gerentes têm `director_id = broker(auth.uid()).id`).
+- KPIs compactos: Leads, Docs, Análises Enviadas, Aprovações, Vendas (agregados do mês corrente, todas as equipes do diretor).
+- Grid por equipe: card com mini-funil de cada equipe.
+- **Funil visual comparativo** (dois funis lado a lado):
 
-## 5. Permissões
-- Admin: todas as equipes.
-- Diretor: filtra `teams` cujo `manager` tem `director_id = auth.uid()` (via broker.user_id).
-- Gerente: sua equipe.
-- Corretor: bloqueado no menu.
+```text
+   DAILY (declarado)          PIPELINE (real)
+   ┌──────────────┐           ┌──────────────┐
+   │ Leads 100%   │ 250       │ Leads 100%   │ 240
+   │  Análise 10% │  25       │  Análise 10% │  22
+   │  Aprov. 40%  │  10       │  Aprov. 40%  │   9
+   │  Venda 50%   │   5       │  Venda 50%   │   4
+   └──────────────┘           └──────────────┘
+```
 
-## 6. Navegação
-- Sidebar: item "BI Diário" → **Checkpoint**, ícone `Target`.
-- Rota nova `/checkpoint`, redirect de `/bi-diario`.
+- Fonte Daily: `daily_broker_entries` (leads, coleta_docs, analises, aprovados, vendas) agregado por equipes do diretor no mês.
+- Fonte Pipeline: `deals` do mês (`month_base`) filtrado por `broker1_id ∈ corretores das equipes do diretor`:
+  - Leads: `leads` table (mesmo escopo)
+  - Análise enviada: `stage IN ('analise_credito', 'documentacao_completa')`
+  - Aprovado: `stage = 'approved'`
+  - Venda: `status = 'VENDA'`
+- Cada etapa mostra: valor absoluto + % vs leads + meta (10/40/50) com badge verde/vermelho.
+- Match usuário: usar `broker.user_id` para ligar Daily entries (via `broker_id`) e Pipeline deals (via `broker1_id`).
 
-## Detalhes técnicos
-- Semana = ISO seg-dom via `date-fns` (`startOfWeek(d,{weekStartsOn:1})` / `endOfWeek`).
-- Agregação client-side sobre `daily_team_reports` + `daily_broker_entries` filtrado por `report_date` no range e `team_id IN (equipes visíveis)`.
-- `checkpoint_targets` lidas uma vez; merge global+específica.
-- Alertas: componente `<FunnelStep />` com estado `ok|warn` conforme `actualPct < targetPct`.
-- Sem mudança em tipos gerados até o usuário aprovar a migration.
+## 4. Detalhes técnicos
+- Novos arquivos: `src/pages/DirectorDashboard.tsx`, componente `<ComparativeFunnel />`.
+- Editar `src/App.tsx` para rota + redirect por role.
+- Editar `src/pages/Links.tsx`, `src/pages/AdminAllowedIps.tsx`, `src/pages/AdminPermissions.tsx`.
+- Migration: adicionar `feature_permissions` se necessário; expandir `stage_permissions` com policies read/write.
+- Sem mudanças em edge functions.
