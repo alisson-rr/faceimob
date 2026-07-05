@@ -8,7 +8,7 @@ import { UpdateNotifier } from "@/components/UpdateNotifier";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import ResetPassword from "@/pages/ResetPassword";
-import Dashboard from "@/pages/Dashboard";
+import DashboardSwitcher from "@/pages/DashboardSwitcher";
 import Pipeline from "@/pages/Pipeline";
 
 import Equipes from "@/pages/Equipes";
@@ -56,7 +56,7 @@ const App = () => (
             <Route path="/daily/:slug" element={<DailyReport />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<RequireAuth />}>
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard" element={<DashboardSwitcher />} />
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/cca" element={<CcaPipeline />} />
               <Route path="/leads" element={<Navigate to="/pipeline" replace />} />
