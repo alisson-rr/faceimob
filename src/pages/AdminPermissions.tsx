@@ -25,7 +25,25 @@ const permissionKeys = [
   { key: 'access_dashboard', label: 'Acessar dashboard', icon: Eye },
 ];
 
+const menuItems = [
+  { key: 'dashboard',   label: 'Dashboard' },
+  { key: 'pipeline',    label: 'Pipeline' },
+  { key: 'cca',         label: 'CCA' },
+  { key: 'norteador',   label: 'Norteador' },
+  { key: 'marketing',   label: 'Marketing' },
+  { key: 'equipes',     label: 'Equipes' },
+  { key: 'links',       label: 'Links' },
+  { key: 'gamification',label: 'Gamificação' },
+  { key: 'checkpoint',  label: 'Checkpoint' },
+  { key: 'checkin',     label: 'Check-in' },
+  { key: 'daily_teams', label: 'Diário (Links)' },
+  { key: 'allowed_ips', label: 'IPs autorizados' },
+  { key: 'permissions', label: 'Permissões' },
+  { key: 'settings',    label: 'Configurações' },
+];
+
 const stages = [
+  { value: 'incomplete', label: 'Incompleto' },
   { value: 'lead', label: 'Lead' },
   { value: 'proposal', label: 'Proposta' },
   { value: 'visit_scheduled', label: 'Visita Agendada' },
