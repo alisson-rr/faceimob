@@ -8,6 +8,7 @@ import { ptBR } from "date-fns/locale";
 import { AlertTriangle, MessageCircle, Timer, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LeadDetailModal from "./LeadDetailModal";
+import { toast } from "@/hooks/use-toast";
 
 const STAGES: { key: string; label: string; accent: string }[] = [
   { key: "new", label: "Novo Lead", accent: "border-blue-500/50" },
