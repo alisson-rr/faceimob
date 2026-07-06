@@ -34,6 +34,7 @@ export default function PublicDirectorCheckpoint() {
   const [loading, setLoading] = useState(true);
   const [director, setDirector] = useState<{ name: string } | null>(null);
   const [teams, setTeams] = useState<TeamOut[]>([]);
+  const [month, setMonth] = useState<{ totals: Record<string, number>; missing_days: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,10 +45,11 @@ export default function PublicDirectorCheckpoint() {
       });
       if (error || (data as any)?.error) {
         setError((data as any)?.error || error?.message || "Erro ao carregar");
-        setTeams([]); setDirector(null);
+        setTeams([]); setDirector(null); setMonth(null);
       } else {
         setDirector((data as any).director);
         setTeams((data as any).teams || []);
+        setMonth((data as any).month || null);
       }
       setLoading(false);
     })();
