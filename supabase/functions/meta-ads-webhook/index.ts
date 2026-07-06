@@ -111,10 +111,22 @@ Deno.serve(async (req) => {
               if (g && Object.keys(g).length > 0) fields = { ...g, ...fields }
             }
 
-            const formName = await fetchFormName(v.form_id, pageAccessToken)
+            let formName = await fetchFormName(v.form_id, pageAccessToken)
+            if (!formName && v.ad_id) {
+              formName = await fetchAdName(v.ad_id, pageAccessToken)
+            }
+            // if still no name, look up the group's saved form name for this form_id
+            if (!formName && v.form_id) {
+              const { data: gf } = await supabase
+                .from('distribution_group_forms')
+                .select('form_name')
+                .eq('form_id', String(v.form_id))
+                .not('form_name', 'is', null)
+                .maybeSingle()
+              if (gf?.form_name) formName = gf.form_name as string
+            }
             console.log('Parsed lead — form_name:', formName, 'fields:', JSON.stringify(fields))
 
-            // Extração de first name mais robusta (variações de forms Meta em PT/EN)
             const fullName = fields['full_name'] || fields['nome_completo'] || fields['nome_e_sobrenome'] || fields['name'] || fields['nome'] || ''
             const firstName = fields['first_name'] || fields['primeiro_nome'] || fields['nome'] || (fullName ? fullName.trim().split(/\s+/)[0] : '')
             const fallbackName = fields['email']?.split('@')[0] || fields['phone_number'] || `Lead ${v.leadgen_id || ''}`.trim()
@@ -126,6 +138,7 @@ Deno.serve(async (req) => {
               email: fields['email'] || '',
               source: 'Meta Ads',
               status: 'new',
+              form_id: v.form_id ? String(v.form_id) : null,
               form_name: formName || fields['form_name'] || (v.form_id ? `Formulário ${v.form_id}` : null),
               form_answers: fields,
               utm_source: pickUtm(fields, 'utm_source') || 'meta',
