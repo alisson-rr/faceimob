@@ -133,6 +133,8 @@ export default function DailyReport() {
     }, {} as EntryState));
   }, [date, roster, filledDates]);
 
+  const isAdminView = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("admin") === "1";
+
   useEffect(() => {
     if (!identifier) return;
     (async () => {
@@ -140,10 +142,33 @@ export default function DailyReport() {
       const { data } = await supabase.functions.invoke("daily-team-info", { body });
       if (data?.info) {
         setTeam(data.info as TeamInfo);
-        if ((data.info as any).team_id) setResolvedTeamId((data.info as any).team_id);
+        const tid = (data.info as any).team_id;
+        if (tid) setResolvedTeamId(tid);
+
+        // Admin bypass: se logado como admin, destrava sem PIN (somente leitura)
+        if (isAdminView && tid) {
+          const { data: sess } = await supabase.auth.getUser();
+          const uid = sess.user?.id;
+          if (uid) {
+            const { data: roleRow } = await supabase
+              .from("user_roles").select("role").eq("user_id", uid).eq("role", "admin").maybeSingle();
+            if (roleRow) {
+              const { data: rosterRows } = await supabase.rpc("get_team_roster" as any, { _team_id: tid });
+              const list = ((rosterRows as any) ?? []) as Roster[];
+              setRoster(list);
+              const initial: EntryState = {};
+              list.forEach((b) => {
+                initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
+              });
+              setEntries(initial);
+              setUnlocked(true);
+              loadMonth(tid);
+            }
+          }
+        }
       }
     })();
-  }, [identifier, isUuid]);
+  }, [identifier, isUuid, isAdminView]);
 
   const totals = useMemo(() => {
     const t: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
