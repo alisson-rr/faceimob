@@ -218,10 +218,65 @@ export default function AdminLeadAutomation() {
 
 
 
-      {/* Distribution windows */}
+      {/* Distribution GROUPS (brokers + forms) */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> Grupos de Distribuição</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base"><Layers className="h-4 w-4" /> Grupos de Distribuição</CardTitle>
+          <Button size="sm" onClick={createGroup}><Plus className="h-4 w-4 mr-1" /> Novo grupo</Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {groups.length === 0 && <p className="text-sm text-muted-foreground">Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in.</p>}
+          {groups.map((g) => (
+            <div key={g.id} className="p-3 rounded-lg border border-border/60 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => renameGroup(g.id, g.name)} className="text-sm font-semibold hover:underline">
+                  {g.name}
+                </button>
+                <div className="flex items-center gap-2">
+                  <Switch checked={g.active} onCheckedChange={(v) => toggleGroup(g.id, v)} />
+                  <Button size="sm" variant="destructive" onClick={() => deleteGroup(g.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-[11px]">Corretores</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {brokers.map((b) => {
+                    const on = g.brokers.includes(b.id);
+                    return (
+                      <button key={b.id} onClick={() => toggleGroupBroker(g.id, b.id, !on)}
+                        className={`text-[11px] px-2 py-0.5 rounded-full border ${on ? "bg-primary text-primary-foreground border-primary" : "border-border/60 hover:border-primary/60"}`}>
+                        {b.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px]">Formulários Meta neste grupo</Label>
+                  <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => addGroupForm(g.id)}>
+                    <Plus className="h-3 w-3 mr-1" /> Adicionar form
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {g.forms.length === 0 && <span className="text-[11px] text-muted-foreground">Nenhum formulário vinculado.</span>}
+                  {g.forms.map((f) => (
+                    <Badge key={f.form_id} variant="outline" className="text-[11px] gap-1">
+                      {f.form_name || f.form_id}
+                      <button onClick={() => removeGroupForm(g.id, f.form_id)} className="ml-1 opacity-60 hover:opacity-100"><Trash2 className="h-3 w-3" /></button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Distribution windows (shifts) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> Janelas de Atendimento (turnos)</CardTitle>
           <Button size="sm" onClick={addWindow}><Plus className="h-4 w-4 mr-1" /> Adicionar</Button>
         </CardHeader>
         <CardContent className="space-y-3">
