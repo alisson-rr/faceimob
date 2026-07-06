@@ -2,12 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Loader2, Target } from "lucide-react";
-import { addDays, endOfWeek, format, startOfWeek } from "date-fns";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Target, TrendingUp } from "lucide-react";
+import { addDays, endOfWeek, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DirectorFunnelCard } from "@/pages/Checkpoint";
 import logoWhite from "@/assets/logo-faceimob-white.png";
+
+const MONTH_FIELDS = [
+  { key: "leads", label: "Leads", color: "text-cyan-400" },
+  { key: "ligacoes", label: "Ligações", color: "text-sky-400" },
+  { key: "coleta_docs", label: "Coleta Docs", color: "text-indigo-400" },
+  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-fuchsia-400" },
+  { key: "visitas_realizadas", label: "Visita Real.", color: "text-pink-400" },
+  { key: "analises", label: "Análise Env.", color: "text-amber-400" },
+  { key: "aprovados", label: "Análise Aprov.", color: "text-emerald-400" },
+  { key: "vendas", label: "Venda", color: "text-yellow-400" },
+] as const;
 
 type TeamOut = {
   id: string;
