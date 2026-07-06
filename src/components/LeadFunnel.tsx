@@ -28,10 +28,16 @@ export default function LeadFunnel({
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [selected, setSelected] = useState<LeadRow | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [roletaSec, setRoletaSec] = useState(300);
+  const [inactivityH, setInactivityH] = useState(24);
 
   const load = async () => {
-    const { data } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
+    const [{ data }, { data: s }] = await Promise.all([
+      supabase.from("leads").select("*").order("created_at", { ascending: false }),
+      supabase.from("lead_automation_settings").select("roleta_seconds, inactivity_alert_hours").eq("id", true).maybeSingle(),
+    ]);
     setLeads((data as any) || []);
+    if (s) { setRoletaSec((s as any).roleta_seconds); setInactivityH((s as any).inactivity_alert_hours); }
   };
 
   useEffect(() => {
@@ -85,7 +91,7 @@ export default function LeadFunnel({
               </div>
               <div className={cn("border rounded-b-lg p-2 space-y-2 min-h-[400px] bg-background/30", stage.accent)}>
                 {items.map(l => (
-                  <LeadCardMini key={l.id} lead={l} now={now} onClick={() => setSelected(l)} />
+                  <LeadCardMini key={l.id} lead={l} now={now} roletaSec={roletaSec} inactivityH={inactivityH} onClick={() => setSelected(l)} />
                 ))}
                 {items.length === 0 && (
                   <p className="text-[11px] text-muted-foreground text-center py-6">—</p>
@@ -121,14 +127,15 @@ function sourceStyle(source?: string): { cls: string; label: string } {
   return { cls: "bg-secondary text-foreground border-border", label: source || "Origem —" };
 }
 
-function LeadCardMini({ lead, now, onClick }: { lead: LeadRow; now: number; onClick: () => void }) {
+function LeadCardMini({ lead, now, roletaSec, inactivityH, onClick }: { lead: LeadRow; now: number; roletaSec: number; inactivityH: number; onClick: () => void }) {
   const created = new Date(lead.created_at).getTime();
   const ageMs = now - created;
   const isNew = lead.funnel_stage === "new";
   const isBrandNew = ageMs < 10 * 60_000; // < 10min
-  const roletaLeftMs = 5 * 60_000 - ageMs;
+  const roletaLeftMs = roletaSec * 1000 - ageMs;
   const lastAct = new Date(lead.last_activity_at || lead.created_at).getTime();
   const inactiveH = (now - lastAct) / 3_600_000;
+  const inactiveAlert = inactiveH > inactivityH;
   const src = sourceStyle(lead.source);
   const whatsappNum = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
   const waLink = whatsappNum
@@ -150,7 +157,7 @@ function LeadCardMini({ lead, now, onClick }: { lead: LeadRow; now: number; onCl
       )}
       <div className="flex items-start justify-between gap-2">
         <p className="font-semibold text-sm truncate flex-1">{lead.name || "Sem nome"}</p>
-        {inactiveH > 24 && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
+        {inactiveAlert && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
       </div>
       <div className="flex items-center gap-1 flex-wrap">
         <Badge className={cn("text-[9px] px-1.5 py-0 border", src.cls)}>{src.label}</Badge>

@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
             const formName = await fetchFormName(v.form_id, pageAccessToken)
 
             leads.push({
-              name: fields['full_name'] || fields['nome'] || fields['name'] || `Lead Meta ${v.leadgen_id || ''}`.trim(),
+              name: fields['first_name'] || fields['nome'] || (fields['full_name'] || fields['name'] || '').split(' ')[0] || `Lead Meta ${v.leadgen_id || ''}`.trim(),
               phone: fields['phone_number'] || fields['telefone'] || fields['phone'] || '',
               whatsapp: fields['phone_number'] || fields['whatsapp'] || '',
               email: fields['email'] || '',

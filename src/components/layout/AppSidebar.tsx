@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, GitBranch, Users, UserPlus, Megaphone,
   UserCircle, Database, Settings, LogOut, Link2, Sun, Moon,
-  CreditCard, Shield, Building2, UsersRound, Trophy, Swords, KeyRound, Target, LogIn, Globe, TrendingUp,
+  CreditCard, Shield, Building2, UsersRound, Trophy, Swords, KeyRound, Target, LogIn, Globe, TrendingUp, Zap,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -36,6 +36,7 @@ const adminNav = [
   { title: "Construtoras", url: "/admin/developers", icon: Building2 },
   { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound },
   { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe },
+  { title: "Automação Leads", url: "/admin/lead-automation", icon: Zap },
 ];
 
 const systemNav = [
