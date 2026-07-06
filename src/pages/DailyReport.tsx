@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO } from "date-fns";
+import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import logoWhite from "@/assets/logo-faceimob-white.png";
@@ -47,7 +47,7 @@ export default function DailyReport() {
   const [entries, setEntries] = useState<EntryState>({});
   const [filledBy, setFilledBy] = useState("");
   const [notes, setNotes] = useState("");
-  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [date, setDate] = useState(format(subDays(new Date(), 1), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   const [xpBurst, setXpBurst] = useState(0);
   const [monthTotals, setMonthTotals] = useState<Record<FieldKey, number>>(() => FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>));
@@ -58,7 +58,8 @@ export default function DailyReport() {
   const [loadingDay, setLoadingDay] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const yesterday = subDays(new Date(), 1);
+  const todayStr = format(yesterday, "yyyy-MM-dd");
   const todayFilled = filledDates.includes(todayStr);
 
   const openTodayForm = async () => {
@@ -72,6 +73,7 @@ export default function DailyReport() {
   const loadMonth = async (tid: string) => {
     setLoadingMonth(true);
     const today = new Date();
+    const yest = subDays(today, 1);
     const { data, error } = await supabase.rpc("get_daily_team_month_summary" as any, { _team_id: tid });
     let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
     let filledDates: string[] = [];
@@ -83,9 +85,9 @@ export default function DailyReport() {
     setMonthTotals(mt);
     setFilledDates(filledDates);
     const filledSet = new Set(filledDates);
-    const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
+    const days = eachDayOfInterval({ start: startOfMonth(today), end: yest });
     const missing = days
-      .filter(d => !isAfter(d, today))
+      .filter(d => !isAfter(d, yest))
       .map(d => format(d, "yyyy-MM-dd"))
       .filter(d => !filledSet.has(d));
     setMissingDays(missing);
@@ -231,7 +233,7 @@ export default function DailyReport() {
           <h1 className="text-4xl font-black bg-gradient-to-r from-primary via-cyan-400 to-fuchsia-400 bg-clip-text text-transparent">
             {team?.team_name ?? "Carregando equipe..."}
           </h1>
-          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de hoje</p>
+          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de ontem</p>
         </header>
 
         <UpdateBanner />
@@ -264,7 +266,7 @@ export default function DailyReport() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
                 <CardContent className="p-3">
-                  <label className="text-[10px] uppercase text-muted-foreground">Data {formOpen && date !== todayStr ? "(editando)" : "(hoje)"}</label>
+                  <label className="text-[10px] uppercase text-muted-foreground">Data {formOpen && date !== todayStr ? "(editando)" : "(ontem)"}</label>
                   <Input type="date" value={date} readOnly disabled className="h-8 text-xs [color-scheme:dark] opacity-70 cursor-not-allowed" />
 
                 </CardContent>
@@ -409,7 +411,7 @@ export default function DailyReport() {
                           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" /> Não preenchido</span>
                         </div>
                         <div className="grid grid-cols-7 gap-1.5">
-                          {eachDayOfInterval({ start: startOfMonth(new Date()), end: new Date() }).map((d) => {
+                          {eachDayOfInterval({ start: startOfMonth(new Date()), end: yesterday }).map((d) => {
                             const ds = format(d, "yyyy-MM-dd");
                             const done = filledDates.includes(ds);
                             return (
@@ -470,19 +472,19 @@ export default function DailyReport() {
                 <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
                   <Sparkles className="h-8 w-8 text-primary" />
                   <div>
-                    <p className="text-sm font-bold">Pronto para registrar o dia?</p>
+                    <p className="text-sm font-bold">Pronto para registrar o dia de ontem?</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Clique abaixo para abrir o checkpoint de <b>hoje ({format(new Date(), "dd/MM", { locale: ptBR })})</b> com todos os corretores da equipe.
+                      Clique abaixo para abrir o checkpoint de <b>ontem ({format(yesterday, "dd/MM", { locale: ptBR })})</b> com todos os corretores da equipe.
                     </p>
                     {todayFilled && (
                       <p className="text-xs text-emerald-400 mt-2 flex items-center justify-center gap-1">
-                        <Info className="h-3 w-3" /> O checkpoint de hoje já foi preenchido — você pode editar os valores.
+                        <Info className="h-3 w-3" /> O checkpoint de ontem já foi preenchido — você pode editar os valores.
                       </p>
                     )}
                   </div>
                   <Button size="lg" onClick={openTodayForm} disabled={loadingDay || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
                     {loadingDay ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Pencil className="h-4 w-4 mr-2" />}
-                    {todayFilled ? "Editar daily de hoje" : "Preencher o daily"}
+                    {todayFilled ? "Editar daily de ontem" : "Preencher o daily de ontem"}
                   </Button>
                   <p className="text-[10px] text-muted-foreground">Para editar outros dias, use o botão <b>Histórico</b> acima.</p>
                 </CardContent>
