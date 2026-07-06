@@ -8,21 +8,7 @@ import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Trophy } from "lucide-react";
-
-interface TopBroker {
-  id: string;
-  name: string;
-  points: number;
-}
-
-interface DashboardDealSummary {
-  id: string;
-  status?: string | null;
-  stage?: string | null;
-  active?: boolean | null;
-  broker1_id?: string | null;
-  broker1_name?: string | null;
-}
+import { useGameRanking } from "@/hooks/useGameRanking";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Pipeline de Vendas",
@@ -32,31 +18,20 @@ const pageTitles: Record<string, string> = {
   "/resultados": "Resultados",
   "/marketing": "Marketing",
   "/equipes": "Equipes",
-  
   "/links": "Links",
   "/data": "Dados",
   "/settings": "Configurações",
   "/admin/permissions": "Permissões",
-  
   "/admin/developers": "Construtoras & CCA",
-};
-
-const roleLabels: Record<string, string> = {
-  admin: 'Administrador',
-  partner: 'Sócio',
-  director: 'Diretor',
-  manager: 'Gerente',
-  broker: 'Corretor',
-  cca: 'CCA',
 };
 
 export default function AppLayout() {
   const [showMotivation, setShowMotivation] = useState(false);
-  const [topBrokers, setTopBrokers] = useState<TopBroker[]>([]);
   const [me, setMe] = useState<{ name: string; avatar_url: string | null } | null>(null);
   const location = useLocation();
   const pageTitle = pageTitles[location.pathname] || "Faceimob";
-  const { role, user } = useAuth();
+  const { user } = useAuth();
+  const { scoped, myBroker, allScores } = useGameRanking();
 
   useEffect(() => {
     if (!user?.id) { setMe(null); return; }
@@ -78,41 +53,18 @@ export default function AppLayout() {
   }, [user?.id, user?.email]);
 
   useEffect(() => {
-    const fetchTopBrokers = async () => {
-      const { data, error } = await supabase
-        .from("dashboard_bi_cache" as any)
-        .select("payload")
-        .eq("id", true)
-        .maybeSingle();
-      if (error) return;
-
-      const deals = (((data as any)?.payload?.deals || []) as DashboardDealSummary[]);
-      const scores = new Map<string, TopBroker>();
-
-      deals.forEach((deal) => {
-        if (!deal.broker1_id) return;
-        const current = scores.get(deal.broker1_id) || {
-          id: deal.broker1_id,
-          name: deal.broker1_name || "Corretor",
-          points: 0,
-        };
-        const status = (deal.status || "").toUpperCase();
-        if (status === "VENDA" && deal.active !== false) current.points += 700;
-        else if (deal.stage === "approved") current.points += 250;
-        else current.points += 50;
-        scores.set(deal.broker1_id, current);
-      });
-
-      setTopBrokers(Array.from(scores.values()).sort((a, b) => b.points - a.points).slice(0, 3));
-    };
-    fetchTopBrokers();
-
     const justLogged = sessionStorage.getItem("faceimob-just-logged");
     if (justLogged === "true") {
       setShowMotivation(true);
       sessionStorage.removeItem("faceimob-just-logged");
     }
   }, []);
+
+  // Header ranking: mirrors the Pipeline top ranking, scoped by role.
+  // Broker sees only their own card entry; others see top 3 in scope.
+  const headerScores = myBroker && scoped.length === 1
+    ? [{ ...scoped[0], rank: allScores.findIndex(s => s.broker.id === myBroker.id) + 1 }]
+    : scoped.slice(0, 3).map((s, i) => ({ ...s, rank: i + 1 }));
 
   return (
     <SidebarProvider style={{ "--sidebar-width": "13rem", "--sidebar-width-icon": "3.25rem" } as React.CSSProperties}>
@@ -123,17 +75,18 @@ export default function AppLayout() {
             <SidebarTrigger className="mr-2 md:hidden" />
             <h1 className="text-sm font-semibold text-foreground mr-4">{pageTitle}</h1>
             
-            {/* Ranking dos 3 primeiros */}
-            <div className="hidden md:flex items-center gap-4 mx-auto overflow-hidden">
-              {topBrokers.map((broker, i) => (
-                <div key={broker.id} className="flex items-center gap-2 px-3 py-1 rounded-full border border-primary/20 bg-primary/5">
-                  <span className="text-xs font-bold text-primary">{i + 1}º</span>
-                  <Trophy className={i === 0 ? "h-3 w-3 text-amber-500" : i === 1 ? "h-3 w-3 text-gray-400" : "h-3 w-3 text-orange-600"} />
-                  <span className="text-xs font-medium truncate max-w-[100px]">{broker.name}</span>
-                  <span className="text-[10px] text-muted-foreground font-mono">{broker.points} pts</span>
+            <div className="hidden md:flex items-center gap-3 mx-auto overflow-hidden">
+              {headerScores.map((s) => (
+                <div key={s.broker.id} className="flex items-center gap-2 px-3 py-1 rounded-full border border-primary/20 bg-primary/5 transition-all duration-200 hover:scale-105 hover:border-primary/40 hover:bg-primary/10">
+                  <span className="text-xs font-bold text-primary">{s.rank}º</span>
+                  <Trophy className={s.rank === 1 ? "h-3 w-3 text-amber-500" : s.rank === 2 ? "h-3 w-3 text-gray-400" : "h-3 w-3 text-orange-600"} />
+                  <span className="text-xs font-medium truncate max-w-[120px]">{s.broker.name}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">{s.points} pts</span>
                 </div>
               ))}
             </div>
+
+
 
             <div className="flex items-center gap-3 ml-auto">
               <RoleSwitcher />
