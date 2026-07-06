@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil } from "lucide-react";
+import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO } from "date-fns";
@@ -308,6 +308,54 @@ export default function DailyReport() {
                 </Card>
               </TooltipProvider>
             </div>
+
+            {/* Funil IDEAL — instrução para os gerentes */}
+            <Card className="border-yellow-400/40 bg-gradient-to-br from-yellow-400/5 via-transparent to-primary/5 backdrop-blur-xl">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Target className="h-4 w-4 text-yellow-400" /> Funil Ideal — Meta de Conversão
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Referência oficial para o seu time. Cada etapa deve converter no mínimo o percentual abaixo em relação à etapa anterior.
+                </p>
+              </CardHeader>
+              <CardContent className="p-3 pt-1">
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-4 items-center">
+                  <VisualFunnel
+                    title="Ideal"
+                    subtitle="100 → 10% → 40% → 50%"
+                    accent="hsl(45 100% 55%)"
+                    steps={[
+                      { key: "leads",     label: "Leads",       value: 100, targetPct: 100 },
+                      { key: "analises",  label: "Análises",    value: 10,  targetPct: 10  },
+                      { key: "aprovados", label: "Aprovações",  value: 4,   targetPct: 40  },
+                      { key: "vendas",    label: "Vendas",      value: 2,   targetPct: 50  },
+                    ] as FunnelStep[]}
+                  />
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+                      <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/40">100%</Badge>
+                      <span><b>Leads</b> — base de trabalho (topo do funil)</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                      <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40">10%</Badge>
+                      <span>dos leads viram <b>Análise enviada</b></span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40">40%</Badge>
+                      <span>das análises viram <b>Aprovação</b></span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-yellow-400/10 border border-yellow-400/40">
+                      <Badge className="bg-yellow-400/20 text-yellow-300 border-yellow-400/40">50%</Badge>
+                      <span>das aprovações viram <b>Venda</b></span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground pt-1">
+                      💡 <b>Instrua sua equipe:</b> a cada 100 leads, o esperado é <b>10 análises</b>, <b>4 aprovações</b> e <b>2 vendas</b>.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Month funnel + missing days */}
             <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
