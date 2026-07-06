@@ -266,7 +266,7 @@ export default function DailyReport() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
                 <CardContent className="p-3">
-                  <label className="text-[10px] uppercase text-muted-foreground">Data {formOpen && date !== todayStr ? "(editando)" : "(hoje)"}</label>
+                  <label className="text-[10px] uppercase text-muted-foreground">Data {formOpen && date !== todayStr ? "(editando)" : "(ontem)"}</label>
                   <Input type="date" value={date} readOnly disabled className="h-8 text-xs [color-scheme:dark] opacity-70 cursor-not-allowed" />
 
                 </CardContent>
