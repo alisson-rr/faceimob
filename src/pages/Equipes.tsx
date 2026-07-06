@@ -24,6 +24,8 @@ interface BrokerRow {
   active: boolean;
   user_id: string | null;
   avatar_url?: string | null;
+  monthly_goal?: number | null;
+  yearly_goal?: number | null;
 }
 
 const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
@@ -99,7 +101,7 @@ export default function Equipes() {
     setLoading(true);
     const { data, error } = await supabase
       .from("brokers")
-      .select("id,name,role,manager_id,director_id,active,user_id")
+      .select("id,name,role,manager_id,director_id,active,user_id,monthly_goal,yearly_goal")
       .eq("active", true)
       .order("name");
     if (error) toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
