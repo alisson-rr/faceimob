@@ -29,12 +29,10 @@ Deno.serve(async (req) => {
     const { data: managers } = await supabase.from("brokers").select("id,name").eq("director_id", director.id);
     const mgrIds = (managers || []).map((m: any) => m.id);
 
-    // teams under those managers
-    let teams: any[] = [];
-    if (mgrIds.length) {
-      const { data: t } = await supabase.from("teams").select("id,name,display_name,manager_id").in("manager_id", mgrIds);
-      teams = t || [];
-    }
+    // teams under those managers + teams managed directly by the director
+    const scopeIds = Array.from(new Set([...mgrIds, director.id]));
+    const { data: t } = await supabase.from("teams").select("id,name,display_name,manager_id").in("manager_id", scopeIds);
+    const teams: any[] = t || [];
     const teamIds = teams.map((t: any) => t.id);
 
     // week window (monday-based)
