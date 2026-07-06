@@ -36,6 +36,8 @@ export default function LeadFunnel({
   });
   const [popupLead, setPopupLead] = useState<LeadRow | null>(null);
   const [popupKind, setPopupKind] = useState<"new" | "delay">("new");
+  const [lostToday, setLostToday] = useState<{ broker_name: string; lost_count: number }[]>([]);
+
 
   const load = async () => {
     const [{ data }, { data: s }] = await Promise.all([
