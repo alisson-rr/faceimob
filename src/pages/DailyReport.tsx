@@ -309,53 +309,38 @@ export default function DailyReport() {
               </TooltipProvider>
             </div>
 
-            {/* Funil IDEAL — instrução para os gerentes */}
-            <Card className="border-yellow-400/40 bg-gradient-to-br from-yellow-400/5 via-transparent to-primary/5 backdrop-blur-xl">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Target className="h-4 w-4 text-yellow-400" /> Funil Ideal — Meta de Conversão
-                </CardTitle>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Referência oficial para o seu time. Cada etapa deve converter no mínimo o percentual abaixo em relação à etapa anterior.
-                </p>
-              </CardHeader>
-              <CardContent className="p-3 pt-1">
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-4 items-center">
-                  <VisualFunnel
-                    title="Ideal"
-                    subtitle="100 → 10% → 40% → 50%"
-                    accent="hsl(45 100% 55%)"
-                    steps={[
-                      { key: "leads",     label: "Leads",       value: 100, targetPct: 100 },
-                      { key: "analises",  label: "Análises",    value: 10,  targetPct: 10  },
-                      { key: "aprovados", label: "Aprovações",  value: 4,   targetPct: 40  },
-                      { key: "vendas",    label: "Vendas",      value: 2,   targetPct: 50  },
-                    ] as FunnelStep[]}
-                  />
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
-                      <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/40">100%</Badge>
-                      <span><b>Leads</b> — base de trabalho (topo do funil)</span>
-                    </div>
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
-                      <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40">10%</Badge>
-                      <span>dos leads viram <b>Análise enviada</b></span>
-                    </div>
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40">40%</Badge>
-                      <span>das análises viram <b>Aprovação</b></span>
-                    </div>
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-yellow-400/10 border border-yellow-400/40">
-                      <Badge className="bg-yellow-400/20 text-yellow-300 border-yellow-400/40">50%</Badge>
-                      <span>das aprovações viram <b>Venda</b></span>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground pt-1">
-                      💡 <b>Instrua sua equipe:</b> a cada 100 leads, o esperado é <b>10 análises</b>, <b>4 aprovações</b> e <b>2 vendas</b>.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Funil IDEAL — compacto e sutil */}
+            <div className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border/40 bg-muted/10">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Target className="h-3.5 w-3.5 text-yellow-400/80" />
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Funil Ideal</span>
+              </div>
+              <svg viewBox="0 0 300 60" className="h-10 flex-1 min-w-0" preserveAspectRatio="none">
+                {[
+                  { y: 2,  top: 300, bot: 220, label: "Topo",  side: "Leads · 100%",     fill: "hsl(217 91% 55%)" },
+                  { y: 22, top: 220, bot: 140, label: "Meio",  side: "Análises · 10%",   fill: "hsl(217 91% 40%)" },
+                  { y: 42, top: 140, bot: 60,  label: "Fundo", side: "Aprov. 40% · Venda 50%", fill: "hsl(217 91% 28%)" },
+                ].map((s, i) => {
+                  const pts = [
+                    [(300 - s.top) / 2, s.y],
+                    [(300 + s.top) / 2, s.y],
+                    [(300 + s.bot) / 2, s.y + 16],
+                    [(300 - s.bot) / 2, s.y + 16],
+                  ].map((p) => p.join(",")).join(" ");
+                  return (
+                    <g key={i}>
+                      <polygon points={pts} fill={s.fill} opacity="0.9" />
+                      <text x="150" y={s.y + 10} textAnchor="middle" fontSize="8" fontWeight="600" fill="white">{s.label} do funil</text>
+                    </g>
+                  );
+                })}
+              </svg>
+              <div className="hidden md:flex flex-col text-[10px] text-muted-foreground shrink-0 leading-tight">
+                <span><b className="text-foreground">100%</b> Leads</span>
+                <span><b className="text-foreground">10%</b> viram Análise</span>
+                <span><b className="text-foreground">40%</b> Aprovação · <b className="text-foreground">50%</b> Venda</span>
+              </div>
+            </div>
 
             {/* Month funnel + missing days */}
             <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
