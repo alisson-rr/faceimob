@@ -161,7 +161,7 @@ export default function Checkpoint() {
 }
 
 
-function TeamCheckpointCard({ team, aggr, targets, name }: {
+export function TeamCheckpointCard({ team, aggr, targets, name }: {
   team: TeamRow;
   aggr: { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
   targets: Targets;
