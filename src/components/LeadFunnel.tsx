@@ -202,7 +202,7 @@ function sourceStyle(source?: string): { cls: string; label: string } {
   return { cls: "bg-secondary text-foreground border-border", label: source || "Origem —" };
 }
 
-function LeadCardMini({ lead, now, roletaSec, inactivityH, onClick }: { lead: LeadRow; now: number; roletaSec: number; inactivityH: number; onClick: () => void }) {
+function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick }: { lead: LeadRow; now: number; roletaSec: number; inactivityH: number; stageMaxMin: number; onClick: () => void }) {
   const created = new Date(lead.created_at).getTime();
   const ageMs = now - created;
   const isNew = lead.funnel_stage === "new";
@@ -211,6 +211,9 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, onClick }: { lead: Le
   const lastAct = new Date(lead.last_activity_at || lead.created_at).getTime();
   const inactiveH = (now - lastAct) / 3_600_000;
   const inactiveAlert = inactiveH > inactivityH;
+  const stageChanged = new Date(lead.stage_changed_at || lead.created_at).getTime();
+  const stageMinutes = (now - stageChanged) / 60_000;
+  const stageOverdue = stageMaxMin > 0 && stageMinutes > stageMaxMin;
   const src = sourceStyle(lead.source);
   const whatsappNum = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
   const waLink = whatsappNum
