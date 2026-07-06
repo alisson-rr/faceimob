@@ -40,8 +40,15 @@ export default function LeadFunnel({
 
 
   const load = async () => {
+    // Traz apenas leads recentes (últimas 48h) ou ainda ativos no funil.
+    // Leads antigos/convertidos ficam fora para não poluir o Kanban.
+    const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
     const [{ data }, { data: s }, { data: lost }] = await Promise.all([
-      supabase.from("leads").select("*").order("created_at", { ascending: false }),
+      supabase.from("leads").select("*")
+        .gte("created_at", since)
+        .neq("funnel_stage", "converted")
+        .order("created_at", { ascending: false })
+        .limit(200),
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
       supabase.rpc("leads_lost_today" as any),
     ]);
@@ -53,6 +60,7 @@ export default function LeadFunnel({
       if ((s as any).stage_max_minutes) setStageMax((s as any).stage_max_minutes);
     }
   };
+
 
 
   useEffect(() => {
@@ -113,7 +121,10 @@ export default function LeadFunnel({
       for (const l of leads) {
         if (l.funnel_stage !== "new" || reassigned.includes(l.id)) continue;
         const ageMs = now - new Date(l.created_at).getTime();
-        if (ageMs < roletaSec * 1000) continue;
+        // só reatribui se expirou a roleta E o lead tem no máximo 2× o tempo da roleta
+        // (evita processar leads antigos herdados de importações)
+        if (ageMs < roletaSec * 1000 || ageMs > roletaSec * 1000 * 3) continue;
+
         reassigned.push(l.id);
         sessionStorage.setItem(reassignedKey, JSON.stringify(reassigned));
         const { data } = await supabase.rpc("reassign_expired_lead" as any, { _lead_id: l.id });
