@@ -1,61 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Medal, Star, Flame, Lightbulb, Megaphone, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import type { PipelineDeal } from "@/types/crm";
-
-// Same weights as Gamification page
-const SCORING = {
-  incomplete_with_doc: 10,
-  envio_esteira_agil: 140,
-  approved: 250,
-  venda: 600,
-  distrato_penalty: -600,
-};
-
-type BrokerRow = {
-  id: string;
-  name: string;
-  active: boolean;
-  user_id: string | null;
-  manager_id: string | null;
-  director_id: string | null;
-  avatar_url: string | null;
-};
-
-type Score = {
-  broker: BrokerRow;
-  leads: number;
-  analises: number;
-  aprovados: number;
-  vendas: number;
-  points: number;
-};
+import { useGameRanking, type ScoreRow as Score } from "@/hooks/useGameRanking";
 
 type Props = { deals: PipelineDeal[] };
 
 export default function PipelineTopRanking({ deals }: Props) {
-  const { role, user } = useAuth();
-  const [brokers, setBrokers] = useState<BrokerRow[]>([]);
+  const dealsForHook = deals.map((d) => ({
+    broker1_name: (d as any).broker1,
+    broker2_name: (d as any).broker2,
+    stage: d.stage,
+    status: (d as any).status,
+    active: (d as any).active,
+  }));
+  const { role, myBroker, allScores, scoped } = useGameRanking(dealsForHook);
   const [openInfo, setOpenInfo] = useState(false);
   const [tip, setTip] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ title: string | null; message: string } | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("brokers")
-        .select("id,name,active,user_id,manager_id,director_id,avatar_url")
-        .eq("active", true)
-        .order("name");
-      setBrokers((data as any) || []);
-    })();
-  }, []);
 
   const loadInfo = async () => {
     const [{ data: tips }, { data: notices }] = await Promise.all([
@@ -66,47 +33,7 @@ export default function PipelineTopRanking({ deals }: Props) {
     setNotice(notices?.[0] ?? null);
   };
 
-  const myBroker = useMemo(
-    () => brokers.find((b) => b.user_id === user?.id) || null,
-    [brokers, user?.id]
-  );
-
-  // All scores (used to compute global rank)
-  const allScores: Score[] = useMemo(() => {
-    return brokers
-      .map((b) => {
-        const bd = deals.filter((d) => d.broker1 === b.name || d.broker2 === b.name);
-        const leads = bd.filter((d) => d.stage === "lead").length;
-        const incompletos = bd.filter((d) => d.stage === "incomplete").length;
-        const analises = bd.filter((d) => d.stage === "under_analysis" || d.stage === "visit_scheduled").length;
-        const aprovados = bd.filter((d) => d.stage === "approved" || d.stage === "contract").length;
-        const vendas = bd.filter((d) => d.stage === "closed" && d.active).length;
-        const distratos = bd.filter((d) => d.stage === "closed" && !d.active).length;
-        const points = Math.max(
-          0,
-          incompletos * SCORING.incomplete_with_doc +
-            analises * SCORING.envio_esteira_agil +
-            aprovados * SCORING.approved +
-            vendas * SCORING.venda +
-            distratos * SCORING.distrato_penalty
-        );
-        return { broker: b, leads, analises, aprovados, vendas, points };
-      })
-      .sort((a, b) => b.points - a.points);
-  }, [brokers, deals]);
-
-  // Scoped scores by role
-  const scoped: Score[] = useMemo(() => {
-    if (role === "admin") return allScores;
-    if (role === "director" && myBroker) {
-      return allScores.filter((s) => s.broker.director_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (role === "manager" && myBroker) {
-      return allScores.filter((s) => s.broker.manager_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (myBroker) return allScores.filter((s) => s.broker.id === myBroker.id);
-    return [];
-  }, [allScores, role, myBroker]);
+  const openInfoDialog = async () => { await loadInfo(); setOpenInfo(true); };
 
   if (!scoped.length) return null;
 
