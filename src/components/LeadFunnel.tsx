@@ -40,17 +40,20 @@ export default function LeadFunnel({
 
 
   const load = async () => {
-    const [{ data }, { data: s }] = await Promise.all([
+    const [{ data }, { data: s }, { data: lost }] = await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }),
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
+      supabase.rpc("leads_lost_today" as any),
     ]);
     setLeads((data as any) || []);
+    setLostToday(((lost as any) || []) as any);
     if (s) {
       setRoletaSec((s as any).roleta_seconds);
       setInactivityH((s as any).inactivity_alert_hours);
       if ((s as any).stage_max_minutes) setStageMax((s as any).stage_max_minutes);
     }
   };
+
 
   useEffect(() => {
     load();
