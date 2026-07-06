@@ -127,14 +127,15 @@ function sourceStyle(source?: string): { cls: string; label: string } {
   return { cls: "bg-secondary text-foreground border-border", label: source || "Origem —" };
 }
 
-function LeadCardMini({ lead, now, onClick }: { lead: LeadRow; now: number; onClick: () => void }) {
+function LeadCardMini({ lead, now, roletaSec, inactivityH, onClick }: { lead: LeadRow; now: number; roletaSec: number; inactivityH: number; onClick: () => void }) {
   const created = new Date(lead.created_at).getTime();
   const ageMs = now - created;
   const isNew = lead.funnel_stage === "new";
   const isBrandNew = ageMs < 10 * 60_000; // < 10min
-  const roletaLeftMs = 5 * 60_000 - ageMs;
+  const roletaLeftMs = roletaSec * 1000 - ageMs;
   const lastAct = new Date(lead.last_activity_at || lead.created_at).getTime();
   const inactiveH = (now - lastAct) / 3_600_000;
+  const inactiveAlert = inactiveH > inactivityH;
   const src = sourceStyle(lead.source);
   const whatsappNum = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
   const waLink = whatsappNum
