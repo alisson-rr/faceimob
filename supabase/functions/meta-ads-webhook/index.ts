@@ -25,10 +25,7 @@ async function fetchLeadFromGraph(leadgenId: string, pageAccessToken: string) {
 
 async function fetchFormName(formId: string, pageAccessToken: string): Promise<string | null> {
   try {
-    if (!formId || !pageAccessToken) {
-      console.warn('fetchFormName: missing', { hasFormId: !!formId, hasToken: !!pageAccessToken })
-      return null
-    }
+    if (!formId || !pageAccessToken) return null
     const url = `https://graph.facebook.com/v19.0/${formId}?fields=name,status&access_token=${pageAccessToken}`
     const res = await fetch(url)
     const json = await res.json()
@@ -37,6 +34,21 @@ async function fetchFormName(formId: string, pageAccessToken: string): Promise<s
     return json?.name || null
   } catch (e) {
     console.error('fetchFormName error:', e)
+    return null
+  }
+}
+
+async function fetchAdName(adId: string, pageAccessToken: string): Promise<string | null> {
+  try {
+    if (!adId || !pageAccessToken) return null
+    const url = `https://graph.facebook.com/v19.0/${adId}?fields=name,campaign{name},adset{name}&access_token=${pageAccessToken}`
+    const res = await fetch(url)
+    const json = await res.json()
+    console.log('Graph ad response for', adId, ':', JSON.stringify(json))
+    if (json?.error) return null
+    return json?.campaign?.name || json?.adset?.name || json?.name || null
+  } catch (e) {
+    console.error('fetchAdName error:', e)
     return null
   }
 }
