@@ -123,36 +123,41 @@ export default function PipelineTopRanking({ deals }: Props) {
   return (
     <>
     <Card className="border-primary/30 bg-card/60 backdrop-blur-xl max-w-4xl mx-auto">
-      <CardContent className="p-3">
-        <div className="flex items-center justify-center gap-3 mb-3 relative">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <div className="w-[110px]" />
           <div className="flex items-center gap-2">
             <Flame className="h-4 w-4 text-amber-400" />
             <h2 className="text-sm font-bold">Ranking do Game — {scopeLabel}</h2>
           </div>
-          <Badge variant="outline" className="text-[10px] border-primary/30 absolute right-0">
+          <Badge variant="outline" className="text-[10px] border-primary/30 w-[110px] justify-center">
             <TrendingUp className="h-3 w-3 mr-1" /> {scoped.length} participantes
           </Badge>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 justify-items-center">
+        <div className="grid grid-cols-3 gap-3 items-end">
           {order.map((s, idx) => {
-            const pos = idx === 0 ? 1 : idx === 1 ? 0 : 2;
+            // Visual layout: idx 0 = left (2nd), idx 1 = center (1st), idx 2 = right (3rd)
+            const pos = idx; // matches medalConfig: [silver, gold, bronze]
             const cfg = medalConfig[pos];
             const positionNumber = pos === 0 ? 2 : pos === 1 ? 1 : 3;
+            const isFirst = pos === 1;
             return (
               <button
                 type="button"
                 key={s.broker.id}
                 onClick={openInfoDialog}
                 className={cn(
-                  "w-full text-left rounded-xl border p-3 flex items-center gap-3 cursor-pointer",
-                  "transition-all duration-300 hover:scale-[1.04] hover:shadow-xl hover:shadow-amber-500/20",
-                  cfg.wrap,
-                  pos === 1 && "sm:-translate-y-2 hover:sm:-translate-y-3"
+                  "w-full h-full text-left rounded-xl border flex items-center gap-3 cursor-pointer",
+                  "transition-all duration-300 hover:shadow-xl",
+                  isFirst
+                    ? "p-4 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-amber-500/30"
+                    : "p-3 hover:scale-[1.04] hover:-translate-y-0.5 hover:shadow-primary/20",
+                  cfg.wrap
                 )}
               >
                 <div className="relative shrink-0">
-                  <Avatar className={cn("h-12 w-12 border-2", pos === 1 ? "border-amber-400/70" : "border-border/50")}>
+                  <Avatar className={cn(isFirst ? "h-14 w-14" : "h-12 w-12", "border-2", isFirst ? "border-amber-400/70" : "border-border/50")}>
                     <AvatarImage src={s.broker.avatar_url || undefined} alt={s.broker.name} />
                     <AvatarFallback className="bg-primary/20 text-primary font-bold text-xs">
                       {s.broker.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
@@ -162,7 +167,9 @@ export default function PipelineTopRanking({ deals }: Props) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className={cn("text-xs font-bold truncate", cfg.color)}>{positionNumber}º · {s.broker.name}</p>
-                  <p className="text-lg font-black leading-tight">{s.points} <span className="text-[10px] font-medium text-muted-foreground">pts</span></p>
+                  <p className={cn("font-black leading-tight", isFirst ? "text-xl" : "text-lg")}>
+                    {s.points} <span className="text-[10px] font-medium text-muted-foreground">pts</span>
+                  </p>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                     <span>V:<b className="text-yellow-400 ml-0.5">{s.vendas}</b></span>
                     <span>A:<b className="text-emerald-400 ml-0.5">{s.aprovados}</b></span>
