@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, Save, Zap, Timer, Users } from "lucide-react";
+import { Plus, Trash2, Save, Zap, Timer, Users, Layers } from "lucide-react";
 
 type Settings = {
   roleta_seconds: number;
