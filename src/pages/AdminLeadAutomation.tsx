@@ -138,6 +138,36 @@ export default function AdminLeadAutomation() {
         </CardContent>
       </Card>
 
+      {/* Stage max times (delay alerts) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><Timer className="h-4 w-4" /> Tempo máximo por etapa (minutos)</CardTitle>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-3 gap-4">
+          {STAGE_LABELS.map(st => (
+            <div key={st.key} className="space-y-1">
+              <Label className="text-xs">{st.label}</Label>
+              <Input
+                type="number" min={1}
+                value={settings.stage_max_minutes?.[st.key] ?? 0}
+                onChange={e => setSettings(s => ({
+                  ...s,
+                  stage_max_minutes: { ...(s.stage_max_minutes || {}), [st.key]: +e.target.value },
+                }))}
+              />
+            </div>
+          ))}
+          <div className="md:col-span-3">
+            <Button onClick={saveSettings} disabled={savingSettings}>
+              <Save className="h-4 w-4 mr-2" /> Salvar tempos
+            </Button>
+            <p className="text-[11px] text-muted-foreground mt-1">Ao ultrapassar o tempo, um popup de atraso é disparado no funil.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+
+
       {/* Distribution windows */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
