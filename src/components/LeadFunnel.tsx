@@ -8,6 +8,7 @@ import { ptBR } from "date-fns/locale";
 import { AlertTriangle, MessageCircle, Timer, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LeadDetailModal from "./LeadDetailModal";
+import { toast } from "@/hooks/use-toast";
 
 const STAGES: { key: string; label: string; accent: string }[] = [
   { key: "new", label: "Novo Lead", accent: "border-blue-500/50" },
@@ -36,7 +37,16 @@ export default function LeadFunnel({
   useEffect(() => {
     load();
     const ch = supabase.channel("leads-funnel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "leads" }, (payload: any) => {
+        const l = payload.new;
+        toast({
+          title: "🔔 Novo Lead recebido!",
+          description: `${l.name || "Sem nome"} — ${l.source || "origem —"}`,
+        });
+        load();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leads" }, () => load())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "leads" }, () => load())
       .subscribe();
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => { supabase.removeChannel(ch); clearInterval(t); };
@@ -98,25 +108,57 @@ export default function LeadFunnel({
   );
 }
 
+function sourceStyle(source?: string): { cls: string; label: string } {
+  const s = (source || "").toLowerCase();
+  if (s.includes("meta") || s.includes("facebook") || s.includes("instagram"))
+    return { cls: "bg-blue-600 text-white border-blue-500", label: source || "Meta" };
+  if (s.includes("whats"))
+    return { cls: "bg-green-600 text-white border-green-500", label: source || "WhatsApp" };
+  if (s.includes("google"))
+    return { cls: "bg-yellow-500 text-black border-yellow-400", label: source || "Google" };
+  if (s.includes("indica"))
+    return { cls: "bg-purple-600 text-white border-purple-500", label: source || "Indicação" };
+  return { cls: "bg-secondary text-foreground border-border", label: source || "Origem —" };
+}
+
 function LeadCardMini({ lead, now, onClick }: { lead: LeadRow; now: number; onClick: () => void }) {
   const created = new Date(lead.created_at).getTime();
   const ageMs = now - created;
   const isNew = lead.funnel_stage === "new";
+  const isBrandNew = ageMs < 10 * 60_000; // < 10min
   const roletaLeftMs = 5 * 60_000 - ageMs;
   const lastAct = new Date(lead.last_activity_at || lead.created_at).getTime();
   const inactiveH = (now - lastAct) / 3_600_000;
+  const src = sourceStyle(lead.source);
+  const whatsappNum = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
+  const waLink = whatsappNum
+    ? `https://wa.me/${whatsappNum.startsWith("55") ? whatsappNum : "55" + whatsappNum}?text=${encodeURIComponent(`Olá ${lead.name || ""}, tudo bem?`)}`
+    : "";
 
   return (
     <Card
       onClick={onClick}
-      className="p-2.5 cursor-pointer hover:bg-secondary/60 transition-colors border-border/50 space-y-1.5"
+      className={cn(
+        "p-2.5 cursor-pointer hover:bg-secondary/60 transition-colors border-border/50 space-y-1.5 relative",
+        isBrandNew && "ring-2 ring-primary/70 animate-pulse-slow"
+      )}
     >
+      {isBrandNew && (
+        <Badge className="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] px-1.5 py-0 shadow-lg animate-pulse">
+          NOVO
+        </Badge>
+      )}
       <div className="flex items-start justify-between gap-2">
         <p className="font-semibold text-sm truncate flex-1">{lead.name || "Sem nome"}</p>
         {inactiveH > 24 && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
       </div>
       <div className="flex items-center gap-1 flex-wrap">
-        <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{lead.source || "—"}</Badge>
+        <Badge className={cn("text-[9px] px-1.5 py-0 border", src.cls)}>{src.label}</Badge>
+        {lead.form_name && (
+          <Badge variant="outline" className="text-[9px] px-1.5 py-0 truncate max-w-[140px]" title={lead.form_name}>
+            📋 {lead.form_name}
+          </Badge>
+        )}
       </div>
       <p className="text-[10px] text-muted-foreground flex items-center gap-1 truncate">
         <User className="h-2.5 w-2.5" /> {lead.broker_name || "Sem corretor"}
@@ -132,6 +174,15 @@ function LeadCardMini({ lead, now, onClick }: { lead: LeadRow; now: number; onCl
           <span className="text-amber-500 font-medium">roleta expirada</span>
         )}
       </div>
+      {waLink && (
+        <Button
+          size="sm"
+          className="w-full h-7 bg-green-600 hover:bg-green-700 text-white text-[11px]"
+          onClick={(e) => { e.stopPropagation(); window.open(waLink, "_blank"); }}
+        >
+          <MessageCircle className="h-3 w-3 mr-1" /> WhatsApp
+        </Button>
+      )}
     </Card>
   );
 }

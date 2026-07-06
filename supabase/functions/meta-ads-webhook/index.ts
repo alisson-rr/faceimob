@@ -23,6 +23,20 @@ async function fetchLeadFromGraph(leadgenId: string, pageAccessToken: string) {
   }
 }
 
+async function fetchFormName(formId: string, pageAccessToken: string): Promise<string | null> {
+  try {
+    if (!formId || !pageAccessToken) return null
+    const url = `https://graph.facebook.com/v19.0/${formId}?fields=name&access_token=${pageAccessToken}`
+    const res = await fetch(url)
+    const json = await res.json()
+    return json?.name || null
+  } catch { return null }
+}
+
+function pickUtm(fields: Record<string, string>, key: string) {
+  return fields[key] || fields[`utm_${key}`] || fields[key.replace('utm_', '')] || ''
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -75,6 +89,8 @@ Deno.serve(async (req) => {
               if (g) fields = g
             }
 
+            const formName = await fetchFormName(v.form_id, pageAccessToken)
+
             leads.push({
               name: fields['full_name'] || fields['nome'] || fields['name'] || `Lead Meta ${v.leadgen_id || ''}`.trim(),
               phone: fields['phone_number'] || fields['telefone'] || fields['phone'] || '',
@@ -82,7 +98,14 @@ Deno.serve(async (req) => {
               email: fields['email'] || '',
               source: 'Meta Ads',
               status: 'new',
+              form_name: formName || fields['form_name'] || null,
               form_answers: fields,
+              utm_source: pickUtm(fields, 'utm_source') || 'meta',
+              utm_medium: pickUtm(fields, 'utm_medium'),
+              utm_campaign: pickUtm(fields, 'utm_campaign'),
+              utm_content: pickUtm(fields, 'utm_content'),
+              utm_term: pickUtm(fields, 'utm_term'),
+              tracking: { leadgen_id: v.leadgen_id, form_id: v.form_id, page_id: v.page_id, ad_id: v.ad_id, adset_id: v.adset_id, campaign_id: v.campaign_id },
               notes: `leadgen_id=${v.leadgen_id || ''} form_id=${v.form_id || ''} page_id=${v.page_id || ''}${!pageAccessToken ? ' [SEM META_PAGE_ACCESS_TOKEN — dados não puxados]' : ''}`,
             })
           }

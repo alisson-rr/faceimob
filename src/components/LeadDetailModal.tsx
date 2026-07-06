@@ -11,8 +11,10 @@ import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   MessageCircle, Phone, Mail, Paperclip, Send, Upload,
-  Clock, User, ArrowRightCircle, AlertTriangle, Download, X,
+  Clock, User, ArrowRightCircle, AlertTriangle, Download, X, Save,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Label } from "@/components/ui/label";
 
 type LeadRow = any;
 
@@ -25,6 +27,15 @@ const stageLabels: Record<string, string> = {
   gathering_docs: "Juntando Doc",
   converted: "Convertido",
 };
+
+function sourceBadgeCls(source?: string) {
+  const s = (source || "").toLowerCase();
+  if (s.includes("meta") || s.includes("facebook") || s.includes("instagram")) return "bg-blue-600 text-white border-blue-500";
+  if (s.includes("whats")) return "bg-green-600 text-white border-green-500";
+  if (s.includes("google")) return "bg-yellow-500 text-black border-yellow-400";
+  if (s.includes("indica")) return "bg-purple-600 text-white border-purple-500";
+  return "bg-secondary text-foreground";
+}
 
 export default function LeadDetailModal({
   lead, open, onOpenChange, actorName, onConvert, onStageChanged,
@@ -134,10 +145,13 @@ export default function LeadDetailModal({
               </Badge>
             )}
           </DialogTitle>
-          <p className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap pt-1">
+          <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap pt-1">
             <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Chegou {formatDistanceToNow(arrived, { locale: ptBR, addSuffix: true })}</span>
             <span className="flex items-center gap-1"><User className="h-3 w-3" /> {lead.broker_name || "Sem corretor"}</span>
-            <span>Origem: {lead.source || "—"}</span>
+            <Badge className={cn("border text-[10px]", sourceBadgeCls(lead.source))}>{lead.source || "Origem —"}</Badge>
+            {lead.form_name && (
+              <Badge variant="outline" className="text-[10px]">📋 {lead.form_name}</Badge>
+            )}
           </p>
         </DialogHeader>
 
@@ -174,12 +188,15 @@ export default function LeadDetailModal({
         </div>
 
         <Tabs defaultValue="info" className="mt-2">
-          <TabsList className="grid grid-cols-5 w-full">
-            <TabsTrigger value="info">Dados</TabsTrigger>
-            <TabsTrigger value="form">Formulário</TabsTrigger>
-            <TabsTrigger value="comments">Comentários ({comments.length})</TabsTrigger>
-            <TabsTrigger value="attachments">Anexos ({attachments.length})</TabsTrigger>
-            <TabsTrigger value="history">Histórico</TabsTrigger>
+          <TabsList className="grid grid-cols-8 w-full">
+            <TabsTrigger value="info" className="text-[11px]">Dados</TabsTrigger>
+            <TabsTrigger value="personal" className="text-[11px]">Pessoal</TabsTrigger>
+            <TabsTrigger value="interest" className="text-[11px]">Interesse</TabsTrigger>
+            <TabsTrigger value="form" className="text-[11px]">Form</TabsTrigger>
+            <TabsTrigger value="comments" className="text-[11px]">Coment.</TabsTrigger>
+            <TabsTrigger value="attachments" className="text-[11px]">Anexos</TabsTrigger>
+            <TabsTrigger value="history" className="text-[11px]">Histórico</TabsTrigger>
+            <TabsTrigger value="tracking" className="text-[11px]">Rastreio</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="space-y-2 text-sm">
@@ -188,8 +205,28 @@ export default function LeadDetailModal({
             <Row k="WhatsApp" v={lead.whatsapp} />
             <Row k="E-mail" v={lead.email} />
             <Row k="Origem" v={lead.source} />
+            <Row k="Formulário" v={lead.form_name} />
             <Row k="Corretor" v={lead.broker_name} />
             {lead.notes && <Row k="Notas" v={lead.notes} />}
+          </TabsContent>
+
+          <TabsContent value="personal" className="space-y-2">
+            <EditFields lead={lead} fields={[
+              { k: "cpf", label: "CPF" },
+              { k: "birth_date", label: "Data de nascimento", type: "date" },
+              { k: "address", label: "Endereço" },
+              { k: "phone", label: "Telefone" },
+              { k: "whatsapp", label: "WhatsApp" },
+              { k: "email", label: "E-mail", type: "email" },
+            ]} />
+          </TabsContent>
+
+          <TabsContent value="interest" className="space-y-2">
+            <EditFields lead={lead} fields={[
+              { k: "developer", label: "Construtora" },
+              { k: "development", label: "Empreendimento" },
+              { k: "unit", label: "Unidade" },
+            ]} />
           </TabsContent>
 
           <TabsContent value="form">
@@ -197,6 +234,7 @@ export default function LeadDetailModal({
               <p className="text-sm text-muted-foreground">Sem respostas de formulário.</p>
             ) : (
               <div className="space-y-2">
+                {lead.form_name && <p className="text-xs text-muted-foreground">Formulário: <span className="font-medium">{lead.form_name}</span></p>}
                 {Object.entries(answers).map(([k, v]) => (
                   <Row key={k} k={k} v={String(v)} />
                 ))}
@@ -258,9 +296,67 @@ export default function LeadDetailModal({
               {history.length === 0 && <p className="text-sm text-muted-foreground">Sem histórico.</p>}
             </div>
           </TabsContent>
+
+          <TabsContent value="tracking" className="space-y-2 text-sm">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">UTMs</p>
+            <Row k="utm_source" v={lead.utm_source} />
+            <Row k="utm_medium" v={lead.utm_medium} />
+            <Row k="utm_campaign" v={lead.utm_campaign} />
+            <Row k="utm_content" v={lead.utm_content} />
+            <Row k="utm_term" v={lead.utm_term} />
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mt-3">Rastreio</p>
+            {lead.tracking && Object.keys(lead.tracking || {}).length > 0 ? (
+              Object.entries(lead.tracking).map(([k, v]) => v ? <Row key={k} k={k} v={String(v)} /> : null)
+            ) : (
+              <p className="text-xs text-muted-foreground">Sem dados de rastreio.</p>
+            )}
+            {lead.notes && <><p className="text-xs text-muted-foreground uppercase tracking-wider mt-3">Notas técnicas</p><p className="text-xs whitespace-pre-wrap break-all">{lead.notes}</p></>}
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EditFields({
+  lead, fields,
+}: {
+  lead: any;
+  fields: { k: string; label: string; type?: string }[];
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const v: Record<string, string> = {};
+    fields.forEach(f => { v[f.k] = lead[f.k] ?? ""; });
+    return v;
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    const patch: any = {};
+    fields.forEach(f => { patch[f.k] = values[f.k] || null; });
+    const { error } = await supabase.from("leads").update(patch).eq("id", lead.id);
+    setSaving(false);
+    if (error) { toast({ variant: "destructive", title: "Erro", description: error.message }); return; }
+    toast({ title: "Dados salvos" });
+  };
+
+  return (
+    <div className="space-y-3">
+      {fields.map(f => (
+        <div key={f.k} className="space-y-1">
+          <Label className="text-xs">{f.label}</Label>
+          <Input
+            type={f.type || "text"}
+            value={values[f.k] || ""}
+            onChange={e => setValues(s => ({ ...s, [f.k]: e.target.value }))}
+          />
+        </div>
+      ))}
+      <Button size="sm" onClick={save} disabled={saving}>
+        <Save className="h-3 w-3 mr-1" /> {saving ? "Salvando..." : "Salvar"}
+      </Button>
+    </div>
   );
 }
 

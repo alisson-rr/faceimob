@@ -826,12 +826,18 @@ export type Database = {
       }
       leads: {
         Row: {
+          address: string | null
+          birth_date: string | null
           broker_id: string | null
           broker_name: string | null
+          cpf: string | null
           created_at: string
+          developer: string | null
+          development: string | null
           email: string | null
           first_contact_at: string | null
           form_answers: Json
+          form_name: string | null
           funnel_stage: Database["public"]["Enums"]["lead_funnel_stage"]
           id: string
           last_activity_at: string
@@ -840,16 +846,29 @@ export type Database = {
           phone: string | null
           source: string | null
           status: string
+          tracking: Json | null
+          unit: string | null
           updated_at: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
           whatsapp: string | null
         }
         Insert: {
+          address?: string | null
+          birth_date?: string | null
           broker_id?: string | null
           broker_name?: string | null
+          cpf?: string | null
           created_at?: string
+          developer?: string | null
+          development?: string | null
           email?: string | null
           first_contact_at?: string | null
           form_answers?: Json
+          form_name?: string | null
           funnel_stage?: Database["public"]["Enums"]["lead_funnel_stage"]
           id?: string
           last_activity_at?: string
@@ -858,16 +877,29 @@ export type Database = {
           phone?: string | null
           source?: string | null
           status?: string
+          tracking?: Json | null
+          unit?: string | null
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           whatsapp?: string | null
         }
         Update: {
+          address?: string | null
+          birth_date?: string | null
           broker_id?: string | null
           broker_name?: string | null
+          cpf?: string | null
           created_at?: string
+          developer?: string | null
+          development?: string | null
           email?: string | null
           first_contact_at?: string | null
           form_answers?: Json
+          form_name?: string | null
           funnel_stage?: Database["public"]["Enums"]["lead_funnel_stage"]
           id?: string
           last_activity_at?: string
@@ -876,7 +908,14 @@ export type Database = {
           phone?: string | null
           source?: string | null
           status?: string
+          tracking?: Json | null
+          unit?: string | null
           updated_at?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
           whatsapp?: string | null
         }
         Relationships: []
