@@ -83,16 +83,23 @@ Deno.serve(async (req) => {
               }
             }
 
-            // 2) Graph API fetch (real leads)
-            if (Object.keys(fields).length === 0 && v.leadgen_id && pageAccessToken) {
+            // 2) Graph API fetch (real leads) — SEMPRE tenta se tiver token,
+            // pois muitas vezes o inline vem vazio ou incompleto
+            if (v.leadgen_id && pageAccessToken) {
               const g = await fetchLeadFromGraph(v.leadgen_id, pageAccessToken)
-              if (g) fields = g
+              if (g && Object.keys(g).length > 0) fields = { ...g, ...fields }
             }
 
             const formName = await fetchFormName(v.form_id, pageAccessToken)
+            console.log('Parsed lead — form_name:', formName, 'fields:', JSON.stringify(fields))
+
+            // Extração de first name mais robusta (variações de forms Meta em PT/EN)
+            const fullName = fields['full_name'] || fields['nome_completo'] || fields['nome_e_sobrenome'] || fields['name'] || fields['nome'] || ''
+            const firstName = fields['first_name'] || fields['primeiro_nome'] || fields['nome'] || (fullName ? fullName.trim().split(/\s+/)[0] : '')
+            const fallbackName = fields['email']?.split('@')[0] || fields['phone_number'] || `Lead ${v.leadgen_id || ''}`.trim()
 
             leads.push({
-              name: fields['first_name'] || fields['nome'] || (fields['full_name'] || fields['name'] || '').split(' ')[0] || `Lead Meta ${v.leadgen_id || ''}`.trim(),
+              name: firstName || fallbackName,
               phone: fields['phone_number'] || fields['telefone'] || fields['phone'] || '',
               whatsapp: fields['phone_number'] || fields['whatsapp'] || '',
               email: fields['email'] || '',
@@ -105,8 +112,8 @@ Deno.serve(async (req) => {
               utm_campaign: pickUtm(fields, 'utm_campaign'),
               utm_content: pickUtm(fields, 'utm_content'),
               utm_term: pickUtm(fields, 'utm_term'),
-              tracking: { leadgen_id: v.leadgen_id, form_id: v.form_id, page_id: v.page_id, ad_id: v.ad_id, adset_id: v.adset_id, campaign_id: v.campaign_id },
-              notes: `leadgen_id=${v.leadgen_id || ''} form_id=${v.form_id || ''} page_id=${v.page_id || ''}${!pageAccessToken ? ' [SEM META_PAGE_ACCESS_TOKEN — dados não puxados]' : ''}`,
+              tracking: { leadgen_id: v.leadgen_id, form_id: v.form_id, page_id: v.page_id, ad_id: v.ad_id, adset_id: v.adset_id, campaign_id: v.campaign_id, form_name: formName },
+              notes: `leadgen_id=${v.leadgen_id || ''} form_id=${v.form_id || ''} form_name=${formName || '—'} page_id=${v.page_id || ''}${!pageAccessToken ? ' [SEM META_PAGE_ACCESS_TOKEN]' : ''}`,
             })
           }
         }
