@@ -764,6 +764,7 @@ export type Database = {
           inactivity_alert_hours: number
           no_response_hours: number
           roleta_seconds: number
+          stage_max_minutes: Json
           updated_at: string
         }
         Insert: {
@@ -772,6 +773,7 @@ export type Database = {
           inactivity_alert_hours?: number
           no_response_hours?: number
           roleta_seconds?: number
+          stage_max_minutes?: Json
           updated_at?: string
         }
         Update: {
@@ -780,6 +782,7 @@ export type Database = {
           inactivity_alert_hours?: number
           no_response_hours?: number
           roleta_seconds?: number
+          stage_max_minutes?: Json
           updated_at?: string
         }
         Relationships: []
@@ -872,6 +875,7 @@ export type Database = {
           notes: string | null
           phone: string | null
           source: string | null
+          stage_changed_at: string
           status: string
           tracking: Json | null
           unit: string | null
@@ -903,6 +907,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           source?: string | null
+          stage_changed_at?: string
           status?: string
           tracking?: Json | null
           unit?: string | null
@@ -934,6 +939,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           source?: string | null
+          stage_changed_at?: string
           status?: string
           tracking?: Json | null
           unit?: string | null
