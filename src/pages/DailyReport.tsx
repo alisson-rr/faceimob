@@ -233,7 +233,7 @@ export default function DailyReport() {
           <h1 className="text-4xl font-black bg-gradient-to-r from-primary via-cyan-400 to-fuchsia-400 bg-clip-text text-transparent">
             {team?.team_name ?? "Carregando equipe..."}
           </h1>
-          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de hoje</p>
+          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de ontem</p>
         </header>
 
         <UpdateBanner />
