@@ -36,6 +36,7 @@ const adminNav = [
   { title: "Construtoras", url: "/admin/developers", icon: Building2 },
   { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound },
   { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe },
+  { title: "Automação Leads", url: "/admin/lead-automation", icon: Zap },
 ];
 
 const systemNav = [
