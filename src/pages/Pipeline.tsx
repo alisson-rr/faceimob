@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { normalizeStatus, nextMonthBase } from "@/lib/dealStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import LeadFunnel from "@/components/LeadFunnel";
+import PipelineTopRanking from "@/components/PipelineTopRanking";
 
 const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
