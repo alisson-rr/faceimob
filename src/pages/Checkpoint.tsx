@@ -136,13 +136,25 @@ export default function Checkpoint() {
       ) : filteredTeams.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">Nenhuma equipe visível para você.</Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredTeams.map(t => <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
-        </div>
+        <>
+          <DirectorFunnelSection
+            role={role}
+            myBroker={myBroker}
+            brokers={brokers}
+            teams={visibleTeams}
+            aggregate={aggregate}
+            targetsFor={targetsFor}
+            teamNameFor={teamNameFor}
+          />
+          <div className="grid grid-cols-1 gap-4">
+            {filteredTeams.map(t => <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
+          </div>
+        </>
       )}
     </div>
   );
 }
+
 
 function TeamCheckpointCard({ team, aggr, targets, name }: {
   team: TeamRow;
