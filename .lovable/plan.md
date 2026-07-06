@@ -1,55 +1,61 @@
-## 1. Links (`/links`) e IPs (`/admin-allowed-ips`) — compactar
-- Reduzir KPIs do topo para altura ~64px (números menores, ícones menores, cards mais estreitos).
-- Trocar grid de cards para **linhas horizontais densas** (uma linha por equipe / IP), no estilo tabela-card:
-  - Links: uma linha com [nome da equipe · slug · PIN · último preenchimento · badges de status · botões copiar/QR/regenerar] alinhados horizontalmente. Mais itens visíveis na dobra.
-  - IPs: uma linha com [IP · label · último uso · ativo/desativado · ações] em coluna densa.
-- Manter responsivo (empilha em mobile).
 
-## 2. Permissões (`/admin-permissions`) — 2 níveis
-Estrutura atual: role × módulo (allow/deny). Expandir para:
+## 1. Limpeza de navegação e menu
+- Remover completamente `Norteador` (rota, sidebar, arquivo `src/pages/Norteador.tsx`).
+- Em `Settings.tsx`: remover as abas `Construtoras`, `Resultados`, `Gamificação`, `Links`, `Norteador`.
+- Sidebar: garantir que `Links` e `Gamificação` estão como itens do menu principal (não mais dentro de Configurações). `Links` visível a todos; edição/insert restrita a `admin`.
+- `Construtoras`: já existe no menu → apenas remover da tela de Configurações.
 
-**Nível 1 — Itens de menu** (o que já existe, apenas renomear a seção "Acesso ao menu"):
-Dashboard, Pipeline, Leads, Equipes, Checkpoint, Links, IPs, Marketing, Gamificação, Configurações, etc.
+## 2. Página Links (`/links`)
+- Substituir o mock por CRUD real ligado a nova tabela `useful_links(id, title, url, category, sort_order, created_by, timestamps)`.
+- Todos autenticados fazem SELECT. Apenas `admin` faz INSERT/UPDATE/DELETE (RLS via `private.has_role`).
+- UI: lista em linhas densas + botão "Novo Link" / "Editar" / "Excluir" só aparece para admin. Sempre com botão **Salvar** explícito no modal.
 
-**Nível 2 — Funcionalidades por menu** (nova seção "Funcionalidades por módulo"):
-Uma aba por menu principal. Para o **Pipeline**, listar:
-- Ver etapas: checkbox por `deal_stage` (incompleto, documentacao, analise, aprovado, contrato, closed, etc.) por role.
-- Ações: criar deal, editar Status 1, fechar mês, exportar.
-- Persistido em nova tabela `stage_permissions` (já existe) — usar/expandir.
+## 3. Marketing — Uploads Leadfy + Controle de Aporte
+- Otimizar layout do upload Leadfy (drag-and-drop compacto, preview de linhas, botão salvar destacado).
+- Novo módulo **Aporte de Mídia**:
+  - Tabela `marketing_investments(id, invested_at date, amount numeric, developer text, channel text?, note text, created_by, timestamps)`.
+  - Formulário inline: data + valor + construtora (select das construtoras existentes) + botão **Salvar**.
+  - Popup/badge no header do Marketing com **total do mês atual** (soma de `amount` do mês corrente). Clique abre modal com lista dos aportes do mês, agrupados por construtora.
+  - KPI "Investimento" da tela passa a somar `marketing_investments` do mês + spend das campanhas (fallback mock).
 
-Nova tabela se necessário: `feature_permissions(role, module, feature_key, allowed bool)`.
+## 4. Equipes — Metas Gerente / Diretor / Ano
+- Adicionar em `brokers` (já usado para todos os níveis) colunas: `monthly_goal numeric`, `yearly_goal numeric` (VGV meta anual).
+- UI Equipes: em cada card de gerente e de diretor, campo editável de **meta mensal** e **meta anual** + botão **Salvar**.
+- Meta do diretor (mensal e anual) = **soma automática** das metas dos gerentes sob ele (read-only, calculada no frontend a partir de `brokers.director_id`).
+- Painel do diretor mostra:
+  - Meta anual do diretor (soma dos gerentes).
+  - VGV realizado no ano (soma de `deals.deal_value` do ano onde `status='VENDA'` para brokers das equipes dele).
+  - **Falta para meta anual** = meta − realizado.
+  - **Meta mensal restante** = falta / meses restantes até dezembro.
+- Mesmo bloco por gerente (meta anual vs realizado do ano das vendas da equipe).
 
-## 3. Dashboard do Diretor (nova tela inicial quando `role='director'`)
-Rota `/director-dashboard` e redirect do `/` para diretor.
+## 5. Resultados VGV por ano/mês (fora de Settings)
+- Nova página `/resultados` (item de menu apenas para admin/diretor) OU aba dentro de Gamificação — decidir por página dedicada.
+- Estrutura: accordion por ano → 12 meses → inputs `vendas` (qtd) e `vgv` (R$) + botão **Salvar** por linha.
+- Tabela nova `annual_results(id, year int, month int 1-12, sales_count int, vgv numeric, unique(year,month))`. Admin escreve, todos leem.
 
-Layout:
-- Header: nome do diretor + seletor de equipe (todas as equipes cujos gerentes têm `director_id = broker(auth.uid()).id`).
-- KPIs compactos: Leads, Docs, Análises Enviadas, Aprovações, Vendas (agregados do mês corrente, todas as equipes do diretor).
-- Grid por equipe: card com mini-funil de cada equipe.
-- **Funil visual comparativo** (dois funis lado a lado):
+## 6. Gamificação — Dica de Ouro & Recados
+- Manter página `/gamification` como está para todos.
+- Nova aba **Admin** (só visível a admin) com CRUD de:
+  - `gold_tips(id, content text, active bool, created_by, timestamps)` — 1 dica de ouro ativa por vez (destaque no topo da Gamificação).
+  - `important_notices(id, title, message, pinned bool, active bool, timestamps)` — banner de recados no topo da Gamificação para todos.
+- Ambas com botão **Salvar** explícito.
 
-```text
-   DAILY (declarado)          PIPELINE (real)
-   ┌──────────────┐           ┌──────────────┐
-   │ Leads 100%   │ 250       │ Leads 100%   │ 240
-   │  Análise 10% │  25       │  Análise 10% │  22
-   │  Aprov. 40%  │  10       │  Aprov. 40%  │   9
-   │  Venda 50%   │   5       │  Venda 50%   │   4
-   └──────────────┘           └──────────────┘
-```
+## 7. Banco de dados (uma migration)
+Novas tabelas em `public`, todas com GRANT + RLS + `private.has_role`:
+- `useful_links` — SELECT authenticated; INSERT/UPDATE/DELETE admin.
+- `marketing_investments` — SELECT authenticated; INSERT/UPDATE/DELETE admin+director.
+- `annual_results` — SELECT authenticated; write admin.
+- `gold_tips`, `important_notices` — SELECT authenticated; write admin.
+- ALTER `brokers` ADD `monthly_goal numeric`, `yearly_goal numeric`.
 
-- Fonte Daily: `daily_broker_entries` (leads, coleta_docs, analises, aprovados, vendas) agregado por equipes do diretor no mês.
-- Fonte Pipeline: `deals` do mês (`month_base`) filtrado por `broker1_id ∈ corretores das equipes do diretor`:
-  - Leads: `leads` table (mesmo escopo)
-  - Análise enviada: `stage IN ('analise_credito', 'documentacao_completa')`
-  - Aprovado: `stage = 'approved'`
-  - Venda: `status = 'VENDA'`
-- Cada etapa mostra: valor absoluto + % vs leads + meta (10/40/50) com badge verde/vermelho.
-- Match usuário: usar `broker.user_id` para ligar Daily entries (via `broker_id`) e Pipeline deals (via `broker1_id`).
+## 8. Arquivos afetados
+- Deletar: `src/pages/Norteador.tsx`.
+- Editar: `src/App.tsx`, `src/components/layout/AppSidebar.tsx`, `src/pages/Settings.tsx`, `src/pages/Links.tsx`, `src/pages/Marketing.tsx`, `src/pages/Equipes.tsx`, `src/pages/Gamification.tsx`, `src/pages/DirectorDashboard.tsx`.
+- Criar: `src/pages/Resultados.tsx`, `src/components/MarketingInvestmentModal.tsx`, `src/components/GoalEditor.tsx`.
+- 1 migration SQL.
 
-## 4. Detalhes técnicos
-- Novos arquivos: `src/pages/DirectorDashboard.tsx`, componente `<ComparativeFunnel />`.
-- Editar `src/App.tsx` para rota + redirect por role.
-- Editar `src/pages/Links.tsx`, `src/pages/AdminAllowedIps.tsx`, `src/pages/AdminPermissions.tsx`.
-- Migration: adicionar `feature_permissions` se necessário; expandir `stage_permissions` com policies read/write.
-- Sem mudanças em edge functions.
+## Riscos
+- Volume grande em uma entrega → alguns detalhes de UI podem precisar de ajuste depois.
+- Metas de diretor read-only: se um gerente ainda não tem meta cadastrada, a soma será parcial (mostrar aviso).
+- Aportes por construtora exigem lista consistente com `cca_developers` — vou usar essa tabela como fonte.
