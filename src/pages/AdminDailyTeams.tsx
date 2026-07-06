@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { KeyRound, Link2, Copy, Plus, RefreshCw, Eye, EyeOff, Users, ShieldCheck, Globe } from "lucide-react";
+import { KeyRound, Link2, Copy, Plus, RefreshCw, Eye, EyeOff, Users, ShieldCheck, Globe, ExternalLink } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 
@@ -68,6 +68,7 @@ export default function AdminDailyTeams() {
   };
 
   const linkFor = (t: any) => `${DAILY_PUBLIC_ORIGIN}/daily/${managerSlug(t.display_name || t.name)}?v=public`;
+  const adminLinkFor = (t: any) => `${window.location.origin}/daily/${managerSlug(t.display_name || t.name)}?admin=1`;
   const copy = (text: string, label = "Link") => {
     navigator.clipboard.writeText(text);
     toast({ title: `${label} copiado` });
@@ -138,6 +139,9 @@ export default function AdminDailyTeams() {
                   )}
                 </div>
 
+                <Button asChild size="sm" variant="outline" className="h-7 px-2" title="Abrir daily como admin (sem PIN)">
+                  <a href={adminLinkFor(t)} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3 mr-1" /> Ver</a>
+                </Button>
                 <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => regeneratePin(t.id)}>
                   <RefreshCw className="h-3 w-3 mr-1" /> {hasPin ? "Renovar" : "Gerar"}
                 </Button>
