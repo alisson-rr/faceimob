@@ -26,6 +26,15 @@ const stageLabels: Record<string, string> = {
   converted: "Convertido",
 };
 
+function sourceBadgeCls(source?: string) {
+  const s = (source || "").toLowerCase();
+  if (s.includes("meta") || s.includes("facebook") || s.includes("instagram")) return "bg-blue-600 text-white border-blue-500";
+  if (s.includes("whats")) return "bg-green-600 text-white border-green-500";
+  if (s.includes("google")) return "bg-yellow-500 text-black border-yellow-400";
+  if (s.includes("indica")) return "bg-purple-600 text-white border-purple-500";
+  return "bg-secondary text-foreground";
+}
+
 export default function LeadDetailModal({
   lead, open, onOpenChange, actorName, onConvert, onStageChanged,
 }: {
