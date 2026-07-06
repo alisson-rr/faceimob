@@ -620,6 +620,86 @@ export type Database = {
           },
         ]
       }
+      distribution_group_brokers: {
+        Row: {
+          broker_id: string
+          group_id: string
+        }
+        Insert: {
+          broker_id: string
+          group_id: string
+        }
+        Update: {
+          broker_id?: string
+          group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distribution_group_brokers_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distribution_group_brokers_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "distribution_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      distribution_group_forms: {
+        Row: {
+          form_id: string
+          form_name: string | null
+          group_id: string
+        }
+        Insert: {
+          form_id: string
+          form_name?: string | null
+          group_id: string
+        }
+        Update: {
+          form_id?: string
+          form_name?: string | null
+          group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distribution_group_forms_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "distribution_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      distribution_groups: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       distribution_windows: {
         Row: {
           active: boolean
@@ -867,6 +947,7 @@ export type Database = {
           email: string | null
           first_contact_at: string | null
           form_answers: Json
+          form_id: string | null
           form_name: string | null
           funnel_stage: Database["public"]["Enums"]["lead_funnel_stage"]
           id: string
@@ -899,6 +980,7 @@ export type Database = {
           email?: string | null
           first_contact_at?: string | null
           form_answers?: Json
+          form_id?: string | null
           form_name?: string | null
           funnel_stage?: Database["public"]["Enums"]["lead_funnel_stage"]
           id?: string
@@ -931,6 +1013,7 @@ export type Database = {
           email?: string | null
           first_contact_at?: string | null
           form_answers?: Json
+          form_id?: string | null
           form_name?: string | null
           funnel_stage?: Database["public"]["Enums"]["lead_funnel_stage"]
           id?: string
