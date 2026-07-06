@@ -36,7 +36,16 @@ export default function LeadFunnel({
   useEffect(() => {
     load();
     const ch = supabase.channel("leads-funnel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => load())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "leads" }, (payload: any) => {
+        const l = payload.new;
+        toast({
+          title: "🔔 Novo Lead recebido!",
+          description: `${l.name || "Sem nome"} — ${l.source || "origem —"}`,
+        });
+        load();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leads" }, () => load())
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "leads" }, () => load())
       .subscribe();
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => { supabase.removeChannel(ch); clearInterval(t); };
