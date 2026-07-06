@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
 
     await admin.from('brokers').update({
       user_id: userId, login_email: email, login_provisioned_at: new Date().toISOString(),
-      login_email_confirmed: true, login_password_plain: password,
+      login_email_confirmed: true,
     }).eq('id', broker.id);
 
     return new Response(JSON.stringify({ success: true, email, password, user_id: userId }), {
