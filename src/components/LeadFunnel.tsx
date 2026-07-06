@@ -225,12 +225,18 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick 
       onClick={onClick}
       className={cn(
         "p-2.5 cursor-pointer hover:bg-secondary/60 transition-colors border-border/50 space-y-1.5 relative",
-        isBrandNew && "ring-2 ring-primary/70 animate-pulse-slow"
+        isBrandNew && "ring-2 ring-primary/70 animate-pulse-slow",
+        stageOverdue && "ring-2 ring-destructive/70"
       )}
     >
       {isBrandNew && (
         <Badge className="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] px-1.5 py-0 shadow-lg animate-pulse">
           NOVO
+        </Badge>
+      )}
+      {stageOverdue && !isBrandNew && (
+        <Badge className="absolute -top-2 -right-2 bg-destructive text-white text-[9px] px-1.5 py-0 shadow-lg animate-pulse gap-0.5">
+          <AlertTriangle className="h-2.5 w-2.5" /> ATRASO
         </Badge>
       )}
       <div className="flex items-start justify-between gap-2">
