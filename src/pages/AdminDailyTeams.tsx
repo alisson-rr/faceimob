@@ -68,6 +68,7 @@ export default function AdminDailyTeams() {
   };
 
   const linkFor = (t: any) => `${DAILY_PUBLIC_ORIGIN}/daily/${managerSlug(t.display_name || t.name)}?v=public`;
+  const adminLinkFor = (t: any) => `${window.location.origin}/daily/${managerSlug(t.display_name || t.name)}?admin=1`;
   const copy = (text: string, label = "Link") => {
     navigator.clipboard.writeText(text);
     toast({ title: `${label} copiado` });
