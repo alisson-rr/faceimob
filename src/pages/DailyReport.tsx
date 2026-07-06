@@ -47,7 +47,7 @@ export default function DailyReport() {
   const [entries, setEntries] = useState<EntryState>({});
   const [filledBy, setFilledBy] = useState("");
   const [notes, setNotes] = useState("");
-  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [date, setDate] = useState(format(subDays(new Date(), 1), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   const [xpBurst, setXpBurst] = useState(0);
   const [monthTotals, setMonthTotals] = useState<Record<FieldKey, number>>(() => FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>));
@@ -58,7 +58,8 @@ export default function DailyReport() {
   const [loadingDay, setLoadingDay] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const yesterday = subDays(new Date(), 1);
+  const todayStr = format(yesterday, "yyyy-MM-dd");
   const todayFilled = filledDates.includes(todayStr);
 
   const openTodayForm = async () => {
