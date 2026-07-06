@@ -313,7 +313,7 @@ function DirectorFunnelSection({
   );
 }
 
-function DirectorFunnelCard({
+export function DirectorFunnelCard({
   title, aggr, targets, teams, aggregate, targetsFor, teamNameFor,
 }: {
   title: string;
