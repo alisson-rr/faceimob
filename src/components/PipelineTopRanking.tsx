@@ -121,31 +121,34 @@ export default function PipelineTopRanking({ deals }: Props) {
     role === "manager" ? "Sua Gerência" : "Ranking";
 
   return (
-    <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
+    <>
+    <Card className="border-primary/30 bg-card/60 backdrop-blur-xl max-w-4xl mx-auto">
       <CardContent className="p-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-center gap-3 mb-3 relative">
           <div className="flex items-center gap-2">
             <Flame className="h-4 w-4 text-amber-400" />
             <h2 className="text-sm font-bold">Ranking do Game — {scopeLabel}</h2>
           </div>
-          <Badge variant="outline" className="text-[10px] border-primary/30">
+          <Badge variant="outline" className="text-[10px] border-primary/30 absolute right-0">
             <TrendingUp className="h-3 w-3 mr-1" /> {scoped.length} participantes
           </Badge>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 justify-items-center">
           {order.map((s, idx) => {
-            // idx 0 = 2nd, 1 = 1st, 2 = 3rd
-            const pos = idx === 0 ? 1 : idx === 1 ? 0 : 2; // medalConfig index
+            const pos = idx === 0 ? 1 : idx === 1 ? 0 : 2;
             const cfg = medalConfig[pos];
             const positionNumber = pos === 0 ? 2 : pos === 1 ? 1 : 3;
             return (
-              <div
+              <button
+                type="button"
                 key={s.broker.id}
+                onClick={openInfoDialog}
                 className={cn(
-                  "rounded-xl border p-3 flex items-center gap-3 transition-transform",
+                  "w-full text-left rounded-xl border p-3 flex items-center gap-3 cursor-pointer",
+                  "transition-all duration-300 hover:scale-[1.04] hover:shadow-xl hover:shadow-amber-500/20",
                   cfg.wrap,
-                  pos === 1 && "sm:-translate-y-2"
+                  pos === 1 && "sm:-translate-y-2 hover:sm:-translate-y-3"
                 )}
               >
                 <div className="relative shrink-0">
@@ -166,12 +169,14 @@ export default function PipelineTopRanking({ deals }: Props) {
                     <span>An:<b className="text-sky-400 ml-0.5">{s.analises}</b></span>
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       </CardContent>
     </Card>
+    <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
+    </>
   );
 }
 
