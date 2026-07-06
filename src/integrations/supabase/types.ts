@@ -757,6 +757,33 @@ export type Database = {
           },
         ]
       }
+      lead_automation_settings: {
+        Row: {
+          auto_first_contact: boolean
+          id: boolean
+          inactivity_alert_hours: number
+          no_response_hours: number
+          roleta_seconds: number
+          updated_at: string
+        }
+        Insert: {
+          auto_first_contact?: boolean
+          id?: boolean
+          inactivity_alert_hours?: number
+          no_response_hours?: number
+          roleta_seconds?: number
+          updated_at?: string
+        }
+        Update: {
+          auto_first_contact?: boolean
+          id?: boolean
+          inactivity_alert_hours?: number
+          no_response_hours?: number
+          roleta_seconds?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_comments: {
         Row: {
           author_name: string
