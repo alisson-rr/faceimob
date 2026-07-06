@@ -91,7 +91,7 @@ export default function LeadFunnel({
               </div>
               <div className={cn("border rounded-b-lg p-2 space-y-2 min-h-[400px] bg-background/30", stage.accent)}>
                 {items.map(l => (
-                  <LeadCardMini key={l.id} lead={l} now={now} onClick={() => setSelected(l)} />
+                  <LeadCardMini key={l.id} lead={l} now={now} roletaSec={roletaSec} inactivityH={inactivityH} onClick={() => setSelected(l)} />
                 ))}
                 {items.length === 0 && (
                   <p className="text-[11px] text-muted-foreground text-center py-6">—</p>
