@@ -263,7 +263,25 @@ export default function Pipeline() {
   const perPage = 15;
 
   // ── Leads state ──
-  const [leads, setLeads] = useState<Lead[]>(initialLeads);
+  const [leads, setLeads] = useState<Lead[]>([]);
+
+  // Fetch leads from Supabase + realtime subscription
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && mounted) setLeads((data as any) || []);
+    };
+    load();
+    const channel = supabase
+      .channel('leads-pipeline')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => load())
+      .subscribe();
+    return () => { mounted = false; supabase.removeChannel(channel); };
+  }, []);
   const [leadSearch, setLeadSearch] = useState("");
   const [leadStatusFilter, setLeadStatusFilter] = useState("all");
   const [leadViewMode, setLeadViewMode] = useState<"list" | "grid">("list");
