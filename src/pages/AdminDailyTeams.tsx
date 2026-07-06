@@ -139,6 +139,9 @@ export default function AdminDailyTeams() {
                   )}
                 </div>
 
+                <Button asChild size="sm" variant="outline" className="h-7 px-2" title="Abrir daily como admin (sem PIN)">
+                  <a href={adminLinkFor(t)} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3 mr-1" /> Ver</a>
+                </Button>
                 <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => regeneratePin(t.id)}>
                   <RefreshCw className="h-3 w-3 mr-1" /> {hasPin ? "Renovar" : "Gerar"}
                 </Button>
