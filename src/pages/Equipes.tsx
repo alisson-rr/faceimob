@@ -30,6 +30,31 @@ interface BrokerRow {
 
 const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
 
+function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }) {
+  const [monthly, setMonthly] = useState(String(broker.monthly_goal ?? 0));
+  const [yearly, setYearly] = useState(String(broker.yearly_goal ?? 0));
+  const [saving, setSaving] = useState(false);
+  const dirty = Number(monthly) !== Number(broker.monthly_goal ?? 0) || Number(yearly) !== Number(broker.yearly_goal ?? 0);
+  const save = async () => {
+    setSaving(true);
+    const { error } = await (supabase as any).from("brokers").update({ monthly_goal: Number(monthly || 0), yearly_goal: Number(yearly || 0) }).eq("id", broker.id);
+    setSaving(false);
+    if (error) return toast({ title: "Erro ao salvar meta", description: error.message, variant: "destructive" });
+    toast({ title: "Meta salva" });
+    onSaved();
+  };
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[9px] uppercase text-muted-foreground shrink-0">Metas R$</span>
+      <Input type="number" value={monthly} onChange={e => setMonthly(e.target.value)} placeholder="mês" className="h-6 text-[11px] px-2" title="Meta mensal (R$)" />
+      <Input type="number" value={yearly} onChange={e => setYearly(e.target.value)} placeholder="ano" className="h-6 text-[11px] px-2" title="Meta anual (R$)" />
+      <Button size="sm" variant={dirty ? "default" : "ghost"} className="h-6 px-2 text-[10px]" onClick={save} disabled={saving || !dirty}>
+        {saving ? "..." : "Salvar"}
+      </Button>
+    </div>
+  );
+}
+
 export default function Equipes() {
   const { role, user } = useAuth();
   const canEdit = role === "admin" || role === "director";
