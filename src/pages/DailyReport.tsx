@@ -472,19 +472,19 @@ export default function DailyReport() {
                 <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
                   <Sparkles className="h-8 w-8 text-primary" />
                   <div>
-                    <p className="text-sm font-bold">Pronto para registrar o dia?</p>
+                    <p className="text-sm font-bold">Pronto para registrar o dia de ontem?</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Clique abaixo para abrir o checkpoint de <b>hoje ({format(new Date(), "dd/MM", { locale: ptBR })})</b> com todos os corretores da equipe.
+                      Clique abaixo para abrir o checkpoint de <b>ontem ({format(yesterday, "dd/MM", { locale: ptBR })})</b> com todos os corretores da equipe.
                     </p>
                     {todayFilled && (
                       <p className="text-xs text-emerald-400 mt-2 flex items-center justify-center gap-1">
-                        <Info className="h-3 w-3" /> O checkpoint de hoje já foi preenchido — você pode editar os valores.
+                        <Info className="h-3 w-3" /> O checkpoint de ontem já foi preenchido — você pode editar os valores.
                       </p>
                     )}
                   </div>
                   <Button size="lg" onClick={openTodayForm} disabled={loadingDay || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
                     {loadingDay ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Pencil className="h-4 w-4 mr-2" />}
-                    {todayFilled ? "Editar daily de hoje" : "Preencher o daily"}
+                    {todayFilled ? "Editar daily de ontem" : "Preencher o daily de ontem"}
                   </Button>
                   <p className="text-[10px] text-muted-foreground">Para editar outros dias, use o botão <b>Histórico</b> acima.</p>
                 </CardContent>
