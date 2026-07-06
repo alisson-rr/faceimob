@@ -44,6 +44,36 @@ export type Database = {
         }
         Relationships: []
       }
+      annual_results: {
+        Row: {
+          created_at: string
+          id: string
+          month: number
+          sales_count: number
+          updated_at: string
+          vgv: number
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          month: number
+          sales_count?: number
+          updated_at?: string
+          vgv?: number
+          year: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          month?: number
+          sales_count?: number
+          updated_at?: string
+          vgv?: number
+          year?: number
+        }
+        Relationships: []
+      }
       broker_checkins: {
         Row: {
           auto_checkout: boolean
@@ -120,11 +150,13 @@ export type Database = {
           login_password_plain: string | null
           login_provisioned_at: string | null
           manager_id: string | null
+          monthly_goal: number | null
           name: string
           phone: string | null
           role: string
           updated_at: string | null
           user_id: string | null
+          yearly_goal: number | null
         }
         Insert: {
           active?: boolean
@@ -151,11 +183,13 @@ export type Database = {
           login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
+          monthly_goal?: number | null
           name: string
           phone?: string | null
           role?: string
           updated_at?: string | null
           user_id?: string | null
+          yearly_goal?: number | null
         }
         Update: {
           active?: boolean
@@ -182,11 +216,13 @@ export type Database = {
           login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
+          monthly_goal?: number | null
           name?: string
           phone?: string | null
           role?: string
           updated_at?: string | null
           user_id?: string | null
+          yearly_goal?: number | null
         }
         Relationships: [
           {
@@ -620,6 +656,66 @@ export type Database = {
         }
         Relationships: []
       }
+      gold_tips: {
+        Row: {
+          active: boolean
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      important_notices: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          message: string
+          pinned: boolean
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message: string
+          pinned?: boolean
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message?: string
+          pinned?: boolean
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           broker_id: string | null
@@ -662,6 +758,42 @@ export type Database = {
           status?: string
           updated_at?: string
           whatsapp?: string | null
+        }
+        Relationships: []
+      }
+      marketing_investments: {
+        Row: {
+          amount: number
+          channel: string | null
+          created_at: string
+          created_by: string | null
+          developer: string | null
+          id: string
+          invested_at: string
+          note: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          channel?: string | null
+          created_at?: string
+          created_by?: string | null
+          developer?: string | null
+          id?: string
+          invested_at?: string
+          note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          channel?: string | null
+          created_at?: string
+          created_by?: string | null
+          developer?: string | null
+          id?: string
+          invested_at?: string
+          note?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -931,6 +1063,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      useful_links: {
+        Row: {
+          category: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          sort_order: number
+          title: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
