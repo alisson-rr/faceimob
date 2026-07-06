@@ -1,1 +1,7 @@
 project_id = "wkgvqzcqtgyugzykxunj"
+
+[functions.daily-team-info]
+verify_jwt = false
+
+[functions.submit-daily-report]
+verify_jwt = false
