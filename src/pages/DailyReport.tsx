@@ -498,6 +498,19 @@ export default function DailyReport() {
                   </CardContent>
                 </Card>
 
+                {/* Funil visual do dia (declarado) */}
+                <VisualFunnel
+                  title="Funil do dia — declarado"
+                  subtitle="metas: 100 → 10% → 40% → 50%"
+                  accent="hsl(217 91% 60%)"
+                  steps={[
+                    { key: "leads",     label: "Leads",      value: totals.leads     || 0, targetPct: 100 },
+                    { key: "analises",  label: "Análises",   value: totals.analises  || 0, targetPct: 10 },
+                    { key: "aprovados", label: "Aprovações", value: totals.aprovados || 0, targetPct: 40 },
+                    { key: "vendas",    label: "Vendas",     value: totals.vendas    || 0, targetPct: 50 },
+                  ] as FunnelStep[]}
+                />
+
                 {/* Totals + submit */}
                 <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
                   <CardContent className="p-4 flex flex-col items-center gap-3">
