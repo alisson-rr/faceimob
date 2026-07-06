@@ -17,6 +17,7 @@ const randomPin = () => Math.floor(100000 + Math.random() * 900000).toString();
 const slugify = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const managerSlug = (teamName: string) => slugify(teamName.replace(/^equipe\s+/i, ""));
+const DAILY_PUBLIC_ORIGIN = "https://crm-faceimob.com.br";
 
 export default function AdminDailyTeams() {
   const qc = useQueryClient();
@@ -66,7 +67,7 @@ export default function AdminDailyTeams() {
     qc.invalidateQueries({ queryKey: ["daily-teams"] });
   };
 
-  const linkFor = (t: any) => `${window.location.origin}/daily/${managerSlug(t.display_name || t.name)}`;
+  const linkFor = (t: any) => `${DAILY_PUBLIC_ORIGIN}/daily/${managerSlug(t.display_name || t.name)}?v=public`;
   const copy = (text: string, label = "Link") => {
     navigator.clipboard.writeText(text);
     toast({ title: `${label} copiado` });
