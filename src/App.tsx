@@ -56,6 +56,7 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/daily/:teamId/:slug" element={<DailyReport />} />
             <Route path="/daily/:slug" element={<DailyReport />} />
+            <Route path="/diretor/:slug" element={<PublicDirectorCheckpoint />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<RequireAuth />}>
               <Route path="/dashboard" element={<DashboardSwitcher />} />
