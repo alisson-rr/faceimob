@@ -411,7 +411,7 @@ export default function DailyReport() {
                           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" /> Não preenchido</span>
                         </div>
                         <div className="grid grid-cols-7 gap-1.5">
-                          {eachDayOfInterval({ start: startOfMonth(new Date()), end: new Date() }).map((d) => {
+                          {eachDayOfInterval({ start: startOfMonth(new Date()), end: yesterday }).map((d) => {
                             const ds = format(d, "yyyy-MM-dd");
                             const done = filledDates.includes(ds);
                             return (
