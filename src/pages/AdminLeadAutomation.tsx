@@ -121,69 +121,55 @@ export default function AdminLeadAutomation() {
         <p className="text-sm text-muted-foreground">Configure roleta, grupos de distribuição e regras automáticas.</p>
       </div>
 
-      {/* Automation rules */}
+      {/* Automation rules — compact single row */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><Timer className="h-4 w-4" /> Regras & Tempos</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><Timer className="h-4 w-4" /> Regras & Tempos</CardTitle>
         </CardHeader>
-        <CardContent className="grid md:grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <div className="space-y-1">
-            <Label>Tempo da roleta (segundos)</Label>
-            <Input type="number" min={30} value={settings.roleta_seconds}
+            <Label className="text-[11px]">Roleta (s)</Label>
+            <Input className="h-8" type="number" min={30} value={settings.roleta_seconds}
               onChange={e => setSettings(s => ({ ...s, roleta_seconds: +e.target.value }))} />
-            <p className="text-[11px] text-muted-foreground">Tempo que um lead permanece em "Novo Lead" antes de expirar.</p>
           </div>
           <div className="space-y-1">
-            <Label>Marcar "Sem Resposta" após (horas)</Label>
-            <Input type="number" min={1} value={settings.no_response_hours}
+            <Label className="text-[11px]">Sem resposta (h)</Label>
+            <Input className="h-8" type="number" min={1} value={settings.no_response_hours}
               onChange={e => setSettings(s => ({ ...s, no_response_hours: +e.target.value }))} />
           </div>
           <div className="space-y-1">
-            <Label>Alerta de inatividade (horas)</Label>
-            <Input type="number" min={1} value={settings.inactivity_alert_hours}
+            <Label className="text-[11px]">Inatividade (h)</Label>
+            <Input className="h-8" type="number" min={1} value={settings.inactivity_alert_hours}
               onChange={e => setSettings(s => ({ ...s, inactivity_alert_hours: +e.target.value }))} />
           </div>
-          <div className="flex items-center gap-3 pt-6">
+          <div className="flex items-center gap-2">
             <Switch checked={settings.auto_first_contact}
               onCheckedChange={v => setSettings(s => ({ ...s, auto_first_contact: v }))} />
-            <div>
-              <Label>Avanço automático para "Primeiro Contato"</Label>
-              <p className="text-[11px] text-muted-foreground">Move o lead ao clicar WhatsApp / comentar / anexar.</p>
-            </div>
+            <Label className="text-[11px]">Auto 1º contato</Label>
           </div>
-          <div className="md:col-span-2">
-            <Button onClick={saveSettings} disabled={savingSettings}>
-              <Save className="h-4 w-4 mr-2" /> {savingSettings ? "Salvando..." : "Salvar regras"}
-            </Button>
-          </div>
+          <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="h-8">
+            <Save className="h-3.5 w-3.5 mr-1" /> {savingSettings ? "..." : "Salvar"}
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Stage max times (delay alerts) */}
+      {/* Stage max times — compact grid */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><Timer className="h-4 w-4" /> Tempo máximo por etapa (minutos)</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><Timer className="h-4 w-4" /> Tempo máx. por etapa (min)</CardTitle>
         </CardHeader>
-        <CardContent className="grid md:grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-3 md:grid-cols-6 gap-2 items-end">
           {STAGE_LABELS.map(st => (
             <div key={st.key} className="space-y-1">
-              <Label className="text-xs">{st.label}</Label>
-              <Input
-                type="number" min={1}
+              <Label className="text-[10px]">{st.label}</Label>
+              <Input className="h-8" type="number" min={1}
                 value={settings.stage_max_minutes?.[st.key] ?? 0}
                 onChange={e => setSettings(s => ({
                   ...s,
                   stage_max_minutes: { ...(s.stage_max_minutes || {}), [st.key]: +e.target.value },
-                }))}
-              />
+                }))} />
             </div>
           ))}
-          <div className="md:col-span-3">
-            <Button onClick={saveSettings} disabled={savingSettings}>
-              <Save className="h-4 w-4 mr-2" /> Salvar tempos
-            </Button>
-            <p className="text-[11px] text-muted-foreground mt-1">Ao ultrapassar o tempo, um popup de atraso é disparado no funil.</p>
-          </div>
         </CardContent>
       </Card>
 
