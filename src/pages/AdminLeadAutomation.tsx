@@ -109,10 +109,53 @@ export default function AdminLeadAutomation() {
   };
 
   const addWindow = () => setWindows(ws => [...ws, {
-    slot: "novo", label: "Novo grupo",
+    slot: "novo", label: "Nova janela",
     checkin_start: "09:00", distribution_start: "09:30", checkout_time: "12:00",
     active: true,
   }]);
+
+  // ── Distribution Groups ──
+  const createGroup = async () => {
+    const name = prompt("Nome do grupo:");
+    if (!name) return;
+    const { error } = await supabase.from("distribution_groups" as any).insert({ name, active: true });
+    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    load();
+  };
+  const renameGroup = async (id: string, current: string) => {
+    const name = prompt("Novo nome:", current);
+    if (!name || name === current) return;
+    await supabase.from("distribution_groups" as any).update({ name }).eq("id", id);
+    load();
+  };
+  const toggleGroup = async (id: string, active: boolean) => {
+    await supabase.from("distribution_groups" as any).update({ active }).eq("id", id);
+    load();
+  };
+  const deleteGroup = async (id: string) => {
+    if (!confirm("Excluir grupo?")) return;
+    await supabase.from("distribution_groups" as any).delete().eq("id", id);
+    load();
+  };
+  const toggleGroupBroker = async (groupId: string, brokerId: string, on: boolean) => {
+    if (on) {
+      await supabase.from("distribution_group_brokers" as any).insert({ group_id: groupId, broker_id: brokerId });
+    } else {
+      await supabase.from("distribution_group_brokers" as any).delete().eq("group_id", groupId).eq("broker_id", brokerId);
+    }
+    load();
+  };
+  const addGroupForm = async (groupId: string) => {
+    const form_id = prompt("ID do formulário Meta (form_id):");
+    if (!form_id) return;
+    const form_name = prompt("Nome do formulário (para exibir):", "") || null;
+    await supabase.from("distribution_group_forms" as any).insert({ group_id: groupId, form_id, form_name });
+    load();
+  };
+  const removeGroupForm = async (groupId: string, formId: string) => {
+    await supabase.from("distribution_group_forms" as any).delete().eq("group_id", groupId).eq("form_id", formId);
+    load();
+  };
 
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-5xl">
