@@ -24,9 +24,36 @@ interface BrokerRow {
   active: boolean;
   user_id: string | null;
   avatar_url?: string | null;
+  monthly_goal?: number | null;
+  yearly_goal?: number | null;
 }
 
 const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
+
+function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }) {
+  const [monthly, setMonthly] = useState(String(broker.monthly_goal ?? 0));
+  const [yearly, setYearly] = useState(String(broker.yearly_goal ?? 0));
+  const [saving, setSaving] = useState(false);
+  const dirty = Number(monthly) !== Number(broker.monthly_goal ?? 0) || Number(yearly) !== Number(broker.yearly_goal ?? 0);
+  const save = async () => {
+    setSaving(true);
+    const { error } = await (supabase as any).from("brokers").update({ monthly_goal: Number(monthly || 0), yearly_goal: Number(yearly || 0) }).eq("id", broker.id);
+    setSaving(false);
+    if (error) return toast({ title: "Erro ao salvar meta", description: error.message, variant: "destructive" });
+    toast({ title: "Meta salva" });
+    onSaved();
+  };
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[9px] uppercase text-muted-foreground shrink-0">Metas R$</span>
+      <Input type="number" value={monthly} onChange={e => setMonthly(e.target.value)} placeholder="mês" className="h-6 text-[11px] px-2" title="Meta mensal (R$)" />
+      <Input type="number" value={yearly} onChange={e => setYearly(e.target.value)} placeholder="ano" className="h-6 text-[11px] px-2" title="Meta anual (R$)" />
+      <Button size="sm" variant={dirty ? "default" : "ghost"} className="h-6 px-2 text-[10px]" onClick={save} disabled={saving || !dirty}>
+        {saving ? "..." : "Salvar"}
+      </Button>
+    </div>
+  );
+}
 
 export default function Equipes() {
   const { role, user } = useAuth();
@@ -99,7 +126,7 @@ export default function Equipes() {
     setLoading(true);
     const { data, error } = await supabase
       .from("brokers")
-      .select("id,name,role,manager_id,director_id,active,user_id")
+      .select("id,name,role,manager_id,director_id,active,user_id,monthly_goal,yearly_goal")
       .eq("active", true)
       .order("name");
     if (error) toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
@@ -300,20 +327,42 @@ export default function Equipes() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
-              {filter(directors).filter(inScope).map(d => (
-                <div key={d.id} className="flex items-center gap-2 p-2 rounded-lg border border-border/30 bg-blue-500/5">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-bold text-blue-400">{initials(d.name)}</div>
-                  <span className="text-xs font-medium flex-1">{d.name}</span>
-                  <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400">
-                    {managers.filter(m => m.director_id === d.id).length} ger.
-                  </Badge>
-                  {canEdit && (
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", d)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              ))}
+              {filter(directors).filter(inScope).map(d => {
+                const dirManagers = managers.filter(m => m.director_id === d.id);
+                const sumMonthly = dirManagers.reduce((s, m) => s + Number(m.monthly_goal || 0), 0);
+                const sumYearly = dirManagers.reduce((s, m) => s + Number(m.yearly_goal || 0), 0);
+                const monthsLeft = 12 - new Date().getMonth();
+                const perMonthLeft = sumYearly > 0 ? sumYearly / 12 : 0;
+                return (
+                  <div key={d.id} className="p-2 rounded-lg border border-border/30 bg-blue-500/5 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-bold text-blue-400">{initials(d.name)}</div>
+                      <span className="text-xs font-medium flex-1 truncate">{d.name}</span>
+                      <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400">{dirManagers.length} ger.</Badge>
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", d)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-[10px]">
+                      <div className="p-1.5 rounded bg-background/60 border border-border/30">
+                        <p className="text-muted-foreground uppercase text-[9px]">Meta mês (Σ ger.)</p>
+                        <p className="font-bold text-blue-400">{sumMonthly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+                      </div>
+                      <div className="p-1.5 rounded bg-background/60 border border-border/30">
+                        <p className="text-muted-foreground uppercase text-[9px]">Meta ano (Σ ger.)</p>
+                        <p className="font-bold text-blue-400">{sumYearly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+                      </div>
+                    </div>
+                    {sumYearly > 0 && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Meses restantes: <strong className="text-foreground">{monthsLeft}</strong> · Ritmo/mês: <strong className="text-foreground">{perMonthLeft.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
 
@@ -366,6 +415,7 @@ export default function Equipes() {
                         />
                       </div>
                     )}
+                    {canEdit && <GoalRow broker={m} onSaved={load} />}
                     <CredLine id={m.id} />
                   </div>
                 );

@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, GitBranch, Users, UserPlus, Megaphone,
-  UserCircle, Database, Settings, LogOut, Compass, Link2, Sun, Moon,
-  CreditCard, Shield, Building2, UsersRound, Trophy, Swords, KeyRound, Target, LogIn, Globe,
+  UserCircle, Database, Settings, LogOut, Link2, Sun, Moon,
+  CreditCard, Shield, Building2, UsersRound, Trophy, Swords, KeyRound, Target, LogIn, Globe, TrendingUp,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -22,12 +22,11 @@ const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Pipeline", url: "/pipeline", icon: GitBranch, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "CCA Pipeline", url: "/cca", icon: CreditCard, roles: ['admin', 'cca', 'partner'] },
-  
-  { title: "Norteador", url: "/norteador", icon: Compass, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Marketing", url: "/marketing", icon: Megaphone, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Equipes", url: "/equipes", icon: Users, roles: ['admin', 'partner', 'director', 'manager', 'broker', 'cca'] },
   { title: "Links", url: "/links", icon: Link2, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
   { title: "Gamificação", url: "/gamification", icon: Trophy, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "Resultados", url: "/resultados", icon: TrendingUp, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Checkpoint", url: "/checkpoint", icon: Target, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Check-in", url: "/checkin", icon: LogIn, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
 ];

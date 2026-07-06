@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Megaphone, TrendingUp, TrendingDown, DollarSign, Users, Target, Facebook, Instagram, Globe, Plug } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { MarketingInvestmentPopup } from "@/components/MarketingInvestmentPopup";
 import { cn } from "@/lib/utils";
 
 type Campaign = {
@@ -40,6 +42,8 @@ const statusColor = {
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 export default function Marketing() {
+  const { role } = useAuth();
+  const canEditAporte = role === "admin" || role === "director";
   const [channel, setChannel] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const [realLeads, setRealLeads] = useState<number>(0);
@@ -83,9 +87,12 @@ export default function Marketing() {
             Performance das campanhas Faceimob • {filtered.length} campanhas • {realLeads} leads no CRM
           </p>
         </div>
-        <Button asChild variant="outline" size="sm" className="gap-2">
-          <a href="/admin/meta-ads"><Plug className="h-4 w-4" /> Conectar Meta Ads</a>
-        </Button>
+        <div className="flex items-center gap-2">
+          <MarketingInvestmentPopup canEdit={canEditAporte} />
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <a href="/admin/meta-ads"><Plug className="h-4 w-4" /> Conectar Meta Ads</a>
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}

@@ -29,7 +29,7 @@ const pageTitles: Record<string, string> = {
   "/pipeline": "Pipeline",
   "/cca": "Pipeline CCA",
   "/leads": "Leads",
-  "/norteador": "Norteador",
+  "/resultados": "Resultados",
   "/marketing": "Marketing",
   "/equipes": "Equipes",
   
