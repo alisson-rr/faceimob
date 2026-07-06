@@ -686,6 +686,9 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-4">
+      {/* ── TOP RANKING (game / broker funnel) ────────── */}
+      <PipelineTopRanking deals={deals} />
+
       {/* ── HEADER with TABS ─────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
