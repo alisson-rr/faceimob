@@ -39,10 +39,10 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
     const from = first.toISOString().slice(0, 10);
     const [{ data }, devsRes] = await Promise.all([
       (supabase as any).from("marketing_investments").select("*").gte("invested_at", from).order("invested_at", { ascending: false }),
-      (supabase as any).from("cca_developers").select("name").order("name"),
+      (supabase as any).from("cca_developers").select("developer_name").order("developer_name"),
     ]);
     setRows((data as Investment[]) || []);
-    setDevs(((devsRes.data as any[]) || []).map(d => d.name));
+    setDevs(((devsRes.data as any[]) || []).map(d => d.developer_name));
     setLoading(false);
   };
 
