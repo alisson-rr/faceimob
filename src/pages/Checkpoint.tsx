@@ -3,12 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Target, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ChevronLeft, ChevronRight, Target, AlertTriangle, TrendingUp, Loader2, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { addDays, endOfWeek, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
 
 type TeamRow = { id: string; name: string; display_name: string | null; manager_id: string | null };
 type BrokerRow = { id: string; name: string; manager_id: string | null; director_id: string | null; user_id: string | null };
@@ -134,13 +136,25 @@ export default function Checkpoint() {
       ) : filteredTeams.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">Nenhuma equipe visível para você.</Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredTeams.map(t => <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
-        </div>
+        <>
+          <DirectorFunnelSection
+            role={role}
+            myBroker={myBroker}
+            brokers={brokers}
+            teams={visibleTeams}
+            aggregate={aggregate}
+            targetsFor={targetsFor}
+            teamNameFor={teamNameFor}
+          />
+          <div className="grid grid-cols-1 gap-4">
+            {filteredTeams.map(t => <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
+          </div>
+        </>
       )}
     </div>
   );
 }
+
 
 function TeamCheckpointCard({ team, aggr, targets, name }: {
   team: TeamRow;
@@ -224,3 +238,178 @@ function TeamCheckpointCard({ team, aggr, targets, name }: {
   );
 }
 
+
+// ============ Director-level funnel ============
+
+type DirAggr = { leads: number; enviadas: number; aprovadas: number; vendas: number };
+
+function DirectorFunnelSection({
+  role, myBroker, brokers, teams, aggregate, targetsFor, teamNameFor,
+}: {
+  role: string | null;
+  myBroker: BrokerRow | null;
+  brokers: BrokerRow[];
+  teams: TeamRow[];
+  aggregate: (teamId: string) => { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
+  targetsFor: (teamId: string) => Targets;
+  teamNameFor: (t: TeamRow) => string;
+}) {
+  // Map manager broker id -> director broker id
+  const mgrToDir = useMemo(() => {
+    const m = new Map<string, string | null>();
+    brokers.forEach(b => m.set(b.id, b.director_id));
+    return m;
+  }, [brokers]);
+
+  // Group teams by director id
+  const directorGroups = useMemo(() => {
+    const groups = new Map<string, { director: BrokerRow | null; teams: TeamRow[] }>();
+    teams.forEach(t => {
+      const dirId = (t.manager_id && mgrToDir.get(t.manager_id)) || "__none__";
+      if (!groups.has(dirId)) {
+        const director = dirId === "__none__" ? null : brokers.find(b => b.id === dirId) || null;
+        groups.set(dirId, { director, teams: [] });
+      }
+      groups.get(dirId)!.teams.push(t);
+    });
+    let arr = Array.from(groups.entries()).map(([id, g]) => ({ id, ...g }));
+    // Directors only see themselves
+    if (role === "director" && myBroker) arr = arr.filter(g => g.id === myBroker.id);
+    // Managers don't need director-level view
+    if (role === "manager") return [];
+    return arr.sort((a, b) => (a.director?.name || "").localeCompare(b.director?.name || ""));
+  }, [teams, brokers, mgrToDir, role, myBroker]);
+
+  if (!directorGroups.length) return null;
+
+  return (
+    <div className="space-y-3">
+      {directorGroups.map(g => {
+        const acc: DirAggr = { leads: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
+        g.teams.forEach(t => {
+          const a = aggregate(t.id);
+          acc.leads += a.leads; acc.enviadas += a.enviadas; acc.aprovadas += a.aprovadas; acc.vendas += a.vendas;
+        });
+        const target = g.teams[0] ? targetsFor(g.teams[0].id) : DEFAULT_TARGETS;
+        return (
+          <DirectorFunnelCard
+            key={g.id}
+            title={g.director?.name || "Sem diretor"}
+            aggr={acc}
+            targets={target}
+            teams={g.teams}
+            aggregate={aggregate}
+            targetsFor={targetsFor}
+            teamNameFor={teamNameFor}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function DirectorFunnelCard({
+  title, aggr, targets, teams, aggregate, targetsFor, teamNameFor,
+}: {
+  title: string;
+  aggr: DirAggr;
+  targets: Targets;
+  teams: TeamRow[];
+  aggregate: (teamId: string) => { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
+  targetsFor: (teamId: string) => Targets;
+  teamNameFor: (t: TeamRow) => string;
+}) {
+  const pEnv = aggr.leads ? (aggr.enviadas / aggr.leads) * 100 : 0;
+  const pApr = aggr.enviadas ? (aggr.aprovadas / aggr.enviadas) * 100 : 0;
+  const pVen = aggr.aprovadas ? (aggr.vendas / aggr.aprovadas) * 100 : 0;
+  const rows = [
+    { key: "leads",  label: "Leads",       value: aggr.leads,     pct: 100, target: 100 },
+    { key: "env",    label: "Análises",    value: aggr.enviadas,  pct: pEnv, target: targets.analise_enviada_pct },
+    { key: "apr",    label: "Aprovações",  value: aggr.aprovadas, pct: pApr, target: targets.aprovada_pct },
+    { key: "ven",    label: "Vendas",      value: aggr.vendas,    pct: pVen, target: targets.venda_pct },
+  ];
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Card className="border-yellow-400/30 bg-gradient-to-br from-yellow-400/5 via-transparent to-primary/5">
+      <CardHeader className="py-2 px-3 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Target className="h-4 w-4 text-yellow-400" /> Diretor: {title}
+        </CardTitle>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1">
+              <Users className="h-3 w-3" /> Ver gerentes ({teams.length})
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>Gerentes de {title}</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              {teams.map(t => (
+                <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent className="px-3 pb-3 pt-0">
+        <div className="flex items-center gap-3">
+          {/* 3D funnel (Topo/Meio/Fundo -> 4 tigelas) */}
+          <svg viewBox="0 0 140 160" className="h-24 shrink-0" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <linearGradient id={`dir-funil-${title}`} x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="hsl(217 85% 30%)" />
+                <stop offset="50%" stopColor="hsl(217 91% 55%)" />
+                <stop offset="100%" stopColor="hsl(217 85% 28%)" />
+              </linearGradient>
+            </defs>
+            {[
+              { y: 2,   top: 130, bot: 100, h: 22 },
+              { y: 40,  top: 100, bot: 74,  h: 20 },
+              { y: 76,  top: 74,  bot: 48,  h: 18 },
+              { y: 110, top: 48,  bot: 26,  h: 16 },
+            ].map((s, i) => {
+              const cx = 70;
+              const topRx = s.top / 2, botRx = s.bot / 2;
+              const yTop = s.y, yBot = s.y + s.h;
+              const ellipseRy = topRx * 0.18;
+              const d = `M ${cx - topRx} ${yTop} L ${cx - botRx} ${yBot} A ${botRx} ${botRx * 0.22} 0 0 0 ${cx + botRx} ${yBot} L ${cx + topRx} ${yTop} A ${topRx} ${ellipseRy} 0 0 1 ${cx - topRx} ${yTop} Z`;
+              return (
+                <g key={i}>
+                  <path d={d} fill={`url(#dir-funil-${title})`} stroke="hsl(217 60% 20%)" strokeWidth="0.5" />
+                  <ellipse cx={cx} cy={yTop} rx={topRx} ry={ellipseRy} fill="hsl(217 85% 35%)" opacity="0.9" />
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Stage vs target */}
+          <div className="flex-1 grid grid-cols-4 gap-2">
+            {rows.map((r, i) => {
+              const below = i > 0 && r.pct < r.target;
+              const above = i > 0 && r.pct >= r.target;
+              return (
+                <div key={r.key} className={cn(
+                  "px-2 py-1.5 rounded-md border bg-secondary/20",
+                  below ? "border-rose-500/50 bg-rose-500/5" : above ? "border-emerald-500/40 bg-emerald-500/5" : "border-border/40",
+                )}>
+                  <div className="flex items-baseline justify-between gap-1">
+                    <span className="text-[9px] uppercase text-muted-foreground truncate">{r.label}</span>
+                    {i > 0 && <span className="text-[8px] text-muted-foreground">m{r.target}%</span>}
+                  </div>
+                  <div className="flex items-baseline justify-between gap-1">
+                    <span className={cn("text-lg font-black leading-none", below ? "text-rose-400" : above ? "text-emerald-400" : "text-foreground")}>{r.value}</span>
+                    <span className={cn("text-[10px] font-semibold", below ? "text-rose-400" : above ? "text-emerald-400" : "text-muted-foreground")}>{r.pct.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mt-1">
+                    <div className={cn("h-full", below ? "bg-rose-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, r.pct)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
