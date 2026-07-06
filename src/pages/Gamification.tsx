@@ -462,6 +462,12 @@ export default function Gamification() {
             </Card>
           ))}
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="admin" className="space-y-4">
+            <GamificationAdmin />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* ── CLOSE GAME CONFIRMATION DIALOG ─── */}
