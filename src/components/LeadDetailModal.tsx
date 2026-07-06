@@ -188,14 +188,15 @@ export default function LeadDetailModal({
         </div>
 
         <Tabs defaultValue="info" className="mt-2">
-          <TabsList className="grid grid-cols-7 w-full">
-            <TabsTrigger value="info">Dados</TabsTrigger>
-            <TabsTrigger value="personal">Pessoal</TabsTrigger>
-            <TabsTrigger value="interest">Interesse</TabsTrigger>
-            <TabsTrigger value="form">Form</TabsTrigger>
-            <TabsTrigger value="comments">Coment. ({comments.length})</TabsTrigger>
-            <TabsTrigger value="attachments">Anexos ({attachments.length})</TabsTrigger>
-            <TabsTrigger value="tracking">Rastreio</TabsTrigger>
+          <TabsList className="grid grid-cols-8 w-full">
+            <TabsTrigger value="info" className="text-[11px]">Dados</TabsTrigger>
+            <TabsTrigger value="personal" className="text-[11px]">Pessoal</TabsTrigger>
+            <TabsTrigger value="interest" className="text-[11px]">Interesse</TabsTrigger>
+            <TabsTrigger value="form" className="text-[11px]">Form</TabsTrigger>
+            <TabsTrigger value="comments" className="text-[11px]">Coment.</TabsTrigger>
+            <TabsTrigger value="attachments" className="text-[11px]">Anexos</TabsTrigger>
+            <TabsTrigger value="history" className="text-[11px]">Histórico</TabsTrigger>
+            <TabsTrigger value="tracking" className="text-[11px]">Rastreio</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="space-y-2 text-sm">
