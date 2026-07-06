@@ -115,7 +115,15 @@ export default function LeadFunnel({
               </div>
               <div className={cn("border rounded-b-lg p-2 space-y-2 min-h-[400px] bg-background/30", stage.accent)}>
                 {items.map(l => (
-                  <LeadCardMini key={l.id} lead={l} now={now} roletaSec={roletaSec} inactivityH={inactivityH} onClick={() => setSelected(l)} />
+                  <LeadCardMini
+                    key={l.id}
+                    lead={l}
+                    now={now}
+                    roletaSec={roletaSec}
+                    inactivityH={inactivityH}
+                    stageMaxMin={stageMax[stage.key] || 0}
+                    onClick={() => setSelected(l)}
+                  />
                 ))}
                 {items.length === 0 && (
                   <p className="text-[11px] text-muted-foreground text-center py-6">—</p>
@@ -134,6 +142,49 @@ export default function LeadFunnel({
         onConvert={(l) => { setSelected(null); onConvert(l); }}
         onStageChanged={load}
       />
+
+      {/* Popup de novo lead / atraso */}
+      <Dialog open={!!popupLead} onOpenChange={(v) => !v && setPopupLead(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {popupKind === "new" ? (
+                <><BellRing className="h-5 w-5 text-primary animate-pulse" /> Novo Lead recebido!</>
+              ) : (
+                <><AlertTriangle className="h-5 w-5 text-destructive" /> Lead atrasado</>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {popupKind === "new" ? (
+                <>Um novo lead acabou de chegar. Aja rápido para não perder!</>
+              ) : (
+                <>Este lead está há tempo demais na etapa atual. Retome o atendimento.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {popupLead && (
+            <div className="space-y-2 py-2">
+              <p className="text-lg font-semibold">{popupLead.name || "Sem nome"}</p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge className={cn("border", sourceStyle(popupLead.source).cls)}>{sourceStyle(popupLead.source).label}</Badge>
+                {popupLead.form_name && <Badge variant="outline">📋 {popupLead.form_name}</Badge>}
+                <Badge variant="outline">Etapa: {STAGES.find(s => s.key === popupLead.funnel_stage)?.label || popupLead.funnel_stage}</Badge>
+              </div>
+              {popupKind === "delay" && popupLead.stage_changed_at && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> Nesta etapa {formatDistanceToNow(new Date(popupLead.stage_changed_at), { locale: ptBR, addSuffix: true })}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPopupLead(null)}>Depois</Button>
+            <Button onClick={() => { setSelected(popupLead); setPopupLead(null); }}>
+              <ExternalLink className="h-4 w-4 mr-1" /> Abrir lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
