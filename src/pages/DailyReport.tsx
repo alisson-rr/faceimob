@@ -73,6 +73,7 @@ export default function DailyReport() {
   const loadMonth = async (tid: string) => {
     setLoadingMonth(true);
     const today = new Date();
+    const yest = subDays(today, 1);
     const { data, error } = await supabase.rpc("get_daily_team_month_summary" as any, { _team_id: tid });
     let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
     let filledDates: string[] = [];
@@ -84,9 +85,9 @@ export default function DailyReport() {
     setMonthTotals(mt);
     setFilledDates(filledDates);
     const filledSet = new Set(filledDates);
-    const days = eachDayOfInterval({ start: startOfMonth(today), end: today });
+    const days = eachDayOfInterval({ start: startOfMonth(today), end: yest });
     const missing = days
-      .filter(d => !isAfter(d, today))
+      .filter(d => !isAfter(d, yest))
       .map(d => format(d, "yyyy-MM-dd"))
       .filter(d => !filledSet.has(d));
     setMissingDays(missing);
