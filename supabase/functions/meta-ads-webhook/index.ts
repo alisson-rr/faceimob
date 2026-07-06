@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
               email: fields['email'] || '',
               source: 'Meta Ads',
               status: 'new',
-              form_name: formName || fields['form_name'] || null,
+              form_name: formName || fields['form_name'] || (v.form_id ? `Formulário ${v.form_id}` : null),
               form_answers: fields,
               utm_source: pickUtm(fields, 'utm_source') || 'meta',
               utm_medium: pickUtm(fields, 'utm_medium'),
