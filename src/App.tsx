@@ -15,7 +15,7 @@ import Equipes from "@/pages/Equipes";
 import Marketing from "@/pages/Marketing";
 import DataManagement from "@/pages/DataManagement";
 import SettingsPage from "@/pages/Settings";
-import Norteador from "@/pages/Norteador";
+import Resultados from "@/pages/Resultados";
 import Links from "@/pages/Links";
 import CcaPipeline from "@/pages/CcaPipeline";
 import AdminPermissions from "@/pages/AdminPermissions";
@@ -60,7 +60,7 @@ const App = () => (
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/cca" element={<CcaPipeline />} />
               <Route path="/leads" element={<Navigate to="/pipeline" replace />} />
-              <Route path="/norteador" element={<Norteador />} />
+              <Route path="/resultados" element={<Resultados />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/equipes" element={<Equipes />} />
               <Route path="/team" element={<Navigate to="/equipes" replace />} />
