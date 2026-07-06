@@ -39,21 +39,21 @@ export default function LeadFunnel({
   const [lostToday, setLostToday] = useState<{ broker_name: string; lost_count: number }[]>([]);
 
 
-  // Marca o momento em que o funil foi aberto — só mostra leads criados a partir daqui
-  const sessionStart = useMemo(() => new Date().toISOString(), []);
-
   const load = async () => {
     const [{ data }, { data: s }, { data: lost }] = await Promise.all([
       supabase.from("leads").select("*")
-        .gte("created_at", sessionStart)
         .neq("funnel_stage", "converted")
         .order("created_at", { ascending: false })
-        .limit(200),
+        .limit(500),
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
       supabase.rpc("leads_lost_today" as any),
     ]);
     setLeads((data as any) || []);
-    setLostToday(((lost as any) || []) as any);
+    // mostra perdidos apenas do próprio corretor logado
+    const own = ((lost as any) || []).filter((r: any) =>
+      (r.broker_name || "").trim().toLowerCase() === (actorName || "").trim().toLowerCase()
+    );
+    setLostToday(own as any);
     if (s) {
       setRoletaSec((s as any).roleta_seconds);
       setInactivityH((s as any).inactivity_alert_hours);
