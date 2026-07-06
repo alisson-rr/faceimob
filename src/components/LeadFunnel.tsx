@@ -31,14 +31,23 @@ export default function LeadFunnel({
   const [now, setNow] = useState(Date.now());
   const [roletaSec, setRoletaSec] = useState(300);
   const [inactivityH, setInactivityH] = useState(24);
+  const [stageMax, setStageMax] = useState<Record<string, number>>({
+    new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320,
+  });
+  const [popupLead, setPopupLead] = useState<LeadRow | null>(null);
+  const [popupKind, setPopupKind] = useState<"new" | "delay">("new");
 
   const load = async () => {
     const [{ data }, { data: s }] = await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }),
-      supabase.from("lead_automation_settings").select("roleta_seconds, inactivity_alert_hours").eq("id", true).maybeSingle(),
+      supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
     ]);
     setLeads((data as any) || []);
-    if (s) { setRoletaSec((s as any).roleta_seconds); setInactivityH((s as any).inactivity_alert_hours); }
+    if (s) {
+      setRoletaSec((s as any).roleta_seconds);
+      setInactivityH((s as any).inactivity_alert_hours);
+      if ((s as any).stage_max_minutes) setStageMax((s as any).stage_max_minutes);
+    }
   };
 
   useEffect(() => {
@@ -46,6 +55,9 @@ export default function LeadFunnel({
     const ch = supabase.channel("leads-funnel")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "leads" }, (payload: any) => {
         const l = payload.new;
+        setPopupKind("new");
+        setPopupLead(l);
+        try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIA+AAABAAgAZGF0YQAAAAA=").play().catch(() => {}); } catch {}
         toast({
           title: "🔔 Novo Lead recebido!",
           description: `${l.name || "Sem nome"} — ${l.source || "origem —"}`,
@@ -69,15 +81,26 @@ export default function LeadFunnel({
     return g;
   }, [leads]);
 
-  // Auto-move from "new" after 5 min if not touched
+  // Detecta atrasos por etapa e dispara popup (uma vez por lead na sessão)
   useEffect(() => {
-    const news = (grouped["new"] || []).filter(l => {
-      const created = new Date(l.created_at).getTime();
-      return now - created > 5 * 60_000;
-    });
-    if (news.length === 0) return;
-    // stays visible; timer shows "expirado" - user must act
-  }, [grouped, now]);
+    const alertedKey = "lead-delay-alerted";
+    const alerted: string[] = JSON.parse(sessionStorage.getItem(alertedKey) || "[]");
+    for (const l of leads) {
+      if (l.funnel_stage === "converted" || alerted.includes(l.id)) continue;
+      const max = stageMax[l.funnel_stage || "new"];
+      if (!max) continue;
+      const changed = new Date(l.stage_changed_at || l.created_at).getTime();
+      const mins = (now - changed) / 60_000;
+      if (mins > max) {
+        alerted.push(l.id);
+        sessionStorage.setItem(alertedKey, JSON.stringify(alerted));
+        if (!popupLead) { setPopupKind("delay"); setPopupLead(l); }
+        break;
+      }
+    }
+  }, [leads, now, stageMax, popupLead]);
+
+
 
   return (
     <>
