@@ -25,10 +25,7 @@ async function fetchLeadFromGraph(leadgenId: string, pageAccessToken: string) {
 
 async function fetchFormName(formId: string, pageAccessToken: string): Promise<string | null> {
   try {
-    if (!formId || !pageAccessToken) {
-      console.warn('fetchFormName: missing', { hasFormId: !!formId, hasToken: !!pageAccessToken })
-      return null
-    }
+    if (!formId || !pageAccessToken) return null
     const url = `https://graph.facebook.com/v19.0/${formId}?fields=name,status&access_token=${pageAccessToken}`
     const res = await fetch(url)
     const json = await res.json()
@@ -37,6 +34,21 @@ async function fetchFormName(formId: string, pageAccessToken: string): Promise<s
     return json?.name || null
   } catch (e) {
     console.error('fetchFormName error:', e)
+    return null
+  }
+}
+
+async function fetchAdName(adId: string, pageAccessToken: string): Promise<string | null> {
+  try {
+    if (!adId || !pageAccessToken) return null
+    const url = `https://graph.facebook.com/v19.0/${adId}?fields=name,campaign{name},adset{name}&access_token=${pageAccessToken}`
+    const res = await fetch(url)
+    const json = await res.json()
+    console.log('Graph ad response for', adId, ':', JSON.stringify(json))
+    if (json?.error) return null
+    return json?.campaign?.name || json?.adset?.name || json?.name || null
+  } catch (e) {
+    console.error('fetchAdName error:', e)
     return null
   }
 }
@@ -99,10 +111,22 @@ Deno.serve(async (req) => {
               if (g && Object.keys(g).length > 0) fields = { ...g, ...fields }
             }
 
-            const formName = await fetchFormName(v.form_id, pageAccessToken)
+            let formName = await fetchFormName(v.form_id, pageAccessToken)
+            if (!formName && v.ad_id) {
+              formName = await fetchAdName(v.ad_id, pageAccessToken)
+            }
+            // if still no name, look up the group's saved form name for this form_id
+            if (!formName && v.form_id) {
+              const { data: gf } = await supabase
+                .from('distribution_group_forms')
+                .select('form_name')
+                .eq('form_id', String(v.form_id))
+                .not('form_name', 'is', null)
+                .maybeSingle()
+              if (gf?.form_name) formName = gf.form_name as string
+            }
             console.log('Parsed lead — form_name:', formName, 'fields:', JSON.stringify(fields))
 
-            // Extração de first name mais robusta (variações de forms Meta em PT/EN)
             const fullName = fields['full_name'] || fields['nome_completo'] || fields['nome_e_sobrenome'] || fields['name'] || fields['nome'] || ''
             const firstName = fields['first_name'] || fields['primeiro_nome'] || fields['nome'] || (fullName ? fullName.trim().split(/\s+/)[0] : '')
             const fallbackName = fields['email']?.split('@')[0] || fields['phone_number'] || `Lead ${v.leadgen_id || ''}`.trim()
@@ -114,6 +138,7 @@ Deno.serve(async (req) => {
               email: fields['email'] || '',
               source: 'Meta Ads',
               status: 'new',
+              form_id: v.form_id ? String(v.form_id) : null,
               form_name: formName || fields['form_name'] || (v.form_id ? `Formulário ${v.form_id}` : null),
               form_answers: fields,
               utm_source: pickUtm(fields, 'utm_source') || 'meta',

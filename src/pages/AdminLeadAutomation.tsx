@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, Save, Zap, Timer, Users } from "lucide-react";
+import { Plus, Trash2, Save, Zap, Timer, Users, Layers } from "lucide-react";
 
 type Settings = {
   roleta_seconds: number;
@@ -37,6 +37,15 @@ type Window = {
   active: boolean;
 };
 
+type Broker = { id: string; name: string; active: boolean };
+type Group = {
+  id: string;
+  name: string;
+  active: boolean;
+  brokers: string[];      // broker ids
+  forms: { form_id: string; form_name: string | null }[];
+};
+
 export default function AdminLeadAutomation() {
   const [settings, setSettings] = useState<Settings>({
     roleta_seconds: 300,
@@ -47,15 +56,27 @@ export default function AdminLeadAutomation() {
   });
 
   const [windows, setWindows] = useState<Window[]>([]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
 
   const load = async () => {
-    const [{ data: s }, { data: w }] = await Promise.all([
+    const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }] = await Promise.all([
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
       supabase.from("distribution_windows").select("*").order("distribution_start"),
+      supabase.from("brokers").select("id,name,active").eq("active", true).order("name"),
+      supabase.from("distribution_groups" as any).select("*").order("name"),
+      supabase.from("distribution_group_brokers" as any).select("*"),
+      supabase.from("distribution_group_forms" as any).select("*"),
     ]);
     if (s) setSettings(s as any);
     setWindows((w as any) || []);
+    setBrokers((b as any) || []);
+    setGroups(((g as any[]) || []).map((row) => ({
+      id: row.id, name: row.name, active: row.active,
+      brokers: ((gb as any[]) || []).filter((x) => x.group_id === row.id).map((x) => x.broker_id),
+      forms: ((gf as any[]) || []).filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
+    })));
   };
 
   useEffect(() => { load(); }, []);
@@ -88,10 +109,53 @@ export default function AdminLeadAutomation() {
   };
 
   const addWindow = () => setWindows(ws => [...ws, {
-    slot: "novo", label: "Novo grupo",
+    slot: "novo", label: "Nova janela",
     checkin_start: "09:00", distribution_start: "09:30", checkout_time: "12:00",
     active: true,
   }]);
+
+  // ── Distribution Groups ──
+  const createGroup = async () => {
+    const name = prompt("Nome do grupo:");
+    if (!name) return;
+    const { error } = await supabase.from("distribution_groups" as any).insert({ name, active: true });
+    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    load();
+  };
+  const renameGroup = async (id: string, current: string) => {
+    const name = prompt("Novo nome:", current);
+    if (!name || name === current) return;
+    await supabase.from("distribution_groups" as any).update({ name }).eq("id", id);
+    load();
+  };
+  const toggleGroup = async (id: string, active: boolean) => {
+    await supabase.from("distribution_groups" as any).update({ active }).eq("id", id);
+    load();
+  };
+  const deleteGroup = async (id: string) => {
+    if (!confirm("Excluir grupo?")) return;
+    await supabase.from("distribution_groups" as any).delete().eq("id", id);
+    load();
+  };
+  const toggleGroupBroker = async (groupId: string, brokerId: string, on: boolean) => {
+    if (on) {
+      await supabase.from("distribution_group_brokers" as any).insert({ group_id: groupId, broker_id: brokerId });
+    } else {
+      await supabase.from("distribution_group_brokers" as any).delete().eq("group_id", groupId).eq("broker_id", brokerId);
+    }
+    load();
+  };
+  const addGroupForm = async (groupId: string) => {
+    const form_id = prompt("ID do formulário Meta (form_id):");
+    if (!form_id) return;
+    const form_name = prompt("Nome do formulário (para exibir):", "") || null;
+    await supabase.from("distribution_group_forms" as any).insert({ group_id: groupId, form_id, form_name });
+    load();
+  };
+  const removeGroupForm = async (groupId: string, formId: string) => {
+    await supabase.from("distribution_group_forms" as any).delete().eq("group_id", groupId).eq("form_id", formId);
+    load();
+  };
 
   return (
     <div className="container mx-auto p-6 space-y-6 max-w-5xl">
@@ -100,78 +164,119 @@ export default function AdminLeadAutomation() {
         <p className="text-sm text-muted-foreground">Configure roleta, grupos de distribuição e regras automáticas.</p>
       </div>
 
-      {/* Automation rules */}
+      {/* Automation rules — compact single row */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><Timer className="h-4 w-4" /> Regras & Tempos</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><Timer className="h-4 w-4" /> Regras & Tempos</CardTitle>
         </CardHeader>
-        <CardContent className="grid md:grid-cols-2 gap-4">
+        <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <div className="space-y-1">
-            <Label>Tempo da roleta (segundos)</Label>
-            <Input type="number" min={30} value={settings.roleta_seconds}
+            <Label className="text-[11px]">Roleta (s)</Label>
+            <Input className="h-8" type="number" min={30} value={settings.roleta_seconds}
               onChange={e => setSettings(s => ({ ...s, roleta_seconds: +e.target.value }))} />
-            <p className="text-[11px] text-muted-foreground">Tempo que um lead permanece em "Novo Lead" antes de expirar.</p>
           </div>
           <div className="space-y-1">
-            <Label>Marcar "Sem Resposta" após (horas)</Label>
-            <Input type="number" min={1} value={settings.no_response_hours}
+            <Label className="text-[11px]">Sem resposta (h)</Label>
+            <Input className="h-8" type="number" min={1} value={settings.no_response_hours}
               onChange={e => setSettings(s => ({ ...s, no_response_hours: +e.target.value }))} />
           </div>
           <div className="space-y-1">
-            <Label>Alerta de inatividade (horas)</Label>
-            <Input type="number" min={1} value={settings.inactivity_alert_hours}
+            <Label className="text-[11px]">Inatividade (h)</Label>
+            <Input className="h-8" type="number" min={1} value={settings.inactivity_alert_hours}
               onChange={e => setSettings(s => ({ ...s, inactivity_alert_hours: +e.target.value }))} />
           </div>
-          <div className="flex items-center gap-3 pt-6">
+          <div className="flex items-center gap-2">
             <Switch checked={settings.auto_first_contact}
               onCheckedChange={v => setSettings(s => ({ ...s, auto_first_contact: v }))} />
-            <div>
-              <Label>Avanço automático para "Primeiro Contato"</Label>
-              <p className="text-[11px] text-muted-foreground">Move o lead ao clicar WhatsApp / comentar / anexar.</p>
-            </div>
+            <Label className="text-[11px]">Auto 1º contato</Label>
           </div>
-          <div className="md:col-span-2">
-            <Button onClick={saveSettings} disabled={savingSettings}>
-              <Save className="h-4 w-4 mr-2" /> {savingSettings ? "Salvando..." : "Salvar regras"}
-            </Button>
-          </div>
+          <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="h-8">
+            <Save className="h-3.5 w-3.5 mr-1" /> {savingSettings ? "..." : "Salvar"}
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Stage max times (delay alerts) */}
+      {/* Stage max times — compact grid */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><Timer className="h-4 w-4" /> Tempo máximo por etapa (minutos)</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><Timer className="h-4 w-4" /> Tempo máx. por etapa (min)</CardTitle>
         </CardHeader>
-        <CardContent className="grid md:grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-3 md:grid-cols-6 gap-2 items-end">
           {STAGE_LABELS.map(st => (
             <div key={st.key} className="space-y-1">
-              <Label className="text-xs">{st.label}</Label>
-              <Input
-                type="number" min={1}
+              <Label className="text-[10px]">{st.label}</Label>
+              <Input className="h-8" type="number" min={1}
                 value={settings.stage_max_minutes?.[st.key] ?? 0}
                 onChange={e => setSettings(s => ({
                   ...s,
                   stage_max_minutes: { ...(s.stage_max_minutes || {}), [st.key]: +e.target.value },
-                }))}
-              />
+                }))} />
             </div>
           ))}
-          <div className="md:col-span-3">
-            <Button onClick={saveSettings} disabled={savingSettings}>
-              <Save className="h-4 w-4 mr-2" /> Salvar tempos
-            </Button>
-            <p className="text-[11px] text-muted-foreground mt-1">Ao ultrapassar o tempo, um popup de atraso é disparado no funil.</p>
-          </div>
         </CardContent>
       </Card>
 
 
 
-      {/* Distribution windows */}
+      {/* Distribution GROUPS (brokers + forms) */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> Grupos de Distribuição</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base"><Layers className="h-4 w-4" /> Grupos de Distribuição</CardTitle>
+          <Button size="sm" onClick={createGroup}><Plus className="h-4 w-4 mr-1" /> Novo grupo</Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {groups.length === 0 && <p className="text-sm text-muted-foreground">Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in.</p>}
+          {groups.map((g) => (
+            <div key={g.id} className="p-3 rounded-lg border border-border/60 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => renameGroup(g.id, g.name)} className="text-sm font-semibold hover:underline">
+                  {g.name}
+                </button>
+                <div className="flex items-center gap-2">
+                  <Switch checked={g.active} onCheckedChange={(v) => toggleGroup(g.id, v)} />
+                  <Button size="sm" variant="destructive" onClick={() => deleteGroup(g.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                </div>
+              </div>
+              <div>
+                <Label className="text-[11px]">Corretores</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {brokers.map((b) => {
+                    const on = g.brokers.includes(b.id);
+                    return (
+                      <button key={b.id} onClick={() => toggleGroupBroker(g.id, b.id, !on)}
+                        className={`text-[11px] px-2 py-0.5 rounded-full border ${on ? "bg-primary text-primary-foreground border-primary" : "border-border/60 hover:border-primary/60"}`}>
+                        {b.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-[11px]">Formulários Meta neste grupo</Label>
+                  <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => addGroupForm(g.id)}>
+                    <Plus className="h-3 w-3 mr-1" /> Adicionar form
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {g.forms.length === 0 && <span className="text-[11px] text-muted-foreground">Nenhum formulário vinculado.</span>}
+                  {g.forms.map((f) => (
+                    <Badge key={f.form_id} variant="outline" className="text-[11px] gap-1">
+                      {f.form_name || f.form_id}
+                      <button onClick={() => removeGroupForm(g.id, f.form_id)} className="ml-1 opacity-60 hover:opacity-100"><Trash2 className="h-3 w-3" /></button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Distribution windows (shifts) */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> Janelas de Atendimento (turnos)</CardTitle>
           <Button size="sm" onClick={addWindow}><Plus className="h-4 w-4 mr-1" /> Adicionar</Button>
         </CardHeader>
         <CardContent className="space-y-3">
