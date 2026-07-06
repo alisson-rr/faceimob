@@ -87,9 +87,12 @@ export default function Marketing() {
             Performance das campanhas Faceimob • {filtered.length} campanhas • {realLeads} leads no CRM
           </p>
         </div>
-        <Button asChild variant="outline" size="sm" className="gap-2">
-          <a href="/admin/meta-ads"><Plug className="h-4 w-4" /> Conectar Meta Ads</a>
-        </Button>
+        <div className="flex items-center gap-2">
+          <MarketingInvestmentPopup canEdit={canEditAporte} />
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <a href="/admin/meta-ads"><Plug className="h-4 w-4" /> Conectar Meta Ads</a>
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}
