@@ -29,7 +29,7 @@ const menuItems = [
   { key: 'dashboard',   label: 'Dashboard' },
   { key: 'pipeline',    label: 'Pipeline' },
   { key: 'cca',         label: 'CCA' },
-  { key: 'norteador',   label: 'Norteador' },
+  { key: 'resultados',  label: 'Resultados' },
   { key: 'marketing',   label: 'Marketing' },
   { key: 'equipes',     label: 'Equipes' },
   { key: 'links',       label: 'Links' },
