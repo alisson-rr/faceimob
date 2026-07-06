@@ -25,13 +25,22 @@ async function fetchLeadFromGraph(leadgenId: string, pageAccessToken: string) {
 
 async function fetchFormName(formId: string, pageAccessToken: string): Promise<string | null> {
   try {
-    if (!formId || !pageAccessToken) return null
-    const url = `https://graph.facebook.com/v19.0/${formId}?fields=name&access_token=${pageAccessToken}`
+    if (!formId || !pageAccessToken) {
+      console.warn('fetchFormName: missing', { hasFormId: !!formId, hasToken: !!pageAccessToken })
+      return null
+    }
+    const url = `https://graph.facebook.com/v19.0/${formId}?fields=name,status&access_token=${pageAccessToken}`
     const res = await fetch(url)
     const json = await res.json()
+    console.log('Graph form response for', formId, ':', JSON.stringify(json))
+    if (json?.error) return null
     return json?.name || null
-  } catch { return null }
+  } catch (e) {
+    console.error('fetchFormName error:', e)
+    return null
+  }
 }
+
 
 function pickUtm(fields: Record<string, string>, key: string) {
   return fields[key] || fields[`utm_${key}`] || fields[key.replace('utm_', '')] || ''
