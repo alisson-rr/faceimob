@@ -66,8 +66,8 @@ export default function DataManagement() {
   };
   useEffect(() => {
     (async () => {
-      const { data } = await (supabase as any).from("cca_developers").select("name").order("name");
-      setDevs(((data as any[]) || []).map(d => d.name));
+      const { data } = await (supabase as any).from("cca_developers").select("developer_name").order("developer_name");
+      setDevs(((data as any[]) || []).map(d => d.developer_name));
       loadAportes();
     })();
   }, []);
