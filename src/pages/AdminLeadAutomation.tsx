@@ -14,7 +14,18 @@ type Settings = {
   no_response_hours: number;
   inactivity_alert_hours: number;
   auto_first_contact: boolean;
+  stage_max_minutes: Record<string, number>;
 };
+
+const STAGE_LABELS: { key: string; label: string }[] = [
+  { key: "new", label: "Novo Lead" },
+  { key: "first_contact", label: "Primeiro Contato" },
+  { key: "no_response", label: "Sem Resposta" },
+  { key: "warm", label: "Lead Morno" },
+  { key: "hot", label: "Lead Quente" },
+  { key: "gathering_docs", label: "Juntando Doc" },
+];
+
 
 type Window = {
   id?: string;
