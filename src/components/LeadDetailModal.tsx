@@ -296,9 +296,67 @@ export default function LeadDetailModal({
               {history.length === 0 && <p className="text-sm text-muted-foreground">Sem histórico.</p>}
             </div>
           </TabsContent>
+
+          <TabsContent value="tracking" className="space-y-2 text-sm">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">UTMs</p>
+            <Row k="utm_source" v={lead.utm_source} />
+            <Row k="utm_medium" v={lead.utm_medium} />
+            <Row k="utm_campaign" v={lead.utm_campaign} />
+            <Row k="utm_content" v={lead.utm_content} />
+            <Row k="utm_term" v={lead.utm_term} />
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mt-3">Rastreio</p>
+            {lead.tracking && Object.keys(lead.tracking || {}).length > 0 ? (
+              Object.entries(lead.tracking).map(([k, v]) => v ? <Row key={k} k={k} v={String(v)} /> : null)
+            ) : (
+              <p className="text-xs text-muted-foreground">Sem dados de rastreio.</p>
+            )}
+            {lead.notes && <><p className="text-xs text-muted-foreground uppercase tracking-wider mt-3">Notas técnicas</p><p className="text-xs whitespace-pre-wrap break-all">{lead.notes}</p></>}
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EditFields({
+  lead, fields,
+}: {
+  lead: any;
+  fields: { k: string; label: string; type?: string }[];
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const v: Record<string, string> = {};
+    fields.forEach(f => { v[f.k] = lead[f.k] ?? ""; });
+    return v;
+  });
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    const patch: any = {};
+    fields.forEach(f => { patch[f.k] = values[f.k] || null; });
+    const { error } = await supabase.from("leads").update(patch).eq("id", lead.id);
+    setSaving(false);
+    if (error) { toast({ variant: "destructive", title: "Erro", description: error.message }); return; }
+    toast({ title: "Dados salvos" });
+  };
+
+  return (
+    <div className="space-y-3">
+      {fields.map(f => (
+        <div key={f.k} className="space-y-1">
+          <Label className="text-xs">{f.label}</Label>
+          <Input
+            type={f.type || "text"}
+            value={values[f.k] || ""}
+            onChange={e => setValues(s => ({ ...s, [f.k]: e.target.value }))}
+          />
+        </div>
+      ))}
+      <Button size="sm" onClick={save} disabled={saving}>
+        <Save className="h-3 w-3 mr-1" /> {saving ? "Salvando..." : "Salvar"}
+      </Button>
+    </div>
   );
 }
 
