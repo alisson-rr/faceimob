@@ -28,6 +28,7 @@ import Checkin from "@/pages/Checkin";
 import AdminAllowedIps from "@/pages/AdminAllowedIps";
 import MetaAdsSetup from "@/pages/MetaAdsSetup";
 import AdminLeadAutomation from "@/pages/AdminLeadAutomation";
+import PublicDirectorCheckpoint from "@/pages/PublicDirectorCheckpoint";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
