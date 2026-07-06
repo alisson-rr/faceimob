@@ -390,8 +390,15 @@ export default function Pipeline() {
 
 
   // ── Check-in / Checkout (compartilhado com a página /checkin) ──
-  const brokerName = user?.user_metadata?.full_name || user?.email || "";
-  const isInQueue = !!brokerName && queue.some(q => q.name === brokerName);
+  const [myBrokerId, setMyBrokerId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user?.id) { setMyBrokerId(null); return; }
+    (async () => {
+      const { data } = await supabase.from("brokers").select("id").eq("user_id", user.id).maybeSingle();
+      setMyBrokerId((data as any)?.id || null);
+    })();
+  }, [user?.id]);
+  const isInQueue = !!myBrokerId && queue.some((q: any) => q.broker_id === myBrokerId);
 
   const loadQueue = useCallback(async () => {
     const workDate = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -402,9 +409,10 @@ export default function Pipeline() {
       .is("checked_out_at", null);
     setQueue(((data as any[]) || []).map((r) => ({
       id: r.id,
+      broker_id: r.broker_id,
       name: r.brokers?.name || "—",
       checkedInAt: new Date(r.checked_in_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-    })));
+    })) as any);
   }, []);
 
   useEffect(() => {

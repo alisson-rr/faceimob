@@ -1,61 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, Medal, Star, Flame, Lightbulb, Megaphone, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import type { PipelineDeal } from "@/types/crm";
-
-// Same weights as Gamification page
-const SCORING = {
-  incomplete_with_doc: 10,
-  envio_esteira_agil: 140,
-  approved: 250,
-  venda: 600,
-  distrato_penalty: -600,
-};
-
-type BrokerRow = {
-  id: string;
-  name: string;
-  active: boolean;
-  user_id: string | null;
-  manager_id: string | null;
-  director_id: string | null;
-  avatar_url: string | null;
-};
-
-type Score = {
-  broker: BrokerRow;
-  leads: number;
-  analises: number;
-  aprovados: number;
-  vendas: number;
-  points: number;
-};
+import { useGameRanking, type ScoreRow as Score } from "@/hooks/useGameRanking";
 
 type Props = { deals: PipelineDeal[] };
 
 export default function PipelineTopRanking({ deals }: Props) {
-  const { role, user } = useAuth();
-  const [brokers, setBrokers] = useState<BrokerRow[]>([]);
+  const dealsForHook = deals.map((d) => ({
+    broker1_name: (d as any).broker1,
+    broker2_name: (d as any).broker2,
+    stage: d.stage,
+    status: (d as any).status,
+    active: (d as any).active,
+  }));
+  const { role, myBroker, allScores, scoped } = useGameRanking(dealsForHook);
   const [openInfo, setOpenInfo] = useState(false);
   const [tip, setTip] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ title: string | null; message: string } | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("brokers")
-        .select("id,name,active,user_id,manager_id,director_id,avatar_url")
-        .eq("active", true)
-        .order("name");
-      setBrokers((data as any) || []);
-    })();
-  }, []);
 
   const loadInfo = async () => {
     const [{ data: tips }, { data: notices }] = await Promise.all([
@@ -66,47 +33,7 @@ export default function PipelineTopRanking({ deals }: Props) {
     setNotice(notices?.[0] ?? null);
   };
 
-  const myBroker = useMemo(
-    () => brokers.find((b) => b.user_id === user?.id) || null,
-    [brokers, user?.id]
-  );
-
-  // All scores (used to compute global rank)
-  const allScores: Score[] = useMemo(() => {
-    return brokers
-      .map((b) => {
-        const bd = deals.filter((d) => d.broker1 === b.name || d.broker2 === b.name);
-        const leads = bd.filter((d) => d.stage === "lead").length;
-        const incompletos = bd.filter((d) => d.stage === "incomplete").length;
-        const analises = bd.filter((d) => d.stage === "under_analysis" || d.stage === "visit_scheduled").length;
-        const aprovados = bd.filter((d) => d.stage === "approved" || d.stage === "contract").length;
-        const vendas = bd.filter((d) => d.stage === "closed" && d.active).length;
-        const distratos = bd.filter((d) => d.stage === "closed" && !d.active).length;
-        const points = Math.max(
-          0,
-          incompletos * SCORING.incomplete_with_doc +
-            analises * SCORING.envio_esteira_agil +
-            aprovados * SCORING.approved +
-            vendas * SCORING.venda +
-            distratos * SCORING.distrato_penalty
-        );
-        return { broker: b, leads, analises, aprovados, vendas, points };
-      })
-      .sort((a, b) => b.points - a.points);
-  }, [brokers, deals]);
-
-  // Scoped scores by role
-  const scoped: Score[] = useMemo(() => {
-    if (role === "admin") return allScores;
-    if (role === "director" && myBroker) {
-      return allScores.filter((s) => s.broker.director_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (role === "manager" && myBroker) {
-      return allScores.filter((s) => s.broker.manager_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (myBroker) return allScores.filter((s) => s.broker.id === myBroker.id);
-    return [];
-  }, [allScores, role, myBroker]);
+  const openInfoDialog = async () => { await loadInfo(); setOpenInfo(true); };
 
   if (!scoped.length) return null;
 
@@ -117,8 +44,8 @@ export default function PipelineTopRanking({ deals }: Props) {
     return (
       <>
         <Card
-          onClick={async () => { await loadInfo(); setOpenInfo(true); }}
-          className="cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-transparent to-amber-500/10 hover:from-primary/15 hover:to-amber-500/15 transition"
+          onClick={openInfoDialog}
+          className="cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-transparent to-amber-500/10 hover:from-primary/20 hover:to-amber-500/20 hover:scale-[1.015] hover:shadow-lg hover:shadow-amber-500/20 transition-all duration-300 max-w-3xl mx-auto"
         >
           <CardContent className="p-4 flex items-center gap-4">
             <div className="relative">
@@ -194,31 +121,34 @@ export default function PipelineTopRanking({ deals }: Props) {
     role === "manager" ? "Sua Gerência" : "Ranking";
 
   return (
-    <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
+    <>
+    <Card className="border-primary/30 bg-card/60 backdrop-blur-xl max-w-4xl mx-auto">
       <CardContent className="p-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-center gap-3 mb-3 relative">
           <div className="flex items-center gap-2">
             <Flame className="h-4 w-4 text-amber-400" />
             <h2 className="text-sm font-bold">Ranking do Game — {scopeLabel}</h2>
           </div>
-          <Badge variant="outline" className="text-[10px] border-primary/30">
+          <Badge variant="outline" className="text-[10px] border-primary/30 absolute right-0">
             <TrendingUp className="h-3 w-3 mr-1" /> {scoped.length} participantes
           </Badge>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 justify-items-center">
           {order.map((s, idx) => {
-            // idx 0 = 2nd, 1 = 1st, 2 = 3rd
-            const pos = idx === 0 ? 1 : idx === 1 ? 0 : 2; // medalConfig index
+            const pos = idx === 0 ? 1 : idx === 1 ? 0 : 2;
             const cfg = medalConfig[pos];
             const positionNumber = pos === 0 ? 2 : pos === 1 ? 1 : 3;
             return (
-              <div
+              <button
+                type="button"
                 key={s.broker.id}
+                onClick={openInfoDialog}
                 className={cn(
-                  "rounded-xl border p-3 flex items-center gap-3 transition-transform",
+                  "w-full text-left rounded-xl border p-3 flex items-center gap-3 cursor-pointer",
+                  "transition-all duration-300 hover:scale-[1.04] hover:shadow-xl hover:shadow-amber-500/20",
                   cfg.wrap,
-                  pos === 1 && "sm:-translate-y-2"
+                  pos === 1 && "sm:-translate-y-2 hover:sm:-translate-y-3"
                 )}
               >
                 <div className="relative shrink-0">
@@ -239,12 +169,14 @@ export default function PipelineTopRanking({ deals }: Props) {
                     <span>An:<b className="text-sky-400 ml-0.5">{s.analises}</b></span>
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       </CardContent>
     </Card>
+    <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
+    </>
   );
 }
 
