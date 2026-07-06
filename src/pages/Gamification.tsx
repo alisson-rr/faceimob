@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useEffect, useCallback } from 'react';
 import { PipelineDeal, Broker } from '@/types/crm';
 import { format, parseISO, differenceInDays } from 'date-fns';
+import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
 
 // Default scoring weights based on pipeline movements
 const DEFAULT_SCORING = {
@@ -306,11 +307,14 @@ export default function Gamification() {
         </CardContent>
       </Card>
 
+      <GamificationBanners />
+
       <Tabs defaultValue="geral" className="space-y-4">
-        <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
+        <TabsList className={`grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} w-full max-w-lg mx-auto`}>
           <TabsTrigger value="geral">Geral</TabsTrigger>
           <TabsTrigger value="diretoria">Diretorias</TabsTrigger>
           <TabsTrigger value="gerencia">Gerências</TabsTrigger>
+          {isAdmin && <TabsTrigger value="admin">Admin</TabsTrigger>}
         </TabsList>
 
         {/* ========== GERAL ========== */}
