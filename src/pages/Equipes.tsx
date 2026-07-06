@@ -390,6 +390,7 @@ export default function Equipes() {
                         />
                       </div>
                     )}
+                    {canEdit && <GoalRow broker={m} onSaved={load} />}
                     <CredLine id={m.id} />
                   </div>
                 );
