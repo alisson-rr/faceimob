@@ -39,21 +39,21 @@ export default function LeadFunnel({
   const [lostToday, setLostToday] = useState<{ broker_name: string; lost_count: number }[]>([]);
 
 
-  // Marca o momento em que o funil foi aberto — só mostra leads criados a partir daqui
-  const sessionStart = useMemo(() => new Date().toISOString(), []);
-
   const load = async () => {
     const [{ data }, { data: s }, { data: lost }] = await Promise.all([
       supabase.from("leads").select("*")
-        .gte("created_at", sessionStart)
         .neq("funnel_stage", "converted")
         .order("created_at", { ascending: false })
-        .limit(200),
+        .limit(500),
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
       supabase.rpc("leads_lost_today" as any),
     ]);
     setLeads((data as any) || []);
-    setLostToday(((lost as any) || []) as any);
+    // mostra perdidos apenas do próprio corretor logado
+    const own = ((lost as any) || []).filter((r: any) =>
+      (r.broker_name || "").trim().toLowerCase() === (actorName || "").trim().toLowerCase()
+    );
+    setLostToday(own as any);
     if (s) {
       setRoletaSec((s as any).roleta_seconds);
       setInactivityH((s as any).inactivity_alert_hours);
@@ -122,9 +122,7 @@ export default function LeadFunnel({
       for (const l of leads) {
         if (l.funnel_stage !== "new" || reassigned.includes(l.id)) continue;
         const ageMs = now - new Date(l.created_at).getTime();
-        // só reatribui se expirou a roleta E o lead tem no máximo 2× o tempo da roleta
-        // (evita processar leads antigos herdados de importações)
-        if (ageMs < roletaSec * 1000 || ageMs > roletaSec * 1000 * 3) continue;
+        if (ageMs < roletaSec * 1000) continue;
 
         reassigned.push(l.id);
         sessionStorage.setItem(reassignedKey, JSON.stringify(reassigned));
@@ -299,7 +297,7 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick 
             </span>
           </div>
           <p className="text-xs text-muted-foreground truncate">
-            {lead.form_name || lead.source || "—"}
+            {(lead.form_name && !/^Formul[aá]rio\s*\d+$/i.test(lead.form_name)) ? lead.form_name : (lead.source || "—")}
           </p>
           <div className="flex items-center justify-between gap-2 mt-0.5">
             <span className={cn(
