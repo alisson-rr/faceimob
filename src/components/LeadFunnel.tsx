@@ -28,10 +28,16 @@ export default function LeadFunnel({
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [selected, setSelected] = useState<LeadRow | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [roletaSec, setRoletaSec] = useState(300);
+  const [inactivityH, setInactivityH] = useState(24);
 
   const load = async () => {
-    const { data } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
+    const [{ data }, { data: s }] = await Promise.all([
+      supabase.from("leads").select("*").order("created_at", { ascending: false }),
+      supabase.from("lead_automation_settings").select("roleta_seconds, inactivity_alert_hours").eq("id", true).maybeSingle(),
+    ]);
     setLeads((data as any) || []);
+    if (s) { setRoletaSec((s as any).roleta_seconds); setInactivityH((s as any).inactivity_alert_hours); }
   };
 
   useEffect(() => {
