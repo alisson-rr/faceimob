@@ -359,7 +359,26 @@ export default function DailyReport() {
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">40%</b><span className="text-muted-foreground">Aprovações</span></div>
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">50%</b><span className="text-muted-foreground">Vendas</span></div>
               </div>
+
+
+              <div className="flex-1 min-w-0 border-l border-border/40 pl-4 ml-1 text-[10px] leading-snug space-y-1">
+                <p className="text-[10px] uppercase tracking-wider text-yellow-400/80 font-semibold">Instrua seu time</p>
+                <p className="text-muted-foreground">
+                  A cada <b className="text-foreground">100 leads</b> trabalhados, o esperado é:
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-foreground">
+                  <span><b className="text-cyan-300">10</b> análises</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span><b className="text-emerald-300">4</b> aprovações</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span><b className="text-yellow-300">2</b> vendas</span>
+                </div>
+                <p className="text-muted-foreground pt-0.5">
+                  Cálculo: 100 × 10% = <b className="text-foreground">10</b> · 10 × 40% = <b className="text-foreground">4</b> · 4 × 50% = <b className="text-foreground">2</b>
+                </p>
+              </div>
             </div>
+
 
 
             {/* Month funnel + missing days */}
