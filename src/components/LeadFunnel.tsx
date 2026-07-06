@@ -220,66 +220,80 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick 
     ? `https://wa.me/${whatsappNum.startsWith("55") ? whatsappNum : "55" + whatsappNum}?text=${encodeURIComponent(`Olá ${lead.name || ""}, tudo bem?`)}`
     : "";
 
+  const timeLabel = formatDistanceToNow(new Date(lead.created_at), { locale: ptBR, addSuffix: false });
+
   return (
     <Card
       onClick={onClick}
       className={cn(
-        "p-2.5 cursor-pointer hover:bg-secondary/60 transition-colors border-border/50 space-y-1.5 relative",
-        isBrandNew && "ring-2 ring-primary/70 animate-pulse-slow",
+        "px-3 py-2 cursor-pointer hover:bg-secondary/60 transition-colors border-border/50 relative",
+        isBrandNew && "ring-2 ring-primary/70",
         stageOverdue && "ring-2 ring-destructive/70"
       )}
     >
-      {isBrandNew && (
-        <Badge className="absolute -top-2 -right-2 bg-red-600 text-white text-[9px] px-1.5 py-0 shadow-lg animate-pulse">
-          NOVO
-        </Badge>
-      )}
-      {stageOverdue && !isBrandNew && (
-        <Badge className="absolute -top-2 -right-2 bg-destructive text-white text-[9px] px-1.5 py-0 shadow-lg animate-pulse gap-0.5">
-          <AlertTriangle className="h-2.5 w-2.5" /> ATRASO
-        </Badge>
-      )}
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-semibold text-sm truncate flex-1">{lead.name || "Sem nome"}</p>
-        {inactiveAlert && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
+      <div className="flex items-start gap-2">
+        {/* Status dot */}
+        <span className={cn(
+          "mt-1.5 h-2 w-2 rounded-full shrink-0",
+          isBrandNew ? "bg-red-500 animate-pulse" : stageOverdue ? "bg-destructive animate-pulse" : "bg-muted-foreground/40"
+        )} />
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-semibold text-sm truncate">{lead.name || "Sem nome"}</p>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+              {timeLabel}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground truncate">
+            {lead.form_name || lead.source || "—"}
+          </p>
+          <div className="flex items-center justify-between gap-2 mt-0.5">
+            <span className={cn(
+              "text-[10px] italic truncate",
+              stageOverdue ? "text-destructive font-semibold" : "text-primary/80"
+            )}>
+              {lead.broker_name ? lead.broker_name : "Sem corretor"}
+            </span>
+            <div className="flex items-center gap-1 shrink-0">
+              <Badge className={cn("text-[9px] px-1.5 py-0 border h-4", src.cls)}>{src.label}</Badge>
+              {isNew && roletaLeftMs > 0 && (
+                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">
+                  <Timer className="h-2.5 w-2.5" />{Math.ceil(roletaLeftMs / 1000)}s
+                </span>
+              )}
+              {waLink && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); window.open(waLink, "_blank"); }}
+                  className="h-5 w-5 rounded-full bg-green-600 hover:bg-green-700 flex items-center justify-center"
+                  title="WhatsApp"
+                >
+                  <MessageCircle className="h-3 w-3 text-white" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="flex items-center gap-1 flex-wrap">
-        <Badge className={cn("text-[9px] px-1.5 py-0 border", src.cls)}>{src.label}</Badge>
-        {lead.form_name && (
-          <Badge variant="outline" className="text-[9px] px-1.5 py-0 truncate max-w-[140px]" title={lead.form_name}>
-            📋 {lead.form_name}
-          </Badge>
-        )}
-      </div>
-      <p className="text-[10px] text-muted-foreground flex items-center gap-1 truncate">
-        <User className="h-2.5 w-2.5" /> {lead.broker_name || "Sem corretor"}
-      </p>
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-0.5">
-          <Clock className="h-2.5 w-2.5" />
-          <span className={cn(stageOverdue && "text-destructive font-semibold")}>
-            {stageMinutes < 60
-              ? `${Math.floor(stageMinutes)}m na etapa`
-              : `${(stageMinutes / 60).toFixed(1)}h na etapa`}
-          </span>
-        </span>
-        {isNew && roletaLeftMs > 0 && (
-          <span className="flex items-center gap-0.5 text-primary font-medium">
-            <Timer className="h-2.5 w-2.5" /> {Math.ceil(roletaLeftMs / 1000)}s
-          </span>
-        )}
-        {isNew && roletaLeftMs <= 0 && (
-          <span className="text-amber-500 font-medium">roleta expirada</span>
-        )}
-      </div>
-      {waLink && (
-        <Button
-          size="sm"
-          className="w-full h-7 bg-green-600 hover:bg-green-700 text-white text-[11px]"
-          onClick={(e) => { e.stopPropagation(); window.open(waLink, "_blank"); }}
-        >
-          <MessageCircle className="h-3 w-3 mr-1" /> WhatsApp
-        </Button>
+
+      {/* Badges de alerta */}
+      {(isBrandNew || stageOverdue) && (
+        <div className="flex gap-1 mt-1.5">
+          {isBrandNew && (
+            <Badge className="bg-red-600 text-white text-[9px] px-1.5 py-0 h-4">NOVO</Badge>
+          )}
+          {stageOverdue && (
+            <Badge className="bg-destructive text-white text-[9px] px-1.5 py-0 h-4 gap-0.5">
+              <AlertTriangle className="h-2.5 w-2.5" /> {Math.floor(stageMinutes)}m na etapa
+            </Badge>
+          )}
+          {inactiveAlert && !stageOverdue && (
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-destructive text-destructive gap-0.5">
+              <AlertTriangle className="h-2.5 w-2.5" /> Inativo
+            </Badge>
+          )}
+        </div>
       )}
     </Card>
   );
