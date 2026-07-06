@@ -297,7 +297,7 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick 
             </span>
           </div>
           <p className="text-xs text-muted-foreground truncate">
-            {lead.form_name || lead.source || "—"}
+            {(lead.form_name && !/^Formul[aá]rio\s*\d+$/i.test(lead.form_name)) ? lead.form_name : (lead.source || "—")}
           </p>
           <div className="flex items-center justify-between gap-2 mt-0.5">
             <span className={cn(
