@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { normalizeStatus, nextMonthBase } from "@/lib/dealStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import LeadFunnel from "@/components/LeadFunnel";
+import PipelineTopRanking from "@/components/PipelineTopRanking";
 
 const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
@@ -685,6 +686,9 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-4">
+      {/* ── TOP RANKING (game / broker funnel) ────────── */}
+      <PipelineTopRanking deals={deals} />
+
       {/* ── HEADER with TABS ─────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
