@@ -36,19 +36,24 @@ export default function LeadFunnel({
   });
   const [popupLead, setPopupLead] = useState<LeadRow | null>(null);
   const [popupKind, setPopupKind] = useState<"new" | "delay">("new");
+  const [lostToday, setLostToday] = useState<{ broker_name: string; lost_count: number }[]>([]);
+
 
   const load = async () => {
-    const [{ data }, { data: s }] = await Promise.all([
+    const [{ data }, { data: s }, { data: lost }] = await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }),
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
+      supabase.rpc("leads_lost_today" as any),
     ]);
     setLeads((data as any) || []);
+    setLostToday(((lost as any) || []) as any);
     if (s) {
       setRoletaSec((s as any).roleta_seconds);
       setInactivityH((s as any).inactivity_alert_hours);
       if ((s as any).stage_max_minutes) setStageMax((s as any).stage_max_minutes);
     }
   };
+
 
   useEffect(() => {
     load();
@@ -100,11 +105,46 @@ export default function LeadFunnel({
     }
   }, [leads, now, stageMax, popupLead]);
 
+  // Roleta: reatribui leads "new" expirados ao próximo corretor da fila
+  useEffect(() => {
+    const reassignedKey = "lead-reassigned";
+    const reassigned: string[] = JSON.parse(sessionStorage.getItem(reassignedKey) || "[]");
+    (async () => {
+      for (const l of leads) {
+        if (l.funnel_stage !== "new" || reassigned.includes(l.id)) continue;
+        const ageMs = now - new Date(l.created_at).getTime();
+        if (ageMs < roletaSec * 1000) continue;
+        reassigned.push(l.id);
+        sessionStorage.setItem(reassignedKey, JSON.stringify(reassigned));
+        const { data } = await supabase.rpc("reassign_expired_lead" as any, { _lead_id: l.id });
+        const res: any = data;
+        if (res?.ok) {
+          toast({ title: "🔁 Lead repassado", description: `${l.name || "Lead"} → ${res.new_broker_name}` });
+        }
+      }
+      load();
+    })();
+  }, [leads, now, roletaSec]);
 
+  const totalLostToday = lostToday.reduce((a, b) => a + Number(b.lost_count || 0), 0);
 
   return (
     <>
+      {/* Perdidos hoje */}
+      {totalLostToday > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <span className="font-semibold">Leads perdidos hoje (roleta expirou):</span>
+          <Badge variant="destructive">{totalLostToday}</Badge>
+          {lostToday.map(l => (
+            <Badge key={l.broker_name} variant="outline" className="border-destructive/60 text-destructive">
+              {l.broker_name}: {l.lost_count}
+            </Badge>
+          ))}
+        </div>
+      )}
       <div className="flex gap-3 overflow-x-auto pb-4">
+
         {STAGES.map(stage => {
           const items = grouped[stage.key] || [];
           return (

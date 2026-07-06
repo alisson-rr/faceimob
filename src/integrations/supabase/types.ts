@@ -1364,6 +1364,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      leads_lost_today: {
+        Args: never
+        Returns: {
+          broker_name: string
+          lost_count: number
+        }[]
+      }
+      reassign_expired_lead: { Args: { _lead_id: string }; Returns: Json }
       rebuild_dashboard_bi_cache: { Args: never; Returns: undefined }
     }
     Enums: {

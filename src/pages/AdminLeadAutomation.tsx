@@ -14,7 +14,18 @@ type Settings = {
   no_response_hours: number;
   inactivity_alert_hours: number;
   auto_first_contact: boolean;
+  stage_max_minutes: Record<string, number>;
 };
+
+const STAGE_LABELS: { key: string; label: string }[] = [
+  { key: "new", label: "Novo Lead" },
+  { key: "first_contact", label: "Primeiro Contato" },
+  { key: "no_response", label: "Sem Resposta" },
+  { key: "warm", label: "Lead Morno" },
+  { key: "hot", label: "Lead Quente" },
+  { key: "gathering_docs", label: "Juntando Doc" },
+];
+
 
 type Window = {
   id?: string;
@@ -32,7 +43,9 @@ export default function AdminLeadAutomation() {
     no_response_hours: 24,
     inactivity_alert_hours: 24,
     auto_first_contact: true,
+    stage_max_minutes: { new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320 },
   });
+
   const [windows, setWindows] = useState<Window[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -124,6 +137,36 @@ export default function AdminLeadAutomation() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Stage max times (delay alerts) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><Timer className="h-4 w-4" /> Tempo máximo por etapa (minutos)</CardTitle>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-3 gap-4">
+          {STAGE_LABELS.map(st => (
+            <div key={st.key} className="space-y-1">
+              <Label className="text-xs">{st.label}</Label>
+              <Input
+                type="number" min={1}
+                value={settings.stage_max_minutes?.[st.key] ?? 0}
+                onChange={e => setSettings(s => ({
+                  ...s,
+                  stage_max_minutes: { ...(s.stage_max_minutes || {}), [st.key]: +e.target.value },
+                }))}
+              />
+            </div>
+          ))}
+          <div className="md:col-span-3">
+            <Button onClick={saveSettings} disabled={savingSettings}>
+              <Save className="h-4 w-4 mr-2" /> Salvar tempos
+            </Button>
+            <p className="text-[11px] text-muted-foreground mt-1">Ao ultrapassar o tempo, um popup de atraso é disparado no funil.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+
 
       {/* Distribution windows */}
       <Card>
