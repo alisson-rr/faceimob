@@ -77,6 +77,7 @@ const App = () => (
               <Route path="/checkin" element={<Checkin />} />
               <Route path="/admin/allowed-ips" element={<AdminAllowedIps />} />
               <Route path="/admin/meta-ads" element={<MetaAdsSetup />} />
+              <Route path="/admin/lead-automation" element={<AdminLeadAutomation />} />
               <Route path="/admin/daily-bi" element={<Navigate to="/checkpoint" replace />} />
               <Route path="/gamification" element={<Gamification />} />
             </Route>
