@@ -147,8 +147,9 @@ export default function Checkpoint() {
             teamNameFor={teamNameFor}
           />
           <div className="grid grid-cols-1 gap-4">
-            {filteredTeams.map(t => <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
+            {/* Managers cards agora só no popup do diretor */}
           </div>
+
         </>
       )}
     </div>
