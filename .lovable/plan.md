@@ -1,58 +1,44 @@
-# Funil de Leads — Novo fluxo
+# Link público do Diretor — Checkpoint Semanal
 
-## Estágios do funil (colunas)
+Hoje só existe link público por **equipe** (`/daily/:slug`). Vou adicionar um link público **por diretor** que mostra o card "Checkpoint Semanal" (o mesmo que aparece no /checkpoint hoje) com todos os gerentes daquele diretor.
 
-1. **Novo Lead** (Roleta) — permanece 5 min; timer visível; após ação vai p/ Primeiro Contato
-2. **Primeiro Contato** — qualquer ação do corretor (clicar WhatsApp, comentar, editar) move automático
-3. **Sem Resposta / Follow** — botão manual + regra automática se >24h sem interação
-4. **Lead Morno**
-5. **Lead Quente**
-6. **Juntando Doc** — permite anexar documentos
-7. **Converter** — cria linha `Incompleto` no Pipeline (deals) e carrega os anexos
+## O que será feito
 
-## Front (Kanban de Leads)
+1. **Nova edge function `director-weekly` (pública, service role)**
+   - Recebe `{ slug, week_start? }`.
+   - Resolve o diretor: acha em `brokers` (role=director, active) cujo `slug(name)` bate com o parâmetro.
+   - Lista managers com `director_id = <dir>` e teams com `manager_id in (...)`.
+   - Agrega `daily_team_reports` + `daily_broker_entries` para a semana (seg–dom).
+   - Lê `checkpoint_targets` (global/por team).
+   - Retorna `{ director:{name}, week:{start,end}, teams:[{id,name,aggr,targets}] }`.
+   - Não expõe dados de outros diretores.
 
-Substitui a aba Leads atual do Pipeline por um Kanban de 7 colunas.
-Cada card na coluna mostra apenas:
-- Nome do lead
-- Origem (badge)
-- Corretor
-- Hora de chegada (relativa: "há 3 min") + timer especial nos 5 min iniciais
-- Ordenação: mais novo → mais antigo
+2. **Nova página pública `src/pages/PublicDirectorCheckpoint.tsx`**
+   - Rota `/diretor/:slug` (fora do `RequireAuth`).
+   - Header idêntico ao `/checkpoint` (navegação de semana + Hoje).
+   - Renderiza o `DirectorFunnelCard` (extraído do `Checkpoint.tsx`) com a lista de gerentes/teams do diretor.
+   - Botão "Ver gerentes" abre o modal com os `TeamCheckpointCard`s (mesma UI que já existe).
 
-## Card detalhado (modal ao clicar)
+3. **Refatoração pequena em `src/pages/Checkpoint.tsx`**
+   - Extrair `DirectorFunnelCard` e `TeamCheckpointCard` para `src/components/checkpoint/DirectorFunnelCard.tsx` e `TeamCheckpointCard.tsx` para reuso na página pública. Sem mudança visual.
 
-- Dados do lead (nome, tel, email, whatsapp, origem)
-- Respostas do formulário (todos os `field_data` do Meta) — hoje já gravamos parte em `notes`; passaremos a salvar em `form_answers jsonb`
-- Comentários (thread)
-- Botão WhatsApp (abre `https://wa.me/<telefone>?text=Olá <nome>`)
-- Anexos (upload direto, ficam vinculados ao lead e migram para o Deal ao converter)
-- Histórico automático (timeline): chegada, mudança de estágio, comentário, anexo, tentativa de contato
-- Aviso de inatividade: badge vermelho se >24h sem movimento
+4. **Link público em `src/pages/AdminDailyTeams.tsx`**
+   - Nova seção "Diretores" listando cada diretor com URL `https://crm-faceimob.com.br/diretor/<slug>` e botão copiar (mesmo padrão dos links de equipe).
 
-## Backend
+## Detalhes técnicos
 
-Migração cria:
-
-- Colunas em `public.leads`: `funnel_stage` (enum), `form_answers jsonb`, `first_contact_at timestamptz`, `last_activity_at timestamptz`
-- `public.lead_history` (id, lead_id, event_type, description, actor_name, created_at)
-- `public.lead_comments` (id, lead_id, author_name, message, created_at)
-- `public.lead_attachments` (id, lead_id, file_path, file_name, mime, size, created_at)
-- Bucket privado `lead-attachments` com RLS
-- Trigger em `leads` que grava histórico automático de mudança de estágio e atualiza `last_activity_at`
-- Enum `lead_funnel_stage`: new, first_contact, no_response, warm, hot, gathering_docs, converted
-
-Edge function `meta-ads-webhook` passa a salvar o objeto inteiro do formulário em `form_answers` (além do fallback em `notes`).
-
-## Conversão para Pipeline
-
-Ao clicar "Converter": cria `deals` em estágio `incomplete` com dados do lead, marca lead como `converted`, e copia os `lead_attachments` para o deal (via nova tabela `deal_attachments` reaproveitando o mesmo bucket).
+- Slug: mesma `slugify` usada em `AdminDailyTeams.tsx` aplicada em `broker.name`.
+- Edge function fica em `supabase/functions/director-weekly/index.ts`, registrada em `supabase/config.toml` com `verify_jwt = false`.
+- Página pública não precisa de PIN — dados agregados de leitura.
+- Rotas em `src/App.tsx`: adicionar `<Route path="/diretor/:slug" element={<PublicDirectorCheckpoint />} />` antes do `RequireAuth`.
 
 ## Arquivos afetados
 
-- `supabase/migrations/*` — schema + bucket + policies + trigger
-- `supabase/functions/meta-ads-webhook/index.ts` — grava `form_answers`
-- `src/pages/Pipeline.tsx` — aba Leads vira Kanban do funil
-- `src/components/LeadCard.tsx` (novo) — card compacto
-- `src/components/LeadDetailModal.tsx` (novo) — modal com abas Dados / Formulário / Comentários / Anexos / Histórico
-- `src/types/crm.ts` — tipos do funil
+- `supabase/functions/director-weekly/index.ts` (novo)
+- `supabase/config.toml` (registrar função pública)
+- `src/components/checkpoint/DirectorFunnelCard.tsx` (novo, extraído)
+- `src/components/checkpoint/TeamCheckpointCard.tsx` (novo, extraído)
+- `src/pages/Checkpoint.tsx` (usar componentes extraídos)
+- `src/pages/PublicDirectorCheckpoint.tsx` (novo)
+- `src/App.tsx` (rota pública)
+- `src/pages/AdminDailyTeams.tsx` (lista de links de diretores)

@@ -28,6 +28,7 @@ import Checkin from "@/pages/Checkin";
 import AdminAllowedIps from "@/pages/AdminAllowedIps";
 import MetaAdsSetup from "@/pages/MetaAdsSetup";
 import AdminLeadAutomation from "@/pages/AdminLeadAutomation";
+import PublicDirectorCheckpoint from "@/pages/PublicDirectorCheckpoint";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/daily/:teamId/:slug" element={<DailyReport />} />
             <Route path="/daily/:slug" element={<DailyReport />} />
+            <Route path="/diretor/:slug" element={<PublicDirectorCheckpoint />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<RequireAuth />}>
               <Route path="/dashboard" element={<DashboardSwitcher />} />

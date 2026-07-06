@@ -43,6 +43,14 @@ export default function AdminDailyTeams() {
     },
   });
 
+  const { data: directors } = useQuery({
+    queryKey: ["directors-public-links"],
+    queryFn: async () => {
+      const { data } = await supabase.from("brokers").select("id,name").eq("role", "director").eq("active", true).order("name");
+      return data ?? [];
+    },
+  });
+
   const activeIps = (ips ?? []).filter((r: any) => r.active).length;
   const withPin = (teams ?? []).filter((t: any) => (Array.isArray(t.team_pins) ? t.team_pins[0]?.active : t.team_pins?.active)).length;
 
@@ -151,6 +159,38 @@ export default function AdminDailyTeams() {
           {(teams ?? []).length === 0 && (
             <div className="p-6 text-center text-xs text-muted-foreground">Nenhuma equipe cadastrada.</div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Links públicos de Diretores */}
+      <Card className="border-border/50">
+        <CardContent className="p-0">
+          <div className="px-3 py-2 flex items-center justify-between border-b border-border/40">
+            <div className="text-xs font-semibold flex items-center gap-2"><Link2 className="h-3.5 w-3.5 text-primary" /> Links públicos — Diretores (Checkpoint Semanal)</div>
+          </div>
+          <div className="divide-y divide-border/40">
+            {(directors ?? []).map((d: any) => {
+              const dlink = `${DAILY_PUBLIC_ORIGIN}/diretor/${managerSlug(d.name)}`;
+              return (
+                <div key={d.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
+                  <div className="w-48 truncate font-semibold">{d.name}</div>
+                  <div className="flex-1 min-w-0 flex items-center gap-1.5 font-mono bg-muted/30 rounded px-2 py-1">
+                    <Link2 className="h-3 w-3 text-primary shrink-0" />
+                    <span className="truncate">{dlink.replace(/^https?:\/\//, "")}</span>
+                    <button onClick={() => copy(dlink)} className="ml-auto hover:text-primary shrink-0" title="Copiar link">
+                      <Copy className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <Button asChild size="sm" variant="outline" className="h-7 px-2">
+                    <a href={dlink} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3 mr-1" /> Ver</a>
+                  </Button>
+                </div>
+              );
+            })}
+            {(directors ?? []).length === 0 && (
+              <div className="p-4 text-center text-[11px] text-muted-foreground">Nenhum diretor cadastrado.</div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
