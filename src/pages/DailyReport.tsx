@@ -309,38 +309,58 @@ export default function DailyReport() {
               </TooltipProvider>
             </div>
 
-            {/* Funil IDEAL — compacto e sutil */}
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border/40 bg-muted/10">
+            {/* Funil IDEAL — 4 estágios 3D, compacto */}
+            <div className="flex items-center gap-4 px-3 py-2 rounded-lg border border-border/40 bg-muted/10">
               <div className="flex items-center gap-1.5 shrink-0">
                 <Target className="h-3.5 w-3.5 text-yellow-400/80" />
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Funil Ideal</span>
               </div>
-              <svg viewBox="0 0 300 60" className="h-10 flex-1 min-w-0" preserveAspectRatio="none">
+
+              <svg viewBox="0 0 140 160" className="h-24 shrink-0" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <linearGradient id="funil3d" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%"   stopColor="hsl(217 85% 30%)" />
+                    <stop offset="50%"  stopColor="hsl(217 91% 55%)" />
+                    <stop offset="100%" stopColor="hsl(217 85% 28%)" />
+                  </linearGradient>
+                </defs>
                 {[
-                  { y: 2,  top: 300, bot: 220, label: "Topo",  side: "Leads · 100%",     fill: "hsl(217 91% 55%)" },
-                  { y: 22, top: 220, bot: 140, label: "Meio",  side: "Análises · 10%",   fill: "hsl(217 91% 40%)" },
-                  { y: 42, top: 140, bot: 60,  label: "Fundo", side: "Aprov. 40% · Venda 50%", fill: "hsl(217 91% 28%)" },
+                  { y: 2,   top: 130, bot: 100, h: 22 },
+                  { y: 40,  top: 100, bot: 74,  h: 20 },
+                  { y: 76,  top: 74,  bot: 48,  h: 18 },
+                  { y: 110, top: 48,  bot: 26,  h: 16 },
                 ].map((s, i) => {
-                  const pts = [
-                    [(300 - s.top) / 2, s.y],
-                    [(300 + s.top) / 2, s.y],
-                    [(300 + s.bot) / 2, s.y + 16],
-                    [(300 - s.bot) / 2, s.y + 16],
-                  ].map((p) => p.join(",")).join(" ");
+                  const cx = 70;
+                  const topRx = s.top / 2, botRx = s.bot / 2;
+                  const yTop = s.y, yBot = s.y + s.h;
+                  const ellipseRy = topRx * 0.18;
+                  // Body path: trapezoid sides + bottom ellipse arc
+                  const d = `
+                    M ${cx - topRx} ${yTop}
+                    L ${cx - botRx} ${yBot}
+                    A ${botRx} ${botRx * 0.22} 0 0 0 ${cx + botRx} ${yBot}
+                    L ${cx + topRx} ${yTop}
+                    A ${topRx} ${ellipseRy} 0 0 1 ${cx - topRx} ${yTop} Z
+                  `;
                   return (
                     <g key={i}>
-                      <polygon points={pts} fill={s.fill} opacity="0.9" />
-                      <text x="150" y={s.y + 10} textAnchor="middle" fontSize="8" fontWeight="600" fill="white">{s.label} do funil</text>
+                      <path d={d} fill="url(#funil3d)" stroke="hsl(217 60% 20%)" strokeWidth="0.5" />
+                      {/* Top ellipse rim highlight */}
+                      <ellipse cx={cx} cy={yTop} rx={topRx} ry={ellipseRy} fill="hsl(217 85% 35%)" opacity="0.9" />
+                      <ellipse cx={cx} cy={yTop - 0.4} rx={topRx * 0.95} ry={ellipseRy * 0.7} fill="none" stroke="hsl(217 100% 75%)" strokeWidth="0.5" opacity="0.6" />
                     </g>
                   );
                 })}
               </svg>
-              <div className="hidden md:flex flex-col text-[10px] text-muted-foreground shrink-0 leading-tight">
-                <span><b className="text-foreground">100%</b> Leads</span>
-                <span><b className="text-foreground">10%</b> viram Análise</span>
-                <span><b className="text-foreground">40%</b> Aprovação · <b className="text-foreground">50%</b> Venda</span>
+
+              <div className="flex flex-col justify-between h-24 py-1 text-[10px] leading-tight">
+                <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">100%</b><span className="text-muted-foreground">Leads</span></div>
+                <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">10%</b><span className="text-muted-foreground">Análises</span></div>
+                <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">40%</b><span className="text-muted-foreground">Aprovações</span></div>
+                <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">50%</b><span className="text-muted-foreground">Vendas</span></div>
               </div>
             </div>
+
 
             {/* Month funnel + missing days */}
             <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
