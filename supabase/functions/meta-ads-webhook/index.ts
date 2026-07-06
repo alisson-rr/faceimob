@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
               email: fields['email'] || '',
               source: 'Meta Ads',
               status: 'new',
+              form_answers: fields,
               notes: `leadgen_id=${v.leadgen_id || ''} form_id=${v.form_id || ''} page_id=${v.page_id || ''}${!pageAccessToken ? ' [SEM META_PAGE_ACCESS_TOKEN — dados não puxados]' : ''}`,
             })
           }

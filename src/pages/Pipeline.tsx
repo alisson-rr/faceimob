@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeStatus, nextMonthBase } from "@/lib/dealStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import LeadFunnel from "@/components/LeadFunnel";
 
 const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
@@ -169,7 +170,7 @@ function CcaStatusBadge({ dealId }: { dealId: string }) {
 }
 
 export default function Pipeline() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
 
@@ -1055,94 +1056,11 @@ export default function Pipeline() {
           </div>
         </>
       ) : (
-        /* ═══ LEADS TAB ═══ */
-        <>
-          {/* Lead Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Total", value: totalLeads, icon: Users, color: "text-muted-foreground" },
-              { label: "Novos", value: newLeads, icon: AlertCircle, color: "text-warning" },
-              { label: "Em Atendimento", value: inContactLeads, icon: Clock, color: "text-muted-foreground" },
-              { label: "Qualificados", value: qualifiedLeads, icon: CheckCircle, color: "text-muted-foreground" },
-            ].map(m => (
-              <Card key={m.label} className="glass border-border/50">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                    <m.icon className={cn("h-5 w-5", m.color)} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{m.value}</p>
-                    <p className="text-xs text-muted-foreground">{m.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Lead Search */}
-          <Card className="glass border-border/50">
-            <CardContent className="p-3 flex flex-col sm:flex-row items-center gap-3">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar leads..." className="pl-10" value={leadSearch} onChange={(e) => setLeadSearch(e.target.value)} />
-              </div>
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={leadStatusFilter} onValueChange={setLeadStatusFilter}>
-                  <SelectTrigger className="w-28"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {LEAD_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <div className="flex border border-border rounded-lg overflow-hidden">
-                  <button onClick={() => setLeadViewMode("list")} className={cn("p-1.5 transition-colors", leadViewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <List className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setLeadViewMode("grid")} className={cn("p-1.5 transition-colors", leadViewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Lead List */}
-          <div className="space-y-2">
-            {filteredLeads.map((lead) => (
-              <Card key={lead.id} className="glass hover:bg-secondary/30 transition-colors group">
-                <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="w-1 h-10 rounded-full bg-primary" />
-                    <div>
-                      <p className="font-semibold text-sm">{lead.name}</p>
-                      <p className="text-xs text-muted-foreground">{lead.source} • {lead.broker_name}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge className={cn("text-[10px]", leadStatusColor[lead.status])}>
-                      {LEAD_STATUSES.find(s => s.value === lead.status)?.label}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">{lead.created_at?.slice(11, 16) || lead.created_at}</span>
-                    <span className="text-xs text-muted-foreground">{lead.broker_name}</span>
-                    {lead.status !== "converted" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openConvertLead(lead)}
-                        className="text-success hover:text-success opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Converter em negócio"
-                      >
-                        <ArrowRightCircle className="h-4 w-4 mr-1" /> Converter
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {filteredLeads.length === 0 && <div className="text-center p-8 text-muted-foreground">Nenhum lead encontrado.</div>}
-          </div>
-        </>
+        /* ═══ LEADS TAB (Funil) ═══ */
+        <LeadFunnel
+          actorName={user?.email || "Usuário"}
+          onConvert={(l) => openConvertLead(l as any)}
+        />
       )}
 
       {/* ── CONVERT LEAD MODAL ─────────────────────────────── */}

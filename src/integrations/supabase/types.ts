@@ -716,13 +716,125 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_attachments: {
+        Row: {
+          created_at: string
+          deal_id: string | null
+          file_name: string
+          file_path: string
+          id: string
+          lead_id: string
+          mime: string | null
+          size: number | null
+        }
+        Insert: {
+          created_at?: string
+          deal_id?: string | null
+          file_name: string
+          file_path: string
+          id?: string
+          lead_id: string
+          mime?: string | null
+          size?: number | null
+        }
+        Update: {
+          created_at?: string
+          deal_id?: string | null
+          file_name?: string
+          file_path?: string
+          id?: string
+          lead_id?: string
+          mime?: string | null
+          size?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_attachments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_comments: {
+        Row: {
+          author_name: string
+          created_at: string
+          id: string
+          lead_id: string
+          message: string
+        }
+        Insert: {
+          author_name: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          message: string
+        }
+        Update: {
+          author_name?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          message?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_comments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_history: {
+        Row: {
+          actor_name: string | null
+          created_at: string
+          description: string
+          event_type: string
+          id: string
+          lead_id: string
+        }
+        Insert: {
+          actor_name?: string | null
+          created_at?: string
+          description: string
+          event_type: string
+          id?: string
+          lead_id: string
+        }
+        Update: {
+          actor_name?: string | null
+          created_at?: string
+          description?: string
+          event_type?: string
+          id?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           broker_id: string | null
           broker_name: string | null
           created_at: string
           email: string | null
+          first_contact_at: string | null
+          form_answers: Json
+          funnel_stage: Database["public"]["Enums"]["lead_funnel_stage"]
           id: string
+          last_activity_at: string
           name: string
           notes: string | null
           phone: string | null
@@ -736,7 +848,11 @@ export type Database = {
           broker_name?: string | null
           created_at?: string
           email?: string | null
+          first_contact_at?: string | null
+          form_answers?: Json
+          funnel_stage?: Database["public"]["Enums"]["lead_funnel_stage"]
           id?: string
+          last_activity_at?: string
           name: string
           notes?: string | null
           phone?: string | null
@@ -750,7 +866,11 @@ export type Database = {
           broker_name?: string | null
           created_at?: string
           email?: string | null
+          first_contact_at?: string | null
+          form_answers?: Json
+          funnel_stage?: Database["public"]["Enums"]["lead_funnel_stage"]
           id?: string
+          last_activity_at?: string
           name?: string
           notes?: string | null
           phone?: string | null
@@ -1191,6 +1311,14 @@ export type Database = {
         | "approved"
         | "contract"
         | "closed"
+      lead_funnel_stage:
+        | "new"
+        | "first_contact"
+        | "no_response"
+        | "warm"
+        | "hot"
+        | "gathering_docs"
+        | "converted"
       lead_status: "new" | "contacted" | "qualified" | "converted" | "lost"
     }
     CompositeTypes: {
@@ -1336,6 +1464,15 @@ export const Constants = {
         "approved",
         "contract",
         "closed",
+      ],
+      lead_funnel_stage: [
+        "new",
+        "first_contact",
+        "no_response",
+        "warm",
+        "hot",
+        "gathering_docs",
+        "converted",
       ],
       lead_status: ["new", "contacted", "qualified", "converted", "lost"],
     },
