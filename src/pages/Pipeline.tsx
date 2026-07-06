@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeStatus, nextMonthBase } from "@/lib/dealStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import LeadFunnel from "@/components/LeadFunnel";
 
 const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
@@ -169,7 +170,7 @@ function CcaStatusBadge({ dealId }: { dealId: string }) {
 }
 
 export default function Pipeline() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
 
