@@ -157,7 +157,7 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, onClick }: { lead: Le
       )}
       <div className="flex items-start justify-between gap-2">
         <p className="font-semibold text-sm truncate flex-1">{lead.name || "Sem nome"}</p>
-        {inactiveH > 24 && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
+        {inactiveAlert && <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />}
       </div>
       <div className="flex items-center gap-1 flex-wrap">
         <Badge className={cn("text-[9px] px-1.5 py-0 border", src.cls)}>{src.label}</Badge>
