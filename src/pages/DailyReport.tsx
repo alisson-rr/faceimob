@@ -358,6 +358,8 @@ export default function DailyReport() {
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">10%</b><span className="text-muted-foreground">Análises</span></div>
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">40%</b><span className="text-muted-foreground">Aprovações</span></div>
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">50%</b><span className="text-muted-foreground">Vendas</span></div>
+              </div>
+
 
               <div className="flex-1 min-w-0 border-l border-border/40 pl-4 ml-1 text-[10px] leading-snug space-y-1">
                 <p className="text-[10px] uppercase tracking-wider text-yellow-400/80 font-semibold">Instrua seu time</p>
