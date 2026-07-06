@@ -255,7 +255,14 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick 
         <User className="h-2.5 w-2.5" /> {lead.broker_name || "Sem corretor"}
       </p>
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>{formatDistanceToNow(new Date(lead.created_at), { locale: ptBR, addSuffix: true })}</span>
+        <span className="flex items-center gap-0.5">
+          <Clock className="h-2.5 w-2.5" />
+          <span className={cn(stageOverdue && "text-destructive font-semibold")}>
+            {stageMinutes < 60
+              ? `${Math.floor(stageMinutes)}m na etapa`
+              : `${(stageMinutes / 60).toFixed(1)}h na etapa`}
+          </span>
+        </span>
         {isNew && roletaLeftMs > 0 && (
           <span className="flex items-center gap-0.5 text-primary font-medium">
             <Timer className="h-2.5 w-2.5" /> {Math.ceil(roletaLeftMs / 1000)}s
