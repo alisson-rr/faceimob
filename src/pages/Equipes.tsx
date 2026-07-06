@@ -302,20 +302,42 @@ export default function Equipes() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
-              {filter(directors).filter(inScope).map(d => (
-                <div key={d.id} className="flex items-center gap-2 p-2 rounded-lg border border-border/30 bg-blue-500/5">
-                  <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-bold text-blue-400">{initials(d.name)}</div>
-                  <span className="text-xs font-medium flex-1">{d.name}</span>
-                  <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400">
-                    {managers.filter(m => m.director_id === d.id).length} ger.
-                  </Badge>
-                  {canEdit && (
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", d)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              ))}
+              {filter(directors).filter(inScope).map(d => {
+                const dirManagers = managers.filter(m => m.director_id === d.id);
+                const sumMonthly = dirManagers.reduce((s, m) => s + Number(m.monthly_goal || 0), 0);
+                const sumYearly = dirManagers.reduce((s, m) => s + Number(m.yearly_goal || 0), 0);
+                const monthsLeft = 12 - new Date().getMonth();
+                const perMonthLeft = sumYearly > 0 ? sumYearly / 12 : 0;
+                return (
+                  <div key={d.id} className="p-2 rounded-lg border border-border/30 bg-blue-500/5 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-bold text-blue-400">{initials(d.name)}</div>
+                      <span className="text-xs font-medium flex-1 truncate">{d.name}</span>
+                      <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400">{dirManagers.length} ger.</Badge>
+                      {canEdit && (
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", d)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-[10px]">
+                      <div className="p-1.5 rounded bg-background/60 border border-border/30">
+                        <p className="text-muted-foreground uppercase text-[9px]">Meta mês (Σ ger.)</p>
+                        <p className="font-bold text-blue-400">{sumMonthly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+                      </div>
+                      <div className="p-1.5 rounded bg-background/60 border border-border/30">
+                        <p className="text-muted-foreground uppercase text-[9px]">Meta ano (Σ ger.)</p>
+                        <p className="font-bold text-blue-400">{sumYearly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+                      </div>
+                    </div>
+                    {sumYearly > 0 && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Meses restantes: <strong className="text-foreground">{monthsLeft}</strong> · Ritmo/mês: <strong className="text-foreground">{perMonthLeft.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
 
