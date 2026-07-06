@@ -143,10 +143,13 @@ export default function LeadDetailModal({
               </Badge>
             )}
           </DialogTitle>
-          <p className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap pt-1">
+          <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap pt-1">
             <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Chegou {formatDistanceToNow(arrived, { locale: ptBR, addSuffix: true })}</span>
             <span className="flex items-center gap-1"><User className="h-3 w-3" /> {lead.broker_name || "Sem corretor"}</span>
-            <span>Origem: {lead.source || "—"}</span>
+            <Badge className={cn("border text-[10px]", sourceBadgeCls(lead.source))}>{lead.source || "Origem —"}</Badge>
+            {lead.form_name && (
+              <Badge variant="outline" className="text-[10px]">📋 {lead.form_name}</Badge>
+            )}
           </p>
         </DialogHeader>
 
@@ -183,12 +186,14 @@ export default function LeadDetailModal({
         </div>
 
         <Tabs defaultValue="info" className="mt-2">
-          <TabsList className="grid grid-cols-5 w-full">
+          <TabsList className="grid grid-cols-7 w-full">
             <TabsTrigger value="info">Dados</TabsTrigger>
-            <TabsTrigger value="form">Formulário</TabsTrigger>
-            <TabsTrigger value="comments">Comentários ({comments.length})</TabsTrigger>
+            <TabsTrigger value="personal">Pessoal</TabsTrigger>
+            <TabsTrigger value="interest">Interesse</TabsTrigger>
+            <TabsTrigger value="form">Form</TabsTrigger>
+            <TabsTrigger value="comments">Coment. ({comments.length})</TabsTrigger>
             <TabsTrigger value="attachments">Anexos ({attachments.length})</TabsTrigger>
-            <TabsTrigger value="history">Histórico</TabsTrigger>
+            <TabsTrigger value="tracking">Rastreio</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="space-y-2 text-sm">
@@ -197,8 +202,28 @@ export default function LeadDetailModal({
             <Row k="WhatsApp" v={lead.whatsapp} />
             <Row k="E-mail" v={lead.email} />
             <Row k="Origem" v={lead.source} />
+            <Row k="Formulário" v={lead.form_name} />
             <Row k="Corretor" v={lead.broker_name} />
             {lead.notes && <Row k="Notas" v={lead.notes} />}
+          </TabsContent>
+
+          <TabsContent value="personal" className="space-y-2">
+            <EditFields lead={lead} fields={[
+              { k: "cpf", label: "CPF" },
+              { k: "birth_date", label: "Data de nascimento", type: "date" },
+              { k: "address", label: "Endereço" },
+              { k: "phone", label: "Telefone" },
+              { k: "whatsapp", label: "WhatsApp" },
+              { k: "email", label: "E-mail", type: "email" },
+            ]} />
+          </TabsContent>
+
+          <TabsContent value="interest" className="space-y-2">
+            <EditFields lead={lead} fields={[
+              { k: "developer", label: "Construtora" },
+              { k: "development", label: "Empreendimento" },
+              { k: "unit", label: "Unidade" },
+            ]} />
           </TabsContent>
 
           <TabsContent value="form">
@@ -206,6 +231,7 @@ export default function LeadDetailModal({
               <p className="text-sm text-muted-foreground">Sem respostas de formulário.</p>
             ) : (
               <div className="space-y-2">
+                {lead.form_name && <p className="text-xs text-muted-foreground">Formulário: <span className="font-medium">{lead.form_name}</span></p>}
                 {Object.entries(answers).map(([k, v]) => (
                   <Row key={k} k={k} v={String(v)} />
                 ))}
