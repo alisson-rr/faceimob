@@ -27,6 +27,7 @@ import AdminDailyTeams from "@/pages/AdminDailyTeams";
 import Checkin from "@/pages/Checkin";
 import AdminAllowedIps from "@/pages/AdminAllowedIps";
 import MetaAdsSetup from "@/pages/MetaAdsSetup";
+import AdminLeadAutomation from "@/pages/AdminLeadAutomation";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
