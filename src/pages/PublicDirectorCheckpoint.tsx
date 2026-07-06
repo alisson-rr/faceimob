@@ -2,12 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Loader2, Target } from "lucide-react";
-import { addDays, endOfWeek, format, startOfWeek } from "date-fns";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Target, TrendingUp } from "lucide-react";
+import { addDays, endOfWeek, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DirectorFunnelCard } from "@/pages/Checkpoint";
 import logoWhite from "@/assets/logo-faceimob-white.png";
+
+const MONTH_FIELDS = [
+  { key: "leads", label: "Leads", color: "text-cyan-400" },
+  { key: "ligacoes", label: "Ligações", color: "text-sky-400" },
+  { key: "coleta_docs", label: "Coleta Docs", color: "text-indigo-400" },
+  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-fuchsia-400" },
+  { key: "visitas_realizadas", label: "Visita Real.", color: "text-pink-400" },
+  { key: "analises", label: "Análise Env.", color: "text-amber-400" },
+  { key: "aprovados", label: "Análise Aprov.", color: "text-emerald-400" },
+  { key: "vendas", label: "Venda", color: "text-yellow-400" },
+] as const;
 
 type TeamOut = {
   id: string;
@@ -23,6 +34,7 @@ export default function PublicDirectorCheckpoint() {
   const [loading, setLoading] = useState(true);
   const [director, setDirector] = useState<{ name: string } | null>(null);
   const [teams, setTeams] = useState<TeamOut[]>([]);
+  const [month, setMonth] = useState<{ totals: Record<string, number>; missing_days: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,10 +45,11 @@ export default function PublicDirectorCheckpoint() {
       });
       if (error || (data as any)?.error) {
         setError((data as any)?.error || error?.message || "Erro ao carregar");
-        setTeams([]); setDirector(null);
+        setTeams([]); setDirector(null); setMonth(null);
       } else {
         setDirector((data as any).director);
         setTeams((data as any).teams || []);
+        setMonth((data as any).month || null);
       }
       setLoading(false);
     })();
@@ -89,15 +102,49 @@ export default function PublicDirectorCheckpoint() {
         ) : teams.length === 0 ? (
           <Card className="p-8 text-center text-sm text-muted-foreground">Nenhuma equipe vinculada a este diretor.</Card>
         ) : (
-          <DirectorFunnelCard
-            title={director.name}
-            aggr={totals}
-            targets={targets}
-            teams={teamRows}
-            aggregate={aggregate}
-            targetsFor={targetsFor}
-            teamNameFor={teamNameFor}
-          />
+          <div className="space-y-4">
+            <DirectorFunnelCard
+              title={director.name}
+              aggr={totals}
+              targets={targets}
+              teams={teamRows}
+              aggregate={aggregate}
+              targetsFor={targetsFor}
+              teamNameFor={teamNameFor}
+            />
+
+            {month && (
+              <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-cyan-400" /> Resumo do mês ({format(new Date(), "MMMM", { locale: ptBR })}) — Diretoria
+                  </CardTitle>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Somatório de todas as equipes do diretor</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2 justify-items-center max-w-3xl mx-auto">
+                    {MONTH_FIELDS.map(f => (
+                      <div key={f.key} className="px-2 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-center">
+                        <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
+                        <p className={`text-lg font-black ${f.color}`}>{month.totals?.[f.key] ?? 0}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {month.missing_days?.length > 0 && (
+                    <div className="rounded-md border border-rose-500/40 bg-rose-500/5 p-2 flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <p className="font-bold text-rose-400">Checkpoints não efetuados ({month.missing_days.length} {month.missing_days.length === 1 ? "dia" : "dias"}):</p>
+                        <p className="text-muted-foreground mt-0.5">
+                          {month.missing_days.map(d => format(parseISO(d), "dd/MM", { locale: ptBR })).join(" • ")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
       </div>
     </div>

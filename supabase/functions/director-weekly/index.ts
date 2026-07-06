@@ -89,10 +89,49 @@ Deno.serve(async (req) => {
       };
     });
 
+    // ---- Director-level month summary (aggregated across all his teams) ----
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const mFrom = fmt(monthStart), mTo = fmt(yesterday);
+
+    const monthTotals = { leads: 0, ligacoes: 0, coleta_docs: 0, visitas_agendadas: 0, visitas_realizadas: 0, analises: 0, aprovados: 0, vendas: 0 };
+    let filledDates: string[] = [];
+    if (teamIds.length && mTo >= mFrom) {
+      const { data: mRep } = await supabase.from("daily_team_reports")
+        .select("id,team_id,report_date").in("team_id", teamIds)
+        .gte("report_date", mFrom).lte("report_date", mTo);
+      const mReports = mRep || [];
+      filledDates = Array.from(new Set(mReports.map((r: any) => r.report_date))).sort();
+      const mRIds = mReports.map((r: any) => r.id);
+      if (mRIds.length) {
+        const { data: mEnt } = await supabase.from("daily_broker_entries")
+          .select("report_id,leads,ligacoes,coleta_docs,visitas_agendadas,visitas_realizadas,analises,aprovados,vendas")
+          .in("report_id", mRIds);
+        (mEnt || []).forEach((e: any) => {
+          monthTotals.leads += e.leads || 0;
+          monthTotals.ligacoes += e.ligacoes || 0;
+          monthTotals.coleta_docs += e.coleta_docs || 0;
+          monthTotals.visitas_agendadas += e.visitas_agendadas || 0;
+          monthTotals.visitas_realizadas += e.visitas_realizadas || 0;
+          monthTotals.analises += e.analises || 0;
+          monthTotals.aprovados += e.aprovados || 0;
+          monthTotals.vendas += e.vendas || 0;
+        });
+      }
+    }
+    const missingDays: string[] = [];
+    const filledSet = new Set(filledDates);
+    for (let d = new Date(monthStart); d <= yesterday; d.setDate(d.getDate() + 1)) {
+      const ds = fmt(d);
+      if (!filledSet.has(ds)) missingDays.push(ds);
+    }
+
     return new Response(JSON.stringify({
       director: { id: director.id, name: director.name },
       week: { start: from, end: to },
       teams: teamOut,
+      month: { from: mFrom, to: mTo, totals: monthTotals, filled_dates: filledDates, missing_days: missingDays },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e?.message || "error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
