@@ -122,9 +122,7 @@ export default function LeadFunnel({
       for (const l of leads) {
         if (l.funnel_stage !== "new" || reassigned.includes(l.id)) continue;
         const ageMs = now - new Date(l.created_at).getTime();
-        // só reatribui se expirou a roleta E o lead tem no máximo 2× o tempo da roleta
-        // (evita processar leads antigos herdados de importações)
-        if (ageMs < roletaSec * 1000 || ageMs > roletaSec * 1000 * 3) continue;
+        if (ageMs < roletaSec * 1000) continue;
 
         reassigned.push(l.id);
         sessionStorage.setItem(reassignedKey, JSON.stringify(reassigned));
