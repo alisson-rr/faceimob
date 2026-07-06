@@ -43,6 +43,14 @@ export default function AdminDailyTeams() {
     },
   });
 
+  const { data: directors } = useQuery({
+    queryKey: ["directors-public-links"],
+    queryFn: async () => {
+      const { data } = await supabase.from("brokers").select("id,name").eq("role", "director").eq("active", true).order("name");
+      return data ?? [];
+    },
+  });
+
   const activeIps = (ips ?? []).filter((r: any) => r.active).length;
   const withPin = (teams ?? []).filter((t: any) => (Array.isArray(t.team_pins) ? t.team_pins[0]?.active : t.team_pins?.active)).length;
 
