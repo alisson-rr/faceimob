@@ -14,6 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 import { UpdateBanner } from "@/components/UpdateNotifier";
+import { VisualFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
 
 type Roster = { broker_id: string; broker_name: string };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
@@ -496,6 +497,19 @@ export default function DailyReport() {
                     <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Contexto, dificuldades, vitórias..." rows={3} className="text-xs" />
                   </CardContent>
                 </Card>
+
+                {/* Funil visual do dia (declarado) */}
+                <VisualFunnel
+                  title="Funil do dia — declarado"
+                  subtitle="metas: 100 → 10% → 40% → 50%"
+                  accent="hsl(217 91% 60%)"
+                  steps={[
+                    { key: "leads",     label: "Leads",      value: totals.leads     || 0, targetPct: 100 },
+                    { key: "analises",  label: "Análises",   value: totals.analises  || 0, targetPct: 10 },
+                    { key: "aprovados", label: "Aprovações", value: totals.aprovados || 0, targetPct: 40 },
+                    { key: "vendas",    label: "Vendas",     value: totals.vendas    || 0, targetPct: 50 },
+                  ] as FunnelStep[]}
+                />
 
                 {/* Totals + submit */}
                 <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
