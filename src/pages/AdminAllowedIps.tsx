@@ -53,12 +53,23 @@ export default function AdminAllowedIps() {
       <Card>
         <CardHeader><CardTitle>Adicionar IP</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          {myIp && (
-            <div className="text-xs text-muted-foreground">
-              Seu IP atual: <code className="px-1 py-0.5 bg-muted rounded">{myIp}</code>{" "}
-              <Button size="sm" variant="link" className="h-auto p-0" onClick={() => setIp(myIp)}>usar</Button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Button size="sm" variant="secondary" onClick={async () => {
+              try {
+                const d = await fetch("https://api.ipify.org?format=json").then(r => r.json());
+                setMyIp(d.ip);
+                setIp(d.ip);
+                toast.success(`Seu IP: ${d.ip}`);
+              } catch { toast.error("Não foi possível detectar o IP."); }
+            }}>
+              <Globe className="h-4 w-4 mr-1" /> Descobrir meu IP
+            </Button>
+            {myIp && (
+              <span className="text-muted-foreground">
+                atual: <code className="px-1 py-0.5 bg-muted rounded">{myIp}</code>
+              </span>
+            )}
+          </div>
           <div className="flex flex-col md:flex-row gap-2">
             <Input placeholder="Ex: 200.150.10.5" value={ip} onChange={(e) => setIp(e.target.value)} />
             <Input placeholder="Descrição (ex: Escritório sede)" value={label} onChange={(e) => setLabel(e.target.value)} />
