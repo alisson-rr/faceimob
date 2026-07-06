@@ -388,45 +388,62 @@ export default function Pipeline() {
   };
 
 
-  // ── IP Check-in / Checkout ──
-  const brokerName = "Dianho Silva"; // TODO: use real auth user
-  const isInQueue = queue.some(q => q.name === brokerName);
+  // ── Check-in / Checkout (compartilhado com a página /checkin) ──
+  const brokerName = user?.user_metadata?.full_name || user?.email || "";
+  const isInQueue = !!brokerName && queue.some(q => q.name === brokerName);
 
-  const handleCheckIn = useCallback(async () => {
+  const loadQueue = useCallback(async () => {
+    const workDate = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from("broker_checkins")
+      .select("id, checked_in_at, broker_id, brokers:broker_id(name)")
+      .eq("work_date", workDate)
+      .is("checked_out_at", null);
+    setQueue(((data as any[]) || []).map((r) => ({
+      id: r.id,
+      name: r.brokers?.name || "—",
+      checkedInAt: new Date(r.checked_in_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    })));
+  }, []);
+
+  useEffect(() => {
+    loadQueue();
+    const ch = supabase
+      .channel("pipeline-checkins")
+      .on("postgres_changes", { event: "*", schema: "public", table: "broker_checkins" }, () => loadQueue())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [loadQueue]);
+
+  const invokeCheckin = useCallback(async (action: "checkin" | "checkout") => {
     setCheckingIn(true);
     try {
-      const res = await fetch("https://api.ipify.org?format=json");
-      const data = await res.json();
-      const ip = data.ip;
-      setUserIp(ip);
-
-      const allowedIPs = getStoredIPs();
-      const hasConfiguredIPs = allowedIPs.some(aip => aip.trim() !== "");
-      const isAllowed = !hasConfiguredIPs || allowedIPs.some(allowed => allowed.trim() && ip.startsWith(allowed.trim()));
-
-      if (!isAllowed) {
-        toast({ title: "❌ Check-in bloqueado", description: `Seu IP (${ip}) não está autorizado. Conecte-se à rede da empresa.`, variant: "destructive" });
-        return;
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess?.session) throw new Error("Você precisa estar logado.");
+      const { data, error } = await supabase.functions.invoke("broker-checkin", { body: { action } });
+      if (error) {
+        let msg = error.message;
+        try {
+          const ctx: any = (error as any).context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
+        throw new Error(msg);
       }
-
-      if (queue.some(q => q.name === brokerName)) {
-        toast({ title: "Já está na fila", description: "Você já fez check-in hoje." });
-        return;
-      }
-
-      setQueue(prev => [...prev, { id: String(Date.now()), name: brokerName, checkedInAt: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) }]);
-      toast({ title: "✅ Check-in realizado!", description: `IP ${ip} verificado. Você está na fila de atendimento.` });
-    } catch {
-      toast({ title: "Erro ao verificar IP", description: "Não foi possível validar seu IP. Tente novamente.", variant: "destructive" });
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast({ title: action === "checkin" ? "✅ Check-in realizado!" : "👋 Check-out realizado!" });
+      await loadQueue();
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message || "Falha no check-in", variant: "destructive" });
     } finally {
       setCheckingIn(false);
     }
-  }, [queue]);
+  }, [loadQueue]);
 
-  const handleCheckOut = useCallback(() => {
-    setQueue(prev => prev.filter(q => q.name !== brokerName));
-    toast({ title: "👋 Check-out realizado!", description: "Você saiu da fila de atendimento." });
-  }, []);
+  const handleCheckIn = useCallback(() => invokeCheckin("checkin"), [invokeCheckin]);
+  const handleCheckOut = useCallback(() => invokeCheckin("checkout"), [invokeCheckin]);
 
   // ── Convert Lead to Deal ──
   const openConvertLead = (lead: Lead) => {
