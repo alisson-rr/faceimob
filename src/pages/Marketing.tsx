@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Megaphone, TrendingUp, TrendingDown, DollarSign, Users, Target, Facebook, Instagram, Globe, Plug } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { MarketingInvestmentPopup } from "@/components/MarketingInvestmentPopup";
 import { cn } from "@/lib/utils";
 
 type Campaign = {
