@@ -1,0 +1,15 @@
+{
+  "name": "CRM Faceimob",
+  "short_name": "Faceimob",
+  "description": "CRM Faceimob - Gestão de leads, pipeline e equipe de vendas.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0F0E19",
+  "theme_color": "#0F0E19",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
