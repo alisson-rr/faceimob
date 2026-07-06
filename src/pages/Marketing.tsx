@@ -42,6 +42,8 @@ const statusColor = {
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 export default function Marketing() {
+  const { role } = useAuth();
+  const canEditAporte = role === "admin" || role === "director";
   const [channel, setChannel] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const [realLeads, setRealLeads] = useState<number>(0);
