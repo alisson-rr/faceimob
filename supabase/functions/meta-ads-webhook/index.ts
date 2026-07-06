@@ -23,6 +23,20 @@ async function fetchLeadFromGraph(leadgenId: string, pageAccessToken: string) {
   }
 }
 
+async function fetchFormName(formId: string, pageAccessToken: string): Promise<string | null> {
+  try {
+    if (!formId || !pageAccessToken) return null
+    const url = `https://graph.facebook.com/v19.0/${formId}?fields=name&access_token=${pageAccessToken}`
+    const res = await fetch(url)
+    const json = await res.json()
+    return json?.name || null
+  } catch { return null }
+}
+
+function pickUtm(fields: Record<string, string>, key: string) {
+  return fields[key] || fields[`utm_${key}`] || fields[key.replace('utm_', '')] || ''
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
