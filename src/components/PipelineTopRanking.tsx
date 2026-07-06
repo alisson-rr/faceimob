@@ -44,8 +44,8 @@ export default function PipelineTopRanking({ deals }: Props) {
     return (
       <>
         <Card
-          onClick={async () => { await loadInfo(); setOpenInfo(true); }}
-          className="cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-transparent to-amber-500/10 hover:from-primary/15 hover:to-amber-500/15 transition"
+          onClick={openInfoDialog}
+          className="cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-transparent to-amber-500/10 hover:from-primary/20 hover:to-amber-500/20 hover:scale-[1.015] hover:shadow-lg hover:shadow-amber-500/20 transition-all duration-300 max-w-3xl mx-auto"
         >
           <CardContent className="p-4 flex items-center gap-4">
             <div className="relative">
