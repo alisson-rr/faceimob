@@ -72,37 +72,44 @@ export default function AppLayout() {
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center border-b border-border/30 glass px-4 sticky top-0 z-30">
-            <SidebarTrigger className="mr-2 md:hidden" />
-            <h1 className="text-sm font-semibold text-foreground mr-4">{pageTitle}</h1>
-            
-            <div className="hidden md:flex items-center gap-3 mx-auto overflow-hidden">
-              {headerScores.map((s) => (
-                <div key={s.broker.id} className="flex items-center gap-2 px-3 py-1 rounded-full border border-primary/20 bg-primary/5 transition-all duration-200 hover:scale-105 hover:border-primary/40 hover:bg-primary/10">
-                  <span className="text-xs font-bold text-primary">{s.rank}º</span>
-                  <Trophy className={s.rank === 1 ? "h-3 w-3 text-amber-500" : s.rank === 2 ? "h-3 w-3 text-gray-400" : "h-3 w-3 text-orange-600"} />
+          <header className="h-14 flex items-center border-b border-border/30 glass px-5 sticky top-0 z-30 relative">
+            <SidebarTrigger className="mr-3 md:hidden" />
+            <h1 className="text-[13px] font-semibold tracking-tight text-foreground mr-6">{pageTitle}</h1>
+
+            <div className="hidden md:flex items-center gap-2 mx-auto overflow-hidden">
+              {headerScores.map((s, i) => (
+                <div
+                  key={s.broker.id}
+                  style={{ animationDelay: `${i * 80}ms` }}
+                  className="animate-fade-in flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/15 bg-primary/[0.04] backdrop-blur-md interactive ease-premium hover:border-primary/40 hover:bg-primary/10 hover:-translate-y-0.5"
+                >
+                  <span className="text-[11px] font-semibold text-primary tabular-nums">{s.rank}º</span>
+                  <Trophy className={s.rank === 1 ? "h-3 w-3 text-amber-400" : s.rank === 2 ? "h-3 w-3 text-slate-300" : "h-3 w-3 text-orange-500"} />
                   <span className="text-xs font-medium truncate max-w-[120px]">{s.broker.name}</span>
-                  <span className="text-[10px] text-muted-foreground font-mono">{s.points} pts</span>
+                  <span className="text-[10px] text-muted-foreground font-mono tabular-nums">{s.points} pts</span>
                 </div>
               ))}
             </div>
 
-
-
             <div className="flex items-center gap-3 ml-auto">
               <RoleSwitcher />
-              <span className="text-xs text-muted-foreground hidden sm:block">{me?.name || user?.email || "Usuário"}</span>
+              <span className="text-xs text-muted-foreground hidden sm:block tracking-tight">{me?.name || user?.email || "Usuário"}</span>
               {me?.avatar_url ? (
-                <img src={me.avatar_url} alt="User" className="w-8 h-8 rounded-full object-cover border-2 border-primary/30" />
+                <img src={me.avatar_url} alt="User" className="w-8 h-8 rounded-full object-cover border border-primary/30 ring-2 ring-background shadow-elevate interactive hover:scale-105" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-primary/20 border-2 border-primary/30 flex items-center justify-center text-xs font-bold text-primary">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 border border-primary/30 ring-2 ring-background flex items-center justify-center text-xs font-semibold text-primary shadow-elevate">
                   {(me?.name || user?.email || "U").charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
+
+            {/* hairline accent */}
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 -bottom-px h-px gradient-hairline opacity-60" />
           </header>
-          <main className="flex-1 p-6 overflow-auto">
-            <Outlet />
+          <main className="flex-1 p-6 overflow-auto gradient-premium">
+            <div className="animate-fade-in">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>
