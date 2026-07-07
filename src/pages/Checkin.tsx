@@ -126,8 +126,16 @@ export default function Checkin() {
           ) : (
             <div className="text-sm text-muted-foreground">Nenhuma janela ativa agora. Volte em: 09:00, 12:00 ou 16:00.</div>
           )}
+          {overdueCount > 0 && (
+            <div className={`text-xs rounded-md px-3 py-2 border ${overdueCount > OVERDUE_LIMIT ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-amber-500/40 bg-amber-500/10 text-amber-600"}`}>
+              Você tem <b>{overdueCount}</b> lead(s) atrasado(s).
+              {overdueCount > OVERDUE_LIMIT
+                ? ` Check-in bloqueado — reduza para ≤ ${OVERDUE_LIMIT} para voltar à fila.`
+                : ` Limite para check-in: ${OVERDUE_LIMIT}.`}
+            </div>
+          )}
           <div className="flex gap-3">
-            <Button disabled={loading || !activeWindow || !!activeCheckin} onClick={() => action("checkin")}>
+            <Button disabled={loading || !activeWindow || !!activeCheckin || overdueCount > OVERDUE_LIMIT} onClick={() => action("checkin")}>
               <LogIn className="h-4 w-4 mr-2" /> Fazer Check-in
             </Button>
             <Button variant="outline" disabled={loading || !activeCheckin} onClick={() => action("checkout")}>
