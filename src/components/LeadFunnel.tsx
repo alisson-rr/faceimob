@@ -36,6 +36,7 @@ export default function LeadFunnel({
   });
   const [popupLead, setPopupLead] = useState<LeadRow | null>(null);
   const [popupKind, setPopupKind] = useState<"new" | "delay">("new");
+  const [overdueOpen, setOverdueOpen] = useState(false);
   const [lostToday, setLostToday] = useState<{ broker_name: string; lost_count: number }[]>([]);
 
 
