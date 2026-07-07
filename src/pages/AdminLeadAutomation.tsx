@@ -7,13 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, Save, Zap, Timer, Users, Layers } from "lucide-react";
+import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle } from "lucide-react";
 
 type Settings = {
   roleta_seconds: number;
   no_response_hours: number;
   inactivity_alert_hours: number;
   auto_first_contact: boolean;
+  leads_paused: boolean;
   stage_max_minutes: Record<string, number>;
 };
 
