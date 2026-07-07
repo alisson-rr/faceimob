@@ -260,8 +260,6 @@ export default function AdminLeadAutomation() {
           <Button size="sm" onClick={createGroup}><Plus className="h-4 w-4 mr-1" /> Novo grupo</Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {groups.length === 0 && <p className="text-sm text-muted-foreground">Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in.</p>}
-        <CardContent className="space-y-3">
           {groups.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in.
