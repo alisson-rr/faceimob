@@ -140,12 +140,14 @@ Deno.serve(async (req) => {
             }
             console.log('Parsed lead — form_name:', formName, 'fields:', JSON.stringify(fields))
 
-            const fullName = fields['full_name'] || fields['nome_completo'] || fields['nome_e_sobrenome'] || fields['name'] || fields['nome'] || ''
-            const firstName = fields['first_name'] || fields['primeiro_nome'] || fields['nome'] || (fullName ? fullName.trim().split(/\s+/)[0] : '')
+            const firstName = fields['first_name'] || fields['primeiro_nome'] || ''
+            const lastName = fields['last_name'] || fields['sobrenome'] || ''
+            const composed = [firstName, lastName].filter(Boolean).join(' ').trim()
+            const fullName = fields['full_name'] || fields['nome_completo'] || fields['nome_e_sobrenome'] || fields['name'] || fields['nome'] || composed || ''
             const fallbackName = fields['email']?.split('@')[0] || fields['phone_number'] || `Lead ${v.leadgen_id || ''}`.trim()
 
             leads.push({
-              name: firstName || fallbackName,
+              name: fullName || firstName || fallbackName,
               phone: fields['phone_number'] || fields['telefone'] || fields['phone'] || '',
               whatsapp: fields['phone_number'] || fields['whatsapp'] || '',
               email: fields['email'] || '',
