@@ -176,6 +176,24 @@ export default function AdminLeadAutomation() {
         <p className="text-sm text-muted-foreground">Configure roleta, grupos de distribuição e regras automáticas.</p>
       </div>
 
+      {/* Pause switch */}
+      <Card className={settings.leads_paused ? "border-amber-500/60 bg-amber-500/5" : ""}>
+        <CardContent className="flex items-center justify-between gap-3 py-4">
+          <div className="flex items-center gap-3">
+            <PauseCircle className={`h-6 w-6 ${settings.leads_paused ? "text-amber-500" : "text-muted-foreground"}`} />
+            <div>
+              <p className="font-semibold text-sm">Pausar chegada de leads</p>
+              <p className="text-xs text-muted-foreground">
+                {settings.leads_paused
+                  ? "Os leads recebidos pelo Meta Ads estão sendo ignorados. Ative novamente para retomar."
+                  : "Ative para bloquear temporariamente novos leads (útil durante ajustes no app)."}
+              </p>
+            </div>
+          </div>
+          <Switch checked={settings.leads_paused} onCheckedChange={togglePause} />
+        </CardContent>
+      </Card>
+
       {/* Automation rules — compact single row */}
       <Card>
         <CardHeader className="pb-2">
