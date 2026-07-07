@@ -36,6 +36,7 @@ export default function LeadFunnel({
   });
   const [popupLead, setPopupLead] = useState<LeadRow | null>(null);
   const [popupKind, setPopupKind] = useState<"new" | "delay">("new");
+  const [overdueOpen, setOverdueOpen] = useState(false);
   const [lostToday, setLostToday] = useState<{ broker_name: string; lost_count: number }[]>([]);
 
 
@@ -95,24 +96,24 @@ export default function LeadFunnel({
     return g;
   }, [leads]);
 
-  // Detecta atrasos por etapa e dispara popup (uma vez por lead na sessão)
-  useEffect(() => {
-    const alertedKey = "lead-delay-alerted";
-    const alerted: string[] = JSON.parse(sessionStorage.getItem(alertedKey) || "[]");
-    for (const l of leads) {
-      if (l.funnel_stage === "converted" || alerted.includes(l.id)) continue;
+  // Lista de leads atrasados (por etapa) do corretor logado
+  const overdueLeads = useMemo(() => {
+    const own = (actorName || "").trim().toLowerCase();
+    return leads.filter(l => {
+      if (l.funnel_stage === "converted") return false;
+      if (own && (l.broker_name || "").trim().toLowerCase() !== own) return false;
       const max = stageMax[l.funnel_stage || "new"];
-      if (!max) continue;
+      if (!max) return false;
       const changed = new Date(l.stage_changed_at || l.created_at).getTime();
       const mins = (now - changed) / 60_000;
-      if (mins > max) {
-        alerted.push(l.id);
-        sessionStorage.setItem(alertedKey, JSON.stringify(alerted));
-        if (!popupLead) { setPopupKind("delay"); setPopupLead(l); }
-        break;
-      }
-    }
-  }, [leads, now, stageMax, popupLead]);
+      return mins > max;
+    }).sort((a, b) => {
+      const ta = new Date(a.stage_changed_at || a.created_at).getTime();
+      const tb = new Date(b.stage_changed_at || b.created_at).getTime();
+      return ta - tb;
+    });
+  }, [leads, now, stageMax, actorName]);
+
 
   // Roleta: reatribui leads "new" expirados ao próximo corretor da fila
   useEffect(() => {
@@ -140,19 +141,36 @@ export default function LeadFunnel({
 
   return (
     <>
-      {/* Perdidos hoje */}
-      {totalLostToday > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          <span className="font-semibold">Leads perdidos hoje (roleta expirou):</span>
-          <Badge variant="destructive">{totalLostToday}</Badge>
-          {lostToday.map(l => (
-            <Badge key={l.broker_name} variant="outline" className="border-destructive/60 text-destructive">
-              {l.broker_name}: {l.lost_count}
-            </Badge>
-          ))}
-        </div>
-      )}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={overdueLeads.length > 0 ? "destructive" : "outline"}
+          onClick={() => setOverdueOpen(true)}
+          className="gap-1.5"
+        >
+          <AlertTriangle className="h-4 w-4" />
+          Atrasados
+          <Badge variant="secondary" className="ml-1">{overdueLeads.length}</Badge>
+        </Button>
+        {overdueLeads.length > 20 && (
+          <span className="text-xs text-destructive font-semibold">
+            ⚠ Check-in bloqueado: reduza para ≤ 20 atrasos.
+          </span>
+        )}
+        {totalLostToday > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <span className="font-semibold">Leads perdidos hoje (roleta expirou):</span>
+            <Badge variant="destructive">{totalLostToday}</Badge>
+            {lostToday.map(l => (
+              <Badge key={l.broker_name} variant="outline" className="border-destructive/60 text-destructive">
+                {l.broker_name}: {l.lost_count}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-3 overflow-x-auto pb-4">
 
         {STAGES.map(stage => {
@@ -232,6 +250,58 @@ export default function LeadFunnel({
             <Button onClick={() => { setSelected(popupLead); setPopupLead(null); }}>
               <ExternalLink className="h-4 w-4 mr-1" /> Abrir lead
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lista de leads atrasados */}
+      <Dialog open={overdueOpen} onOpenChange={setOverdueOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Leads atrasados ({overdueLeads.length})
+            </DialogTitle>
+            <DialogDescription>
+              Trate cada lead abaixo para desbloquear novos check-ins. Limite: 20 atrasos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto space-y-2 pr-1">
+            {overdueLeads.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                🎉 Nenhum lead atrasado. Bom trabalho!
+              </p>
+            )}
+            {overdueLeads.map(l => {
+              const changed = new Date(l.stage_changed_at || l.created_at).getTime();
+              const mins = Math.floor((now - changed) / 60_000);
+              const stageLabel = STAGES.find(s => s.key === l.funnel_stage)?.label || l.funnel_stage;
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => { setOverdueOpen(false); setSelected(l); }}
+                  className="w-full text-left border border-destructive/40 bg-destructive/5 rounded-lg px-3 py-2 hover:bg-destructive/10 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">{l.name || "Sem nome"}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {l.source || "—"}{l.form_name ? ` · ${l.form_name}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Badge variant="outline" className="text-[10px]">{stageLabel}</Badge>
+                      <span className="text-[10px] text-destructive font-semibold flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> {mins}m na etapa
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverdueOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

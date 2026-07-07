@@ -25,6 +25,8 @@ export default function Checkin() {
   const [today, setToday] = useState<Checkin[]>([]);
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
+  const OVERDUE_LIMIT = 20;
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
@@ -36,12 +38,32 @@ export default function Checkin() {
     setWindows((w as any) || []);
     if (!user) return;
     const { data: b } = await supabase.from("brokers").select("id").eq("user_id", user.id).maybeSingle();
-    if (!b) { setToday([]); return; }
+    if (!b) { setToday([]); setOverdueCount(0); return; }
     const brt = nowBRT();
     const workDate = brt.toISOString().slice(0, 10);
     const { data: c } = await supabase.from("broker_checkins")
       .select("*").eq("broker_id", (b as any).id).eq("work_date", workDate);
     setToday((c as any) || []);
+
+    // Contar leads atrasados do corretor logado
+    const [{ data: myLeads }, { data: settings }] = await Promise.all([
+      supabase.from("leads").select("id, funnel_stage, stage_changed_at, created_at")
+        .eq("broker_id", (b as any).id)
+        .neq("funnel_stage", "converted")
+        .limit(1000),
+      supabase.from("lead_automation_settings").select("stage_max_minutes").eq("id", true).maybeSingle(),
+    ]);
+    const stageMax: Record<string, number> = (settings as any)?.stage_max_minutes || {
+      new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320,
+    };
+    const nowMs = Date.now();
+    const overdue = ((myLeads as any) || []).filter((l: any) => {
+      const max = stageMax[l.funnel_stage || "new"];
+      if (!max) return false;
+      const changed = new Date(l.stage_changed_at || l.created_at).getTime();
+      return (nowMs - changed) / 60_000 > max;
+    }).length;
+    setOverdueCount(overdue);
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [user]);
@@ -51,6 +73,10 @@ export default function Checkin() {
   const activeCheckin = activeWindow ? today.find((c) => c.slot === activeWindow.slot && !c.checked_out_at) : undefined;
 
   const action = async (act: "checkin" | "checkout") => {
+    if (act === "checkin" && overdueCount > OVERDUE_LIMIT) {
+      toast.error(`Check-in bloqueado: você tem ${overdueCount} leads atrasados. Trate até ficar com ≤ ${OVERDUE_LIMIT}.`);
+      return;
+    }
     setLoading(true);
     try {
       const { data: sess } = await supabase.auth.getSession();
@@ -100,8 +126,16 @@ export default function Checkin() {
           ) : (
             <div className="text-sm text-muted-foreground">Nenhuma janela ativa agora. Volte em: 09:00, 12:00 ou 16:00.</div>
           )}
+          {overdueCount > 0 && (
+            <div className={`text-xs rounded-md px-3 py-2 border ${overdueCount > OVERDUE_LIMIT ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-amber-500/40 bg-amber-500/10 text-amber-600"}`}>
+              Você tem <b>{overdueCount}</b> lead(s) atrasado(s).
+              {overdueCount > OVERDUE_LIMIT
+                ? ` Check-in bloqueado — reduza para ≤ ${OVERDUE_LIMIT} para voltar à fila.`
+                : ` Limite para check-in: ${OVERDUE_LIMIT}.`}
+            </div>
+          )}
           <div className="flex gap-3">
-            <Button disabled={loading || !activeWindow || !!activeCheckin} onClick={() => action("checkin")}>
+            <Button disabled={loading || !activeWindow || !!activeCheckin || overdueCount > OVERDUE_LIMIT} onClick={() => action("checkin")}>
               <LogIn className="h-4 w-4 mr-2" /> Fazer Check-in
             </Button>
             <Button variant="outline" disabled={loading || !activeCheckin} onClick={() => action("checkout")}>
