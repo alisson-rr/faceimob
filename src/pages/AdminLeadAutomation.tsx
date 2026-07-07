@@ -152,12 +152,17 @@ export default function AdminLeadAutomation() {
     }
     load();
   };
-  const addGroupForm = async (groupId: string) => {
-    const form_id = prompt("ID do formulário Meta (form_id):");
+  const addGroupForm = async (groupId: string, form_id: string, form_name: string | null) => {
     if (!form_id) return;
-    const form_name = prompt("Nome do formulário (para exibir):", "") || null;
     await supabase.from("distribution_group_forms" as any).insert({ group_id: groupId, form_id, form_name });
     load();
+  };
+  const togglePause = async (v: boolean) => {
+    setSettings((s) => ({ ...s, leads_paused: v }));
+    const { error } = await supabase.from("lead_automation_settings")
+      .update({ leads_paused: v, updated_at: new Date().toISOString() } as any).eq("id", true);
+    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    toast({ title: v ? "⏸️ Chegada de leads pausada" : "▶️ Chegada de leads retomada" });
   };
   const removeGroupForm = async (groupId: string, formId: string) => {
     await supabase.from("distribution_group_forms" as any).delete().eq("group_id", groupId).eq("form_id", formId);
