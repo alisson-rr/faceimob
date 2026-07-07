@@ -229,8 +229,9 @@ Deno.serve(async (req) => {
     return new Response('Method not allowed', { status: 405, headers: corsHeaders })
   } catch (error) {
     console.error('Webhook error:', error)
+    // Return 200 so Meta does not retry indefinitely and pile up duplicates; error is logged for us.
     return new Response(JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })
