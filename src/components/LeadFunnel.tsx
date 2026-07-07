@@ -141,19 +141,36 @@ export default function LeadFunnel({
 
   return (
     <>
-      {/* Perdidos hoje */}
-      {totalLostToday > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          <span className="font-semibold">Leads perdidos hoje (roleta expirou):</span>
-          <Badge variant="destructive">{totalLostToday}</Badge>
-          {lostToday.map(l => (
-            <Badge key={l.broker_name} variant="outline" className="border-destructive/60 text-destructive">
-              {l.broker_name}: {l.lost_count}
-            </Badge>
-          ))}
-        </div>
-      )}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={overdueLeads.length > 0 ? "destructive" : "outline"}
+          onClick={() => setOverdueOpen(true)}
+          className="gap-1.5"
+        >
+          <AlertTriangle className="h-4 w-4" />
+          Atrasados
+          <Badge variant="secondary" className="ml-1">{overdueLeads.length}</Badge>
+        </Button>
+        {overdueLeads.length > 20 && (
+          <span className="text-xs text-destructive font-semibold">
+            ⚠ Check-in bloqueado: reduza para ≤ 20 atrasos.
+          </span>
+        )}
+        {totalLostToday > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <span className="font-semibold">Leads perdidos hoje (roleta expirou):</span>
+            <Badge variant="destructive">{totalLostToday}</Badge>
+            {lostToday.map(l => (
+              <Badge key={l.broker_name} variant="outline" className="border-destructive/60 text-destructive">
+                {l.broker_name}: {l.lost_count}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-3 overflow-x-auto pb-4">
 
         {STAGES.map(stage => {
