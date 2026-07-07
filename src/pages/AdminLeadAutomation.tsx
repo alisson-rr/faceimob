@@ -65,6 +65,8 @@ export default function AdminLeadAutomation() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [detectedForms, setDetectedForms] = useState<{ form_id: string; form_name: string | null }[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const editingGroup = groups.find((g) => g.id === editingGroupId) || null;
 
   const load = async () => {
     const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }, { data: lf }] = await Promise.all([
