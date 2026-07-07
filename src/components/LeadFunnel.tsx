@@ -253,6 +253,58 @@ export default function LeadFunnel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lista de leads atrasados */}
+      <Dialog open={overdueOpen} onOpenChange={setOverdueOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Leads atrasados ({overdueLeads.length})
+            </DialogTitle>
+            <DialogDescription>
+              Trate cada lead abaixo para desbloquear novos check-ins. Limite: 20 atrasos.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto space-y-2 pr-1">
+            {overdueLeads.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                🎉 Nenhum lead atrasado. Bom trabalho!
+              </p>
+            )}
+            {overdueLeads.map(l => {
+              const changed = new Date(l.stage_changed_at || l.created_at).getTime();
+              const mins = Math.floor((now - changed) / 60_000);
+              const stageLabel = STAGES.find(s => s.key === l.funnel_stage)?.label || l.funnel_stage;
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => { setOverdueOpen(false); setSelected(l); }}
+                  className="w-full text-left border border-destructive/40 bg-destructive/5 rounded-lg px-3 py-2 hover:bg-destructive/10 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">{l.name || "Sem nome"}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {l.source || "—"}{l.form_name ? ` · ${l.form_name}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Badge variant="outline" className="text-[10px]">{stageLabel}</Badge>
+                      <span className="text-[10px] text-destructive font-semibold flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> {mins}m na etapa
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverdueOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
