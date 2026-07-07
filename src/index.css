@@ -78,14 +78,21 @@
 @layer base {
   * {
     @apply border-border;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   body {
     @apply bg-background text-foreground;
-    font-family: Arial, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+    font-feature-settings: 'cv02','cv03','cv04','cv11','ss01';
+    letter-spacing: -0.01em;
     background-color: #0a090b;
   }
   h1, h2, h3, h4, h5, h6 {
-    font-family: Arial, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.025em;
+    font-weight: 600;
   }
   /* Smooth sidebar transitions */
   [data-sidebar="sidebar"],
