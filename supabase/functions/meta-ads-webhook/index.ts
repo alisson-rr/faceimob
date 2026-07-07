@@ -88,6 +88,19 @@ Deno.serve(async (req) => {
       let body: any = {}
       try { body = JSON.parse(raw) } catch {}
 
+      // ⏸️ Pausa global: se ativado no admin, ignora todos os leads recebidos.
+      const { data: settings } = await supabase
+        .from('lead_automation_settings')
+        .select('leads_paused')
+        .eq('id', true)
+        .maybeSingle()
+      if (settings?.leads_paused) {
+        console.log('Leads paused — ignoring incoming payload')
+        return new Response(JSON.stringify({ success: true, paused: true, leads_processed: 0 }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
       const leads: any[] = []
 
       if (body.entry) {
