@@ -147,7 +147,6 @@ export type Database = {
           indication: string | null
           login_email: string | null
           login_email_confirmed: boolean
-          login_password_plain: string | null
           login_provisioned_at: string | null
           manager_id: string | null
           monthly_goal: number | null
@@ -180,7 +179,6 @@ export type Database = {
           indication?: string | null
           login_email?: string | null
           login_email_confirmed?: boolean
-          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           monthly_goal?: number | null
@@ -213,7 +211,6 @@ export type Database = {
           indication?: string | null
           login_email?: string | null
           login_email_confirmed?: boolean
-          login_password_plain?: string | null
           login_provisioned_at?: string | null
           manager_id?: string | null
           monthly_goal?: number | null
@@ -1411,7 +1408,6 @@ export type Database = {
           id: string
           login_email: string
           login_email_confirmed: boolean
-          login_password_plain: string
           login_provisioned_at: string
           phone: string
         }[]

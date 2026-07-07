@@ -171,7 +171,7 @@ export default function Equipes() {
         rows.map(async r => {
           const { data } = await supabase.rpc("get_broker_private", { _id: r.id });
           const row: any = Array.isArray(data) ? data[0] : data;
-          return [r.id, { email: row?.login_email ?? null, password: row?.login_password_plain ?? null }] as const;
+          return [r.id, { email: row?.login_email ?? null, password: null as string | null }] as const;
         })
       );
       if (cancelled) return;
