@@ -60,16 +60,18 @@ export default function AdminLeadAutomation() {
   const [windows, setWindows] = useState<Window[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [detectedForms, setDetectedForms] = useState<{ form_id: string; form_name: string | null }[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
 
   const load = async () => {
-    const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }] = await Promise.all([
+    const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }, { data: lf }] = await Promise.all([
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
       supabase.from("distribution_windows").select("*").order("distribution_start"),
       supabase.from("brokers").select("id,name,active").eq("active", true).order("name"),
       supabase.from("distribution_groups" as any).select("*").order("name"),
       supabase.from("distribution_group_brokers" as any).select("*"),
       supabase.from("distribution_group_forms" as any).select("*"),
+      supabase.from("leads").select("form_id, form_name").not("form_id", "is", null).limit(1000),
     ]);
     if (s) setSettings(s as any);
     setWindows((w as any) || []);
@@ -79,6 +81,9 @@ export default function AdminLeadAutomation() {
       brokers: ((gb as any[]) || []).filter((x) => x.group_id === row.id).map((x) => x.broker_id),
       forms: ((gf as any[]) || []).filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
     })));
+    const map = new Map<string, string | null>();
+    ((lf as any[]) || []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, r.form_name || null); });
+    setDetectedForms(Array.from(map.entries()).map(([form_id, form_name]) => ({ form_id, form_name })));
   };
 
   useEffect(() => { load(); }, []);
