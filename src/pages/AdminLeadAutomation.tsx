@@ -53,6 +53,7 @@ export default function AdminLeadAutomation() {
     no_response_hours: 24,
     inactivity_alert_hours: 24,
     auto_first_contact: true,
+    leads_paused: false,
     stage_max_minutes: { new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320 },
   });
 
