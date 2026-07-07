@@ -842,6 +842,7 @@ export type Database = {
           auto_first_contact: boolean
           id: boolean
           inactivity_alert_hours: number
+          leads_paused: boolean
           no_response_hours: number
           roleta_seconds: number
           stage_max_minutes: Json
@@ -851,6 +852,7 @@ export type Database = {
           auto_first_contact?: boolean
           id?: boolean
           inactivity_alert_hours?: number
+          leads_paused?: boolean
           no_response_hours?: number
           roleta_seconds?: number
           stage_max_minutes?: Json
@@ -860,6 +862,7 @@ export type Database = {
           auto_first_contact?: boolean
           id?: boolean
           inactivity_alert_hours?: number
+          leads_paused?: boolean
           no_response_hours?: number
           roleta_seconds?: number
           stage_max_minutes?: Json
