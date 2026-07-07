@@ -7,7 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle } from "lucide-react";
+import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle, Settings2, FileText, UserCheck } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type Settings = {
   roleta_seconds: number;
@@ -62,6 +65,8 @@ export default function AdminLeadAutomation() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [detectedForms, setDetectedForms] = useState<{ form_id: string; form_name: string | null }[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const editingGroup = groups.find((g) => g.id === editingGroupId) || null;
 
   const load = async () => {
     const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }, { data: lf }] = await Promise.all([
@@ -255,85 +260,141 @@ export default function AdminLeadAutomation() {
           <Button size="sm" onClick={createGroup}><Plus className="h-4 w-4 mr-1" /> Novo grupo</Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {groups.length === 0 && <p className="text-sm text-muted-foreground">Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in.</p>}
-          {groups.map((g) => (
-            <div key={g.id} className="p-3 rounded-lg border border-border/60 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <button onClick={() => renameGroup(g.id, g.name)} className="text-sm font-semibold hover:underline">
-                  {g.name}
-                </button>
-                <div className="flex items-center gap-2">
-                  <Switch checked={g.active} onCheckedChange={(v) => toggleGroup(g.id, v)} />
-                  <Button size="sm" variant="destructive" onClick={() => deleteGroup(g.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                </div>
-              </div>
-              <div>
-                <Label className="text-[11px]">Corretores</Label>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {brokers.map((b) => {
-                    const on = g.brokers.includes(b.id);
-                    return (
-                      <button key={b.id} onClick={() => toggleGroupBroker(g.id, b.id, !on)}
-                        className={`text-[11px] px-2 py-0.5 rounded-full border ${on ? "bg-primary text-primary-foreground border-primary" : "border-border/60 hover:border-primary/60"}`}>
-                        {b.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="text-[11px]">Formulários Meta neste grupo</Label>
+          {groups.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in.
+            </p>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {groups.map((g) => (
+              <div
+                key={g.id}
+                className={`p-4 rounded-lg border transition-colors ${
+                  g.active ? "border-border/60 bg-card" : "border-border/40 bg-muted/30 opacity-70"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{g.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{g.active ? "Ativo" : "Inativo"}</p>
+                  </div>
                   <div className="flex items-center gap-1">
-                    <select
-                      className="h-7 rounded border border-border/60 bg-background text-[11px] px-1 max-w-[180px]"
-                      defaultValue=""
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (!v) return;
-                        const found = detectedForms.find((d) => d.form_id === v);
-                        addGroupForm(g.id, v, found?.form_name || null);
-                        e.currentTarget.value = "";
-                      }}
-                    >
-                      <option value="">+ Vincular form detectado…</option>
-                      {detectedForms
-                        .filter((d) => !g.forms.some((f) => f.form_id === d.form_id))
-                        .map((d) => (
-                          <option key={d.form_id} value={d.form_id}>
-                            {d.form_name || d.form_id}
-                          </option>
-                        ))}
-                    </select>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 text-[11px]"
-                      onClick={() => {
-                        const form_id = prompt("ID do formulário Meta (form_id):");
-                        if (!form_id) return;
-                        const form_name = prompt("Nome do formulário (opcional):", "") || null;
-                        addGroupForm(g.id, form_id, form_name);
-                      }}
-                    >
-                      <Plus className="h-3 w-3 mr-1" /> Manual
+                    <Switch checked={g.active} onCheckedChange={(v) => toggleGroup(g.id, v)} />
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => renameGroup(g.id, g.name)} title="Renomear">
+                      <Settings2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => deleteGroup(g.id)} title="Excluir">
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {g.forms.length === 0 && <span className="text-[11px] text-muted-foreground">Nenhum formulário vinculado.</span>}
-                  {g.forms.map((f) => (
-                    <Badge key={f.form_id} variant="outline" className="text-[11px] gap-1">
-                      {f.form_name || f.form_id}
-                      <button onClick={() => removeGroupForm(g.id, f.form_id)} className="ml-1 opacity-60 hover:opacity-100"><Trash2 className="h-3 w-3" /></button>
-                    </Badge>
-                  ))}
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <div className="rounded-md bg-muted/40 p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                      <UserCheck className="h-3 w-3" /> Corretores
+                    </div>
+                    <p className="text-lg font-bold leading-tight">{g.brokers.length}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                      <FileText className="h-3 w-3" /> Formulários
+                    </div>
+                    <p className="text-lg font-bold leading-tight">{g.forms.length}</p>
+                  </div>
                 </div>
+                <Button size="sm" variant="outline" className="w-full mt-3 h-8 text-xs" onClick={() => setEditingGroupId(g.id)}>
+                  <Settings2 className="h-3.5 w-3.5 mr-1" /> Configurar
+                </Button>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </CardContent>
       </Card>
+
+      {/* Group editor dialog */}
+      <Dialog open={!!editingGroup} onOpenChange={(v) => !v && setEditingGroupId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="h-4 w-4" /> {editingGroup?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {editingGroup && (
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-xs font-semibold flex items-center gap-1">
+                    <UserCheck className="h-3.5 w-3.5" /> Corretores
+                  </Label>
+                  <Badge variant="secondary" className="text-[10px]">{editingGroup.brokers.length} selecionados</Badge>
+                </div>
+                <ScrollArea className="h-72 rounded border border-border/60 p-2">
+                  <div className="space-y-1">
+                    {brokers.map((b) => {
+                      const on = editingGroup.brokers.includes(b.id);
+                      return (
+                        <label key={b.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-muted/50 cursor-pointer">
+                          <Checkbox checked={on} onCheckedChange={(v) => toggleGroupBroker(editingGroup.id, b.id, !!v)} />
+                          <span className="truncate">{b.name}</span>
+                        </label>
+                      );
+                    })}
+                    {brokers.length === 0 && <p className="text-xs text-muted-foreground p-2">Nenhum corretor ativo.</p>}
+                  </div>
+                </ScrollArea>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-xs font-semibold flex items-center gap-1">
+                    <FileText className="h-3.5 w-3.5" /> Formulários Meta
+                  </Label>
+                  <Badge variant="secondary" className="text-[10px]">{editingGroup.forms.length} selecionados</Badge>
+                </div>
+                <ScrollArea className="h-72 rounded border border-border/60 p-2">
+                  <div className="space-y-1">
+                    {detectedForms.map((d) => {
+                      const on = editingGroup.forms.some((f) => f.form_id === d.form_id);
+                      return (
+                        <label key={d.form_id} className="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-muted/50 cursor-pointer">
+                          <Checkbox
+                            checked={on}
+                            onCheckedChange={(v) => {
+                              if (v) addGroupForm(editingGroup.id, d.form_id, d.form_name);
+                              else removeGroupForm(editingGroup.id, d.form_id);
+                            }}
+                          />
+                          <span className="truncate flex-1">{d.form_name || d.form_id}</span>
+                          {!d.form_name && <span className="text-[10px] text-muted-foreground truncate">{d.form_id}</span>}
+                        </label>
+                      );
+                    })}
+                    {detectedForms.length === 0 && (
+                      <p className="text-xs text-muted-foreground p-2">Nenhum formulário detectado ainda. Use "Manual" abaixo.</p>
+                    )}
+                  </div>
+                </ScrollArea>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full mt-2 h-7 text-[11px]"
+                  onClick={() => {
+                    const form_id = prompt("ID do formulário Meta (form_id):");
+                    if (!form_id) return;
+                    const form_name = prompt("Nome do formulário (opcional):", "") || null;
+                    addGroupForm(editingGroup.id, form_id, form_name);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Adicionar form manual
+                </Button>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingGroupId(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Distribution windows (shifts) */}
       <Card>
