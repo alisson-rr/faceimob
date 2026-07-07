@@ -7,7 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle } from "lucide-react";
+import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle, Settings2, FileText, UserCheck } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type Settings = {
   roleta_seconds: number;
