@@ -25,6 +25,8 @@ export default function Checkin() {
   const [today, setToday] = useState<Checkin[]>([]);
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
+  const OVERDUE_LIMIT = 20;
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
@@ -36,12 +38,32 @@ export default function Checkin() {
     setWindows((w as any) || []);
     if (!user) return;
     const { data: b } = await supabase.from("brokers").select("id").eq("user_id", user.id).maybeSingle();
-    if (!b) { setToday([]); return; }
+    if (!b) { setToday([]); setOverdueCount(0); return; }
     const brt = nowBRT();
     const workDate = brt.toISOString().slice(0, 10);
     const { data: c } = await supabase.from("broker_checkins")
       .select("*").eq("broker_id", (b as any).id).eq("work_date", workDate);
     setToday((c as any) || []);
+
+    // Contar leads atrasados do corretor logado
+    const [{ data: myLeads }, { data: settings }] = await Promise.all([
+      supabase.from("leads").select("id, funnel_stage, stage_changed_at, created_at")
+        .eq("broker_id", (b as any).id)
+        .neq("funnel_stage", "converted")
+        .limit(1000),
+      supabase.from("lead_automation_settings").select("stage_max_minutes").eq("id", true).maybeSingle(),
+    ]);
+    const stageMax: Record<string, number> = (settings as any)?.stage_max_minutes || {
+      new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320,
+    };
+    const nowMs = Date.now();
+    const overdue = ((myLeads as any) || []).filter((l: any) => {
+      const max = stageMax[l.funnel_stage || "new"];
+      if (!max) return false;
+      const changed = new Date(l.stage_changed_at || l.created_at).getTime();
+      return (nowMs - changed) / 60_000 > max;
+    }).length;
+    setOverdueCount(overdue);
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [user]);
