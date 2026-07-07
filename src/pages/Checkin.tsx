@@ -73,6 +73,10 @@ export default function Checkin() {
   const activeCheckin = activeWindow ? today.find((c) => c.slot === activeWindow.slot && !c.checked_out_at) : undefined;
 
   const action = async (act: "checkin" | "checkout") => {
+    if (act === "checkin" && overdueCount > OVERDUE_LIMIT) {
+      toast.error(`Check-in bloqueado: você tem ${overdueCount} leads atrasados. Trate até ficar com ≤ ${OVERDUE_LIMIT}.`);
+      return;
+    }
     setLoading(true);
     try {
       const { data: sess } = await supabase.auth.getSession();
