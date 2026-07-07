@@ -25,6 +25,13 @@ export default function NewLeadNotifier() {
         { event: "INSERT", schema: "public", table: "leads" },
         (payload: any) => {
           const l = payload.new;
+          // Ignora repasse/redistribuição: só notifica leads realmente novos
+          // (recém-criados, ainda sem corretor e status "new").
+          const createdAt = l?.created_at ? new Date(l.created_at).getTime() : 0;
+          const isFresh = createdAt && Date.now() - createdAt < 15_000;
+          const isNewIncoming = !l?.broker_id && (l?.status ?? "new") === "new";
+          if (!isFresh || !isNewIncoming) return;
+
           setPopupLead(l);
           try {
             new Audio(
