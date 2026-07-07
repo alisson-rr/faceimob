@@ -7,13 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, Save, Zap, Timer, Users, Layers } from "lucide-react";
+import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle } from "lucide-react";
 
 type Settings = {
   roleta_seconds: number;
   no_response_hours: number;
   inactivity_alert_hours: number;
   auto_first_contact: boolean;
+  leads_paused: boolean;
   stage_max_minutes: Record<string, number>;
 };
 
@@ -52,22 +53,25 @@ export default function AdminLeadAutomation() {
     no_response_hours: 24,
     inactivity_alert_hours: 24,
     auto_first_contact: true,
+    leads_paused: false,
     stage_max_minutes: { new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320 },
   });
 
   const [windows, setWindows] = useState<Window[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [detectedForms, setDetectedForms] = useState<{ form_id: string; form_name: string | null }[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
 
   const load = async () => {
-    const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }] = await Promise.all([
+    const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }, { data: lf }] = await Promise.all([
       supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
       supabase.from("distribution_windows").select("*").order("distribution_start"),
       supabase.from("brokers").select("id,name,active").eq("active", true).order("name"),
       supabase.from("distribution_groups" as any).select("*").order("name"),
       supabase.from("distribution_group_brokers" as any).select("*"),
       supabase.from("distribution_group_forms" as any).select("*"),
+      supabase.from("leads").select("form_id, form_name").not("form_id", "is", null).limit(1000),
     ]);
     if (s) setSettings(s as any);
     setWindows((w as any) || []);
@@ -77,6 +81,9 @@ export default function AdminLeadAutomation() {
       brokers: ((gb as any[]) || []).filter((x) => x.group_id === row.id).map((x) => x.broker_id),
       forms: ((gf as any[]) || []).filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
     })));
+    const map = new Map<string, string | null>();
+    ((lf as any[]) || []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, r.form_name || null); });
+    setDetectedForms(Array.from(map.entries()).map(([form_id, form_name]) => ({ form_id, form_name })));
   };
 
   useEffect(() => { load(); }, []);
@@ -145,12 +152,17 @@ export default function AdminLeadAutomation() {
     }
     load();
   };
-  const addGroupForm = async (groupId: string) => {
-    const form_id = prompt("ID do formulário Meta (form_id):");
+  const addGroupForm = async (groupId: string, form_id: string, form_name: string | null) => {
     if (!form_id) return;
-    const form_name = prompt("Nome do formulário (para exibir):", "") || null;
     await supabase.from("distribution_group_forms" as any).insert({ group_id: groupId, form_id, form_name });
     load();
+  };
+  const togglePause = async (v: boolean) => {
+    setSettings((s) => ({ ...s, leads_paused: v }));
+    const { error } = await supabase.from("lead_automation_settings")
+      .update({ leads_paused: v, updated_at: new Date().toISOString() } as any).eq("id", true);
+    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    toast({ title: v ? "⏸️ Chegada de leads pausada" : "▶️ Chegada de leads retomada" });
   };
   const removeGroupForm = async (groupId: string, formId: string) => {
     await supabase.from("distribution_group_forms" as any).delete().eq("group_id", groupId).eq("form_id", formId);
@@ -163,6 +175,24 @@ export default function AdminLeadAutomation() {
         <h1 className="text-2xl font-bold flex items-center gap-2"><Zap className="h-5 w-5" /> Automação de Leads</h1>
         <p className="text-sm text-muted-foreground">Configure roleta, grupos de distribuição e regras automáticas.</p>
       </div>
+
+      {/* Pause switch */}
+      <Card className={settings.leads_paused ? "border-amber-500/60 bg-amber-500/5" : ""}>
+        <CardContent className="flex items-center justify-between gap-3 py-4">
+          <div className="flex items-center gap-3">
+            <PauseCircle className={`h-6 w-6 ${settings.leads_paused ? "text-amber-500" : "text-muted-foreground"}`} />
+            <div>
+              <p className="font-semibold text-sm">Pausar chegada de leads</p>
+              <p className="text-xs text-muted-foreground">
+                {settings.leads_paused
+                  ? "Os leads recebidos pelo Meta Ads estão sendo ignorados. Ative novamente para retomar."
+                  : "Ative para bloquear temporariamente novos leads (útil durante ajustes no app)."}
+              </p>
+            </div>
+          </div>
+          <Switch checked={settings.leads_paused} onCheckedChange={togglePause} />
+        </CardContent>
+      </Card>
 
       {/* Automation rules — compact single row */}
       <Card>
@@ -252,11 +282,43 @@ export default function AdminLeadAutomation() {
                 </div>
               </div>
               <div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <Label className="text-[11px]">Formulários Meta neste grupo</Label>
-                  <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => addGroupForm(g.id)}>
-                    <Plus className="h-3 w-3 mr-1" /> Adicionar form
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <select
+                      className="h-7 rounded border border-border/60 bg-background text-[11px] px-1 max-w-[180px]"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        const found = detectedForms.find((d) => d.form_id === v);
+                        addGroupForm(g.id, v, found?.form_name || null);
+                        e.currentTarget.value = "";
+                      }}
+                    >
+                      <option value="">+ Vincular form detectado…</option>
+                      {detectedForms
+                        .filter((d) => !g.forms.some((f) => f.form_id === d.form_id))
+                        .map((d) => (
+                          <option key={d.form_id} value={d.form_id}>
+                            {d.form_name || d.form_id}
+                          </option>
+                        ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[11px]"
+                      onClick={() => {
+                        const form_id = prompt("ID do formulário Meta (form_id):");
+                        if (!form_id) return;
+                        const form_name = prompt("Nome do formulário (opcional):", "") || null;
+                        addGroupForm(g.id, form_id, form_name);
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> Manual
+                    </Button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {g.forms.length === 0 && <span className="text-[11px] text-muted-foreground">Nenhum formulário vinculado.</span>}

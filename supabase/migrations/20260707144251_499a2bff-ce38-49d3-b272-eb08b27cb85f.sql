@@ -1,0 +1,1 @@
+ALTER TABLE public.lead_automation_settings ADD COLUMN IF NOT EXISTS leads_paused boolean NOT NULL DEFAULT false;
