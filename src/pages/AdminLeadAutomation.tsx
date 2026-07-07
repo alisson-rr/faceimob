@@ -282,11 +282,43 @@ export default function AdminLeadAutomation() {
                 </div>
               </div>
               <div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <Label className="text-[11px]">Formulários Meta neste grupo</Label>
-                  <Button size="sm" variant="ghost" className="h-6 text-[11px]" onClick={() => addGroupForm(g.id)}>
-                    <Plus className="h-3 w-3 mr-1" /> Adicionar form
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <select
+                      className="h-7 rounded border border-border/60 bg-background text-[11px] px-1 max-w-[180px]"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        const found = detectedForms.find((d) => d.form_id === v);
+                        addGroupForm(g.id, v, found?.form_name || null);
+                        e.currentTarget.value = "";
+                      }}
+                    >
+                      <option value="">+ Vincular form detectado…</option>
+                      {detectedForms
+                        .filter((d) => !g.forms.some((f) => f.form_id === d.form_id))
+                        .map((d) => (
+                          <option key={d.form_id} value={d.form_id}>
+                            {d.form_name || d.form_id}
+                          </option>
+                        ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[11px]"
+                      onClick={() => {
+                        const form_id = prompt("ID do formulário Meta (form_id):");
+                        if (!form_id) return;
+                        const form_name = prompt("Nome do formulário (opcional):", "") || null;
+                        addGroupForm(g.id, form_id, form_name);
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> Manual
+                    </Button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {g.forms.length === 0 && <span className="text-[11px] text-muted-foreground">Nenhum formulário vinculado.</span>}
