@@ -96,24 +96,24 @@ export default function LeadFunnel({
     return g;
   }, [leads]);
 
-  // Detecta atrasos por etapa e dispara popup (uma vez por lead na sessão)
-  useEffect(() => {
-    const alertedKey = "lead-delay-alerted";
-    const alerted: string[] = JSON.parse(sessionStorage.getItem(alertedKey) || "[]");
-    for (const l of leads) {
-      if (l.funnel_stage === "converted" || alerted.includes(l.id)) continue;
+  // Lista de leads atrasados (por etapa) do corretor logado
+  const overdueLeads = useMemo(() => {
+    const own = (actorName || "").trim().toLowerCase();
+    return leads.filter(l => {
+      if (l.funnel_stage === "converted") return false;
+      if (own && (l.broker_name || "").trim().toLowerCase() !== own) return false;
       const max = stageMax[l.funnel_stage || "new"];
-      if (!max) continue;
+      if (!max) return false;
       const changed = new Date(l.stage_changed_at || l.created_at).getTime();
       const mins = (now - changed) / 60_000;
-      if (mins > max) {
-        alerted.push(l.id);
-        sessionStorage.setItem(alertedKey, JSON.stringify(alerted));
-        if (!popupLead) { setPopupKind("delay"); setPopupLead(l); }
-        break;
-      }
-    }
-  }, [leads, now, stageMax, popupLead]);
+      return mins > max;
+    }).sort((a, b) => {
+      const ta = new Date(a.stage_changed_at || a.created_at).getTime();
+      const tb = new Date(b.stage_changed_at || b.created_at).getTime();
+      return ta - tb;
+    });
+  }, [leads, now, stageMax, actorName]);
+
 
   // Roleta: reatribui leads "new" expirados ao próximo corretor da fila
   useEffect(() => {
