@@ -4,6 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { MotivationalPopup } from "@/components/MotivationalPopup";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import NewLeadNotifier from "@/components/NewLeadNotifier";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -106,6 +107,7 @@ export default function AppLayout() {
         </div>
       </div>
       {showMotivation && <MotivationalPopup />}
+      <NewLeadNotifier />
     </SidebarProvider>
   );
 }
