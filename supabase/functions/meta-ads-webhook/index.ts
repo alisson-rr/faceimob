@@ -188,22 +188,40 @@ Deno.serve(async (req) => {
         })
       }
 
-      const { data: inserted, error } = await supabase.from('leads').insert(leads).select()
-      if (error) {
-        console.error('Insert error:', error)
-        throw new Error(error.message)
+      // Insert leads one-by-one so a single bad row cannot fail the whole batch (Meta would retry -> duplicates)
+      const insertedRows: any[] = []
+      const errors: any[] = []
+      for (const lead of leads) {
+        try {
+          const { data: row, error: leadErr } = await supabase.from('leads').insert(lead).select().single()
+          if (leadErr) {
+            console.error('Lead insert error:', leadErr, 'payload:', JSON.stringify(lead))
+            errors.push({ message: leadErr.message, lead })
+            continue
+          }
+          insertedRows.push(row)
+        } catch (e) {
+          console.error('Lead insert threw:', e)
+          errors.push({ message: e instanceof Error ? e.message : String(e), lead })
+        }
       }
 
-      const notifications = (inserted || []).map(l => ({
-        title: '🔔 Novo Lead Meta Ads!',
-        message: `${l.name} — ${l.phone || l.email || 'sem contato'}`,
-        user_id: null,
-      }))
-      if (notifications.length) {
-        await supabase.from('notifications').insert(notifications)
+      if (insertedRows.length) {
+        const notifications = insertedRows.map(l => ({
+          title: '🔔 Novo Lead Meta Ads!',
+          message: `${l.name} — ${l.phone || l.email || 'sem contato'}`,
+          user_id: null,
+        }))
+        const { error: notifErr } = await supabase.from('notifications').insert(notifications)
+        if (notifErr) console.error('Notification insert error:', notifErr)
       }
 
-      return new Response(JSON.stringify({ success: true, leads_processed: inserted?.length || 0 }), {
+      // Always ACK 200 so Meta does not retry (retries cause duplicate leads/notifications)
+      return new Response(JSON.stringify({
+        success: true,
+        leads_processed: insertedRows.length,
+        errors: errors.length ? errors : undefined,
+      }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
