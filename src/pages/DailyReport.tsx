@@ -572,7 +572,7 @@ export default function DailyReport() {
                                   <Input
                                     type="number" min={0} step={0.5}
                                     inputMode="decimal"
-                                    value={entries[b.broker_id]?.[f.key] ? entries[b.broker_id][f.key] : ""}
+                                    value={entries[b.broker_id]?.[f.key] ?? ""}
                                     onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
                                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                     onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault(); }}
