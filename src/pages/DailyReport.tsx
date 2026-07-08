@@ -552,18 +552,23 @@ export default function DailyReport() {
             </Card>
 
 
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Users className="h-3 w-3" /> {activeRoster.length} corretor{activeRoster.length === 1 ? "" : "es"} ativo{activeRoster.length === 1 ? "" : "s"}
+                {roster.length !== activeRoster.length && <span className="text-rose-400 ml-1">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => setManageOpen(true)}
+              >
+                <Users className="h-3 w-3 mr-1" /> Gerenciar equipe do daily
+              </Button>
+            </div>
+
             <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                  <Users className="h-3 w-3" /> {activeRoster.length} corretor{activeRoster.length === 1 ? "" : "es"} ativo{activeRoster.length === 1 ? "" : "s"}
-                  {roster.length !== activeRoster.length && <span className="text-rose-400 ml-1">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
-                </p>
-                <DialogTrigger asChild>
-                  <Button size="sm" variant="outline" className="h-7 text-xs">
-                    <Users className="h-3 w-3 mr-1" /> Gerenciar equipe do daily
-                  </Button>
-                </DialogTrigger>
-              </div>
               <DialogContent className="max-w-lg">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Gerenciar corretores da equipe</DialogTitle>
@@ -610,6 +615,7 @@ export default function DailyReport() {
                 </div>
               </DialogContent>
             </Dialog>
+
 
             {!formOpen ? (
 
