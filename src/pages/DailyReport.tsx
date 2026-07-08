@@ -63,10 +63,56 @@ export default function DailyReport() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [loadingDay, setLoadingDay] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [newBrokerName, setNewBrokerName] = useState("");
+  const [rosterBusy, setRosterBusy] = useState(false);
 
   const yesterday = subDays(new Date(), 1);
   const todayStr = format(yesterday, "yyyy-MM-dd");
   const todayFilled = filledDates.includes(todayStr);
+
+  const activeRoster = useMemo(() => roster.filter((b) => b.active !== false), [roster]);
+
+  const reloadRoster = async (tid: string, rawPin: string) => {
+    const hash = await sha256(rawPin);
+    const { data, error } = await supabase.rpc("daily_roster_list" as any, { _team_id: tid, _pin_hash: hash });
+    if (error) return null;
+    const list = ((data as any) ?? []) as Roster[];
+    setRoster(list);
+    setEntries((prev) => {
+      const next: EntryState = { ...prev };
+      list.forEach((b) => {
+        if (!next[b.broker_id]) next[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
+      });
+      return next;
+    });
+    return list;
+  };
+
+  const addBroker = async () => {
+    if (!resolvedTeamId || !pin || !newBrokerName.trim()) return;
+    setRosterBusy(true);
+    const hash = await sha256(pin);
+    const { error } = await supabase.rpc("daily_roster_add" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_name: newBrokerName.trim() });
+    setRosterBusy(false);
+    if (error) return toast({ title: "Erro ao adicionar", description: error.message, variant: "destructive" });
+    setNewBrokerName("");
+    toast({ title: "Corretor adicionado" });
+    await reloadRoster(resolvedTeamId, pin);
+  };
+
+  const removeBroker = async (broker_id: string) => {
+    if (!resolvedTeamId || !pin) return;
+    if (!confirm("Desligar este corretor? O histórico é preservado, mas ele ficará bloqueado para novos lançamentos.")) return;
+    setRosterBusy(true);
+    const hash = await sha256(pin);
+    const { error } = await supabase.rpc("daily_roster_remove" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_id: broker_id });
+    setRosterBusy(false);
+    if (error) return toast({ title: "Erro ao desligar", description: error.message, variant: "destructive" });
+    toast({ title: "Corretor desligado" });
+    await reloadRoster(resolvedTeamId, pin);
+  };
+
 
   const openTodayForm = async () => {
     setDate(todayStr);
