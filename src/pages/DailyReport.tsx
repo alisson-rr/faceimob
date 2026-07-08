@@ -182,7 +182,9 @@ export default function DailyReport() {
     return roster.filter((b) => {
       const row = entries[b.broker_id];
       if (!row) return true;
-      return FIELDS.every((f) => !row[f.key]);
+      // um corretor só é "sem lançamento" se nenhum campo foi tocado (undefined).
+      // 0 é um valor válido (corretor sem movimento no dia).
+      return FIELDS.every((f) => row[f.key] === undefined || row[f.key] === null);
     });
   }, [roster, entries]);
 
