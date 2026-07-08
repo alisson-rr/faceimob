@@ -479,6 +479,50 @@ export type Database = {
           },
         ]
       }
+      daily_team_roster: {
+        Row: {
+          active: boolean
+          broker_id: string
+          broker_name: string
+          created_at: string
+          id: string
+          inactivated_at: string | null
+          is_custom: boolean
+          team_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          broker_id: string
+          broker_name: string
+          created_at?: string
+          id?: string
+          inactivated_at?: string | null
+          is_custom?: boolean
+          team_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          broker_id?: string
+          broker_name?: string
+          created_at?: string
+          id?: string
+          inactivated_at?: string | null
+          is_custom?: boolean
+          team_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_team_roster_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dashboard_bi_cache: {
         Row: {
           id: boolean
@@ -1397,6 +1441,23 @@ export type Database = {
     Functions: {
       auto_checkout_slot: { Args: { _slot: string }; Returns: undefined }
       check_deal_inactivity: { Args: never; Returns: undefined }
+      daily_roster_add: {
+        Args: { _broker_name: string; _pin_hash: string; _team_id: string }
+        Returns: string
+      }
+      daily_roster_list: {
+        Args: { _pin_hash: string; _team_id: string }
+        Returns: {
+          active: boolean
+          broker_id: string
+          broker_name: string
+          is_custom: boolean
+        }[]
+      }
+      daily_roster_remove: {
+        Args: { _broker_id: string; _pin_hash: string; _team_id: string }
+        Returns: undefined
+      }
       get_broker_private: {
         Args: { _id: string }
         Returns: {

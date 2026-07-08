@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target } from "lucide-react";
+import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, UserPlus, UserMinus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO, subDays } from "date-fns";
@@ -16,8 +16,14 @@ import logoWhite from "@/assets/logo-faceimob-white.png";
 import { UpdateBanner } from "@/components/UpdateNotifier";
 import { VisualFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
 
-type Roster = { broker_id: string; broker_name: string };
+type Roster = { broker_id: string; broker_name: string; active?: boolean; is_custom?: boolean };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
+
+async function sha256(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 
 const FIELDS = [
   { key: "leads", label: "Leads", color: "text-cyan-400" },
@@ -57,10 +63,56 @@ export default function DailyReport() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [loadingDay, setLoadingDay] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [newBrokerName, setNewBrokerName] = useState("");
+  const [rosterBusy, setRosterBusy] = useState(false);
 
   const yesterday = subDays(new Date(), 1);
   const todayStr = format(yesterday, "yyyy-MM-dd");
   const todayFilled = filledDates.includes(todayStr);
+
+  const activeRoster = useMemo(() => roster.filter((b) => b.active !== false), [roster]);
+
+  const reloadRoster = async (tid: string, rawPin: string) => {
+    const hash = await sha256(rawPin);
+    const { data, error } = await supabase.rpc("daily_roster_list" as any, { _team_id: tid, _pin_hash: hash });
+    if (error) return null;
+    const list = ((data as any) ?? []) as Roster[];
+    setRoster(list);
+    setEntries((prev) => {
+      const next: EntryState = { ...prev };
+      list.forEach((b) => {
+        if (!next[b.broker_id]) next[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
+      });
+      return next;
+    });
+    return list;
+  };
+
+  const addBroker = async () => {
+    if (!resolvedTeamId || !pin || !newBrokerName.trim()) return;
+    setRosterBusy(true);
+    const hash = await sha256(pin);
+    const { error } = await supabase.rpc("daily_roster_add" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_name: newBrokerName.trim() });
+    setRosterBusy(false);
+    if (error) return toast({ title: "Erro ao adicionar", description: error.message, variant: "destructive" });
+    setNewBrokerName("");
+    toast({ title: "Corretor adicionado" });
+    await reloadRoster(resolvedTeamId, pin);
+  };
+
+  const removeBroker = async (broker_id: string) => {
+    if (!resolvedTeamId || !pin) return;
+    if (!confirm("Desligar este corretor? O histórico é preservado, mas ele ficará bloqueado para novos lançamentos.")) return;
+    setRosterBusy(true);
+    const hash = await sha256(pin);
+    const { error } = await supabase.rpc("daily_roster_remove" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_id: broker_id });
+    setRosterBusy(false);
+    if (error) return toast({ title: "Erro ao desligar", description: error.message, variant: "destructive" });
+    toast({ title: "Corretor desligado" });
+    await reloadRoster(resolvedTeamId, pin);
+  };
+
 
   const openTodayForm = async () => {
     setDate(todayStr);
@@ -179,14 +231,15 @@ export default function DailyReport() {
   const xpEarned = totals.vendas * 100 + totals.aprovados * 40 + totals.analises * 10 + totals.leads;
 
   const emptyBrokers = useMemo(() => {
-    return roster.filter((b) => {
+    return activeRoster.filter((b) => {
       const row = entries[b.broker_id];
       if (!row) return true;
       // um corretor só é "sem lançamento" se nenhum campo foi tocado (undefined).
       // 0 é um valor válido (corretor sem movimento no dia).
       return FIELDS.every((f) => row[f.key] === undefined || row[f.key] === null);
     });
-  }, [roster, entries]);
+  }, [activeRoster, entries]);
+
 
   const handleUnlock = async () => {
     if (!pin || pin.length < 4) return toast({ title: "Digite o PIN da equipe" });
@@ -198,17 +251,21 @@ export default function DailyReport() {
     if (error || !data?.pin_ok) {
       return toast({ title: "PIN incorreto", variant: "destructive" });
     }
-    if ((data.info as any)?.team_id) setResolvedTeamId((data.info as any).team_id);
-    const list = (data.roster as Roster[]) ?? [];
-    setRoster(list);
+    const tid = (data.info as any)?.team_id || resolvedTeamId;
+    if (tid) setResolvedTeamId(tid);
+
+    // Load merged roster (base + custom - inactive overrides applied)
+    const merged = tid ? await reloadRoster(tid, pin) : null;
+    const list = (merged ?? (data.roster as Roster[]) ?? []) as Roster[];
+    if (!merged) setRoster(list);
     const initial: EntryState = {};
     list.forEach((b) => {
       initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
     });
     setEntries(initial);
     setUnlocked(true);
-    const tid = (data.info as any)?.team_id || resolvedTeamId;
     if (tid) loadMonth(tid);
+
   };
 
   const setField = (bid: string, key: FieldKey, val: string) => {
@@ -229,8 +286,9 @@ export default function DailyReport() {
     setSubmitting(true);
     const payload = {
       team_id: resolvedTeamId, pin, report_date: date, filled_by_name: filledBy, notes: notes || null,
-      entries: roster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })),
+      entries: activeRoster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })),
     };
+
     const { data, error } = await supabase.functions.invoke("submit-daily-report", { body: payload });
     setSubmitting(false);
     if (error || (data as any)?.error) {
@@ -546,7 +604,64 @@ export default function DailyReport() {
                         </div>
                       </div>
                     )}
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                        <Users className="h-3 w-3" /> {activeRoster.length} corretor{activeRoster.length === 1 ? "" : "es"} ativo{activeRoster.length === 1 ? "" : "s"}
+                        {roster.length !== activeRoster.length && <span className="text-rose-400">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
+                      </p>
+                      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="h-7 text-xs"><Users className="h-3 w-3 mr-1" /> Gerenciar equipe</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Gerenciar corretores da equipe</DialogTitle>
+                          </DialogHeader>
+                          <p className="text-[11px] text-muted-foreground">
+                            Esta lista é <b>independente</b> da aba Equipes. Ao desligar, o corretor permanece na lista (ofuscado) para preservar suas métricas históricas, mas fica bloqueado para novos lançamentos.
+                          </p>
+                          <div className="flex gap-2">
+                            <Input
+                              value={newBrokerName}
+                              onChange={(e) => setNewBrokerName(e.target.value)}
+                              placeholder="Nome do novo corretor"
+                              className="h-8 text-xs"
+                              onKeyDown={(e) => e.key === "Enter" && addBroker()}
+                            />
+                            <Button size="sm" onClick={addBroker} disabled={rosterBusy || !newBrokerName.trim()} className="h-8">
+                              {rosterBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3 mr-1" />}
+                              Adicionar
+                            </Button>
+                          </div>
+                          <div className="max-h-72 overflow-auto divide-y divide-border/40 rounded-md border border-border/40">
+                            {roster.map((b) => {
+                              const inactive = b.active === false;
+                              return (
+                                <div key={b.broker_id} className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${inactive ? "opacity-50" : ""}`}>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium truncate">{b.broker_name}</p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {b.is_custom ? "Adicionado no daily" : "Base da equipe"}
+                                      {inactive && " • desligado"}
+                                    </p>
+                                  </div>
+                                  {inactive ? (
+                                    <Badge variant="outline" className="text-[9px]">desligado</Badge>
+                                  ) : (
+                                    <Button size="sm" variant="ghost" onClick={() => removeBroker(b.broker_id)} disabled={rosterBusy} className="h-7 text-[11px] text-rose-400 hover:text-rose-300">
+                                      <UserMinus className="h-3 w-3 mr-1" /> Desligar
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {roster.length === 0 && <p className="p-4 text-center text-[11px] text-muted-foreground">Nenhum corretor.</p>}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                     <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
+
                       <div
                         className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                       >
@@ -557,16 +672,21 @@ export default function DailyReport() {
                       <div className="divide-y divide-border/30">
                         {roster.map((b) => {
                           const total = FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0);
+                          const inactive = b.active === false;
                           return (
                             <div
                               key={b.broker_id}
-                              className="grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
+                              className={`grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px] ${inactive ? "opacity-40 grayscale bg-muted/10" : "hover:bg-primary/5"}`}
+                              title={inactive ? "Corretor desligado — histórico preservado, sem novas inserções" : undefined}
                             >
                               <div className="flex items-center gap-2 col-span-3 md:col-span-1 min-w-0">
                                 <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
                                   {b.broker_name.charAt(0).toUpperCase()}
                                 </div>
-                                <span className="text-xs font-medium truncate">{b.broker_name}</span>
+                                <span className="text-xs font-medium truncate">
+                                  {b.broker_name}
+                                  {inactive && <span className="ml-1 text-[9px] uppercase text-rose-400">(desligado)</span>}
+                                </span>
                               </div>
                               {FIELDS.map((f) => (
                                 <div key={f.key} className="flex flex-col md:block min-w-0">
@@ -574,12 +694,13 @@ export default function DailyReport() {
                                   <Input
                                     type="number" min={0} step={0.5}
                                     inputMode="decimal"
+                                    disabled={inactive}
                                     value={entries[b.broker_id]?.[f.key] ?? ""}
                                     onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
                                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                     onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault(); }}
                                     placeholder="0"
-                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0"
+                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 disabled:cursor-not-allowed"
                                   />
                                 </div>
                               ))}
@@ -588,6 +709,7 @@ export default function DailyReport() {
                           );
                         })}
                       </div>
+
                     </Card>
                   </>
                 )}
