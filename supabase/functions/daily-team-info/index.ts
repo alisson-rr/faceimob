@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const { team_id: teamIdIn, slug, pin } = parsed.data;
+    const { team_id: teamIdIn, slug, pin, director_slug } = parsed.data;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
