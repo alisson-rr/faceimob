@@ -88,9 +88,12 @@ Deno.serve(async (req) => {
         acc.aprovadas += e.aprovados || 0;
         acc.vendas += e.vendas || 0;
       });
+      const displayName = (t.display_name?.trim?.() || t.name || "Equipe");
       return {
         id: t.id,
-        name: (t.display_name?.trim?.() || t.name || "Equipe"),
+        name: displayName,
+        slug: teamSlug(displayName),
+        manager_name: t.manager_id ? (mgrName.get(t.manager_id) || null) : null,
         aggr: acc,
         targets: targetsMap[t.id] ?? targetsMap["__global__"] ?? { analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 },
       };
