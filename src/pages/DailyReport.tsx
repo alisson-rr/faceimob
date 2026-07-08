@@ -14,7 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 import { UpdateBanner } from "@/components/UpdateNotifier";
-import { VisualFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
+import { VisualFunnel, CompactFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
 
 type Roster = { broker_id: string; broker_name: string; active?: boolean; is_custom?: boolean };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
