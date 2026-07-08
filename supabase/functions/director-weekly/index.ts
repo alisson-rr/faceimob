@@ -68,6 +68,13 @@ Deno.serve(async (req) => {
       };
     });
 
+    // manager name lookup (director may manage a team directly too)
+    const mgrName = new Map<string, string>();
+    (managers || []).forEach((m: any) => mgrName.set(m.id, m.name));
+    mgrName.set(director.id, director.name);
+
+    const teamSlug = (name: string) => slugify((name || "").replace(/^equipe\s+/i, ""));
+
     // aggregate per team
     const teamOut = teams.map((t: any) => {
       const rIds = new Set(reports.filter((r: any) => r.team_id === t.id).map((r: any) => r.id));
@@ -81,9 +88,12 @@ Deno.serve(async (req) => {
         acc.aprovadas += e.aprovados || 0;
         acc.vendas += e.vendas || 0;
       });
+      const displayName = (t.display_name?.trim?.() || t.name || "Equipe");
       return {
         id: t.id,
-        name: (t.display_name?.trim?.() || t.name || "Equipe"),
+        name: displayName,
+        slug: teamSlug(displayName),
+        manager_name: t.manager_id ? (mgrName.get(t.manager_id) || null) : null,
         aggr: acc,
         targets: targetsMap[t.id] ?? targetsMap["__global__"] ?? { analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 },
       };
@@ -97,11 +107,12 @@ Deno.serve(async (req) => {
 
     const monthTotals = { leads: 0, ligacoes: 0, coleta_docs: 0, visitas_agendadas: 0, visitas_realizadas: 0, analises: 0, aprovados: 0, vendas: 0 };
     let filledDates: string[] = [];
+    let mReports: any[] = [];
     if (teamIds.length && mTo >= mFrom) {
       const { data: mRep } = await supabase.from("daily_team_reports")
         .select("id,team_id,report_date").in("team_id", teamIds)
         .gte("report_date", mFrom).lte("report_date", mTo);
-      const mReports = mRep || [];
+      mReports = mRep || [];
       filledDates = Array.from(new Set(mReports.map((r: any) => r.report_date))).sort();
       const mRIds = mReports.map((r: any) => r.id);
       if (mRIds.length) {
@@ -120,11 +131,20 @@ Deno.serve(async (req) => {
         });
       }
     }
-    const missingDays: string[] = [];
-    const filledSet = new Set(filledDates);
+    // per-day missing teams (which manager didn't fill)
+    const filledByDate = new Map<string, Set<string>>(); // date -> set(team_id)
+    mReports.forEach((r: any) => {
+      if (!filledByDate.has(r.report_date)) filledByDate.set(r.report_date, new Set());
+      filledByDate.get(r.report_date)!.add(r.team_id);
+    });
+    const missingDays: { date: string; teams: { id: string; name: string; manager_name: string | null }[] }[] = [];
     for (let d = new Date(monthStart); d <= yesterday; d.setDate(d.getDate() + 1)) {
       const ds = fmt(d);
-      if (!filledSet.has(ds)) missingDays.push(ds);
+      const filledTeams = filledByDate.get(ds) || new Set();
+      const missingTeams = teamOut
+        .filter((t: any) => !filledTeams.has(t.id))
+        .map((t: any) => ({ id: t.id, name: t.name, manager_name: t.manager_name }));
+      if (missingTeams.length) missingDays.push({ date: ds, teams: missingTeams });
     }
 
     return new Response(JSON.stringify({

@@ -3,10 +3,12 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Target, TrendingUp } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Loader2, Target, TrendingUp } from "lucide-react";
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DirectorFunnelCard } from "@/pages/Checkpoint";
+import { CompactFunnel } from "@/components/ComparativeFunnel";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
 const MONTH_FIELDS = [
@@ -23,9 +25,13 @@ const MONTH_FIELDS = [
 type TeamOut = {
   id: string;
   name: string;
+  slug: string;
+  manager_name: string | null;
   aggr: { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
   targets: { analise_enviada_pct: number; aprovada_pct: number; venda_pct: number };
 };
+
+type MissingDay = { date: string; teams: { id: string; name: string; manager_name: string | null }[] };
 
 export default function PublicDirectorCheckpoint() {
   const { slug = "" } = useParams<{ slug: string }>();
@@ -34,8 +40,9 @@ export default function PublicDirectorCheckpoint() {
   const [loading, setLoading] = useState(true);
   const [director, setDirector] = useState<{ name: string } | null>(null);
   const [teams, setTeams] = useState<TeamOut[]>([]);
-  const [month, setMonth] = useState<{ totals: Record<string, number>; missing_days: string[] } | null>(null);
+  const [month, setMonth] = useState<{ totals: Record<string, number>; missing_days: MissingDay[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [missingOpen, setMissingOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -63,7 +70,6 @@ export default function PublicDirectorCheckpoint() {
 
   const targets = teams[0]?.targets ?? { analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 };
 
-  // Adapters to reuse DirectorFunnelCard from Checkpoint page (same visuals)
   const teamRows = teams.map(t => ({ id: t.id, name: t.name, display_name: t.name, manager_id: null } as any));
   const aggregate = (teamId: string) => {
     const t = teams.find(x => x.id === teamId);
@@ -71,6 +77,29 @@ export default function PublicDirectorCheckpoint() {
   };
   const targetsFor = (teamId: string) => teams.find(x => x.id === teamId)?.targets ?? targets;
   const teamNameFor = (t: any) => t.name;
+
+  const monthFunnelSteps = useMemo(() => {
+    const t = month?.totals || {};
+    return [
+      { key: "leads", label: "Leads", value: t.leads || 0, targetPct: 100 },
+      { key: "analises", label: "Análises", value: t.analises || 0, targetPct: 10 },
+      { key: "aprovados", label: "Aprovações", value: t.aprovados || 0, targetPct: 40 },
+      { key: "vendas", label: "Vendas", value: t.vendas || 0, targetPct: 50 },
+    ];
+  }, [month]);
+
+  const funnelSummary = useMemo(() => {
+    const t = month?.totals || {} as any;
+    const leads = t.leads || 0, an = t.analises || 0, ap = t.aprovados || 0, vd = t.vendas || 0;
+    const pAn = leads ? (an / leads) * 100 : 0;
+    const pAp = an ? (ap / an) * 100 : 0;
+    const pVd = ap ? (vd / ap) * 100 : 0;
+    const issues: string[] = [];
+    if (leads && pAn < 10) issues.push(`Conversão de análises baixa (${pAn.toFixed(1)}% / meta 10%)`);
+    if (an && pAp < 40) issues.push(`Aprovação abaixo da meta (${pAp.toFixed(1)}% / meta 40%)`);
+    if (ap && pVd < 50) issues.push(`Fechamento abaixo da meta (${pVd.toFixed(1)}% / meta 50%)`);
+    return { pAn, pAp, pVd, issues };
+  }, [month]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0F0E19] via-[#12122a] to-[#0F0E19] text-foreground">
@@ -103,6 +132,26 @@ export default function PublicDirectorCheckpoint() {
           <Card className="p-8 text-center text-sm text-muted-foreground">Nenhuma equipe vinculada a este diretor.</Card>
         ) : (
           <div className="space-y-4">
+            {/* Preencher daily — links das equipes do diretor */}
+            <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ExternalLink className="h-4 w-4 text-primary" /> Preencher meu daily
+                </CardTitle>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Acesse o daily de cada equipe para preenchimento.</p>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                {teams.map(t => (
+                  <a key={t.id} href={`/daily/${t.slug}`} target="_blank" rel="noreferrer">
+                    <Button size="sm" variant="outline" className="gap-1.5">
+                      <ExternalLink className="h-3 w-3" />
+                      {t.name}
+                    </Button>
+                  </a>
+                ))}
+              </CardContent>
+            </Card>
+
             <DirectorFunnelCard
               title={director.name}
               aggr={totals}
@@ -112,6 +161,39 @@ export default function PublicDirectorCheckpoint() {
               targetsFor={targetsFor}
               teamNameFor={teamNameFor}
             />
+
+            {/* Funil acumulado do mês — mesmo card do Daily */}
+            {month && (
+              <CompactFunnel
+                title="Funil acumulado — mês"
+                subtitle={`meta 100 / 10 / 40 / 50 — ${format(new Date(), "MMMM", { locale: ptBR })}`}
+                steps={monthFunnelSteps}
+                accent="hsl(280 90% 65%)"
+              />
+            )}
+
+            {/* Resumo textual do funil para o diretor */}
+            {month && (
+              <Card className="border-border/60">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" /> Resumo do funil
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs space-y-1">
+                  <p>Leads → Análises: <span className={funnelSummary.pAn >= 10 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>{funnelSummary.pAn.toFixed(1)}%</span> (meta 10%)</p>
+                  <p>Análises → Aprovações: <span className={funnelSummary.pAp >= 40 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>{funnelSummary.pAp.toFixed(1)}%</span> (meta 40%)</p>
+                  <p>Aprovações → Vendas: <span className={funnelSummary.pVd >= 50 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>{funnelSummary.pVd.toFixed(1)}%</span> (meta 50%)</p>
+                  {funnelSummary.issues.length === 0 ? (
+                    <p className="text-emerald-400 mt-2">Funil dentro das metas em todas as etapas.</p>
+                  ) : (
+                    <ul className="mt-2 list-disc list-inside text-rose-400">
+                      {funnelSummary.issues.map((i, k) => <li key={k}>{i}</li>)}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {month && (
               <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
@@ -131,21 +213,58 @@ export default function PublicDirectorCheckpoint() {
                     ))}
                   </div>
                   {month.missing_days?.length > 0 && (
-                    <div className="rounded-md border border-rose-500/40 bg-rose-500/5 p-2 flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMissingOpen(true)}
+                      className="w-full rounded-md border border-rose-500/40 bg-rose-500/5 p-2 flex items-start gap-2 text-left hover:bg-rose-500/10 transition"
+                    >
                       <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-                      <div className="text-xs">
-                        <p className="font-bold text-rose-400">Checkpoints não efetuados ({month.missing_days.length} {month.missing_days.length === 1 ? "dia" : "dias"}):</p>
+                      <div className="text-xs flex-1">
+                        <p className="font-bold text-rose-400">
+                          Checkpoints não efetuados ({month.missing_days.length} {month.missing_days.length === 1 ? "dia" : "dias"}) — clique para ver quem não preencheu
+                        </p>
                         <p className="text-muted-foreground mt-0.5">
-                          {month.missing_days.map(d => format(parseISO(d), "dd/MM", { locale: ptBR })).join(" • ")}
+                          {month.missing_days.map(d => format(parseISO(d.date), "dd/MM", { locale: ptBR })).join(" • ")}
                         </p>
                       </div>
-                    </div>
+                    </button>
                   )}
                 </CardContent>
               </Card>
             )}
           </div>
         )}
+
+        <Dialog open={missingOpen} onOpenChange={setMissingOpen}>
+          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-rose-400">
+                <AlertTriangle className="h-4 w-4" /> Pendências do mês
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {month?.missing_days?.map(md => (
+                <div key={md.date} className="rounded-md border border-border/50 p-3">
+                  <p className="text-sm font-bold mb-1.5">{format(parseISO(md.date), "dd/MM (EEEE)", { locale: ptBR })}</p>
+                  <ul className="text-xs space-y-1">
+                    {md.teams.map(t => (
+                      <li key={t.id} className="flex items-center justify-between gap-2">
+                        <span>
+                          <span className="text-muted-foreground">Gerente:</span>{" "}
+                          <span className="font-semibold">{t.manager_name || "—"}</span>
+                          <span className="text-muted-foreground"> • {t.name}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              {(!month?.missing_days || month.missing_days.length === 0) && (
+                <p className="text-center text-sm text-muted-foreground py-4">Sem pendências.</p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
