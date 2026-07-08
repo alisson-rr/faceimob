@@ -614,16 +614,21 @@ export default function DailyReport() {
                       <div className="divide-y divide-border/30">
                         {roster.map((b) => {
                           const total = FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0);
+                          const inactive = b.active === false;
                           return (
                             <div
                               key={b.broker_id}
-                              className="grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center hover:bg-primary/5 transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
+                              className={`grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px] ${inactive ? "opacity-40 grayscale bg-muted/10" : "hover:bg-primary/5"}`}
+                              title={inactive ? "Corretor desligado — histórico preservado, sem novas inserções" : undefined}
                             >
                               <div className="flex items-center gap-2 col-span-3 md:col-span-1 min-w-0">
                                 <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
                                   {b.broker_name.charAt(0).toUpperCase()}
                                 </div>
-                                <span className="text-xs font-medium truncate">{b.broker_name}</span>
+                                <span className="text-xs font-medium truncate">
+                                  {b.broker_name}
+                                  {inactive && <span className="ml-1 text-[9px] uppercase text-rose-400">(desligado)</span>}
+                                </span>
                               </div>
                               {FIELDS.map((f) => (
                                 <div key={f.key} className="flex flex-col md:block min-w-0">
@@ -631,12 +636,13 @@ export default function DailyReport() {
                                   <Input
                                     type="number" min={0} step={0.5}
                                     inputMode="decimal"
+                                    disabled={inactive}
                                     value={entries[b.broker_id]?.[f.key] ?? ""}
                                     onChange={(e) => setField(b.broker_id, f.key, e.target.value)}
                                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                     onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault(); }}
                                     placeholder="0"
-                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0"
+                                    className="h-8 w-full min-w-0 text-center text-xs font-bold px-1 placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 disabled:cursor-not-allowed"
                                   />
                                 </div>
                               ))}
@@ -645,6 +651,7 @@ export default function DailyReport() {
                           );
                         })}
                       </div>
+
                     </Card>
                   </>
                 )}
