@@ -3,9 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import { Clock, LogIn, LogOut, ShieldCheck, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 type Window = { slot: string; label: string; checkin_start: string; distribution_start: string; checkout_time: string };
 type Checkin = { id: string; slot: string; work_date: string; checked_in_at: string; checked_out_at: string | null; leads_received: number };
@@ -26,7 +27,16 @@ export default function Checkin() {
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const OVERDUE_LIMIT = 20;
+
+  const incentives = [
+    "Boa! Agora é atacar cada lead como se fosse o próximo contrato assinado. 🚀",
+    "Check-in confirmado! Velocidade no primeiro contato = mais vendas. ⚡",
+    "Você está na fila! Atenda rápido, escute com atenção e conduza até a visita. 🏆",
+    "Bora! Cada lead tratado hoje é um passo a mais rumo à sua meta. 💪",
+  ];
+  const [incentive, setIncentive] = useState("");
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
@@ -95,7 +105,12 @@ export default function Checkin() {
         throw new Error(msg);
       }
       if ((data as any)?.error) throw new Error((data as any).error);
-      toast.success(act === "checkin" ? "Check-in realizado!" : "Check-out realizado!");
+      if (act === "checkin") {
+        setIncentive(incentives[Math.floor(Math.random() * incentives.length)]);
+        setConfirmOpen(true);
+      } else {
+        toast.success("Check-out realizado!");
+      }
       await load();
     } catch (e: any) {
       toast.error(e.message || "Erro");
@@ -175,6 +190,25 @@ export default function Checkin() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="glass-strong glow-primary max-w-sm text-center border-primary/20">
+          <DialogHeader>
+            <div className="mx-auto w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-2">
+              <Rocket className="w-7 h-7 text-primary" />
+            </div>
+            <DialogTitle className="text-center">Check-in confirmado! ✅</DialogTitle>
+            <DialogDescription className="text-center text-sm leading-relaxed pt-2">
+              {incentive}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center">
+            <Button onClick={() => setConfirmOpen(false)} className="glow-primary">
+              Bora atender! 💪
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
