@@ -187,17 +187,34 @@ export default function DailyReport() {
     }, {} as EntryState));
   }, [date, roster, filledDates]);
 
-  const isAdminView = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("admin") === "1";
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const isAdminView = urlParams.get("admin") === "1";
+  const directorParam = urlParams.get("director");
 
   useEffect(() => {
     if (!identifier) return;
     (async () => {
-      const body = isUuid ? { team_id: identifier } : { slug: identifier };
+      const body: any = isUuid ? { team_id: identifier } : { slug: identifier };
+      if (directorParam) body.director_slug = directorParam;
       const { data } = await supabase.functions.invoke("daily-team-info", { body });
       if (data?.info) {
         setTeam(data.info as TeamInfo);
         const tid = (data.info as any).team_id;
         if (tid) setResolvedTeamId(tid);
+
+        // Director link bypass: libera acesso sem PIN às equipes do escopo do diretor
+        if ((data as any)?.director_ok && tid) {
+          const list = ((data as any).roster ?? []) as Roster[];
+          setRoster(list);
+          const initial: EntryState = {};
+          list.forEach((b) => {
+            initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
+          });
+          setEntries(initial);
+          setUnlocked(true);
+          loadMonth(tid);
+          return;
+        }
 
         // Admin bypass: se logado como admin, destrava sem PIN (somente leitura)
         if (isAdminView && tid) {
@@ -237,7 +254,8 @@ export default function DailyReport() {
         }
       }
     })();
-  }, [identifier, isUuid, isAdminView]);
+  }, [identifier, isUuid, isAdminView, directorParam]);
+
 
   const totals = useMemo(() => {
     const t: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
@@ -304,10 +322,12 @@ export default function DailyReport() {
       return;
     }
     setSubmitting(true);
-    const payload = {
-      team_id: resolvedTeamId, pin, report_date: date, filled_by_name: filledBy, notes: notes || null,
+    const payload: any = {
+      team_id: resolvedTeamId, pin: pin || undefined, report_date: date, filled_by_name: filledBy, notes: notes || null,
       entries: activeRoster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })),
     };
+    if (directorParam) payload.director_slug = directorParam;
+
 
     const { data, error } = await supabase.functions.invoke("submit-daily-report", { body: payload });
     setSubmitting(false);

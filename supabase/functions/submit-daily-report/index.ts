@@ -20,12 +20,18 @@ const EntrySchema = z.object({
 
 const BodySchema = z.object({
   team_id: z.string().uuid(),
-  pin: z.string().min(4).max(10),
+  pin: z.string().min(4).max(10).optional().nullable(),
+  director_slug: z.string().min(1).max(120).optional().nullable(),
   report_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   filled_by_name: z.string().min(1).max(120),
   notes: z.string().max(4000).optional().nullable(),
   entries: z.array(EntrySchema).min(1).max(200),
 });
+
+function slugify(s: string) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 async function sha256(input: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
@@ -49,20 +55,31 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Validate PIN
-    const { data: pinRow } = await supabase
-      .from("team_pins").select("pin_hash, active").eq("team_id", body.team_id).maybeSingle();
-    if (!pinRow || !pinRow.active) {
-      return new Response(JSON.stringify({ error: "PIN não configurado para esta equipe." }), {
+    // Auth: PIN da equipe OU link do diretor
+    let authorized = false;
+    if (body.pin) {
+      const { data: pinRow } = await supabase
+        .from("team_pins").select("pin_hash, active").eq("team_id", body.team_id).maybeSingle();
+      if (pinRow && pinRow.active && (await sha256(body.pin)) === pinRow.pin_hash) {
+        authorized = true;
+      }
+    }
+    if (!authorized && body.director_slug) {
+      const { data: dirs } = await supabase.from("brokers").select("id, name, active, role").eq("role", "director");
+      const dir = (dirs || []).find((b: any) => b.active !== false && slugify(b.name || "") === body.director_slug);
+      if (dir) {
+        const { data: mgrs } = await supabase.from("brokers").select("id").eq("director_id", dir.id);
+        const scopeIds = new Set<string>([dir.id, ...((mgrs || []).map((m: any) => m.id))]);
+        const { data: teamRow } = await supabase.from("teams").select("manager_id").eq("id", body.team_id).maybeSingle();
+        if (teamRow?.manager_id && scopeIds.has(teamRow.manager_id)) authorized = true;
+      }
+    }
+    if (!authorized) {
+      return new Response(JSON.stringify({ error: "Não autorizado (PIN inválido ou link do diretor inválido)." }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const hash = await sha256(body.pin);
-    if (hash !== pinRow.pin_hash) {
-      return new Response(JSON.stringify({ error: "PIN incorreto." }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+
 
     // Upsert report
     const { data: existing } = await supabase
