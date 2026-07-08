@@ -153,7 +153,7 @@ export default function PublicDirectorCheckpoint() {
             </Card>
 
             <DirectorFunnelCard
-              title={director.name}
+              title={`${director.name} — Semana ${format(weekStart, "dd/MM")} a ${format(weekEnd, "dd/MM")}`}
               aggr={totals}
               targets={targets}
               teams={teamRows}
@@ -165,8 +165,8 @@ export default function PublicDirectorCheckpoint() {
             {/* Funil acumulado do mês — mesmo card do Daily */}
             {month && (
               <CompactFunnel
-                title="Funil acumulado — mês"
-                subtitle={`meta 100 / 10 / 40 / 50 — ${format(new Date(), "MMMM", { locale: ptBR })}`}
+                title={`Funil acumulado — mês de ${format(new Date(), "MMMM", { locale: ptBR })}`}
+                subtitle={`metas 100 / 10 / 40 / 50 — soma de todas as equipes`}
                 steps={monthFunnelSteps}
                 accent="hsl(280 90% 65%)"
               />
