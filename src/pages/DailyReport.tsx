@@ -603,7 +603,64 @@ export default function DailyReport() {
                         </div>
                       </div>
                     )}
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                        <Users className="h-3 w-3" /> {activeRoster.length} corretor{activeRoster.length === 1 ? "" : "es"} ativo{activeRoster.length === 1 ? "" : "s"}
+                        {roster.length !== activeRoster.length && <span className="text-rose-400">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
+                      </p>
+                      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline" className="h-7 text-xs"><Users className="h-3 w-3 mr-1" /> Gerenciar equipe</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Gerenciar corretores da equipe</DialogTitle>
+                          </DialogHeader>
+                          <p className="text-[11px] text-muted-foreground">
+                            Esta lista é <b>independente</b> da aba Equipes. Ao desligar, o corretor permanece na lista (ofuscado) para preservar suas métricas históricas, mas fica bloqueado para novos lançamentos.
+                          </p>
+                          <div className="flex gap-2">
+                            <Input
+                              value={newBrokerName}
+                              onChange={(e) => setNewBrokerName(e.target.value)}
+                              placeholder="Nome do novo corretor"
+                              className="h-8 text-xs"
+                              onKeyDown={(e) => e.key === "Enter" && addBroker()}
+                            />
+                            <Button size="sm" onClick={addBroker} disabled={rosterBusy || !newBrokerName.trim()} className="h-8">
+                              {rosterBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3 mr-1" />}
+                              Adicionar
+                            </Button>
+                          </div>
+                          <div className="max-h-72 overflow-auto divide-y divide-border/40 rounded-md border border-border/40">
+                            {roster.map((b) => {
+                              const inactive = b.active === false;
+                              return (
+                                <div key={b.broker_id} className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${inactive ? "opacity-50" : ""}`}>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium truncate">{b.broker_name}</p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {b.is_custom ? "Adicionado no daily" : "Base da equipe"}
+                                      {inactive && " • desligado"}
+                                    </p>
+                                  </div>
+                                  {inactive ? (
+                                    <Badge variant="outline" className="text-[9px]">desligado</Badge>
+                                  ) : (
+                                    <Button size="sm" variant="ghost" onClick={() => removeBroker(b.broker_id)} disabled={rosterBusy} className="h-7 text-[11px] text-rose-400 hover:text-rose-300">
+                                      <UserMinus className="h-3 w-3 mr-1" /> Desligar
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {roster.length === 0 && <p className="p-4 text-center text-[11px] text-muted-foreground">Nenhum corretor.</p>}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                     <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
+
                       <div
                         className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                       >
