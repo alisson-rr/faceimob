@@ -20,12 +20,18 @@ const EntrySchema = z.object({
 
 const BodySchema = z.object({
   team_id: z.string().uuid(),
-  pin: z.string().min(4).max(10),
+  pin: z.string().min(4).max(10).optional().nullable(),
+  director_slug: z.string().min(1).max(120).optional().nullable(),
   report_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   filled_by_name: z.string().min(1).max(120),
   notes: z.string().max(4000).optional().nullable(),
   entries: z.array(EntrySchema).min(1).max(200),
 });
+
+function slugify(s: string) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 async function sha256(input: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
