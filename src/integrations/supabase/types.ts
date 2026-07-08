@@ -426,13 +426,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "daily_broker_entries_broker_id_fkey"
-            columns: ["broker_id"]
-            isOneToOne: false
-            referencedRelation: "brokers"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "daily_broker_entries_report_id_fkey"
             columns: ["report_id"]
             isOneToOne: false
