@@ -164,8 +164,15 @@ export default function PublicDirectorCheckpoint() {
   }, [slug, weekStart]);
 
   const totals = useMemo(() => {
-    const acc = { leads: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
-    teams.forEach(t => { acc.leads += t.aggr.leads; acc.enviadas += t.aggr.enviadas; acc.aprovadas += t.aggr.aprovadas; acc.vendas += t.aggr.vendas; });
+    const acc = { ...emptyAggr };
+    teams.forEach(t => {
+      acc.leads += t.aggr.leads;
+      acc.ligacoes += t.aggr.ligacoes;
+      acc.coleta_docs += t.aggr.coleta_docs;
+      acc.enviadas += t.aggr.enviadas;
+      acc.aprovadas += t.aggr.aprovadas;
+      acc.vendas += t.aggr.vendas;
+    });
     return acc;
   }, [teams]);
 
