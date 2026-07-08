@@ -552,7 +552,18 @@ export default function DailyReport() {
             </Card>
 
 
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Users className="h-3 w-3" /> {activeRoster.length} corretor{activeRoster.length === 1 ? "" : "es"} ativo{activeRoster.length === 1 ? "" : "s"}
+                {roster.length !== activeRoster.length && <span className="text-rose-400 ml-1">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setManageOpen(true)} className="h-7 text-xs">
+                <Users className="h-3 w-3 mr-1" /> Gerenciar equipe do daily
+              </Button>
+            </div>
+
             {!formOpen ? (
+
               <Card className="border-primary/40 bg-gradient-to-br from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl">
                 <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
                   <Sparkles className="h-8 w-8 text-primary" />
