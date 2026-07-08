@@ -107,11 +107,12 @@ Deno.serve(async (req) => {
 
     const monthTotals = { leads: 0, ligacoes: 0, coleta_docs: 0, visitas_agendadas: 0, visitas_realizadas: 0, analises: 0, aprovados: 0, vendas: 0 };
     let filledDates: string[] = [];
+    let mReports: any[] = [];
     if (teamIds.length && mTo >= mFrom) {
       const { data: mRep } = await supabase.from("daily_team_reports")
         .select("id,team_id,report_date").in("team_id", teamIds)
         .gte("report_date", mFrom).lte("report_date", mTo);
-      const mReports = mRep || [];
+      mReports = mRep || [];
       filledDates = Array.from(new Set(mReports.map((r: any) => r.report_date))).sort();
       const mRIds = mReports.map((r: any) => r.id);
       if (mRIds.length) {
@@ -130,11 +131,20 @@ Deno.serve(async (req) => {
         });
       }
     }
-    const missingDays: string[] = [];
-    const filledSet = new Set(filledDates);
+    // per-day missing teams (which manager didn't fill)
+    const filledByDate = new Map<string, Set<string>>(); // date -> set(team_id)
+    mReports.forEach((r: any) => {
+      if (!filledByDate.has(r.report_date)) filledByDate.set(r.report_date, new Set());
+      filledByDate.get(r.report_date)!.add(r.team_id);
+    });
+    const missingDays: { date: string; teams: { id: string; name: string; manager_name: string | null }[] }[] = [];
     for (let d = new Date(monthStart); d <= yesterday; d.setDate(d.getDate() + 1)) {
       const ds = fmt(d);
-      if (!filledSet.has(ds)) missingDays.push(ds);
+      const filledTeams = filledByDate.get(ds) || new Set();
+      const missingTeams = teamOut
+        .filter((t: any) => !filledTeams.has(t.id))
+        .map((t: any) => ({ id: t.id, name: t.name, manager_name: t.manager_name }));
+      if (missingTeams.length) missingDays.push({ date: ds, teams: missingTeams });
     }
 
     return new Response(JSON.stringify({
