@@ -66,6 +66,8 @@ export default function DailyReport() {
   const [manageOpen, setManageOpen] = useState(false);
   const [newBrokerName, setNewBrokerName] = useState("");
   const [rosterBusy, setRosterBusy] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+
 
   const yesterday = subDays(new Date(), 1);
   const todayStr = format(yesterday, "yyyy-MM-dd");
@@ -680,7 +682,7 @@ export default function DailyReport() {
                         <span className="text-center">Total</span>
                       </div>
                       <div className="divide-y divide-border/30">
-                        {roster.map((b) => {
+                        {roster.filter((b) => b.active !== false || showInactive).map((b) => {
                           const total = FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0);
                           const inactive = b.active === false;
                           return (
@@ -718,9 +720,19 @@ export default function DailyReport() {
                             </div>
                           );
                         })}
+                        {roster.some((b) => b.active === false) && (
+                          <div className="px-3 py-2 flex justify-center">
+                            <Button size="sm" variant="ghost" className="h-7 text-[11px] text-muted-foreground" onClick={() => setShowInactive((v) => !v)}>
+                              {showInactive
+                                ? "Ocultar corretores desligados"
+                                : `Mostrar ${roster.filter((b) => b.active === false).length} corretor${roster.filter((b) => b.active === false).length === 1 ? "" : "es"} desligado${roster.filter((b) => b.active === false).length === 1 ? "" : "s"}`}
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
                     </Card>
+
                   </>
                 )}
 
