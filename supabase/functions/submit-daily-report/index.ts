@@ -73,10 +73,15 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     let reportId = existing?.id as string | undefined;
+    let backup: any[] | null = null;
     if (reportId) {
       await supabase.from("daily_team_reports").update({
         filled_by_name: body.filled_by_name, notes: body.notes ?? null,
       }).eq("id", reportId);
+      // Snapshot existing entries so we can restore them if the new insert fails.
+      const { data: prev } = await supabase
+        .from("daily_broker_entries").select("*").eq("report_id", reportId);
+      backup = (prev as any[]) ?? [];
       await supabase.from("daily_broker_entries").delete().eq("report_id", reportId);
     } else {
       const { data: inserted, error } = await supabase
@@ -91,7 +96,15 @@ Deno.serve(async (req) => {
 
     const entries = body.entries.map((e) => ({ ...e, report_id: reportId }));
     const { error: entriesErr } = await supabase.from("daily_broker_entries").insert(entries);
-    if (entriesErr) throw entriesErr;
+    if (entriesErr) {
+      // Restore previous entries so we don't leave the report with zero rows.
+      if (backup && backup.length) {
+        const restore = backup.map(({ id, created_at, ...rest }: any) => rest);
+        await supabase.from("daily_broker_entries").insert(restore);
+      }
+      throw entriesErr;
+    }
+
 
     return new Response(JSON.stringify({ ok: true, report_id: reportId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

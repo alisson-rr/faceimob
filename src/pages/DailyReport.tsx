@@ -208,10 +208,25 @@ export default function DailyReport() {
               .from("user_roles").select("role").eq("user_id", uid).eq("role", "admin").maybeSingle();
             if (roleRow) {
               const { data: rosterRows } = await supabase.rpc("get_team_roster" as any, { _team_id: tid });
-              const list = ((rosterRows as any) ?? []) as Roster[];
-              setRoster(list);
+              const base = ((rosterRows as any) ?? []) as Roster[];
+              // Admin: merge overrides from daily_team_roster (inactivations + custom brokers)
+              const { data: overrides } = await supabase
+                .from("daily_team_roster" as any)
+                .select("broker_id, broker_name, active, is_custom")
+                .eq("team_id", tid);
+              const ov = ((overrides as any) ?? []) as Array<{ broker_id: string; broker_name: string; active: boolean; is_custom: boolean }>;
+              const ovMap = new Map(ov.filter((o) => !o.is_custom).map((o) => [o.broker_id, o]));
+              const merged: Roster[] = base.map((b) => {
+                const o = ovMap.get(b.broker_id);
+                return { ...b, active: o ? o.active : true, is_custom: false } as any;
+              });
+              ov.filter((o) => o.is_custom).forEach((o) => {
+                merged.push({ broker_id: o.broker_id, broker_name: o.broker_name, active: o.active, is_custom: true } as any);
+              });
+              merged.sort((a: any, b: any) => (Number(b.active !== false) - Number(a.active !== false)) || a.broker_name.localeCompare(b.broker_name));
+              setRoster(merged);
               const initial: EntryState = {};
-              list.forEach((b) => {
+              merged.forEach((b) => {
                 initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
               });
               setEntries(initial);
