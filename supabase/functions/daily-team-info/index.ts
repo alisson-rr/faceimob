@@ -6,6 +6,7 @@ const Schema = z.object({
   team_id: z.string().uuid().optional().nullable(),
   slug: z.string().min(1).max(120).optional().nullable(),
   pin: z.string().min(4).max(10).optional().nullable(),
+  director_slug: z.string().min(1).max(120).optional().nullable(),
 });
 
 function slugify(s: string) {
