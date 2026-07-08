@@ -322,10 +322,12 @@ export default function DailyReport() {
       return;
     }
     setSubmitting(true);
-    const payload = {
-      team_id: resolvedTeamId, pin, report_date: date, filled_by_name: filledBy, notes: notes || null,
+    const payload: any = {
+      team_id: resolvedTeamId, pin: pin || undefined, report_date: date, filled_by_name: filledBy, notes: notes || null,
       entries: activeRoster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })),
     };
+    if (directorParam) payload.director_slug = directorParam;
+
 
     const { data, error } = await supabase.functions.invoke("submit-daily-report", { body: payload });
     setSubmitting(false);
