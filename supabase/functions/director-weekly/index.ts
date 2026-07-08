@@ -68,6 +68,13 @@ Deno.serve(async (req) => {
       };
     });
 
+    // manager name lookup (director may manage a team directly too)
+    const mgrName = new Map<string, string>();
+    (managers || []).forEach((m: any) => mgrName.set(m.id, m.name));
+    mgrName.set(director.id, director.name);
+
+    const teamSlug = (name: string) => slugify((name || "").replace(/^equipe\s+/i, ""));
+
     // aggregate per team
     const teamOut = teams.map((t: any) => {
       const rIds = new Set(reports.filter((r: any) => r.team_id === t.id).map((r: any) => r.id));
