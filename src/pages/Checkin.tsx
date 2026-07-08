@@ -190,6 +190,25 @@ export default function Checkin() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="glass-strong glow-primary max-w-sm text-center border-primary/20">
+          <DialogHeader>
+            <div className="mx-auto w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mb-2">
+              <Rocket className="w-7 h-7 text-primary" />
+            </div>
+            <DialogTitle className="text-center">Check-in confirmado! ✅</DialogTitle>
+            <DialogDescription className="text-center text-sm leading-relaxed pt-2">
+              {incentive}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-center">
+            <Button onClick={() => setConfirmOpen(false)} className="glow-primary">
+              Bora atender! 💪
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
