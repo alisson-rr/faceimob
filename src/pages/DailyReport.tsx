@@ -231,14 +231,15 @@ export default function DailyReport() {
   const xpEarned = totals.vendas * 100 + totals.aprovados * 40 + totals.analises * 10 + totals.leads;
 
   const emptyBrokers = useMemo(() => {
-    return roster.filter((b) => {
+    return activeRoster.filter((b) => {
       const row = entries[b.broker_id];
       if (!row) return true;
       // um corretor só é "sem lançamento" se nenhum campo foi tocado (undefined).
       // 0 é um valor válido (corretor sem movimento no dia).
       return FIELDS.every((f) => row[f.key] === undefined || row[f.key] === null);
     });
-  }, [roster, entries]);
+  }, [activeRoster, entries]);
+
 
   const handleUnlock = async () => {
     if (!pin || pin.length < 4) return toast({ title: "Digite o PIN da equipe" });
