@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target } from "lucide-react";
+import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, UserPlus, UserMinus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO, subDays } from "date-fns";
@@ -16,8 +16,14 @@ import logoWhite from "@/assets/logo-faceimob-white.png";
 import { UpdateBanner } from "@/components/UpdateNotifier";
 import { VisualFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
 
-type Roster = { broker_id: string; broker_name: string };
+type Roster = { broker_id: string; broker_name: string; active?: boolean; is_custom?: boolean };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
+
+async function sha256(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 
 const FIELDS = [
   { key: "leads", label: "Leads", color: "text-cyan-400" },
