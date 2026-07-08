@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, UserPlus, UserMinus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -67,6 +68,7 @@ export default function DailyReport() {
   const [newBrokerName, setNewBrokerName] = useState("");
   const [rosterBusy, setRosterBusy] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<Roster | null>(null);
 
 
   const yesterday = subDays(new Date(), 1);
@@ -103,16 +105,25 @@ export default function DailyReport() {
     await reloadRoster(resolvedTeamId, pin);
   };
 
-  const removeBroker = async (broker_id: string) => {
-    if (!resolvedTeamId || !pin) return;
-    if (!confirm("Desligar este corretor? O histórico é preservado, mas ele ficará bloqueado para novos lançamentos.")) return;
+  const confirmRemoveBroker = async () => {
+    const target = pendingRemove;
+    if (!target || !resolvedTeamId || !pin) return;
     setRosterBusy(true);
-    const hash = await sha256(pin);
-    const { error } = await supabase.rpc("daily_roster_remove" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_id: broker_id });
-    setRosterBusy(false);
-    if (error) return toast({ title: "Erro ao desligar", description: error.message, variant: "destructive" });
-    toast({ title: "Corretor desligado" });
-    await reloadRoster(resolvedTeamId, pin);
+    try {
+      const hash = await sha256(pin);
+      const { error } = await supabase.rpc("daily_roster_remove" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_id: target.broker_id });
+      if (error) {
+        toast({ title: "Erro ao desligar", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Corretor desligado" });
+        await reloadRoster(resolvedTeamId, pin);
+      }
+    } catch (e: any) {
+      toast({ title: "Erro ao desligar", description: e?.message || "Erro inesperado", variant: "destructive" });
+    } finally {
+      setRosterBusy(false);
+      setPendingRemove(null);
+    }
   };
 
 
@@ -653,7 +664,7 @@ export default function DailyReport() {
                         {inactive ? (
                           <Badge variant="outline" className="text-[9px]">desligado</Badge>
                         ) : (
-                          <Button size="sm" variant="ghost" onClick={() => removeBroker(b.broker_id)} disabled={rosterBusy} className="h-7 text-[11px] text-rose-400 hover:text-rose-300">
+                          <Button size="sm" variant="ghost" onClick={() => setPendingRemove(b)} disabled={rosterBusy} className="h-7 text-[11px] text-rose-400 hover:text-rose-300">
                             <UserMinus className="h-3 w-3 mr-1" /> Desligar
                           </Button>
                         )}
@@ -664,6 +675,25 @@ export default function DailyReport() {
                 </div>
               </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!pendingRemove} onOpenChange={(v) => !v && setPendingRemove(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Desligar {pendingRemove?.broker_name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    O histórico do corretor é preservado, mas ele ficará bloqueado para novos lançamentos neste daily.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={rosterBusy}>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmRemoveBroker} disabled={rosterBusy} className="bg-rose-500 hover:bg-rose-600">
+                    {rosterBusy ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <UserMinus className="h-3 w-3 mr-1" />}
+                    Desligar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
 
 
             {!formOpen ? (
