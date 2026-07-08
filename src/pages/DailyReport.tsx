@@ -250,17 +250,21 @@ export default function DailyReport() {
     if (error || !data?.pin_ok) {
       return toast({ title: "PIN incorreto", variant: "destructive" });
     }
-    if ((data.info as any)?.team_id) setResolvedTeamId((data.info as any).team_id);
-    const list = (data.roster as Roster[]) ?? [];
-    setRoster(list);
+    const tid = (data.info as any)?.team_id || resolvedTeamId;
+    if (tid) setResolvedTeamId(tid);
+
+    // Load merged roster (base + custom - inactive overrides applied)
+    const merged = tid ? await reloadRoster(tid, pin) : null;
+    const list = (merged ?? (data.roster as Roster[]) ?? []) as Roster[];
+    if (!merged) setRoster(list);
     const initial: EntryState = {};
     list.forEach((b) => {
       initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
     });
     setEntries(initial);
     setUnlocked(true);
-    const tid = (data.info as any)?.team_id || resolvedTeamId;
     if (tid) loadMonth(tid);
+
   };
 
   const setField = (bid: string, key: FieldKey, val: string) => {
