@@ -676,6 +676,25 @@ export default function DailyReport() {
               </DialogContent>
             </Dialog>
 
+            <AlertDialog open={!!pendingRemove} onOpenChange={(v) => !v && setPendingRemove(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Desligar {pendingRemove?.broker_name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    O histórico do corretor é preservado, mas ele ficará bloqueado para novos lançamentos neste daily.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={rosterBusy}>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmRemoveBroker} disabled={rosterBusy} className="bg-rose-500 hover:bg-rose-600">
+                    {rosterBusy ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <UserMinus className="h-3 w-3 mr-1" />}
+                    Desligar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+
 
             {!formOpen ? (
 
