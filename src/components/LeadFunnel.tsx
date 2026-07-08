@@ -68,15 +68,9 @@ export default function LeadFunnel({
   useEffect(() => {
     load();
     const ch = supabase.channel("leads-funnel")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "leads" }, (payload: any) => {
-        const l = payload.new;
-        setPopupKind("new");
-        setPopupLead(l);
-        try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIA+AAABAAgAZGF0YQAAAAA=").play().catch(() => {}); } catch {}
-        toast({
-          title: "🔔 Novo Lead recebido!",
-          description: `${l.name || "Sem nome"} — ${l.source || "origem —"}`,
-        });
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "leads" }, () => {
+        // Popup/toast/audio de "Novo Lead recebido!" é disparado globalmente por
+        // NewLeadNotifier (montado em AppLayout). Aqui só recarregamos o funil.
         load();
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leads" }, () => load())

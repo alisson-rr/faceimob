@@ -272,9 +272,8 @@ export default function DailyReport() {
     return activeRoster.filter((b) => {
       const row = entries[b.broker_id];
       if (!row) return true;
-      // um corretor só é "sem lançamento" se nenhum campo foi tocado (undefined).
-      // 0 é um valor válido (corretor sem movimento no dia).
-      return FIELDS.every((f) => row[f.key] === undefined || row[f.key] === null);
+      // "sem lançamento" = nenhum campo com valor > 0 (0/undefined/null contam como vazio).
+      return FIELDS.every((f) => !row[f.key]);
     });
   }, [activeRoster, entries]);
 
@@ -324,7 +323,7 @@ export default function DailyReport() {
     setSubmitting(true);
     const payload: any = {
       team_id: resolvedTeamId, pin: pin || undefined, report_date: date, filled_by_name: filledBy, notes: notes || null,
-      entries: activeRoster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })),
+      entries: roster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })).filter((e) => e.broker_id),
     };
     if (directorParam) payload.director_slug = directorParam;
 
