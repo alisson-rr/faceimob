@@ -142,7 +142,7 @@ export default function PublicDirectorCheckpoint() {
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 {teams.map(t => (
-                  <a key={t.id} href={`/daily/${t.slug}`} target="_blank" rel="noreferrer">
+                  <a key={t.id} href={`/daily/${t.slug}?director=${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer">
                     <Button size="sm" variant="outline" className="gap-1.5">
                       <ExternalLink className="h-3 w-3" />
                       {t.name}
