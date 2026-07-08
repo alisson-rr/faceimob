@@ -3,9 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Clock, LogIn, LogOut, ShieldCheck } from "lucide-react";
+import { Clock, LogIn, LogOut, ShieldCheck, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 type Window = { slot: string; label: string; checkin_start: string; distribution_start: string; checkout_time: string };
 type Checkin = { id: string; slot: string; work_date: string; checked_in_at: string; checked_out_at: string | null; leads_received: number };
