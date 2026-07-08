@@ -8,6 +8,14 @@ const corsHeaders = {
 const slugify = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
+const directorSlugMatches = (name: string, requested: string) => {
+  const normalized = slugify(requested);
+  if (!normalized) return false;
+  const full = slugify(name || "");
+  const first = slugify((name || "").split(/\s+/)[0] || "");
+  return full === normalized || first === normalized;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -20,7 +28,7 @@ Deno.serve(async (req) => {
 
     // resolve director broker by slug
     const { data: directors } = await supabase.from("brokers").select("id,name,active,role").eq("role", "director");
-    const director = (directors || []).find((b: any) => b.active !== false && slugify(b.name || "") === slug);
+    const director = (directors || []).find((b: any) => b.active !== false && directorSlugMatches(b.name || "", slug));
     if (!director) {
       return new Response(JSON.stringify({ error: "director not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
