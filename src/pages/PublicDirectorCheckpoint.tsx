@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Loader2, Target, TrendingUp } from "lucide-react";
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { DirectorFunnelCard } from "@/pages/Checkpoint";
 import { CompactFunnel } from "@/components/ComparativeFunnel";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
@@ -49,6 +48,83 @@ const safeTargets = (value: Partial<TeamOut["targets"]> | null | undefined) => (
 
 const emptyAggr = { leads: 0, ligacoes: 0, coleta_docs: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
 
+function DirectorSummaryCard({
+  title,
+  aggr,
+  targets,
+  teams,
+  aggregate,
+  targetsFor,
+}: {
+  title: string;
+  aggr: typeof emptyAggr;
+  targets: TeamOut["targets"];
+  teams: TeamOut[];
+  aggregate: (teamId: string) => typeof emptyAggr;
+  targetsFor: (teamId: string) => TeamOut["targets"];
+}) {
+  const pEnv = aggr.leads ? (aggr.enviadas / aggr.leads) * 100 : 0;
+  const pApr = aggr.enviadas ? (aggr.aprovadas / aggr.enviadas) * 100 : 0;
+  const pVen = aggr.aprovadas ? (aggr.vendas / aggr.aprovadas) * 100 : 0;
+  const rows = [
+    { key: "leads", label: "Leads", value: aggr.leads, pct: 100, target: 100 },
+    { key: "env", label: "Análises", value: aggr.enviadas, pct: pEnv, target: targets.analise_enviada_pct },
+    { key: "apr", label: "Aprovações", value: aggr.aprovadas, pct: pApr, target: targets.aprovada_pct },
+    { key: "ven", label: "Vendas", value: aggr.vendas, pct: pVen, target: targets.venda_pct },
+  ];
+
+  return (
+    <Card className="border-yellow-400/30 bg-card/60 backdrop-blur-xl">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Target className="h-4 w-4 text-yellow-400" /> Diretor: {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {rows.map((r, i) => {
+            const below = i > 0 && r.pct < r.target;
+            const above = i > 0 && r.pct >= r.target;
+            return (
+              <div key={r.key} className={`px-2 py-1.5 rounded-md border bg-secondary/20 ${below ? "border-rose-500/50 bg-rose-500/5" : above ? "border-emerald-500/40 bg-emerald-500/5" : "border-border/40"}`}>
+                <div className="flex items-baseline justify-between gap-1">
+                  <span className="text-[9px] uppercase text-muted-foreground truncate">{r.label}</span>
+                  {i > 0 && <span className="text-[8px] text-muted-foreground">m{r.target}%</span>}
+                </div>
+                <div className="flex items-baseline justify-between gap-1">
+                  <span className={`text-lg font-black leading-none ${below ? "text-rose-400" : above ? "text-emerald-400" : "text-foreground"}`}>{r.value}</span>
+                  <span className={`text-[10px] font-semibold ${below ? "text-rose-400" : above ? "text-emerald-400" : "text-muted-foreground"}`}>{r.pct.toFixed(0)}%</span>
+                </div>
+                <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mt-1">
+                  <div className={below ? "h-full bg-rose-500" : "h-full bg-emerald-500"} style={{ width: `${Math.min(100, r.pct)}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {teams.map((team) => {
+            const a = aggregate(team.id);
+            const tg = targetsFor(team.id);
+            const anPct = a.leads ? (a.enviadas / a.leads) * 100 : 0;
+            return (
+              <div key={team.id} className="rounded-md border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs">
+                <div className="font-semibold truncate">{team.name}</div>
+                <div className="mt-1 grid grid-cols-4 gap-1 text-[10px] text-muted-foreground">
+                  <span>Leads <b className="text-cyan-400">{a.leads}</b></span>
+                  <span>An. <b className={anPct >= tg.analise_enviada_pct ? "text-emerald-400" : "text-rose-400"}>{a.enviadas}</b></span>
+                  <span>Aprov. <b className="text-emerald-400">{a.aprovadas}</b></span>
+                  <span>Venda <b className="text-yellow-400">{a.vendas}</b></span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PublicDirectorCheckpoint() {
   const { slug = "" } = useParams<{ slug: string }>();
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -88,20 +164,25 @@ export default function PublicDirectorCheckpoint() {
   }, [slug, weekStart]);
 
   const totals = useMemo(() => {
-    const acc = { leads: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
-    teams.forEach(t => { acc.leads += t.aggr.leads; acc.enviadas += t.aggr.enviadas; acc.aprovadas += t.aggr.aprovadas; acc.vendas += t.aggr.vendas; });
+    const acc = { ...emptyAggr };
+    teams.forEach(t => {
+      acc.leads += t.aggr.leads;
+      acc.ligacoes += t.aggr.ligacoes;
+      acc.coleta_docs += t.aggr.coleta_docs;
+      acc.enviadas += t.aggr.enviadas;
+      acc.aprovadas += t.aggr.aprovadas;
+      acc.vendas += t.aggr.vendas;
+    });
     return acc;
   }, [teams]);
 
   const targets = safeTargets(teams[0]?.targets);
 
-  const teamRows = teams.map(t => ({ id: t.id, name: t.name, display_name: t.name, manager_id: null } as any));
   const aggregate = (teamId: string) => {
     const t = teams.find(x => x.id === teamId);
     return t ? { ...emptyAggr, ...t.aggr } : emptyAggr;
   };
   const targetsFor = (teamId: string) => safeTargets(teams.find(x => x.id === teamId)?.targets ?? targets);
-  const teamNameFor = (t: any) => t.name;
 
   const monthFunnelSteps = useMemo(() => {
     const t = month?.totals || {};
@@ -177,14 +258,13 @@ export default function PublicDirectorCheckpoint() {
               </CardContent>
             </Card>
 
-            <DirectorFunnelCard
+            <DirectorSummaryCard
               title={`${director.name} — Semana ${format(weekStart, "dd/MM")} a ${format(weekEnd, "dd/MM")}`}
               aggr={totals}
               targets={targets}
-              teams={teamRows}
+              teams={teams}
               aggregate={aggregate}
               targetsFor={targetsFor}
-              teamNameFor={teamNameFor}
             />
 
             {/* Funil acumulado do mês — mesmo card do Daily */}
