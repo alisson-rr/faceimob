@@ -758,18 +758,32 @@ export default function DailyReport() {
                   </CardContent>
                 </Card>
 
-                {/* Funil visual do dia (declarado) */}
-                <VisualFunnel
-                  title="Funil do dia — declarado"
-                  subtitle="metas: 100 → 10% → 40% → 50%"
-                  accent="hsl(217 91% 60%)"
-                  steps={[
-                    { key: "leads",     label: "Leads",      value: totals.leads     || 0, targetPct: 100 },
-                    { key: "analises",  label: "Análises",   value: totals.analises  || 0, targetPct: 10 },
-                    { key: "aprovados", label: "Aprovações", value: totals.aprovados || 0, targetPct: 40 },
-                    { key: "vendas",    label: "Vendas",     value: totals.vendas    || 0, targetPct: 50 },
-                  ] as FunnelStep[]}
-                />
+                {/* Funis compactos: dia + mês */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <CompactFunnel
+                    title="Funil do dia — declarado"
+                    subtitle="metas: 100 → 10% → 40% → 50%"
+                    accent="hsl(217 91% 60%)"
+                    steps={[
+                      { key: "leads",     label: "Leads",      value: totals.leads     || 0, targetPct: 100 },
+                      { key: "analises",  label: "Análises",   value: totals.analises  || 0, targetPct: 10 },
+                      { key: "aprovados", label: "Aprovações", value: totals.aprovados || 0, targetPct: 40 },
+                      { key: "vendas",    label: "Vendas",     value: totals.vendas    || 0, targetPct: 50 },
+                    ] as FunnelStep[]}
+                  />
+                  <CompactFunnel
+                    title="Funil do mês — acumulado"
+                    subtitle="metas: 100 → 10% → 40% → 50%"
+                    accent="hsl(280 90% 65%)"
+                    steps={[
+                      { key: "leads",     label: "Leads",      value: monthTotals.leads     || 0, targetPct: 100 },
+                      { key: "analises",  label: "Análises",   value: monthTotals.analises  || 0, targetPct: 10 },
+                      { key: "aprovados", label: "Aprovações", value: monthTotals.aprovados || 0, targetPct: 40 },
+                      { key: "vendas",    label: "Vendas",     value: monthTotals.vendas    || 0, targetPct: 50 },
+                    ] as FunnelStep[]}
+                  />
+                </div>
+
 
                 {/* Totals + submit */}
                 <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
