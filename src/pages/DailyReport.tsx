@@ -229,6 +229,9 @@ export default function DailyReport() {
   }, [entries]);
 
   const xpEarned = totals.vendas * 100 + totals.aprovados * 40 + totals.analises * 10 + totals.leads;
+  const xpMonth = monthTotals.vendas * 100 + monthTotals.aprovados * 40 + monthTotals.analises * 10 + monthTotals.leads;
+  const xpDisplay = formOpen ? xpEarned : xpMonth;
+
 
   const emptyBrokers = useMemo(() => {
     return activeRoster.filter((b) => {
