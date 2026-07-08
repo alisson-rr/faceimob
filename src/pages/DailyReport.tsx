@@ -229,6 +229,9 @@ export default function DailyReport() {
   }, [entries]);
 
   const xpEarned = totals.vendas * 100 + totals.aprovados * 40 + totals.analises * 10 + totals.leads;
+  const xpMonth = monthTotals.vendas * 100 + monthTotals.aprovados * 40 + monthTotals.analises * 10 + monthTotals.leads;
+  const xpDisplay = formOpen ? xpEarned : xpMonth;
+
 
   const emptyBrokers = useMemo(() => {
     return activeRoster.filter((b) => {
@@ -367,16 +370,12 @@ export default function DailyReport() {
                   <CardContent className="p-3 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] uppercase text-muted-foreground">XP do checkpoint</p>
+                        <p className="text-[10px] uppercase text-muted-foreground">{formOpen ? "XP do checkpoint" : "XP do mês"}</p>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button type="button"><Info className="h-3 w-3 text-muted-foreground hover:text-yellow-400" /></button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                            <p className="font-bold mb-1">O que é o XP do checkpoint?</p>
-                            <p className="mb-2 text-muted-foreground">
-                              É a pontuação da sua equipe no dia. Cada ação da equipe soma XP e forma um placar visível para diretoria — quanto mais consistente o gerente registrar os checkpoints, maior o XP acumulado no mês e melhor a posição no ranking de gerentes.
-                            </p>
                             <p className="font-bold mb-1">Como é calculado:</p>
                             <ul className="space-y-0.5">
                               <li>• Venda = <b>100 XP</b></li>
@@ -384,12 +383,13 @@ export default function DailyReport() {
                               <li>• Análise enviada = <b>10 XP</b></li>
                               <li>• Lead recebido = <b>1 XP</b></li>
                             </ul>
-                            <p className="mt-2 text-[10px] text-muted-foreground">Incentivo: recompensa o gerente que mantém a equipe ativa e o pipeline avançando — não só vendas, mas cada passo do funil conta.</p>
+                            <p className="mt-2 text-[10px] text-muted-foreground">Fechado: mostra o acumulado do mês. Editando: mostra o XP do dia.</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
-                      <p className="text-xl font-black text-yellow-400">{xpEarned.toLocaleString()}</p>
+                      <p className="text-xl font-black text-yellow-400">{xpDisplay.toLocaleString()}</p>
                     </div>
+
                     <Trophy className="h-8 w-8 text-yellow-400" />
                   </CardContent>
                 </Card>
@@ -552,7 +552,18 @@ export default function DailyReport() {
             </Card>
 
 
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Users className="h-3 w-3" /> {activeRoster.length} corretor{activeRoster.length === 1 ? "" : "es"} ativo{activeRoster.length === 1 ? "" : "s"}
+                {roster.length !== activeRoster.length && <span className="text-rose-400 ml-1">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setManageOpen(true)} className="h-7 text-xs">
+                <Users className="h-3 w-3 mr-1" /> Gerenciar equipe do daily
+              </Button>
+            </div>
+
             {!formOpen ? (
+
               <Card className="border-primary/40 bg-gradient-to-br from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl">
                 <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
                   <Sparkles className="h-8 w-8 text-primary" />
