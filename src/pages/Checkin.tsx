@@ -27,7 +27,16 @@ export default function Checkin() {
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const OVERDUE_LIMIT = 20;
+
+  const incentives = [
+    "Boa! Agora é atacar cada lead como se fosse o próximo contrato assinado. 🚀",
+    "Check-in confirmado! Velocidade no primeiro contato = mais vendas. ⚡",
+    "Você está na fila! Atenda rápido, escute com atenção e conduza até a visita. 🏆",
+    "Bora! Cada lead tratado hoje é um passo a mais rumo à sua meta. 💪",
+  ];
+  const [incentive, setIncentive] = useState("");
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 30_000);
