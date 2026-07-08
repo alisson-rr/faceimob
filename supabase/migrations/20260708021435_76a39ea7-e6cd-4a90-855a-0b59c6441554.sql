@@ -1,0 +1,1 @@
+ALTER TABLE public.daily_broker_entries DROP CONSTRAINT IF EXISTS daily_broker_entries_broker_id_fkey;
