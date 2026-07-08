@@ -370,16 +370,12 @@ export default function DailyReport() {
                   <CardContent className="p-3 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] uppercase text-muted-foreground">XP do checkpoint</p>
+                        <p className="text-[10px] uppercase text-muted-foreground">{formOpen ? "XP do checkpoint" : "XP do mês"}</p>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button type="button"><Info className="h-3 w-3 text-muted-foreground hover:text-yellow-400" /></button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                            <p className="font-bold mb-1">O que é o XP do checkpoint?</p>
-                            <p className="mb-2 text-muted-foreground">
-                              É a pontuação da sua equipe no dia. Cada ação da equipe soma XP e forma um placar visível para diretoria — quanto mais consistente o gerente registrar os checkpoints, maior o XP acumulado no mês e melhor a posição no ranking de gerentes.
-                            </p>
                             <p className="font-bold mb-1">Como é calculado:</p>
                             <ul className="space-y-0.5">
                               <li>• Venda = <b>100 XP</b></li>
@@ -387,12 +383,13 @@ export default function DailyReport() {
                               <li>• Análise enviada = <b>10 XP</b></li>
                               <li>• Lead recebido = <b>1 XP</b></li>
                             </ul>
-                            <p className="mt-2 text-[10px] text-muted-foreground">Incentivo: recompensa o gerente que mantém a equipe ativa e o pipeline avançando — não só vendas, mas cada passo do funil conta.</p>
+                            <p className="mt-2 text-[10px] text-muted-foreground">Fechado: mostra o acumulado do mês. Editando: mostra o XP do dia.</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
-                      <p className="text-xl font-black text-yellow-400">{xpEarned.toLocaleString()}</p>
+                      <p className="text-xl font-black text-yellow-400">{xpDisplay.toLocaleString()}</p>
                     </div>
+
                     <Trophy className="h-8 w-8 text-yellow-400" />
                   </CardContent>
                 </Card>
