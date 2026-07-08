@@ -413,6 +413,19 @@ export default function DailyReport() {
               </TooltipProvider>
             </div>
 
+            {/* Funil do mês — sempre visível para acompanhamento */}
+            <CompactFunnel
+              title="Funil do mês — acumulado"
+              subtitle="metas: 100 → 10% → 40% → 50%"
+              accent="hsl(280 90% 65%)"
+              steps={[
+                { key: "leads",     label: "Leads",      value: monthTotals.leads     || 0, targetPct: 100 },
+                { key: "analises",  label: "Análises",   value: monthTotals.analises  || 0, targetPct: 10 },
+                { key: "aprovados", label: "Aprovações", value: monthTotals.aprovados || 0, targetPct: 40 },
+                { key: "vendas",    label: "Vendas",     value: monthTotals.vendas    || 0, targetPct: 50 },
+              ] as FunnelStep[]}
+            />
+
             {/* Funil IDEAL — 4 estágios 3D, compacto */}
             <div className="flex items-center gap-4 px-3 py-2 rounded-lg border border-border/40 bg-muted/10">
               <div className="flex items-center gap-1.5 shrink-0">
