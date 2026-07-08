@@ -66,6 +66,8 @@ export default function DailyReport() {
   const [manageOpen, setManageOpen] = useState(false);
   const [newBrokerName, setNewBrokerName] = useState("");
   const [rosterBusy, setRosterBusy] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+
 
   const yesterday = subDays(new Date(), 1);
   const todayStr = format(yesterday, "yyyy-MM-dd");
