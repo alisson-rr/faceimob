@@ -107,6 +107,70 @@ export function VisualFunnel({
   );
 }
 
+/** Funil compacto e denso: barras horizontais com meta e status colorido. */
+export function CompactFunnel({
+  title,
+  subtitle,
+  steps,
+  accent = "hsl(var(--primary))",
+}: {
+  title: string;
+  subtitle?: string;
+  steps: FunnelStep[];
+  accent?: string;
+}) {
+  const leads = steps.find((s) => s.key === "leads")?.value || 0;
+  return (
+    <Card className="border-border/60 overflow-hidden">
+      <CardHeader className="pb-1.5">
+        <CardTitle className="text-[11px] uppercase tracking-wider flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5"><Target className="h-3 w-3" style={{ color: accent }} />{title}</span>
+          {subtitle && <span className="text-[9px] text-muted-foreground normal-case font-normal">{subtitle}</span>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-2.5 pt-1 space-y-1.5">
+        {steps.map((s, i) => {
+          const prev = i === 0 ? s.value : steps[i - 1].value;
+          const stagePct = prev > 0 ? (s.value / prev) * 100 : 0;
+          const absPct = leads > 0 ? (s.value / leads) * 100 : 0;
+          const onTarget = i === 0 ? true : stagePct >= s.targetPct;
+          const barPct = Math.min(100, i === 0 ? 100 : stagePct);
+          const barCls = i === 0
+            ? "bg-gradient-to-r from-primary/70 to-primary"
+            : onTarget
+              ? "bg-gradient-to-r from-emerald-500 to-emerald-400"
+              : "bg-gradient-to-r from-rose-500 to-rose-400";
+          const pctCls = i === 0
+            ? "text-muted-foreground"
+            : onTarget ? "text-emerald-400" : "text-rose-400";
+          return (
+            <div key={s.key} className="flex items-center gap-2 text-[11px]">
+              <span className="w-20 font-semibold truncate">{s.label}</span>
+              <span className="w-8 text-right tabular-nums font-bold">{s.value}</span>
+              <div className="flex-1 h-2 rounded bg-muted/40 overflow-hidden relative">
+                {i > 0 && (
+                  <div className="absolute inset-y-0 border-r-2 border-dashed border-foreground/40"
+                       style={{ left: `${Math.min(100, s.targetPct)}%` }} title={`meta ${s.targetPct}%`} />
+                )}
+                <div className={cn("h-full transition-all", barCls)} style={{ width: `${barPct}%` }} />
+              </div>
+              <span className={cn("w-24 text-right tabular-nums text-[10px] font-semibold", pctCls)}>
+                {i === 0
+                  ? "base 100%"
+                  : `${stagePct.toFixed(0)}% / ${s.targetPct}%`}
+              </span>
+              <span className="hidden md:inline w-14 text-right tabular-nums text-[9px] text-muted-foreground">
+                {i === 0 ? "" : `${absPct.toFixed(1)}% topo`}
+              </span>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+
 /** Lista horizontal Ideal x Real por etapa. */
 export function StageComparisonList({ steps }: { steps: FunnelStep[] }) {
   return (
