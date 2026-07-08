@@ -105,7 +105,12 @@ export default function Checkin() {
         throw new Error(msg);
       }
       if ((data as any)?.error) throw new Error((data as any).error);
-      toast.success(act === "checkin" ? "Check-in realizado!" : "Check-out realizado!");
+      if (act === "checkin") {
+        setIncentive(incentives[Math.floor(Math.random() * incentives.length)]);
+        setConfirmOpen(true);
+      } else {
+        toast.success("Check-out realizado!");
+      }
       await load();
     } catch (e: any) {
       toast.error(e.message || "Erro");
