@@ -323,7 +323,7 @@ export default function DailyReport() {
     setSubmitting(true);
     const payload: any = {
       team_id: resolvedTeamId, pin: pin || undefined, report_date: date, filled_by_name: filledBy, notes: notes || null,
-      entries: activeRoster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })),
+      entries: roster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })).filter((e) => e.broker_id),
     };
     if (directorParam) payload.director_slug = directorParam;
 
