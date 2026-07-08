@@ -33,6 +33,22 @@ type TeamOut = {
 
 type MissingDay = { date: string; teams: { id: string; name: string; manager_name: string | null }[] };
 
+const slugify = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const safeTargets = (value: Partial<TeamOut["targets"]> | null | undefined) => ({
+  analise_enviada_pct: Number(value?.analise_enviada_pct) || 10,
+  aprovada_pct: Number(value?.aprovada_pct) || 40,
+  venda_pct: Number(value?.venda_pct) || 50,
+});
+
+const emptyAggr = { leads: 0, ligacoes: 0, coleta_docs: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
+
 export default function PublicDirectorCheckpoint() {
   const { slug = "" } = useParams<{ slug: string }>();
   const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -48,15 +64,24 @@ export default function PublicDirectorCheckpoint() {
     (async () => {
       setLoading(true); setError(null);
       const { data, error } = await supabase.functions.invoke("director-weekly", {
-        body: { slug, week_start: format(weekStart, "yyyy-MM-dd") },
+        body: { slug: slugify(slug), week_start: format(weekStart, "yyyy-MM-dd") },
       });
       if (error || (data as any)?.error) {
         setError((data as any)?.error || error?.message || "Erro ao carregar");
         setTeams([]); setDirector(null); setMonth(null);
       } else {
-        setDirector((data as any).director);
-        setTeams((data as any).teams || []);
-        setMonth((data as any).month || null);
+        const payload = (data as any) || {};
+        const safeTeams = Array.isArray(payload.teams) ? payload.teams.map((t: any) => ({
+          id: String(t.id || ""),
+          name: String(t.name || "Equipe"),
+          slug: slugify(String(t.slug || t.name || "equipe")),
+          manager_name: t.manager_name || null,
+          aggr: { ...emptyAggr, ...(t.aggr || {}) },
+          targets: safeTargets(t.targets),
+        })).filter((t: TeamOut) => t.id) : [];
+        setDirector(payload.director || null);
+        setTeams(safeTeams);
+        setMonth(payload.month || null);
       }
       setLoading(false);
     })();
@@ -68,14 +93,14 @@ export default function PublicDirectorCheckpoint() {
     return acc;
   }, [teams]);
 
-  const targets = teams[0]?.targets ?? { analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 };
+  const targets = safeTargets(teams[0]?.targets);
 
   const teamRows = teams.map(t => ({ id: t.id, name: t.name, display_name: t.name, manager_id: null } as any));
   const aggregate = (teamId: string) => {
     const t = teams.find(x => x.id === teamId);
-    return t ? { ...t.aggr } : { leads: 0, ligacoes: 0, coleta_docs: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
+    return t ? { ...emptyAggr, ...t.aggr } : emptyAggr;
   };
-  const targetsFor = (teamId: string) => teams.find(x => x.id === teamId)?.targets ?? targets;
+  const targetsFor = (teamId: string) => safeTargets(teams.find(x => x.id === teamId)?.targets ?? targets);
   const teamNameFor = (t: any) => t.name;
 
   const monthFunnelSteps = useMemo(() => {
