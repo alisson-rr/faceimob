@@ -187,6 +187,8 @@ export default function Equipes() {
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
   const managers = useMemo(() => rows.filter(r => r.role === "manager"), [rows]);
   const brokers = useMemo(() => rows.filter(r => r.role === "broker"), [rows]);
+  const ccas = useMemo(() => rows.filter(r => r.role === "cca"), [rows]);
+
 
   // "meu perfil": broker vinculado ao user logado
   const myBroker = useMemo(() => rows.find(r => r.user_id === user?.id) || null, [rows, user]);
