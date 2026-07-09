@@ -187,6 +187,8 @@ export default function Equipes() {
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
   const managers = useMemo(() => rows.filter(r => r.role === "manager"), [rows]);
   const brokers = useMemo(() => rows.filter(r => r.role === "broker"), [rows]);
+  const ccas = useMemo(() => rows.filter(r => r.role === "cca"), [rows]);
+
 
   // "meu perfil": broker vinculado ao user logado
   const myBroker = useMemo(() => rows.find(r => r.user_id === user?.id) || null, [rows, user]);
@@ -360,6 +362,8 @@ export default function Equipes() {
                         Meses restantes: <strong className="text-foreground">{monthsLeft}</strong> · Ritmo/mês: <strong className="text-foreground">{perMonthLeft.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong>
                       </p>
                     )}
+                    <CredLine id={d.id} />
+
                   </div>
                 );
               })}
@@ -462,6 +466,35 @@ export default function Equipes() {
           </Card>
         </div>
       )}
+
+      {/* CCAs */}
+      <Card className="border-amber-500/30">
+        <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm text-amber-400 flex items-center gap-2">
+            <Shield className="h-4 w-4" /> CCAs ({filter(ccas).length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+          {filter(ccas).map(c => (
+            <div key={c.id} className="p-2 rounded-lg border border-border/30 bg-amber-500/5 space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-xs font-bold text-amber-400">{initials(c.name)}</div>
+                <p className="text-xs font-medium flex-1 truncate">{c.name}</p>
+                {canEdit && (
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("broker", c)}>
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+              <CredLine id={c.id} />
+            </div>
+          ))}
+          {filter(ccas).length === 0 && (
+            <p className="text-xs text-muted-foreground col-span-full">Nenhum CCA cadastrado. Crie um perfil com função "cca" para gerenciar aqui.</p>
+          )}
+        </CardContent>
+      </Card>
+
 
       {/* Performance por Equipe */}
       <Card className="glass">
