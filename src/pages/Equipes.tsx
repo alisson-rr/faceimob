@@ -360,6 +360,8 @@ export default function Equipes() {
                         Meses restantes: <strong className="text-foreground">{monthsLeft}</strong> · Ritmo/mês: <strong className="text-foreground">{perMonthLeft.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong>
                       </p>
                     )}
+                    <CredLine id={d.id} />
+
                   </div>
                 );
               })}
