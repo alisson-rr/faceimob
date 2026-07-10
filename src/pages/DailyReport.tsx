@@ -774,20 +774,31 @@ export default function DailyReport() {
                         {roster.filter((b) => b.active !== false || showInactive).map((b) => {
                           const total = FIELDS.reduce((s, f) => s + (entries[b.broker_id]?.[f.key] || 0), 0);
                           const inactive = b.active === false;
+                          const bm = brokerMonth[b.broker_id];
+                          const isExp = !!expandedBroker[b.broker_id];
                           return (
+                            <div key={b.broker_id} className={inactive ? "opacity-40 grayscale bg-muted/10" : "hover:bg-primary/5"}>
                             <div
-                              key={b.broker_id}
-                              className={`grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px] ${inactive ? "opacity-40 grayscale bg-muted/10" : "hover:bg-primary/5"}`}
+                              className={`grid grid-cols-3 md:!grid gap-2 px-3 py-2 items-center transition md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]`}
                               title={inactive ? "Corretor desligado — histórico preservado, sem novas inserções" : undefined}
                             >
                               <div className="flex items-center gap-2 col-span-3 md:col-span-1 min-w-0">
                                 <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
                                   {b.broker_name.charAt(0).toUpperCase()}
                                 </div>
-                                <span className="text-xs font-medium truncate">
+                                <span className="text-xs font-medium truncate flex-1">
                                   {b.broker_name}
                                   {inactive && <span className="ml-1 text-[9px] uppercase text-rose-400">(desligado)</span>}
                                 </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedBroker((p) => ({ ...p, [b.broker_id]: !p[b.broker_id] }))}
+                                  className="text-[10px] px-1.5 py-0.5 rounded border border-primary/30 text-primary/90 hover:bg-primary/10 flex items-center gap-1 shrink-0"
+                                  title="Mostrar/ocultar totais do mês"
+                                >
+                                  <BarChart3 className="h-3 w-3" />
+                                  {isExp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                </button>
                               </div>
                               {FIELDS.map((f) => (
                                 <div key={f.key} className="flex flex-col md:block min-w-0">
@@ -806,6 +817,29 @@ export default function DailyReport() {
                                 </div>
                               ))}
                               <Badge variant="outline" className="text-[10px] justify-center col-span-3 md:col-span-1">Total {total}</Badge>
+                            </div>
+                            {isExp && (
+                              <div className="px-3 pb-2 -mt-1">
+                                <div className="rounded-md border border-primary/25 bg-primary/5 px-2 py-1.5">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[10px] uppercase tracking-wider text-primary/80 font-bold flex items-center gap-1">
+                                      <BarChart3 className="h-3 w-3" /> Totais do mês
+                                    </span>
+                                    <span className="text-[9px] text-muted-foreground">
+                                      {bm?.days_filled ? `${bm.days_filled} dia${bm.days_filled === 1 ? "" : "s"} preenchidos` : "sem lançamentos"}
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-4 md:grid-cols-8 gap-1">
+                                    {FIELDS.map((f) => (
+                                      <div key={f.key} className="text-center px-1 py-1 rounded bg-background/40 border border-border/30">
+                                        <p className={`text-[9px] uppercase ${f.color} truncate`}>{f.label}</p>
+                                        <p className="text-sm font-black">{bm?.[f.key] ?? 0}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             </div>
                           );
                         })}
