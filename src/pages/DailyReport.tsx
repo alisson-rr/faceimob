@@ -158,6 +158,16 @@ export default function DailyReport() {
       .map(d => format(d, "yyyy-MM-dd"))
       .filter(d => !filledSet.has(d));
     setMissingDays(missing);
+
+    // Per-broker month totals (hidden by default, revealed by button)
+    const { data: bData } = await supabase.rpc("get_daily_team_broker_month_summary" as any, { _team_id: tid });
+    const map: Record<string, Record<FieldKey, number> & { days_filled?: number }> = {};
+    const rows = ((bData as any)?.rows ?? []) as any[];
+    rows.forEach((r) => {
+      map[r.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: Number(r[f.key]) || 0 }), { days_filled: Number(r.days_filled) || 0 } as any);
+    });
+    setBrokerMonth(map);
+
     setLoadingMonth(false);
   };
 
