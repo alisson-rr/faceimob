@@ -69,6 +69,8 @@ export default function DailyReport() {
   const [rosterBusy, setRosterBusy] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Roster | null>(null);
+  const [brokerMonth, setBrokerMonth] = useState<Record<string, Record<FieldKey, number> & { days_filled?: number }>>({});
+  const [expandedBroker, setExpandedBroker] = useState<Record<string, boolean>>({});
 
 
   const yesterday = subDays(new Date(), 1);
