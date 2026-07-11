@@ -346,47 +346,104 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
           )}
 
           {tab === "anexos" && (
-            <div className="space-y-4">
+            <div className="space-y-3 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-success">Anexar Documentos</p>
-                <Badge variant="outline" className="text-[10px]">Ver Lista</Badge>
+                <Badge variant="outline" className="text-[10px]">Um arquivo por tipo de documento</Badge>
               </div>
-              <input ref={fileRef} type="file" multiple className="hidden" onChange={e => {
-                if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
-              }} />
-              <div
-                onClick={() => fileRef.current?.click()}
-                className="border-2 border-dashed border-success/50 bg-success/5 rounded-lg p-4 text-center cursor-pointer hover:bg-success/10 transition-colors"
-              >
-                <Upload className="h-6 w-6 mx-auto text-success mb-1" />
-                <p className="text-xs text-muted-foreground">Clique para anexar documentos</p>
-              </div>
-              {files.length > 0 && (
-                <div className="space-y-1">
-                  {files.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between bg-success/10 rounded px-3 py-1.5 text-xs">
-                      <span className="text-success truncate">{f.name}</span>
-                      <button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))} className="text-destructive hover:text-destructive/80 text-[10px]">Remove file</button>
+              <div className="space-y-2">
+                {DOC_SLOTS.map(slot => {
+                  const list = docFiles[slot.key] || [];
+                  return (
+                    <div key={slot.key} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <label className="text-[11px] font-semibold text-foreground flex-1">
+                          <span className="text-success mr-1">✓</span>{slot.label}
+                        </label>
+                        <input
+                          ref={el => (docRefs.current[slot.key] = el)}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={e => {
+                            if (e.target.files) {
+                              const arr = Array.from(e.target.files);
+                              setDocFiles(prev => ({ ...prev, [slot.key]: [...(prev[slot.key] || []), ...arr] }));
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[10px] gap-1"
+                          onClick={() => docRefs.current[slot.key]?.click()}
+                        >
+                          <Upload className="h-3 w-3" /> Anexar
+                        </Button>
+                      </div>
+                      {list.length > 0 ? (
+                        <div className="space-y-1">
+                          {list.map((f, i) => (
+                            <div key={i} className="flex items-center justify-between bg-success/10 rounded px-2 py-1 text-[10px]">
+                              <span className="text-success truncate flex items-center gap-1"><Paperclip className="h-3 w-3" />{f.name}</span>
+                              <button
+                                onClick={() => setDocFiles(prev => ({ ...prev, [slot.key]: (prev[slot.key] || []).filter((_, idx) => idx !== i) }))}
+                                className="text-destructive hover:text-destructive/80"
+                              >
+                                Remover
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground italic">Nenhum arquivo anexado</p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm">Baixar documentos</Button>
-                <Button variant="outline" size="sm">Ver Histórico</Button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {tab === "cca" && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              Informações do CCA serão exibidas aqui.
-            </div>
-          )}
-
-          {tab === "valores" && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              Valores contratados serão exibidos aqui.
+            <div className="space-y-4 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-primary">Aprovação CCA</p>
+                {!canEditCca && (
+                  <Badge variant="outline" className="text-[10px] text-warning border-warning/50">
+                    Somente CCA pode editar
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {CCA_FIELDS.map(f => (
+                  <div key={f.key}>
+                    <label className="text-[10px] text-muted-foreground font-bold uppercase">{f.label}</label>
+                    {f.type === "select" ? (
+                      <Select
+                        value={ccaData[f.key] || ""}
+                        onValueChange={v => canEditCca && setCcaData(p => ({ ...p, [f.key]: v }))}
+                        disabled={!canEditCca}
+                      >
+                        <SelectTrigger className={cn("mt-1 text-xs", !canEditCca && "opacity-60")}>
+                          <SelectValue placeholder="Escolher" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(f.options || []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={ccaData[f.key] || ""}
+                        onChange={e => canEditCca && setCcaData(p => ({ ...p, [f.key]: e.target.value }))}
+                        disabled={!canEditCca}
+                        placeholder={`Inserir ${f.label}`}
+                        className={cn("mt-1 text-xs", !canEditCca && "opacity-60")}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
