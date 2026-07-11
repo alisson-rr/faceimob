@@ -95,7 +95,7 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="glass-strong max-w-2xl max-h-[92vh] overflow-y-auto p-0">
+      <DialogContent className="glass-strong max-w-2xl max-h-[92vh] overflow-y-auto p-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-300 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-bottom-4">
         {/* Tabs */}
         <div className="flex items-center justify-between border-b border-border px-4 pt-4 pb-0">
           <div className="flex gap-4">
