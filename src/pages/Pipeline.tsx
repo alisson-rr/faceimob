@@ -976,11 +976,8 @@ export default function Pipeline() {
                               deal.days_in_pipeline > 14 ? "bg-yellow-500" : "bg-emerald-500";
                             return (
                               <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setDetailDeal(deal)}>
-                                <td className="p-0 text-center relative w-10">
+                                <td className="p-0 text-center relative w-3">
                                   <div className={cn("absolute left-0 top-0 bottom-0 w-1.5", stripeColor)} />
-                                  <button onClick={(e) => { e.stopPropagation(); openEditDeal(deal); }} className="text-primary hover:text-primary/80 ml-1.5 p-2">
-                                    <ArrowRightCircle className="h-4 w-4" />
-                                  </button>
                                 </td>
                                 <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
                                 <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold text-white", getDeveloperColor(deal.developer))}>{deal.developer.toUpperCase().slice(0, 10)}</span></td>

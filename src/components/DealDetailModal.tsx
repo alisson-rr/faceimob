@@ -25,15 +25,48 @@ const statusOptions = [
   "PROPOSTA", "VIROU NEGÓCIO", "OFF", "DISTRATO", "VENDA"
 ];
 
+const DOC_SLOTS: { key: string; label: string }[] = [
+  { key: "rg_cpf", label: "RG com CPF (< 10 anos) ou CNH" },
+  { key: "estado_civil", label: "Comprovante de Estado Civil" },
+  { key: "endereco", label: "Comprovante de Endereço (do mês)" },
+  { key: "ctps", label: "Carteira de Trabalho (CTPS Digital)" },
+  { key: "contracheques", label: "3 Últimos Contracheques" },
+  { key: "fgts", label: "Extrato de FGTS Atualizado" },
+  { key: "dependente", label: "Certidão de Nascimento do Dependente" },
+  { key: "ir", label: "Imposto de Renda (Corpo + Recibo + Protocolo)" },
+  { key: "outros", label: "Outros" },
+];
+
+const CCA_FIELDS: { key: string; label: string; type?: "select"; options?: string[] }[] = [
+  { key: "tabela", label: "Tabela", type: "select", options: ["Escolher", "Tabela 1", "Tabela 2"] },
+  { key: "fator", label: "Fator", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "cotista", label: "Cotista", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "fgts_futuro", label: "FGTS Futuro", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "fgts", label: "FGTS", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "valor_fgts", label: "Valor FGTS" },
+  { key: "valor_fgts_futuro", label: "Valor FGTS Futuro" },
+  { key: "valor_avaliacao", label: "Valor de Avaliação" },
+  { key: "valor_compra_venda", label: "Valor de Compra e Venda" },
+  { key: "financiamento_aprovado", label: "Financiamento Aprovado" },
+  { key: "subsidio_federal", label: "Subsídio Federal" },
+  { key: "subsidio_estadual", label: "Subsídio Estadual" },
+  { key: "referencia_cch", label: "Referência CCH Análise" },
+  { key: "renda_aprovada", label: "Renda Aprovada" },
+  { key: "parcela_aprovada", label: "Parcela Aprovada" },
+  { key: "prazo", label: "Prazo" },
+];
+
 export default function DealDetailModal({ deal, open, onClose, onSave }: Props) {
   const { role } = useAuth();
-  const [tab, setTab] = useState<"detalhes" | "anexos" | "cca" | "valores">("detalhes");
+  const [tab, setTab] = useState<"detalhes" | "anexos" | "cca">("detalhes");
   const [form, setForm] = useState<PipelineDeal>({ ...deal });
   const [newNote, setNewNote] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [docFiles, setDocFiles] = useState<Record<string, File[]>>({});
+  const [ccaData, setCcaData] = useState<Record<string, string>>({});
+  const docRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const isAdmin = role === "admin";
+  const canEditCca = role === "cca" || role === "admin";
 
   const set = (key: keyof PipelineDeal, val: any) => setForm(p => ({ ...p, [key]: val }));
 
@@ -41,7 +74,7 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
     if (!newNote.trim()) return;
     const entry: DealHistoryEntry = {
       id: String(Date.now()),
-      user_name: "Usuário Atual", // TODO: real user
+      user_name: "Usuário Atual",
       text: newNote.trim(),
       timestamp: new Date().toISOString(),
     };
@@ -58,12 +91,11 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
     { key: "detalhes" as const, label: "Detalhes" },
     { key: "anexos" as const, label: "Anexos" },
     { key: "cca" as const, label: "CCA" },
-    { key: "valores" as const, label: "Valores Contratados" },
   ];
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="glass-strong max-w-2xl max-h-[92vh] overflow-y-auto p-0">
+      <DialogContent className="glass-strong max-w-2xl max-h-[92vh] overflow-y-auto p-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-300 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-bottom-4">
         {/* Tabs */}
         <div className="flex items-center justify-between border-b border-border px-4 pt-4 pb-0">
           <div className="flex gap-4">
@@ -314,47 +346,104 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
           )}
 
           {tab === "anexos" && (
-            <div className="space-y-4">
+            <div className="space-y-3 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-success">Anexar Documentos</p>
-                <Badge variant="outline" className="text-[10px]">Ver Lista</Badge>
+                <Badge variant="outline" className="text-[10px]">Um arquivo por tipo de documento</Badge>
               </div>
-              <input ref={fileRef} type="file" multiple className="hidden" onChange={e => {
-                if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
-              }} />
-              <div
-                onClick={() => fileRef.current?.click()}
-                className="border-2 border-dashed border-success/50 bg-success/5 rounded-lg p-4 text-center cursor-pointer hover:bg-success/10 transition-colors"
-              >
-                <Upload className="h-6 w-6 mx-auto text-success mb-1" />
-                <p className="text-xs text-muted-foreground">Clique para anexar documentos</p>
-              </div>
-              {files.length > 0 && (
-                <div className="space-y-1">
-                  {files.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between bg-success/10 rounded px-3 py-1.5 text-xs">
-                      <span className="text-success truncate">{f.name}</span>
-                      <button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))} className="text-destructive hover:text-destructive/80 text-[10px]">Remove file</button>
+              <div className="space-y-2">
+                {DOC_SLOTS.map(slot => {
+                  const list = docFiles[slot.key] || [];
+                  return (
+                    <div key={slot.key} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <label className="text-[11px] font-semibold text-foreground flex-1">
+                          <span className="text-success mr-1">✓</span>{slot.label}
+                        </label>
+                        <input
+                          ref={el => (docRefs.current[slot.key] = el)}
+                          type="file"
+                          multiple
+                          className="hidden"
+                          onChange={e => {
+                            if (e.target.files) {
+                              const arr = Array.from(e.target.files);
+                              setDocFiles(prev => ({ ...prev, [slot.key]: [...(prev[slot.key] || []), ...arr] }));
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[10px] gap-1"
+                          onClick={() => docRefs.current[slot.key]?.click()}
+                        >
+                          <Upload className="h-3 w-3" /> Anexar
+                        </Button>
+                      </div>
+                      {list.length > 0 ? (
+                        <div className="space-y-1">
+                          {list.map((f, i) => (
+                            <div key={i} className="flex items-center justify-between bg-success/10 rounded px-2 py-1 text-[10px]">
+                              <span className="text-success truncate flex items-center gap-1"><Paperclip className="h-3 w-3" />{f.name}</span>
+                              <button
+                                onClick={() => setDocFiles(prev => ({ ...prev, [slot.key]: (prev[slot.key] || []).filter((_, idx) => idx !== i) }))}
+                                className="text-destructive hover:text-destructive/80"
+                              >
+                                Remover
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground italic">Nenhum arquivo anexado</p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm">Baixar documentos</Button>
-                <Button variant="outline" size="sm">Ver Histórico</Button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {tab === "cca" && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              Informações do CCA serão exibidas aqui.
-            </div>
-          )}
-
-          {tab === "valores" && (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              Valores contratados serão exibidos aqui.
+            <div className="space-y-4 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-primary">Aprovação CCA</p>
+                {!canEditCca && (
+                  <Badge variant="outline" className="text-[10px] text-warning border-warning/50">
+                    Somente CCA pode editar
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {CCA_FIELDS.map(f => (
+                  <div key={f.key}>
+                    <label className="text-[10px] text-muted-foreground font-bold uppercase">{f.label}</label>
+                    {f.type === "select" ? (
+                      <Select
+                        value={ccaData[f.key] || ""}
+                        onValueChange={v => canEditCca && setCcaData(p => ({ ...p, [f.key]: v }))}
+                        disabled={!canEditCca}
+                      >
+                        <SelectTrigger className={cn("mt-1 text-xs", !canEditCca && "opacity-60")}>
+                          <SelectValue placeholder="Escolher" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(f.options || []).map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={ccaData[f.key] || ""}
+                        onChange={e => canEditCca && setCcaData(p => ({ ...p, [f.key]: e.target.value }))}
+                        disabled={!canEditCca}
+                        placeholder={`Inserir ${f.label}`}
+                        className={cn("mt-1 text-xs", !canEditCca && "opacity-60")}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
