@@ -25,15 +25,48 @@ const statusOptions = [
   "PROPOSTA", "VIROU NEGÓCIO", "OFF", "DISTRATO", "VENDA"
 ];
 
+const DOC_SLOTS: { key: string; label: string }[] = [
+  { key: "rg_cpf", label: "RG com CPF (< 10 anos) ou CNH" },
+  { key: "estado_civil", label: "Comprovante de Estado Civil" },
+  { key: "endereco", label: "Comprovante de Endereço (do mês)" },
+  { key: "ctps", label: "Carteira de Trabalho (CTPS Digital)" },
+  { key: "contracheques", label: "3 Últimos Contracheques" },
+  { key: "fgts", label: "Extrato de FGTS Atualizado" },
+  { key: "dependente", label: "Certidão de Nascimento do Dependente" },
+  { key: "ir", label: "Imposto de Renda (Corpo + Recibo + Protocolo)" },
+  { key: "outros", label: "Outros" },
+];
+
+const CCA_FIELDS: { key: string; label: string; type?: "select"; options?: string[] }[] = [
+  { key: "tabela", label: "Tabela", type: "select", options: ["Escolher", "Tabela 1", "Tabela 2"] },
+  { key: "fator", label: "Fator", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "cotista", label: "Cotista", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "fgts_futuro", label: "FGTS Futuro", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "fgts", label: "FGTS", type: "select", options: ["Escolher", "Sim", "Não"] },
+  { key: "valor_fgts", label: "Valor FGTS" },
+  { key: "valor_fgts_futuro", label: "Valor FGTS Futuro" },
+  { key: "valor_avaliacao", label: "Valor de Avaliação" },
+  { key: "valor_compra_venda", label: "Valor de Compra e Venda" },
+  { key: "financiamento_aprovado", label: "Financiamento Aprovado" },
+  { key: "subsidio_federal", label: "Subsídio Federal" },
+  { key: "subsidio_estadual", label: "Subsídio Estadual" },
+  { key: "referencia_cch", label: "Referência CCH Análise" },
+  { key: "renda_aprovada", label: "Renda Aprovada" },
+  { key: "parcela_aprovada", label: "Parcela Aprovada" },
+  { key: "prazo", label: "Prazo" },
+];
+
 export default function DealDetailModal({ deal, open, onClose, onSave }: Props) {
   const { role } = useAuth();
-  const [tab, setTab] = useState<"detalhes" | "anexos" | "cca" | "valores">("detalhes");
+  const [tab, setTab] = useState<"detalhes" | "anexos" | "cca">("detalhes");
   const [form, setForm] = useState<PipelineDeal>({ ...deal });
   const [newNote, setNewNote] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [docFiles, setDocFiles] = useState<Record<string, File[]>>({});
+  const [ccaData, setCcaData] = useState<Record<string, string>>({});
+  const docRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const isAdmin = role === "admin";
+  const canEditCca = role === "cca" || role === "admin";
 
   const set = (key: keyof PipelineDeal, val: any) => setForm(p => ({ ...p, [key]: val }));
 
@@ -41,7 +74,7 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
     if (!newNote.trim()) return;
     const entry: DealHistoryEntry = {
       id: String(Date.now()),
-      user_name: "Usuário Atual", // TODO: real user
+      user_name: "Usuário Atual",
       text: newNote.trim(),
       timestamp: new Date().toISOString(),
     };
@@ -58,7 +91,6 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
     { key: "detalhes" as const, label: "Detalhes" },
     { key: "anexos" as const, label: "Anexos" },
     { key: "cca" as const, label: "CCA" },
-    { key: "valores" as const, label: "Valores Contratados" },
   ];
 
   return (
