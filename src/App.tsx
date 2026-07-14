@@ -29,6 +29,7 @@ import AdminAllowedIps from "@/pages/AdminAllowedIps";
 import MetaAdsSetup from "@/pages/MetaAdsSetup";
 import AdminLeadAutomation from "@/pages/AdminLeadAutomation";
 import PublicDirectorCheckpoint from "@/pages/PublicDirectorCheckpoint";
+import SdrModule from "@/pages/SdrModule";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -82,6 +83,7 @@ const App = () => (
               <Route path="/admin/lead-automation" element={<AdminLeadAutomation />} />
               <Route path="/admin/daily-bi" element={<Navigate to="/checkpoint" replace />} />
               <Route path="/gamification" element={<Gamification />} />
+              <Route path="/sdr" element={<SdrModule />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
