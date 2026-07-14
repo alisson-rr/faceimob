@@ -1190,6 +1190,328 @@ export type Database = {
         }
         Relationships: []
       }
+      sdr_agents: {
+        Row: {
+          active: boolean
+          created_at: string
+          handoff_to_agent_id: string | null
+          id: string
+          is_orchestrator: boolean
+          model: string | null
+          name: string
+          provider: string | null
+          role: string
+          system_prompt: string | null
+          temperature: number | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          handoff_to_agent_id?: string | null
+          id?: string
+          is_orchestrator?: boolean
+          model?: string | null
+          name: string
+          provider?: string | null
+          role?: string
+          system_prompt?: string | null
+          temperature?: number | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          handoff_to_agent_id?: string | null
+          id?: string
+          is_orchestrator?: boolean
+          model?: string | null
+          name?: string
+          provider?: string | null
+          role?: string
+          system_prompt?: string | null
+          temperature?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sdr_agents_handoff_to_agent_id_fkey"
+            columns: ["handoff_to_agent_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sdr_conversations: {
+        Row: {
+          agent_id: string | null
+          channel: string | null
+          contact_id: string | null
+          created_at: string
+          handed_off_to_broker_id: string | null
+          id: string
+          lead_id: string | null
+          meta: Json | null
+          status: string
+          temperature: string | null
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          channel?: string | null
+          contact_id?: string | null
+          created_at?: string
+          handed_off_to_broker_id?: string | null
+          id?: string
+          lead_id?: string | null
+          meta?: Json | null
+          status?: string
+          temperature?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          channel?: string | null
+          contact_id?: string | null
+          created_at?: string
+          handed_off_to_broker_id?: string | null
+          id?: string
+          lead_id?: string | null
+          meta?: Json | null
+          status?: string
+          temperature?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sdr_conversations_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sdr_lead_sources: {
+        Row: {
+          active: boolean
+          agent_id: string | null
+          created_at: string
+          form_id: string | null
+          id: string
+          label: string
+          source_match: string | null
+        }
+        Insert: {
+          active?: boolean
+          agent_id?: string | null
+          created_at?: string
+          form_id?: string | null
+          id?: string
+          label: string
+          source_match?: string | null
+        }
+        Update: {
+          active?: boolean
+          agent_id?: string | null
+          created_at?: string
+          form_id?: string | null
+          id?: string
+          label?: string
+          source_match?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sdr_lead_sources_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sdr_messages: {
+        Row: {
+          agent_id: string | null
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          role: string
+          tokens_in: number | null
+          tokens_out: number | null
+        }
+        Insert: {
+          agent_id?: string | null
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          role: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+        }
+        Update: {
+          agent_id?: string | null
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sdr_messages_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sdr_remarketing_contacts: {
+        Row: {
+          campaign: string | null
+          created_at: string
+          error: string | null
+          extra: Json | null
+          id: string
+          list_id: string
+          name: string | null
+          phone: string
+          replied_at: string | null
+          send_status: string
+          sent_at: string | null
+        }
+        Insert: {
+          campaign?: string | null
+          created_at?: string
+          error?: string | null
+          extra?: Json | null
+          id?: string
+          list_id: string
+          name?: string | null
+          phone: string
+          replied_at?: string | null
+          send_status?: string
+          sent_at?: string | null
+        }
+        Update: {
+          campaign?: string | null
+          created_at?: string
+          error?: string | null
+          extra?: Json | null
+          id?: string
+          list_id?: string
+          name?: string | null
+          phone?: string
+          replied_at?: string | null
+          send_status?: string
+          sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sdr_remarketing_contacts_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_remarketing_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sdr_remarketing_lists: {
+        Row: {
+          agent_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          status: string
+          template_language: string | null
+          template_name: string | null
+          total_contacts: number | null
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          status?: string
+          template_language?: string | null
+          template_name?: string | null
+          total_contacts?: number | null
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string
+          template_language?: string | null
+          template_name?: string | null
+          total_contacts?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sdr_remarketing_lists_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sdr_whatsapp_config: {
+        Row: {
+          active: boolean
+          business_account_id: string | null
+          default_template_language: string | null
+          default_template_name: string | null
+          id: boolean
+          phone_number_id: string | null
+          updated_at: string
+          webhook_verify_token: string | null
+        }
+        Insert: {
+          active?: boolean
+          business_account_id?: string | null
+          default_template_language?: string | null
+          default_template_name?: string | null
+          id?: boolean
+          phone_number_id?: string | null
+          updated_at?: string
+          webhook_verify_token?: string | null
+        }
+        Update: {
+          active?: boolean
+          business_account_id?: string | null
+          default_template_language?: string | null
+          default_template_name?: string | null
+          id?: boolean
+          phone_number_id?: string | null
+          updated_at?: string
+          webhook_verify_token?: string | null
+        }
+        Relationships: []
+      }
       stage_permissions: {
         Row: {
           can_edit: boolean
