@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, GitBranch, Users, UserPlus, Megaphone,
   UserCircle, Database, Settings, LogOut, Link2, Sun, Moon,
-  CreditCard, Shield, Building2, UsersRound, Trophy, Swords, KeyRound, Target, LogIn, Globe, TrendingUp, Zap,
+  CreditCard, Shield, Building2, UsersRound, Trophy, Swords, KeyRound, Target, LogIn, Globe, TrendingUp, Zap, Bot,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -29,6 +29,7 @@ const mainNav = [
   { title: "Resultados", url: "/resultados", icon: TrendingUp, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Checkpoint", url: "/checkpoint", icon: Target, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Check-in", url: "/checkin", icon: LogIn, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "SDR IA", url: "/sdr", icon: Bot, roles: ['admin', 'partner', 'director', 'manager'] },
 ];
 
 const adminNav = [
