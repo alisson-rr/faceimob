@@ -29,6 +29,7 @@ const mainNav = [
   { title: "Resultados", url: "/resultados", icon: TrendingUp, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Checkpoint", url: "/checkpoint", icon: Target, roles: ['admin', 'partner', 'director', 'manager'] },
   { title: "Check-in", url: "/checkin", icon: LogIn, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
+  { title: "SDR IA", url: "/sdr", icon: Bot, roles: ['admin', 'partner', 'director', 'manager'] },
 ];
 
 const adminNav = [
