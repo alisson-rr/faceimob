@@ -33,9 +33,14 @@ import SdrModule from "@/pages/SdrModule";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+const bypassAuth = import.meta.env.DEV;
 
 function RequireAuth() {
   const { session, loading } = useAuth();
+
+  if (bypassAuth) {
+    return <AppLayout />;
+  }
 
   if (loading) {
     return <div className="min-h-screen grid place-items-center bg-background text-sm text-muted-foreground">Carregando...</div>;
