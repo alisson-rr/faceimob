@@ -63,14 +63,19 @@ on conflict (code) do nothing;
 -- Estágios do CCA (configuráveis pela tela do CCA, como os do pipeline)
 -- -----------------------------------------------------------------------------
 insert into public.cca_stages (name, color, position, status)
-values
-  ('Pendência de Documentos', '#f87171', 1, 'pending_documents'),
-  ('Em Análise',              '#fbbf24', 2, 'under_review'),
-  ('Enviado à Construtora',   '#818cf8', 3, 'sent_to_developer'),
-  ('Enviado à Agência',       '#22d3ee', 4, 'sent_to_agency'),
-  ('Aprovado',                '#34d399', 5, 'approved'),
-  ('Reprovado',               '#f43f5e', 6, 'rejected')
-on conflict do nothing;
+select v.name, v.color, v.position, v.status::cca_status
+from (
+  values
+    ('Pendência de Documentos', '#f87171', 1, 'pending_documents'),
+    ('Em Análise',              '#fbbf24', 2, 'under_review'),
+    ('Enviado à Construtora',   '#818cf8', 3, 'sent_to_developer'),
+    ('Enviado à Agência',       '#22d3ee', 4, 'sent_to_agency'),
+    ('Aprovado',                '#34d399', 5, 'approved'),
+    ('Reprovado',               '#f43f5e', 6, 'rejected')
+) as v(name, color, position, status)
+where not exists (
+  select 1 from public.cca_stages cs where cs.status = v.status::cca_status
+);
 
 -- -----------------------------------------------------------------------------
 -- Turnos — "três turnos diários, com janelas de atendimento configuráveis".

@@ -8,11 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { KeyRound, Link2, Copy, Plus, RefreshCw, Eye, EyeOff, Users, ShieldCheck, Globe, ExternalLink } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
+import { listPeople } from "@/integrations/supabase/newSchema";
 
-async function sha256(input: string) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 const randomPin = () => Math.floor(100000 + Math.random() * 900000).toString();
 const slugify = (s: string) =>
   s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -23,22 +20,24 @@ export default function AdminDailyTeams() {
   const qc = useQueryClient();
   const [newTeam, setNewTeam] = useState("");
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const [generatedPins, setGeneratedPins] = useState<Record<string, string>>({});
 
   const { data: teams } = useQuery({
     queryKey: ["daily-teams"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("teams")
-        .select("id, name, display_name, team_pins(active, pin_plain)")
-        .order("name");
-      return data ?? [];
+      const [{ data: teamRows }, { data: linkRows }] = await Promise.all([
+        (supabase as any).from("teams").select("id,name,active").order("name"),
+        (supabase as any).from("public_links").select("id,team_id,slug,active,pin_hash").eq("kind", "daily_team"),
+      ]);
+      const links = new Map(((linkRows as any[]) || []).map(link => [link.team_id, link]));
+      return ((teamRows as any[]) || []).map(team => ({ ...team, public_link: links.get(team.id) || null }));
     },
   });
 
   const { data: ips } = useQuery({
     queryKey: ["allowed-ips-mini"],
     queryFn: async () => {
-      const { data } = await supabase.from("allowed_ips").select("id, ip, label, active").order("created_at", { ascending: false });
+      const { data } = await (supabase as any).from("allowed_ips").select("id,ip_range,label,active").order("created_at", { ascending: false });
       return data ?? [];
     },
   });
@@ -46,13 +45,31 @@ export default function AdminDailyTeams() {
   const { data: directors } = useQuery({
     queryKey: ["directors-public-links"],
     queryFn: async () => {
-      const { data } = await supabase.from("brokers").select("id,name").eq("role", "director").eq("active", true).order("name");
-      return data ?? [];
+      const people = await listPeople();
+      const directors = people.filter(person => person.active && person.roles.includes("director"));
+      const { data: links } = await (supabase as any).from("public_links")
+        .select("id,director_id,slug").eq("kind", "director_checkpoint");
+      const byDirector = new Map(((links as any[]) || []).map(link => [link.director_id, link]));
+      const result = [];
+      for (const director of directors) {
+        let link = byDirector.get(director.id);
+        if (!link) {
+          const { data } = await (supabase as any).from("public_links").insert({
+            kind: "director_checkpoint",
+            director_id: director.id,
+            slug: `diretor-${managerSlug(director.name)}`,
+            active: true,
+          }).select("id,director_id,slug").single();
+          link = data;
+        }
+        result.push({ ...director, public_slug: link?.slug || `diretor-${managerSlug(director.name)}` });
+      }
+      return result;
     },
   });
 
   const activeIps = (ips ?? []).filter((r: any) => r.active).length;
-  const withPin = (teams ?? []).filter((t: any) => (Array.isArray(t.team_pins) ? t.team_pins[0]?.active : t.team_pins?.active)).length;
+  const withPin = (teams ?? []).filter((t: any) => t.public_link?.active && t.public_link?.pin_hash).length;
 
   const createTeam = async () => {
     if (!newTeam.trim()) return;
@@ -65,18 +82,28 @@ export default function AdminDailyTeams() {
 
   const regeneratePin = async (teamId: string) => {
     const pin = randomPin();
-    const pin_hash = await sha256(pin);
-    const { error } = await supabase
-      .from("team_pins")
-      .upsert({ team_id: teamId, pin_hash, pin_plain: pin, active: true }, { onConflict: "team_id" });
+    const team = (teams ?? []).find((row: any) => row.id === teamId) as any;
+    let linkId = team?.public_link?.id;
+    if (!linkId) {
+      const { data, error } = await (supabase as any).from("public_links").insert({
+        kind: "daily_team",
+        team_id: teamId,
+        slug: managerSlug(team?.name || teamId),
+        active: true,
+      }).select("id").single();
+      if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+      linkId = data.id;
+    }
+    const { error } = await (supabase as any).rpc("set_public_link_pin", { p_link_id: linkId, p_pin: pin });
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    setGeneratedPins(prev => ({ ...prev, [teamId]: pin }));
     setRevealed((prev) => ({ ...prev, [teamId]: true }));
     toast({ title: "PIN gerado", description: pin });
     qc.invalidateQueries({ queryKey: ["daily-teams"] });
   };
 
-  const linkFor = (t: any) => `${DAILY_PUBLIC_ORIGIN}/daily/${managerSlug(t.display_name || t.name)}?v=public`;
-  const adminLinkFor = (t: any) => `${window.location.origin}/daily/${managerSlug(t.display_name || t.name)}?admin=1`;
+  const linkFor = (t: any) => `${DAILY_PUBLIC_ORIGIN}/daily/${t.public_link?.slug || managerSlug(t.name)}?v=public`;
+  const adminLinkFor = (t: any) => `${window.location.origin}/daily/${t.public_link?.slug || managerSlug(t.name)}`;
   const copy = (text: string, label = "Link") => {
     navigator.clipboard.writeText(text);
     toast({ title: `${label} copiado` });
@@ -110,16 +137,15 @@ export default function AdminDailyTeams() {
       <Card className="border-border/50">
         <CardContent className="p-0 divide-y divide-border/40">
           {(teams ?? []).map((t: any) => {
-            const pinRow = Array.isArray(t.team_pins) ? t.team_pins[0] : t.team_pins;
-            const hasPin = !!pinRow?.active;
-            const plain: string | null = pinRow?.pin_plain ?? null;
+            const hasPin = !!t.public_link?.active && !!t.public_link?.pin_hash;
+            const plain: string | null = generatedPins[t.id] ?? null;
             const isShown = revealed[t.id];
             const link = linkFor(t);
             return (
               <div key={t.id} className="flex items-center gap-2 px-3 py-2 hover:bg-primary/5">
                 <div className="min-w-0 w-48">
                   <p className="text-xs font-semibold truncate">{t.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{managerSlug(t.display_name || t.name)}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{t.public_link?.slug || managerSlug(t.name)}</p>
                 </div>
 
                 <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[10px] font-mono bg-muted/30 rounded px-2 py-1">
@@ -134,7 +160,7 @@ export default function AdminDailyTeams() {
                   <Badge variant={hasPin ? "default" : "outline"} className="text-[9px] h-4 px-1">
                     {hasPin ? "PIN" : "Sem PIN"}
                   </Badge>
-                  {hasPin && plain && (
+                  {plain && (
                     <>
                       <span className="font-mono text-xs tracking-widest">{isShown ? plain : "••••••"}</span>
                       <button onClick={() => setRevealed((p) => ({ ...p, [t.id]: !isShown }))} className="hover:text-primary" title={isShown ? "Ocultar" : "Mostrar"}>
@@ -170,7 +196,7 @@ export default function AdminDailyTeams() {
           </div>
           <div className="divide-y divide-border/40">
             {(directors ?? []).map((d: any) => {
-              const dlink = `${DAILY_PUBLIC_ORIGIN}/diretor/${managerSlug(d.name)}`;
+              const dlink = `${DAILY_PUBLIC_ORIGIN}/diretor/${d.public_slug}`;
               return (
                 <div key={d.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
                   <div className="w-48 truncate font-semibold">{d.name}</div>
@@ -204,7 +230,7 @@ export default function AdminDailyTeams() {
           <div className="divide-y divide-border/40">
             {(ips ?? []).slice(0, 6).map((r: any) => (
               <div key={r.id} className="flex items-center gap-2 px-3 py-1.5 text-[11px]">
-                <code className="font-mono">{r.ip}</code>
+                <code className="font-mono">{r.ip_range}</code>
                 <span className="text-muted-foreground truncate flex-1">{r.label || "—"}</span>
                 <Badge variant={r.active ? "default" : "secondary"} className="text-[9px] h-4 px-1">{r.active ? "ativo" : "inativo"}</Badge>
               </div>

@@ -11,12 +11,12 @@ import { Label } from '@/components/ui/label';
 import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { mockBrokers as fallbackBrokers, mockDeals as fallbackDeals, mockManagers as fallbackManagers } from '@/data/mockData';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useCallback } from 'react';
 import { PipelineDeal, Broker } from '@/types/crm';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format } from 'date-fns';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
+import { listLegacyDeals, listPeople } from '@/integrations/supabase/newSchema';
 
 // Default scoring weights based on pipeline movements
 const DEFAULT_SCORING = {
@@ -131,40 +131,24 @@ export default function Gamification() {
   const fetchRealData = useCallback(async () => {
     setLoading(true);
     try {
-      const [brokersRes, dealsRes] = await Promise.all([
-        supabase.from('brokers').select('id,name,active,user_id,manager_id,director_id').order('name'),
-        supabase.from('deals').select(`
-          *,
-          broker1:brokers!deals_broker1_id_fkey(name),
-          broker2:brokers!deals_broker2_id_fkey(name),
-          manager1:brokers!deals_manager1_id_fkey(name),
-          manager2:brokers!deals_manager2_id_fkey(name)
-        `)
+      const [people, dealRows] = await Promise.all([
+        listPeople(),
+        listLegacyDeals(),
       ]);
 
-      if (brokersRes.error) throw brokersRes.error;
-      if (dealsRes.error) throw dealsRes.error;
-
-      const mappedBrokers: Broker[] = (brokersRes.data || []).map(b => ({
-        id: b.id,
-        name: b.name,
-        active: true,
+      const mappedBrokers: Broker[] = people
+        .filter((person) => person.roles.includes("broker"))
+        .map((person) => ({
+        id: person.id,
+        name: person.name,
+        active: person.active,
         monthly_sales: 0,
         monthly_vgv: 0,
-        team: 'Default'
+        team: person.team,
       }));
 
-      const mappedDeals: PipelineDeal[] = (dealsRes.data || []).map(d => ({
-        ...d,
-        broker1: (d.broker1 as any)?.name || '',
-        broker2: (d.broker2 as any)?.name || undefined,
-        manager1: (d.manager1 as any)?.name || '',
-        manager2: (d.manager2 as any)?.name || undefined,
-        days_in_pipeline: differenceInDays(new Date(), parseISO(d.created_at || new Date().toISOString())),
-      })) as any[];
-
       setBrokers(mappedBrokers);
-      setDeals(mappedDeals);
+      setDeals(dealRows);
     } catch (error) {
       console.error('Error fetching game data:', error);
       toast({ title: "Erro ao carregar dados do Game", variant: "destructive" });

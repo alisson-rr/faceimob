@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 
       // ⏸️ Pausa global: se ativado no admin, ignora todos os leads recebidos.
       const { data: settings } = await supabase
-        .from('lead_automation_settings')
+        .from('automation_settings')
         .select('leads_paused')
         .eq('id', true)
         .maybeSingle()
@@ -147,21 +147,23 @@ Deno.serve(async (req) => {
             const fallbackName = fields['email']?.split('@')[0] || fields['phone_number'] || `Lead ${v.leadgen_id || ''}`.trim()
 
             leads.push({
-              name: fullName || firstName || fallbackName,
+              full_name: fullName || firstName || fallbackName,
               phone: fields['phone_number'] || fields['telefone'] || fields['phone'] || '',
-              whatsapp: fields['phone_number'] || fields['whatsapp'] || '',
-              email: fields['email'] || '',
-              source: 'Meta Ads',
-              status: 'new',
+              phone_raw: fields['phone_number'] || fields['whatsapp'] || '',
+              email: fields['email'] || null,
+              status: 'queued',
+              funnel_stage: 'new',
               form_id: v.form_id ? String(v.form_id) : null,
-              form_name: formName || fields['form_name'] || (v.form_id ? `Formulário ${v.form_id}` : null),
-              form_answers: fields,
+              external_id: v.leadgen_id ? String(v.leadgen_id) : null,
+              campaign_id: v.campaign_id ? String(v.campaign_id) : null,
+              adset_id: v.adset_id ? String(v.adset_id) : null,
+              ad_id: v.ad_id ? String(v.ad_id) : null,
               utm_source: pickUtm(fields, 'utm_source') || 'meta',
               utm_medium: pickUtm(fields, 'utm_medium'),
               utm_campaign: pickUtm(fields, 'utm_campaign'),
               utm_content: pickUtm(fields, 'utm_content'),
               utm_term: pickUtm(fields, 'utm_term'),
-              tracking: { leadgen_id: v.leadgen_id, form_id: v.form_id, page_id: v.page_id, ad_id: v.ad_id, adset_id: v.adset_id, campaign_id: v.campaign_id, form_name: formName },
+              raw_payload: { fields, leadgen_id: v.leadgen_id, form_id: v.form_id, page_id: v.page_id, ad_id: v.ad_id, adset_id: v.adset_id, campaign_id: v.campaign_id, form_name: formName },
               notes: `leadgen_id=${v.leadgen_id || ''} form_id=${v.form_id || ''} form_name=${formName || '—'} page_id=${v.page_id || ''}${!pageAccessToken ? ' [SEM META_PAGE_ACCESS_TOKEN]' : ''}`,
             })
           }
@@ -171,12 +173,14 @@ Deno.serve(async (req) => {
       // Fallback direto (Zapier / POST manual)
       if (leads.length === 0 && (body.name || body.email || body.phone)) {
         leads.push({
-          name: body.name || 'Lead Meta Ads',
+          full_name: body.name || 'Lead Meta Ads',
           phone: body.phone || '',
-          whatsapp: body.whatsapp || body.phone || '',
-          email: body.email || '',
-          source: body.source || 'Meta Ads',
-          status: 'new',
+          phone_raw: body.whatsapp || body.phone || '',
+          email: body.email || null,
+          status: 'queued',
+          funnel_stage: 'new',
+          utm_source: body.source || 'meta',
+          raw_payload: body,
           notes: body.notes || '',
         })
       }
@@ -200,20 +204,12 @@ Deno.serve(async (req) => {
             continue
           }
           insertedRows.push(row)
+          const { error: assignErr } = await supabase.rpc('assign_lead', { p_lead_id: row.id })
+          if (assignErr) console.error('Lead assignment error:', assignErr)
         } catch (e) {
           console.error('Lead insert threw:', e)
           errors.push({ message: e instanceof Error ? e.message : String(e), lead })
         }
-      }
-
-      if (insertedRows.length) {
-        const notifications = insertedRows.map(l => ({
-          title: '🔔 Novo Lead Meta Ads!',
-          message: `${l.name} — ${l.phone || l.email || 'sem contato'}`,
-          user_id: null,
-        }))
-        const { error: notifErr } = await supabase.from('notifications').insert(notifications)
-        if (notifErr) console.error('Notification insert error:', notifErr)
       }
 
       // Always ACK 200 so Meta does not retry (retries cause duplicate leads/notifications)

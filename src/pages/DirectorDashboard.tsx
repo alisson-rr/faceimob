@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ComparativeFunnel, { type FunnelStep } from "@/components/ComparativeFunnel";
 import { Users, FileText, ClipboardCheck, CheckCircle2, DollarSign } from "lucide-react";
+import { listLegacyDeals, listLegacyLeads, listPeople } from "@/integrations/supabase/newSchema";
 
 const monthBaseNow = () => {
   const d = new Date();
@@ -21,34 +22,26 @@ export default function DirectorDashboard() {
   const { user, profile } = useAuth();
   const [teamFilter, setTeamFilter] = useState<string>("all");
 
-  // Identify the director broker row (falls back to first director if none matches — helpful in demo)
-  const { data: directorInfo } = useQuery({
-    queryKey: ["director-info", user?.id],
-    queryFn: async () => {
-      let broker: any = null;
-      if (user?.id) {
-        const { data } = await supabase.from("brokers").select("id, name").eq("user_id", user.id).maybeSingle();
-        broker = data;
-      }
-      if (!broker) {
-        const { data } = await supabase.from("brokers").select("id, name").eq("role", "director").limit(1).maybeSingle();
-        broker = data;
-      }
-      return broker as { id: string; name: string } | null;
-    },
-  });
+  const directorInfo = user?.id
+    ? { id: user.id, name: profile?.name || profile?.full_name || "Diretor" }
+    : null;
 
   // Managers under this director + their brokers
   const { data: scope } = useQuery({
     enabled: !!directorInfo?.id,
     queryKey: ["director-scope", directorInfo?.id],
     queryFn: async () => {
-      const dirId = directorInfo!.id;
-      const { data: managers } = await supabase.from("brokers").select("id, name").eq("director_id", dirId);
-      const managerIds = (managers ?? []).map((m) => m.id);
-      const { data: brokers } = await supabase.from("brokers").select("id, name, manager_id").in("manager_id", managerIds.length ? managerIds : ["00000000-0000-0000-0000-000000000000"]);
-      const { data: teams } = await supabase.from("teams").select("id, name, manager_id").in("manager_id", managerIds.length ? managerIds : ["00000000-0000-0000-0000-000000000000"]);
-      return { managers: managers ?? [], brokers: brokers ?? [], teams: teams ?? [] };
+      const [people, teamsRes] = await Promise.all([
+        listPeople(),
+        (supabase as any).from("teams").select("id,name,manager_id,director_id").eq("director_id", directorInfo!.id).eq("active", true),
+      ]);
+      const teams = (teamsRes.data as any[]) || [];
+      const teamIds = new Set(teams.map(team => team.id));
+      return {
+        managers: people.filter(person => person.roles.includes("manager") && person.director_id === directorInfo!.id),
+        brokers: people.filter(person => person.roles.includes("broker") && !!person.team_id && teamIds.has(person.team_id)),
+        teams,
+      };
     },
   });
 
@@ -67,23 +60,23 @@ export default function DirectorDashboard() {
     queryFn: async () => {
       const from = startOfMonth();
       const { data: reports } = await supabase
-        .from("daily_team_reports")
+        .from("daily_reports" as any)
         .select("id, team_id, report_date")
         .gte("report_date", from);
       const teamIds = teamFilter === "all" ? scope!.teams.map((t) => t.id) : [teamFilter];
       const reportIds = (reports ?? []).filter((r) => teamIds.includes(r.team_id!)).map((r) => r.id);
       if (!reportIds.length) return { leads: 0, coleta_docs: 0, analises: 0, aprovados: 0, vendas: 0 };
       const { data: entries } = await supabase
-        .from("daily_broker_entries")
-        .select("leads, coleta_docs, analises, aprovados, vendas")
+        .from("daily_entries" as any)
+        .select("leads,doc_collections,analyses_sent,analyses_approved,sales")
         .in("report_id", reportIds);
       return (entries ?? []).reduce(
         (acc, e: any) => ({
           leads: acc.leads + (e.leads || 0),
-          coleta_docs: acc.coleta_docs + (e.coleta_docs || 0),
-          analises: acc.analises + (e.analises || 0),
-          aprovados: acc.aprovados + (e.aprovados || 0),
-          vendas: acc.vendas + (e.vendas || 0),
+          coleta_docs: acc.coleta_docs + (e.doc_collections || 0),
+          analises: acc.analises + (e.analyses_sent || 0),
+          aprovados: acc.aprovados + (e.analyses_approved || 0),
+          vendas: acc.vendas + (e.sales || 0),
         }),
         { leads: 0, coleta_docs: 0, analises: 0, aprovados: 0, vendas: 0 }
       );
@@ -95,21 +88,12 @@ export default function DirectorDashboard() {
     enabled: brokerIds.length > 0,
     queryKey: ["director-pipe", brokerIds],
     queryFn: async () => {
-      const mb = monthBaseNow();
-      const { data: deals } = await supabase
-        .from("deals")
-        .select("id, stage, status, broker1_id, month_base")
-        .in("broker1_id", brokerIds)
-        .eq("month_base", mb);
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("id, broker_id, created_at")
-        .in("broker_id", brokerIds.map(String))
-        .gte("created_at", startOfMonth());
-      const rows = deals ?? [];
-      const analises = rows.filter((d: any) => d.stage === "under_analysis").length;
-      const aprovados = rows.filter((d: any) => d.stage === "approved" || d.stage === "contract").length;
-      const vendas = rows.filter((d: any) => d.stage === "closed" || String(d.status).toUpperCase() === "VENDA").length;
+      const [allDeals, allLeads] = await Promise.all([listLegacyDeals(), listLegacyLeads()]);
+      const rows = allDeals.filter(deal => brokerIds.includes(deal.broker1_id || "") && deal.month_base === monthBaseNow());
+      const leads = allLeads.filter((lead: any) => brokerIds.includes(lead.broker_id || lead.assigned_to) && lead.created_at >= startOfMonth());
+      const analises = rows.filter((deal: any) => ["under_analysis", "analysis"].includes(deal.stage)).length;
+      const aprovados = rows.filter((deal: any) => ["approved", "contract"].includes(deal.stage)).length;
+      const vendas = rows.filter((deal: any) => deal.outcome === "won").length;
       return {
         leads: (leads ?? []).length,
         analises,

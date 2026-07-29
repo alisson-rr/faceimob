@@ -57,17 +57,31 @@ export default function LeadDetailModal({
     if (!lead?.id || !open) return;
     const loadAll = async () => {
       const [h, c, a] = await Promise.all([
-        supabase.from("lead_history").select("*").eq("lead_id", lead.id).order("created_at", { ascending: false }),
+        (supabase as any).from("lead_events").select("*").eq("lead_id", lead.id).order("created_at", { ascending: false }),
         supabase.from("lead_comments").select("*").eq("lead_id", lead.id).order("created_at", { ascending: true }),
         supabase.from("lead_attachments").select("*").eq("lead_id", lead.id).order("created_at", { ascending: false }),
       ]);
-      setHistory(h.data || []);
-      setComments(c.data || []);
-      setAttachments(a.data || []);
+      setHistory((h.data || []).map((row: any) => ({
+        ...row,
+        event_type: row.kind,
+        description: row.detail?.description || `${row.kind}: ${row.from_value || "—"} → ${row.to_value || "—"}`,
+      })));
+      setComments((c.data || []).map((row: any) => ({
+        ...row,
+        message: row.body,
+        author_name: actorName,
+      })));
+      setAttachments((a.data || []).map((row: any) => ({
+        ...row,
+        file_path: row.storage_path,
+        file_name: row.original_name,
+        mime: row.mime_type,
+        size: row.size_bytes,
+      })));
     };
     loadAll();
     const ch = supabase.channel(`lead-${lead.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_history", filter: `lead_id=eq.${lead.id}` }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_events", filter: `lead_id=eq.${lead.id}` }, loadAll)
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_comments", filter: `lead_id=eq.${lead.id}` }, loadAll)
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_attachments", filter: `lead_id=eq.${lead.id}` }, loadAll)
       .subscribe();
@@ -100,13 +114,13 @@ export default function LeadDetailModal({
 
   const addComment = async () => {
     if (!newComment.trim()) return;
-    const { error } = await supabase.from("lead_comments").insert({
-      lead_id: lead.id, author_name: actorName || "Sistema", message: newComment.trim(),
+    const { data: authData } = await supabase.auth.getUser();
+    const { error } = await (supabase as any).from("lead_comments").insert({
+      lead_id: lead.id,
+      author_id: authData.user?.id || null,
+      body: newComment.trim(),
     });
     if (error) { toast({ variant: "destructive", title: "Erro", description: error.message }); return; }
-    await supabase.from("lead_history").insert({
-      lead_id: lead.id, event_type: "comment", description: `Comentário: ${newComment.trim().slice(0, 60)}`, actor_name: actorName,
-    });
     setNewComment("");
     await touchFirstContact();
   };
@@ -115,13 +129,17 @@ export default function LeadDetailModal({
     const path = `${lead.id}/${Date.now()}-${f.name}`;
     const { error: upErr } = await supabase.storage.from("lead-attachments").upload(path, f);
     if (upErr) { toast({ variant: "destructive", title: "Erro no upload", description: upErr.message }); return; }
-    const { error } = await supabase.from("lead_attachments").insert({
-      lead_id: lead.id, file_path: path, file_name: f.name, mime: f.type, size: f.size,
+    const { data: authData } = await supabase.auth.getUser();
+    const { error } = await (supabase as any).from("lead_attachments").insert({
+      lead_id: lead.id,
+      storage_path: path,
+      original_name: f.name,
+      stored_name: path.split("/").pop(),
+      mime_type: f.type,
+      size_bytes: f.size,
+      uploaded_by: authData.user?.id || null,
     });
     if (error) { toast({ variant: "destructive", title: "Erro", description: error.message }); return; }
-    await supabase.from("lead_history").insert({
-      lead_id: lead.id, event_type: "attachment", description: `Anexo adicionado: ${f.name}`, actor_name: actorName,
-    });
     toast({ title: "Anexo enviado" });
     await touchFirstContact();
   };
@@ -212,21 +230,16 @@ export default function LeadDetailModal({
 
           <TabsContent value="personal" className="space-y-2">
             <EditFields lead={lead} fields={[
-              { k: "cpf", label: "CPF" },
-              { k: "birth_date", label: "Data de nascimento", type: "date" },
-              { k: "address", label: "Endereço" },
+              { k: "document", label: "CPF / documento" },
               { k: "phone", label: "Telefone" },
-              { k: "whatsapp", label: "WhatsApp" },
               { k: "email", label: "E-mail", type: "email" },
             ]} />
           </TabsContent>
 
           <TabsContent value="interest" className="space-y-2">
-            <EditFields lead={lead} fields={[
-              { k: "developer", label: "Construtora" },
-              { k: "development", label: "Empreendimento" },
-              { k: "unit", label: "Unidade" },
-            ]} />
+            <p className="text-sm text-muted-foreground">
+              Construtora, empreendimento e unidade são definidos ao converter o lead em negócio.
+            </p>
           </TabsContent>
 
           <TabsContent value="form">

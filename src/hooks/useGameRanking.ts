@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  listGameRanking,
+  listPeople,
+  type PersonRecord,
+} from "@/integrations/supabase/newSchema";
 
 export const SCORING = {
   incomplete_with_doc: 10,
@@ -10,15 +14,7 @@ export const SCORING = {
   distrato_penalty: -600,
 };
 
-export type BrokerRow = {
-  id: string;
-  name: string;
-  active: boolean;
-  user_id: string | null;
-  manager_id: string | null;
-  director_id: string | null;
-  avatar_url: string | null;
-};
+export type BrokerRow = PersonRecord;
 
 export type ScoreRow = {
   broker: BrokerRow;
@@ -40,32 +36,28 @@ type DealLite = {
 export function useGameRanking(dealsInput?: DealLite[]) {
   const { role, user } = useAuth();
   const [brokers, setBrokers] = useState<BrokerRow[]>([]);
-  const [cachedDeals, setCachedDeals] = useState<DealLite[] | null>(null);
+  const [ranking, setRanking] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("brokers")
-        .select("id,name,active,user_id,manager_id,director_id,avatar_url")
-        .eq("active", true)
-        .order("name");
-      setBrokers((data as any) || []);
+      try {
+        const [people, rows] = await Promise.all([
+          listPeople(),
+          listGameRanking(),
+        ]);
+        setBrokers(
+          people.filter(
+            (person) => person.active && person.roles.includes("broker"),
+          ),
+        );
+        setRanking(rows);
+      } catch (error) {
+        console.error("Falha ao carregar ranking:", error);
+        setBrokers([]);
+        setRanking([]);
+      }
     })();
   }, []);
-
-  useEffect(() => {
-    if (dealsInput) return;
-    (async () => {
-      const { data } = await supabase
-        .from("dashboard_bi_cache" as any)
-        .select("payload")
-        .eq("id", true)
-        .maybeSingle();
-      setCachedDeals(((data as any)?.payload?.deals || []) as DealLite[]);
-    })();
-  }, [dealsInput]);
-
-  const deals = dealsInput ?? cachedDeals ?? [];
 
   const myBroker = useMemo(
     () => brokers.find((b) => b.user_id === user?.id) || null,
@@ -75,27 +67,38 @@ export function useGameRanking(dealsInput?: DealLite[]) {
   const allScores: ScoreRow[] = useMemo(() => {
     return brokers
       .map((b) => {
-        const bd = deals.filter(
-          (d: any) => d.broker1_name === b.name || d.broker2_name === b.name || d.broker1 === b.name || d.broker2 === b.name
-        );
-        const leads = bd.filter((d) => d.stage === "lead").length;
-        const incompletos = bd.filter((d) => d.stage === "incomplete").length;
-        const analises = bd.filter((d) => d.stage === "under_analysis" || d.stage === "visit_scheduled").length;
-        const aprovados = bd.filter((d) => d.stage === "approved" || d.stage === "contract").length;
-        const vendas = bd.filter((d) => d.stage === "closed" && d.active !== false).length;
-        const distratos = bd.filter((d) => d.stage === "closed" && d.active === false).length;
-        const points = Math.max(
-          0,
-          incompletos * SCORING.incomplete_with_doc +
-            analises * SCORING.envio_esteira_agil +
-            aprovados * SCORING.approved +
-            vendas * SCORING.venda +
-            distratos * SCORING.distrato_penalty
-        );
+        const serverRow = ranking.find((row) => row.profile_id === b.id);
+        const breakdown = serverRow?.breakdown || {};
+        const fallbackDeals = dealsInput?.filter(
+          (deal: any) =>
+            deal.broker1_name === b.name ||
+            deal.broker2_name === b.name ||
+            deal.broker1 === b.name ||
+            deal.broker2 === b.name,
+        ) || [];
+        const leads = fallbackDeals.filter((deal) => deal.stage === "lead").length;
+        const analises =
+          Number(breakdown.esteira || 0) ||
+          fallbackDeals.filter(
+            (deal) =>
+              deal.stage === "under_analysis" ||
+              deal.stage === "visit_scheduled",
+          ).length;
+        const aprovados =
+          Number(breakdown.aprovado || 0) ||
+          fallbackDeals.filter(
+            (deal) => deal.stage === "approved" || deal.stage === "contract",
+          ).length;
+        const vendas =
+          Number(serverRow?.sales || breakdown.venda || 0) ||
+          fallbackDeals.filter(
+            (deal) => deal.stage === "closed" && deal.active !== false,
+          ).length;
+        const points = Number(serverRow?.points || 0);
         return { broker: b, leads, analises, aprovados, vendas, points };
       })
       .sort((a, b) => b.points - a.points);
-  }, [brokers, deals]);
+  }, [brokers, dealsInput, ranking]);
 
   const scoped: ScoreRow[] = useMemo(() => {
     if (role === "admin") return allScores;

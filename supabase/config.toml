@@ -1,4 +1,14 @@
-project_id = "wkgvqzcqtgyugzykxunj"
+project_id = "mcmqgxvtwegtptfseqvw"
+
+[db.seed]
+enabled = true
+sql_paths = [
+  "./seed.sql",
+  "./seeds/010_identity_and_teams.sql",
+  "./seeds/020_catalog_distribution_sdr.sql",
+  "./seeds/030_commercial_operation.sql",
+  "./seeds/040_reports_game_workspace.sql",
+]
 
 [functions.daily-team-info]
 verify_jwt = false
@@ -7,4 +17,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.director-weekly]
+verify_jwt = false
+
+[functions.meta-ads-webhook]
 verify_jwt = false

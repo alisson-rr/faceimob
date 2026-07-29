@@ -20,11 +20,6 @@ import { VisualFunnel, CompactFunnel, type FunnelStep } from "@/components/Compa
 type Roster = { broker_id: string; broker_name: string; active?: boolean; is_custom?: boolean };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
 
-async function sha256(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 
 const FIELDS = [
   { key: "leads", label: "Leads", color: "text-cyan-400" },
@@ -44,7 +39,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export default function DailyReport() {
   const params = useParams<{ teamId?: string; slug?: string }>();
-  const identifier = params.teamId || params.slug || "";
+  const identifier = params.slug || params.teamId || "";
   const isUuid = UUID_RE.test(identifier);
   const [resolvedTeamId, setResolvedTeamId] = useState<string | null>(isUuid ? identifier : null);
   const [team, setTeam] = useState<TeamInfo | null>(null);
@@ -54,7 +49,7 @@ export default function DailyReport() {
   const [entries, setEntries] = useState<EntryState>({});
   const [filledBy, setFilledBy] = useState("");
   const [notes, setNotes] = useState("");
-  const [date, setDate] = useState(format(subDays(new Date(), 1), "yyyy-MM-dd"));
+  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [submitting, setSubmitting] = useState(false);
   const [xpBurst, setXpBurst] = useState(0);
   const [monthTotals, setMonthTotals] = useState<Record<FieldKey, number>>(() => FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>));
@@ -73,17 +68,27 @@ export default function DailyReport() {
   const [expandedBroker, setExpandedBroker] = useState<Record<string, boolean>>({});
 
 
-  const yesterday = subDays(new Date(), 1);
-  const todayStr = format(yesterday, "yyyy-MM-dd");
+  const yesterday = new Date();
+  const todayStr = format(new Date(), "yyyy-MM-dd");
   const todayFilled = filledDates.includes(todayStr);
 
   const activeRoster = useMemo(() => roster.filter((b) => b.active !== false), [roster]);
 
-  const reloadRoster = async (tid: string, rawPin: string) => {
-    const hash = await sha256(rawPin);
-    const { data, error } = await supabase.rpc("daily_roster_list" as any, { _team_id: tid, _pin_hash: hash });
+  const fetchPublicTeam = async (rawPin: string) => {
+    const { data, error } = await (supabase as any).rpc("public_daily_team", {
+      p_slug: identifier,
+      p_pin: rawPin || null,
+    });
     if (error) return null;
-    const list = ((data as any) ?? []) as Roster[];
+    const payload = data as any;
+    if (!payload) return null;
+    const list = ((payload.roster as any[]) || []).map(row => ({
+      broker_id: row.profile_id,
+      broker_name: row.full_name,
+      active: true,
+    })) as Roster[];
+    setTeam({ team_id: payload.team_id, team_name: payload.team_name, has_pin: payload.has_pin });
+    setResolvedTeamId(payload.team_id);
     setRoster(list);
     setEntries((prev) => {
       const next: EntryState = { ...prev };
@@ -92,40 +97,18 @@ export default function DailyReport() {
       });
       return next;
     });
-    return list;
+    return { payload, list };
   };
 
   const addBroker = async () => {
-    if (!resolvedTeamId || !pin || !newBrokerName.trim()) return;
-    setRosterBusy(true);
-    const hash = await sha256(pin);
-    const { error } = await supabase.rpc("daily_roster_add" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_name: newBrokerName.trim() });
-    setRosterBusy(false);
-    if (error) return toast({ title: "Erro ao adicionar", description: error.message, variant: "destructive" });
-    setNewBrokerName("");
-    toast({ title: "Corretor adicionado" });
-    await reloadRoster(resolvedTeamId, pin);
+    toast({ title: "Gerencie os membros em Equipes", description: "A escala do diário agora acompanha os membros ativos da equipe." });
   };
 
   const confirmRemoveBroker = async () => {
     const target = pendingRemove;
-    if (!target || !resolvedTeamId || !pin) return;
-    setRosterBusy(true);
-    try {
-      const hash = await sha256(pin);
-      const { error } = await supabase.rpc("daily_roster_remove" as any, { _team_id: resolvedTeamId, _pin_hash: hash, _broker_id: target.broker_id });
-      if (error) {
-        toast({ title: "Erro ao desligar", description: error.message, variant: "destructive" });
-      } else {
-        toast({ title: "Corretor desligado" });
-        await reloadRoster(resolvedTeamId, pin);
-      }
-    } catch (e: any) {
-      toast({ title: "Erro ao desligar", description: e?.message || "Erro inesperado", variant: "destructive" });
-    } finally {
-      setRosterBusy(false);
-      setPendingRemove(null);
-    }
+    if (!target) return;
+    toast({ title: "Gerencie os membros em Equipes", description: "O diário usa a composição oficial da equipe." });
+    setPendingRemove(null);
   };
 
 
@@ -139,32 +122,39 @@ export default function DailyReport() {
 
   const loadMonth = async (tid: string) => {
     setLoadingMonth(true);
-    const today = new Date();
-    const yest = subDays(today, 1);
-    const { data, error } = await supabase.rpc("get_daily_team_month_summary" as any, { _team_id: tid });
+    const result = await fetchPublicTeam(pin);
     let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
     let filledDates: string[] = [];
-    if (!error && data) {
-      const totals = (data as any).totals || {};
-      FIELDS.forEach(f => { mt[f.key] = Number(totals[f.key]) || 0; });
-      filledDates = ((data as any).filled_dates || []) as string[];
+    const rows = (result?.payload?.today || []) as any[];
+    if (rows.length) {
+      rows.forEach(row => {
+        mt.leads += Number(row.leads) || 0;
+        mt.ligacoes += Number(row.calls) || 0;
+        mt.coleta_docs += Number(row.doc_collections) || 0;
+        mt.visitas_agendadas += Number(row.visits_scheduled) || 0;
+        mt.visitas_realizadas += Number(row.visits_done) || 0;
+        mt.analises += Number(row.analyses_sent) || 0;
+        mt.aprovados += Number(row.analyses_approved) || 0;
+        mt.vendas += Number(row.sales) || 0;
+      });
+      filledDates = [todayStr];
     }
     setMonthTotals(mt);
     setFilledDates(filledDates);
-    const filledSet = new Set(filledDates);
-    const days = eachDayOfInterval({ start: startOfMonth(today), end: yest });
-    const missing = days
-      .filter(d => !isAfter(d, yest))
-      .map(d => format(d, "yyyy-MM-dd"))
-      .filter(d => !filledSet.has(d));
-    setMissingDays(missing);
-
-    // Per-broker month totals (hidden by default, revealed by button)
-    const { data: bData } = await supabase.rpc("get_daily_team_broker_month_summary" as any, { _team_id: tid });
+    setMissingDays([]);
     const map: Record<string, Record<FieldKey, number> & { days_filled?: number }> = {};
-    const rows = ((bData as any)?.rows ?? []) as any[];
     rows.forEach((r) => {
-      map[r.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: Number(r[f.key]) || 0 }), { days_filled: Number(r.days_filled) || 0 } as any);
+      map[r.profile_id] = {
+        leads: Number(r.leads) || 0,
+        ligacoes: Number(r.calls) || 0,
+        coleta_docs: Number(r.doc_collections) || 0,
+        visitas_agendadas: Number(r.visits_scheduled) || 0,
+        visitas_realizadas: Number(r.visits_done) || 0,
+        analises: Number(r.analyses_sent) || 0,
+        aprovados: Number(r.analyses_approved) || 0,
+        vendas: Number(r.sales) || 0,
+        days_filled: 1,
+      };
     });
     setBrokerMonth(map);
 
@@ -174,20 +164,27 @@ export default function DailyReport() {
   const loadDay = async (targetDate: string) => {
     if (!resolvedTeamId) return;
     setLoadingDay(true);
-    const { data } = await supabase.rpc("get_daily_team_report" as any, { _team_id: resolvedTeamId, _date: targetDate });
+    const result = await fetchPublicTeam(pin);
     setDate(targetDate);
     setHistoryOpen(false);
     setFormOpen(true);
-    if ((data as any)?.exists) {
-      const list = ((data as any).entries || []) as any[];
+    if (targetDate === todayStr && result?.payload?.today?.length) {
+      const list = result.payload.today as any[];
       const next: EntryState = {};
       roster.forEach((b) => {
-        const found = list.find((e) => e.broker_id === b.broker_id);
-        next[b.broker_id] = FIELDS.reduce((a, f) => ({ ...a, [f.key]: Number(found?.[f.key]) || 0 }), {} as Record<FieldKey, number>);
+        const found = list.find((e) => e.profile_id === b.broker_id);
+        next[b.broker_id] = {
+          leads: Number(found?.leads) || 0,
+          ligacoes: Number(found?.calls) || 0,
+          coleta_docs: Number(found?.doc_collections) || 0,
+          visitas_agendadas: Number(found?.visits_scheduled) || 0,
+          visitas_realizadas: Number(found?.visits_done) || 0,
+          analises: Number(found?.analyses_sent) || 0,
+          aprovados: Number(found?.analyses_approved) || 0,
+          vendas: Number(found?.sales) || 0,
+        };
       });
       setEntries(next);
-      setNotes((data as any).notes || "");
-      setFilledBy((data as any).filled_by_name || "");
     } else {
       // dia sem checkpoint: zera formulário
       setEntries(roster.reduce((acc, b) => {
@@ -217,67 +214,13 @@ export default function DailyReport() {
   useEffect(() => {
     if (!identifier) return;
     (async () => {
-      const body: any = isUuid ? { team_id: identifier } : { slug: identifier };
-      if (directorParam) body.director_slug = directorParam;
-      const { data } = await supabase.functions.invoke("daily-team-info", { body });
-      if (data?.info) {
-        setTeam(data.info as TeamInfo);
-        const tid = (data.info as any).team_id;
-        if (tid) setResolvedTeamId(tid);
-
-        // Director link bypass: libera acesso sem PIN às equipes do escopo do diretor
-        if ((data as any)?.director_ok && tid) {
-          const list = ((data as any).roster ?? []) as Roster[];
-          setRoster(list);
-          const initial: EntryState = {};
-          list.forEach((b) => {
-            initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
-          });
-          setEntries(initial);
-          setUnlocked(true);
-          loadMonth(tid);
-          return;
-        }
-
-        // Admin bypass: se logado como admin, destrava sem PIN (somente leitura)
-        if (isAdminView && tid) {
-          const { data: sess } = await supabase.auth.getUser();
-          const uid = sess.user?.id;
-          if (uid) {
-            const { data: roleRow } = await supabase
-              .from("user_roles").select("role").eq("user_id", uid).eq("role", "admin").maybeSingle();
-            if (roleRow) {
-              const { data: rosterRows } = await supabase.rpc("get_team_roster" as any, { _team_id: tid });
-              const base = ((rosterRows as any) ?? []) as Roster[];
-              // Admin: merge overrides from daily_team_roster (inactivations + custom brokers)
-              const { data: overrides } = await supabase
-                .from("daily_team_roster" as any)
-                .select("broker_id, broker_name, active, is_custom")
-                .eq("team_id", tid);
-              const ov = ((overrides as any) ?? []) as Array<{ broker_id: string; broker_name: string; active: boolean; is_custom: boolean }>;
-              const ovMap = new Map(ov.filter((o) => !o.is_custom).map((o) => [o.broker_id, o]));
-              const merged: Roster[] = base.map((b) => {
-                const o = ovMap.get(b.broker_id);
-                return { ...b, active: o ? o.active : true, is_custom: false } as any;
-              });
-              ov.filter((o) => o.is_custom).forEach((o) => {
-                merged.push({ broker_id: o.broker_id, broker_name: o.broker_name, active: o.active, is_custom: true } as any);
-              });
-              merged.sort((a: any, b: any) => (Number(b.active !== false) - Number(a.active !== false)) || a.broker_name.localeCompare(b.broker_name));
-              setRoster(merged);
-              const initial: EntryState = {};
-              merged.forEach((b) => {
-                initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
-              });
-              setEntries(initial);
-              setUnlocked(true);
-              loadMonth(tid);
-            }
-          }
-        }
+      const result = await fetchPublicTeam("");
+      if (result) {
+        setUnlocked(true);
+        await loadMonth(result.payload.team_id);
       }
     })();
-  }, [identifier, isUuid, isAdminView, directorParam]);
+  }, [identifier]);
 
 
   const totals = useMemo(() => {
@@ -303,28 +246,19 @@ export default function DailyReport() {
 
   const handleUnlock = async () => {
     if (!pin || pin.length < 4) return toast({ title: "Digite o PIN da equipe" });
-    const body: any = { pin };
-    if (resolvedTeamId) body.team_id = resolvedTeamId;
-    else if (isUuid) body.team_id = identifier;
-    else body.slug = identifier;
-    const { data, error } = await supabase.functions.invoke("daily-team-info", { body });
-    if (error || !data?.pin_ok) {
+    const result = await fetchPublicTeam(pin);
+    if (!result) {
       return toast({ title: "PIN incorreto", variant: "destructive" });
     }
-    const tid = (data.info as any)?.team_id || resolvedTeamId;
-    if (tid) setResolvedTeamId(tid);
-
-    // Load merged roster (base + custom - inactive overrides applied)
-    const merged = tid ? await reloadRoster(tid, pin) : null;
-    const list = (merged ?? (data.roster as Roster[]) ?? []) as Roster[];
-    if (!merged) setRoster(list);
+    const tid = result.payload.team_id;
+    const list = result.list;
     const initial: EntryState = {};
     list.forEach((b) => {
       initial[b.broker_id] = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: 0 }), {} as Record<FieldKey, number>);
     });
     setEntries(initial);
     setUnlocked(true);
-    if (tid) loadMonth(tid);
+    await loadMonth(tid);
 
   };
 
@@ -344,17 +278,25 @@ export default function DailyReport() {
       return;
     }
     setSubmitting(true);
-    const payload: any = {
-      team_id: resolvedTeamId, pin: pin || undefined, report_date: date, filled_by_name: filledBy, notes: notes || null,
-      entries: roster.map((b) => ({ broker_id: b.broker_id, broker_name: b.broker_name, ...entries[b.broker_id] })).filter((e) => e.broker_id),
-    };
-    if (directorParam) payload.director_slug = directorParam;
-
-
-    const { data, error } = await supabase.functions.invoke("submit-daily-report", { body: payload });
+    const payload = roster.map((b) => ({
+      profile_id: b.broker_id,
+      leads: entries[b.broker_id]?.leads || 0,
+      calls: entries[b.broker_id]?.ligacoes || 0,
+      doc_collections: entries[b.broker_id]?.coleta_docs || 0,
+      visits_scheduled: entries[b.broker_id]?.visitas_agendadas || 0,
+      visits_done: entries[b.broker_id]?.visitas_realizadas || 0,
+      analyses_sent: entries[b.broker_id]?.analises || 0,
+      analyses_approved: entries[b.broker_id]?.aprovados || 0,
+      sales: entries[b.broker_id]?.vendas || 0,
+    }));
+    const { data, error } = await (supabase as any).rpc("public_daily_submit", {
+      p_slug: identifier,
+      p_pin: pin || null,
+      p_entries: payload,
+    });
     setSubmitting(false);
-    if (error || (data as any)?.error) {
-      return toast({ title: "Falha ao enviar", description: (data as any)?.error || error?.message || "Erro desconhecido", variant: "destructive" });
+    if (error) {
+      return toast({ title: "Falha ao enviar", description: error.message || "Erro desconhecido", variant: "destructive" });
     }
     setXpBurst(xpEarned);
     toast({ title: `🎯 Checkpoint concluído! +${xpEarned} XP`, description: "Dados da equipe registrados." });

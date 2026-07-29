@@ -33,7 +33,7 @@ import SdrModule from "@/pages/SdrModule";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
-const bypassAuth = import.meta.env.DEV;
+const bypassAuth = import.meta.env.VITE_BYPASS_AUTH === "true";
 
 function RequireAuth() {
   const { session, loading } = useAuth();

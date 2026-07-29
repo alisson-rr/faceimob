@@ -15,15 +15,18 @@ import {
   CheckCircle, Clock, XCircle, Building2, User, DollarSign,
   Plus, Settings, Pencil, Trash2, GripVertical
 } from "lucide-react";
+import { getStageIdByCode, listLegacyDeals } from "@/integrations/supabase/newSchema";
 
 interface CcaStage {
   id: string;
   name: string;
   color: string;
-  order: number;
+  position: number;
+  status: string;
 }
 
 interface CcaDeal {
+  caseId: string;
   dealId: string;
   client: string;
   developer: string;
@@ -33,10 +36,8 @@ interface CcaDeal {
   stageId: string;
   stageName: string;
   notes: string;
+  status: string;
 }
-
-// Developers handled by internal CCA
-const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
 export default function CcaPipeline() {
   const [deals, setDeals] = useState<CcaDeal[]>([]);
@@ -50,58 +51,44 @@ export default function CcaPipeline() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch stages
-      const { data: stagesData, error: stagesError } = await supabase
-        .from('cca_stages')
-        .select('*')
-        .order('order');
-      
-      if (stagesError) throw stagesError;
-      setStages(stagesData || []);
+      const [stagesResponse, casesResponse, dealRows] = await Promise.all([
+        (supabase as any)
+          .from("cca_stages")
+          .select("id,name,color,position,status,active")
+          .eq("active", true)
+          .order("position"),
+        (supabase as any)
+          .from("cca_cases")
+          .select("id,deal_id,status,stage_id,decision_notes,pending_items"),
+        listLegacyDeals(),
+      ]);
 
-      // Fetch CCA deals status
-      const { data: ccaDeals, error: ccaError } = await supabase
-        .from('cca_deals')
-        .select('*');
+      if (stagesResponse.error) throw stagesResponse.error;
+      if (casesResponse.error) throw casesResponse.error;
 
-      if (ccaError) throw ccaError;
+      const stagesData = (stagesResponse.data || []) as CcaStage[];
+      const casesData = casesResponse.data || [];
+      setStages(stagesData);
 
-      // Fetch relevant deals
-      const { data: dealsData, error: dealsError } = await supabase
-        .from('deals')
-        .select(`
-          *,
-          broker1:brokers!deals_broker1_id_fkey(name)
-        `)
-        .in('developer', ccaDevelopers)
-        .eq('active', true);
+      const mapped: CcaDeal[] = casesData.map((cca: any) => {
+        const deal = dealRows.find((row) => row.id === cca.deal_id);
+        const stage =
+          stagesData.find((row) => row.id === cca.stage_id) ||
+          stagesData.find((row) => row.status === cca.status) ||
+          stagesData[0];
 
-      if (dealsError) throw dealsError;
-
-      const mapped: CcaDeal[] = (dealsData || []).map(d => {
-        const cca = (ccaDeals || []).find(c => c.deal_id === d.id);
-        
-        // Map enum to stage name
-        const statusMap: Record<string, string> = {
-          'credit_analysis': 'Análise de Crédito',
-          'pending_documents': 'Pendente',
-          'approved': 'Aprovado Total',
-          'sent_to_agency': 'Enviado à Agência'
-        };
-
-        const currentStatusName = cca?.status ? (statusMap[cca.status] || cca.status) : 'Análise de Crédito';
-        const stage = stagesData?.find(s => s.name === currentStatusName) || stagesData?.[0];
-        
         return {
-          dealId: d.id,
-          client: d.client,
-          developer: d.developer || '',
-          project: d.project || '',
-          broker: (d.broker1 as any)?.name || '',
-          value: d.deal_value || 0,
-          stageId: stage?.id || '',
-          stageName: stage?.name || 'Análise de Crédito',
-          notes: cca?.notes || d.notes || '',
+          caseId: cca.id,
+          dealId: cca.deal_id,
+          client: deal?.client || "Cliente não informado",
+          developer: deal?.developer || "",
+          project: deal?.project || "",
+          broker: deal?.broker1 || "",
+          value: deal?.deal_value || 0,
+          stageId: stage?.id || "",
+          stageName: stage?.name || cca.status,
+          notes: cca.decision_notes || deal?.notes || "",
+          status: cca.status,
         };
       });
       setDeals(mapped);
@@ -139,40 +126,27 @@ export default function CcaPipeline() {
     if (!actionDeal || !targetStage) return;
 
     try {
-      // Map stage name back to enum
-      const nameToEnum: Record<string, string> = {
-        'Análise de Crédito': 'credit_analysis',
-        'Pendente': 'pending_documents',
-        'Aprovado Total': 'approved',
-        'Enviado à Agência': 'sent_to_agency',
-        'Aprovado Cond': 'approved' // Example fallback
-      };
-
-      const statusEnum = nameToEnum[targetStage.name] || 'credit_analysis';
-
-      const { error } = await supabase
-        .from('cca_deals' as any)
-        .upsert({
-          deal_id: actionDeal.dealId,
-          status: statusEnum,
-          notes: actionNotes,
-          updated_at: new Date().toISOString()
-        } as any, { onConflict: 'deal_id' });
+      const isDecision = ["approved", "rejected"].includes(targetStage.status);
+      const { error } = await (supabase as any)
+        .from("cca_cases")
+        .update({
+          stage_id: targetStage.id,
+          status: targetStage.status,
+          decision_notes: actionNotes || null,
+          decided_at: isDecision ? new Date().toISOString() : null,
+        })
+        .eq("id", actionDeal.caseId);
 
       if (error) throw error;
 
-      // UPDATE MAIN PIPELINE STATUS
-      // If approved total -> set main deal to approved
-      // If approved cond -> set main deal to contract
-      // If sent to agency -> set main deal to closed (optional, depends on workflow)
       let mainStageUpdate: DealStage | null = null;
-      if (targetStage.name === 'Aprovado Total') mainStageUpdate = 'approved';
-      else if (targetStage.name === 'Aprovado Cond') mainStageUpdate = 'contract';
+      if (targetStage.status === "approved") mainStageUpdate = "approved";
       
       if (mainStageUpdate) {
-        await supabase
-          .from('deals')
-          .update({ stage: mainStageUpdate })
+        const stageId = await getStageIdByCode(mainStageUpdate);
+        await (supabase as any)
+          .from("deals")
+          .update({ stage_id: stageId })
           .eq('id', actionDeal.dealId);
         
         toast({ title: "Status do Pipeline atualizado" });
@@ -204,7 +178,12 @@ export default function CcaPipeline() {
       } else {
         const { error } = await supabase
           .from('cca_stages')
-          .insert({ name: newStageName, color: newStageColor, order: stages.length });
+          .insert({
+            name: newStageName,
+            color: newStageColor,
+            position: stages.length + 1,
+            status: "under_review",
+          } as any);
         if (error) throw error;
         toast({ title: "Estágio criado" });
       }

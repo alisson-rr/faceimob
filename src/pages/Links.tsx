@@ -21,9 +21,9 @@ export default function Links() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await (supabase as any).from("useful_links").select("*").order("sort_order").order("title");
+    const { data, error } = await (supabase as any).from("useful_links").select("*").eq("active", true).order("sort_order").order("label");
     if (error) toast({ title: "Erro ao carregar", description: error.message, variant: "destructive" });
-    setLinks((data as LinkRow[]) || []);
+    setLinks(((data as any[]) || []).map(row => ({ ...row, title: row.label })));
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -33,7 +33,7 @@ export default function Links() {
   const save = async () => {
     if (!edit?.title || !edit?.url) return toast({ title: "Preencha nome e URL", variant: "destructive" });
     setSaving(true);
-    const payload = { title: edit.title, url: edit.url, category: edit.category || null, sort_order: edit.sort_order ?? 0 };
+    const payload = { label: edit.title, url: edit.url, category: edit.category || "geral", sort_order: edit.sort_order ?? 0, active: true };
     const { error } = edit.id
       ? await (supabase as any).from("useful_links").update(payload).eq("id", edit.id)
       : await (supabase as any).from("useful_links").insert(payload);

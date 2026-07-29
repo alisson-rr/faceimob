@@ -1,6 +1,10 @@
 // SDR Agent Chat - roteia mensagem para agente (com orquestrador opcional) usando OpenAI
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -30,15 +34,15 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    const { conversation_id, lead_id, contact_id, agent_id, message, channel } = body;
+    const { conversation_id, lead_id, agent_id, message } = body;
     if (!message) throw new Error('message obrigatório');
 
     // Ensure conversation
     let convId = conversation_id;
-    if (!convId) {
+    if (!convId && lead_id) {
       const { data: created, error: cErr } = await supabase
         .from('sdr_conversations')
-        .insert({ lead_id, contact_id, agent_id, channel: channel || 'test' })
+        .insert({ lead_id, agent_id })
         .select('id, agent_id')
         .single();
       if (cErr) throw cErr;
@@ -46,8 +50,9 @@ Deno.serve(async (req) => {
     }
 
     // Load conversation + agent
-    const { data: conv } = await supabase
-      .from('sdr_conversations').select('*').eq('id', convId).single();
+    const { data: conv } = convId
+      ? await supabase.from('sdr_conversations').select('*').eq('id', convId).single()
+      : { data: null };
 
     // Pick agent: explicit → orchestrator → default active
     let chosenAgentId = agent_id || conv?.agent_id;
@@ -69,18 +74,24 @@ Deno.serve(async (req) => {
       .from('sdr_agents').select('*').eq('id', chosenAgentId).single();
 
     // Save inbound
-    await supabase.from('sdr_messages').insert({
-      conversation_id: convId, role: 'user', content: message,
-    });
+    if (convId) {
+      await supabase.from('sdr_messages').insert({
+        conversation_id: convId, author: 'lead', body: message,
+      });
+    }
 
     // Build history
-    const { data: history } = await supabase
-      .from('sdr_messages').select('role, content')
-      .eq('conversation_id', convId).order('created_at', { ascending: true });
+    const { data: history } = convId
+      ? await supabase.from('sdr_messages').select('author, body')
+          .eq('conversation_id', convId).order('created_at', { ascending: true })
+      : { data: [{ author: 'lead', body: message }] };
 
     const messages: any[] = [
       { role: 'system', content: agent.system_prompt || 'Você é um SDR especializado em qualificação de leads imobiliários. Faça perguntas objetivas sobre renda, urgência, tipo de imóvel desejado e localização. Seja cordial e breve.' },
-      ...(history || []).map((m: any) => ({ role: m.role, content: m.content })),
+      ...(history || []).map((m: any) => ({
+        role: m.author === 'lead' ? 'user' : m.author === 'system' ? 'system' : 'assistant',
+        content: m.body,
+      })),
     ];
 
     const { text, usage } = await callOpenAI(apiKey, agent.model || 'gpt-4o-mini', messages, Number(agent.temperature ?? 0.7));
@@ -95,11 +106,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    await supabase.from('sdr_messages').insert({
-      conversation_id: convId, role: 'assistant', content: text,
-      agent_id: chosenAgentId,
-      tokens_in: usage?.prompt_tokens, tokens_out: usage?.completion_tokens,
-    });
+    if (convId) {
+      await supabase.from('sdr_messages').insert({
+        conversation_id: convId, author: 'agent', body: text,
+        tokens_in: usage?.prompt_tokens, tokens_out: usage?.completion_tokens,
+      });
+    }
 
     return new Response(JSON.stringify({
       conversation_id: convId,

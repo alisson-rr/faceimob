@@ -30,6 +30,15 @@ import { normalizeStatus, nextMonthBase } from "@/lib/dealStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
+import {
+  displayMonthToIso,
+  getStageIdByCode,
+  listLegacyDeals,
+  listLegacyLeads,
+  listOpenCheckins,
+  listPeople,
+  toDisplayMonth,
+} from "@/integrations/supabase/newSchema";
 
 const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
@@ -140,9 +149,9 @@ function CcaStatusBadge({ dealId }: { dealId: string }) {
 
   useEffect(() => {
     async function getStatus() {
-      const { data: ccaData } = await supabase
-        .from('cca_deals' as any)
-        .select('status')
+      const { data: ccaData } = await (supabase as any)
+        .from("cca_cases")
+        .select("status,stage_id")
         .eq('deal_id', dealId)
         .maybeSingle();
       
@@ -159,7 +168,7 @@ function CcaStatusBadge({ dealId }: { dealId: string }) {
 
   if (!status) return null;
 
-  const stage = stages.find(s => s.name === status);
+  const stage = stages.find(s => s.status === status);
   const colorClass = stage?.color || "text-primary";
 
   return (
@@ -182,16 +191,16 @@ export default function Pipeline() {
   const fetchBrokers = useCallback(async () => {
     setLoadingBrokers(true);
     try {
-      const { data, error } = await supabase.from('brokers').select('id,name,active,user_id,manager_id,director_id').order('name');
-      if (error) throw error;
-      
-      const mappedBrokers: Broker[] = (data || []).map(b => ({
-        id: b.id,
-        name: b.name,
-        active: true,
+      const people = await listPeople();
+      const mappedBrokers: Broker[] = people
+        .filter((person) => person.roles.includes("broker"))
+        .map((person) => ({
+        id: person.id,
+        name: person.name,
+        active: person.active,
         monthly_sales: 0,
         monthly_vgv: 0,
-        team: 'Default'
+        team: person.team,
       }));
       
       setBrokers(mappedBrokers);
@@ -209,31 +218,7 @@ export default function Pipeline() {
   const fetchDeals = useCallback(async () => {
     setLoadingDeals(true);
     try {
-      const { data, error } = await supabase
-        .from('deals')
-        .select(`
-          *,
-          broker1:brokers!deals_broker1_id_fkey(name),
-          broker2:brokers!deals_broker2_id_fkey(name),
-          manager1:brokers!deals_manager1_id_fkey(name),
-          manager2:brokers!deals_manager2_id_fkey(name)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const mappedDeals: PipelineDeal[] = (data || []).map(d => ({
-        ...d,
-        broker1: (d.broker1 as any)?.name || '',
-        broker2: (d.broker2 as any)?.name || undefined,
-        manager1: (d.manager1 as any)?.name || '',
-        manager2: (d.manager2 as any)?.name || undefined,
-        visit_result: d.visit_result as "pending" | "completed" | "cancelled" | undefined,
-        days_in_pipeline: differenceInDays(new Date(), parseISO(d.created_at || new Date().toISOString())),
-        history: d.history ? (d.history as any) : []
-      })) as PipelineDeal[];
-
-      setDeals(mappedDeals);
+      setDeals(await listLegacyDeals());
     } catch (error) {
       console.error('Error fetching deals:', error);
       toast({ title: "Erro ao carregar negócios", variant: "destructive" });
@@ -271,11 +256,12 @@ export default function Pipeline() {
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && mounted) setLeads((data as any) || []);
+      try {
+        const data = await listLegacyLeads();
+        if (mounted) setLeads(data);
+      } catch (error) {
+        console.error("Erro ao carregar leads:", error);
+      }
     };
     load();
     const channel = supabase
@@ -323,9 +309,11 @@ export default function Pipeline() {
   const { data: closedMonths = [] } = useQuery({
     queryKey: ["closed_months"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("closed_months" as any).select("month_base");
+      const { data, error } = await (supabase as any).from("closed_months").select("period");
       if (error) throw error;
-      return ((data as any[]) || []).map((r) => r.month_base as string);
+      return ((data as any[]) || [])
+        .map((row) => toDisplayMonth(row.period))
+        .filter(Boolean) as string[];
     },
     staleTime: 60_000,
   });
@@ -338,18 +326,18 @@ export default function Pipeline() {
       // Migra apenas PROPOSTA para o próximo mês (VENDA/QUEDA/DISTRATO/OFF ficam)
       const { data: toMigrate, error: selErr } = await supabase
         .from("deals")
-        .select("id,status")
-        .eq("month_base", currentMonth);
+        .select("id,outcome")
+        .eq("month_base", displayMonthToIso(currentMonth));
       if (selErr) throw selErr;
 
       const migrateIds = (toMigrate || [])
-        .filter((d: any) => normalizeStatus(d.status) === "PROPOSTA")
+        .filter((deal: any) => deal.outcome === "open")
         .map((d: any) => d.id);
 
       if (migrateIds.length > 0) {
         const { error: updErr } = await supabase
           .from("deals")
-          .update({ month_base: nextBase })
+          .update({ month_base: displayMonthToIso(nextBase) })
           .in("id", migrateIds);
         if (updErr) throw updErr;
       }
@@ -358,7 +346,7 @@ export default function Pipeline() {
       const { data: { user } } = await supabase.auth.getUser();
       const { error: insErr } = await supabase
         .from("closed_months" as any)
-        .insert({ month_base: currentMonth, closed_by: user?.id });
+        .insert({ period: displayMonthToIso(currentMonth), closed_by: user?.id });
       if (insErr && !String(insErr.message).includes("duplicate")) throw insErr;
 
       // Reflete localmente
@@ -372,7 +360,7 @@ export default function Pipeline() {
       }));
 
       await queryClient.invalidateQueries({ queryKey: ["closed_months"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard", "deals"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", "new-schema"] });
       setMonthFilter(nextBase);
       setCloseMonthOpen(false);
       toast({
@@ -392,34 +380,24 @@ export default function Pipeline() {
   // ── Check-in / Checkout (compartilhado com a página /checkin) ──
   const [myBrokerId, setMyBrokerId] = useState<string | null>(null);
   useEffect(() => {
-    if (!user?.id) { setMyBrokerId(null); return; }
-    (async () => {
-      const { data } = await supabase.from("brokers").select("id").eq("user_id", user.id).maybeSingle();
-      setMyBrokerId((data as any)?.id || null);
-    })();
+    setMyBrokerId(user?.id || null);
   }, [user?.id]);
   const isInQueue = !!myBrokerId && queue.some((q: any) => q.broker_id === myBrokerId);
 
   const loadQueue = useCallback(async () => {
-    const workDate = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
-    const { data } = await supabase
-      .from("broker_checkins")
-      .select("id, checked_in_at, broker_id, brokers:broker_id(name)")
-      .eq("work_date", workDate)
-      .is("checked_out_at", null);
-    setQueue(((data as any[]) || []).map((r) => ({
-      id: r.id,
-      broker_id: r.broker_id,
-      name: r.brokers?.name || "—",
-      checkedInAt: new Date(r.checked_in_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-    })) as any);
+    try {
+      setQueue(await listOpenCheckins());
+    } catch (error) {
+      console.error("Erro ao carregar fila de check-in:", error);
+      setQueue([]);
+    }
   }, []);
 
   useEffect(() => {
     loadQueue();
     const ch = supabase
       .channel("pipeline-checkins")
-      .on("postgres_changes", { event: "*", schema: "public", table: "broker_checkins" }, () => loadQueue())
+      .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, () => loadQueue())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [loadQueue]);
@@ -566,26 +544,21 @@ export default function Pipeline() {
       
       // Update Supabase
       try {
-        const { error } = await supabase
+        const stageId = await getStageIdByCode(stage);
+        const { error } = await (supabase as any)
           .from('deals')
-          .update({ stage })
+          .update({ stage_id: stageId })
           .eq('id', draggedDeal);
         
         if (error) throw error;
 
-        // Auto-duplicate to CCA if moved to under_analysis and is a CCA developer
-        if (stage === 'under_analysis' && oldStage !== 'under_analysis' && ccaDevelopers.includes(deal.developer || '')) {
-          const { error: ccaError } = await supabase
-            .from('cca_deals' as any)
-            .insert({
-              deal_id: draggedDeal,
-              status: 'credit_analysis',
-              notes: 'Movido automaticamente do pipeline principal'
-            } as any);
-          
-          if (!ccaError) {
-            toast({ title: "Enviado para o Pipeline CCA" });
-          }
+        if (stage === "under_analysis" && oldStage !== "under_analysis") {
+          const { error: ccaError } = await (supabase as any).rpc(
+            "submit_deal_for_analysis",
+            { p_deal_id: draggedDeal },
+          );
+          if (ccaError) throw ccaError;
+          toast({ title: "Enviado para análise" });
         }
 
         toast({ title: `Deal movido para ${DEAL_STAGES.find((s) => s.value === stage)?.label}` });
@@ -601,45 +574,122 @@ export default function Pipeline() {
   const openNewDeal = () => { setEditingDeal(null); setFormData(emptyDeal); setDealFormOpen(true); };
   const openEditDeal = (deal: PipelineDeal) => { setEditingDeal(deal); setFormData(deal); setDealFormOpen(true); };
 
-  const saveNewLead = () => {
+  const saveNewLead = async () => {
     if (!newLeadData.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
-    const newLead: Lead = {
-      id: String(Date.now()),
-      name: newLeadData.name,
+    const { error } = await (supabase as any).from("leads").insert({
+      full_name: newLeadData.name,
       phone: newLeadData.phone,
-      whatsapp: newLeadData.whatsapp || newLeadData.phone,
-      email: newLeadData.email,
-      source: newLeadData.source,
-      broker_id: "",
-      broker_name: newLeadData.broker_name,
-      status: "new" as LeadStatus,
-      notes: newLeadData.notes,
-      created_at: new Date().toISOString(),
-    };
-    setLeads(prev => [newLead, ...prev]);
+      phone_raw: newLeadData.whatsapp || newLeadData.phone,
+      email: newLeadData.email || null,
+      utm_source: newLeadData.source || "manual",
+      status: "queued",
+      funnel_stage: "new",
+      assigned_to: brokers.find(person => person.name === newLeadData.broker_name)?.id || null,
+      notes: newLeadData.notes || null,
+      raw_payload: { created_manually: true },
+    });
+    if (error) return toast({ title: "Erro ao criar lead", description: error.message, variant: "destructive" });
+    setLeads(await listLegacyLeads());
     setNewLeadOpen(false);
     setNewLeadData({ name: "", phone: "", whatsapp: "", email: "", source: "", broker_name: "", notes: "" });
     toast({ title: "✅ Lead criado com sucesso!" });
   };
 
-  const saveDeal = () => {
-    if (editingDeal) {
-      setDeals((prev) => prev.map((d) => d.id === editingDeal.id ? { ...d, ...formData, days_in_pipeline: differenceInDays(new Date(), parseISO(formData.created_at)) } : d));
-    } else {
-      setDeals((prev) => [{ ...(formData as PipelineDeal), id: String(Date.now()), days_in_pipeline: 0 }, ...prev]);
+  const saveDeal = async () => {
+    if (!formData.client.trim()) return;
+    try {
+      const stageId = await getStageIdByCode(formData.stage);
+      const developer = formData.developer
+        ? await (supabase as any).from("developers").select("id").ilike("name", formData.developer).maybeSingle()
+        : { data: null };
+      const project = formData.project && developer.data?.id
+        ? await (supabase as any).from("developer_projects").select("id")
+            .eq("developer_id", developer.data.id).ilike("name", formData.project).maybeSingle()
+        : { data: null };
+      const dealPayload = {
+        developer_id: developer.data?.id || null,
+        project_id: project.data?.id || null,
+        unit: formData.unit || null,
+        stage_id: stageId,
+        month_base: displayMonthToIso(formData.month_base || monthFilter),
+        vgv_gross: Number(formData.vgv_bruto || formData.deal_value || 0),
+        discount_pct: Number(formData.perc_desconto || 0),
+        lead_origin: formData.lead_origin || null,
+        notes: formData.notes || null,
+      };
+
+      let dealId = editingDeal?.id;
+      if (dealId) {
+        const { error } = await (supabase as any).from("deals").update(dealPayload).eq("id", dealId);
+        if (error) throw error;
+      } else {
+        const { data, error } = await (supabase as any).from("deals").insert(dealPayload).select("id").single();
+        if (error) throw error;
+        dealId = data.id;
+      }
+
+      const { error: clientError } = await (supabase as any).from("deal_clients").upsert({
+        deal_id: dealId,
+        ordinal: 1,
+        full_name: formData.client,
+      }, { onConflict: "deal_id,ordinal" });
+      if (clientError) throw clientError;
+
+      const selectedBrokerIds = [formData.broker1, formData.broker2]
+        .filter(Boolean)
+        .map(name => brokers.find(person => person.name === name)?.id)
+        .filter(Boolean);
+      await (supabase as any).from("deal_participants").delete().eq("deal_id", dealId).eq("role", "broker");
+      if (selectedBrokerIds.length) {
+        const { error: participantsError } = await (supabase as any).from("deal_participants").insert(
+          selectedBrokerIds.map(profileId => ({ deal_id: dealId, profile_id: profileId, role: "broker" })),
+        );
+        if (participantsError) throw participantsError;
+      }
+
+      setDeals(await listLegacyDeals());
+      setDealFormOpen(false);
+      toast({ title: editingDeal ? "Deal atualizado" : "Deal criado" });
+    } catch (error: any) {
+      toast({ title: "Erro ao salvar deal", description: error?.message, variant: "destructive" });
     }
-    setDealFormOpen(false);
-    toast({ title: editingDeal ? "Deal atualizado" : "Deal criado" });
   };
 
-  const toggleDealActive = (dealId: string) => {
-    setDeals((prev) => prev.map((d) => d.id === dealId ? { ...d, active: !d.active } : d));
+  const toggleDealActive = async (dealId: string) => {
+    const deal = deals.find(row => row.id === dealId);
+    if (!deal) return;
+    if (!deal.active) return toast({ title: "Negócios encerrados não podem ser reabertos por este atalho" });
+    const stageId = await getStageIdByCode("lost");
+    const { error } = await (supabase as any).from("deals")
+      .update({ stage_id: stageId, lost_reason: "Arquivado manualmente" })
+      .eq("id", dealId);
+    if (error) return toast({ title: "Erro ao arquivar", description: error.message, variant: "destructive" });
+    setDeals(await listLegacyDeals());
   };
 
   const updateDealStatus = async (dealId: string, newStatus: string) => {
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, status: newStatus } : d));
     try {
-      const { error } = await supabase.from('deals').update({ status: newStatus }).eq('id', dealId);
+      const normalized = normalizeStatus(newStatus);
+      const stageCode =
+        normalized === "VENDA"
+          ? "closed"
+          : normalized === "QUEDA" || normalized === "DISTRATO" || normalized === "OFF"
+            ? "lost"
+            : "proposal";
+      const stageId = await getStageIdByCode(stageCode);
+      const { error } = await (supabase as any)
+        .from("deals")
+        .update({
+          stage_id: stageId,
+          lost_reason:
+            normalized === "DISTRATO"
+              ? "Distrato"
+              : normalized === "QUEDA" || normalized === "OFF"
+                ? newStatus
+                : null,
+        })
+        .eq("id", dealId);
       if (error) throw error;
     } catch (err) {
       console.error("Error updating status:", err);
@@ -647,8 +697,11 @@ export default function Pipeline() {
     }
   };
 
-  const scheduleVisit = () => {
+  const scheduleVisit = async () => {
     if (!visitDeal || !visitDate) return;
+    const stageId = await getStageIdByCode("visit_scheduled");
+    const { error } = await (supabase as any).from("deals").update({ stage_id: stageId }).eq("id", visitDeal.id);
+    if (error) return toast({ title: "Erro ao agendar visita", description: error.message, variant: "destructive" });
     setDeals((prev) => prev.map((d) => d.id === visitDeal.id ? { ...d, visit_date: format(visitDate, "yyyy-MM-dd"), visit_result: "pending", stage: "visit_scheduled" as DealStage } : d));
     setVisitDeal(null); setVisitDate(undefined);
     toast({ title: "Visita agendada" });

@@ -139,25 +139,53 @@ export default function PublicDirectorCheckpoint() {
   useEffect(() => {
     (async () => {
       setLoading(true); setError(null);
-      const { data, error } = await supabase.functions.invoke("director-weekly", {
-        body: { slug: slugify(slug), week_start: format(weekStart, "yyyy-MM-dd") },
+      const { data, error } = await (supabase as any).rpc("public_director_checkpoint", {
+        p_slug: slugify(slug),
+        p_week_start: format(weekStart, "yyyy-MM-dd"),
+        p_pin: null,
       });
-      if (error || (data as any)?.error) {
-        setError((data as any)?.error || error?.message || "Erro ao carregar");
+      if (error || !data) {
+        setError(error?.message || "Link inválido ou inativo");
         setTeams([]); setDirector(null); setMonth(null);
       } else {
         const payload = (data as any) || {};
         const safeTeams = Array.isArray(payload.teams) ? payload.teams.map((t: any) => ({
           id: String(t.id || ""),
           name: String(t.name || "Equipe"),
-          slug: slugify(String(t.slug || t.name || "equipe")),
-          manager_name: t.manager_name || null,
-          aggr: { ...emptyAggr, ...(t.aggr || {}) },
-          targets: safeTargets(t.targets),
+          slug: slugify(String(t.name || "equipe")),
+          manager_name: null,
+          aggr: {
+            leads: Number(t.totals?.leads) || 0,
+            ligacoes: Number(t.totals?.calls) || 0,
+            coleta_docs: Number(t.totals?.doc_collections) || 0,
+            enviadas: Number(t.totals?.analyses_sent) || 0,
+            aprovadas: Number(t.totals?.analyses_approved) || 0,
+            vendas: Number(t.totals?.sales) || 0,
+          },
+          targets: safeTargets({
+            analise_enviada_pct: payload.targets?.lead_to_analysis_pct,
+            aprovada_pct: payload.targets?.analysis_to_approval_pct,
+            venda_pct: payload.targets?.approval_to_sale_pct,
+          }),
         })).filter((t: TeamOut) => t.id) : [];
-        setDirector(payload.director || null);
+        setDirector(payload.director ? { name: payload.director.full_name || "Diretor" } : null);
         setTeams(safeTeams);
-        setMonth(payload.month || null);
+        const totals = safeTeams.reduce((acc: Record<string, number>, team: TeamOut) => {
+          acc.leads += team.aggr.leads;
+          acc.ligacoes += team.aggr.ligacoes;
+          acc.coleta_docs += team.aggr.coleta_docs;
+          acc.analises += team.aggr.enviadas;
+          acc.aprovados += team.aggr.aprovadas;
+          acc.vendas += team.aggr.vendas;
+          return acc;
+        }, { leads: 0, ligacoes: 0, coleta_docs: 0, analises: 0, aprovados: 0, vendas: 0 });
+        const missingByDate = new Map<string, MissingDay>();
+        (payload.teams || []).forEach((team: any) => (team.missing_days || []).forEach((date: string) => {
+          const row = missingByDate.get(date) || { date, teams: [] };
+          row.teams.push({ id: team.id, name: team.name, manager_name: null });
+          missingByDate.set(date, row);
+        }));
+        setMonth({ totals, missing_days: Array.from(missingByDate.values()) });
       }
       setLoading(false);
     })();

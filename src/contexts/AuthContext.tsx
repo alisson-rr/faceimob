@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getCurrentProfile } from "@/integrations/supabase/newSchema";
 import type { User, Session } from "@supabase/supabase-js";
 
-export type AppRole = 'broker' | 'manager' | 'director' | 'partner' | 'admin' | 'cca';
+export type AppRole = 'broker' | 'manager' | 'director' | 'partner' | 'admin' | 'cca' | 'sdr' | 'marketing';
 
 interface RolePermissions {
   view_deals: boolean;
@@ -61,6 +62,8 @@ const demoPermissions: Record<AppRole, RolePermissions> = {
   manager: { view_deals: true, edit_deals: true, move_deals: true, see_financial: false, see_conversion: true, access_dashboard: true },
   broker: { view_deals: true, edit_deals: false, move_deals: false, see_financial: false, see_conversion: false, access_dashboard: true },
   cca: { view_deals: true, edit_deals: false, move_deals: false, see_financial: false, see_conversion: false, access_dashboard: false },
+  sdr: { view_deals: false, edit_deals: false, move_deals: false, see_financial: false, see_conversion: false, access_dashboard: false },
+  marketing: { view_deals: false, edit_deals: false, move_deals: false, see_financial: true, see_conversion: true, access_dashboard: true },
 };
 
 const demoStagePermissions: Record<AppRole, StagePermission[]> = {
@@ -118,53 +121,78 @@ const demoStagePermissions: Record<AppRole, StagePermission[]> = {
     { stage: 'contract', can_view: false, can_edit: false, can_move: false },
     { stage: 'closed', can_view: false, can_edit: false, can_move: false },
   ],
+  sdr: [],
+  marketing: [],
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<AppRole>('admin');
+  const [role, setRole] = useState<AppRole>('broker');
   const [profile, setProfile] = useState<{ name: string; email: string | null; avatar_url: string | null } | null>(null);
-  const [permissions, setPermissions] = useState<RolePermissions>(demoPermissions.admin);
-  const [stagePermissions, setStagePermissions] = useState<StagePermission[]>(demoStagePermissions.admin);
+  const [permissions, setPermissions] = useState<RolePermissions>(demoPermissions.broker);
+  const [stagePermissions, setStagePermissions] = useState<StagePermission[]>(demoStagePermissions.broker);
 
   // Demo mode: switch role
   const setDemoRole = useCallback((newRole: AppRole) => {
     setRole(newRole);
     setPermissions(demoPermissions[newRole]);
     setStagePermissions(demoStagePermissions[newRole]);
-    localStorage.setItem('faceimob-demo-role', newRole);
+  }, []);
+
+  const applySession = useCallback(async (nextSession: Session | null) => {
+    setSession(nextSession);
+    setUser(nextSession?.user ?? null);
+
+    if (!nextSession?.user) {
+      setProfile(null);
+      setRole("broker");
+      setPermissions(demoPermissions.broker);
+      setStagePermissions(demoStagePermissions.broker);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const current = await getCurrentProfile(nextSession.user.id);
+      const currentRole = current.role as AppRole;
+      setProfile({
+        name: current.profile?.full_name || nextSession.user.email || "Usuário",
+        email: current.profile?.email || nextSession.user.email || null,
+        avatar_url: current.profile?.avatar_url || null,
+      });
+      setRole(currentRole);
+      setPermissions(demoPermissions[currentRole] || defaultPermissions);
+      setStagePermissions(demoStagePermissions[currentRole] || []);
+    } catch (error) {
+      console.error("Falha ao carregar perfil autenticado:", error);
+      const metadata = nextSession.user.user_metadata || {};
+      setProfile({
+        name: metadata.full_name || metadata.name || nextSession.user.email || "Usuário",
+        email: nextSession.user.email || null,
+        avatar_url: metadata.avatar_url || null,
+      });
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    // Set up auth listener first
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+    let active = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (active) void applySession(nextSession);
     });
 
-    // Then check existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      if (active) void applySession(initialSession);
     });
 
-    // Load demo role from localStorage
-    const savedRole = localStorage.getItem('faceimob-demo-role') as AppRole | null;
-    if (savedRole) {
-      setRole(savedRole);
-      setPermissions(demoPermissions[savedRole]);
-      setStagePermissions(demoStagePermissions[savedRole]);
-    }
-
-    // Set demo profile
-    setProfile({ name: 'Dianho Silva', email: 'dianho@faceimob.com', avatar_url: null });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [applySession]);
 
   const hasPermission = useCallback((key: keyof RolePermissions) => permissions[key], [permissions]);
   const canViewStage = useCallback((stage: string) => {

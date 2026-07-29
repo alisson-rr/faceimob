@@ -11,6 +11,7 @@ import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle, Settings2, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { listPeople } from "@/integrations/supabase/newSchema";
 
 type Settings = {
   roleta_seconds: number;
@@ -69,25 +70,34 @@ export default function AdminLeadAutomation() {
   const editingGroup = groups.find((g) => g.id === editingGroupId) || null;
 
   const load = async () => {
-    const [{ data: s }, { data: w }, { data: b }, { data: g }, { data: gb }, { data: gf }, { data: lf }] = await Promise.all([
-      supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
-      supabase.from("distribution_windows").select("*").order("distribution_start"),
-      supabase.from("brokers").select("id,name,active").eq("active", true).order("name"),
-      supabase.from("distribution_groups" as any).select("*").order("name"),
-      supabase.from("distribution_group_brokers" as any).select("*"),
-      supabase.from("distribution_group_forms" as any).select("*"),
-      supabase.from("leads").select("form_id, form_name").not("form_id", "is", null).limit(1000),
+    const [{ data: s }, { data: w }, people, { data: g }, { data: gb }, { data: gf }, { data: lf }] = await Promise.all([
+      (supabase as any).from("automation_settings").select("*").eq("id", true).maybeSingle(),
+      (supabase as any).from("work_shifts").select("*").order("position"),
+      listPeople(),
+      (supabase as any).from("distribution_groups").select("*").order("name"),
+      (supabase as any).from("distribution_group_members").select("*"),
+      (supabase as any).from("distribution_group_forms").select("*"),
+      (supabase as any).from("leads").select("form_id").not("form_id", "is", null).limit(1000),
     ]);
-    if (s) setSettings(s as any);
-    setWindows((w as any) || []);
-    setBrokers((b as any) || []);
+    if (s) {
+      setSettings((current) => ({
+        ...current,
+        roleta_seconds: s.attend_timeout_seconds,
+        no_response_hours: s.no_response_hours,
+        inactivity_alert_hours: s.inactivity_alert_hours,
+        auto_first_contact: s.auto_first_contact,
+        leads_paused: s.leads_paused,
+      }));
+    }
+    setWindows(((w as any[]) || []).map((row) => ({ ...row, slot: row.code })));
+    setBrokers(people.filter((person) => person.active && person.roles.includes("broker")));
     setGroups(((g as any[]) || []).map((row) => ({
       id: row.id, name: row.name, active: row.active,
-      brokers: ((gb as any[]) || []).filter((x) => x.group_id === row.id).map((x) => x.broker_id),
+      brokers: ((gb as any[]) || []).filter((x) => x.group_id === row.id && x.active).map((x) => x.profile_id),
       forms: ((gf as any[]) || []).filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
     })));
     const map = new Map<string, string | null>();
-    ((lf as any[]) || []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, r.form_name || null); });
+    ((lf as any[]) || []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, null); });
     setDetectedForms(Array.from(map.entries()).map(([form_id, form_name]) => ({ form_id, form_name })));
   };
 
@@ -95,19 +105,26 @@ export default function AdminLeadAutomation() {
 
   const saveSettings = async () => {
     setSavingSettings(true);
-    const { error } = await supabase.from("lead_automation_settings")
-      .update({ ...settings, updated_at: new Date().toISOString() }).eq("id", true);
+    const { error } = await (supabase as any).from("automation_settings")
+      .update({
+        attend_timeout_seconds: settings.roleta_seconds,
+        no_response_hours: settings.no_response_hours,
+        inactivity_alert_hours: settings.inactivity_alert_hours,
+        auto_first_contact: settings.auto_first_contact,
+        leads_paused: settings.leads_paused,
+      }).eq("id", true);
     setSavingSettings(false);
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     toast({ title: "Automação salva" });
   };
 
   const upsertWindow = async (w: Window) => {
-    const payload: any = { ...w };
+    const payload: any = { ...w, code: w.slot };
+    delete payload.slot;
     delete payload.created_at; delete payload.updated_at;
     const { error } = w.id
-      ? await supabase.from("distribution_windows").update(payload).eq("id", w.id)
-      : await supabase.from("distribution_windows").insert(payload);
+      ? await (supabase as any).from("work_shifts").update(payload).eq("id", w.id)
+      : await (supabase as any).from("work_shifts").insert(payload);
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     toast({ title: "Grupo salvo" });
     load();
@@ -115,7 +132,7 @@ export default function AdminLeadAutomation() {
 
   const deleteWindow = async (id: string) => {
     if (!confirm("Excluir este grupo?")) return;
-    const { error } = await supabase.from("distribution_windows").delete().eq("id", id);
+    const { error } = await (supabase as any).from("work_shifts").delete().eq("id", id);
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     load();
   };
@@ -151,9 +168,13 @@ export default function AdminLeadAutomation() {
   };
   const toggleGroupBroker = async (groupId: string, brokerId: string, on: boolean) => {
     if (on) {
-      await supabase.from("distribution_group_brokers" as any).insert({ group_id: groupId, broker_id: brokerId });
+      await (supabase as any).from("distribution_group_members").upsert({
+        group_id: groupId,
+        profile_id: brokerId,
+        active: true,
+      });
     } else {
-      await supabase.from("distribution_group_brokers" as any).delete().eq("group_id", groupId).eq("broker_id", brokerId);
+      await (supabase as any).from("distribution_group_members").delete().eq("group_id", groupId).eq("profile_id", brokerId);
     }
     load();
   };
@@ -164,8 +185,8 @@ export default function AdminLeadAutomation() {
   };
   const togglePause = async (v: boolean) => {
     setSettings((s) => ({ ...s, leads_paused: v }));
-    const { error } = await supabase.from("lead_automation_settings")
-      .update({ leads_paused: v, updated_at: new Date().toISOString() } as any).eq("id", true);
+    const { error } = await (supabase as any).from("automation_settings")
+      .update({ leads_paused: v }).eq("id", true);
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     toast({ title: v ? "⏸️ Chegada de leads pausada" : "▶️ Chegada de leads retomada" });
   };

@@ -26,11 +26,11 @@ export default function PipelineTopRanking({ deals }: Props) {
 
   const loadInfo = async () => {
     const [{ data: tips }, { data: notices }] = await Promise.all([
-      (supabase as any).from("gold_tips").select("content").eq("active", true).order("created_at", { ascending: false }).limit(1),
-      (supabase as any).from("important_notices").select("title,message").eq("active", true).order("pinned", { ascending: false }).order("created_at", { ascending: false }).limit(1),
+      (supabase as any).from("gold_tips").select("body").eq("active", true).order("created_at", { ascending: false }).limit(1),
+      (supabase as any).from("important_notices").select("title,body").eq("active", true).order("created_at", { ascending: false }).limit(1),
     ]);
-    setTip(tips?.[0]?.content ?? null);
-    setNotice(notices?.[0] ?? null);
+    setTip(tips?.[0]?.body ?? null);
+    setNotice(notices?.[0] ? { title: notices[0].title, message: notices[0].body } : null);
   };
 
   const openInfoDialog = async () => { await loadInfo(); setOpenInfo(true); };

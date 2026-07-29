@@ -1,6 +1,10 @@
 // Dispara template WhatsApp Cloud API para uma lista de remarketing
-import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 async function sendTemplate(phoneNumberId: string, token: string, to: string, template: string, lang: string, params: string[]) {
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
@@ -40,12 +44,16 @@ Deno.serve(async (req) => {
     if (!list_id) throw new Error('list_id obrigatório');
 
     const { data: list, error: lErr } = await supabase
-      .from('sdr_remarketing_lists').select('*').eq('id', list_id).single();
+      .from('remarketing_lists').select('*').eq('id', list_id).single();
     if (lErr) throw lErr;
 
-    const template = list.template_name;
-    const lang = list.template_language || 'pt_BR';
-    if (!template) throw new Error('Configure template_name na lista');
+    if (!list.template_id) throw new Error('Configure um template aprovado na lista');
+    const { data: templateRow, error: templateErr } = await supabase
+      .from('whatsapp_templates').select('name,language,approved').eq('id', list.template_id).single();
+    if (templateErr) throw templateErr;
+    if (!templateRow.approved) throw new Error('O template ainda não está marcado como aprovado');
+    const template = templateRow.name;
+    const lang = templateRow.language || 'pt_BR';
 
     if (test_phone) {
       const res = await sendTemplate(phoneId, token, test_phone, template, lang, ['Teste']);
@@ -53,31 +61,32 @@ Deno.serve(async (req) => {
     }
 
     const { data: contacts } = await supabase
-      .from('sdr_remarketing_contacts').select('*')
-      .eq('list_id', list_id).eq('send_status', 'pending').limit(500);
+      .from('remarketing_contacts').select('*')
+      .eq('list_id', list_id).eq('status', 'pending').limit(500);
 
     let sent = 0, failed = 0;
+    await supabase.from('remarketing_lists').update({ status: 'running' }).eq('id', list_id);
     for (const c of (contacts || [])) {
       const phone = (c.phone || '').replace(/\D/g, '');
       if (!phone) { failed++; continue; }
       const to = phone.startsWith('55') ? phone : '55' + phone;
-      const params = [c.name || 'Cliente', c.campaign || ''];
+      const params = [c.full_name || 'Cliente', c.extra?.campaign || ''];
       const { ok, data } = await sendTemplate(phoneId, token, to, template, lang, params);
       if (ok) {
         sent++;
-        await supabase.from('sdr_remarketing_contacts').update({
-          send_status: 'sent', sent_at: new Date().toISOString(), error: null,
+        await supabase.from('remarketing_contacts').update({
+          status: 'sent', sent_at: new Date().toISOString(), last_error: null,
         }).eq('id', c.id);
       } else {
         failed++;
-        await supabase.from('sdr_remarketing_contacts').update({
-          send_status: 'failed', error: JSON.stringify(data).slice(0, 500),
+        await supabase.from('remarketing_contacts').update({
+          status: 'failed', last_error: JSON.stringify(data).slice(0, 500),
         }).eq('id', c.id);
       }
       await new Promise(r => setTimeout(r, 250)); // rate limit
     }
 
-    await supabase.from('sdr_remarketing_lists').update({ status: 'sent' }).eq('id', list_id);
+    await supabase.from('remarketing_lists').update({ status: failed ? 'failed' : 'done' }).eq('id', list_id);
 
     return new Response(JSON.stringify({ sent, failed, total: contacts?.length || 0 }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
