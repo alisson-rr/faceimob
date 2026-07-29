@@ -8,8 +8,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
-type Window = { slot: string; label: string; checkin_start: string; distribution_start: string; checkout_time: string };
-type Checkin = { id: string; slot: string; work_date: string; checked_in_at: string; checked_out_at: string | null; leads_received: number };
+type Window = { id: string; code: string; label: string; checkin_start: string; distribution_start: string; checkout_time: string };
+type Checkin = { id: string; shift_id: string; work_date: string; checked_in_at: string; checked_out_at: string | null; leads_received: number };
 
 function nowBRT() {
   const d = new Date();
@@ -44,43 +44,26 @@ export default function Checkin() {
   }, []);
 
   const load = async () => {
-    const { data: w } = await supabase.from("distribution_windows").select("*").order("checkin_start");
+    const { data: w } = await (supabase as any).from("work_shifts").select("*").eq("active", true).order("position");
     setWindows((w as any) || []);
     if (!user) return;
-    const { data: b } = await supabase.from("brokers").select("id").eq("user_id", user.id).maybeSingle();
-    if (!b) { setToday([]); setOverdueCount(0); return; }
     const brt = nowBRT();
     const workDate = brt.toISOString().slice(0, 10);
-    const { data: c } = await supabase.from("broker_checkins")
-      .select("*").eq("broker_id", (b as any).id).eq("work_date", workDate);
+    const { data: c } = await (supabase as any).from("checkins")
+      .select("*").eq("profile_id", user.id).eq("work_date", workDate);
     setToday((c as any) || []);
 
-    // Contar leads atrasados do corretor logado
-    const [{ data: myLeads }, { data: settings }] = await Promise.all([
-      supabase.from("leads").select("id, funnel_stage, stage_changed_at, created_at")
-        .eq("broker_id", (b as any).id)
-        .neq("funnel_stage", "converted")
-        .limit(1000),
-      supabase.from("lead_automation_settings").select("stage_max_minutes").eq("id", true).maybeSingle(),
-    ]);
-    const stageMax: Record<string, number> = (settings as any)?.stage_max_minutes || {
-      new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320,
-    };
-    const nowMs = Date.now();
-    const overdue = ((myLeads as any) || []).filter((l: any) => {
-      const max = stageMax[l.funnel_stage || "new"];
-      if (!max) return false;
-      const changed = new Date(l.stage_changed_at || l.created_at).getTime();
-      return (nowMs - changed) / 60_000 > max;
-    }).length;
-    setOverdueCount(overdue);
+    const { data: overdue } = await (supabase as any).rpc("overdue_lead_count", {
+      who: user.id,
+    });
+    setOverdueCount(Number(overdue || 0));
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [user]);
 
   const now = nowBRT();
   const activeWindow = windows.find((w) => inSlot(w, now));
-  const activeCheckin = activeWindow ? today.find((c) => c.slot === activeWindow.slot && !c.checked_out_at) : undefined;
+  const activeCheckin = activeWindow ? today.find((c) => c.shift_id === activeWindow.id && !c.checked_out_at) : undefined;
 
   const action = async (act: "checkin" | "checkout") => {
     if (act === "checkin" && overdueCount > OVERDUE_LIMIT) {
@@ -170,11 +153,11 @@ export default function Checkin() {
         <CardContent>
           <div className="grid gap-3 md:grid-cols-3">
             {windows.map((w) => {
-              const c = today.find((x) => x.slot === w.slot);
+              const c = today.find((x) => x.shift_id === w.id);
               const done = c?.checked_out_at;
               const activeNow = inSlot(w, now);
               return (
-                <div key={w.slot} className={`rounded-lg border p-4 ${activeNow ? "border-primary bg-primary/5" : ""}`}>
+                <div key={w.id} className={`rounded-lg border p-4 ${activeNow ? "border-primary bg-primary/5" : ""}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-semibold">{w.label}</div>
                     {c && (done ? <Badge variant="outline">encerrado</Badge> : <Badge>ativo</Badge>)}

@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { listPeople } from "@/integrations/supabase/newSchema";
 
 import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
 
@@ -23,6 +24,7 @@ interface BrokerRow {
   director_id: string | null;
   active: boolean;
   user_id: string | null;
+  email?: string | null;
   avatar_url?: string | null;
   monthly_goal?: number | null;
   yearly_goal?: number | null;
@@ -37,7 +39,45 @@ function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }
   const dirty = Number(monthly) !== Number(broker.monthly_goal ?? 0) || Number(yearly) !== Number(broker.yearly_goal ?? 0);
   const save = async () => {
     setSaving(true);
-    const { error } = await (supabase as any).from("brokers").update({ monthly_goal: Number(monthly || 0), yearly_goal: Number(yearly || 0) }).eq("id", broker.id);
+    const now = new Date();
+    const periods = [
+      {
+        period_type: "month",
+        period: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`,
+        target: Number(monthly || 0),
+      },
+      {
+        period_type: "year",
+        period: `${now.getFullYear()}-01-01`,
+        target: Number(yearly || 0),
+      },
+    ];
+    let error: any = null;
+    for (const goal of periods) {
+      const existing = await (supabase as any)
+        .from("goals")
+        .select("id")
+        .eq("scope", "profile")
+        .eq("profile_id", broker.id)
+        .eq("period_type", goal.period_type)
+        .eq("period", goal.period)
+        .eq("metric", "vgv")
+        .maybeSingle();
+      const result = existing.data
+        ? await (supabase as any).from("goals").update({ target: goal.target }).eq("id", existing.data.id)
+        : await (supabase as any).from("goals").insert({
+            scope: "profile",
+            profile_id: broker.id,
+            period_type: goal.period_type,
+            period: goal.period,
+            metric: "vgv",
+            target: goal.target,
+          });
+      if (result.error) {
+        error = result.error;
+        break;
+      }
+    }
     setSaving(false);
     if (error) return toast({ title: "Erro ao salvar meta", description: error.message, variant: "destructive" });
     toast({ title: "Meta salva" });
@@ -124,20 +164,29 @@ export default function Equipes() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("brokers")
-      .select("id,name,role,manager_id,director_id,active,user_id,monthly_goal,yearly_goal")
-      .eq("active", true)
-      .order("name");
-    if (error) toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
-    setRows((data as any) || []);
-    const { data: teamsData } = await supabase.from("teams").select("id,manager_id,display_name,name");
+    try {
+      const people = await listPeople();
+      setRows(people.map((person) => ({
+        id: person.id,
+        name: person.name,
+        role: person.role,
+        manager_id: person.manager_id,
+        director_id: person.director_id,
+        active: person.active,
+        user_id: person.id,
+        email: person.email,
+        avatar_url: person.avatar_url,
+      })));
+    } catch (error: any) {
+      toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
+    }
+    const { data: teamsData } = await (supabase as any).from("teams").select("id,manager_id,name");
     const map: Record<string, { id: string; display_name: string | null }> = {};
     const drafts: Record<string, string> = {};
     (teamsData || []).forEach((t: any) => {
       if (t.manager_id) {
-        map[t.manager_id] = { id: t.id, display_name: t.display_name };
-        drafts[t.manager_id] = t.display_name ?? "";
+        map[t.manager_id] = { id: t.id, display_name: t.name };
+        drafts[t.manager_id] = t.name ?? "";
       }
     });
     setTeamsByMgr(map);
@@ -149,11 +198,11 @@ export default function Equipes() {
     const name = (teamNameDrafts[managerId] ?? "").trim();
     const existing = teamsByMgr[managerId];
     if (existing) {
-      const { error } = await supabase.from("teams").update({ display_name: name || null }).eq("id", existing.id);
+      const { error } = await supabase.from("teams").update({ name: name || managerName }).eq("id", existing.id);
       if (error) return toast({ title: "Falha ao salvar", description: error.message, variant: "destructive" });
       setTeamsByMgr(p => ({ ...p, [managerId]: { ...existing, display_name: name || null } }));
     } else {
-      const { data, error } = await supabase.from("teams").insert({ manager_id: managerId, name: managerName, display_name: name || null }).select("id").single();
+      const { data, error } = await supabase.from("teams").insert({ manager_id: managerId, name: name || managerName } as any).select("id").single();
       if (error) return toast({ title: "Falha ao criar equipe", description: error.message, variant: "destructive" });
       setTeamsByMgr(p => ({ ...p, [managerId]: { id: data.id, display_name: name || null } }));
     }
@@ -165,21 +214,11 @@ export default function Equipes() {
   // Admin: fetch credentials for all brokers so they can be shown on each card
   useEffect(() => {
     if (!isAdmin || rows.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        rows.map(async r => {
-          const { data } = await supabase.rpc("get_broker_private", { _id: r.id });
-          const row: any = Array.isArray(data) ? data[0] : data;
-          return [r.id, { email: row?.login_email ?? null, password: null as string | null }] as const;
-        })
-      );
-      if (cancelled) return;
-      const map: Record<string, { email: string | null; password: string | null }> = {};
-      entries.forEach(([id, v]) => { map[id] = v; });
-      setCreds(map);
-    })();
-    return () => { cancelled = true; };
+    const map: Record<string, { email: string | null; password: string | null }> = {};
+    rows.forEach((row) => {
+      map[row.id] = { email: row.email || null, password: null };
+    });
+    setCreds(map);
   }, [isAdmin, rows]);
 
 
@@ -211,11 +250,21 @@ export default function Equipes() {
     list.filter(b => (search ? b.name.toLowerCase().includes(search.toLowerCase()) : true));
 
   const openEdit = async (_type: "manager" | "broker", m: BrokerRow) => {
-    const { data } = await supabase.from("brokers")
-      .select("id,name,full_name,avatar_url,role,manager_id,director_id,active,user_id,habilitation,creci,entry_date,division,indication,badge_requested,badge_requested_at,badge_delivered_at")
+    const { data } = await (supabase as any).from("profiles")
+      .select("id,full_name,email,phone,avatar_url,status")
       .eq("id", m.id).maybeSingle();
-    const { data: priv } = await supabase.rpc("get_broker_private", { _id: m.id });
-    const merged = { ...(data as any), ...((priv?.[0] as any) || {}) };
+    const merged = {
+      ...(data as any),
+      name: data?.full_name,
+      celular: data?.phone,
+      role: m.role,
+      manager_id: m.manager_id,
+      director_id: m.director_id,
+      active: data?.status === "active",
+      user_id: m.id,
+      login_email: data?.email,
+      login_email_confirmed: true,
+    };
     setProfileEdit(merged || (m as any));
   };
 
@@ -236,15 +285,36 @@ export default function Equipes() {
     setSaving(true);
     const ids = Array.from(bulkSelected);
     if (bulk.column === "broker") {
-      const mgr = managers.find(m => m.id === bulkTarget);
-      const patch: any = { manager_id: bulkTarget, director_id: mgr?.director_id ?? null };
-      const { error } = await supabase.from("brokers").update(patch).in("id", ids);
-      if (error) { setSaving(false); return toast({ title: "Erro", description: error.message, variant: "destructive" }); }
+      const { data: targetTeam, error: teamError } = await (supabase as any)
+        .from("teams")
+        .select("id")
+        .eq("manager_id", bulkTarget)
+        .eq("active", true)
+        .maybeSingle();
+      if (teamError || !targetTeam) {
+        setSaving(false);
+        return toast({ title: "Erro", description: teamError?.message || "O gerente não possui uma equipe ativa.", variant: "destructive" });
+      }
+      for (const profileId of ids) {
+        await (supabase as any)
+          .from("team_members")
+          .update({ left_at: new Date().toISOString().slice(0, 10) })
+          .eq("profile_id", profileId)
+          .is("left_at", null);
+        const { error } = await (supabase as any)
+          .from("team_members")
+          .insert({ team_id: targetTeam.id, profile_id: profileId });
+        if (error) {
+          setSaving(false);
+          return toast({ title: "Erro", description: error.message, variant: "destructive" });
+        }
+      }
     } else {
-      const { error } = await supabase.from("brokers").update({ director_id: bulkTarget }).in("id", ids);
+      const { error } = await (supabase as any)
+        .from("teams")
+        .update({ director_id: bulkTarget })
+        .in("manager_id", ids);
       if (error) { setSaving(false); return toast({ title: "Erro", description: error.message, variant: "destructive" }); }
-      // propagate to their brokers
-      await supabase.from("brokers").update({ director_id: bulkTarget }).in("manager_id", ids);
     }
     setSaving(false);
     toast({ title: `${ids.length} vínculo(s) atualizados` });

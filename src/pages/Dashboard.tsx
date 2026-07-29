@@ -14,6 +14,7 @@ import {
   RadialBarChart, RadialBar, PolarAngleAxis, LineChart, Line, Legend,
 } from "recharts";
 import { isResultado, isProducao, isPerda, normalizeStatus, pickOpenMonth, compareMonth } from "@/lib/dealStatus";
+import { listLegacyLeads, loadDashboardPayload } from "@/integrations/supabase/newSchema";
 
 // ─── Static tables ──────────────────────────────────────────────────────────
 const DEVELOPERS = ["VASCO", "TENDA", "MRV", "MELNICK", "LYX", "MAB", "ABACO", "MCG", "MITRANA"];
@@ -81,15 +82,9 @@ export default function Dashboard() {
   const [tab, setTab] = useState<TabKey>("geral");
 
   const { data: bi = {} as DashboardBiPayload } = useQuery({
-    queryKey: ["dashboard", "bi-cache"],
+    queryKey: ["dashboard", "new-schema"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("dashboard_bi_cache" as any)
-        .select("payload")
-        .eq("id", true)
-        .maybeSingle();
-      if (error) throw error;
-      return ((data as any)?.payload || {}) as DashboardBiPayload;
+      return (await loadDashboardPayload()) as DashboardBiPayload;
     },
     staleTime: 60_000,
   });
@@ -751,13 +746,7 @@ function LeadsTab() {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["dashboard", "leads-all"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("leads")
-        .select("id,name,source,status,broker_name,created_at")
-        .order("created_at", { ascending: false })
-        .limit(2000);
-      if (error) throw error;
-      return (data || []) as any[];
+      return (await listLegacyLeads()).slice(0, 2000) as any[];
     },
     staleTime: 60_000,
   });

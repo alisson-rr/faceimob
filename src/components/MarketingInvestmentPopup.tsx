@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { DollarSign, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { DollarSign, Trash2, Save, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-type Investment = { id: string; invested_at: string; amount: number; developer: string | null; note: string | null };
+type Developer = { id: string; name: string };
+type Investment = { id: string; period: string; amount: number; developer_id: string; notes: string | null };
 
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -17,17 +18,17 @@ const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Investment[]>([]);
-  const [devs, setDevs] = useState<string[]>([]);
+  const [devs, setDevs] = useState<Developer[]>([]);
   const [loading, setLoading] = useState(false);
   const [monthTotal, setMonthTotal] = useState(0);
-  const [form, setForm] = useState({ invested_at: new Date().toISOString().slice(0, 10), amount: "", developer: "", note: "" });
+  const [form, setForm] = useState({ period: new Date().toISOString().slice(0, 7), amount: "", developer_id: "", notes: "" });
   const [saving, setSaving] = useState(false);
 
   const loadTotal = async () => {
     const first = new Date();
     first.setDate(1);
     const from = first.toISOString().slice(0, 10);
-    const { data } = await (supabase as any).from("marketing_investments").select("amount").gte("invested_at", from);
+    const { data } = await (supabase as any).from("marketing_investments").select("amount").gte("period", from);
     const t = (data || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
     setMonthTotal(t);
   };
@@ -38,11 +39,11 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
     first.setDate(1);
     const from = first.toISOString().slice(0, 10);
     const [{ data }, devsRes] = await Promise.all([
-      (supabase as any).from("marketing_investments").select("*").gte("invested_at", from).order("invested_at", { ascending: false }),
-      (supabase as any).from("cca_developers").select("developer_name").order("developer_name"),
+      (supabase as any).from("marketing_investments").select("*").gte("period", from).order("period", { ascending: false }),
+      (supabase as any).from("developers").select("id,name").eq("active", true).order("name"),
     ]);
     setRows((data as Investment[]) || []);
-    setDevs(((devsRes.data as any[]) || []).map(d => d.developer_name));
+    setDevs((devsRes.data as Developer[]) || []);
     setLoading(false);
   };
 
@@ -50,18 +51,18 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
   useEffect(() => { if (open) load(); }, [open]);
 
   const save = async () => {
-    if (!form.amount || !form.invested_at) return toast({ title: "Preencha data e valor", variant: "destructive" });
+    if (!form.amount || !form.period || !form.developer_id) return toast({ title: "Preencha mês, valor e construtora", variant: "destructive" });
     setSaving(true);
     const { error } = await (supabase as any).from("marketing_investments").insert({
-      invested_at: form.invested_at,
+      period: `${form.period}-01`,
       amount: Number(form.amount),
-      developer: form.developer || null,
-      note: form.note || null,
+      developer_id: form.developer_id,
+      notes: form.notes || null,
     });
     setSaving(false);
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     toast({ title: "Aporte salvo" });
-    setForm({ invested_at: new Date().toISOString().slice(0, 10), amount: "", developer: "", note: "" });
+    setForm({ period: new Date().toISOString().slice(0, 7), amount: "", developer_id: "", notes: "" });
     load(); loadTotal();
   };
 
@@ -74,9 +75,12 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
 
   const grouped = useMemo(() => {
     const m = new Map<string, number>();
-    rows.forEach(r => m.set(r.developer || "Sem construtora", (m.get(r.developer || "Sem construtora") || 0) + Number(r.amount)));
+    rows.forEach(r => {
+      const developer = devs.find(d => d.id === r.developer_id)?.name || "Sem construtora";
+      m.set(developer, (m.get(developer) || 0) + Number(r.amount));
+    });
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
-  }, [rows]);
+  }, [rows, devs]);
 
   const now = new Date();
 
@@ -102,16 +106,16 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
             <div className="border border-border/40 rounded-lg p-3 bg-secondary/20 space-y-2">
               <p className="text-xs font-semibold">Novo Aporte</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div><Label className="text-[10px]">Data</Label><Input type="date" value={form.invested_at} onChange={e => setForm(p => ({ ...p, invested_at: e.target.value }))} className="h-8 text-xs" /></div>
+                <div><Label className="text-[10px]">Mês</Label><Input type="month" value={form.period} onChange={e => setForm(p => ({ ...p, period: e.target.value }))} className="h-8 text-xs" /></div>
                 <div><Label className="text-[10px]">Valor (R$)</Label><Input type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} className="h-8 text-xs" placeholder="5000" /></div>
                 <div>
                   <Label className="text-[10px]">Construtora</Label>
-                  <Select value={form.developer} onValueChange={v => setForm(p => ({ ...p, developer: v }))}>
+                  <Select value={form.developer_id} onValueChange={v => setForm(p => ({ ...p, developer_id: v }))}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar" /></SelectTrigger>
-                    <SelectContent>{devs.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                    <SelectContent>{devs.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div><Label className="text-[10px]">Nota</Label><Input value={form.note} onChange={e => setForm(p => ({ ...p, note: e.target.value }))} className="h-8 text-xs" placeholder="opcional" /></div>
+                <div><Label className="text-[10px]">Nota</Label><Input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="h-8 text-xs" placeholder="opcional" /></div>
               </div>
               <div className="flex justify-end">
                 <Button size="sm" onClick={save} disabled={saving} className="gap-1"><Save className="h-3.5 w-3.5" />{saving ? "Salvando..." : "Salvar"}</Button>
@@ -137,9 +141,9 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
                 <p className="p-4 text-xs text-muted-foreground text-center">Nenhum aporte cadastrado neste mês.</p>
               ) : rows.map(r => (
                 <div key={r.id} className="flex items-center gap-2 px-3 py-1.5 border-b border-border/20 text-xs last:border-0">
-                  <span className="w-20 text-muted-foreground">{r.invested_at.slice(8, 10)}/{r.invested_at.slice(5, 7)}</span>
-                  <span className="flex-1 truncate">{r.developer || "—"}</span>
-                  <span className="text-muted-foreground text-[10px] truncate max-w-[100px]">{r.note}</span>
+                  <span className="w-20 text-muted-foreground">{r.period.slice(5, 7)}/{r.period.slice(0, 4)}</span>
+                  <span className="flex-1 truncate">{devs.find(d => d.id === r.developer_id)?.name || "—"}</span>
+                  <span className="text-muted-foreground text-[10px] truncate max-w-[100px]">{r.notes}</span>
                   <strong className="text-emerald-400 w-24 text-right">{fmt(Number(r.amount))}</strong>
                   {canEdit && <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => remove(r.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>}
                 </div>

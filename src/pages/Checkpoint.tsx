@@ -10,9 +10,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { addDays, endOfWeek, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { listPeople } from "@/integrations/supabase/newSchema";
 
 
-type TeamRow = { id: string; name: string; display_name: string | null; manager_id: string | null };
+type TeamRow = { id: string; name: string; display_name: string | null; manager_id: string | null; director_id: string | null };
 type BrokerRow = { id: string; name: string; manager_id: string | null; director_id: string | null; user_id: string | null };
 type EntryRow = {
   report_id: string; leads: number; ligacoes: number; coleta_docs: number;
@@ -38,23 +39,28 @@ export default function Checkpoint() {
   const load = async () => {
     setLoading(true);
     const [t, b, tg] = await Promise.all([
-      supabase.from("teams").select("id,name,display_name,manager_id"),
-      supabase.from("brokers").select("id,name,manager_id,director_id,user_id").eq("active", true),
-      supabase.from("checkpoint_targets").select("team_id,analise_enviada_pct,aprovada_pct,venda_pct"),
+      (supabase as any).from("teams").select("id,name,manager_id,director_id").eq("active", true),
+      listPeople(),
+      (supabase as any).from("funnel_targets").select("scope,team_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct").order("effective_from", { ascending: false }),
     ]);
-    setTeams((t.data as any) || []);
-    setBrokers((b.data as any) || []);
+    setTeams(((t.data as any[]) || []).map(team => ({ ...team, display_name: team.name })));
+    setBrokers((b as any[]).filter(person => person.active));
     const tmap: Record<string, Targets> = {};
     (tg.data || []).forEach((r: any) => {
-      const key = r.team_id ?? "__global__";
-      tmap[key] = { analise_enviada_pct: Number(r.analise_enviada_pct), aprovada_pct: Number(r.aprovada_pct), venda_pct: Number(r.venda_pct) };
+      const key = r.scope === "global" ? "__global__" : r.team_id;
+      if (!key || tmap[key]) return;
+      tmap[key] = {
+        analise_enviada_pct: Number(r.lead_to_analysis_pct),
+        aprovada_pct: Number(r.analysis_to_approval_pct),
+        venda_pct: Number(r.approval_to_sale_pct),
+      };
     });
     setTargetsMap(tmap);
 
     const from = format(weekStart, "yyyy-MM-dd");
     const to = format(weekEnd, "yyyy-MM-dd");
     const { data: rep } = await supabase
-      .from("daily_team_reports")
+      .from("daily_reports" as any)
       .select("id,team_id,report_date")
       .gte("report_date", from)
       .lte("report_date", to);
@@ -62,10 +68,18 @@ export default function Checkpoint() {
     const ids = (rep || []).map((r: any) => r.id);
     if (ids.length) {
       const { data: ent } = await supabase
-        .from("daily_broker_entries")
-        .select("report_id,leads,ligacoes,coleta_docs,analises,aprovados,vendas")
+        .from("daily_entries" as any)
+        .select("report_id,leads,calls,doc_collections,analyses_sent,analyses_approved,sales")
         .in("report_id", ids);
-      setEntries((ent as any) || []);
+      setEntries(((ent as any[]) || []).map(entry => ({
+        report_id: entry.report_id,
+        leads: entry.leads,
+        ligacoes: entry.calls,
+        coleta_docs: entry.doc_collections,
+        analises: entry.analyses_sent,
+        aprovados: entry.analyses_approved,
+        vendas: entry.sales,
+      })));
     } else {
       setEntries([]);
     }
@@ -79,8 +93,7 @@ export default function Checkpoint() {
   const visibleTeams = useMemo(() => {
     if (role === "admin") return teams;
     if (role === "director" && myBroker) {
-      const myMgrs = brokers.filter(b => b.director_id === myBroker.id).map(b => b.id);
-      return teams.filter(t => t.manager_id && myMgrs.includes(t.manager_id));
+      return teams.filter(t => t.director_id === myBroker.id);
     }
     if (role === "manager" && myBroker) return teams.filter(t => t.manager_id === myBroker.id);
     return [];

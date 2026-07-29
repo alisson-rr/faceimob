@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Save, Trash2, Loader2 } from "lucide-react";
+import { Save, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,45 +43,50 @@ function FileUpload({ onFile, hint, accept = ".csv,.xlsx,.xls" }: { onFile: (f: 
   );
 }
 
-type Aporte = { id: string; invested_at: string; amount: number; developer: string | null };
+type Developer = { id: string; name: string };
+type Aporte = { id: string; period: string; amount: number; developer_id: string };
+
+const monthStart = () => {
+  const d = new Date();
+  d.setDate(1);
+  return d.toISOString().slice(0, 10);
+};
 
 export default function DataManagement() {
   const { role } = useAuth();
-  const canEditAporte = role === "admin" || role === "director";
+  const canEditAporte = role === "admin" || role === "marketing";
 
   // Aportes (Marketing)
-  const [devs, setDevs] = useState<string[]>([]);
+  const [devs, setDevs] = useState<Developer[]>([]);
   const [aportes, setAportes] = useState<Aporte[]>([]);
-  const [aporte, setAporte] = useState({ invested_at: new Date().toISOString().slice(0, 10), amount: "", developer: "" });
+  const [aporte, setAporte] = useState({ period: monthStart(), amount: "", developer_id: "" });
   const [monthTotal, setMonthTotal] = useState(0);
   const [savingAporte, setSavingAporte] = useState(false);
 
-  const monthStart = () => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); };
-
   const loadAportes = async () => {
-    const { data } = await (supabase as any).from("marketing_investments").select("*").gte("invested_at", monthStart()).order("invested_at", { ascending: false });
+    const { data } = await (supabase as any).from("marketing_investments").select("*").gte("period", monthStart()).order("period", { ascending: false });
     const list = (data as Aporte[]) || [];
     setAportes(list);
     setMonthTotal(list.reduce((s, r) => s + Number(r.amount || 0), 0));
   };
   useEffect(() => {
     (async () => {
-      const { data } = await (supabase as any).from("cca_developers").select("developer_name").order("developer_name");
-      setDevs(((data as any[]) || []).map(d => d.developer_name));
+      const { data } = await (supabase as any).from("developers").select("id,name").eq("active", true).order("name");
+      setDevs((data as Developer[]) || []);
       loadAportes();
     })();
   }, []);
 
   const saveAporte = async () => {
-    if (!aporte.amount || !aporte.invested_at) return toast({ title: "Preencha data e valor", variant: "destructive" });
+    if (!aporte.amount || !aporte.period || !aporte.developer_id) return toast({ title: "Preencha mês, valor e construtora", variant: "destructive" });
     setSavingAporte(true);
     const { error } = await (supabase as any).from("marketing_investments").insert({
-      invested_at: aporte.invested_at, amount: Number(aporte.amount), developer: aporte.developer || null,
+      period: aporte.period.slice(0, 7) + "-01", amount: Number(aporte.amount), developer_id: aporte.developer_id,
     });
     setSavingAporte(false);
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     toast({ title: "Aporte salvo" });
-    setAporte({ invested_at: new Date().toISOString().slice(0, 10), amount: "", developer: "" });
+    setAporte({ period: monthStart(), amount: "", developer_id: "" });
     loadAportes();
   };
 
@@ -129,11 +134,11 @@ export default function DataManagement() {
               {canEditAporte && (
                 <div className="space-y-2">
                   <div className="grid grid-cols-3 gap-2">
-                    <Input type="date" value={aporte.invested_at} onChange={e => setAporte(p => ({ ...p, invested_at: e.target.value }))} className="h-8 text-xs" />
+                    <Input type="month" value={aporte.period.slice(0, 7)} onChange={e => setAporte(p => ({ ...p, period: `${e.target.value}-01` }))} className="h-8 text-xs" />
                     <Input type="number" placeholder="Valor R$" value={aporte.amount} onChange={e => setAporte(p => ({ ...p, amount: e.target.value }))} className="h-8 text-xs" />
-                    <Select value={aporte.developer} onValueChange={v => setAporte(p => ({ ...p, developer: v }))}>
+                    <Select value={aporte.developer_id} onValueChange={v => setAporte(p => ({ ...p, developer_id: v }))}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Construtora" /></SelectTrigger>
-                      <SelectContent>{devs.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                      <SelectContent>{devs.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="flex justify-end">
@@ -157,8 +162,8 @@ export default function DataManagement() {
                   <TableBody>
                     {aportes.map(a => (
                       <TableRow key={a.id}>
-                        <TableCell className="text-xs">{a.invested_at.split("-").reverse().join("/")}</TableCell>
-                        <TableCell className="text-xs">{a.developer || "—"}</TableCell>
+                        <TableCell className="text-xs">{a.period.slice(0, 7).split("-").reverse().join("/")}</TableCell>
+                        <TableCell className="text-xs">{devs.find(d => d.id === a.developer_id)?.name || "—"}</TableCell>
                         <TableCell className="text-xs text-right text-emerald-400 font-semibold">{fmt(Number(a.amount))}</TableCell>
                         <TableCell className="text-right">
                           {canEditAporte && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeAporte(a.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}

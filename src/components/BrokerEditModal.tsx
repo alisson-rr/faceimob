@@ -82,20 +82,21 @@ export function BrokerEditModal({
 
   const save = async () => {
     setSaving(true);
-    const patch = {
-      name: form.name, full_name: form.full_name, email: form.email,
-      role: form.role, manager_id: form.manager_id || null, director_id: form.director_id || null,
-      active: form.active ?? true, avatar_url: form.avatar_url,
-      habilitation: form.habilitation, creci: form.creci, cpf: form.cpf,
-      celular: form.celular, address: form.address, birth_date: form.birth_date || null,
-      entry_date: form.entry_date || null, division: form.division, indication: form.indication,
-      login_email: form.login_email || null,
-      login_email_confirmed: !!form.login_email_confirmed,
-      badge_requested: !!form.badge_requested,
-      badge_requested_at: form.badge_requested_at || null,
-      badge_delivered_at: form.badge_delivered_at || null,
-    };
-    const { error } = await supabase.from("brokers").update(patch).eq("id", form.id);
+    const { error } = await (supabase as any)
+      .from("profiles")
+      .update({
+        full_name: form.full_name || form.name,
+        email: form.email,
+        phone: form.celular || null,
+        avatar_url: form.avatar_url,
+        status: form.active === false ? "suspended" : "active",
+      })
+      .eq("id", form.id);
+    if (!error && isAdmin && form.role) {
+      await (supabase as any)
+        .from("user_roles")
+        .upsert({ profile_id: form.id, role: form.role });
+    }
     setSaving(false);
     if (error) return toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
     toast({ title: "Dados atualizados" });
@@ -118,21 +119,20 @@ export function BrokerEditModal({
     setProvisioning(true); setCreds(null);
     try {
       // 1) Persist current form edits BEFORE provisioning, so nothing is lost
-      const patch = {
-        name: form.name, full_name: form.full_name, email: form.email,
-        role: form.role, manager_id: form.manager_id || null, director_id: form.director_id || null,
-        active: form.active ?? true, avatar_url: form.avatar_url,
-        habilitation: form.habilitation, creci: form.creci, cpf: form.cpf,
-        celular: form.celular, address: form.address, birth_date: form.birth_date || null,
-        entry_date: form.entry_date || null, division: form.division, indication: form.indication,
-        login_email: form.login_email || null,
-        login_email_confirmed: !!form.login_email_confirmed,
-        badge_requested: !!form.badge_requested,
-        badge_requested_at: form.badge_requested_at || null,
-        badge_delivered_at: form.badge_delivered_at || null,
-      };
-      const { error: saveErr } = await supabase.from("brokers").update(patch).eq("id", form.id);
+      const { error: saveErr } = await (supabase as any).from("profiles").update({
+        full_name: form.full_name || form.name,
+        email: form.login_email || form.email,
+        phone: form.celular || null,
+        avatar_url: form.avatar_url,
+        active: form.active ?? true,
+      }).eq("id", form.id);
       if (saveErr) throw new Error(saveErr.message);
+      if (isAdmin && form.role) {
+        const { error: roleErr } = await (supabase as any)
+          .from("user_roles")
+          .upsert({ profile_id: form.id, role: form.role });
+        if (roleErr) throw new Error(roleErr.message);
+      }
 
       const { data: sess } = await supabase.auth.getSession();
       const accessToken = sess?.session?.access_token;

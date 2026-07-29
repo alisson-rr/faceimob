@@ -7,7 +7,6 @@ import { RoleSwitcher } from "@/components/RoleSwitcher";
 import NewLeadNotifier from "@/components/NewLeadNotifier";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { Trophy } from "lucide-react";
 import { useGameRanking } from "@/hooks/useGameRanking";
 
@@ -28,30 +27,19 @@ const pageTitles: Record<string, string> = {
 
 export default function AppLayout() {
   const [showMotivation, setShowMotivation] = useState(false);
-  const [me, setMe] = useState<{ name: string; avatar_url: string | null } | null>(null);
   const location = useLocation();
   const pageTitle = pageTitles[location.pathname] || "Faceimob";
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { scoped, myBroker, allScores } = useGameRanking();
 
-  useEffect(() => {
-    if (!user?.id) { setMe(null); return; }
-    (async () => {
-      const { data: byId } = await supabase
-        .from("brokers").select("name, avatar_url")
-        .eq("user_id", user.id).maybeSingle();
-      if (byId) { setMe(byId as any); return; }
-      if (user.email) {
-        const { data: byEmail } = await supabase
-          .from("brokers").select("name, avatar_url")
-          .or(`login_email.eq.${user.email},email.eq.${user.email}`)
-          .maybeSingle();
-        if (byEmail) { setMe(byEmail as any); return; }
-      }
-      const meta: any = user.user_metadata || {};
-      setMe({ name: meta.name || meta.full_name || user.email || "Usuário", avatar_url: meta.avatar_url || null });
-    })();
-  }, [user?.id, user?.email]);
+  const me = profile
+    ? { name: profile.name, avatar_url: profile.avatar_url }
+    : user
+      ? {
+          name: user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Usuário",
+          avatar_url: user.user_metadata?.avatar_url || null,
+        }
+      : null;
 
   useEffect(() => {
     const justLogged = sessionStorage.getItem("faceimob-just-logged");

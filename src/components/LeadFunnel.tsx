@@ -9,7 +9,6 @@ import { ptBR } from "date-fns/locale";
 import { AlertTriangle, MessageCircle, Timer, User, BellRing, Clock, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LeadDetailModal from "./LeadDetailModal";
-import { toast } from "@/hooks/use-toast";
 
 const STAGES: { key: string; label: string; accent: string }[] = [
   { key: "new", label: "Novo Lead", accent: "border-blue-500/50" },
@@ -41,24 +40,44 @@ export default function LeadFunnel({
 
 
   const load = async () => {
-    const [{ data }, { data: s }, { data: lost }] = await Promise.all([
-      supabase.from("leads").select("*")
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [{ data }, { data: s }, { data: people }, { data: sources }, { data: lost }] = await Promise.all([
+      (supabase as any).from("leads").select("*")
         .neq("funnel_stage", "converted")
         .order("created_at", { ascending: false })
         .limit(500),
-      supabase.from("lead_automation_settings").select("*").eq("id", true).maybeSingle(),
-      supabase.rpc("leads_lost_today" as any),
+      (supabase as any).from("automation_settings").select("*").eq("id", true).maybeSingle(),
+      (supabase as any).from("profiles").select("id,full_name"),
+      (supabase as any).from("lead_sources").select("id,label"),
+      (supabase as any).from("lead_assignments").select("profile_id")
+        .eq("release_reason", "timeout")
+        .gte("released_at", today.toISOString()),
     ]);
-    setLeads((data as any) || []);
-    // mostra perdidos apenas do próprio corretor logado
-    const own = ((lost as any) || []).filter((r: any) =>
-      (r.broker_name || "").trim().toLowerCase() === (actorName || "").trim().toLowerCase()
+    const peopleById = new Map(((people as any[]) || []).map(p => [p.id, p.full_name]));
+    const sourcesById = new Map(((sources as any[]) || []).map(source => [source.id, source.label]));
+    setLeads(((data as any[]) || []).map(lead => ({
+      ...lead,
+      name: lead.full_name,
+      whatsapp: lead.phone,
+      broker_name: lead.assigned_to ? peopleById.get(lead.assigned_to) || null : null,
+      source: lead.source_id ? sourcesById.get(lead.source_id) || lead.utm_source : lead.utm_source,
+      form_name: lead.form_id,
+      form_answers: lead.raw_payload?.fields || {},
+      tracking: lead.raw_payload || {},
+      stage_changed_at: lead.updated_at,
+    })));
+
+    const ownProfile = ((people as any[]) || []).find(
+      p => (p.full_name || "").trim().toLowerCase() === (actorName || "").trim().toLowerCase()
     );
-    setLostToday(own as any);
+    const ownLost = ownProfile
+      ? ((lost as any[]) || []).filter(row => row.profile_id === ownProfile.id).length
+      : 0;
+    setLostToday(ownLost ? [{ broker_name: actorName, lost_count: ownLost }] : []);
     if (s) {
-      setRoletaSec((s as any).roleta_seconds);
+      setRoletaSec((s as any).attend_timeout_seconds);
       setInactivityH((s as any).inactivity_alert_hours);
-      if ((s as any).stage_max_minutes) setStageMax((s as any).stage_max_minutes);
     }
   };
 
@@ -108,28 +127,6 @@ export default function LeadFunnel({
     });
   }, [leads, now, stageMax, actorName]);
 
-
-  // Roleta: reatribui leads "new" expirados ao próximo corretor da fila
-  useEffect(() => {
-    const reassignedKey = "lead-reassigned";
-    const reassigned: string[] = JSON.parse(sessionStorage.getItem(reassignedKey) || "[]");
-    (async () => {
-      for (const l of leads) {
-        if (l.funnel_stage !== "new" || reassigned.includes(l.id)) continue;
-        const ageMs = now - new Date(l.created_at).getTime();
-        if (ageMs < roletaSec * 1000) continue;
-
-        reassigned.push(l.id);
-        sessionStorage.setItem(reassignedKey, JSON.stringify(reassigned));
-        const { data } = await supabase.rpc("reassign_expired_lead" as any, { _lead_id: l.id });
-        const res: any = data;
-        if (res?.ok) {
-          toast({ title: "🔁 Lead repassado", description: `${l.name || "Lead"} → ${res.new_broker_name}` });
-        }
-      }
-      load();
-    })();
-  }, [leads, now, roletaSec]);
 
   const totalLostToday = lostToday.reduce((a, b) => a + Number(b.lost_count || 0), 0);
 

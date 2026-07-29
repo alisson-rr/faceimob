@@ -29,16 +29,27 @@ export default function SdrModule() {
   const [waConfig, setWaConfig] = useState<any>({});
 
   async function loadAll() {
-    const [a, s, l, w] = await Promise.all([
-      supabase.from("sdr_agents").select("*").order("created_at"),
-      supabase.from("sdr_lead_sources").select("*").order("created_at"),
-      supabase.from("sdr_remarketing_lists").select("*").order("created_at", { ascending: false }),
-      supabase.from("sdr_whatsapp_config").select("*").eq("id", true).maybeSingle(),
+    const [a, s, l, w, contacts] = await Promise.all([
+      (supabase as any).from("sdr_agents").select("*").order("created_at"),
+      (supabase as any).from("lead_sources").select("*").order("created_at"),
+      (supabase as any).from("remarketing_lists").select("*").order("created_at", { ascending: false }),
+      (supabase as any).from("whatsapp_templates").select("*").order("created_at"),
+      (supabase as any).from("remarketing_contacts").select("list_id"),
     ]);
     setAgents((a.data as any) || []);
-    setSources((s.data as any) || []);
-    setLists((l.data as any) || []);
-    setWaConfig(w.data || { id: true });
+    setSources(((s.data as any[]) || []).map(row => ({
+      ...row,
+      source_match: row.code,
+      agent_id: row.sdr_agent_id,
+    })));
+    const templates = (w.data as any[]) || [];
+    setLists(((l.data as any[]) || []).map(row => ({
+      ...row,
+      template_name: templates.find(template => template.id === row.template_id)?.name || null,
+      template_language: templates.find(template => template.id === row.template_id)?.language || "pt_BR",
+      total_contacts: ((contacts.data as any[]) || []).filter(contact => contact.list_id === row.id).length,
+    })));
+    setWaConfig(templates[0] || { name: "", language: "pt_BR", body: "", approved: false, active: true });
   }
   useEffect(() => { loadAll(); }, []);
 
@@ -222,15 +233,16 @@ function SourcesTab({ sources, agents, reload }: { sources: Source[]; agents: Ag
   const [row, setRow] = useState<Partial<Source>>({ label: "", active: true });
   async function add() {
     if (!row.label) return toast.error("Label obrigatório");
-    const { error } = await supabase.from("sdr_lead_sources").insert({
-      label: row.label, form_id: row.form_id || null, source_match: row.source_match || null,
-      agent_id: row.agent_id || null, active: row.active ?? true,
+    const code = (row.source_match || row.label).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const { error } = await (supabase as any).from("lead_sources").insert({
+      code, label: row.label, form_id: row.form_id || null,
+      sdr_agent_id: row.agent_id || null, active: row.active ?? true,
     });
     if (error) return toast.error(error.message);
     setRow({ label: "", active: true }); reload();
   }
   async function remove(id: string) {
-    await supabase.from("sdr_lead_sources").delete().eq("id", id); reload();
+    await (supabase as any).from("lead_sources").delete().eq("id", id); reload();
   }
   return (
     <Card className="p-4 space-y-3">
@@ -335,7 +347,7 @@ function ConversationsTab({ agents }: { agents: Agent[] }) {
   useEffect(() => { load(); }, []);
   useEffect(() => {
     if (!sel) { setMsgs([]); return; }
-    supabase.from("sdr_messages").select("*").eq("conversation_id", sel).order("created_at").then(({ data }) => setMsgs(data || []));
+    (supabase as any).from("sdr_messages").select("*").eq("conversation_id", sel).order("created_at").then(({ data }: any) => setMsgs(data || []));
   }, [sel]);
 
   return (
@@ -345,8 +357,8 @@ function ConversationsTab({ agents }: { agents: Agent[] }) {
         {rows.map(r => (
           <button key={r.id} onClick={() => setSel(r.id)} className={`w-full text-left p-2 rounded text-xs hover:bg-muted ${sel === r.id ? "bg-muted" : ""}`}>
             <div className="flex items-center justify-between">
-              <b>{r.channel}</b>
-              <Badge variant="outline" className="text-[9px]">{r.temperature}</Badge>
+              <b>{r.status}</b>
+              <Badge variant="outline" className="text-[9px]">{r.score ?? "—"}</Badge>
             </div>
             <div className="text-muted-foreground">{agents.find(a => a.id === r.agent_id)?.name || "—"}</div>
             <div className="text-[10px] text-muted-foreground">{new Date(r.updated_at).toLocaleString("pt-BR")}</div>
@@ -355,9 +367,9 @@ function ConversationsTab({ agents }: { agents: Agent[] }) {
       </Card>
       <Card className="p-3 max-h-[520px] overflow-y-auto space-y-2">
         {msgs.map(m => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-              {m.content}
+          <div key={m.id} className={`flex ${m.author === "lead" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${m.author === "lead" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+              {m.body}
             </div>
           </div>
         ))}
@@ -399,16 +411,19 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
 
       if (parsed.length === 0) return toast.error("Nenhum contato válido (verifique colunas nome/fone/campanha)");
 
-      const { data: list, error: lErr } = await supabase.from("sdr_remarketing_lists").insert({
-        name: newName, template_name: template || null, agent_id: agentId || null,
-        total_contacts: parsed.length, status: "ready",
+      const { data: templateRow } = template
+        ? await (supabase as any).from("whatsapp_templates").select("id").eq("name", template).maybeSingle()
+        : { data: null };
+      const { data: list, error: lErr } = await (supabase as any).from("remarketing_lists").insert({
+        name: newName, template_id: templateRow?.id || null, agent_id: agentId || null,
+        status: "draft",
       }).select().single();
       if (lErr) throw lErr;
 
-      const contacts = parsed.map(p => ({ ...p, list_id: list.id }));
+      const contacts = parsed.map(p => ({ full_name: p.name, phone: p.phone, extra: { campaign: p.campaign, ...p.extra }, list_id: list.id }));
       const chunkSize = 500;
       for (let i = 0; i < contacts.length; i += chunkSize) {
-        const { error } = await supabase.from("sdr_remarketing_contacts").insert(contacts.slice(i, i + chunkSize));
+        const { error } = await (supabase as any).from("remarketing_contacts").insert(contacts.slice(i, i + chunkSize));
         if (error) throw error;
       }
       toast.success(`Lista "${newName}" criada com ${parsed.length} contatos`);
@@ -429,7 +444,7 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
 
   async function removeList(id: string) {
     if (!confirm("Excluir lista?")) return;
-    await supabase.from("sdr_remarketing_lists").delete().eq("id", id); reload();
+    await (supabase as any).from("remarketing_lists").delete().eq("id", id); reload();
   }
 
   return (
@@ -477,27 +492,33 @@ function WhatsAppTab({ config, reload }: { config: any; reload: () => void }) {
   const [c, setC] = useState<any>(config);
   useEffect(() => setC(config), [config]);
   async function save() {
-    const { error } = await supabase.from("sdr_whatsapp_config").upsert({
-      id: true,
-      phone_number_id: c.phone_number_id || null,
-      business_account_id: c.business_account_id || null,
-      default_template_name: c.default_template_name || null,
-      default_template_language: c.default_template_language || "pt_BR",
-      webhook_verify_token: c.webhook_verify_token || null,
+    if (!c.name?.trim() || !c.body?.trim()) return toast.error("Informe nome e mensagem do template");
+    const payload = {
+      name: c.name.trim(),
+      language: c.language || "pt_BR",
+      category: c.category || "MARKETING",
+      body: c.body,
+      approved: !!c.approved,
       active: !!c.active,
-    });
+    };
+    const query = c.id
+      ? (supabase as any).from("whatsapp_templates").update(payload).eq("id", c.id)
+      : (supabase as any).from("whatsapp_templates").insert(payload);
+    const { error } = await query;
     if (error) return toast.error(error.message);
     toast.success("Configuração salva"); reload();
   }
   return (
     <Card className="p-4 space-y-3 max-w-2xl">
-      <p className="text-xs text-muted-foreground">Credenciais sensíveis (Access Token) ficam nos <b>Secrets</b> do backend (META_WHATSAPP_ACCESS_TOKEN e META_WHATSAPP_PHONE_NUMBER_ID). Aqui só metadados. Você pode deixar em branco e preencher depois.</p>
+      <p className="text-xs text-muted-foreground">Credenciais sensíveis ficam nos Secrets do backend. Aqui você cadastra o template aprovado pela Meta.</p>
       <div className="grid grid-cols-2 gap-2">
-        <div><Label>Phone Number ID (referência)</Label><Input value={c.phone_number_id || ""} onChange={e => setC({ ...c, phone_number_id: e.target.value })} /></div>
-        <div><Label>Business Account ID</Label><Input value={c.business_account_id || ""} onChange={e => setC({ ...c, business_account_id: e.target.value })} /></div>
-        <div><Label>Template padrão</Label><Input value={c.default_template_name || ""} onChange={e => setC({ ...c, default_template_name: e.target.value })} /></div>
-        <div><Label>Idioma template</Label><Input value={c.default_template_language || "pt_BR"} onChange={e => setC({ ...c, default_template_language: e.target.value })} /></div>
-        <div className="col-span-2"><Label>Webhook verify token</Label><Input value={c.webhook_verify_token || ""} onChange={e => setC({ ...c, webhook_verify_token: e.target.value })} /></div>
+        <div><Label>Nome do template</Label><Input value={c.name || ""} onChange={e => setC({ ...c, name: e.target.value })} /></div>
+        <div><Label>Idioma</Label><Input value={c.language || "pt_BR"} onChange={e => setC({ ...c, language: e.target.value })} /></div>
+        <div className="col-span-2"><Label>Mensagem</Label><Textarea value={c.body || ""} onChange={e => setC({ ...c, body: e.target.value })} /></div>
+        <div className="flex items-center gap-2">
+          <Switch checked={!!c.approved} onCheckedChange={v => setC({ ...c, approved: v })} />
+          <Label>Aprovado na Meta</Label>
+        </div>
         <div className="col-span-2 flex items-center gap-2">
           <Switch checked={!!c.active} onCheckedChange={v => setC({ ...c, active: v })} />
           <Label>Módulo WhatsApp ativo</Label>

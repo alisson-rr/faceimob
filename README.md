@@ -36,6 +36,37 @@ npm i
 npm run dev
 ```
 
+## Supabase
+
+As migrations e o seed em quatro fases usam o schema novo. Para aplicar o seed
+completo no projeto remoto pelo PowerShell (a senha é solicitada sem ser exibida):
+
+```powershell
+npm run db:seed:remote
+```
+
+Esse comando usa Docker para executar o `psql`, sem colocar a senha na URI nem
+no histórico do terminal. Ele carrega catálogo, pessoas fictícias bloqueadas
+para login, equipes, leads, negócios, CCA, SDR, daily, gamificação, marketing e
+workspace. Os registros são idempotentes: o comando pode ser repetido.
+
+Para criar o seu primeiro usuário real:
+
+```powershell
+npm run user:create -- -Email admin@faceimob.com.br -FullName "Administrador" -Role admin
+```
+
+O script lê `VITE_SUPABASE_URL` do `.env` e pede, sem exibir, a senha inicial e
+a `service_role key`. Essa chave deve ser copiada de **Supabase → Project
+Settings → API Keys** e nunca deve ser salva no `.env` do Vite, commitada ou
+exposta no navegador.
+
+Depois, inicie o aplicativo e entre pela rota `/login`:
+
+```powershell
+npm run dev
+```
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).

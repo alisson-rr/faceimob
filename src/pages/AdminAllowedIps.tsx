@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, Plus, Globe } from "lucide-react";
 import { toast } from "sonner";
 
-type Ip = { id: string; ip: string; label: string | null; active: boolean; created_at: string };
+type Ip = { id: string; ip_range: string; label: string; active: boolean; created_at: string };
 
 export default function AdminAllowedIps() {
   const [rows, setRows] = useState<Ip[]>([]);
@@ -26,7 +26,11 @@ export default function AdminAllowedIps() {
 
   const add = async () => {
     if (!ip.trim()) return;
-    const { error } = await supabase.from("allowed_ips").insert({ ip: ip.trim(), label: label.trim() || null });
+    const ipRange = ip.trim().includes("/") ? ip.trim() : `${ip.trim()}/32`;
+    const { error } = await (supabase as any).from("allowed_ips").insert({
+      ip_range: ipRange,
+      label: label.trim() || "IP autorizado",
+    });
     if (error) return toast.error(error.message);
     toast.success("IP autorizado.");
     setIp(""); setLabel(""); load();
@@ -84,7 +88,7 @@ export default function AdminAllowedIps() {
           <div className="space-y-2">
             {rows.map((r) => (
               <div key={r.id} className="flex items-center gap-3 border rounded-lg p-3">
-                <code className="font-mono text-sm">{r.ip}</code>
+                <code className="font-mono text-sm">{r.ip_range}</code>
                 <span className="text-sm text-muted-foreground flex-1">{r.label || "—"}</span>
                 <Badge variant={r.active ? "default" : "secondary"} className="cursor-pointer" onClick={() => toggle(r)}>
                   {r.active ? "ativo" : "inativo"}
