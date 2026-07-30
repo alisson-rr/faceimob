@@ -1,134 +1,117 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { formatDistanceToNow } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/hooks/use-toast";
+import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, MessageCircle, Timer, User, BellRing, Clock, ExternalLink } from "lucide-react";
+import { AlertTriangle, MessageCircle, Timer, Clock, HandMetal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LeadDetailModal from "./LeadDetailModal";
-
-const STAGES: { key: string; label: string; accent: string }[] = [
-  { key: "new", label: "Novo Lead", accent: "border-blue-500/50" },
-  { key: "first_contact", label: "Primeiro Contato", accent: "border-cyan-500/50" },
-  { key: "no_response", label: "Sem Resposta", accent: "border-amber-500/50" },
-  { key: "warm", label: "Lead Morno", accent: "border-orange-500/50" },
-  { key: "hot", label: "Lead Quente", accent: "border-red-500/50" },
-  { key: "gathering_docs", label: "Juntando Doc", accent: "border-violet-500/50" },
-  { key: "converted", label: "Convertido", accent: "border-emerald-500/50" },
-];
-
-type LeadRow = any;
+import {
+  listLeads, getAutomationSettings, listTimeoutReleasesToday, claimLead,
+  FUNNEL_STAGES, OPEN_LEAD_STATUSES, funnelStageLabel,
+  attendSecondsLeft, formatCountdown, canClaim, isLeadOverdue,
+  type LeadRecord, type AutomationSettings,
+} from "@/integrations/supabase/leads";
 
 export default function LeadFunnel({
   actorName, onConvert,
-}: { actorName: string; onConvert: (l: LeadRow) => void }) {
-  const [leads, setLeads] = useState<LeadRow[]>([]);
-  const [selected, setSelected] = useState<LeadRow | null>(null);
-  const [now, setNow] = useState(Date.now());
-  const [roletaSec, setRoletaSec] = useState(300);
-  const [inactivityH, setInactivityH] = useState(24);
-  const [stageMax, setStageMax] = useState<Record<string, number>>({
-    new: 5, first_contact: 60, no_response: 1440, warm: 2880, hot: 1440, gathering_docs: 4320,
-  });
-  const [popupLead, setPopupLead] = useState<LeadRow | null>(null);
-  const [popupKind, setPopupKind] = useState<"new" | "delay">("new");
+}: { actorName: string; onConvert: (l: LeadRecord) => void }) {
+  const { user } = useAuth();
+  const profileId = user?.id || null;
+
+  const [leads, setLeads] = useState<LeadRecord[]>([]);
+  const [selected, setSelected] = useState<LeadRecord | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [settings, setSettings] = useState<AutomationSettings | null>(null);
+  const [timeoutsToday, setTimeoutsToday] = useState(0);
   const [overdueOpen, setOverdueOpen] = useState(false);
-  const [lostToday, setLostToday] = useState<{ broker_name: string; lost_count: number }[]>([]);
 
-
-  const load = async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [{ data }, { data: s }, { data: people }, { data: sources }, { data: lost }] = await Promise.all([
-      (supabase as any).from("leads").select("*")
-        .neq("funnel_stage", "converted")
-        .order("created_at", { ascending: false })
-        .limit(500),
-      (supabase as any).from("automation_settings").select("*").eq("id", true).maybeSingle(),
-      (supabase as any).from("profiles").select("id,full_name"),
-      (supabase as any).from("lead_sources").select("id,label"),
-      (supabase as any).from("lead_assignments").select("profile_id")
-        .eq("release_reason", "timeout")
-        .gte("released_at", today.toISOString()),
-    ]);
-    const peopleById = new Map(((people as any[]) || []).map(p => [p.id, p.full_name]));
-    const sourcesById = new Map(((sources as any[]) || []).map(source => [source.id, source.label]));
-    setLeads(((data as any[]) || []).map(lead => ({
-      ...lead,
-      name: lead.full_name,
-      whatsapp: lead.phone,
-      broker_name: lead.assigned_to ? peopleById.get(lead.assigned_to) || null : null,
-      source: lead.source_id ? sourcesById.get(lead.source_id) || lead.utm_source : lead.utm_source,
-      form_name: lead.form_id,
-      form_answers: lead.raw_payload?.fields || {},
-      tracking: lead.raw_payload || {},
-      stage_changed_at: lead.updated_at,
-    })));
-
-    const ownProfile = ((people as any[]) || []).find(
-      p => (p.full_name || "").trim().toLowerCase() === (actorName || "").trim().toLowerCase()
-    );
-    const ownLost = ownProfile
-      ? ((lost as any[]) || []).filter(row => row.profile_id === ownProfile.id).length
-      : 0;
-    setLostToday(ownLost ? [{ broker_name: actorName, lost_count: ownLost }] : []);
-    if (s) {
-      setRoletaSec((s as any).attend_timeout_seconds);
-      setInactivityH((s as any).inactivity_alert_hours);
+  const load = useCallback(async () => {
+    try {
+      // Só o que ainda está em operação: convertido/perdido/descartado sai do funil.
+      const [rows, config, releases] = await Promise.all([
+        listLeads({ statuses: OPEN_LEAD_STATUSES, limit: 500 }),
+        getAutomationSettings(),
+        listTimeoutReleasesToday().catch(() => new Map<string, number>()),
+      ]);
+      setLeads(rows);
+      setSettings(config);
+      setTimeoutsToday(profileId ? releases.get(profileId) || 0 : 0);
+      // Mantém o lead aberto sincronizado com o que voltou do banco.
+      setSelected((current) => (current ? rows.find((row) => row.id === current.id) || null : null));
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar o funil",
+        description: err instanceof Error ? err.message : "tente recarregar a página",
+      });
     }
-  };
-
-
-
+  }, [profileId]);
 
   useEffect(() => {
-    load();
-    const ch = supabase.channel("leads-funnel")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "leads" }, () => {
-        // Popup/toast/audio de "Novo Lead recebido!" é disparado globalmente por
-        // NewLeadNotifier (montado em AppLayout). Aqui só recarregamos o funil.
-        load();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leads" }, () => load())
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "leads" }, () => load())
+    void load();
+    // O popup/som de lead novo é global (NewLeadNotifier em AppLayout);
+    // aqui só recarregamos o funil quando o banco muda.
+    const channel = supabase.channel("leads-funnel")
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => { void load(); })
       .subscribe();
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => { supabase.removeChannel(ch); clearInterval(t); };
-  }, []);
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
+
+  // Tique de 1s só enquanto existe trava correndo — o funil fica aberto o dia
+  // inteiro e são até 500 cartões na tela.
+  const hasRunningDeadline = leads.some(
+    (lead) => lead.status === "assigned" && lead.attend_deadline,
+  );
+
+  useEffect(() => {
+    const ticker = setInterval(() => setNow(Date.now()), hasRunningDeadline ? 1_000 : 30_000);
+    return () => clearInterval(ticker);
+  }, [hasRunningDeadline]);
 
   const grouped = useMemo(() => {
-    const g: Record<string, LeadRow[]> = {};
-    STAGES.forEach(s => (g[s.key] = []));
-    for (const l of leads) {
-      const k = l.funnel_stage || "new";
-      (g[k] ||= []).push(l);
+    const groups: Record<string, LeadRecord[]> = {};
+    FUNNEL_STAGES.forEach((stage) => { groups[stage.key] = []; });
+    for (const lead of leads) {
+      const key = lead.funnel_stage || "new";
+      (groups[key] ||= []).push(lead);
     }
-    return g;
+    return groups;
   }, [leads]);
 
-  // Lista de leads atrasados (por etapa) do corretor logado
-  const overdueLeads = useMemo(() => {
-    const own = (actorName || "").trim().toLowerCase();
-    return leads.filter(l => {
-      if (l.funnel_stage === "converted") return false;
-      if (own && (l.broker_name || "").trim().toLowerCase() !== own) return false;
-      const max = stageMax[l.funnel_stage || "new"];
-      if (!max) return false;
-      const changed = new Date(l.stage_changed_at || l.created_at).getTime();
-      const mins = (now - changed) / 60_000;
-      return mins > max;
-    }).sort((a, b) => {
-      const ta = new Date(a.stage_changed_at || a.created_at).getTime();
-      const tb = new Date(b.stage_changed_at || b.created_at).getTime();
-      return ta - tb;
-    });
-  }, [leads, now, stageMax, actorName]);
+  // "Atrasado" é a definição do banco (`overdue_lead_count`): próxima ação
+  // vencida. É essa conta que bloqueia o check-in, então a tela usa a mesma.
+  const overdueLeads = useMemo(
+    () => leads
+      .filter((lead) => (profileId ? lead.assigned_to === profileId : true))
+      .filter((lead) => isLeadOverdue(lead, now))
+      .sort((a, b) => new Date(a.next_action_at || a.created_at).getTime()
+        - new Date(b.next_action_at || b.created_at).getTime()),
+    [leads, now, profileId],
+  );
 
+  const threshold = settings?.overdue_block_threshold ?? 20;
+  const inactivityHours = settings?.inactivity_alert_hours ?? 48;
+  const attendTimeout = settings?.attend_timeout_seconds ?? 300;
 
-  const totalLostToday = lostToday.reduce((a, b) => a + Number(b.lost_count || 0), 0);
+  const attend = async (lead: LeadRecord) => {
+    try {
+      await claimLead(lead.id);
+      toast({ title: "Lead em atendimento", description: `${lead.name} está travado com você.` });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível atender",
+        description: err instanceof Error ? err.message : "tente novamente",
+      });
+    }
+    await load();
+  };
 
   return (
     <>
@@ -143,28 +126,23 @@ export default function LeadFunnel({
           Atrasados
           <Badge variant="secondary" className="ml-1">{overdueLeads.length}</Badge>
         </Button>
-        {overdueLeads.length > 20 && (
+        {overdueLeads.length >= threshold && (
           <span className="text-xs text-destructive font-semibold">
-            ⚠ Check-in bloqueado: reduza para ≤ 20 atrasos.
+            ⚠ Check-in bloqueado: reduza para menos de {threshold} atrasos.
           </span>
         )}
-        {totalLostToday > 0 && (
+        {timeoutsToday > 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
             <AlertTriangle className="h-4 w-4 text-destructive" />
-            <span className="font-semibold">Leads perdidos hoje (roleta expirou):</span>
-            <Badge variant="destructive">{totalLostToday}</Badge>
-            {lostToday.map(l => (
-              <Badge key={l.broker_name} variant="outline" className="border-destructive/60 text-destructive">
-                {l.broker_name}: {l.lost_count}
-              </Badge>
-            ))}
+            <span className="font-semibold">Leads que voltaram à fila hoje (prazo estourou):</span>
+            <Badge variant="destructive">{timeoutsToday}</Badge>
+            <Badge variant="outline" className="border-destructive/60 text-destructive">{actorName}</Badge>
           </div>
         )}
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-4">
-
-        {STAGES.map(stage => {
+        {FUNNEL_STAGES.map((stage) => {
           const items = grouped[stage.key] || [];
           return (
             <div key={stage.key} className="min-w-[260px] w-[260px] shrink-0">
@@ -173,15 +151,17 @@ export default function LeadFunnel({
                 <Badge variant="outline" className="text-[10px]">{items.length}</Badge>
               </div>
               <div className={cn("border rounded-b-lg p-2 space-y-2 min-h-[400px] bg-background/30", stage.accent)}>
-                {items.map(l => (
+                {items.map((lead) => (
                   <LeadCardMini
-                    key={l.id}
-                    lead={l}
+                    key={lead.id}
+                    lead={lead}
                     now={now}
-                    roletaSec={roletaSec}
-                    inactivityH={inactivityH}
-                    stageMaxMin={stageMax[stage.key] || 0}
-                    onClick={() => setSelected(l)}
+                    inactivityHours={inactivityHours}
+                    attendTimeout={attendTimeout}
+                    claimable={canClaim(lead, profileId)}
+                    overdue={isLeadOverdue(lead, now)}
+                    onClick={() => setSelected(lead)}
+                    onAttend={() => attend(lead)}
                   />
                 ))}
                 {items.length === 0 && (
@@ -202,49 +182,6 @@ export default function LeadFunnel({
         onStageChanged={load}
       />
 
-      {/* Popup de novo lead / atraso */}
-      <Dialog open={!!popupLead} onOpenChange={(v) => !v && setPopupLead(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {popupKind === "new" ? (
-                <><BellRing className="h-5 w-5 text-primary animate-pulse" /> Novo Lead recebido!</>
-              ) : (
-                <><AlertTriangle className="h-5 w-5 text-destructive" /> Lead atrasado</>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {popupKind === "new" ? (
-                <>Um novo lead acabou de chegar. Aja rápido para não perder!</>
-              ) : (
-                <>Este lead está há tempo demais na etapa atual. Retome o atendimento.</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          {popupLead && (
-            <div className="space-y-2 py-2">
-              <p className="text-lg font-semibold">{popupLead.name || "Sem nome"}</p>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <Badge className={cn("border", sourceStyle(popupLead.source).cls)}>{sourceStyle(popupLead.source).label}</Badge>
-                {popupLead.form_name && <Badge variant="outline">📋 {popupLead.form_name}</Badge>}
-                <Badge variant="outline">Etapa: {STAGES.find(s => s.key === popupLead.funnel_stage)?.label || popupLead.funnel_stage}</Badge>
-              </div>
-              {popupKind === "delay" && popupLead.stage_changed_at && (
-                <p className="text-xs text-destructive flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> Nesta etapa {formatDistanceToNow(new Date(popupLead.stage_changed_at), { locale: ptBR, addSuffix: true })}
-                </p>
-              )}
-            </div>
-          )}
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPopupLead(null)}>Depois</Button>
-            <Button onClick={() => { setSelected(popupLead); setPopupLead(null); }}>
-              <ExternalLink className="h-4 w-4 mr-1" /> Abrir lead
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Lista de leads atrasados */}
       <Dialog open={overdueOpen} onOpenChange={setOverdueOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
@@ -254,7 +191,8 @@ export default function LeadFunnel({
               Leads atrasados ({overdueLeads.length})
             </DialogTitle>
             <DialogDescription>
-              Trate cada lead abaixo para desbloquear novos check-ins. Limite: 20 atrasos.
+              Próxima ação vencida. Trate cada lead para desbloquear novos check-ins
+              (limite: {threshold}).
             </DialogDescription>
           </DialogHeader>
           <div className="overflow-y-auto space-y-2 pr-1">
@@ -263,33 +201,29 @@ export default function LeadFunnel({
                 🎉 Nenhum lead atrasado. Bom trabalho!
               </p>
             )}
-            {overdueLeads.map(l => {
-              const changed = new Date(l.stage_changed_at || l.created_at).getTime();
-              const mins = Math.floor((now - changed) / 60_000);
-              const stageLabel = STAGES.find(s => s.key === l.funnel_stage)?.label || l.funnel_stage;
-              return (
-                <button
-                  key={l.id}
-                  onClick={() => { setOverdueOpen(false); setSelected(l); }}
-                  className="w-full text-left border border-destructive/40 bg-destructive/5 rounded-lg px-3 py-2 hover:bg-destructive/10 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm truncate">{l.name || "Sem nome"}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {l.source || "—"}{l.form_name ? ` · ${l.form_name}` : ""}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <Badge variant="outline" className="text-[10px]">{stageLabel}</Badge>
-                      <span className="text-[10px] text-destructive font-semibold flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> {mins}m na etapa
-                      </span>
-                    </div>
+            {overdueLeads.map((lead) => (
+              <button
+                key={lead.id}
+                onClick={() => { setOverdueOpen(false); setSelected(lead); }}
+                className="w-full text-left border border-destructive/40 bg-destructive/5 rounded-lg px-3 py-2 hover:bg-destructive/10 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm truncate">{lead.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {lead.source || "—"}{lead.form_name ? ` · ${lead.form_name}` : ""}
+                    </p>
                   </div>
-                </button>
-              );
-            })}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <Badge variant="outline" className="text-[10px]">{funnelStageLabel(lead.funnel_stage)}</Badge>
+                    <span className="text-[10px] text-destructive font-semibold flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      venceu {lead.next_action_at ? format(new Date(lead.next_action_at), "dd/MM HH:mm") : "—"}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOverdueOpen(false)}>Fechar</Button>
@@ -313,65 +247,73 @@ function sourceStyle(source?: string): { cls: string; label: string } {
   return { cls: "bg-secondary text-foreground border-border", label: source || "Origem —" };
 }
 
-function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick }: { lead: LeadRow; now: number; roletaSec: number; inactivityH: number; stageMaxMin: number; onClick: () => void }) {
-  const created = new Date(lead.created_at).getTime();
-  const ageMs = now - created;
-  const isNew = lead.funnel_stage === "new";
-  const isBrandNew = ageMs < 10 * 60_000; // < 10min
-  const roletaLeftMs = roletaSec * 1000 - ageMs;
-  const lastAct = new Date(lead.last_activity_at || lead.created_at).getTime();
-  const inactiveH = (now - lastAct) / 3_600_000;
-  const inactiveAlert = inactiveH > inactivityH;
-  const stageChanged = new Date(lead.stage_changed_at || lead.created_at).getTime();
-  const stageMinutes = (now - stageChanged) / 60_000;
-  const stageOverdue = stageMaxMin > 0 && stageMinutes > stageMaxMin;
+function LeadCardMini({
+  lead, now, inactivityHours, attendTimeout, claimable, overdue, onClick, onAttend,
+}: {
+  lead: LeadRecord;
+  now: number;
+  inactivityHours: number;
+  attendTimeout: number;
+  claimable: boolean;
+  overdue: boolean;
+  onClick: () => void;
+  onAttend: () => void;
+}) {
+  const ageMs = now - new Date(lead.created_at).getTime();
+  const isBrandNew = ageMs < attendTimeout * 1000;
+  // Cronômetro da trava vem de `attend_deadline`: o banco zera esse campo no
+  // claim, então contar a partir de created_at mostrava prazo em lead já travado.
+  const secondsLeft = attendSecondsLeft(lead, now);
+  const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
+  const inactive = (now - lastActivity) / 3_600_000 > inactivityHours;
   const src = sourceStyle(lead.source);
-  const whatsappNum = (lead.whatsapp || lead.phone || "").replace(/\D/g, "");
-  const waLink = whatsappNum
-    ? `https://wa.me/${whatsappNum.startsWith("55") ? whatsappNum : "55" + whatsappNum}?text=${encodeURIComponent(`Olá ${lead.name || ""}, tudo bem?`)}`
+  const digits = (lead.phone || "").replace(/\D/g, "");
+  const waLink = digits
+    ? `https://wa.me/${digits.startsWith("55") ? digits : `55${digits}`}?text=${encodeURIComponent(`Olá ${lead.name}, tudo bem?`)}`
     : "";
-
-  const timeLabel = formatDistanceToNow(new Date(lead.created_at), { locale: ptBR, addSuffix: false });
 
   return (
     <Card
       onClick={onClick}
       className={cn(
         "px-3 py-2 cursor-pointer hover:bg-secondary/60 transition-colors border-border/50 relative",
-        isBrandNew && "ring-2 ring-primary/70",
-        stageOverdue && "ring-2 ring-destructive/70"
+        claimable && "ring-2 ring-primary/70",
+        overdue && "ring-2 ring-destructive/70",
       )}
     >
       <div className="flex items-start gap-2">
-        {/* Status dot */}
         <span className={cn(
           "mt-1.5 h-2 w-2 rounded-full shrink-0",
-          isBrandNew ? "bg-red-500 animate-pulse" : stageOverdue ? "bg-destructive animate-pulse" : "bg-muted-foreground/40"
+          claimable ? "bg-primary animate-pulse"
+            : overdue ? "bg-destructive animate-pulse"
+              : isBrandNew ? "bg-red-500 animate-pulse" : "bg-muted-foreground/40",
         )} />
 
-        {/* Main content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold text-sm truncate">{lead.name || "Sem nome"}</p>
+            <p className="font-semibold text-sm truncate">{lead.name}</p>
             <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
-              {timeLabel}
+              {formatDistanceToNow(new Date(lead.created_at), { locale: ptBR, addSuffix: false })}
             </span>
           </div>
           <p className="text-xs text-muted-foreground truncate">
-            {(lead.form_name && !/^Formul[aá]rio\s*\d+$/i.test(lead.form_name)) ? lead.form_name : (lead.source || "—")}
+            {lead.campaign_name || lead.source || "—"}
           </p>
           <div className="flex items-center justify-between gap-2 mt-0.5">
             <span className={cn(
               "text-[10px] italic truncate",
-              stageOverdue ? "text-destructive font-semibold" : "text-primary/80"
+              overdue ? "text-destructive font-semibold" : "text-primary/80",
             )}>
-              {lead.broker_name ? lead.broker_name : "Sem corretor"}
+              {lead.broker_name || "Sem corretor"}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <Badge className={cn("text-[9px] px-1.5 py-0 border h-4", src.cls)}>{src.label}</Badge>
-              {isNew && roletaLeftMs > 0 && (
-                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">
-                  <Timer className="h-2.5 w-2.5" />{Math.ceil(roletaLeftMs / 1000)}s
+              {secondsLeft !== null && (
+                <span className={cn(
+                  "text-[10px] font-medium flex items-center gap-0.5",
+                  secondsLeft <= 60 ? "text-destructive" : "text-primary",
+                )}>
+                  <Timer className="h-2.5 w-2.5" />{formatCountdown(secondsLeft)}
                 </span>
               )}
               {waLink && (
@@ -388,18 +330,25 @@ function LeadCardMini({ lead, now, roletaSec, inactivityH, stageMaxMin, onClick 
         </div>
       </div>
 
-      {/* Badges de alerta */}
-      {(isBrandNew || stageOverdue) && (
+      {claimable && (
+        <Button
+          size="sm"
+          className="w-full mt-2 h-7 text-[11px] gap-1"
+          onClick={(e) => { e.stopPropagation(); onAttend(); }}
+        >
+          <HandMetal className="h-3 w-3" /> Atender
+          {secondsLeft !== null && <span className="font-mono">{formatCountdown(secondsLeft)}</span>}
+        </Button>
+      )}
+
+      {(overdue || inactive) && (
         <div className="flex gap-1 mt-1.5">
-          {isBrandNew && (
-            <Badge className="bg-red-600 text-white text-[9px] px-1.5 py-0 h-4">NOVO</Badge>
-          )}
-          {stageOverdue && (
+          {overdue && (
             <Badge className="bg-destructive text-white text-[9px] px-1.5 py-0 h-4 gap-0.5">
-              <AlertTriangle className="h-2.5 w-2.5" /> {Math.floor(stageMinutes)}m na etapa
+              <AlertTriangle className="h-2.5 w-2.5" /> Atrasado
             </Badge>
           )}
-          {inactiveAlert && !stageOverdue && (
+          {inactive && !overdue && (
             <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-destructive text-destructive gap-0.5">
               <AlertTriangle className="h-2.5 w-2.5" /> Inativo
             </Badge>

@@ -1,7 +1,7 @@
 import {
-  LayoutDashboard, GitBranch, Users, UserPlus, Megaphone,
-  UserCircle, Database, Settings, LogOut, Link2, Sun, Moon,
-  CreditCard, Shield, Building2, UsersRound, Trophy, Swords, KeyRound, Target, LogIn, Globe, TrendingUp, Zap, Bot,
+  LayoutDashboard, GitBranch, Users, Megaphone,
+  Database, Settings, LogOut, Link2, Sun, Moon,
+  CreditCard, Shield, Building2, Trophy, KeyRound, Target, LogIn, Globe, TrendingUp, Zap, Bot,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";

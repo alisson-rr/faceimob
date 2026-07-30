@@ -9,19 +9,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { mockDeals as initialDeals, mockDevelopers, mockProjects, mockGamification, mockLeads as initialLeads, mockSources } from "@/data/mockData";
-import { DEAL_STAGES, type PipelineDeal, type DealStage, LEAD_STATUSES, type Lead, type LeadStatus, type Broker } from "@/types/crm";
+import { mockDevelopers, mockProjects, mockSources } from "@/data/mockData";
+import { DEAL_STAGES, type PipelineDeal, type DealStage, type Lead, type Broker } from "@/types/crm";
 import { calcDealProbability } from "@/lib/aiAnalytics";
 import {
   Plus, Download, Search, Filter, Calendar as CalendarIcon,
-  TrendingUp, CheckCircle, Clock, FileText, Eye, BarChart3,
-  X, Pencil, GripVertical, User, DollarSign,
+  BarChart3, X, GripVertical, User,
   CalendarCheck, StickyNote, AlertCircle, ChevronRight,
-  ChevronLeft, Trophy, LayoutGrid, List, LogIn, Users,
-  ArrowRightCircle, Upload, Paperclip, Phone, Mail, MessageCircle, UserPlus,
-  Lock, AlertTriangle, Target, RefreshCw
+  ChevronLeft, LayoutGrid, List, LogIn, Users,
+  ArrowRightCircle, Paperclip, UserPlus,
+  AlertTriangle, Target
 } from "lucide-react";
-import { format, differenceInDays, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,13 +33,10 @@ import {
   displayMonthToIso,
   getStageIdByCode,
   listLegacyDeals,
-  listLegacyLeads,
   listOpenCheckins,
   listPeople,
   toDisplayMonth,
 } from "@/integrations/supabase/newSchema";
-
-const ccaDevelopers = ['MRV', 'Tenda', 'Direcional', 'TENDA'];
 
 // ── Developer color map (distinct colors per developer) ──
 const developerColors: Record<string, string> = {
@@ -114,14 +110,6 @@ const FACEIMOB_STATUSES: { label: string; color: string }[] = [
 const faceimobStatusColor = (label: string) =>
   FACEIMOB_STATUSES.find(s => s.label === label)?.color || "bg-muted text-muted-foreground";
 
-const leadStatusColor: Record<LeadStatus, string> = {
-  new: 'bg-primary/20 text-primary',
-  contacted: 'bg-warning/20 text-warning',
-  qualified: 'bg-success/20 text-success',
-  converted: 'bg-purple-500/20 text-purple-400',
-  lost: 'bg-destructive/20 text-destructive',
-};
-
 const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
   client: "", developer: "", project: "", unit: "", status: "Ativo", stage: "lead",
   broker1: "", broker2: "", manager1: "", manager2: "", deal_value: 0,
@@ -129,54 +117,10 @@ const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
   history: [],
 };
 
-// ── Allowed IPs for check-in (loaded from localStorage, configurable in Dados) ──
-const getStoredIPs = (): string[] => {
-  try {
-    const stored = localStorage.getItem("allowed_ips");
-    return stored ? JSON.parse(stored) : [];
-  } catch { return []; }
-};
-
 interface QueueBroker {
   id: string;
   name: string;
   checkedInAt: string;
-}
-
-function CcaStatusBadge({ dealId }: { dealId: string }) {
-  const [status, setStatus] = useState<string | null>(null);
-  const [stages, setStages] = useState<any[]>([]);
-
-  useEffect(() => {
-    async function getStatus() {
-      const { data: ccaData } = await (supabase as any)
-        .from("cca_cases")
-        .select("status,stage_id")
-        .eq('deal_id', dealId)
-        .maybeSingle();
-      
-      if (ccaData) setStatus((ccaData as any).status);
-
-      const { data: stagesData } = await supabase
-        .from('cca_stages' as any)
-        .select('*');
-      
-      if (stagesData) setStages(stagesData);
-    }
-    getStatus();
-  }, [dealId]);
-
-  if (!status) return null;
-
-  const stage = stages.find(s => s.status === status);
-  const colorClass = stage?.color || "text-primary";
-
-  return (
-    <div className="flex items-center gap-1 mt-0.5 border-t border-border/10 pt-0.5">
-      <div className={cn("h-1.5 w-1.5 rounded-full", colorClass.replace('text-', 'bg-'))} />
-      <span className={cn("text-[8px] font-bold uppercase", colorClass)}>{status}</span>
-    </div>
-  );
 }
 
 export default function Pipeline() {
@@ -186,10 +130,7 @@ export default function Pipeline() {
 
   // ── Brokers state ──
   const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [loadingBrokers, setLoadingBrokers] = useState(true);
-
   const fetchBrokers = useCallback(async () => {
-    setLoadingBrokers(true);
     try {
       const people = await listPeople();
       const mappedBrokers: Broker[] = people
@@ -206,24 +147,17 @@ export default function Pipeline() {
       setBrokers(mappedBrokers);
     } catch (error) {
       console.error('Error fetching brokers:', error);
-    } finally {
-      setLoadingBrokers(false);
     }
   }, []);
 
   // ── Deals state ──
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
-  const [loadingDeals, setLoadingDeals] = useState(true);
-
   const fetchDeals = useCallback(async () => {
-    setLoadingDeals(true);
     try {
       setDeals(await listLegacyDeals());
     } catch (error) {
       console.error('Error fetching deals:', error);
       toast({ title: "Erro ao carregar negócios", variant: "destructive" });
-    } finally {
-      setLoadingDeals(false);
     }
   }, []);
 
@@ -249,31 +183,6 @@ export default function Pipeline() {
   const [page, setPage] = useState(1);
   const perPage = 15;
 
-  // ── Leads state ──
-  const [leads, setLeads] = useState<Lead[]>([]);
-
-  // Fetch leads from Supabase + realtime subscription
-  useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        const data = await listLegacyLeads();
-        if (mounted) setLeads(data);
-      } catch (error) {
-        console.error("Erro ao carregar leads:", error);
-      }
-    };
-    load();
-    const channel = supabase
-      .channel('leads-pipeline')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => load())
-      .subscribe();
-    return () => { mounted = false; supabase.removeChannel(channel); };
-  }, []);
-  const [leadSearch, setLeadSearch] = useState("");
-  const [leadStatusFilter, setLeadStatusFilter] = useState("all");
-  const [leadViewMode, setLeadViewMode] = useState<"list" | "grid">("list");
-
   // ── New Lead modal ──
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [newLeadData, setNewLeadData] = useState({ name: "", phone: "", whatsapp: "", email: "", source: "", broker_name: "", notes: "" });
@@ -281,8 +190,6 @@ export default function Pipeline() {
   // ── Queue state ──
   const [queue, setQueue] = useState<QueueBroker[]>([]);
   const [checkingIn, setCheckingIn] = useState(false);
-  const [userIp, setUserIp] = useState<string | null>(null);
-
   // ── Convert lead modal ──
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
@@ -465,7 +372,6 @@ export default function Pipeline() {
     };
 
     setDeals(prev => [newDeal, ...prev]);
-    setLeads(prev => prev.map(l => l.id === convertingLead.id ? { ...l, status: "converted" as LeadStatus } : l));
     setConvertOpen(false);
     setConvertingLead(null);
     setConvertDoc(null);
@@ -508,25 +414,9 @@ export default function Pipeline() {
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
 
-  // ── Lead filters ──
-  const filteredLeads = useMemo(() => {
-    return leads.filter(l => {
-      const s = leadSearch.toLowerCase();
-      const matchSearch = !s || l.name.toLowerCase().includes(s) || l.email.toLowerCase().includes(s) || l.phone.includes(s);
-      const matchStatus = leadStatusFilter === "all" || l.status === leadStatusFilter;
-      return matchSearch && matchStatus;
-    });
-  }, [leads, leadSearch, leadStatusFilter]);
-
   // ── Deal metrics ──
   const activeDeals = deals.filter((d) => d.active).length;
   const totalVGV = deals.filter((d) => d.active).reduce((a, d) => a + (d.deal_value || 0), 0);
-
-  // ── Lead metrics ──
-  const totalLeads = leads.length;
-  const newLeads = leads.filter(l => l.status === "new").length;
-  const inContactLeads = leads.filter(l => l.status === "contacted").length;
-  const qualifiedLeads = leads.filter(l => l.status === "qualified").length;
 
   // Drag handlers
   const onDragStart = useCallback((dealId: string) => setDraggedDeal(dealId), []);
@@ -572,8 +462,6 @@ export default function Pipeline() {
   }, [draggedDeal, deals]);
 
   const openNewDeal = () => { setEditingDeal(null); setFormData(emptyDeal); setDealFormOpen(true); };
-  const openEditDeal = (deal: PipelineDeal) => { setEditingDeal(deal); setFormData(deal); setDealFormOpen(true); };
-
   const saveNewLead = async () => {
     if (!newLeadData.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
     const { error } = await (supabase as any).from("leads").insert({
@@ -589,7 +477,6 @@ export default function Pipeline() {
       raw_payload: { created_manually: true },
     });
     if (error) return toast({ title: "Erro ao criar lead", description: error.message, variant: "destructive" });
-    setLeads(await listLegacyLeads());
     setNewLeadOpen(false);
     setNewLeadData({ name: "", phone: "", whatsapp: "", email: "", source: "", broker_name: "", notes: "" });
     toast({ title: "✅ Lead criado com sucesso!" });
@@ -724,7 +611,6 @@ export default function Pipeline() {
   const approvedCond = deals.filter((d) => d.stage === "contract" && d.active).length;
   const pendingDeals = deals.filter((d) => d.stage === "lead" && d.active).length;
   const closedDeals = deals.filter((d) => d.stage === "closed").length;
-  const agileDeals = deals.filter((d) => d.stage === "visit_scheduled" && d.active).length;
   const proposalsToday = deals.filter((d) => d.stage === "proposal" && d.created_at === format(new Date(), "yyyy-MM-dd")).length;
   const proposalsPeriod = deals.filter((d) => d.stage === "proposal" && d.active).length;
   const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
@@ -733,18 +619,6 @@ export default function Pipeline() {
     name: b.name,
     count: deals.filter((d) => d.broker1 === b.name && d.active).length,
   })).sort((a, b) => b.count - a.count);
-  const leaderboard = brokers.slice(0, 3).map((b, i) => ({
-    id: b.id,
-    user_name: b.name,
-    points: 1000 - (i * 100), // Placeholder logic
-  }));
-  const medals = ["🥇", "🥈", "🥉"];
-  const medalBgs = [
-    "border-amber-500/40 bg-gradient-to-r from-amber-900/20 to-transparent",
-    "border-gray-400/40 bg-gradient-to-r from-gray-700/20 to-transparent",
-    "border-orange-600/40 bg-gradient-to-r from-orange-900/20 to-transparent",
-  ];
-
   return (
     <div className="space-y-4">
       {/* ── TOP RANKING (game / broker funnel) ────────── */}

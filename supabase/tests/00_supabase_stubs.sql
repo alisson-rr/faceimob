@@ -89,6 +89,73 @@ as $$
   select coalesce(auth.jwt() ->> 'role', current_setting('role', true));
 $$;
 
+-- -----------------------------------------------------------------------------
+-- cron.* — stub do pg_cron
+--
+-- A imagem do harness é postgres puro e não traz pg_cron, mas a 0013 agenda os
+-- jobs da roleta. Sem este stub a validação pararia na 0013 e o agendamento
+-- ficaria sem cobertura de teste — que é exatamente como o bug original
+-- (nenhum cron agendado) passou despercebido por 12 migrations.
+--
+-- Reproduz a superfície que a 0013 usa: cron.job, cron.job_run_details,
+-- cron.schedule(name, schedule, command) e cron.unschedule(name). Aceita
+-- intervalo em segundos, como o pg_cron >= 1.5 do Supabase.
+-- -----------------------------------------------------------------------------
+create schema if not exists cron;
+
+create table if not exists cron.job (
+  jobid    bigserial primary key,
+  jobname  text unique,
+  schedule text not null,
+  command  text not null,
+  active   boolean not null default true,
+  database text not null default current_database(),
+  username text not null default current_user,
+  nodename text not null default 'localhost',
+  nodeport int  not null default 5432
+);
+
+create table if not exists cron.job_run_details (
+  runid          bigserial primary key,
+  jobid          bigint,
+  status         text,
+  return_message text,
+  start_time     timestamptz,
+  end_time       timestamptz
+);
+
+create or replace function cron.schedule(job_name text, schedule text, command text)
+returns bigint
+language plpgsql
+as $$
+declare
+  v_jobid bigint;
+begin
+  insert into cron.job (jobname, schedule, command)
+  values (job_name, schedule, command)
+  on conflict (jobname) do update
+    set schedule = excluded.schedule,
+        command  = excluded.command,
+        active   = true
+  returning jobid into v_jobid;
+
+  return v_jobid;
+end;
+$$;
+
+create or replace function cron.unschedule(job_name text)
+returns boolean
+language plpgsql
+as $$
+begin
+  delete from cron.job where jobname = job_name;
+  if not found then
+    raise exception 'could not find valid entry for job "%"', job_name;
+  end if;
+  return true;
+end;
+$$;
+
 -- storage.objects — referenciado pelos anexos apenas por convenção de path,
 -- mas o stub permite exercitar policies de bucket se preciso.
 create table if not exists storage.buckets (

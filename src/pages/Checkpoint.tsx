@@ -152,7 +152,7 @@ export default function Checkpoint() {
         <>
           {role === "manager" ? (
             <div className="grid grid-cols-1 gap-4">
-              {filteredTeams.map(t => <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
+              {filteredTeams.map(t => <TeamCheckpointCard key={t.id} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
             </div>
           ) : (
             <DirectorFunnelSection
@@ -174,8 +174,7 @@ export default function Checkpoint() {
 }
 
 
-export function TeamCheckpointCard({ team, aggr, targets, name }: {
-  team: TeamRow;
+export function TeamCheckpointCard({ aggr, targets, name }: {
   aggr: { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
   targets: Targets;
   name: string;
@@ -214,7 +213,6 @@ export function TeamCheckpointCard({ team, aggr, targets, name }: {
           {stages.map((s, i) => {
             const below = i > 0 && s.pct < s.target;
             const ok = i === 0 || s.pct >= s.target;
-            const accent = below ? "rose" : "emerald";
             return (
               <div key={s.label} className={cn(
                 "px-2 py-1.5 rounded-md border bg-secondary/20 flex flex-col gap-0.5",
@@ -364,7 +362,7 @@ export function DirectorFunnelCard({
             <DialogHeader><DialogTitle>Gerentes de {title}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               {teams.map(t => (
-                <TeamCheckpointCard key={t.id} team={t} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />
+                <TeamCheckpointCard key={t.id} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />
               ))}
             </div>
           </DialogContent>

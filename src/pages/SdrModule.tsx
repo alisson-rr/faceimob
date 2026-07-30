@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Bot, Plus, Trash2, Upload, Send, MessageSquare, Sparkles, ArrowRight, RefreshCw } from "lucide-react";
+import { Bot, Plus, Trash2, Upload, Send, MessageSquare, Sparkles, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type Agent = {
@@ -386,8 +386,6 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
   const [agentId, setAgentId] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [selectedList, setSelectedList] = useState<string>("");
-
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;

@@ -6,16 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Shield, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, UserPlus, UserMinus, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+import { Swords, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, UserPlus, UserMinus, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
-import { format, startOfMonth, eachDayOfInterval, isAfter, isWeekend, parseISO, subDays } from "date-fns";
+import { format, startOfMonth, eachDayOfInterval, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 import { UpdateBanner } from "@/components/UpdateNotifier";
-import { VisualFunnel, CompactFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
+import { CompactFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
 
 type Roster = { broker_id: string; broker_name: string; active?: boolean; is_custom?: boolean };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
@@ -61,7 +61,6 @@ export default function DailyReport() {
   const [formOpen, setFormOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [newBrokerName, setNewBrokerName] = useState("");
-  const [rosterBusy, setRosterBusy] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<Roster | null>(null);
   const [brokerMonth, setBrokerMonth] = useState<Record<string, Record<FieldKey, number> & { days_filled?: number }>>({});
@@ -120,7 +119,7 @@ export default function DailyReport() {
 
 
 
-  const loadMonth = async (tid: string) => {
+  const loadMonth = async () => {
     setLoadingMonth(true);
     const result = await fetchPublicTeam(pin);
     let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
@@ -207,17 +206,13 @@ export default function DailyReport() {
     }, {} as EntryState));
   }, [date, roster, filledDates]);
 
-  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const isAdminView = urlParams.get("admin") === "1";
-  const directorParam = urlParams.get("director");
-
   useEffect(() => {
     if (!identifier) return;
     (async () => {
       const result = await fetchPublicTeam("");
       if (result) {
         setUnlocked(true);
-        await loadMonth(result.payload.team_id);
+        await loadMonth();
       }
     })();
   }, [identifier]);
@@ -250,7 +245,6 @@ export default function DailyReport() {
     if (!result) {
       return toast({ title: "PIN incorreto", variant: "destructive" });
     }
-    const tid = result.payload.team_id;
     const list = result.list;
     const initial: EntryState = {};
     list.forEach((b) => {
@@ -258,7 +252,7 @@ export default function DailyReport() {
     });
     setEntries(initial);
     setUnlocked(true);
-    await loadMonth(tid);
+    await loadMonth();
 
   };
 
@@ -289,7 +283,7 @@ export default function DailyReport() {
       analyses_approved: entries[b.broker_id]?.aprovados || 0,
       sales: entries[b.broker_id]?.vendas || 0,
     }));
-    const { data, error } = await (supabase as any).rpc("public_daily_submit", {
+    const { error } = await (supabase as any).rpc("public_daily_submit", {
       p_slug: identifier,
       p_pin: pin || null,
       p_entries: payload,
@@ -301,7 +295,7 @@ export default function DailyReport() {
     setXpBurst(xpEarned);
     toast({ title: `🎯 Checkpoint concluído! +${xpEarned} XP`, description: "Dados da equipe registrados." });
     setTimeout(() => setXpBurst(0), 3000);
-    if (resolvedTeamId) loadMonth(resolvedTeamId);
+    if (resolvedTeamId) loadMonth();
   };
 
   if (!identifier) return <div className="p-8 text-center">Equipe inválida.</div>;
@@ -536,7 +530,7 @@ export default function DailyReport() {
                       </div>
                     </DialogContent>
                   </Dialog>
-                  <Button size="sm" variant="outline" onClick={() => resolvedTeamId && loadMonth(resolvedTeamId)} disabled={loadingMonth} className="h-7 text-xs">
+                  <Button size="sm" variant="outline" onClick={() => resolvedTeamId && loadMonth()} disabled={loadingMonth} className="h-7 text-xs">
                     {loadingMonth ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                     Atualizar
                   </Button>
@@ -598,8 +592,8 @@ export default function DailyReport() {
                     className="h-8 text-xs"
                     onKeyDown={(e) => e.key === "Enter" && addBroker()}
                   />
-                  <Button size="sm" onClick={addBroker} disabled={rosterBusy || !newBrokerName.trim()} className="h-8">
-                    {rosterBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3 mr-1" />}
+                  <Button size="sm" onClick={addBroker} disabled={!newBrokerName.trim()} className="h-8">
+                    <UserPlus className="h-3 w-3 mr-1" />
                     Adicionar
                   </Button>
                 </div>
@@ -618,7 +612,7 @@ export default function DailyReport() {
                         {inactive ? (
                           <Badge variant="outline" className="text-[9px]">desligado</Badge>
                         ) : (
-                          <Button size="sm" variant="ghost" onClick={() => setPendingRemove(b)} disabled={rosterBusy} className="h-7 text-[11px] text-rose-400 hover:text-rose-300">
+                          <Button size="sm" variant="ghost" onClick={() => setPendingRemove(b)} className="h-7 text-[11px] text-rose-400 hover:text-rose-300">
                             <UserMinus className="h-3 w-3 mr-1" /> Desligar
                           </Button>
                         )}
@@ -639,9 +633,9 @@ export default function DailyReport() {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel disabled={rosterBusy}>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={confirmRemoveBroker} disabled={rosterBusy} className="bg-rose-500 hover:bg-rose-600">
-                    {rosterBusy ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <UserMinus className="h-3 w-3 mr-1" />}
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmRemoveBroker} className="bg-rose-500 hover:bg-rose-600">
+                    <UserMinus className="h-3 w-3 mr-1" />
                     Desligar
                   </AlertDialogAction>
                 </AlertDialogFooter>

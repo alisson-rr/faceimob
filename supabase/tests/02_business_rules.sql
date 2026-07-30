@@ -166,6 +166,84 @@ begin
   perform pg_temp.check(
     (select count(*) from public.lead_assignments where lead_id = v_lead) = 2,
     'lead foi redistribuído (2ª volta da roleta)');
+
+  -- Quem estourou o prazo não recebe o mesmo lead de volta na hora (0014).
+  -- Antes da 0014 a fila ordenava por assigned_at, e o corretor que ignorou o
+  -- lead continuava com o carimbo de 5 minutos atrás — podia seguir na frente.
+  perform pg_temp.check(
+    (select profile_id from public.lead_assignments
+       where lead_id = v_lead and sequence = 2)
+    is distinct from
+    (select profile_id from public.lead_assignments
+       where lead_id = v_lead and sequence = 1),
+    'lead vencido foi para outro corretor, não voltou para quem o ignorou');
+end
+$$;
+
+-- -----------------------------------------------------------------------------
+-- 4b. Ordenação da fila: timeout encerra a vez  (0014)
+--
+-- Timestamps explícitos porque now() é constante dentro da transação: com
+-- released_at e o novo assigned_at no mesmo instante o desempate cairia no
+-- profile_id e o teste ficaria não-determinístico.
+-- -----------------------------------------------------------------------------
+\echo '== ordem da fila após timeout =='
+
+do $$
+declare
+  c1     uuid := '00000000-0000-0000-0000-00000000aa04';
+  c2     uuid := '00000000-0000-0000-0000-00000000aa05';
+  grupo  uuid;
+  v_pos1 int;
+  v_pos2 int;
+  v_last timestamptz;
+  v_turn timestamptz;
+begin
+  select id into grupo from public.distribution_groups where kind = 'general' limit 1;
+
+  -- c1 recebeu há 10 min e perdeu o lead no prazo há 1 min.
+  update public.lead_assignments
+     set assigned_at = now() - interval '10 minutes'
+   where profile_id = c1;
+  update public.lead_assignments
+     set released_at = now() - interval '1 minute', release_reason = 'timeout'
+   where profile_id = c1
+     and assigned_at = (select max(assigned_at) from public.lead_assignments where profile_id = c1);
+
+  -- c2 recebeu há 5 min e continua com o lead.
+  update public.lead_assignments
+     set assigned_at = now() - interval '5 minutes',
+         released_at = null, release_reason = null
+   where profile_id = c2;
+
+  select queue_position into v_pos1 from public.distribution_queue(grupo) where profile_id = c1;
+  select queue_position into v_pos2 from public.distribution_queue(grupo) where profile_id = c2;
+
+  -- Por assigned_at, c1 (-10min) viria antes de c2 (-5min). Pelo fim da vez,
+  -- c1 (-1min) vem depois: é o que a 0014 corrige.
+  perform pg_temp.check(v_pos2 < v_pos1,
+    'quem perdeu o lead por timeout ficou atrás de quem está atendendo');
+  perform pg_temp.check(
+    v_pos1 = (select count(*) from public.distribution_queue(grupo)),
+    'corretor que estourou o prazo foi para o fim da fila');
+
+  select last_assigned_at, last_turn_at into v_last, v_turn
+  from public.distribution_queue(grupo) where profile_id = c1;
+
+  perform pg_temp.check(v_last < v_turn,
+    'last_assigned_at continua sendo o recebimento; last_turn_at é o fim da vez');
+
+  -- Liberação por outro motivo não tira a vez de ninguém: o gestor realocar um
+  -- lead, ou o SDR repassar, não é falha de atendimento do corretor.
+  update public.lead_assignments
+     set release_reason = 'reassigned'
+   where profile_id = c1 and release_reason = 'timeout';
+
+  select last_turn_at into v_turn
+  from public.distribution_queue(grupo) where profile_id = c1;
+  perform pg_temp.check(v_turn = (select last_assigned_at from public.distribution_queue(grupo)
+                                   where profile_id = c1),
+    'liberação por realocação não conta como vez consumida');
 end
 $$;
 

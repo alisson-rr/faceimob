@@ -1,19 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { type DealStage } from "@/types/crm";
 import {
-  FileCheck, FileX, FilePlus, Send, AlertCircle,
-  CheckCircle, Clock, XCircle, Building2, User, DollarSign,
-  Plus, Settings, Pencil, Trash2, GripVertical
+  Building2, User, DollarSign, Plus, Settings, Pencil, Trash2, GripVertical
 } from "lucide-react";
 import { getStageIdByCode, listLegacyDeals } from "@/integrations/supabase/newSchema";
 

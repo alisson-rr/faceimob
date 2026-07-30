@@ -11,9 +11,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-const currentYear = new Date().getFullYear();
-const YEARS = [currentYear - 1, currentYear, currentYear + 1];
-
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Card className="glass border-border/40 p-0 overflow-hidden">

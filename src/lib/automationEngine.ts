@@ -1,4 +1,4 @@
-import { Lead, LeadStatus, PipelineDeal, DealStage, DEAL_STAGES } from "@/types/crm";
+import { Lead, PipelineDeal, DealStage } from "@/types/crm";
 import { mockBrokers } from "@/data/mockData";
 
 // ── Types ────────────────────────────────────────────────────

@@ -1,7 +1,16 @@
 # Planejamento de entrega — FACEIMOB
 
 Consolidação das duas atas (14/07 e 23/07) confrontada com o que existe hoje no
-repositório. Levantado em 29/07/2026.
+repositório. Levantado em 29/07/2026. **Reverificado no código em 30/07/2026** —
+os pontos abaixo continuam valendo: nenhum cron agendado (`cron.schedule` não
+aparece em `supabase/migrations/`, não há `vercel.json`), `Login.tsx` segue em
+`signInWithPassword`, nenhuma tela chama `set_integration_secret`/
+`list_integrations`, `DailyBI.tsx` ainda aponta para `daily_broker_entries`/
+`daily_team_reports`, e as telas críticas da Fase 1 (Leads, LeadFunnel,
+LeadDetailModal, NewLeadNotifier, Checkin, AdminAllowedIps, DealDetailModal,
+Marketing, Settings, SdrModule) seguem sem `newSchema.ts`. Já migradas: Dashboard,
+Pipeline, DirectorDashboard, Gamification, Equipes, Resultados, Checkpoint,
+CcaPipeline, AdminLeadAutomation, AdminDailyTeams, useGameRanking, AuthContext.
 
 **Fontes:** `DOCUMENTOS/Reunião ... 2026_07_14.docx` (18 próximas etapas + 34
 tópicos de detalhamento) e `DOCUMENTOS/Reunião ... 2026_07_23.docx` (12 próximas
@@ -93,17 +102,48 @@ Legenda: ✅ pronto · 🟡 banco pronto, falta UI/ligação · ❌ não começa
 
 ## Plano de execução
 
-### Fase 0 — Destravar produção (1–2 dias) · faça primeiro
+### Fase 0 — Destravar produção ✅ CONCLUÍDA em 30/07 (migration `0013`)
 
-O sistema **não funciona** em produção sem isto, independente de qualquer tela:
+Era o que impedia o sistema de funcionar em produção, independente de qualquer
+tela. Validado contra Postgres real com pg_cron 1.6.4 — resultados medidos em
+[docs/sprints/roteiro-teste-roleta.md](docs/sprints/roteiro-teste-roleta.md).
 
-1. **Agendar `release_expired_leads()`** a cada ~30s (pg_cron ou Vercel Cron).
-   Sem o agendamento a trava de 5 minutos nunca libera o lead — a roleta
-   simplesmente para na primeira atribuição. É o bug mais grave em aberto.
-2. **Agendar `auto_checkout_expired()`** no fim de cada turno.
-3. **Regenerar os tipos:**
-   `supabase gen types typescript --linked > src/integrations/supabase/types.ts`
-4. Corrigir os dois pontos desatualizados do `supabase/README.md`.
+1. ✅ **`release_expired_leads()` a cada 30s** por pg_cron, com fallback para 1
+   minuto em instância sem suporte a intervalo em segundos. Vercel Cron não foi
+   necessário. E2E: lead vencido saiu do corretor 11 s depois do vencimento,
+   pelo cron, e foi redistribuído na mesma transação.
+2. ✅ **`auto_checkout_expired()` a cada minuto** — cadência fixa em vez de
+   horário por turno, porque a função é dirigida por `work_shifts.checkout_time`,
+   que o admin edita pela tela. Fechou sozinho 3 check-ins abertos desde 28/07.
+3. ✅ **Poda de `cron.job_run_details`** (não estava no plano): a varredura de 30s
+   grava ~2.880 linhas/dia e o pg_cron não limpa. Job diário, retenção de 7 dias.
+4. ✅ **`cron_jobs_health()`** (não estava no plano): leitura de saúde dos jobs
+   restrita a admin, para verificação pós-deploy sem console do banco.
+5. ✅ **Tipos regenerados** — 2.022 → 3.664 linhas, zero referência a
+   `daily_broker_entries`/`daily_team_reports` (eram 5).
+6. ✅ **`supabase/README.md`** corrigido.
+7. ✅ **Regressão automatizada** — `supabase/tests/04_cron_scheduling.sql`, 12
+   asserts. O harness tinha 28 asserts provando que `release_expired_leads()`
+   funciona *quando chamada*, e o sistema passou 12 migrations com ninguém
+   chamando. Teste de comportamento verde não detecta código morto.
+8. ✅ **`0014` — quem estoura o prazo perde a vez.** O teste E2E da `0013`
+   revelou que o lead vencido podia voltar na hora para o mesmo corretor que o
+   ignorou. Decisão do cliente em 30/07: pode voltar, desde que passe por toda a
+   fila de novo. `distribution_queue` passou a ordenar pelo **fim** da última vez
+   na roleta (`last_turn_at`) em vez do começo — para uma liberação por
+   `timeout`, o fim é o `released_at`. Só `timeout` conta: `manual`,
+   `reassigned`, `checkout` e `sdr_handoff` não são falha do corretor.
+   Reverificado no cenário exato que falhava, mais 5 asserts no harness.
+
+**Resta do trilho A:** `supabase db push` em produção e conferir
+`select * from public.cron_jobs_health();`. Exige credencial do projeto.
+
+**Segurança do ambiente** (fora do escopo das atas, corrigido em 30/07): `.env`
+estava rastreado no git e fora do `.gitignore`. Auditado o histórico — só chaves
+publicáveis, nenhum service role key vazado. Agora `.env` é ignorado, com
+`.env.example` versionado documentando que **tudo com prefixo `VITE_` vai para o
+bundle do navegador** e que segredo de servidor vive só em secret de edge function
+ou em `private.integration_credentials`.
 
 ### Fase 1 — Ligar as telas ao schema novo (1–2 semanas)
 
@@ -126,17 +166,31 @@ operacional, não por facilidade:
 
 `src/data/mockData.ts` pode ficar como está (mock de demo, 12 usos legados).
 
-### Fase 2 — Edge functions (3–5 dias)
+### Fase 2 — Edge functions ✅ CONCLUÍDA em `587aa7d` (29/07)
 
-As 8 em `supabase/functions/` ainda falam com as tabelas antigas:
+As 8 foram reescritas contra o schema novo e validadas. Nenhuma referencia mais
+tabela inexistente:
 
-- `broker-checkin` → chamar `perform_checkin` passando o IP
-- `meta-ads-webhook` → chamar `assign_lead`
-- `sdr-agent-chat`, `sdr-whatsapp-broadcast` → schema `0008`
-- `submit-daily-report`, `provision-broker-user` → revisar
-- `director-weekly`, `daily-team-info` → **candidatas a exclusão**: as RPCs
-  públicas (`public_director_checkpoint`, `public_daily_team`) já fazem o
-  trabalho. Menos código para manter.
+| Function | Como ficou |
+|---|---|
+| `meta-ads-webhook` | `automation_settings`, campos novos (`full_name`, `phone_raw`, `raw_payload`), rastreio granular (`campaign_id`/`adset_id`/`ad_id`), e agora **chama `assign_lead`** — entra na roleta |
+| `broker-checkin` | `perform_checkin` / `perform_checkout` |
+| `daily-team-info` | `public_daily_team` |
+| `director-weekly` | `public_director_checkpoint` |
+| `submit-daily-report` | `public_daily_submit` |
+| `provision-broker-user` | `profiles`, `user_roles` (papel N:N) |
+| `sdr-agent-chat` | `sdr_agents/conversations/messages` + OpenAI |
+| `sdr-whatsapp-broadcast` | `remarketing_*`, `whatsapp_templates` + WhatsApp Cloud API |
+
+Validado no webhook: `status: 'queued'` e `funnel_stage: 'new'` são valores
+válidos dos enums, `.eq('id', true)` casa com `automation_settings.id boolean
+primary key`, usa `SERVICE_ROLE_KEY` (necessário porque `assign_lead` é revogada
+de `anon`), e o grupo de distribuição é resolvido por `form_id` dentro da própria
+`assign_lead` via `distribution_group_forms` — o requisito de "grupos vinculados
+a formulários" funciona sem o webhook precisar saber do grupo.
+
+`director-weekly` e `daily-team-info` viraram cascas finas sobre as RPCs
+públicas; continuam candidatas a exclusão se o frontend chamar a RPC direto.
 
 ### Fase 3 — O que nunca foi começado (2–3 semanas)
 
@@ -145,9 +199,18 @@ Prioridade por risco, não por pedido:
 1. **Login por código no e-mail** (ata 23/07). Era vulnerabilidade explícita:
    senha exposta no banco. O schema já não guarda senha — falta o fluxo OTP no
    `Login.tsx` (`signInWithOtp`) e aposentar `signInWithPassword`.
-2. **Tela de gestão de tokens.** O banco já protege (`private.integration_credentials`,
-   grava por RPC e nunca devolve o valor). Falta a tela para o Douglas ser
-   autônomo — foi pedido explícito.
+2. **Gestão de tokens — o cofre está desconectado nas duas pontas.**
+   `private.integration_credentials` existe, com `list_integrations()` (nunca
+   devolve o segredo), `set_integration_secret()` e a permissão
+   `settings.integrations` já semeada. Mas:
+   - **ninguém escreve nele** — não há tela;
+   - **ninguém lê dele** — as 8 edge functions leem `Deno.env.get(...)`.
+
+   Construir só a tela **não** entrega o requisito: o Douglas gravaria a chave
+   nova e as functions continuariam usando a variável de ambiente antiga. As duas
+   pontas têm que ser feitas juntas — a tela chamando as RPCs e as functions
+   passando a ler via `private.get_integration_secret()`, com fallback para
+   `Deno.env` durante a transição.
 3. **Documentos:** aplicar `naming_pattern` na renomeação do upload + botão de
    download por documento.
 4. **Contador de leads por período** e **posição na fila** (`distribution_queue`).
@@ -184,17 +247,51 @@ investigação antes de entrar em qualquer cronograma; se não houver, o item mo
 edge functions reescritas, parte das automações do N8N pode simplesmente
 desaparecer. Decidir depois da Fase 2, não antes.
 
+## Integrações — inventário
+
+### Ativas (código existe e aponta para o schema novo)
+
+| Integração | Onde | Credencial | Para quê |
+|---|---|---|---|
+| **Meta Lead Ads** | `meta-ads-webhook` | `META_WEBHOOK_VERIFY_TOKEN`, `META_PAGE_ACCESS_TOKEN` | recebe o lead do formulário e joga na roleta |
+| **WhatsApp Cloud API** (oficial) | `sdr-whatsapp-broadcast` | `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID` | dispara templates de remarketing |
+| **OpenAI** | `sdr-agent-chat` | `OPENAI_API_KEY` | agente SDR que qualifica o lead |
+| **Supabase** | tudo | `SERVICE_ROLE_KEY`, `ANON_KEY` | banco, auth, storage |
+| **ipify** | frontend | — | descobre o IP para o check-in |
+
+`wa.me` aparece no frontend, mas é link `click-to-chat`, não integração.
+
+### Cofre de credenciais — construído, desconectado
+
+Ver Fase 3, item 2. `private.integration_credentials` está pronto e sem uso nas
+duas pontas.
+
+### Previstas nas atas, não iniciadas
+
+| Integração | Situação |
+|---|---|
+| **Meta Ads — gestão de campanhas** (budget, pausar, copiar) | só o webhook de leads existe. É o maior escopo não estimado |
+| **Evolution API** | ata registra que a empresa já paga; serviria para notificação não-oficial |
+| **King Host** | criar e-mail corporativo no cadastro — viabilidade não investigada |
+| **Brevo** | e-mails do pipeline |
+| **IA de voz/WhatsApp** | 🔒 Douglas, ~12/09/2026 |
+| **N8N** | roda hoje fora do repo; decidir migrar para a VPS ou aposentar |
+
 ## Riscos
 
 | Risco | Impacto |
 |---|---|
-| Cron da roleta não agendado | **Alto** — a distribuição de leads para de funcionar por completo |
+| ~~Cron da roleta não agendado~~ | ✅ resolvido na `0013`, com assert de regressão no harness |
+| ~~Lead vencido volta para quem o ignorou~~ | ✅ resolvido na `0014`, com 5 asserts de regressão |
+| Tela de tokens feita sem religar as functions ao cofre | Médio — requisito parece entregue e não está |
 | Migração de tela sem teste manual | Médio — RLS pode esconder dado silenciosamente em vez de dar erro |
 | Meta Ads tratado como item pequeno | Médio — é o maior escopo não estimado das atas |
 | Prazo da IA de voz (~12/09) | Baixo — só exige o ponto de integração pronto |
 
 ## Ordem recomendada
 
-Fase 0 esta semana (destrava a operação). Fase 1 e 2 podem correr em paralelo —
-telas e edge functions não se cruzam. Fase 3 entra conforme as reuniões semanais
-priorizarem. Fase 4 conforme os terceiros liberarem.
+Com a Fase 2 já entregue em `587aa7d`, o caminho crítico é: **Fase 0 esta semana**
+(dois crons — sem eles a roleta não gira, e o webhook novo já está entregando lead
+para ela), depois **Fase 1** (telas). Fase 3 entra conforme as reuniões semanais
+priorizarem, com login OTP e cofre de tokens na frente. Fase 4 conforme os
+terceiros liberarem.

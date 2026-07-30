@@ -9,6 +9,8 @@ const roleLabels: Record<AppRole, string> = {
   manager: 'Gerente',
   broker: 'Corretor',
   cca: 'CCA',
+  sdr: 'SDR',
+  marketing: 'Marketing',
 };
 
 const roleColors: Record<AppRole, string> = {
@@ -18,6 +20,8 @@ const roleColors: Record<AppRole, string> = {
   manager: 'text-cyan-400',
   broker: 'text-emerald-400',
   cca: 'text-amber-400',
+  sdr: 'text-teal-400',
+  marketing: 'text-fuchsia-400',
 };
 
 export function RoleSwitcher() {

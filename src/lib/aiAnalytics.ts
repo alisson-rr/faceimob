@@ -1,5 +1,5 @@
 import { PipelineDeal, DealStage, DEAL_STAGES } from "@/types/crm";
-import { mockBrokers, mockGamification } from "@/data/mockData";
+import { mockBrokers } from "@/data/mockData";
 
 // ── Deal Probability Score ───────────────────────────────────
 const stageProbability: Record<DealStage, number> = {
@@ -33,8 +33,6 @@ export interface AIInsight {
 export function generateInsights(deals: PipelineDeal[]): AIInsight[] {
   const insights: AIInsight[] = [];
   const active = deals.filter((d) => d.active);
-  const closed = deals.filter((d) => d.stage === "closed");
-
   // Stage conversion
   const proposals = active.filter((d) => d.stage === "proposal").length;
   const visits = active.filter((d) => d.stage === "visit_scheduled").length;

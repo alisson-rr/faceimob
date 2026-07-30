@@ -25,7 +25,7 @@ export default function Checkin() {
   const [windows, setWindows] = useState<Window[]>([]);
   const [today, setToday] = useState<Checkin[]>([]);
   const [loading, setLoading] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const OVERDUE_LIMIT = 20;

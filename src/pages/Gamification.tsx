@@ -10,11 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockBrokers as fallbackBrokers, mockDeals as fallbackDeals, mockManagers as fallbackManagers } from '@/data/mockData';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useCallback } from 'react';
 import { PipelineDeal, Broker } from '@/types/crm';
-import { format } from 'date-fns';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
 import { listLegacyDeals, listPeople } from '@/integrations/supabase/newSchema';
 

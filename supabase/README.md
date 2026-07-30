@@ -22,8 +22,8 @@ tipos de documento, turnos, fila geral, regras de pontuação, permissões):
 psql "$DATABASE_URL" -f supabase/seed.sql
 ```
 
-> `supabase/config.toml` ainda aponta para `wkgvqzcqtgyugzykxunj`, o projeto
-> antigo. Troque o `project_id` pelo ref do projeto novo antes do `db push`.
+> `supabase/config.toml` já aponta para o projeto novo (`mcmqgxvtwegtptfseqvw`).
+> Nada a trocar antes do `db push`.
 
 ## Como validar sem subir nada
 
@@ -35,7 +35,12 @@ Docker — não usa a CLI do Supabase:
 ```
 
 Ele falha se: alguma migration não aplicar, alguma tabela em `public` ficar sem
-RLS, ou algum dos 29 asserts de comportamento quebrar.
+RLS, ou algum dos 86 asserts de comportamento quebrar.
+
+A imagem do harness é Postgres puro, sem as extensões e schemas do Supabase.
+`supabase/tests/00_supabase_stubs.sql` provê o mínimo que as migrations assumem:
+roles do PostgREST, `auth.uid()/jwt()/role()`, `storage.*` e — desde a `0013` —
+um stub de `cron.*` no lugar do pg_cron.
 
 ## Estrutura
 
@@ -53,8 +58,10 @@ RLS, ou algum dos 29 asserts de comportamento quebrar.
 | `0010_gamification` | temporadas com fechamento manual, pontuação configurável, congelamento |
 | `0011_marketing_workspace` | aportes, campanhas, metas, tarefas, notificações, integrações |
 | `0012_crud_fixes` | correções da auditoria de CRUD, `cca_stages`, `annual_results`, buckets de storage |
+| `0013_cron_scheduling` | agendamento por pg_cron da varredura de leads vencidos e do check-out de turno, poda do histórico, `cron_jobs_health()` |
+| `0014_queue_turn_order` | fila ordenada pelo fim da vez: quem perde o lead no prazo vai para o fim |
 
-58 tabelas · 123 policies · 70 funções · 69 asserts de teste.
+58 tabelas · 123 policies · 71 funções · 86 asserts de teste.
 
 ## Auditoria de CRUD
 
@@ -126,20 +133,54 @@ por `anon`.
 **Mês fechado trava edição.** `closed_months` impede que relatório passado mude
 retroativamente — a queixa sobre discrepância nos anuais.
 
+## O que já foi fechado
+
+1. **Edge functions** — as 8 foram reescritas contra o schema novo em `587aa7d`.
+   Nenhuma referencia mais tabela inexistente. `meta-ads-webhook` chama
+   `assign_lead`, então o lead do formulário entra na roleta.
+2. **Cron da roleta** — `0013` agenda `release_expired_leads()` a cada 30s. Era
+   o bug de maior impacto: sem agendamento a trava de 5 minutos nunca liberava o
+   lead e a roleta parava na primeira atribuição.
+3. **Checkout automático** — `0013` agenda `auto_checkout_expired()` a cada
+   minuto. A função é dirigida por `work_shifts.checkout_time`, então mudar o
+   turno pelo admin não exige mexer no cron.
+4. **Tipos TypeScript** — regenerados contra o schema aplicado. Para refazer:
+   `supabase gen types typescript --linked > src/integrations/supabase/types.ts`
+   (ou `--db-url` apontando para o banco local, que dá o mesmo resultado sem
+   depender de `supabase link`).
+
+5. **Fila ordenada pelo fim da vez** — `0014`. Quem perde o lead por timeout vai
+   para o fim da fila e só recebe de novo depois de a fila inteira ter tido a vez
+   (regra confirmada com o cliente em 30/07). `distribution_queue` passou a
+   ordenar por `last_turn_at`; `last_assigned_at` continua no retorno com o
+   significado original, para a tela do corretor.
+
+Verificação do agendamento em produção depois do `db push`, como admin:
+
+```sql
+select * from public.cron_jobs_health();
+```
+
+Espera-se três linhas `faceimob-*` com `active = true`, `last_status =
+'succeeded'` e `failures_24h = 0`. Roteiro completo de validação da roleta em
+`docs/sprints/roteiro-teste-roleta.md`.
+
 ## O que ainda falta
 
-1. **Edge functions** — as 8 em `supabase/functions/` ainda apontam para as
-   tabelas antigas. Precisam ser reescritas contra o schema novo:
-   `meta-ads-webhook` (chama `assign_lead`), `broker-checkin` (chama
-   `perform_checkin` com o IP), `sdr-agent-chat`, `sdr-whatsapp-broadcast`,
-   `director-weekly` e `daily-team-info` (substituíveis pelas RPCs públicas).
-2. **Cron da roleta** — `release_expired_leads()` precisa rodar a cada ~30s
-   (pg_cron ou Vercel Cron). Sem isso a trava de 5 minutos nunca dispara.
-3. **Checkout automático** — no fim do turno, fechar check-ins abertos.
-4. **Frontend** — as ~28 páginas ainda consultam os nomes antigos e vão quebrar.
-   Era o combinado: schema limpo primeiro, adaptação depois.
-5. **Tipos TypeScript** — regenerar com
-   `supabase gen types typescript --linked > src/integrations/supabase/types.ts`.
+1. **Frontend** — cerca de 15 telas ainda consultam a forma antiga. Não é
+   reescrita: `src/integrations/supabase/newSchema.ts` já traduz o schema novo
+   para o formato que as telas esperam (`broker1/2/3`, `manager1/2/3`,
+   `cotista2`, …), então migrar uma tela é trocar a fonte de dados. A exceção é
+   `DailyBI.tsx`, que aponta para `daily_broker_entries`/`daily_team_reports` —
+   tabelas que não existem — e precisa de remapeamento real para
+   `daily_entries`/`daily_reports`.
+2. **Cofre de tokens** — `private.integration_credentials` está pronto e sem uso
+   nas duas pontas: nenhuma tela grava (não há UI) e as 8 edge functions leem de
+   `Deno.env`. Construir só a tela não entrega o requisito.
+3. **Login por código no e-mail** — `Login.tsx` ainda usa
+   `signInWithPassword`. O schema já não guarda senha; falta o fluxo OTP.
+4. **Brevo, King Host, gestão de campanhas Meta** — previstos nas atas, sem
+   investigação de viabilidade. Ver `docs/sprints/`.
 
 ## Migrations antigas
 

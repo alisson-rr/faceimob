@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, parseISO } from "date-fns";
@@ -13,7 +12,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   RadialBarChart, RadialBar, PolarAngleAxis, LineChart, Line, Legend,
 } from "recharts";
-import { isResultado, isProducao, isPerda, normalizeStatus, pickOpenMonth, compareMonth } from "@/lib/dealStatus";
+import { isResultado, isProducao, normalizeStatus, pickOpenMonth, compareMonth } from "@/lib/dealStatus";
 import { listLegacyLeads, loadDashboardPayload } from "@/integrations/supabase/newSchema";
 
 // ─── Static tables ──────────────────────────────────────────────────────────
@@ -29,12 +28,7 @@ const DEV_COLORS: Record<string, string> = {
   MCG:     "#14B8A6",
   MITRANA: "#EAB308",
 };
-const SOURCES = ["Leadfy", "Lead Próprio", "Lead Loja", "Lead Padrão", "Lead Indicação"];
 const SOURCE_COLORS = ["#3B82F6", "#F59E0B", "#10B981", "#EC4899", "#8B5CF6"];
-const CCA_STATUSES = [
-  "Aprovado Total", "Aprovado Condicionado", "Análise de Viabilidade",
-  "Assinatura no Banco", "Pendente de Viabilidade", "Reprovado", "Pendente",
-] as const;
 const CCA_COLORS: Record<string, string> = {
   "Aprovado Total":         "#10B981",
   "Aprovado Condicionado":  "#22C55E",
@@ -44,12 +38,6 @@ const CCA_COLORS: Record<string, string> = {
   "Reprovado":              "#EF4444",
   "Pendente":               "#A855F7",
 };
-const STAFF_ROWS = [
-  ["Sócios", 3, "#3B82F6"], ["Adm", 4, "#8B5CF6"], ["Administrativo", 5, "#06B6D4"],
-  ["Direção", 3, "#F59E0B"], ["Gerentes", 11, "#EC4899"], ["Corretores Ativos", 75, "#10B981"],
-  ["Sempre Gerais", 4, "#A855F7"], ["Total", 105, "#F97316"],
-] as const;
-
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Deal = {
   id: string; client: string | null; developer: string | null; stage: string;
@@ -57,7 +45,6 @@ type Deal = {
   month_base: string | null; broker1_id: string | null; manager1_id: string | null; created_at: string;
   broker1_name?: string | null; manager1_name?: string | null; director1_id?: string | null; director1_name?: string | null;
 };
-type Broker = { id: string; name: string; role?: string | null; manager_id?: string | null; team?: string | null };
 type DashboardBiPayload = {
   deals?: Deal[];
   leadsBySource?: { name: string; v: number }[];
@@ -257,7 +244,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#05070A] font-['Plus_Jakarta_Sans',sans-serif] text-white p-3 md:p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-[#05070A] text-white p-3 md:p-4 relative overflow-hidden">
       <div className="pointer-events-none absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full bg-[#3B82F6]/[0.06] blur-3xl" />
       <div className="pointer-events-none absolute top-1/3 -left-40 w-[500px] h-[500px] rounded-full bg-[#1E3A8A]/[0.08] blur-3xl" />
 

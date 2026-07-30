@@ -1,5 +1,4 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -10,6 +9,7 @@ import Login from "@/pages/Login";
 import ResetPassword from "@/pages/ResetPassword";
 import DashboardSwitcher from "@/pages/DashboardSwitcher";
 import Pipeline from "@/pages/Pipeline";
+import Leads from "@/pages/Leads";
 
 import Equipes from "@/pages/Equipes";
 import Marketing from "@/pages/Marketing";
@@ -54,7 +54,6 @@ const App = () => (
     <AuthProvider>
       <TooltipProvider>
         <Toaster />
-        <Sonner />
         <UpdateNotifier />
         <BrowserRouter>
           <Routes>
@@ -68,7 +67,7 @@ const App = () => (
               <Route path="/dashboard" element={<DashboardSwitcher />} />
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/cca" element={<CcaPipeline />} />
-              <Route path="/leads" element={<Navigate to="/pipeline" replace />} />
+              <Route path="/leads" element={<Leads />} />
               <Route path="/resultados" element={<Resultados />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/equipes" element={<Equipes />} />
