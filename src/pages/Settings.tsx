@@ -1,110 +1,73 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lock, Eye, EyeOff, Pencil } from 'lucide-react';
+import { KeyRound, LogOut, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
-function PasswordInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="relative">
-      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-      <Input
-        type={show ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="pl-9 pr-10 h-11 bg-background"
-      />
-      <button
-        type="button"
-        onClick={() => setShow(s => !s)}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-      >
-        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-      </button>
-    </div>
-  );
-}
-
+/**
+ * Segurança da conta.
+ *
+ * Não há troca de senha porque não há senha: o acesso é por código no e-mail.
+ * O controle equivalente para "desconfio que alguém entrou na minha conta" é
+ * revogar as sessões — daí `signOut({ scope: 'global' })`.
+ */
 export default function Settings() {
   const { toast } = useToast();
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [confirm, setConfirm] = useState('');
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const handleChange = async () => {
-    if (!current || !next || !confirm) {
-      toast({ title: 'Preencha todos os campos', variant: 'destructive' });
-      return;
-    }
-    if (next.length < 6) {
-      toast({ title: 'A nova senha deve ter ao menos 6 caracteres', variant: 'destructive' });
-      return;
-    }
-    if (next !== confirm) {
-      toast({ title: 'As senhas não coincidem', variant: 'destructive' });
-      return;
-    }
+  const revokeAllSessions = async () => {
     setLoading(true);
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      const email = userData.user?.email;
-      if (!email) throw new Error('Usuário não autenticado');
-
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password: current });
-      if (signInErr) {
-        toast({ title: 'Senha atual incorreta', variant: 'destructive' });
-        setLoading(false);
-        return;
-      }
-
-      const { error } = await supabase.auth.updateUser({ password: next });
-      if (error) throw error;
-
-      toast({ title: 'Senha alterada com sucesso!' });
-      setCurrent(''); setNext(''); setConfirm('');
-    } catch (e: any) {
-      toast({ title: 'Erro ao alterar senha', description: e.message, variant: 'destructive' });
-    } finally {
-      setLoading(false);
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
+    setLoading(false);
+    if (error) {
+      return toast({ title: 'Não foi possível encerrar as sessões', description: error.message, variant: 'destructive' });
     }
+    // O onAuthStateChange do AuthContext derruba a sessão local e o guard leva ao /login.
+    toast({ title: 'Sessões encerradas', description: 'Entre novamente com o código enviado ao seu e-mail.' });
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <Card className="p-6 bg-[#0f1729] border-border/30 space-y-5">
-        <div className="space-y-2">
-          <Label className="text-foreground font-semibold">Sua senha atual</Label>
-          <PasswordInput value={current} onChange={setCurrent} placeholder="Inserir senha" />
-          <p className="text-xs text-muted-foreground">
-            Para alterar senha primeiro insira sua senha atual e insira novos dados nos campos abaixo e confirme
+    <div className="max-w-2xl mx-auto p-6 space-y-4">
+      <Card className="p-6 border-border/30 space-y-5">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <Label className="text-foreground font-semibold">Como você entra</Label>
+            <p className="text-sm text-muted-foreground">
+              O acesso é por código enviado para{' '}
+              <span className="text-foreground font-medium">{profile?.email ?? 'seu e-mail cadastrado'}</span>.
+              Não existe senha nesta conta — nada para vazar, nada para trocar.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 pt-4 border-t border-border/30">
+          <KeyRound className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <Label className="text-foreground font-semibold">Trocar o e-mail de acesso</Label>
+            <p className="text-sm text-muted-foreground">
+              O e-mail é a credencial da conta. Peça a alteração a um administrador.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6 border-destructive/30 space-y-4">
+        <div className="space-y-1">
+          <Label className="text-foreground font-semibold">Encerrar todas as sessões</Label>
+          <p className="text-sm text-muted-foreground">
+            Desconecta esta conta de todos os dispositivos, inclusive deste. Use se
+            achar que alguém acessou seu e-mail.
           </p>
         </div>
-
-        <div className="space-y-2">
-          <Label className="text-foreground font-semibold">Nova senha</Label>
-          <PasswordInput value={next} onChange={setNext} placeholder="Inserir nova senha" />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-foreground font-semibold">Confirmar nova senha</Label>
-          <PasswordInput value={confirm} onChange={setConfirm} placeholder="Inserir senha" />
-        </div>
-
         <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            onClick={handleChange}
-            disabled={loading}
-            className="text-primary hover:text-primary gap-2"
-          >
-            <Pencil className="h-4 w-4" />
-            {loading ? 'Alterando...' : 'Alterar senha'}
+          <Button variant="destructive" onClick={revokeAllSessions} disabled={loading} className="gap-2">
+            <LogOut className="h-4 w-4" />
+            {loading ? 'Encerrando...' : 'Encerrar todas as sessões'}
           </Button>
         </div>
       </Card>

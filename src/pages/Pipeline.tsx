@@ -29,6 +29,7 @@ import { normalizeStatus, nextMonthBase } from "@/lib/dealStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
+import { scheduleVisit as scheduleVisitRecord } from "@/integrations/supabase/activities";
 import {
   displayMonthToIso,
   getStageIdByCode,
@@ -124,7 +125,7 @@ interface QueueBroker {
 }
 
 export default function Pipeline() {
-  const { role, user } = useAuth();
+  const { role, user, canEnterStage } = useAuth();
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
 
@@ -216,7 +217,7 @@ export default function Pipeline() {
   const { data: closedMonths = [] } = useQuery({
     queryKey: ["closed_months"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).from("closed_months").select("period");
+      const { data, error } = await supabase.from("closed_months").select("period");
       if (error) throw error;
       return ((data as any[]) || [])
         .map((row) => toDisplayMonth(row.period))
@@ -252,7 +253,7 @@ export default function Pipeline() {
       // Marca o mês como fechado
       const { data: { user } } = await supabase.auth.getUser();
       const { error: insErr } = await supabase
-        .from("closed_months" as any)
+        .from("closed_months")
         .insert({ period: displayMonthToIso(currentMonth), closed_by: user?.id });
       if (insErr && !String(insErr.message).includes("duplicate")) throw insErr;
 
@@ -428,22 +429,33 @@ export default function Pipeline() {
       if (!deal) return;
 
       const oldStage = deal.stage;
-      
-      // Update local state
-      setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage } : d));
-      
-      // Update Supabase
+      const stageLabel = DEAL_STAGES.find((s) => s.value === stage)?.label ?? stage;
+
       try {
+        // Resolve a etapa ANTES de mexer na tela: `can_enter_stage()` trabalha
+        // com o id, e mover o card para depois desfazer pisca à toa.
         const stageId = await getStageIdByCode(stage);
-        const { error } = await (supabase as any)
+
+        if (!canEnterStage(stageId)) {
+          toast({
+            variant: "destructive",
+            title: "Movimentação não permitida",
+            description: `Seu perfil não pode mover negócios para "${stageLabel}".`,
+          });
+          return;
+        }
+
+        setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage } : d));
+
+        const { error } = await supabase
           .from('deals')
           .update({ stage_id: stageId })
           .eq('id', draggedDeal);
-        
+
         if (error) throw error;
 
         if (stage === "under_analysis" && oldStage !== "under_analysis") {
-          const { error: ccaError } = await (supabase as any).rpc(
+          const { error: ccaError } = await supabase.rpc(
             "submit_deal_for_analysis",
             { p_deal_id: draggedDeal },
           );
@@ -451,20 +463,23 @@ export default function Pipeline() {
           toast({ title: "Enviado para análise" });
         }
 
-        toast({ title: `Deal movido para ${DEAL_STAGES.find((s) => s.value === stage)?.label}` });
+        toast({ title: `Deal movido para ${stageLabel}` });
       } catch (err) {
+        // Sem este rollback o card ficava na coluna nova com o banco recusando a
+        // gravação: a tela mentia sobre o estado real até o próximo reload.
+        setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage: oldStage } : d));
         console.error("Error updating deal stage:", err);
         toast({ variant: "destructive", title: "Erro ao salvar", description: "O status não foi atualizado no servidor." });
       }
     }
     setDraggedDeal(null);
     setDragOverStage(null);
-  }, [draggedDeal, deals]);
+  }, [draggedDeal, deals, canEnterStage]);
 
   const openNewDeal = () => { setEditingDeal(null); setFormData(emptyDeal); setDealFormOpen(true); };
   const saveNewLead = async () => {
     if (!newLeadData.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
-    const { error } = await (supabase as any).from("leads").insert({
+    const { error } = await supabase.from("leads").insert({
       full_name: newLeadData.name,
       phone: newLeadData.phone,
       phone_raw: newLeadData.whatsapp || newLeadData.phone,
@@ -487,10 +502,10 @@ export default function Pipeline() {
     try {
       const stageId = await getStageIdByCode(formData.stage);
       const developer = formData.developer
-        ? await (supabase as any).from("developers").select("id").ilike("name", formData.developer).maybeSingle()
+        ? await supabase.from("developers").select("id").ilike("name", formData.developer).maybeSingle()
         : { data: null };
       const project = formData.project && developer.data?.id
-        ? await (supabase as any).from("developer_projects").select("id")
+        ? await supabase.from("developer_projects").select("id")
             .eq("developer_id", developer.data.id).ilike("name", formData.project).maybeSingle()
         : { data: null };
       const dealPayload = {
@@ -507,15 +522,15 @@ export default function Pipeline() {
 
       let dealId = editingDeal?.id;
       if (dealId) {
-        const { error } = await (supabase as any).from("deals").update(dealPayload).eq("id", dealId);
+        const { error } = await supabase.from("deals").update(dealPayload).eq("id", dealId);
         if (error) throw error;
       } else {
-        const { data, error } = await (supabase as any).from("deals").insert(dealPayload).select("id").single();
+        const { data, error } = await supabase.from("deals").insert(dealPayload).select("id").single();
         if (error) throw error;
         dealId = data.id;
       }
 
-      const { error: clientError } = await (supabase as any).from("deal_clients").upsert({
+      const { error: clientError } = await supabase.from("deal_clients").upsert({
         deal_id: dealId,
         ordinal: 1,
         full_name: formData.client,
@@ -526,9 +541,9 @@ export default function Pipeline() {
         .filter(Boolean)
         .map(name => brokers.find(person => person.name === name)?.id)
         .filter(Boolean);
-      await (supabase as any).from("deal_participants").delete().eq("deal_id", dealId).eq("role", "broker");
+      await supabase.from("deal_participants").delete().eq("deal_id", dealId).eq("role", "broker");
       if (selectedBrokerIds.length) {
-        const { error: participantsError } = await (supabase as any).from("deal_participants").insert(
+        const { error: participantsError } = await supabase.from("deal_participants").insert(
           selectedBrokerIds.map(profileId => ({ deal_id: dealId, profile_id: profileId, role: "broker" })),
         );
         if (participantsError) throw participantsError;
@@ -547,7 +562,7 @@ export default function Pipeline() {
     if (!deal) return;
     if (!deal.active) return toast({ title: "Negócios encerrados não podem ser reabertos por este atalho" });
     const stageId = await getStageIdByCode("lost");
-    const { error } = await (supabase as any).from("deals")
+    const { error } = await supabase.from("deals")
       .update({ stage_id: stageId, lost_reason: "Arquivado manualmente" })
       .eq("id", dealId);
     if (error) return toast({ title: "Erro ao arquivar", description: error.message, variant: "destructive" });
@@ -565,7 +580,7 @@ export default function Pipeline() {
             ? "lost"
             : "proposal";
       const stageId = await getStageIdByCode(stageCode);
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("deals")
         .update({
           stage_id: stageId,
@@ -584,11 +599,45 @@ export default function Pipeline() {
     }
   };
 
+  /**
+   * Agenda a visita.
+   *
+   * Antes isto só mudava a etapa do negócio e guardava a data em estado local:
+   * a visita sumia no reload e a tabela `visits` — que tem data marcada, data
+   * realizada e resultado — nunca recebia nada. Agora as duas coisas acontecem:
+   * o card anda no funil E o agendamento fica registrado.
+   */
   const scheduleVisit = async () => {
     if (!visitDeal || !visitDate) return;
+    if (!user?.id) return toast({ title: "Sessão expirada", variant: "destructive" });
+
     const stageId = await getStageIdByCode("visit_scheduled");
-    const { error } = await (supabase as any).from("deals").update({ stage_id: stageId }).eq("id", visitDeal.id);
+    if (!canEnterStage(stageId)) {
+      return toast({
+        variant: "destructive",
+        title: "Movimentação não permitida",
+        description: 'Seu perfil não pode mover negócios para "Visita Agendada".',
+      });
+    }
+
+    const { error } = await supabase.from("deals").update({ stage_id: stageId }).eq("id", visitDeal.id);
     if (error) return toast({ title: "Erro ao agendar visita", description: error.message, variant: "destructive" });
+
+    try {
+      await scheduleVisitRecord({
+        dealId: visitDeal.id,
+        brokerId: user.id,
+        scheduledAt: visitDate.toISOString(),
+      });
+    } catch (e) {
+      // A etapa já mudou; avisar sem desfazer é melhor do que fingir sucesso.
+      toast({
+        title: "Etapa atualizada, mas a visita não foi registrada",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    }
+
     setDeals((prev) => prev.map((d) => d.id === visitDeal.id ? { ...d, visit_date: format(visitDate, "yyyy-MM-dd"), visit_result: "pending", stage: "visit_scheduled" as DealStage } : d));
     setVisitDeal(null); setVisitDate(undefined);
     toast({ title: "Visita agendada" });

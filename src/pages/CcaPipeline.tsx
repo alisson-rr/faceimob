@@ -11,9 +11,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { type DealStage } from "@/types/crm";
 import {
-  Building2, User, DollarSign, Plus, Settings, Pencil, Trash2, GripVertical
+  Building2, User, DollarSign, Plus, Settings, Pencil, Trash2, GripVertical, Send
 } from "lucide-react";
 import { getStageIdByCode, listLegacyDeals } from "@/integrations/supabase/newSchema";
+import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
+
+type CcaCaseStatus = "pending_documents" | "under_review" | "sent_to_developer" | "sent_to_agency" | "approved" | "rejected" | "cancelled";
 
 interface CcaStage {
   id: string;
@@ -45,17 +48,18 @@ export default function CcaPipeline() {
   const [editingStage, setEditingStage] = useState<CcaStage | null>(null);
   const [newStageName, setNewStageName] = useState("");
   const [newStageColor, setNewStageColor] = useState("text-primary");
+  const [submissionDeal, setSubmissionDeal] = useState<CcaDeal | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const [stagesResponse, casesResponse, dealRows] = await Promise.all([
-        (supabase as any)
+        supabase
           .from("cca_stages")
           .select("id,name,color,position,status,active")
           .eq("active", true)
           .order("position"),
-        (supabase as any)
+        supabase
           .from("cca_cases")
           .select("id,deal_id,status,stage_id,decision_notes,pending_items"),
         listLegacyDeals(),
@@ -125,11 +129,11 @@ export default function CcaPipeline() {
 
     try {
       const isDecision = ["approved", "rejected"].includes(targetStage.status);
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("cca_cases")
         .update({
           stage_id: targetStage.id,
-          status: targetStage.status,
+          status: targetStage.status as CcaCaseStatus,
           decision_notes: actionNotes || null,
           decided_at: isDecision ? new Date().toISOString() : null,
         })
@@ -142,7 +146,7 @@ export default function CcaPipeline() {
       
       if (mainStageUpdate) {
         const stageId = await getStageIdByCode(mainStageUpdate);
-        await (supabase as any)
+        await supabase
           .from("deals")
           .update({ stage_id: stageId })
           .eq('id', actionDeal.dealId);
@@ -254,6 +258,15 @@ export default function CcaPipeline() {
                           <div className="flex items-center gap-1"><User className="h-3 w-3" />{deal.broker}</div>
                           <div className="flex items-center gap-1"><DollarSign className="h-3 w-3" />R$ {deal.value.toLocaleString('pt-BR')}</div>
                         </div>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-full text-[10px] gap-1"
+                          onClick={() => setSubmissionDeal(deal)}
+                        >
+                          <Send className="h-3 w-3" /> Enviar à construtora
+                        </Button>
                         
                         <div className="flex gap-1 flex-wrap pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {stages.filter(s => s.id !== stage.id).map(nextStage => (
@@ -351,6 +364,16 @@ export default function CcaPipeline() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {submissionDeal && (
+        <DeveloperSubmissionDialog
+          open={!!submissionDeal}
+          onClose={() => setSubmissionDeal(null)}
+          dealId={submissionDeal.dealId}
+          clientName={submissionDeal.client}
+          developerName={submissionDeal.developer}
+        />
+      )}
+
     </div>
   );
 }

@@ -244,6 +244,23 @@ begin
   perform pg_temp.check(v_turn = (select last_assigned_at from public.distribution_queue(grupo)
                                    where profile_id = c1),
     'liberação por realocação não conta como vez consumida');
+
+  -- Mesmo raciocínio para o handoff do SDR: o lead sair do corretor porque a IA
+  -- assumiu a qualificação não é falha dele. Sem este assert, ligar o SDR à
+  -- roleta puniria silenciosamente quem recebeu um lead qualificado.
+  update public.lead_assignments
+     set release_reason = 'sdr_handoff'
+   where profile_id = c1 and release_reason = 'reassigned';
+
+  select last_turn_at into v_turn
+  from public.distribution_queue(grupo) where profile_id = c1;
+  perform pg_temp.check(v_turn = (select last_assigned_at from public.distribution_queue(grupo)
+                                   where profile_id = c1),
+    'handoff para o SDR não consome a vez do corretor');
+
+  select queue_position into v_pos1 from public.distribution_queue(grupo) where profile_id = c1;
+  perform pg_temp.check(v_pos1 < (select count(*) from public.distribution_queue(grupo)),
+    'após handoff o corretor volta à ordem normal, não ao fim da fila');
 end
 $$;
 

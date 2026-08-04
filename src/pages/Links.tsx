@@ -21,7 +21,7 @@ export default function Links() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await (supabase as any).from("useful_links").select("*").eq("active", true).order("sort_order").order("label");
+    const { data, error } = await supabase.from("useful_links").select("*").eq("active", true).order("sort_order").order("label");
     if (error) toast({ title: "Erro ao carregar", description: error.message, variant: "destructive" });
     setLinks(((data as any[]) || []).map(row => ({ ...row, title: row.label })));
     setLoading(false);
@@ -35,8 +35,8 @@ export default function Links() {
     setSaving(true);
     const payload = { label: edit.title, url: edit.url, category: edit.category || "geral", sort_order: edit.sort_order ?? 0, active: true };
     const { error } = edit.id
-      ? await (supabase as any).from("useful_links").update(payload).eq("id", edit.id)
-      : await (supabase as any).from("useful_links").insert(payload);
+      ? await supabase.from("useful_links").update(payload).eq("id", edit.id)
+      : await supabase.from("useful_links").insert(payload);
     setSaving(false);
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     toast({ title: "Salvo!" });
@@ -45,7 +45,7 @@ export default function Links() {
 
   const remove = async (id: string) => {
     if (!confirm("Excluir este link?")) return;
-    const { error } = await (supabase as any).from("useful_links").delete().eq("id", id);
+    const { error } = await supabase.from("useful_links").delete().eq("id", id);
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     load();
   };

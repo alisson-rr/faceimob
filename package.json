@@ -15,7 +15,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:seed:remote": "powershell -ExecutionPolicy Bypass -File scripts/seed-database.ps1",
-    "user:create": "powershell -ExecutionPolicy Bypass -File scripts/create-user.ps1"
+    "user:create": "powershell -ExecutionPolicy Bypass -File scripts/create-user.ps1",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",

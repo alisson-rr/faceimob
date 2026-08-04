@@ -22,9 +22,8 @@ if (-not $ProjectUrl) { throw "Informe -ProjectUrl ou configure VITE_SUPABASE_UR
 if (-not $Email) { $Email = Read-Host "E-mail do novo usuário" }
 if (-not $FullName) { $FullName = Read-Host "Nome completo" }
 
-$passwordSecure = Read-Host "Senha inicial (não será exibida)" -AsSecureString
-$passwordPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($passwordSecure)
-$password = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPtr)
+# Sem senha: o login é por código no e-mail (signInWithOtp). email_confirm = true
+# deixa o usuário apto a receber o código sem clicar em link de confirmação.
 $keyPtr = [IntPtr]::Zero
 
 $serviceRoleKey = $env:FACEIMOB_SERVICE_ROLE_KEY
@@ -42,7 +41,6 @@ try {
   }
   $userBody = @{
     email = $Email.Trim()
-    password = $password
     email_confirm = $true
     user_metadata = @{ full_name = $FullName.Trim() }
   } | ConvertTo-Json -Depth 4
@@ -68,10 +66,10 @@ try {
   Write-Host "ID:     $($user.id)"
   Write-Host "E-mail: $($user.email)"
   Write-Host "Papel:  $Role"
+  Write-Host ""
+  Write-Host "Acesso: entre em /login com esse e-mail e receba o código de 6 dígitos." -ForegroundColor Cyan
 }
 finally {
-  if ($passwordPtr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPtr) }
   if ($keyPtr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($keyPtr) }
-  $password = $null
   $serviceRoleKey = $null
 }

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { listPeople } from "@/integrations/supabase/newSchema";
+import { slugify } from "@/lib/utils";
 
 type Settings = {
   roleta_seconds: number;
@@ -71,13 +72,13 @@ export default function AdminLeadAutomation() {
 
   const load = async () => {
     const [{ data: s }, { data: w }, people, { data: g }, { data: gb }, { data: gf }, { data: lf }] = await Promise.all([
-      (supabase as any).from("automation_settings").select("*").eq("id", true).maybeSingle(),
-      (supabase as any).from("work_shifts").select("*").order("position"),
+      supabase.from("automation_settings").select("*").eq("id", true).maybeSingle(),
+      supabase.from("work_shifts").select("*").order("position"),
       listPeople(),
-      (supabase as any).from("distribution_groups").select("*").order("name"),
-      (supabase as any).from("distribution_group_members").select("*"),
-      (supabase as any).from("distribution_group_forms").select("*"),
-      (supabase as any).from("leads").select("form_id").not("form_id", "is", null).limit(1000),
+      supabase.from("distribution_groups").select("*").order("name"),
+      supabase.from("distribution_group_members").select("*"),
+      supabase.from("distribution_group_forms").select("*"),
+      supabase.from("leads").select("form_id").not("form_id", "is", null).limit(1000),
     ]);
     if (s) {
       setSettings((current) => ({
@@ -105,7 +106,7 @@ export default function AdminLeadAutomation() {
 
   const saveSettings = async () => {
     setSavingSettings(true);
-    const { error } = await (supabase as any).from("automation_settings")
+    const { error } = await supabase.from("automation_settings")
       .update({
         attend_timeout_seconds: settings.roleta_seconds,
         no_response_hours: settings.no_response_hours,
@@ -123,8 +124,8 @@ export default function AdminLeadAutomation() {
     delete payload.slot;
     delete payload.created_at; delete payload.updated_at;
     const { error } = w.id
-      ? await (supabase as any).from("work_shifts").update(payload).eq("id", w.id)
-      : await (supabase as any).from("work_shifts").insert(payload);
+      ? await supabase.from("work_shifts").update(payload).eq("id", w.id)
+      : await supabase.from("work_shifts").insert(payload);
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     toast({ title: "Grupo salvo" });
     load();
@@ -132,7 +133,7 @@ export default function AdminLeadAutomation() {
 
   const deleteWindow = async (id: string) => {
     if (!confirm("Excluir este grupo?")) return;
-    const { error } = await (supabase as any).from("work_shifts").delete().eq("id", id);
+    const { error } = await supabase.from("work_shifts").delete().eq("id", id);
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     load();
   };
@@ -147,51 +148,51 @@ export default function AdminLeadAutomation() {
   const createGroup = async () => {
     const name = prompt("Nome do grupo:");
     if (!name) return;
-    const { error } = await supabase.from("distribution_groups" as any).insert({ name, active: true });
+    const { error } = await supabase.from("distribution_groups").insert({ name, slug: slugify(name), active: true });
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     load();
   };
   const renameGroup = async (id: string, current: string) => {
     const name = prompt("Novo nome:", current);
     if (!name || name === current) return;
-    await supabase.from("distribution_groups" as any).update({ name }).eq("id", id);
+    await supabase.from("distribution_groups").update({ name }).eq("id", id);
     load();
   };
   const toggleGroup = async (id: string, active: boolean) => {
-    await supabase.from("distribution_groups" as any).update({ active }).eq("id", id);
+    await supabase.from("distribution_groups").update({ active }).eq("id", id);
     load();
   };
   const deleteGroup = async (id: string) => {
     if (!confirm("Excluir grupo?")) return;
-    await supabase.from("distribution_groups" as any).delete().eq("id", id);
+    await supabase.from("distribution_groups").delete().eq("id", id);
     load();
   };
   const toggleGroupBroker = async (groupId: string, brokerId: string, on: boolean) => {
     if (on) {
-      await (supabase as any).from("distribution_group_members").upsert({
+      await supabase.from("distribution_group_members").upsert({
         group_id: groupId,
         profile_id: brokerId,
         active: true,
       });
     } else {
-      await (supabase as any).from("distribution_group_members").delete().eq("group_id", groupId).eq("profile_id", brokerId);
+      await supabase.from("distribution_group_members").delete().eq("group_id", groupId).eq("profile_id", brokerId);
     }
     load();
   };
   const addGroupForm = async (groupId: string, form_id: string, form_name: string | null) => {
     if (!form_id) return;
-    await supabase.from("distribution_group_forms" as any).insert({ group_id: groupId, form_id, form_name });
+    await supabase.from("distribution_group_forms").insert({ group_id: groupId, form_id, form_name });
     load();
   };
   const togglePause = async (v: boolean) => {
     setSettings((s) => ({ ...s, leads_paused: v }));
-    const { error } = await (supabase as any).from("automation_settings")
+    const { error } = await supabase.from("automation_settings")
       .update({ leads_paused: v }).eq("id", true);
     if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
     toast({ title: v ? "⏸️ Chegada de leads pausada" : "▶️ Chegada de leads retomada" });
   };
   const removeGroupForm = async (groupId: string, formId: string) => {
-    await supabase.from("distribution_group_forms" as any).delete().eq("group_id", groupId).eq("form_id", formId);
+    await supabase.from("distribution_group_forms").delete().eq("group_id", groupId).eq("form_id", formId);
     load();
   };
 

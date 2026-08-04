@@ -18,7 +18,9 @@ import { listPeople, type PersonRecord } from "./newSchema";
 // está em trânsito (S1.3). Tipar este arquivo contra ele agora amarraria esta
 // story ao commit dele — vira follow-up depois que a regeneração mergear.
 // Mesmo padrão do `newSchema.ts`.
-const db = supabase as any;
+// Sem cast: os tipos gerados cobrem o schema novo. O `as any` daqui
+// anulava justamente a regeneração que a Sprint 1 pagou para fazer.
+const db = supabase;
 
 export const LEAD_ATTACHMENTS_BUCKET = "lead-attachments";
 

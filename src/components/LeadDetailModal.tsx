@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import TaskPanel from "@/components/TaskPanel";
+import VisitPanel from "@/components/VisitPanel";
 import { toast } from "@/hooks/use-toast";
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -295,6 +297,7 @@ export default function LeadDetailModal({
             <TabsTrigger value="comments" className="text-[11px]">Comentar</TabsTrigger>
             <TabsTrigger value="attachments" className="text-[11px]">Anexos</TabsTrigger>
             <TabsTrigger value="history" className="text-[11px]">Histórico</TabsTrigger>
+            <TabsTrigger value="agenda" className="text-[11px]">Agenda</TabsTrigger>
             <TabsTrigger value="tracking" className="text-[11px]">Rastreio</TabsTrigger>
           </TabsList>
 
@@ -405,6 +408,13 @@ export default function LeadDetailModal({
                 </div>
               ))}
               {timeline.length === 0 && <p className="text-sm text-muted-foreground">Sem histórico.</p>}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="agenda" className="space-y-4">
+            <TaskPanel refType="lead" refId={lead.id} defaultAssignee={lead.assigned_to ?? null} />
+            <div className="pt-3 border-t border-border/40">
+              <VisitPanel leadId={lead.id} brokerId={lead.assigned_to ?? null} />
             </div>
           </TabsContent>
 

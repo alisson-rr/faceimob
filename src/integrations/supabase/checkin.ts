@@ -1,0 +1,155 @@
+import { supabase } from "./client";
+
+/**
+ * Check-in, turno e fila de distribuição.
+ *
+ * A tela calculava a janela do turno no cliente lendo `work_shifts` e usava
+ * `overdue_lead_count` cru, sem saber o motivo do bloqueio. O banco já resolvia
+ * as duas coisas: `current_shift()` respeita o fuso America/Sao_Paulo e
+ * `checkin_eligibility()` devolve o motivo em texto — foi feita assim
+ * justamente para a tela poder explicar ao corretor por que ele está travado.
+ */
+
+export type CheckinEligibility = {
+  allowed: boolean;
+  reason: string;
+  overdue_count: number;
+  threshold: number;
+};
+
+export type WorkShift = {
+  id: string;
+  code: string;
+  label: string;
+  checkin_start: string;
+  distribution_start: string;
+  checkout_time: string;
+  position: number;
+};
+
+export type CheckinRecord = {
+  id: string;
+  shift_id: string;
+  work_date: string;
+  checked_in_at: string;
+  checked_out_at: string | null;
+  leads_received: number;
+};
+
+export type QueueEntry = {
+  profile_id: string;
+  full_name: string;
+  queue_position: number;
+  last_assigned_at: string | null;
+};
+
+export async function getCheckinEligibility(): Promise<CheckinEligibility> {
+  const { data, error } = await supabase.rpc("checkin_eligibility");
+  if (error) throw new Error(error.message);
+  const row = (data as CheckinEligibility[] | null)?.[0];
+  // Falha fechada: sem resposta, não liberar o check-in por omissão.
+  return row ?? { allowed: false, reason: "Não foi possível verificar sua elegibilidade.", overdue_count: 0, threshold: 20 };
+}
+
+/** Id do turno vigente agora, ou null fora de qualquer janela. */
+export async function getCurrentShiftId(): Promise<string | null> {
+  const { data, error } = await supabase.rpc("current_shift");
+  if (error) throw new Error(error.message);
+  return (data as string | null) ?? null;
+}
+
+export async function listWorkShifts(): Promise<WorkShift[]> {
+  const { data, error } = await supabase
+    .from("work_shifts")
+    .select("id,code,label,checkin_start,distribution_start,checkout_time,position")
+    .eq("active", true)
+    .order("position");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as WorkShift[];
+}
+
+export async function listTodayCheckins(profileId: string): Promise<CheckinRecord[]> {
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const { data, error } = await supabase
+    .from("checkins")
+    .select("id,shift_id,work_date,checked_in_at,checked_out_at,leads_received")
+    .eq("profile_id", profileId)
+    .eq("work_date", iso);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CheckinRecord[];
+}
+
+/**
+ * Fila do grupo de distribuição do corretor.
+ *
+ * `distribution_queue` recebe o grupo, então o grupo é resolvido antes. Um
+ * corretor pode estar em mais de um grupo; devolvemos a fila de cada um, porque
+ * a posição só faz sentido dentro do grupo que vai receber o lead.
+ */
+export async function getMyQueues(profileId: string): Promise<{ groupId: string; groupName: string; entries: QueueEntry[] }[]> {
+  const { data: memberships, error: memberError } = await supabase
+    .from("distribution_group_members")
+    .select("group_id, distribution_groups(name)")
+    .eq("profile_id", profileId)
+    .eq("active", true);
+  if (memberError) throw new Error(memberError.message);
+
+  const groups = (memberships ?? []) as unknown as { group_id: string; distribution_groups: { name: string } | null }[];
+
+  const results = await Promise.all(
+    groups.map(async (g) => {
+      const { data, error } = await supabase.rpc("distribution_queue", { p_group_id: g.group_id });
+      if (error) throw new Error(error.message);
+      return {
+        groupId: g.group_id,
+        groupName: g.distribution_groups?.name ?? "Grupo",
+        entries: (data ?? []) as QueueEntry[],
+      };
+    }),
+  );
+  return results;
+}
+
+export type LeadCounts = { today: number; week: number; month: number };
+
+/**
+ * Leads recebidos hoje / na semana / no mês (ata 23/07).
+ *
+ * Conta `lead_assignments`, não `leads`: o que interessa é quantos chegaram
+ * para o corretor, incluindo os que ele perdeu por prazo. Contar `leads` por
+ * `assigned_to` mostraria só o que ainda está com ele.
+ */
+export async function getLeadCounts(profileId: string): Promise<LeadCounts> {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Semana começa na segunda: é como a operação fala de "essa semana".
+  const weekday = (startOfDay.getDay() + 6) % 7;
+  const startOfWeek = new Date(startOfDay);
+  startOfWeek.setDate(startOfDay.getDate() - weekday);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const countSince = async (since: Date) => {
+    const { count, error } = await supabase
+      .from("lead_assignments")
+      .select("id", { count: "exact", head: true })
+      .eq("profile_id", profileId)
+      .gte("assigned_at", since.toISOString());
+    if (error) throw new Error(error.message);
+    return count ?? 0;
+  };
+
+  const [today, week, month] = await Promise.all([
+    countSince(startOfDay),
+    countSince(startOfWeek),
+    countSince(startOfMonth),
+  ]);
+  return { today, week, month };
+}
+
+/** Confere se um IP está liberado para o usuário — usado pelo admin de IPs. */
+export async function checkIpAllowed(ip: string, profileId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("ip_is_allowed", { candidate: ip, who: profileId });
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}

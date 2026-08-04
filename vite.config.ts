@@ -20,4 +20,19 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // As rotas já são lazy (Suspense em App.tsx). O que sobrava no chunk de
+        // entrada era vendor: separá-lo tira ~40% do primeiro download e o
+        // torna cacheável entre deploys — vendor muda muito menos que o app.
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          charts: ["recharts"],
+          supabase: ["@supabase/supabase-js"],
+          motion: ["framer-motion"],
+        },
+      },
+    },
+  },
 }));

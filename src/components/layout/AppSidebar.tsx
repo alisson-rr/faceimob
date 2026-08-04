@@ -2,7 +2,9 @@ import {
   LayoutDashboard, GitBranch, Users, Megaphone,
   Database, Settings, LogOut, Link2, Sun, Moon,
   CreditCard, Shield, Building2, Trophy, KeyRound, Target, LogIn, Globe, TrendingUp, Zap, Bot,
+  UserSearch,
 } from "lucide-react";
+import { permissionForPath } from "@/lib/routePermissions";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -18,22 +20,28 @@ import { useTheme } from "@/hooks/useTheme";
 import { useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
+// A visibilidade sai da matriz `role_permissions` (migration 0015), não de uma
+// lista de papéis no código: era isso que a tela de permissões prometia e não
+// entregava. O código de cada item vem de `ROUTE_PERMISSION`, o mesmo mapa que
+// o guard de rota usa — item somindo do menu e URL aberta seria pior que nada.
 const mainNav = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
-  { title: "Pipeline", url: "/pipeline", icon: GitBranch, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
-  { title: "CCA Pipeline", url: "/cca", icon: CreditCard, roles: ['admin', 'cca', 'partner'] },
-  { title: "Marketing", url: "/marketing", icon: Megaphone, roles: ['admin', 'partner', 'director', 'manager'] },
-  { title: "Equipes", url: "/equipes", icon: Users, roles: ['admin', 'partner', 'director', 'manager', 'broker', 'cca'] },
-  { title: "Links", url: "/links", icon: Link2, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
-  { title: "Gamificação", url: "/gamification", icon: Trophy, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
-  { title: "Resultados", url: "/resultados", icon: TrendingUp, roles: ['admin', 'partner', 'director', 'manager'] },
-  { title: "Checkpoint", url: "/checkpoint", icon: Target, roles: ['admin', 'partner', 'director', 'manager'] },
-  { title: "Check-in", url: "/checkin", icon: LogIn, roles: ['admin', 'partner', 'director', 'manager', 'broker'] },
-  { title: "SDR IA", url: "/sdr", icon: Bot, roles: ['admin', 'partner', 'director', 'manager'] },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Pipeline", url: "/pipeline", icon: GitBranch },
+  { title: "Leads", url: "/leads", icon: UserSearch },
+  { title: "CCA Pipeline", url: "/cca", icon: CreditCard },
+  { title: "Marketing", url: "/marketing", icon: Megaphone },
+  { title: "Equipes", url: "/equipes", icon: Users },
+  { title: "Links", url: "/links", icon: Link2 },
+  { title: "Gamificação", url: "/gamification", icon: Trophy },
+  { title: "Resultados", url: "/resultados", icon: TrendingUp },
+  { title: "Checkpoint", url: "/checkpoint", icon: Target },
+  { title: "Check-in", url: "/checkin", icon: LogIn },
+  { title: "SDR IA", url: "/sdr", icon: Bot },
 ];
 
 const adminNav = [
   { title: "Permissões", url: "/admin/permissions", icon: Shield },
+  { title: "Integrações", url: "/admin/integrations", icon: KeyRound },
   { title: "Construtoras", url: "/admin/developers", icon: Building2 },
   { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound },
   { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe },
@@ -51,7 +59,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { role, signOut } = useAuth();
+  const { can, signOut } = useAuth();
   const isActive = (path: string) => location.pathname === path;
   const isLight = theme === "light";
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -68,8 +76,14 @@ export function AppSidebar() {
     hoverTimer.current = setTimeout(() => setOpen(false), 500);
   }, [setOpen]);
 
-  const visibleMainNav = mainNav.filter(item => item.roles.includes(role));
-  const showAdmin = role === 'admin';
+  // Sem código mapeado a rota é livre — só o que exige permissão está no mapa.
+  const visible = (item: { url: string }) => {
+    const code = permissionForPath(item.url);
+    return code ? can(code) : true;
+  };
+  const visibleMainNav = mainNav.filter(visible);
+  const visibleAdminNav = adminNav.filter(visible);
+  const visibleSystemNav = systemNav.filter(visible);
 
   return (
     <Sidebar
@@ -104,12 +118,12 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {showAdmin && (
+        {visibleAdminNav.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Administração</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {adminNav.map((item) => (
+                {visibleAdminNav.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive(item.url)}>
                       <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">
@@ -128,7 +142,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Sistema</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {systemNav.map((item) => (
+              {visibleSystemNav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">

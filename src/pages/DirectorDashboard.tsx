@@ -23,7 +23,7 @@ export default function DirectorDashboard() {
   const [teamFilter, setTeamFilter] = useState<string>("all");
 
   const directorInfo = user?.id
-    ? { id: user.id, name: profile?.name || profile?.full_name || "Diretor" }
+    ? { id: user.id, name: profile?.name || "Diretor" }
     : null;
 
   // Managers under this director + their brokers
@@ -33,7 +33,7 @@ export default function DirectorDashboard() {
     queryFn: async () => {
       const [people, teamsRes] = await Promise.all([
         listPeople(),
-        (supabase as any).from("teams").select("id,name,manager_id,director_id").eq("director_id", directorInfo!.id).eq("active", true),
+        supabase.from("teams").select("id,name,manager_id,director_id").eq("director_id", directorInfo!.id).eq("active", true),
       ]);
       const teams = (teamsRes.data as any[]) || [];
       const teamIds = new Set(teams.map(team => team.id));
@@ -60,14 +60,14 @@ export default function DirectorDashboard() {
     queryFn: async () => {
       const from = startOfMonth();
       const { data: reports } = await supabase
-        .from("daily_reports" as any)
+        .from("daily_reports")
         .select("id, team_id, report_date")
         .gte("report_date", from);
       const teamIds = teamFilter === "all" ? scope!.teams.map((t) => t.id) : [teamFilter];
       const reportIds = (reports ?? []).filter((r) => teamIds.includes(r.team_id!)).map((r) => r.id);
       if (!reportIds.length) return { leads: 0, coleta_docs: 0, analises: 0, aprovados: 0, vendas: 0 };
       const { data: entries } = await supabase
-        .from("daily_entries" as any)
+        .from("daily_entries")
         .select("leads,doc_collections,analyses_sent,analyses_approved,sales")
         .in("report_id", reportIds);
       return (entries ?? []).reduce(

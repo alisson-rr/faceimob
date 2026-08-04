@@ -6,14 +6,7 @@ import {
   type PersonRecord,
 } from "@/integrations/supabase/newSchema";
 
-export const SCORING = {
-  incomplete_with_doc: 10,
-  envio_esteira_agil: 140,
-  approved: 250,
-  venda: 600,
-  distrato_penalty: -600,
-};
-
+// Os pesos vivem em `game_scoring_rules`; nada de constante duplicada aqui.
 export type BrokerRow = PersonRecord;
 
 export type ScoreRow = {

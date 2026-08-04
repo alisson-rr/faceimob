@@ -54,7 +54,8 @@ function suggestEmail(full: string | null | undefined, fallback?: string | null)
   return local ? `${local}@faceimob.com.br` : "";
 }
 
-const ROLES = ["broker", "manager", "director", "cca", "admin", "partner"];
+type AppRoleValue = "broker" | "manager" | "director" | "cca" | "admin" | "partner" | "sdr" | "marketing";
+const ROLES: AppRoleValue[] = ["broker", "manager", "director", "cca", "admin", "partner"];
 
 export function BrokerEditModal({
   open, broker, managers, directors, onClose, onSaved, isAdmin,
@@ -71,7 +72,7 @@ export function BrokerEditModal({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
-  const [creds, setCreds] = useState<{ email: string; password: string } | null>(null);
+  const [creds, setCreds] = useState<{ email: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -82,7 +83,7 @@ export function BrokerEditModal({
 
   const save = async () => {
     setSaving(true);
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("profiles")
       .update({
         full_name: form.full_name || form.name,
@@ -93,9 +94,9 @@ export function BrokerEditModal({
       })
       .eq("id", form.id);
     if (!error && isAdmin && form.role) {
-      await (supabase as any)
+      await supabase
         .from("user_roles")
-        .upsert({ profile_id: form.id, role: form.role });
+        .upsert({ profile_id: form.id, role: form.role as AppRoleValue });
     }
     setSaving(false);
     if (error) return toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
@@ -119,18 +120,20 @@ export function BrokerEditModal({
     setProvisioning(true); setCreds(null);
     try {
       // 1) Persist current form edits BEFORE provisioning, so nothing is lost
-      const { error: saveErr } = await (supabase as any).from("profiles").update({
+      const { error: saveErr } = await supabase.from("profiles").update({
         full_name: form.full_name || form.name,
         email: form.login_email || form.email,
         phone: form.celular || null,
         avatar_url: form.avatar_url,
-        active: form.active ?? true,
+        // `profiles` não tem coluna `active`: quem guarda o estado é `status`.
+        // Enviar `active` fazia o update ser recusado em silêncio.
+        status: form.active === false ? "suspended" : "active",
       }).eq("id", form.id);
       if (saveErr) throw new Error(saveErr.message);
       if (isAdmin && form.role) {
-        const { error: roleErr } = await (supabase as any)
+        const { error: roleErr } = await supabase
           .from("user_roles")
-          .upsert({ profile_id: form.id, role: form.role });
+          .upsert({ profile_id: form.id, role: form.role as AppRoleValue });
         if (roleErr) throw new Error(roleErr.message);
       }
 
@@ -151,12 +154,15 @@ export function BrokerEditModal({
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error((data as any)?.error || `Falha na função (${response.status})`);
       if ((data as any)?.error) throw new Error((data as any).error);
-      setCreds({ email: (data as any).email, password: (data as any).password });
+      setCreds({ email: (data as any).email });
       upd("user_id", (data as any).user_id);
       upd("login_email", (data as any).email);
-      
-      toast({ title: reset ? "Senha redefinida" : "Acesso criado com sucesso" });
-      // Do NOT call onSaved() here — that would close the modal and hide the credentials.
+
+      toast({
+        title: reset ? "E-mail de acesso atualizado" : "Acesso criado com sucesso",
+        description: "O colaborador entra em /login com esse e-mail e recebe o código.",
+      });
+      // Do NOT call onSaved() here — that would close the modal and hide the e-mail.
     } catch (e: any) {
       toast({ title: "Falha ao criar acesso", description: e.message, variant: "destructive" });
     } finally {
@@ -262,7 +268,6 @@ export function BrokerEditModal({
           const suggested = suggestEmail(form.full_name, form.name);
           const currentEmail = (form.login_email || "").trim();
           const emailConfirmed = !!form.login_email_confirmed && !!currentEmail;
-          const savedPassword: string | null = null;
           return (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
             <div className="text-sm font-semibold flex items-center gap-2"><KeyRound className="h-4 w-4 text-primary" /> Acesso ao sistema</div>
@@ -311,24 +316,25 @@ export function BrokerEditModal({
               ) : (
                 <Button size="sm" variant="outline" onClick={() => provision(true)} disabled={provisioning || !emailConfirmed}>
                   {provisioning ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <KeyRound className="h-3 w-3 mr-1" />}
-                  Redefinir senha
+                  Atualizar e-mail de acesso
                 </Button>
               )}
             </div>
             {!emailConfirmed && <p className="text-[11px] text-amber-400">Confirme o e-mail para liberar a criação do acesso.</p>}
 
-            {/* Persistent credentials */}
-            {(creds || (form.user_id && savedPassword)) && (
+            {/* Acesso do colaborador — só o e-mail. Não há senha para entregar:
+                o login é por código enviado no ato de cada entrada. */}
+            {creds && (
               <div className="rounded-md bg-background/60 border p-2 text-xs space-y-1">
-                <p className="font-semibold text-emerald-400">Credenciais do colaborador:</p>
-                <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">Email:</span>
-                  <code className="flex-1">{creds?.email || form.login_email}</code>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("email", creds?.email || form.login_email || "")}>{copied === "email" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
+                <p className="font-semibold text-emerald-400">Acesso do colaborador:</p>
+                <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">E-mail:</span>
+                  <code className="flex-1">{creds.email}</code>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("email", creds.email)}>{copied === "email" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
                 </div>
-                <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">Senha:</span>
-                  <code className="flex-1">{creds?.password || savedPassword}</code>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("pw", creds?.password || savedPassword || "")}>{copied === "pw" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
-                </div>
+                <p className="text-muted-foreground">
+                  Ele entra em <code>/login</code> com esse e-mail e recebe um código de 6 dígitos.
+                  Não há senha para repassar.
+                </p>
               </div>
             )}
           </div>

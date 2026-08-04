@@ -54,7 +54,7 @@ function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }
     ];
     let error: any = null;
     for (const goal of periods) {
-      const existing = await (supabase as any)
+      const existing = await supabase
         .from("goals")
         .select("id")
         .eq("scope", "profile")
@@ -64,8 +64,8 @@ function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }
         .eq("metric", "vgv")
         .maybeSingle();
       const result = existing.data
-        ? await (supabase as any).from("goals").update({ target: goal.target }).eq("id", existing.data.id)
-        : await (supabase as any).from("goals").insert({
+        ? await supabase.from("goals").update({ target: goal.target }).eq("id", existing.data.id)
+        : await supabase.from("goals").insert({
             scope: "profile",
             profile_id: broker.id,
             period_type: goal.period_type,
@@ -180,7 +180,7 @@ export default function Equipes() {
     } catch (error: any) {
       toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
     }
-    const { data: teamsData } = await (supabase as any).from("teams").select("id,manager_id,name");
+    const { data: teamsData } = await supabase.from("teams").select("id,manager_id,name");
     const map: Record<string, { id: string; display_name: string | null }> = {};
     const drafts: Record<string, string> = {};
     (teamsData || []).forEach((t: any) => {
@@ -250,7 +250,7 @@ export default function Equipes() {
     list.filter(b => (search ? b.name.toLowerCase().includes(search.toLowerCase()) : true));
 
   const openEdit = async (_type: "manager" | "broker", m: BrokerRow) => {
-    const { data } = await (supabase as any).from("profiles")
+    const { data } = await supabase.from("profiles")
       .select("id,full_name,email,phone,avatar_url,status")
       .eq("id", m.id).maybeSingle();
     const merged = {
@@ -285,7 +285,7 @@ export default function Equipes() {
     setSaving(true);
     const ids = Array.from(bulkSelected);
     if (bulk.column === "broker") {
-      const { data: targetTeam, error: teamError } = await (supabase as any)
+      const { data: targetTeam, error: teamError } = await supabase
         .from("teams")
         .select("id")
         .eq("manager_id", bulkTarget)
@@ -296,12 +296,12 @@ export default function Equipes() {
         return toast({ title: "Erro", description: teamError?.message || "O gerente não possui uma equipe ativa.", variant: "destructive" });
       }
       for (const profileId of ids) {
-        await (supabase as any)
+        await supabase
           .from("team_members")
           .update({ left_at: new Date().toISOString().slice(0, 10) })
           .eq("profile_id", profileId)
           .is("left_at", null);
-        const { error } = await (supabase as any)
+        const { error } = await supabase
           .from("team_members")
           .insert({ team_id: targetTeam.id, profile_id: profileId });
         if (error) {
@@ -310,7 +310,7 @@ export default function Equipes() {
         }
       }
     } else {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("teams")
         .update({ director_id: bulkTarget })
         .in("manager_id", ids);

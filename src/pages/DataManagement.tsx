@@ -61,14 +61,14 @@ export default function DataManagement() {
   const [savingAporte, setSavingAporte] = useState(false);
 
   const loadAportes = async () => {
-    const { data } = await (supabase as any).from("marketing_investments").select("*").gte("period", monthStart()).order("period", { ascending: false });
+    const { data } = await supabase.from("marketing_investments").select("*").gte("period", monthStart()).order("period", { ascending: false });
     const list = (data as Aporte[]) || [];
     setAportes(list);
     setMonthTotal(list.reduce((s, r) => s + Number(r.amount || 0), 0));
   };
   useEffect(() => {
     (async () => {
-      const { data } = await (supabase as any).from("developers").select("id,name").eq("active", true).order("name");
+      const { data } = await supabase.from("developers").select("id,name").eq("active", true).order("name");
       setDevs((data as Developer[]) || []);
       loadAportes();
     })();
@@ -77,7 +77,7 @@ export default function DataManagement() {
   const saveAporte = async () => {
     if (!aporte.amount || !aporte.period || !aporte.developer_id) return toast({ title: "Preencha mês, valor e construtora", variant: "destructive" });
     setSavingAporte(true);
-    const { error } = await (supabase as any).from("marketing_investments").insert({
+    const { error } = await supabase.from("marketing_investments").insert({
       period: aporte.period.slice(0, 7) + "-01", amount: Number(aporte.amount), developer_id: aporte.developer_id,
     });
     setSavingAporte(false);
@@ -88,7 +88,7 @@ export default function DataManagement() {
   };
 
   const removeAporte = async (id: string) => {
-    await (supabase as any).from("marketing_investments").delete().eq("id", id);
+    await supabase.from("marketing_investments").delete().eq("id", id);
     loadAportes();
   };
 

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getSecret } from '../_shared/secrets.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -66,7 +67,8 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const pageAccessToken = Deno.env.get('META_PAGE_ACCESS_TOKEN') || ''
+    // Cofre primeiro, secret da function como fallback (ver _shared/secrets.ts).
+    const pageAccessToken = (await getSecret('META_PAGE_ACCESS_TOKEN')) || ''
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Verification (GET)
@@ -75,7 +77,7 @@ Deno.serve(async (req) => {
       const mode = url.searchParams.get('hub.mode')
       const token = url.searchParams.get('hub.verify_token')
       const challenge = url.searchParams.get('hub.challenge')
-      const verifyToken = Deno.env.get('META_WEBHOOK_VERIFY_TOKEN') || 'faceimob_meta_verify'
+      const verifyToken = (await getSecret('META_WEBHOOK_VERIFY_TOKEN')) || 'faceimob_meta_verify'
       if (mode === 'subscribe' && token === verifyToken) {
         return new Response(challenge, { status: 200, headers: corsHeaders })
       }

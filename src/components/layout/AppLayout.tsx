@@ -4,6 +4,8 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { MotivationalPopup } from "@/components/MotivationalPopup";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import NotificationBell from "@/components/NotificationBell";
+import SaleCelebration from "@/components/SaleCelebration";
 import NewLeadNotifier from "@/components/NewLeadNotifier";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,6 +59,7 @@ export default function AppLayout() {
 
   return (
     <SidebarProvider style={{ "--sidebar-width": "13rem", "--sidebar-width-icon": "3.25rem" } as React.CSSProperties}>
+      <SaleCelebration />
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
@@ -81,6 +84,7 @@ export default function AppLayout() {
 
             <div className="flex items-center gap-3 ml-auto">
               <RoleSwitcher />
+              <NotificationBell />
               <span className="text-xs text-muted-foreground hidden sm:block tracking-tight">{me?.name || user?.email || "Usuário"}</span>
               {me?.avatar_url ? (
                 <img src={me.avatar_url} alt="User" className="w-8 h-8 rounded-full object-cover border border-primary/30 ring-2 ring-background shadow-elevate interactive hover:scale-105" />

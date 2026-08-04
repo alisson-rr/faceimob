@@ -56,10 +56,14 @@ Para criar o seu primeiro usuário real:
 npm run user:create -- -Email admin@faceimob.com.br -FullName "Administrador" -Role admin
 ```
 
-O script lê `VITE_SUPABASE_URL` do `.env` e pede, sem exibir, a senha inicial e
-a `service_role key`. Essa chave deve ser copiada de **Supabase → Project
+O script lê `VITE_SUPABASE_URL` do `.env` e pede, sem exibir, apenas a
+`service_role key`. Essa chave deve ser copiada de **Supabase → Project
 Settings → API Keys** e nunca deve ser salva no `.env` do Vite, commitada ou
 exposta no navegador.
+
+**Não existe senha.** O acesso é por código de 6 dígitos enviado ao e-mail
+(`signInWithOtp`); o usuário é criado com `email_confirm`, então já recebe o
+código na primeira tentativa.
 
 Depois, inicie o aplicativo e entre pela rota `/login`:
 

@@ -4,16 +4,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Plus, Globe } from "lucide-react";
+import { Trash2, Plus, Globe, ShieldCheck, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { checkIpAllowed } from "@/integrations/supabase/checkin";
 
 type Ip = { id: string; ip_range: string; label: string; active: boolean; created_at: string };
 
 export default function AdminAllowedIps() {
+  const { user } = useAuth();
   const [rows, setRows] = useState<Ip[]>([]);
   const [ip, setIp] = useState("");
   const [label, setLabel] = useState("");
   const [myIp, setMyIp] = useState<string | null>(null);
+  // `ip_is_allowed` avalia faixa CIDR e bypass do perfil — comparar strings na
+  // tela diria "não cadastrado" para um IP já coberto por 200.150.10.0/24.
+  const [myIpCovered, setMyIpCovered] = useState<boolean | null>(null);
 
   const load = async () => {
     const { data } = await supabase.from("allowed_ips").select("*").order("created_at", { ascending: false });
@@ -27,7 +33,7 @@ export default function AdminAllowedIps() {
   const add = async () => {
     if (!ip.trim()) return;
     const ipRange = ip.trim().includes("/") ? ip.trim() : `${ip.trim()}/32`;
-    const { error } = await (supabase as any).from("allowed_ips").insert({
+    const { error } = await supabase.from("allowed_ips").insert({
       ip_range: ipRange,
       label: label.trim() || "IP autorizado",
     });
@@ -35,6 +41,12 @@ export default function AdminAllowedIps() {
     toast.success("IP autorizado.");
     setIp(""); setLabel(""); load();
   };
+  // Reavalia a cobertura sempre que a lista ou o IP detectado mudam.
+  useEffect(() => {
+    if (!myIp || !user?.id) { setMyIpCovered(null); return; }
+    checkIpAllowed(myIp, user.id).then(setMyIpCovered).catch(() => setMyIpCovered(null));
+  }, [myIp, user?.id, rows]);
+
   const remove = async (id: string) => {
     if (!confirm("Remover este IP?")) return;
     const { error } = await supabase.from("allowed_ips").delete().eq("id", id);
@@ -71,6 +83,16 @@ export default function AdminAllowedIps() {
             {myIp && (
               <span className="text-muted-foreground">
                 atual: <code className="px-1 py-0.5 bg-muted rounded">{myIp}</code>
+              </span>
+            )}
+            {myIp && myIpCovered === true && (
+              <span className="text-emerald-500 flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5" /> já coberto por uma faixa cadastrada
+              </span>
+            )}
+            {myIp && myIpCovered === false && (
+              <span className="text-amber-500 flex items-center gap-1">
+                <ShieldAlert className="h-3.5 w-3.5" /> não coberto — o check-in daqui seria barrado
               </span>
             )}
           </div>

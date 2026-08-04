@@ -1,145 +1,69 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentProfile } from "@/integrations/supabase/newSchema";
+import {
+  listRolePermissions,
+  listStagePermissions,
+  type RolePermissionRecord,
+  type StagePermissionRecord,
+} from "@/integrations/supabase/permissions";
 import type { User, Session } from "@supabase/supabase-js";
 
 export type AppRole = 'broker' | 'manager' | 'director' | 'partner' | 'admin' | 'cca' | 'sdr' | 'marketing';
-
-interface RolePermissions {
-  view_deals: boolean;
-  edit_deals: boolean;
-  move_deals: boolean;
-  see_financial: boolean;
-  see_conversion: boolean;
-  access_dashboard: boolean;
-}
-
-interface StagePermission {
-  stage: string;
-  can_view: boolean;
-  can_edit: boolean;
-  can_move: boolean;
-}
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: { name: string; email: string | null; avatar_url: string | null } | null;
+  /** Papel de maior precedência — só para rótulo. Autorização usa `can`. */
   role: AppRole;
-  permissions: RolePermissions;
-  stagePermissions: StagePermission[];
+  /** Todos os papéis do usuário: papel é N:N (`user_roles`). */
+  roles: AppRole[];
+  isAdmin: boolean;
   loading: boolean;
-  // For demo: allows switching role without real auth
-  setDemoRole: (role: AppRole) => void;
-  hasPermission: (key: keyof RolePermissions) => boolean;
-  canViewStage: (stage: string) => boolean;
-  canEditStage: (stage: string) => boolean;
-  canMoveToStage: (stage: string) => boolean;
+  /** Papel sendo pré-visualizado por um admin, ou null. */
+  previewRole: AppRole | null;
+  setPreviewRole: (role: AppRole | null) => void;
+  /** `true` se algum papel efetivo concede o código. Admin concede tudo. */
+  can: (code: string) => boolean;
+  /** `true` se algum papel efetivo pode mover um negócio para a etapa. */
+  canEnterStage: (stageId: string) => boolean;
   signOut: () => Promise<void>;
 }
 
-const defaultPermissions: RolePermissions = {
-  view_deals: true, edit_deals: false, move_deals: false,
-  see_financial: false, see_conversion: false, access_dashboard: true,
-};
-
 const AuthContext = createContext<AuthContextType>({
   user: null, session: null, profile: null,
-  role: 'admin', permissions: defaultPermissions,
-  stagePermissions: [], loading: true,
-  setDemoRole: () => {}, hasPermission: () => false,
-  canViewStage: () => true, canEditStage: () => false, canMoveToStage: () => false,
+  role: 'broker', roles: [], isAdmin: false, loading: true,
+  previewRole: null, setPreviewRole: () => {},
+  can: () => false, canEnterStage: () => false,
   signOut: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
-
-// Default permissions by role for demo mode
-const demoPermissions: Record<AppRole, RolePermissions> = {
-  admin: { view_deals: true, edit_deals: true, move_deals: true, see_financial: true, see_conversion: true, access_dashboard: true },
-  partner: { view_deals: true, edit_deals: true, move_deals: true, see_financial: true, see_conversion: true, access_dashboard: true },
-  director: { view_deals: true, edit_deals: true, move_deals: true, see_financial: true, see_conversion: true, access_dashboard: true },
-  manager: { view_deals: true, edit_deals: true, move_deals: true, see_financial: false, see_conversion: true, access_dashboard: true },
-  broker: { view_deals: true, edit_deals: false, move_deals: false, see_financial: false, see_conversion: false, access_dashboard: true },
-  cca: { view_deals: true, edit_deals: false, move_deals: false, see_financial: false, see_conversion: false, access_dashboard: false },
-  sdr: { view_deals: false, edit_deals: false, move_deals: false, see_financial: false, see_conversion: false, access_dashboard: false },
-  marketing: { view_deals: false, edit_deals: false, move_deals: false, see_financial: true, see_conversion: true, access_dashboard: true },
-};
-
-const demoStagePermissions: Record<AppRole, StagePermission[]> = {
-  broker: [
-    { stage: 'lead', can_view: true, can_edit: true, can_move: true },
-    { stage: 'proposal', can_view: true, can_edit: true, can_move: true },
-    { stage: 'visit_scheduled', can_view: true, can_edit: true, can_move: false },
-    { stage: 'under_analysis', can_view: true, can_edit: false, can_move: false },
-    { stage: 'approved', can_view: true, can_edit: false, can_move: false },
-    { stage: 'contract', can_view: true, can_edit: false, can_move: false },
-    { stage: 'closed', can_view: true, can_edit: false, can_move: false },
-  ],
-  manager: [
-    { stage: 'lead', can_view: true, can_edit: true, can_move: true },
-    { stage: 'proposal', can_view: true, can_edit: true, can_move: true },
-    { stage: 'visit_scheduled', can_view: true, can_edit: true, can_move: true },
-    { stage: 'under_analysis', can_view: true, can_edit: true, can_move: true },
-    { stage: 'approved', can_view: true, can_edit: true, can_move: true },
-    { stage: 'contract', can_view: true, can_edit: true, can_move: false },
-    { stage: 'closed', can_view: true, can_edit: false, can_move: false },
-  ],
-  director: [
-    { stage: 'lead', can_view: true, can_edit: true, can_move: true },
-    { stage: 'proposal', can_view: true, can_edit: true, can_move: true },
-    { stage: 'visit_scheduled', can_view: true, can_edit: true, can_move: true },
-    { stage: 'under_analysis', can_view: true, can_edit: true, can_move: true },
-    { stage: 'approved', can_view: true, can_edit: true, can_move: true },
-    { stage: 'contract', can_view: true, can_edit: true, can_move: true },
-    { stage: 'closed', can_view: true, can_edit: true, can_move: true },
-  ],
-  partner: [
-    { stage: 'lead', can_view: true, can_edit: true, can_move: true },
-    { stage: 'proposal', can_view: true, can_edit: true, can_move: true },
-    { stage: 'visit_scheduled', can_view: true, can_edit: true, can_move: true },
-    { stage: 'under_analysis', can_view: true, can_edit: true, can_move: true },
-    { stage: 'approved', can_view: true, can_edit: true, can_move: true },
-    { stage: 'contract', can_view: true, can_edit: true, can_move: true },
-    { stage: 'closed', can_view: true, can_edit: true, can_move: true },
-  ],
-  admin: [
-    { stage: 'lead', can_view: true, can_edit: true, can_move: true },
-    { stage: 'proposal', can_view: true, can_edit: true, can_move: true },
-    { stage: 'visit_scheduled', can_view: true, can_edit: true, can_move: true },
-    { stage: 'under_analysis', can_view: true, can_edit: true, can_move: true },
-    { stage: 'approved', can_view: true, can_edit: true, can_move: true },
-    { stage: 'contract', can_view: true, can_edit: true, can_move: true },
-    { stage: 'closed', can_view: true, can_edit: true, can_move: true },
-  ],
-  cca: [
-    { stage: 'lead', can_view: false, can_edit: false, can_move: false },
-    { stage: 'proposal', can_view: false, can_edit: false, can_move: false },
-    { stage: 'visit_scheduled', can_view: false, can_edit: false, can_move: false },
-    { stage: 'under_analysis', can_view: true, can_edit: true, can_move: true },
-    { stage: 'approved', can_view: true, can_edit: true, can_move: true },
-    { stage: 'contract', can_view: false, can_edit: false, can_move: false },
-    { stage: 'closed', can_view: false, can_edit: false, can_move: false },
-  ],
-  sdr: [],
-  marketing: [],
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<AppRole>('broker');
+  const [roles, setRoles] = useState<AppRole[]>([]);
   const [profile, setProfile] = useState<{ name: string; email: string | null; avatar_url: string | null } | null>(null);
-  const [permissions, setPermissions] = useState<RolePermissions>(demoPermissions.broker);
-  const [stagePermissions, setStagePermissions] = useState<StagePermission[]>(demoStagePermissions.broker);
+  const [rolePerms, setRolePerms] = useState<RolePermissionRecord[]>([]);
+  const [stagePerms, setStagePerms] = useState<StagePermissionRecord[]>([]);
+  const [previewRoleState, setPreviewRoleState] = useState<AppRole | null>(null);
 
-  // Demo mode: switch role
-  const setDemoRole = useCallback((newRole: AppRole) => {
-    setRole(newRole);
-    setPermissions(demoPermissions[newRole]);
-    setStagePermissions(demoStagePermissions[newRole]);
-  }, []);
+  const realIsAdmin = roles.includes('admin');
+
+  /**
+   * Pré-visualizar outro papel é ferramenta de admin. A trava fica aqui, e não
+   * só em quem renderiza o seletor: sem ela qualquer usuário poderia escolher
+   * "admin" e revelar o menu inteiro no client. O dado continuaria protegido
+   * pelo RLS, mas a tela mentiria sobre o que ele pode fazer.
+   */
+  const setPreviewRole = useCallback((next: AppRole | null) => {
+    if (!realIsAdmin) return;
+    setPreviewRoleState(next);
+  }, [realIsAdmin]);
 
   const applySession = useCallback(async (nextSession: Session | null) => {
     setSession(nextSession);
@@ -147,24 +71,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!nextSession?.user) {
       setProfile(null);
-      setRole("broker");
-      setPermissions(demoPermissions.broker);
-      setStagePermissions(demoStagePermissions.broker);
+      setRole('broker');
+      setRoles([]);
+      setRolePerms([]);
+      setStagePerms([]);
+      setPreviewRoleState(null);
       setLoading(false);
       return;
     }
 
     try {
-      const current = await getCurrentProfile(nextSession.user.id);
-      const currentRole = current.role as AppRole;
+      const [current, rp, sp] = await Promise.all([
+        getCurrentProfile(nextSession.user.id),
+        listRolePermissions(),
+        listStagePermissions(),
+      ]);
       setProfile({
         name: current.profile?.full_name || nextSession.user.email || "Usuário",
         email: current.profile?.email || nextSession.user.email || null,
         avatar_url: current.profile?.avatar_url || null,
       });
-      setRole(currentRole);
-      setPermissions(demoPermissions[currentRole] || defaultPermissions);
-      setStagePermissions(demoStagePermissions[currentRole] || []);
+      setRole(current.role as AppRole);
+      setRoles(current.roles as AppRole[]);
+      setRolePerms(rp);
+      setStagePerms(sp);
     } catch (error) {
       console.error("Falha ao carregar perfil autenticado:", error);
       const metadata = nextSession.user.user_metadata || {};
@@ -173,6 +103,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: nextSession.user.email || null,
         avatar_url: metadata.avatar_url || null,
       });
+      // Sem matriz carregada, `can()` nega tudo. Falha fechada é o certo aqui:
+      // menu vazio é recuperável, menu aberto por engano não é.
+      setRoles([]);
+      setRolePerms([]);
+      setStagePerms([]);
     } finally {
       setLoading(false);
     }
@@ -194,19 +129,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applySession]);
 
-  const hasPermission = useCallback((key: keyof RolePermissions) => permissions[key], [permissions]);
-  const canViewStage = useCallback((stage: string) => {
-    const sp = stagePermissions.find(s => s.stage === stage);
-    return sp ? sp.can_view : true;
-  }, [stagePermissions]);
-  const canEditStage = useCallback((stage: string) => {
-    const sp = stagePermissions.find(s => s.stage === stage);
-    return sp ? sp.can_edit : false;
-  }, [stagePermissions]);
-  const canMoveToStage = useCallback((stage: string) => {
-    const sp = stagePermissions.find(s => s.stage === stage);
-    return sp ? sp.can_move : false;
-  }, [stagePermissions]);
+  // Papéis que valem para autorização agora: os reais, ou o previsualizado.
+  const effectiveRoles = useMemo<AppRole[]>(
+    () => (previewRoleState ? [previewRoleState] : roles),
+    [previewRoleState, roles],
+  );
+  const isAdmin = effectiveRoles.includes('admin');
+
+  const allowedCodes = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rolePerms) {
+      if (row.allowed && effectiveRoles.includes(row.role as AppRole)) set.add(row.permission);
+    }
+    return set;
+  }, [rolePerms, effectiveRoles]);
+
+  const enterableStages = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of stagePerms) {
+      if (row.can_enter && effectiveRoles.includes(row.role as AppRole)) set.add(row.stage_id);
+    }
+    return set;
+  }, [stagePerms, effectiveRoles]);
+
+  // Espelha `has_permission()` / `can_enter_stage()`, que curto-circuitam em
+  // `is_admin()`. Se divergir daqui, a tela some com botão que o banco aceita.
+  const can = useCallback(
+    (code: string) => isAdmin || allowedCodes.has(code),
+    [isAdmin, allowedCodes],
+  );
+  const canEnterStage = useCallback(
+    (stageId: string) => isAdmin || enterableStages.has(stageId),
+    [isAdmin, enterableStages],
+  );
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -216,8 +171,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, session, profile, role, permissions, stagePermissions, loading,
-      setDemoRole, hasPermission, canViewStage, canEditStage, canMoveToStage, signOut,
+      user, session, profile, role, roles, isAdmin, loading,
+      previewRole: previewRoleState, setPreviewRole,
+      can, canEnterStage, signOut,
     }}>
       {children}
     </AuthContext.Provider>

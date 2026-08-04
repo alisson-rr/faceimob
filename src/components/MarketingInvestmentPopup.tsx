@@ -28,7 +28,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
     const first = new Date();
     first.setDate(1);
     const from = first.toISOString().slice(0, 10);
-    const { data } = await (supabase as any).from("marketing_investments").select("amount").gte("period", from);
+    const { data } = await supabase.from("marketing_investments").select("amount").gte("period", from);
     const t = (data || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
     setMonthTotal(t);
   };
@@ -39,8 +39,8 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
     first.setDate(1);
     const from = first.toISOString().slice(0, 10);
     const [{ data }, devsRes] = await Promise.all([
-      (supabase as any).from("marketing_investments").select("*").gte("period", from).order("period", { ascending: false }),
-      (supabase as any).from("developers").select("id,name").eq("active", true).order("name"),
+      supabase.from("marketing_investments").select("*").gte("period", from).order("period", { ascending: false }),
+      supabase.from("developers").select("id,name").eq("active", true).order("name"),
     ]);
     setRows((data as Investment[]) || []);
     setDevs((devsRes.data as Developer[]) || []);
@@ -53,7 +53,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
   const save = async () => {
     if (!form.amount || !form.period || !form.developer_id) return toast({ title: "Preencha mês, valor e construtora", variant: "destructive" });
     setSaving(true);
-    const { error } = await (supabase as any).from("marketing_investments").insert({
+    const { error } = await supabase.from("marketing_investments").insert({
       period: `${form.period}-01`,
       amount: Number(form.amount),
       developer_id: form.developer_id,
@@ -68,7 +68,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
 
   const remove = async (id: string) => {
     if (!confirm("Excluir aporte?")) return;
-    const { error } = await (supabase as any).from("marketing_investments").delete().eq("id", id);
+    const { error } = await supabase.from("marketing_investments").delete().eq("id", id);
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     load(); loadTotal();
   };

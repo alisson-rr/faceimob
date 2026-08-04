@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { BellRing, ExternalLink, HandMetal, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { claimLead, formatCountdown } from "@/integrations/supabase/leads";
+import { playLeadAlert } from "@/lib/sound";
 
 /** Só o que o payload do realtime entrega — não é o `LeadRecord` decorado. */
 type IncomingLead = {
@@ -32,38 +33,6 @@ const FRESH_MS = 20_000;
 
 const isFresh = (iso?: string | null) =>
   Boolean(iso) && Date.now() - new Date(iso as string).getTime() < FRESH_MS;
-
-/**
- * Beep curto via WebAudio. O data-URI que existia aqui era um WAV de 44 bytes
- * sem amostra nenhuma: o popup aparecia em silêncio.
- */
-function playAlertSound() {
-  try {
-    const Ctor = window.AudioContext || (window as any).webkitAudioContext;
-    if (!Ctor) return;
-    const ctx = new Ctor();
-    // Autoplay bloqueado até o primeiro gesto do usuário: seguir em silêncio.
-    void ctx.resume?.().catch(() => {});
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.7);
-    gain.connect(ctx.destination);
-
-    [880, 1175].forEach((freq, index) => {
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      osc.connect(gain);
-      osc.start(ctx.currentTime + index * 0.18);
-      osc.stop(ctx.currentTime + index * 0.18 + 0.16);
-    });
-
-    setTimeout(() => void ctx.close?.().catch(() => {}), 1200);
-  } catch {
-    // Sem áudio disponível: o popup e o toast já avisam.
-  }
-}
 
 /**
  * Aviso global de lead (ata 23/07: "notificação independente de onde o corretor
@@ -93,7 +62,7 @@ export default function NewLeadNotifier() {
 
     setLead(row);
     setKind(nextKind);
-    playAlertSound();
+    playLeadAlert();
     toast({
       title: nextKind === "assigned" ? "🔔 Lead atribuído a você!" : "🔔 Novo lead na fila",
       description: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,

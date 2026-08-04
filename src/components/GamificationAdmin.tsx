@@ -23,8 +23,8 @@ export function GamificationAdmin() {
   const load = async () => {
     setLoading(true);
     const [t, n] = await Promise.all([
-      (supabase as any).from("gold_tips").select("*").order("created_at", { ascending: false }),
-      (supabase as any).from("important_notices").select("*").order("created_at", { ascending: false }),
+      supabase.from("gold_tips").select("*").order("created_at", { ascending: false }),
+      supabase.from("important_notices").select("*").order("created_at", { ascending: false }),
     ]);
     setTips(((t.data as any[]) || []).map(row => ({ ...row, content: row.body })));
     setNotices(((n.data as any[]) || []).map(row => ({ ...row, message: row.body, pinned: row.severity === "critical" })));
@@ -35,8 +35,8 @@ export function GamificationAdmin() {
   const saveTip = async () => {
     if (!tipDraft.trim()) return;
     setSaving(true);
-    await (supabase as any).from("gold_tips").update({ active: false }).eq("active", true);
-    const { error } = await (supabase as any).from("gold_tips").insert({ title: "Dica de Ouro", body: tipDraft, active: true });
+    await supabase.from("gold_tips").update({ active: false }).eq("active", true);
+    const { error } = await supabase.from("gold_tips").insert({ title: "Dica de Ouro", body: tipDraft, active: true });
     setSaving(false);
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     toast({ title: "Dica de ouro publicada" });
@@ -44,15 +44,15 @@ export function GamificationAdmin() {
   };
 
   const toggleTip = async (t: Tip) => {
-    await (supabase as any).from("gold_tips").update({ active: !t.active }).eq("id", t.id);
+    await supabase.from("gold_tips").update({ active: !t.active }).eq("id", t.id);
     load();
   };
-  const removeTip = async (id: string) => { await (supabase as any).from("gold_tips").delete().eq("id", id); load(); };
+  const removeTip = async (id: string) => { await supabase.from("gold_tips").delete().eq("id", id); load(); };
 
   const saveNotice = async () => {
     if (!noticeDraft.title.trim() || !noticeDraft.message.trim()) return toast({ title: "Preencha título e mensagem", variant: "destructive" });
     setSaving(true);
-    const { error } = await (supabase as any).from("important_notices").insert({
+    const { error } = await supabase.from("important_notices").insert({
       title: noticeDraft.title,
       body: noticeDraft.message,
       severity: noticeDraft.pinned ? "critical" : "info",
@@ -63,8 +63,8 @@ export function GamificationAdmin() {
     toast({ title: "Recado publicado" });
     setNoticeDraft({ title: "", message: "", pinned: false }); load();
   };
-  const toggleNotice = async (n: Notice) => { await (supabase as any).from("important_notices").update({ active: !n.active }).eq("id", n.id); load(); };
-  const removeNotice = async (id: string) => { await (supabase as any).from("important_notices").delete().eq("id", id); load(); };
+  const toggleNotice = async (n: Notice) => { await supabase.from("important_notices").update({ active: !n.active }).eq("id", n.id); load(); };
+  const removeNotice = async (id: string) => { await supabase.from("important_notices").delete().eq("id", id); load(); };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -125,8 +125,8 @@ export function GamificationBanners() {
   useEffect(() => {
     (async () => {
       const [t, n] = await Promise.all([
-        (supabase as any).from("gold_tips").select("*").eq("active", true).order("created_at", { ascending: false }).limit(1),
-        (supabase as any).from("important_notices").select("*").eq("active", true).order("created_at", { ascending: false }),
+        supabase.from("gold_tips").select("*").eq("active", true).order("created_at", { ascending: false }).limit(1),
+        supabase.from("important_notices").select("*").eq("active", true).order("created_at", { ascending: false }),
       ]);
       const tipRow = t.data?.[0] as any;
       setTip(tipRow ? { ...tipRow, content: tipRow.body } : null);

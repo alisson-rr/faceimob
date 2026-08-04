@@ -1,5 +1,6 @@
 // SDR Agent Chat - roteia mensagem para agente (com orquestrador opcional) usando OpenAI
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireSecret } from '../_shared/secrets.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,8 +26,8 @@ async function callOpenAI(apiKey: string, model: string, messages: any[], temper
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    const apiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!apiKey) throw new Error('OPENAI_API_KEY não configurada');
+    // Cofre primeiro, secret da function como fallback (ver _shared/secrets.ts).
+    const apiKey = await requireSecret('OPENAI_API_KEY');
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,

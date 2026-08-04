@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { MarketingInvestmentPopup } from "@/components/MarketingInvestmentPopup";
 import { cn } from "@/lib/utils";
+import CampaignPerformancePanel from "@/components/CampaignPerformancePanel";
 
 type Campaign = {
   id: string;
@@ -77,6 +78,8 @@ export default function Marketing() {
 
   return (
     <div className="space-y-5">
+      <CampaignPerformancePanel />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>

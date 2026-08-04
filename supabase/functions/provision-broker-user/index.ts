@@ -13,13 +13,17 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function randomPassword() {
-  const bytes = crypto.getRandomValues(new Uint8Array(14));
-  const alphabet =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  return `Face!${Array.from(bytes, (value) => alphabet[value % alphabet.length]).join("")}`;
-}
-
+/**
+ * Provisiona o acesso de um colaborador.
+ *
+ * Não define nem devolve senha: o login é por código no e-mail (`signInWithOtp`).
+ * A versão anterior gerava senha aleatória e a devolvia no corpo da resposta —
+ * ou seja, a credencial passava pelo navegador do admin e ia parar em print,
+ * planilha ou mensagem. Aqui o e-mail é a credencial e o código é efêmero.
+ *
+ * `email_confirm: true` mantém o usuário apto a receber o OTP sem precisar
+ * clicar em link de confirmação.
+ */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -52,7 +56,6 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const profileId = body.profile_id || body.broker_id || null;
     const requestedEmail = String(body.email || "").trim().toLowerCase();
-    const password = randomPassword();
 
     if (profileId) {
       const { data: profile, error: profileError } = await admin
@@ -64,21 +67,21 @@ Deno.serve(async (req) => {
         return json({ error: "Perfil não encontrado." }, 404);
       }
       const email = requestedEmail || profile.email;
+      if (!email) return json({ error: "Perfil sem e-mail de acesso." }, 400);
+
       const { error } = await admin.auth.admin.updateUserById(profile.id, {
         email,
-        password,
         email_confirm: true,
         user_metadata: { full_name: profile.full_name },
       });
       if (error) throw error;
-      return json({ success: true, email, password, user_id: profile.id });
+      return json({ success: true, email, user_id: profile.id });
     }
 
     if (!requestedEmail) return json({ error: "email obrigatório" }, 400);
     const fullName = String(body.full_name || requestedEmail.split("@")[0]);
     const { data, error } = await admin.auth.admin.createUser({
       email: requestedEmail,
-      password,
       email_confirm: true,
       user_metadata: { full_name: fullName },
     });
@@ -86,7 +89,6 @@ Deno.serve(async (req) => {
     return json({
       success: true,
       email: requestedEmail,
-      password,
       user_id: data.user?.id,
     });
   } catch (error) {

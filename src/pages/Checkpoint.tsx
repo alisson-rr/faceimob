@@ -39,9 +39,9 @@ export default function Checkpoint() {
   const load = async () => {
     setLoading(true);
     const [t, b, tg] = await Promise.all([
-      (supabase as any).from("teams").select("id,name,manager_id,director_id").eq("active", true),
+      supabase.from("teams").select("id,name,manager_id,director_id").eq("active", true),
       listPeople(),
-      (supabase as any).from("funnel_targets").select("scope,team_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct").order("effective_from", { ascending: false }),
+      supabase.from("funnel_targets").select("scope,team_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct").order("effective_from", { ascending: false }),
     ]);
     setTeams(((t.data as any[]) || []).map(team => ({ ...team, display_name: team.name })));
     setBrokers((b as any[]).filter(person => person.active));
@@ -60,7 +60,7 @@ export default function Checkpoint() {
     const from = format(weekStart, "yyyy-MM-dd");
     const to = format(weekEnd, "yyyy-MM-dd");
     const { data: rep } = await supabase
-      .from("daily_reports" as any)
+      .from("daily_reports")
       .select("id,team_id,report_date")
       .gte("report_date", from)
       .lte("report_date", to);
@@ -68,7 +68,7 @@ export default function Checkpoint() {
     const ids = (rep || []).map((r: any) => r.id);
     if (ids.length) {
       const { data: ent } = await supabase
-        .from("daily_entries" as any)
+        .from("daily_entries")
         .select("report_id,leads,calls,doc_collections,analyses_sent,analyses_approved,sales")
         .in("report_id", ids);
       setEntries(((ent as any[]) || []).map(entry => ({

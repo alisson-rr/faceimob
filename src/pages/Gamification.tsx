@@ -15,16 +15,30 @@ import { useEffect, useCallback } from 'react';
 import { PipelineDeal, Broker } from '@/types/crm';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
 import { listLegacyDeals, listPeople } from '@/integrations/supabase/newSchema';
+import { motion } from "framer-motion";
+import {
+  closeGameSeason,
+  getCurrentSeasonId,
+  listEffectiveScoringRules,
+  listRanking,
+  listSeasonResults,
+  listSeasons,
+  setDefaultScoringPoints,
+  type RankingRow,
+  type ScoringRule,
+} from '@/integrations/supabase/game';
 
-// Default scoring weights based on pipeline movements
-const DEFAULT_SCORING = {
-  incomplete_with_doc: 10,
-  envio_esteira_agil: 140,
-  approved: 250,
-  venda: 600,
-  distrato_penalty: -600,
+// Os pesos vivem em `game_scoring_rules`; estes rótulos só traduzem o código do
+// banco para a tela. Os códigos são os de `game_events.event_code` — o front
+// usava um vocabulário próprio que nunca casaria com o que o banco pontua.
+const EVENT_LABELS: Record<string, string> = {
+  incompleto_com_doc: 'Incompleto (c/ doc)',
+  esteira: 'Envio Esteira Ágil',
+  aprovado: 'Aprovado',
+  venda: 'Venda',
+  distrato: 'Distrato/Queda',
 };
-type ScoringConfig = typeof DEFAULT_SCORING;
+type ScoringConfig = Record<string, number>;
 
 // Directors (3 directorships)
 const DIRECTORS = [
@@ -62,40 +76,38 @@ interface BrokerScore {
   };
 }
 
-function computeScores(brokers: Broker[], deals: PipelineDeal[], managers: any[], SCORING: ScoringConfig): BrokerScore[] {
-  return brokers.filter(b => b.active).map(broker => {
-    const brokerDeals = deals.filter(d => d.broker1 === broker.name || d.broker2 === broker.name);
-    const incompletos = brokerDeals.filter(d => d.stage === 'incomplete').length;
-    const esteiras = brokerDeals.filter(d => d.stage === 'under_analysis').length;
-    const aprovados = brokerDeals.filter(d => d.stage === 'approved').length;
-    const vendas = brokerDeals.filter(d => d.stage === 'closed' && d.active).length;
-    const distratos = brokerDeals.filter(d => d.stage === 'closed' && !d.active).length;
-    const totalVgv = brokerDeals.reduce((s, d) => s + (d.deal_value || 0), 0);
-
-    const points =
-      incompletos * SCORING.incomplete_with_doc +
-      esteiras * SCORING.envio_esteira_agil +
-      aprovados * SCORING.approved +
-      vendas * SCORING.venda +
-      distratos * SCORING.distrato_penalty;
-
-    const manager = managers.find(m => m.team === broker.team);
-    const director = DIRECTORS.find(d => d.teams.includes(broker.team || ''));
-
-    return {
-      brokerId: broker.id,
-      brokerName: broker.name,
-      team: broker.team || 'Default',
-      managerId: manager?.id,
-      managerName: manager?.name,
-      directorshipId: director?.id,
-      directorship: director?.directorship,
-      vendas,
-      vgv: totalVgv,
-      points: Math.max(0, points),
-      breakdown: { incompletos, esteiras, aprovados, vendas, distratos },
-    };
-  }).sort((a, b) => b.points - a.points);
+/**
+ * Monta as linhas da tela a partir do ranking do servidor.
+ *
+ * Os pontos vêm de `game_ranking` (agregação de `game_events`), não de um
+ * cálculo sobre `deals`: o cálculo no cliente dependia de pesos em `useState`,
+ * então cada usuário podia ver um ranking diferente e nada era auditável.
+ */
+function buildScores(brokers: Broker[], ranking: RankingRow[], deals: PipelineDeal[]): BrokerScore[] {
+  return brokers
+    .filter((b) => b.active)
+    .map((broker) => {
+      const row = ranking.find((r) => r.profile_id === broker.id);
+      const breakdown = row?.breakdown ?? {};
+      const brokerDeals = deals.filter((d) => d.broker1 === broker.name || d.broker2 === broker.name);
+      return {
+        brokerId: broker.id,
+        brokerName: broker.name,
+        team: broker.team || 'Default',
+        vendas: row?.sales ?? 0,
+        // VGV não é evento de jogo: continua vindo dos negócios.
+        vgv: brokerDeals.reduce((s, d) => s + (d.deal_value || 0), 0),
+        points: row?.points ?? 0,
+        breakdown: {
+          incompletos: Number(breakdown.incompleto_com_doc ?? 0),
+          esteiras: Number(breakdown.esteira ?? 0),
+          aprovados: Number(breakdown.aprovado ?? 0),
+          vendas: Number(breakdown.venda ?? 0),
+          distratos: Number(breakdown.distrato ?? 0),
+        },
+      };
+    })
+    .sort((a, b) => b.points - a.points);
 }
 
 const MONTHS = [
@@ -160,32 +172,110 @@ export default function Gamification() {
   }, [fetchRealData]);
 
   const [closedGames, setClosedGames] = useState<GameRecord[]>([]);
-  const [scoring, setScoring] = useState<ScoringConfig>(DEFAULT_SCORING);
-  const [pendingScoring, setPendingScoring] = useState<ScoringConfig>(DEFAULT_SCORING);
+  const [rules, setRules] = useState<ScoringRule[]>([]);
+  const [scoring, setScoring] = useState<ScoringConfig>({});
+  const [pendingScoring, setPendingScoring] = useState<ScoringConfig>({});
+  const [ranking, setRanking] = useState<RankingRow[]>([]);
+  const [closing, setClosing] = useState(false);
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
-  const currentScores = useMemo(() => computeScores(brokers, deals, [], scoring), [brokers, deals, scoring]);
+  /** Temporada corrente, regras vigentes, ranking e histórico congelado. */
+  const fetchGameState = useCallback(async () => {
+    try {
+      const current = await getCurrentSeasonId();
+
+      const [effectiveRules, allSeasons] = await Promise.all([
+        listEffectiveScoringRules(current),
+        listSeasons(),
+      ]);
+      setRules(effectiveRules);
+      const asMap = Object.fromEntries(effectiveRules.map((r) => [r.event_code, r.points]));
+      setScoring(asMap);
+      setPendingScoring(asMap);
+
+      setRanking(current ? await listRanking(current) : []);
+
+      // Temporadas fechadas trazem o ranking congelado em game_season_results.
+      const closed = allSeasons.filter((s) => s.closed_at);
+      const records = await Promise.all(
+        closed.map(async (s) => {
+          const results = await listSeasonResults(s.id);
+          return {
+            id: s.id,
+            month: s.period_start.slice(0, 7),
+            label: s.label,
+            closed: true,
+            closedAt: s.closed_at ?? undefined,
+            scores: results.map((r) => ({
+              brokerId: r.profile_id,
+              brokerName: brokers.find(b => b.id === r.profile_id)?.name ?? '—',
+              team: 'Default',
+              vendas: r.sales,
+              vgv: Number(r.vgv),
+              points: r.points,
+              breakdown: {
+                incompletos: Number(r.breakdown?.incompleto_com_doc ?? 0),
+                esteiras: Number(r.breakdown?.esteira ?? 0),
+                aprovados: Number(r.breakdown?.aprovado ?? 0),
+                vendas: Number(r.breakdown?.venda ?? 0),
+                distratos: Number(r.breakdown?.distrato ?? 0),
+              },
+            })) as BrokerScore[],
+          };
+        }),
+      );
+      setClosedGames(records);
+    } catch (error) {
+      console.error('Falha ao carregar o estado do jogo:', error);
+      toast({ title: 'Erro ao carregar a gamificação', variant: 'destructive' });
+    }
+  }, [toast]);
+
+  useEffect(() => { void fetchGameState(); }, [fetchGameState]);
+
+  const currentScores = useMemo(
+    () => buildScores(brokers, ranking, deals),
+    [brokers, ranking, deals],
+  );
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const closedGame = closedGames.find(g => g.month === selectedMonth);
   const scores = closedGame ? closedGame.scores : currentScores;
   const isClosed = !!closedGame?.closed;
 
-  const handleCloseGame = () => {
-    if (!isAdmin) return;
-    const label = getMonthLabel(now);
-    setClosedGames(prev => [...prev, {
-      id: `game-${currentMonthKey}`,
-      month: currentMonthKey,
-      label,
-      closed: true,
-      closedAt: new Date().toISOString(),
-      scores: [...currentScores],
-    }]);
-    setScoring(pendingScoring);
-    setCloseConfirmOpen(false);
-    toast({ title: `Game "${label}" fechado! Nova pontuação aplicada ao próximo ciclo.` });
+  /**
+   * Encerra a temporada de verdade.
+   *
+   * `close_game_season()` congela o ranking em `game_season_results` e abre a
+   * próxima na mesma transação — a versão anterior só empilhava um objeto em
+   * `useState`, então o "fechamento mensal zerando o jogo" (ata 14/07) sumia no
+   * primeiro reload. Os pesos novos são gravados ANTES do fechamento para valer
+   * já na temporada que abre.
+   */
+  const handleCloseGame = async () => {
+    if (!isAdmin || closing) return;
+    setClosing(true);
+    try {
+      const changed = rules.filter((r) => pendingScoring[r.event_code] !== scoring[r.event_code]);
+      for (const rule of changed) {
+        await setDefaultScoringPoints(rule.event_code, rule.label, pendingScoring[rule.event_code]);
+      }
+
+      const label = getMonthLabel(now);
+      await closeGameSeason(undefined, true);
+      await fetchGameState();
+      setCloseConfirmOpen(false);
+      toast({ title: `Temporada "${label}" encerrada. Ranking congelado e novo ciclo aberto.` });
+    } catch (e) {
+      toast({
+        title: 'Não foi possível encerrar a temporada',
+        description: e instanceof Error ? e.message : 'Erro desconhecido',
+        variant: 'destructive',
+      });
+    } finally {
+      setClosing(false);
+    }
   };
 
   const monthOptions = useMemo(() => {
@@ -280,11 +370,19 @@ export default function Gamification() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 text-xs">
-            <Badge variant="secondary" className="gap-1">Incompleto (c/ doc): <span className="text-warning font-bold">{scoring.incomplete_with_doc} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Envio Esteira Ágil: <span className="text-primary font-bold">{scoring.envio_esteira_agil} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Aprovado: <span className="text-green-400 font-bold">{scoring.approved} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Venda: <span className="text-yellow-400 font-bold">{scoring.venda} pts</span></Badge>
-            <Badge variant="secondary" className="gap-1">Distrato/Queda: <span className="text-destructive font-bold">{scoring.distrato_penalty} pts</span></Badge>
+            {rules.map((rule) => (
+              <Badge key={rule.event_code} variant="secondary" className="gap-1">
+                {EVENT_LABELS[rule.event_code] ?? rule.label}:{' '}
+                <span className={rule.points < 0 ? 'text-destructive font-bold' : 'text-primary font-bold'}>
+                  {rule.points} pts
+                </span>
+              </Badge>
+            ))}
+            {rules.length === 0 && (
+              <span className="text-xs text-muted-foreground">
+                Nenhuma regra de pontuação ativa em <code>game_scoring_rules</code>.
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -308,19 +406,43 @@ export default function Gamification() {
           {/* Top 3 podium */}
           <div className="grid grid-cols-3 gap-4">
             {top3General.map((s, i) => (
-              <Card key={s.brokerId} className={`text-center glass ${i === 0 ? 'border-yellow-500/40 glow-warning' : i === 1 ? 'border-gray-400/30' : 'border-amber-700/30'}`}>
-                <CardContent className="pt-6 space-y-2">
-                  <MedalIcon position={i} />
-                  <p className="font-semibold text-foreground">{s.brokerName}</p>
-                  <p className="text-xs text-muted-foreground">{s.team}</p>
-                  <p className="text-2xl font-bold text-warning">{s.points}</p>
-                  <p className="text-xs text-muted-foreground">pontos</p>
-                  <div className="text-xs text-muted-foreground space-y-0.5">
-                    <p>{s.vendas} vendas</p>
-                    <p>VGV: {(s.vgv / 1000000).toFixed(1)}M</p>
-                  </div>
-                </CardContent>
-              </Card>
+              // Pódio animado (ata 14/07: ranking mais atrativo que o Bubble).
+              // A ordem de entrada é 3º → 2º → 1º e a altura acompanha a
+              // colocação: o primeiro chega por último e fica acima dos outros.
+              <motion.div
+                key={s.brokerId}
+                initial={{ opacity: 0, y: 30, scale: 0.9 }}
+                animate={{ opacity: 1, y: i === 0 ? -12 : 0, scale: i === 0 ? 1.04 : 1 }}
+                transition={{ delay: (2 - i) * 0.18, type: "spring", stiffness: 200, damping: 16 }}
+              >
+                <Card className={`text-center glass h-full ${i === 0 ? 'border-yellow-500/40 glow-warning' : i === 1 ? 'border-gray-400/30' : 'border-amber-700/30'}`}>
+                  <CardContent className="pt-6 space-y-2">
+                    <motion.div
+                      animate={i === 0 ? { scale: [1, 1.18, 1] } : undefined}
+                      transition={i === 0 ? { duration: 2.2, repeat: Infinity, ease: "easeInOut" } : undefined}
+                      className="flex justify-center"
+                    >
+                      <MedalIcon position={i} />
+                    </motion.div>
+                    <p className="font-semibold text-foreground">{s.brokerName}</p>
+                    <p className="text-xs text-muted-foreground">{s.team}</p>
+                    <motion.p
+                      key={s.points}
+                      initial={{ scale: 1.4, color: "#fbbf24" }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 14 }}
+                      className="text-2xl font-bold text-warning"
+                    >
+                      {s.points}
+                    </motion.p>
+                    <p className="text-xs text-muted-foreground">pontos</p>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <p>{s.vendas} vendas</p>
+                      <p>VGV: {(s.vgv / 1000000).toFixed(1)}M</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
             ))}
           </div>
 
@@ -467,19 +589,15 @@ export default function Gamification() {
             </p>
 
             <div className="grid grid-cols-2 gap-3">
-              {([
-                ['incomplete_with_doc', 'Incompleto (c/ doc)'],
-                ['envio_esteira_agil', 'Envio Esteira Ágil'],
-                ['approved', 'Aprovado'],
-                ['venda', 'Venda'],
-                ['distrato_penalty', 'Distrato/Queda'],
-              ] as [keyof ScoringConfig, string][]).map(([key, label]) => (
-                <div key={key} className="space-y-1">
-                  <Label className="text-xs">{label}</Label>
+              {rules.map((rule) => (
+                <div key={rule.event_code} className="space-y-1">
+                  <Label className="text-xs">{EVENT_LABELS[rule.event_code] ?? rule.label}</Label>
                   <Input
                     type="number"
-                    value={pendingScoring[key]}
-                    onChange={(e) => setPendingScoring(p => ({ ...p, [key]: Number(e.target.value) }))}
+                    value={pendingScoring[rule.event_code] ?? rule.points}
+                    onChange={(e) =>
+                      setPendingScoring(p => ({ ...p, [rule.event_code]: Number(e.target.value) }))
+                    }
                     className="h-8"
                   />
                 </div>
@@ -497,8 +615,8 @@ export default function Gamification() {
             <DialogClose asChild>
               <Button variant="outline">Cancelar</Button>
             </DialogClose>
-            <Button variant="destructive" onClick={handleCloseGame}>
-              Confirmar Fechamento
+            <Button variant="destructive" onClick={handleCloseGame} disabled={closing}>
+              {closing ? 'Encerrando...' : 'Confirmar Fechamento'}
             </Button>
           </DialogFooter>
         </DialogContent>

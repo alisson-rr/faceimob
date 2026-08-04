@@ -1,5 +1,6 @@
 // Dispara template WhatsApp Cloud API para uma lista de remarketing
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { requireSecret } from '../_shared/secrets.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,9 +36,9 @@ async function sendTemplate(phoneNumberId: string, token: string, to: string, te
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    const token = Deno.env.get('META_WHATSAPP_ACCESS_TOKEN');
-    const phoneId = Deno.env.get('META_WHATSAPP_PHONE_NUMBER_ID');
-    if (!token || !phoneId) throw new Error('Credenciais WhatsApp não configuradas (META_WHATSAPP_ACCESS_TOKEN / META_WHATSAPP_PHONE_NUMBER_ID)');
+    // Cofre primeiro, secret da function como fallback (ver _shared/secrets.ts).
+    const token = await requireSecret('META_WHATSAPP_ACCESS_TOKEN');
+    const phoneId = await requireSecret('META_WHATSAPP_PHONE_NUMBER_ID');
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const { list_id, test_phone } = await req.json();

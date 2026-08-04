@@ -74,7 +74,7 @@ export default function DailyReport() {
   const activeRoster = useMemo(() => roster.filter((b) => b.active !== false), [roster]);
 
   const fetchPublicTeam = async (rawPin: string) => {
-    const { data, error } = await (supabase as any).rpc("public_daily_team", {
+    const { data, error } = await supabase.rpc("public_daily_team", {
       p_slug: identifier,
       p_pin: rawPin || null,
     });
@@ -283,7 +283,7 @@ export default function DailyReport() {
       analyses_approved: entries[b.broker_id]?.aprovados || 0,
       sales: entries[b.broker_id]?.vendas || 0,
     }));
-    const { error } = await (supabase as any).rpc("public_daily_submit", {
+    const { error } = await supabase.rpc("public_daily_submit", {
       p_slug: identifier,
       p_pin: pin || null,
       p_entries: payload,

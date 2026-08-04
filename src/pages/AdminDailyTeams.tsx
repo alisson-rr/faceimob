@@ -9,10 +9,9 @@ import { KeyRound, Link2, Copy, Plus, RefreshCw, Eye, EyeOff, Users, ShieldCheck
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { listPeople } from "@/integrations/supabase/newSchema";
+import { slugify } from "@/lib/utils";
 
 const randomPin = () => Math.floor(100000 + Math.random() * 900000).toString();
-const slugify = (s: string) =>
-  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 const managerSlug = (teamName: string) => slugify(teamName.replace(/^equipe\s+/i, ""));
 const DAILY_PUBLIC_ORIGIN = "https://crm-faceimob.com.br";
 
@@ -26,8 +25,8 @@ export default function AdminDailyTeams() {
     queryKey: ["daily-teams"],
     queryFn: async () => {
       const [{ data: teamRows }, { data: linkRows }] = await Promise.all([
-        (supabase as any).from("teams").select("id,name,active").order("name"),
-        (supabase as any).from("public_links").select("id,team_id,slug,active,pin_hash").eq("kind", "daily_team"),
+        supabase.from("teams").select("id,name,active").order("name"),
+        supabase.from("public_links").select("id,team_id,slug,active,pin_hash").eq("kind", "daily_team"),
       ]);
       const links = new Map(((linkRows as any[]) || []).map(link => [link.team_id, link]));
       return ((teamRows as any[]) || []).map(team => ({ ...team, public_link: links.get(team.id) || null }));
@@ -37,7 +36,7 @@ export default function AdminDailyTeams() {
   const { data: ips } = useQuery({
     queryKey: ["allowed-ips-mini"],
     queryFn: async () => {
-      const { data } = await (supabase as any).from("allowed_ips").select("id,ip_range,label,active").order("created_at", { ascending: false });
+      const { data } = await supabase.from("allowed_ips").select("id,ip_range,label,active").order("created_at", { ascending: false });
       return data ?? [];
     },
   });
@@ -47,14 +46,14 @@ export default function AdminDailyTeams() {
     queryFn: async () => {
       const people = await listPeople();
       const directors = people.filter(person => person.active && person.roles.includes("director"));
-      const { data: links } = await (supabase as any).from("public_links")
+      const { data: links } = await supabase.from("public_links")
         .select("id,director_id,slug").eq("kind", "director_checkpoint");
       const byDirector = new Map(((links as any[]) || []).map(link => [link.director_id, link]));
       const result = [];
       for (const director of directors) {
         let link = byDirector.get(director.id);
         if (!link) {
-          const { data } = await (supabase as any).from("public_links").insert({
+          const { data } = await supabase.from("public_links").insert({
             kind: "director_checkpoint",
             director_id: director.id,
             slug: `diretor-${managerSlug(director.name)}`,
@@ -73,7 +72,10 @@ export default function AdminDailyTeams() {
 
   const createTeam = async () => {
     if (!newTeam.trim()) return;
-    const { error } = await supabase.from("teams").insert({ name: newTeam.trim() });
+    // `teams.slug` é NOT NULL: sem ele o insert era recusado pelo banco. O erro
+    // estava documentado desde a Sprint 1 e vivia escondido pelo typecheck vazio.
+    const name = newTeam.trim();
+    const { error } = await supabase.from("teams").insert({ name, slug: slugify(name) });
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     setNewTeam("");
     toast({ title: "Equipe criada" });
@@ -85,7 +87,7 @@ export default function AdminDailyTeams() {
     const team = (teams ?? []).find((row: any) => row.id === teamId) as any;
     let linkId = team?.public_link?.id;
     if (!linkId) {
-      const { data, error } = await (supabase as any).from("public_links").insert({
+      const { data, error } = await supabase.from("public_links").insert({
         kind: "daily_team",
         team_id: teamId,
         slug: managerSlug(team?.name || teamId),
@@ -94,7 +96,7 @@ export default function AdminDailyTeams() {
       if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
       linkId = data.id;
     }
-    const { error } = await (supabase as any).rpc("set_public_link_pin", { p_link_id: linkId, p_pin: pin });
+    const { error } = await supabase.rpc("set_public_link_pin", { p_link_id: linkId, p_pin: pin });
     if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
     setGeneratedPins(prev => ({ ...prev, [teamId]: pin }));
     setRevealed((prev) => ({ ...prev, [teamId]: true }));

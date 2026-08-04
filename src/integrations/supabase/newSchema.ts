@@ -2,7 +2,9 @@ import { differenceInDays, format, parseISO } from "date-fns";
 import { supabase } from "./client";
 import type { Lead, LeadStatus, PipelineDeal } from "@/types/crm";
 
-const db = supabase as any;
+// Sem cast: os tipos gerados cobrem o schema novo. O `as any` daqui
+// anulava justamente a regeneração que a Sprint 1 pagou para fazer.
+const db = supabase;
 
 export type NewAppRole =
   | "admin"

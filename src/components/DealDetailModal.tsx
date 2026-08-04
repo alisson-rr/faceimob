@@ -6,12 +6,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { X, Paperclip, Send, Upload } from "lucide-react";
+import { X, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DEAL_STAGES, type PipelineDeal, type DealStage, type DealHistoryEntry } from "@/types/crm";
 import { mockDevelopers, mockProjects, mockBrokers, mockManagers } from "@/data/mockData";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import DealDocumentUpload from "@/components/DealDocumentUpload";
+import TaskPanel from "@/components/TaskPanel";
+import DealHistoryPanel from "@/components/DealHistoryPanel";
+import VisitPanel from "@/components/VisitPanel";
 import { toast } from "@/hooks/use-toast";
 
 interface Props {
@@ -23,18 +27,6 @@ interface Props {
 
 const statusOptions = [
   "PROPOSTA", "VIROU NEGÓCIO", "OFF", "DISTRATO", "VENDA"
-];
-
-const DOC_SLOTS: { key: string; label: string }[] = [
-  { key: "rg_cpf", label: "RG com CPF (< 10 anos) ou CNH" },
-  { key: "estado_civil", label: "Comprovante de Estado Civil" },
-  { key: "endereco", label: "Comprovante de Endereço (do mês)" },
-  { key: "ctps", label: "Carteira de Trabalho (CTPS Digital)" },
-  { key: "contracheques", label: "3 Últimos Contracheques" },
-  { key: "fgts", label: "Extrato de FGTS Atualizado" },
-  { key: "dependente", label: "Certidão de Nascimento do Dependente" },
-  { key: "ir", label: "Imposto de Renda (Corpo + Recibo + Protocolo)" },
-  { key: "outros", label: "Outros" },
 ];
 
 const CCA_FIELDS: { key: string; label: string; type?: "select"; options?: string[] }[] = [
@@ -58,12 +50,10 @@ const CCA_FIELDS: { key: string; label: string; type?: "select"; options?: strin
 
 export default function DealDetailModal({ deal, open, onClose, onSave }: Props) {
   const { role } = useAuth();
-  const [tab, setTab] = useState<"detalhes" | "anexos" | "cca">("detalhes");
+  const [tab, setTab] = useState<"detalhes" | "anexos" | "agenda" | "historico" | "cca">("detalhes");
   const [form, setForm] = useState<PipelineDeal>({ ...deal });
   const [newNote, setNewNote] = useState("");
-  const [docFiles, setDocFiles] = useState<Record<string, File[]>>({});
   const [ccaData, setCcaData] = useState<Record<string, string>>({});
-  const docRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const isAdmin = role === "admin";
   const canEditCca = role === "cca" || role === "admin";
@@ -90,6 +80,8 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
   const tabs = [
     { key: "detalhes" as const, label: "Detalhes" },
     { key: "anexos" as const, label: "Anexos" },
+    { key: "agenda" as const, label: "Agenda" },
+    { key: "historico" as const, label: "Histórico" },
     { key: "cca" as const, label: "CCA" },
   ];
 
@@ -346,62 +338,27 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
           )}
 
           {tab === "anexos" && (
-            <div className="space-y-3 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-success">Anexar Documentos</p>
-                <Badge variant="outline" className="text-[10px]">Um arquivo por tipo de documento</Badge>
+            <div className="animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+              <DealDocumentUpload
+                dealId={form.id}
+                clientName={form.client}
+                dealCode={form.id}
+              />
+            </div>
+          )}
+
+          {tab === "agenda" && (
+            <div className="space-y-4 animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+              <TaskPanel refType="deal" refId={form.id} />
+              <div className="pt-3 border-t border-border/40">
+                <VisitPanel dealId={form.id} />
               </div>
-              <div className="space-y-2">
-                {DOC_SLOTS.map(slot => {
-                  const list = docFiles[slot.key] || [];
-                  return (
-                    <div key={slot.key} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <label className="text-[11px] font-semibold text-foreground flex-1">
-                          <span className="text-success mr-1">✓</span>{slot.label}
-                        </label>
-                        <input
-                          ref={el => (docRefs.current[slot.key] = el)}
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={e => {
-                            if (e.target.files) {
-                              const arr = Array.from(e.target.files);
-                              setDocFiles(prev => ({ ...prev, [slot.key]: [...(prev[slot.key] || []), ...arr] }));
-                            }
-                          }}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[10px] gap-1"
-                          onClick={() => docRefs.current[slot.key]?.click()}
-                        >
-                          <Upload className="h-3 w-3" /> Anexar
-                        </Button>
-                      </div>
-                      {list.length > 0 ? (
-                        <div className="space-y-1">
-                          {list.map((f, i) => (
-                            <div key={i} className="flex items-center justify-between bg-success/10 rounded px-2 py-1 text-[10px]">
-                              <span className="text-success truncate flex items-center gap-1"><Paperclip className="h-3 w-3" />{f.name}</span>
-                              <button
-                                onClick={() => setDocFiles(prev => ({ ...prev, [slot.key]: (prev[slot.key] || []).filter((_, idx) => idx !== i) }))}
-                                className="text-destructive hover:text-destructive/80"
-                              >
-                                Remover
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-muted-foreground italic">Nenhum arquivo anexado</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            </div>
+          )}
+
+          {tab === "historico" && (
+            <div className="animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+              <DealHistoryPanel dealId={form.id} />
             </div>
           )}
 

@@ -139,7 +139,7 @@ export default function PublicDirectorCheckpoint() {
   useEffect(() => {
     (async () => {
       setLoading(true); setError(null);
-      const { data, error } = await (supabase as any).rpc("public_director_checkpoint", {
+      const { data, error } = await supabase.rpc("public_director_checkpoint", {
         p_slug: slugify(slug),
         p_week_start: format(weekStart, "yyyy-MM-dd"),
         p_pin: null,

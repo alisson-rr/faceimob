@@ -19,7 +19,8 @@ type Agent = {
   handoff_to_agent_id: string | null;
 };
 type Source = { id: string; label: string; form_id: string | null; source_match: string | null; agent_id: string | null; active: boolean };
-type Rlist = { id: string; name: string; description: string | null; template_name: string | null; template_language: string; total_contacts: number; status: string; agent_id: string | null };
+type ListStats = { total: number; pending: number; sent: number; replied: number; failed: number };
+type Rlist = { id: string; name: string; description: string | null; template_name: string | null; template_language: string; stats: ListStats; status: string; agent_id: string | null };
 
 export default function SdrModule() {
   const [tab, setTab] = useState("agents");
@@ -29,12 +30,11 @@ export default function SdrModule() {
   const [waConfig, setWaConfig] = useState<any>({});
 
   async function loadAll() {
-    const [a, s, l, w, contacts] = await Promise.all([
-      (supabase as any).from("sdr_agents").select("*").order("created_at"),
-      (supabase as any).from("lead_sources").select("*").order("created_at"),
-      (supabase as any).from("remarketing_lists").select("*").order("created_at", { ascending: false }),
-      (supabase as any).from("whatsapp_templates").select("*").order("created_at"),
-      (supabase as any).from("remarketing_contacts").select("list_id"),
+    const [a, s, l, w] = await Promise.all([
+      supabase.from("sdr_agents").select("*").order("created_at"),
+      supabase.from("lead_sources").select("*").order("created_at"),
+      supabase.from("remarketing_lists").select("*").order("created_at", { ascending: false }),
+      supabase.from("whatsapp_templates").select("*").order("created_at"),
     ]);
     setAgents((a.data as any) || []);
     setSources(((s.data as any[]) || []).map(row => ({
@@ -43,12 +43,21 @@ export default function SdrModule() {
       agent_id: row.sdr_agent_id,
     })));
     const templates = (w.data as any[]) || [];
-    setLists(((l.data as any[]) || []).map(row => ({
-      ...row,
-      template_name: templates.find(template => template.id === row.template_id)?.name || null,
-      template_language: templates.find(template => template.id === row.template_id)?.language || "pt_BR",
-      total_contacts: ((contacts.data as any[]) || []).filter(contact => contact.list_id === row.id).length,
-    })));
+    // `remarketing_list_stats` agrega no banco. A versão anterior baixava a
+    // tabela inteira de contatos para contar no navegador — cresce com a base e
+    // ainda assim só dava o total, sem enviados/respondidos.
+    const rows = (l.data as any[]) || [];
+    const withStats = await Promise.all(rows.map(async row => {
+      const { data: stats } = await supabase.rpc("remarketing_list_stats", { p_list_id: row.id });
+      const s0 = (stats as ListStats[] | null)?.[0];
+      return {
+        ...row,
+        template_name: templates.find(template => template.id === row.template_id)?.name || null,
+        template_language: templates.find(template => template.id === row.template_id)?.language || "pt_BR",
+        stats: s0 ?? { total: 0, pending: 0, sent: 0, replied: 0, failed: 0 },
+      };
+    }));
+    setLists(withStats);
     setWaConfig(templates[0] || { name: "", language: "pt_BR", body: "", approved: false, active: true });
   }
   useEffect(() => { loadAll(); }, []);
@@ -234,7 +243,7 @@ function SourcesTab({ sources, agents, reload }: { sources: Source[]; agents: Ag
   async function add() {
     if (!row.label) return toast.error("Label obrigatório");
     const code = (row.source_match || row.label).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-    const { error } = await (supabase as any).from("lead_sources").insert({
+    const { error } = await supabase.from("lead_sources").insert({
       code, label: row.label, form_id: row.form_id || null,
       sdr_agent_id: row.agent_id || null, active: row.active ?? true,
     });
@@ -242,7 +251,7 @@ function SourcesTab({ sources, agents, reload }: { sources: Source[]; agents: Ag
     setRow({ label: "", active: true }); reload();
   }
   async function remove(id: string) {
-    await (supabase as any).from("lead_sources").delete().eq("id", id); reload();
+    await supabase.from("lead_sources").delete().eq("id", id); reload();
   }
   return (
     <Card className="p-4 space-y-3">
@@ -347,7 +356,7 @@ function ConversationsTab({ agents }: { agents: Agent[] }) {
   useEffect(() => { load(); }, []);
   useEffect(() => {
     if (!sel) { setMsgs([]); return; }
-    (supabase as any).from("sdr_messages").select("*").eq("conversation_id", sel).order("created_at").then(({ data }: any) => setMsgs(data || []));
+    supabase.from("sdr_messages").select("*").eq("conversation_id", sel).order("created_at").then(({ data }: any) => setMsgs(data || []));
   }, [sel]);
 
   return (
@@ -410,9 +419,9 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
       if (parsed.length === 0) return toast.error("Nenhum contato válido (verifique colunas nome/fone/campanha)");
 
       const { data: templateRow } = template
-        ? await (supabase as any).from("whatsapp_templates").select("id").eq("name", template).maybeSingle()
+        ? await supabase.from("whatsapp_templates").select("id").eq("name", template).maybeSingle()
         : { data: null };
-      const { data: list, error: lErr } = await (supabase as any).from("remarketing_lists").insert({
+      const { data: list, error: lErr } = await supabase.from("remarketing_lists").insert({
         name: newName, template_id: templateRow?.id || null, agent_id: agentId || null,
         status: "draft",
       }).select().single();
@@ -421,7 +430,7 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
       const contacts = parsed.map(p => ({ full_name: p.name, phone: p.phone, extra: { campaign: p.campaign, ...p.extra }, list_id: list.id }));
       const chunkSize = 500;
       for (let i = 0; i < contacts.length; i += chunkSize) {
-        const { error } = await (supabase as any).from("remarketing_contacts").insert(contacts.slice(i, i + chunkSize));
+        const { error } = await supabase.from("remarketing_contacts").insert(contacts.slice(i, i + chunkSize));
         if (error) throw error;
       }
       toast.success(`Lista "${newName}" criada com ${parsed.length} contatos`);
@@ -442,7 +451,7 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
 
   async function removeList(id: string) {
     if (!confirm("Excluir lista?")) return;
-    await (supabase as any).from("remarketing_lists").delete().eq("id", id); reload();
+    await supabase.from("remarketing_lists").delete().eq("id", id); reload();
   }
 
   return (
@@ -471,7 +480,7 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
             <div key={l.id} className="flex items-center justify-between border rounded p-3">
               <div>
                 <div className="text-sm font-medium">{l.name} <Badge variant="outline" className="ml-2 text-[10px]">{l.status}</Badge></div>
-                <div className="text-[10px] text-muted-foreground">Template: {l.template_name || "—"} · {l.total_contacts} contatos · Agente: {agents.find(a => a.id === l.agent_id)?.name || "—"}</div>
+                <div className="text-[10px] text-muted-foreground">Template: {l.template_name || "—"} · {l.stats.total} contatos ({l.stats.pending} pendentes · {l.stats.sent} enviados · {l.stats.replied} respondidos{l.stats.failed > 0 ? ` · ${l.stats.failed} falhas` : ""}) · Agente: {agents.find(a => a.id === l.agent_id)?.name || "—"}</div>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => broadcast(l.id)}><Send className="h-3.5 w-3.5 mr-1" />Disparar</Button>
@@ -500,8 +509,8 @@ function WhatsAppTab({ config, reload }: { config: any; reload: () => void }) {
       active: !!c.active,
     };
     const query = c.id
-      ? (supabase as any).from("whatsapp_templates").update(payload).eq("id", c.id)
-      : (supabase as any).from("whatsapp_templates").insert(payload);
+      ? supabase.from("whatsapp_templates").update(payload).eq("id", c.id)
+      : supabase.from("whatsapp_templates").insert(payload);
     const { error } = await query;
     if (error) return toast.error(error.message);
     toast.success("Configuração salva"); reload();
