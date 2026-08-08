@@ -17,7 +17,10 @@ $seedFiles = @(
   "/workspace/supabase/seeds/010_identity_and_teams.sql",
   "/workspace/supabase/seeds/020_catalog_distribution_sdr.sql",
   "/workspace/supabase/seeds/030_commercial_operation.sql",
-  "/workspace/supabase/seeds/040_reports_game_workspace.sql"
+  "/workspace/supabase/seeds/040_reports_game_workspace.sql",
+  # Fase 5: cenarios de teste. O rollback (059) fica de fora de proposito -
+  # e manual, para nao apagar os cenarios logo depois de cria-los.
+  "/workspace/supabase/seeds/050_test_scenarios.sql"
 )
 
 try {

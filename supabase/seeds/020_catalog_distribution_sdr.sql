@@ -10,7 +10,7 @@ values
    'internal', null, 'Roberta Almeida', '5511988001001', 'Construtora de demonstracao com fluxo interno no CCA.'),
   ('30000000-0000-0000-0000-000000000002', 'Viva Lar Incorporadora', 'viva-lar-incorporadora',
    'external', 'credito@vivalar.example.invalid', 'Gustavo Nunes', '5511988001002', 'Fluxo externo de demonstracao.')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.developer_projects (id, developer_id, name, city, state)
 values
@@ -18,7 +18,7 @@ values
   ('31000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', 'Reserva Paulista', 'Campinas', 'SP'),
   ('31000000-0000-0000-0000-000000000003', '30000000-0000-0000-0000-000000000002', 'Viva Centro', 'Curitiba', 'PR'),
   ('31000000-0000-0000-0000-000000000004', '30000000-0000-0000-0000-000000000002', 'Jardins do Sul', 'Porto Alegre', 'RS')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.allowed_ips (id, label, ip_range, team_id, created_by)
 values
@@ -28,13 +28,13 @@ values
    '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001'),
   ('32000000-0000-0000-0000-000000000003', 'Rede da unidade Sul', '192.168.20.0/24',
    '20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.distribution_groups (id, name, slug, kind, attend_timeout_seconds)
 values
   ('33000000-0000-0000-0000-000000000001', 'Leads Parque das Flores', 'leads-parque-das-flores', 'specific', 420),
   ('33000000-0000-0000-0000-000000000002', 'Leads Regiao Sul', 'leads-regiao-sul', 'specific', 360)
-on conflict (slug) do nothing;
+on conflict do nothing;
 
 insert into public.distribution_group_members (group_id, profile_id)
 select g.id, m.profile_id
@@ -54,7 +54,7 @@ from (
     ('leads-regiao-sul', '10000000-0000-0000-0000-000000000010'::uuid)
 ) as m(group_slug, profile_id)
 join public.distribution_groups g on g.slug = m.group_slug
-on conflict (group_id, profile_id) do nothing;
+on conflict do nothing;
 
 insert into public.distribution_group_forms (group_id, form_id, form_name)
 select g.id, f.form_id, f.form_name
@@ -64,11 +64,11 @@ from (
     ('leads-regiao-sul', 'seed-form-regiao-sul', 'Formulario Regiao Sul')
 ) as f(group_slug, form_id, form_name)
 join public.distribution_groups g on g.slug = f.group_slug
-on conflict (form_id) do nothing;
+on conflict do nothing;
 
 insert into public.automation_settings (id)
 values (true)
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.checkins (
   id, profile_id, shift_id, work_date, checked_in_at, checked_out_at,
@@ -94,7 +94,7 @@ from (
     ('34000000-0000-0000-0000-000000000006'::uuid, '10000000-0000-0000-0000-000000000008'::uuid, 'tarde', current_date,     now() - interval '2 hours',       null,                               false, '192.168.20.11', 2)
 ) as c(id, profile_id, shift_code, work_date, checked_in_at, checked_out_at, auto_checkout, ip_address, leads_received)
 join public.work_shifts s on s.code = c.shift_code
-on conflict (profile_id, work_date, shift_id) do nothing;
+on conflict do nothing;
 
 insert into public.whatsapp_templates (
   id, name, language, category, body, variables, provider_template_id, approved
@@ -106,7 +106,7 @@ values
   ('35000000-0000-0000-0000-000000000002', 'retomada_interesse', 'pt_BR', 'MARKETING',
    'Ola, {{1}}! Temos novidades que combinam com o imovel que voce procura. Quer conversar?',
    array['nome'], 'seed-template-remarketing', true)
-on conflict (name) do nothing;
+on conflict do nothing;
 
 insert into public.sdr_agents (
   id, name, role, is_orchestrator, system_prompt, model, temperature,
@@ -125,7 +125,7 @@ select
 from public.distribution_groups g
 where g.slug = 'fila-geral'
   and not exists (select 1 from public.sdr_agents a where a.active and a.is_orchestrator)
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.sdr_agents (
   id, name, role, is_orchestrator, system_prompt, model, temperature,
@@ -143,7 +143,7 @@ select
   g.id
 from public.distribution_groups g
 where g.slug = 'triagem-sdr-ia'
-on conflict (id) do nothing;
+on conflict do nothing;
 
 update public.lead_sources
 set form_id = coalesce(form_id, case code

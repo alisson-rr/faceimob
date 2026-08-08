@@ -93,7 +93,7 @@ select
   now()
 from seed_users u
 where exists (select 1 from auth.users au where au.id = u.id)
-on conflict (provider_id, provider) do nothing;
+on conflict do nothing;
 
 insert into public.user_roles (profile_id, role, granted_by)
 values
@@ -111,7 +111,7 @@ values
   ('10000000-0000-0000-0000-000000000012', 'sdr',       '10000000-0000-0000-0000-000000000001'),
   ('10000000-0000-0000-0000-000000000013', 'marketing', '10000000-0000-0000-0000-000000000001'),
   ('10000000-0000-0000-0000-000000000014', 'partner',   '10000000-0000-0000-0000-000000000001')
-on conflict (profile_id, role) do nothing;
+on conflict do nothing;
 
 -- O trigger de auth concede broker por padrao. Nas personas nao comerciais,
 -- removemos esse papel para os totais de equipe permanecerem corretos.
@@ -134,7 +134,7 @@ values
    '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000003'),
   ('20000000-0000-0000-0000-000000000002', 'Equipe Sul', 'equipe-sul',
    '10000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000004')
-on conflict (slug) do nothing;
+on conflict do nothing;
 
 insert into public.team_members (id, team_id, profile_id, joined_at)
 values
@@ -146,4 +146,4 @@ values
   ('21000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000008', current_date - 150),
   ('21000000-0000-0000-0000-000000000007', '20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000009', current_date - 120),
   ('21000000-0000-0000-0000-000000000008', '20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000010', current_date - 75)
-on conflict (id) do nothing;
+on conflict do nothing;

@@ -19,7 +19,7 @@ values
   ('contract',        'Contrato',        7, 'open',   '#22d3ee', true,  false),
   ('closed',          'Fechado',         8, 'won',    '#facc15', true,  false),
   ('lost',            'Perdido',         9, 'lost',   '#f87171', false, false)
-on conflict (code) do nothing;
+on conflict do nothing;
 
 -- Quem pode mover para cada estágio. Corretor toca o funil comercial; a partir
 -- da análise, o CCA assume.
@@ -57,7 +57,7 @@ values
   ('certidao_civil',    'Certidão de Estado Civil',  'identificacao', false, false, '{tipo}-{cliente}', 7),
   ('simulacao',         'Simulação de Crédito',      'credito',       false, true,  '{tipo}-{negocio}', 8),
   ('outros',            'Outros',                    'geral',         false, true,  '{tipo}-{cliente}-{data}', 99)
-on conflict (code) do nothing;
+on conflict do nothing;
 
 -- -----------------------------------------------------------------------------
 -- Estágios do CCA (configuráveis pela tela do CCA, como os do pipeline)
@@ -86,7 +86,7 @@ values
   ('manha', 'Manhã', '08:00', '08:30', '12:00', 1),
   ('tarde', 'Tarde', '13:00', '13:30', '18:00', 2),
   ('noite', 'Noite', '18:30', '19:00', '21:30', 3)
-on conflict (code) do nothing;
+on conflict do nothing;
 
 -- -----------------------------------------------------------------------------
 -- Grupos de distribuição — a fila geral precisa existir: é o destino padrão
@@ -96,7 +96,7 @@ insert into public.distribution_groups (name, slug, kind, attend_timeout_seconds
 values
   ('Fila Geral',    'fila-geral',    'general', 300),
   ('Triagem SDR IA','triagem-sdr-ia','sdr',     null)
-on conflict (slug) do nothing;
+on conflict do nothing;
 
 -- -----------------------------------------------------------------------------
 -- Origens de lead
@@ -109,7 +109,7 @@ values
   ('indicacao',  'Indicação',   'indication'),
   ('importacao', 'Importação',  'import'),
   ('portal',     'Portal',      'portal')
-on conflict (code) do nothing;
+on conflict do nothing;
 
 -- -----------------------------------------------------------------------------
 -- Metas de funil — 10% / 40% / 50%, conforme definido em reunião.
@@ -153,7 +153,7 @@ insert into public.permissions (code, label, category, description) values
   ('users.manage_roles',    'Gerenciar papéis',            'usuarios', null),
   ('settings.integrations', 'Gerenciar integrações',       'config',   'Tokens de API'),
   ('game.close_season',     'Encerrar temporada',          'jogo',     null)
-on conflict (code) do nothing;
+on conflict do nothing;
 
 insert into public.role_permissions (role, permission, allowed) values
   ('director', 'leads.view_queue',     true),
@@ -175,4 +175,4 @@ insert into public.role_permissions (role, permission, allowed) values
 
   ('partner',  'deals.view_all',       true),
   ('partner',  'reports.view_finance', true)
-on conflict (role, permission) do nothing;
+on conflict do nothing;

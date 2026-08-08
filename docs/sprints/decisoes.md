@@ -109,3 +109,5 @@ o card, e o `VisitPanel` (lead e negócio) lê e fecha a visita com resultado.
 | 02/08/2026 | Som e comemoração de venda disparam por `game_events` (`event_code = 'venda'`), não por UPDATE em `deals` | `SaleCelebration.tsx`, `lib/sound.ts` |
 | 02/08/2026 | Typecheck do projeto é `npm run typecheck`; `npx tsc --noEmit` na raiz não checa arquivo nenhum | `package.json`, `.claude/CLAUDE.md` |
 | 02/08/2026 | Agendamento da fila de WhatsApp lê URL e chave do cofre, não de GUC | Migration `0018` |
+| 05/08/2026 | Cron `faceimob-notify-dispatch` pausado (`active = false`) enquanto não há credencial do WhatsApp — a fila em `notifications` segue sendo populada e é o que se verifica em teste | `cron.job` no remoto, `roteiro-teste-completo.md` |
+| 05/08/2026 | Testador passa a ser `dev.alisson.rosa@gmail.com`. Troca de e-mail exige as três fontes juntas (`auth.users`, `auth.identities.identity_data`, `profiles`) — não há trigger de sync e o dashboard não expõe edição de e-mail | `auth`/`profiles` no remoto, seeds `050`/`059` |

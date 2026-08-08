@@ -129,7 +129,7 @@ from (
 )
 left join public.lead_sources s on s.code = l.source_code
 left join public.distribution_groups g on g.slug = l.group_slug
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.lead_assignments (
   id, lead_id, profile_id, group_id, sequence, assigned_at, deadline,
@@ -152,7 +152,7 @@ from (
     ('41000000-0000-0000-0000-000000000010'::uuid, '40000000-0000-0000-0000-000000000011'::uuid, '10000000-0000-0000-0000-000000000007'::uuid, 'fila-geral', now() - interval '9 days', now() - interval '9 days' + interval '5 minutes', now() - interval '9 days', now() - interval '4 days', 'manual')
 ) as a(id, lead_id, profile_id, group_slug, assigned_at, deadline, responded_at, released_at, release_reason)
 left join public.distribution_groups g on g.slug = a.group_slug
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.lead_events (id, lead_id, actor_id, kind, from_value, to_value, detail, created_at)
 values
@@ -161,14 +161,14 @@ values
   ('42000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000006', 'stage_changed', 'warm', 'scheduled_visit', '{"seed":true}', now() - interval '1 day'),
   ('42000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000005', 'converted', 'in_progress', 'converted', '{"seed":true}', now() - interval '15 days'),
   ('42000000-0000-0000-0000-000000000005', '40000000-0000-0000-0000-000000000011', '10000000-0000-0000-0000-000000000007', 'status_changed', 'in_progress', 'lost', '{"reason":"no_response","seed":true}', now() - interval '4 days')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.lead_comments (id, lead_id, author_id, body, created_at)
 values
   ('43000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000005', 'Cliente pretende usar FGTS e possui entrada aproximada de R$ 45 mil.', now() - interval '1 hour'),
   ('43000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000006', 'Visita confirmada com o casal para amanha as 15h.', now() - interval '3 hours'),
   ('43000000-0000-0000-0000-000000000003', '40000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000011', 'Comprovante de renda recebido; falta extrato atualizado do FGTS.', now() - interval '1 day')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.lead_attachments (
   id, lead_id, document_type_id, storage_path, original_name, stored_name,
@@ -183,7 +183,7 @@ from (
     ('44000000-0000-0000-0000-000000000002'::uuid, '40000000-0000-0000-0000-000000000006'::uuid, 'comprovante_renda', 'seed/leads/006/holerite-eduardo.pdf', 'holerite.pdf', 'comprovante-renda-eduardo.pdf', 245760::bigint, '10000000-0000-0000-0000-000000000007'::uuid)
 ) as a(id, lead_id, document_code, storage_path, original_name, stored_name, size_bytes, uploaded_by)
 join public.document_types d on d.code = a.document_code
-on conflict (storage_path) do nothing;
+on conflict do nothing;
 
 insert into public.deals (
   id, code, lead_id, developer_id, project_id, unit, stage_id, outcome,
@@ -213,7 +213,7 @@ where not exists (
   select 1 from public.deals existing
   where existing.id = d.id or existing.code = d.code
 )
-on conflict (id) do nothing;
+on conflict do nothing;
 
 update public.leads l
 set converted_deal_id = d.id
@@ -236,7 +236,7 @@ values
   ('51000000-0000-0000-0000-000000000005', '50000000-0000-0000-0000-000000000004', 1, 'Henrique Araujo', null, '5511981010008', 'henrique.araujo@example.com', null, null, false, null, false, 5900, null),
   ('51000000-0000-0000-0000-000000000006', '50000000-0000-0000-0000-000000000005', 1, 'Beatriz Castro', '53754788006', '5511981010009', 'beatriz.castro@example.com', 'casada', '90010000', false, 'Saude', true, 11000, null),
   ('51000000-0000-0000-0000-000000000007', '50000000-0000-0000-0000-000000000006', 1, 'Lucas Moreira', '71293718061', '5511981010010', 'lucas.moreira@example.com', 'solteiro', '13015000', false, 'Financeiro', true, 14500, null)
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.deal_participants (id, deal_id, profile_id, role)
 values
@@ -247,7 +247,7 @@ values
   ('52000000-0000-0000-0000-000000000005', '50000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000010', 'broker'),
   ('52000000-0000-0000-0000-000000000006', '50000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000008', 'broker'),
   ('52000000-0000-0000-0000-000000000007', '50000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000006', 'broker')
-on conflict (deal_id, profile_id, role) do nothing;
+on conflict do nothing;
 
 insert into public.deal_documents (
   id, deal_id, document_type_id, storage_path, original_name, stored_name,
@@ -265,7 +265,7 @@ from (
     ('53000000-0000-0000-0000-000000000005'::uuid, '50000000-0000-0000-0000-000000000005'::uuid, 'rg_cpf', 'seed/deals/005/rg-cpf-beatriz.pdf', 'documento-beatriz.pdf', 'rg-cpf-beatriz.pdf', 220000::bigint, '10000000-0000-0000-0000-000000000008'::uuid)
 ) as x(id, deal_id, document_code, storage_path, original_name, stored_name, size_bytes, uploaded_by)
 join public.document_types dt on dt.code = x.document_code
-on conflict (storage_path) do nothing;
+on conflict do nothing;
 
 insert into public.deal_history (id, deal_id, actor_id, kind, from_value, to_value, detail, created_at)
 values
@@ -274,7 +274,7 @@ values
   ('54000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000007', 'submitted_to_cca', 'proposal', 'under_analysis', '{"seed":true}', now() - interval '4 days'),
   ('54000000-0000-0000-0000-000000000004', '50000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000009', 'value_changed', '385000', '386100', '{"discount_pct":1,"seed":true}', now() - interval '2 days'),
   ('54000000-0000-0000-0000-000000000005', '50000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000010', 'stage_changed', 'proposal', 'lost', '{"reason":"concorrencia","seed":true}', now() - interval '35 days')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.visits (
   id, deal_id, lead_id, broker_id, scheduled_at, performed_at, result, notes
@@ -283,7 +283,7 @@ values
   ('55000000-0000-0000-0000-000000000001', null, '40000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000006', now() + interval '1 day', null, 'scheduled', 'Visita ao apartamento decorado.'),
   ('55000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000001', null, '10000000-0000-0000-0000-000000000005', now() - interval '12 days', now() - interval '12 days', 'completed', 'Cliente aprovou a planta e a localizacao.'),
   ('55000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000003', null, '10000000-0000-0000-0000-000000000009', now() - interval '3 days', null, 'no_show', 'Cliente solicitou reagendamento.')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.cca_cases (
   id, deal_id, status, analyst_id, agency_name, submitted_at, decided_at,
@@ -299,14 +299,14 @@ from (
     ('56000000-0000-0000-0000-000000000003'::uuid, '50000000-0000-0000-0000-000000000005'::uuid, 'sent_to_developer', '10000000-0000-0000-0000-000000000011'::uuid, null::text, now() - interval '2 days', null::timestamptz, null::text, '[]'::jsonb, 'sent_to_developer')
 ) as c(id, deal_id, status, analyst_id, agency_name, submitted_at, decided_at, decision_notes, pending_items, stage_status)
 left join public.cca_stages cs on cs.status = c.stage_status::cca_status
-on conflict (deal_id) do nothing;
+on conflict do nothing;
 
 insert into public.cca_case_events (id, case_id, actor_id, kind, from_value, to_value, detail, created_at)
 values
   ('57000000-0000-0000-0000-000000000001', '56000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000011', 'status_changed', 'under_review', 'approved', '{"seed":true}', now() - interval '6 days'),
   ('57000000-0000-0000-0000-000000000002', '56000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000011', 'pending_item_added', 'under_review', 'pending_documents', '{"item":"Extrato FGTS atualizado","seed":true}', now() - interval '1 day'),
   ('57000000-0000-0000-0000-000000000003', '56000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000011', 'submitted_external', 'under_review', 'sent_to_developer', '{"seed":true}', now() - interval '2 days')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.developer_submissions (
   id, deal_id, developer_id, to_email, cc_emails, subject, body,
@@ -326,7 +326,7 @@ values (
   now() - interval '2 days',
   '10000000-0000-0000-0000-000000000011'
 )
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.sdr_conversations (
   id, lead_id, agent_id, status, score, summary, collected,
@@ -346,7 +346,7 @@ from (
     ('59000000-0000-0000-0000-000000000002'::uuid, '40000000-0000-0000-0000-000000000001'::uuid, 'active', 42, 'Primeiro contato em andamento.', '{"city":"Sao Paulo","bedrooms":2}'::jsonb, now() - interval '20 minutes', now() - interval '10 minutes', null::timestamptz, null::timestamptz, null::uuid),
     ('59000000-0000-0000-0000-000000000003'::uuid, '40000000-0000-0000-0000-000000000011'::uuid, 'abandoned', 18, 'Contato sem resposta.', '{"attempts":3}'::jsonb, now() - interval '8 days', now() - interval '5 days', null::timestamptz, null::timestamptz, null::uuid)
 ) as c(id, lead_id, status, score, summary, collected, started_at, last_message_at, qualified_at, handed_off_at, handed_off_to)
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.sdr_messages (
   id, conversation_id, author, body, provider_message_id, template_id,
@@ -358,7 +358,7 @@ values
   ('5a000000-0000-0000-0000-000000000003', '59000000-0000-0000-0000-000000000001', 'agent', 'Perfeito. Vou encaminhar voce para a Ana, que conhece as melhores opcoes para esse perfil.', 'seed-msg-003', null, 66, 25, now() - interval '1 day'),
   ('5a000000-0000-0000-0000-000000000004', '59000000-0000-0000-0000-000000000002', 'agent', 'Ola, Juliana! Recebemos seu interesse no Parque das Flores.', 'seed-msg-004', '35000000-0000-0000-0000-000000000001', 35, 16, now() - interval '18 minutes'),
   ('5a000000-0000-0000-0000-000000000005', '59000000-0000-0000-0000-000000000002', 'lead', 'Gostaria de saber os valores das unidades de dois quartos.', 'seed-msg-005', null, null, null, now() - interval '10 minutes')
-on conflict (id) do nothing;
+on conflict do nothing;
 
 insert into public.remarketing_lists (
   id, name, description, template_id, agent_id, handoff_group_id,
@@ -386,4 +386,4 @@ insert into public.remarketing_contacts (
 values
   ('5c000000-0000-0000-0000-000000000001', '5b000000-0000-0000-0000-000000000001', 'Isabela Moraes', '5511981010011', 'isabela.moraes@example.com', '40000000-0000-0000-0000-000000000011', 'pending', null, null, null, '{"segment":"no_response","seed":true}'),
   ('5c000000-0000-0000-0000-000000000002', '5b000000-0000-0000-0000-000000000001', 'Guilherme Pires', '5511981010012', 'guilherme.pires@example.com', '40000000-0000-0000-0000-000000000012', 'failed', now() - interval '1 day', null, 'Telefone invalido', '{"segment":"invalid_phone","seed":true}')
-on conflict (list_id, phone) do nothing;
+on conflict do nothing;

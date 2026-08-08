@@ -8,6 +8,8 @@ sql_paths = [
   "./seeds/020_catalog_distribution_sdr.sql",
   "./seeds/030_commercial_operation.sql",
   "./seeds/040_reports_game_workspace.sql",
+  # Fase 5: cenários de teste. O rollback (059) NÃO entra aqui — é manual.
+  "./seeds/050_test_scenarios.sql",
 ]
 
 [functions.daily-team-info]
@@ -20,4 +22,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.meta-ads-webhook]
+verify_jwt = false
+
+# Webhook de terceiro: autentica com o segredo do cofre no header, não com JWT
+# do Supabase. Com verify_jwt ligado o gateway responde 401 antes de a function
+# rodar, e a plataforma de voz nunca chegaria ao nosso código.
+[functions.voice-ai-webhook]
 verify_jwt = false
