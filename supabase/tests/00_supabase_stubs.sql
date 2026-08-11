@@ -38,16 +38,17 @@ create schema if not exists storage;
 -- harness falhe/passe pelos mesmos motivos que produção.
 alter database postgres set search_path to "$user", public, extensions;
 
--- Supabase concede tudo em public para anon/authenticated e usa RLS como
--- portão — não os GRANTs. Sem replicar isso aqui, todo SELECT do teste
--- falharia por permissão e daria a falsa impressão de que o RLS funciona.
+-- Os GRANTs de tabela para anon/authenticated/service_role NÃO são simulados
+-- aqui: quem os concede é a migration 0023, e o harness precisa provar isso.
+--
+-- Antes da 0023 este arquivo concedia tudo, "replicando o que o Supabase faz".
+-- O efeito colateral era grave: o teste passava com privilégio que só existia
+-- no ambiente do Supabase, então um banco criado apenas com as migrations
+-- (projeto novo, branch de preview, self-hosted, restauração) nascia sem
+-- acesso a nenhuma das 58 tabelas — e nada acusava.
+--
+-- `usage` no schema fica, porque é pré-requisito para a própria 0023 rodar.
 grant usage on schema public to anon, authenticated, service_role;
-alter default privileges in schema public
-  grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public
-  grant all on functions to anon, authenticated, service_role;
-alter default privileges in schema public
-  grant all on sequences to anon, authenticated, service_role;
 
 grant usage on schema extensions to anon, authenticated, service_role;
 grant usage on schema auth to anon, authenticated, service_role;

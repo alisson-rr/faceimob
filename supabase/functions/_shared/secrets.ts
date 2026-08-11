@@ -24,6 +24,7 @@ export const SECRET_SLOTS = {
   OPENAI_API_KEY: { provider: "openai", label: "api_key" },
   META_PAGE_ACCESS_TOKEN: { provider: "meta", label: "page_access_token" },
   META_WEBHOOK_VERIFY_TOKEN: { provider: "meta", label: "webhook_verify_token" },
+  META_APP_SECRET: { provider: "meta", label: "app_secret" },
   META_WHATSAPP_ACCESS_TOKEN: { provider: "meta", label: "whatsapp_access_token" },
   META_WHATSAPP_PHONE_NUMBER_ID: { provider: "meta", label: "whatsapp_phone_number_id" },
   VOICE_AI_WEBHOOK_SECRET: { provider: "voice_ai", label: "webhook_secret" },

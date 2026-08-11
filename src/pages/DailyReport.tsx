@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Swords, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, UserPlus, UserMinus, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+import { Swords, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { format, startOfMonth, eachDayOfInterval, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -19,6 +18,24 @@ import { CompactFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
 
 type Roster = { broker_id: string; broker_name: string; active?: boolean; is_custom?: boolean };
 type TeamInfo = { team_id: string; team_name: string; has_pin: boolean };
+type DailyEntry = {
+  profile_id: string;
+  leads?: number | null;
+  calls?: number | null;
+  doc_collections?: number | null;
+  visits_scheduled?: number | null;
+  visits_done?: number | null;
+  analyses_sent?: number | null;
+  analyses_approved?: number | null;
+  sales?: number | null;
+};
+type PublicDailyPayload = {
+  team_id: string;
+  team_name: string;
+  has_pin: boolean;
+  roster?: Array<{ profile_id: string; full_name: string }>;
+  today?: DailyEntry[];
+};
 
 
 const FIELDS = [
@@ -60,9 +77,7 @@ export default function DailyReport() {
   const [loadingDay, setLoadingDay] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
-  const [newBrokerName, setNewBrokerName] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [pendingRemove, setPendingRemove] = useState<Roster | null>(null);
   const [brokerMonth, setBrokerMonth] = useState<Record<string, Record<FieldKey, number> & { days_filled?: number }>>({});
   const [expandedBroker, setExpandedBroker] = useState<Record<string, boolean>>({});
 
@@ -73,15 +88,17 @@ export default function DailyReport() {
 
   const activeRoster = useMemo(() => roster.filter((b) => b.active !== false), [roster]);
 
-  const fetchPublicTeam = async (rawPin: string) => {
+  // Lança em erro de RPC (rede/servidor); retorna null só quando o banco negou
+  // o acesso (PIN errado). Antes os dois casos viravam "PIN incorreto".
+  const fetchPublicTeam = useCallback(async (rawPin: string) => {
     const { data, error } = await supabase.rpc("public_daily_team", {
       p_slug: identifier,
       p_pin: rawPin || null,
     });
-    if (error) return null;
-    const payload = data as any;
-    if (!payload) return null;
-    const list = ((payload.roster as any[]) || []).map(row => ({
+    if (error) throw error;
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const payload = data as unknown as PublicDailyPayload;
+    const list = (payload.roster ?? []).map(row => ({
       broker_id: row.profile_id,
       broker_name: row.full_name,
       active: true,
@@ -97,19 +114,7 @@ export default function DailyReport() {
       return next;
     });
     return { payload, list };
-  };
-
-  const addBroker = async () => {
-    toast({ title: "Gerencie os membros em Equipes", description: "A escala do diário agora acompanha os membros ativos da equipe." });
-  };
-
-  const confirmRemoveBroker = async () => {
-    const target = pendingRemove;
-    if (!target) return;
-    toast({ title: "Gerencie os membros em Equipes", description: "O diário usa a composição oficial da equipe." });
-    setPendingRemove(null);
-  };
-
+  }, [identifier]);
 
   const openTodayForm = async () => {
     setDate(todayStr);
@@ -119,12 +124,13 @@ export default function DailyReport() {
 
 
 
-  const loadMonth = async () => {
+  const loadMonth = useCallback(async () => {
     setLoadingMonth(true);
+    try {
     const result = await fetchPublicTeam(pin);
-    let mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
+    const mt: Record<FieldKey, number> = FIELDS.reduce((a, f) => ({ ...a, [f.key]: 0 }), {} as Record<FieldKey, number>);
     let filledDates: string[] = [];
-    const rows = (result?.payload?.today || []) as any[];
+    const rows = result?.payload.today ?? [];
     if (rows.length) {
       rows.forEach(row => {
         mt.leads += Number(row.leads) || 0;
@@ -156,19 +162,23 @@ export default function DailyReport() {
       };
     });
     setBrokerMonth(map);
-
-    setLoadingMonth(false);
-  };
+    } catch {
+      toast({ title: "Erro de conexão — tente novamente", variant: "destructive" });
+    } finally {
+      setLoadingMonth(false);
+    }
+  }, [fetchPublicTeam, pin, todayStr]);
 
   const loadDay = async (targetDate: string) => {
     if (!resolvedTeamId) return;
     setLoadingDay(true);
+    try {
     const result = await fetchPublicTeam(pin);
     setDate(targetDate);
     setHistoryOpen(false);
     setFormOpen(true);
     if (targetDate === todayStr && result?.payload?.today?.length) {
-      const list = result.payload.today as any[];
+      const list = result.payload.today;
       const next: EntryState = {};
       roster.forEach((b) => {
         const found = list.find((e) => e.profile_id === b.broker_id);
@@ -192,7 +202,11 @@ export default function DailyReport() {
       }, {} as EntryState));
       setNotes("");
     }
-    setLoadingDay(false);
+    } catch {
+      toast({ title: "Erro de conexão — tente novamente", variant: "destructive" });
+    } finally {
+      setLoadingDay(false);
+    }
   };
 
   // Ao trocar a data para um dia AINDA NÃO preenchido, limpa o formulário.
@@ -209,13 +223,17 @@ export default function DailyReport() {
   useEffect(() => {
     if (!identifier) return;
     (async () => {
-      const result = await fetchPublicTeam("");
-      if (result) {
-        setUnlocked(true);
-        await loadMonth();
+      try {
+        const result = await fetchPublicTeam("");
+        if (result) {
+          setUnlocked(true);
+          await loadMonth();
+        }
+      } catch {
+        // Sem rede: mantém a tela de PIN; o botão "Entrar" avisa o erro.
       }
     })();
-  }, [identifier]);
+  }, [fetchPublicTeam, identifier, loadMonth]);
 
 
   const totals = useMemo(() => {
@@ -241,7 +259,12 @@ export default function DailyReport() {
 
   const handleUnlock = async () => {
     if (!pin || pin.length < 4) return toast({ title: "Digite o PIN da equipe" });
-    const result = await fetchPublicTeam(pin);
+    let result;
+    try {
+      result = await fetchPublicTeam(pin);
+    } catch {
+      return toast({ title: "Erro de conexão — tente novamente", variant: "destructive" });
+    }
     if (!result) {
       return toast({ title: "PIN incorreto", variant: "destructive" });
     }
@@ -572,75 +595,29 @@ export default function DailyReport() {
                 className="h-7 text-xs"
                 onClick={() => setManageOpen(true)}
               >
-                <Users className="h-3 w-3 mr-1" /> Gerenciar equipe do daily
+                <Users className="h-3 w-3 mr-1" /> Corretores da equipe
               </Button>
             </div>
 
             <Dialog open={manageOpen} onOpenChange={setManageOpen}>
               <DialogContent className="max-w-lg">
                 <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Gerenciar corretores da equipe</DialogTitle>
+                  <DialogTitle className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Corretores da equipe</DialogTitle>
                 </DialogHeader>
                 <p className="text-[11px] text-muted-foreground">
-                  Esta lista é <b>independente</b> da aba Equipes. Ao desligar, o corretor permanece na lista (ofuscado) para preservar suas métricas históricas, mas fica bloqueado para novos lançamentos.
+                  A escala do diário acompanha os membros ativos da equipe. Para
+                  incluir ou desligar corretores, o gestor logado usa a tela <b>Equipes</b>.
                 </p>
-                <div className="flex gap-2">
-                  <Input
-                    value={newBrokerName}
-                    onChange={(e) => setNewBrokerName(e.target.value)}
-                    placeholder="Nome do novo corretor"
-                    className="h-8 text-xs"
-                    onKeyDown={(e) => e.key === "Enter" && addBroker()}
-                  />
-                  <Button size="sm" onClick={addBroker} disabled={!newBrokerName.trim()} className="h-8">
-                    <UserPlus className="h-3 w-3 mr-1" />
-                    Adicionar
-                  </Button>
-                </div>
                 <div className="max-h-72 overflow-auto divide-y divide-border/40 rounded-md border border-border/40">
-                  {roster.map((b) => {
-                    const inactive = b.active === false;
-                    return (
-                      <div key={b.broker_id} className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${inactive ? "opacity-50" : ""}`}>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium truncate">{b.broker_name}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {b.is_custom ? "Adicionado no daily" : "Base da equipe"}
-                            {inactive && " • desligado"}
-                          </p>
-                        </div>
-                        {inactive ? (
-                          <Badge variant="outline" className="text-[9px]">desligado</Badge>
-                        ) : (
-                          <Button size="sm" variant="ghost" onClick={() => setPendingRemove(b)} className="h-7 text-[11px] text-rose-400 hover:text-rose-300">
-                            <UserMinus className="h-3 w-3 mr-1" /> Desligar
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {roster.map((b) => (
+                    <div key={b.broker_id} className="px-3 py-2 text-xs">
+                      <p className="font-medium truncate">{b.broker_name}</p>
+                    </div>
+                  ))}
                   {roster.length === 0 && <p className="p-4 text-center text-[11px] text-muted-foreground">Nenhum corretor.</p>}
                 </div>
               </DialogContent>
             </Dialog>
-
-            <AlertDialog open={!!pendingRemove} onOpenChange={(v) => !v && setPendingRemove(null)}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Desligar {pendingRemove?.broker_name}?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    O histórico do corretor é preservado, mas ele ficará bloqueado para novos lançamentos neste daily.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={confirmRemoveBroker} className="bg-rose-500 hover:bg-rose-600">
-                    <UserMinus className="h-3 w-3 mr-1" />
-                    Desligar
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
 
 
 

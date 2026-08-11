@@ -30,12 +30,25 @@ const json = (body: unknown, status = 200) =>
  */
 const BATCH_LIMIT = 50;
 
+// Depois disto a mensagem é marcada com last_error em vez de retentada para
+// sempre — telefone inválido não pode travar a fila eternamente.
+const MAX_ATTEMPTS = 5;
+
 type PendingRow = {
   id: string;
   profile_id: string;
   title: string;
   body: string | null;
+  attempts: number;
   profiles: { phone: string | null; full_name: string | null } | null;
+};
+
+/** Mesma normalização do banco: dígitos com DDI 55 implícito. */
+const normalizePhone = (raw: string | null | undefined): string => {
+  const d = (raw || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  return d;
 };
 
 async function sendWhatsAppText(token: string, phoneId: string, to: string, text: string) {
@@ -64,9 +77,10 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabase
       .from("notifications")
-      .select("id,profile_id,title,body,profiles(phone,full_name)")
+      .select("id,profile_id,title,body,attempts,profiles(phone,full_name)")
       .eq("channel", "whatsapp")
       .is("sent_at", null)
+      .lt("attempts", MAX_ATTEMPTS)
       .order("created_at", { ascending: true })
       .limit(BATCH_LIMIT);
     if (error) throw error;
@@ -80,11 +94,14 @@ Deno.serve(async (req) => {
     let sent = 0, skipped = 0, failed = 0;
 
     for (const row of pending) {
-      const phone = row.profiles?.phone?.replace(/\D/g, "") ?? "";
+      const phone = normalizePhone(row.profiles?.phone);
       if (!phone) {
         // Sem telefone não há o que tentar de novo: marca como tratada para a
         // fila não travar num registro impossível.
-        await supabase.from("notifications").update({ sent_at: new Date().toISOString() }).eq("id", row.id);
+        await supabase.from("notifications").update({
+          sent_at: new Date().toISOString(),
+          last_error: "perfil sem telefone",
+        }).eq("id", row.id);
         skipped++;
         continue;
       }
@@ -93,12 +110,23 @@ Deno.serve(async (req) => {
       const result = await sendWhatsAppText(token, phoneId, phone, text);
 
       if (result.ok) {
-        await supabase.from("notifications").update({ sent_at: new Date().toISOString() }).eq("id", row.id);
+        await supabase.from("notifications").update({
+          sent_at: new Date().toISOString(),
+          last_error: null,
+        }).eq("id", row.id);
         sent++;
       } else {
         // Não logar o corpo inteiro da resposta do provedor: pode conter dado
         // pessoal. Só o id da notificação e o status.
         console.error(`notify-dispatch: falha ao enviar notificação ${row.id}`);
+        const attempts = (row.attempts ?? 0) + 1;
+        const gaveUp = attempts >= MAX_ATTEMPTS;
+        await supabase.from("notifications").update({
+          attempts,
+          last_error: `envio recusado pela Cloud API (tentativa ${attempts})`,
+          // Desistiu: marca sent_at para sair da fila; last_error conta a história.
+          ...(gaveUp ? { sent_at: new Date().toISOString() } : {}),
+        }).eq("id", row.id);
         failed++;
       }
     }

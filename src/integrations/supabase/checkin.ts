@@ -68,14 +68,20 @@ export async function listWorkShifts(): Promise<WorkShift[]> {
   return (data ?? []) as WorkShift[];
 }
 
+/** Data usada pelo banco nas presenças e na fila; não depende do relógio do navegador. */
+export async function getCurrentWorkDate(): Promise<string> {
+  const { data, error } = await supabase.rpc("current_work_date");
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function listTodayCheckins(profileId: string): Promise<CheckinRecord[]> {
-  const today = new Date();
-  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const workDate = await getCurrentWorkDate();
   const { data, error } = await supabase
     .from("checkins")
     .select("id,shift_id,work_date,checked_in_at,checked_out_at,leads_received")
     .eq("profile_id", profileId)
-    .eq("work_date", iso);
+    .eq("work_date", workDate);
   if (error) throw new Error(error.message);
   return (data ?? []) as CheckinRecord[];
 }

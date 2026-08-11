@@ -32,6 +32,7 @@ export default function Settings() {
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Configurações</h1>
       <Card className="p-6 border-border/30 space-y-5">
         <div className="flex items-start gap-3">
           <ShieldCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />

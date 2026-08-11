@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Download, Paperclip, Loader2, History } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import {
+  getDealDocumentReview,
   listDealDocuments,
   listDocumentTypes,
+  listMyDealRoles,
+  reviewDealDocuments,
   signedDocumentUrl,
+  submitDealForManagerReview,
   uploadDealDocument,
+  type DealDocumentReview,
   type DealDocumentRecord,
   type DocumentTypeRecord,
 } from "@/integrations/supabase/documents";
@@ -16,7 +23,15 @@ type Props = {
   dealId: string;
   clientName: string;
   dealCode: string;
+  onReviewChanged?: () => void | Promise<void>;
 };
+
+const reviewMeta = {
+  draft: { label: "Em preparação", className: "border-muted-foreground/40 text-muted-foreground" },
+  pending: { label: "Aguardando gerente", className: "border-warning/50 text-warning" },
+  returned: { label: "Devolvido para correção", className: "border-destructive/50 text-destructive" },
+  approved: { label: "Aprovado pelo gerente", className: "border-success/50 text-success" },
+} as const;
 
 const formatSize = (bytes: number | null) => {
   if (!bytes) return "";
@@ -33,21 +48,33 @@ const formatSize = (bytes: number | null) => {
  * substituída continua listada — é o histórico que o CCA pediu, e quem marca a
  * anterior é o trigger `deal_documents_supersede`.
  */
-export default function DealDocumentUpload({ dealId, clientName, dealCode }: Props) {
+export default function DealDocumentUpload({ dealId, clientName, dealCode, onReviewChanged }: Props) {
   const { toast } = useToast();
+  const { user, isAdmin } = useAuth();
   const [types, setTypes] = useState<DocumentTypeRecord[]>([]);
   const [docs, setDocs] = useState<DealDocumentRecord[]>([]);
+  const [review, setReview] = useState<DealDocumentReview | null>(null);
+  const [myRoles, setMyRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewReason, setReviewReason] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, d] = await Promise.all([listDocumentTypes(), listDealDocuments(dealId)]);
+      const [t, d, r, roles] = await Promise.all([
+        listDocumentTypes(),
+        listDealDocuments(dealId),
+        getDealDocumentReview(dealId),
+        user?.id ? listMyDealRoles(dealId, user.id) : Promise.resolve([]),
+      ]);
       setTypes(t);
       setDocs(d);
+      setReview(r);
+      setMyRoles(roles);
     } catch (e) {
       toast({
         title: "Falha ao carregar documentos",
@@ -57,7 +84,7 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode }: Pro
     } finally {
       setLoading(false);
     }
-  }, [dealId, toast]);
+  }, [dealId, toast, user?.id]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -113,6 +140,49 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode }: Pro
     }
   };
 
+  const submitForReview = async () => {
+    setReviewBusy(true);
+    try {
+      await submitDealForManagerReview(dealId);
+      await load();
+      await onReviewChanged?.();
+      toast({
+        title: "Documentos enviados para conferência",
+        description: "Os gerentes vinculados foram notificados.",
+      });
+    } catch (e) {
+      toast({
+        title: "Não foi possível enviar",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
+  const decideReview = async (approve: boolean) => {
+    setReviewBusy(true);
+    try {
+      await reviewDealDocuments({ dealId, approve, reason: reviewReason });
+      setReviewReason("");
+      await load();
+      await onReviewChanged?.();
+      toast({
+        title: approve ? "Documentos aprovados" : "Documentos devolvidos ao corretor",
+        description: approve ? "O negócio seguiu para a esteira de análise." : "O corretor recebeu o motivo da devolução.",
+      });
+    } catch (e) {
+      toast({
+        title: approve ? "Não foi possível aprovar" : "Não foi possível devolver",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="grid place-items-center py-10 text-muted-foreground text-xs gap-2">
@@ -124,9 +194,90 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode }: Pro
   const missing = types.filter(
     (t) => t.required_for_conversion && !(byType.get(t.id) ?? []).some((d) => !d.superseded_at),
   );
+  const status = review?.document_review_status ?? "draft";
+  const canSubmit = isAdmin || myRoles.includes("broker");
+  const canReview = isAdmin || myRoles.includes("manager");
+  const meta = reviewMeta[status];
 
   return (
     <div className="space-y-3">
+      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <p className="text-sm font-bold">Conferência documental</p>
+            <p className="text-[10px] text-muted-foreground">Corretor → gerente → CCA</p>
+          </div>
+          <Badge variant="outline" className={`text-[10px] ${meta.className}`}>{meta.label}</Badge>
+        </div>
+
+        {status === "returned" && review?.document_review_reason && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2">
+            <p className="text-[10px] font-semibold text-destructive">Motivo da devolução</p>
+            <p className="text-xs text-foreground mt-0.5">{review.document_review_reason}</p>
+          </div>
+        )}
+
+        {canSubmit && (status === "draft" || status === "returned") && (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] text-muted-foreground">
+              {missing.length > 0
+                ? `Anexe os ${missing.length} tipo(s) obrigatório(s) antes de enviar.`
+                : "Dossiê pronto para o gerente conferir."}
+            </p>
+            <Button
+              size="sm"
+              className="h-8 text-xs gap-1 shrink-0"
+              disabled={reviewBusy || missing.length > 0}
+              onClick={submitForReview}
+            >
+              {reviewBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              Enviar ao gerente
+            </Button>
+          </div>
+        )}
+
+        {canReview && status === "pending" && (
+          <div className="space-y-2">
+            <Textarea
+              aria-label="Motivo da devolução"
+              value={reviewReason}
+              onChange={(event) => setReviewReason(event.target.value)}
+              placeholder="Motivo obrigatório somente para devolver ao corretor"
+              rows={2}
+              maxLength={2000}
+              className="text-xs"
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1 text-destructive border-destructive/40"
+                disabled={reviewBusy || !reviewReason.trim()}
+                onClick={() => decideReview(false)}
+              >
+                <RotateCcw className="h-3 w-3" /> Devolver
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1 bg-success hover:bg-success/90 text-success-foreground"
+                disabled={reviewBusy}
+                onClick={() => decideReview(true)}
+              >
+                {reviewBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                Aprovar e enviar ao CCA
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {status === "pending" && !canReview && (
+          <p className="text-xs text-muted-foreground">Aguardando a decisão de um gerente vinculado ao negócio.</p>
+        )}
+        {status === "approved" && (
+          <p className="text-xs text-success">Conferência concluída. O negócio já seguiu para análise.</p>
+        )}
+      </div>
+
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm font-bold text-success">Anexar Documentos</p>
         {missing.length > 0 ? (

@@ -26,8 +26,8 @@ export function GamificationAdmin() {
       supabase.from("gold_tips").select("*").order("created_at", { ascending: false }),
       supabase.from("important_notices").select("*").order("created_at", { ascending: false }),
     ]);
-    setTips(((t.data as any[]) || []).map(row => ({ ...row, content: row.body })));
-    setNotices(((n.data as any[]) || []).map(row => ({ ...row, message: row.body, pinned: row.severity === "critical" })));
+    setTips((t.data || []).map(row => ({ ...row, content: row.body })));
+    setNotices((n.data || []).map(row => ({ ...row, message: row.body, pinned: row.severity === "critical" })));
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -128,9 +128,9 @@ export function GamificationBanners() {
         supabase.from("gold_tips").select("*").eq("active", true).order("created_at", { ascending: false }).limit(1),
         supabase.from("important_notices").select("*").eq("active", true).order("created_at", { ascending: false }),
       ]);
-      const tipRow = t.data?.[0] as any;
+      const tipRow = t.data?.[0];
       setTip(tipRow ? { ...tipRow, content: tipRow.body } : null);
-      setNotices(((n.data as any[]) || []).map(row => ({ ...row, message: row.body, pinned: row.severity === "critical" })));
+      setNotices((n.data || []).map(row => ({ ...row, message: row.body, pinned: row.severity === "critical" })));
     })();
   }, []);
 

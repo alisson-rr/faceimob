@@ -80,7 +80,7 @@ export default function NewLeadNotifier() {
     channel.on(
       "postgres_changes",
       { event: "UPDATE", schema: "public", table: "leads", filter: `assigned_to=eq.${profileId}` },
-      (payload: any) => {
+      (payload) => {
         const row = payload.new as IncomingLead;
         if (row?.status !== "assigned") return;
         if (!isFresh(row.assigned_at)) return;
@@ -93,7 +93,7 @@ export default function NewLeadNotifier() {
     channel.on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "leads", filter: `assigned_to=eq.${profileId}` },
-      (payload: any) => {
+      (payload) => {
         const row = payload.new as IncomingLead;
         if (row?.status !== "assigned") return;
         announce(row, "assigned");
@@ -104,7 +104,7 @@ export default function NewLeadNotifier() {
       channel.on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "leads" },
-        (payload: any) => {
+        (payload) => {
           const row = payload.new as IncomingLead;
           if (row?.assigned_to) return; // já tem dono: o aviso é dele
           if (!isFresh(row.created_at)) return;

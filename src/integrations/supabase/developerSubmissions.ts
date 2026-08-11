@@ -83,7 +83,9 @@ export async function createDeveloperSubmission(input: CreateSubmissionInput): P
 export async function requeueSubmission(id: string): Promise<void> {
   const { error } = await supabase
     .from("developer_submissions")
-    .update({ status: "queued", last_error: null })
+    // attempts volta a zero: o worker ignora linhas acima do limite de
+    // tentativas, e reenfileirar sem zerar era um botão que não fazia nada.
+    .update({ status: "queued", last_error: null, attempts: 0 })
     .eq("id", id);
   if (error) throw new Error(error.message);
 }

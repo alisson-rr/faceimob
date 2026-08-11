@@ -3,8 +3,9 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Loader2, Target, TrendingUp } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Loader2, Lock, Target, TrendingUp } from "lucide-react";
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CompactFunnel } from "@/components/ComparativeFunnel";
@@ -31,6 +32,30 @@ type TeamOut = {
 };
 
 type MissingDay = { date: string; teams: { id: string; name: string; manager_name: string | null }[] };
+
+type DirectorPayload = {
+  pin_required?: boolean;
+  director?: string;
+  targets?: {
+    lead_to_analysis_pct?: number;
+    analysis_to_approval_pct?: number;
+    approval_to_sale_pct?: number;
+  };
+  teams?: Array<{
+    team_id?: string;
+    team_name?: string;
+    daily_slug?: string | null;
+    totals?: {
+      leads?: number;
+      calls?: number;
+      doc_collections?: number;
+      analyses_sent?: number;
+      analyses_approved?: number;
+      sales?: number;
+    };
+    missing_days?: string[];
+  }>;
+};
 
 const slugify = (value: string) =>
   value
@@ -135,6 +160,10 @@ export default function PublicDirectorCheckpoint() {
   const [month, setMonth] = useState<{ totals: Record<string, number>; missing_days: MissingDay[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missingOpen, setMissingOpen] = useState(false);
+  const [needsPin, setNeedsPin] = useState(false);
+  const [pin, setPin] = useState("");
+  const [submittedPin, setSubmittedPin] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -142,17 +171,33 @@ export default function PublicDirectorCheckpoint() {
       const { data, error } = await supabase.rpc("public_director_checkpoint", {
         p_slug: slugify(slug),
         p_week_start: format(weekStart, "yyyy-MM-dd"),
-        p_pin: null,
+        p_pin: submittedPin,
       });
-      if (error || !data) {
-        setError(error?.message || "Link inválido ou inativo");
+      if (error) {
+        setError("Erro de conexão — tente novamente");
         setTeams([]); setDirector(null); setMonth(null);
       } else {
-        const payload = (data as any) || {};
-        const safeTeams = Array.isArray(payload.teams) ? payload.teams.map((t: any) => ({
-          id: String(t.id || ""),
-          name: String(t.name || "Equipe"),
-          slug: slugify(String(t.name || "equipe")),
+        const payload = data as DirectorPayload | null;
+        if (payload?.pin_required) {
+          setNeedsPin(true);
+          setTeams([]); setDirector(null); setMonth(null);
+          setLoading(false);
+          return;
+        }
+        if (!payload) {
+          setNeedsPin(Boolean(submittedPin));
+          setError(submittedPin ? "PIN incorreto" : "Link inválido ou inativo");
+          setTeams([]); setDirector(null); setMonth(null);
+          setLoading(false);
+          return;
+        }
+
+        setNeedsPin(false);
+        const rawTeams = payload.teams || [];
+        const safeTeams = rawTeams.map((t) => ({
+          id: String(t.team_id || ""),
+          name: String(t.team_name || "Equipe"),
+          slug: String(t.daily_slug || slugify(String(t.team_name || "equipe"))),
           manager_name: null,
           aggr: {
             leads: Number(t.totals?.leads) || 0,
@@ -167,8 +212,8 @@ export default function PublicDirectorCheckpoint() {
             aprovada_pct: payload.targets?.analysis_to_approval_pct,
             venda_pct: payload.targets?.approval_to_sale_pct,
           }),
-        })).filter((t: TeamOut) => t.id) : [];
-        setDirector(payload.director ? { name: payload.director.full_name || "Diretor" } : null);
+        })).filter((t) => t.id);
+        setDirector(payload.director ? { name: payload.director } : null);
         setTeams(safeTeams);
         const totals = safeTeams.reduce((acc: Record<string, number>, team: TeamOut) => {
           acc.leads += team.aggr.leads;
@@ -180,16 +225,16 @@ export default function PublicDirectorCheckpoint() {
           return acc;
         }, { leads: 0, ligacoes: 0, coleta_docs: 0, analises: 0, aprovados: 0, vendas: 0 });
         const missingByDate = new Map<string, MissingDay>();
-        (payload.teams || []).forEach((team: any) => (team.missing_days || []).forEach((date: string) => {
+        rawTeams.forEach((team) => (team.missing_days || []).forEach((date) => {
           const row = missingByDate.get(date) || { date, teams: [] };
-          row.teams.push({ id: team.id, name: team.name, manager_name: null });
+          row.teams.push({ id: String(team.team_id || ""), name: String(team.team_name || "Equipe"), manager_name: null });
           missingByDate.set(date, row);
         }));
         setMonth({ totals, missing_days: Array.from(missingByDate.values()) });
       }
       setLoading(false);
     })();
-  }, [slug, weekStart]);
+  }, [attempt, slug, submittedPin, weekStart]);
 
   const totals = useMemo(() => {
     const acc = { ...emptyAggr };
@@ -223,7 +268,7 @@ export default function PublicDirectorCheckpoint() {
   }, [month]);
 
   const funnelSummary = useMemo(() => {
-    const t = month?.totals || {} as any;
+    const t: Record<string, number> = month?.totals || {};
     const leads = t.leads || 0, an = t.analises || 0, ap = t.aprovados || 0, vd = t.vendas || 0;
     const pAn = leads ? (an / leads) * 100 : 0;
     const pAp = an ? (ap / an) * 100 : 0;
@@ -247,17 +292,48 @@ export default function PublicDirectorCheckpoint() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, -7))}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button aria-label="Semana anterior" size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, -7))}><ChevronLeft className="h-4 w-4" /></Button>
             <div className="px-3 py-1 rounded-md border border-primary/30 bg-primary/5 text-xs">
               {format(weekStart, "dd MMM", { locale: ptBR })} — {format(weekEnd, "dd MMM yyyy", { locale: ptBR })}
             </div>
-            <Button size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, 7))}><ChevronRight className="h-4 w-4" /></Button>
+            <Button aria-label="Próxima semana" size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, 7))}><ChevronRight className="h-4 w-4" /></Button>
             <Button size="sm" variant="ghost" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Hoje</Button>
           </div>
         </header>
 
         {loading ? (
           <div className="p-10 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Carregando…</div>
+        ) : needsPin ? (
+          <Card className="max-w-md mx-auto border-primary/30 bg-card/60 backdrop-blur-xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><Lock className="h-4 w-4 text-primary" /> Acesso da Diretoria</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="space-y-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (pin.length < 4) return;
+                  setSubmittedPin(pin);
+                  setAttempt((value) => value + 1);
+                }}
+              >
+                <p className="text-xs text-muted-foreground">Digite o PIN entregue pela administração.</p>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={pin}
+                  onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))}
+                  placeholder="••••••"
+                  className="text-center text-2xl tracking-[0.5em] font-bold h-14"
+                  autoFocus
+                />
+                {error && <p className="text-sm text-rose-400 text-center">{error}</p>}
+                <Button type="submit" className="w-full" disabled={pin.length < 4}>Entrar</Button>
+              </form>
+            </CardContent>
+          </Card>
         ) : error ? (
           <Card className="p-8 text-center text-sm text-rose-400">{error}</Card>
         ) : !director ? (

@@ -21,24 +21,15 @@
 -- 1) dev.alisson.rosa@gmail.com  2) qualquer admin que não seja o do seed  3) o do seed.
 -- `union all … limit 1` devolve o primeiro que existir.
 -- -----------------------------------------------------------------------------
-create or replace function pg_temp.tester()
-returns uuid language sql stable as $$
-  select id from public.profiles where email = 'dev.alisson.rosa@gmail.com'
-  union all
-  select p.id from public.profiles p
-   where exists (select 1 from public.user_roles r
-                  where r.profile_id = p.id and r.role = 'admin')
-     and p.id <> '10000000-0000-0000-0000-000000000001'
-  union all
-  select '10000000-0000-0000-0000-000000000001'::uuid
-  limit 1;
-$$;
+-- O testador é resolvido em `045_tester_ref.sql` (arquivo separado porque o
+-- seeder do CLI prepara todo o arquivo antes de executá-lo). A tabela é
+-- removida no fim deste arquivo.
 
 do $$
 begin
   raise notice '[050] testador = % (%)',
-    (select full_name from public.profiles where id = pg_temp.tester()),
-    (select email     from public.profiles where id = pg_temp.tester());
+    (select full_name from public.profiles where id = (select id from public.seed_tester_ref)),
+    (select email     from public.profiles where id = (select id from public.seed_tester_ref));
 end $$;
 
 -- =============================================================================
@@ -58,17 +49,17 @@ end $$;
 do $$
 begin
   perform set_config('request.jwt.claims',
-    json_build_object('sub', pg_temp.tester()::text, 'role', 'authenticated')::text,
+    json_build_object('sub', (select id from public.seed_tester_ref)::text, 'role', 'authenticated')::text,
     true);   -- true = escopo da transação; some ao fim deste bloco
-  update public.profiles set bypass_ip_check = true where id = pg_temp.tester();
+  update public.profiles set bypass_ip_check = true where id = (select id from public.seed_tester_ref);
 end $$;
 
 insert into public.team_members (team_id, profile_id)
-select t.id, pg_temp.tester() from public.teams t where t.name = 'Equipe Paulista'
+select t.id, (select id from public.seed_tester_ref) from public.teams t where t.name = 'Equipe Paulista'
 on conflict do nothing;
 
 insert into public.distribution_group_members (group_id, profile_id, active)
-select g.id, pg_temp.tester(), true
+select g.id, (select id from public.seed_tester_ref), true
 from public.distribution_groups g where g.kind = 'general'
 on conflict (group_id, profile_id) do update set active = true;
 
@@ -85,9 +76,9 @@ insert into public.leads (id, full_name, phone, email, status, funnel_stage,
                           assigned_to, assigned_at, source_id, campaign_id, campaign_name)
 values
   ('70000000-0000-0000-0000-000000000001', 'Roberto Teste Silva',  '11988880001', 'roberto.teste@example.invalid',
-   'assigned', 'new', pg_temp.tester(), now() - interval '10 minutes', (select id from public.lead_sources order by created_at limit 1), 'camp-teste-001', 'Campanha Teste A'),
+   'assigned', 'new', (select id from public.seed_tester_ref), now() - interval '10 minutes', (select id from public.lead_sources order by created_at limit 1), 'camp-teste-001', 'Campanha Teste A'),
   ('70000000-0000-0000-0000-000000000002', 'Juliana Teste Souza',  '11988880002', 'juliana.teste@example.invalid',
-   'in_progress', 'warm', pg_temp.tester(), now() - interval '2 days', (select id from public.lead_sources order by created_at limit 1), 'camp-teste-001', 'Campanha Teste A')
+   'in_progress', 'warm', (select id from public.seed_tester_ref), now() - interval '2 days', (select id from public.lead_sources order by created_at limit 1), 'camp-teste-001', 'Campanha Teste A')
 on conflict do nothing;
 
 -- Histórico de atribuições espalhado no tempo: é o que os contadores somam.
@@ -105,7 +96,7 @@ insert into public.lead_assignments (id, lead_id, profile_id, sequence, assigned
 select
   ('71000000-0000-0000-0000-00000000000' || d.i)::uuid,
   '70000000-0000-0000-0000-000000000002'::uuid,
-  pg_temp.tester(),
+  (select id from public.seed_tester_ref),
   d.i,
   d.at,
   d.at + interval '5 minutes',
@@ -199,7 +190,11 @@ on conflict do nothing;
 --                  where lead_id = '75000000-0000-0000-0000-000000000001';
 --
 -- Rodou o seed e já passou de 1 minuto? O lead já foi devolvido — é isso mesmo.
--- Rode o seed de novo só deste bloco para repetir o teste.
+-- Para repetir o teste NÃO basta rodar o seed de novo: o lead usa UUID fixo com
+-- `on conflict do nothing`, então depois que o cron o consumiu nada é recriado.
+-- Apague antes e rode de novo:
+--   delete from public.lead_assignments where lead_id = '75000000-0000-0000-0000-000000000001';
+--   delete from public.leads where id = '75000000-0000-0000-0000-000000000001';
 -- =============================================================================
 
 insert into public.leads (id, full_name, phone, status, funnel_stage,
@@ -309,15 +304,15 @@ insert into public.tasks (id, title, description, assigned_to, created_by,
                           due_at, completed_at, status, priority, ref_type, ref_id)
 values
   ('78000000-0000-0000-0000-000000000001', 'Retornar ligação — VENCIDA',
-   'Cliente pediu retorno ontem.', pg_temp.tester(), pg_temp.tester(),
+   'Cliente pediu retorno ontem.', (select id from public.seed_tester_ref), (select id from public.seed_tester_ref),
    now() - interval '1 day', null, 'open', 'high',
    'lead', '70000000-0000-0000-0000-000000000002'),
   ('78000000-0000-0000-0000-000000000002', 'Enviar simulação — em dia',
-   null, pg_temp.tester(), pg_temp.tester(),
+   null, (select id from public.seed_tester_ref), (select id from public.seed_tester_ref),
    now() + interval '2 days', null, 'open', 'normal',
    'lead', '70000000-0000-0000-0000-000000000002'),
   ('78000000-0000-0000-0000-000000000003', 'Primeiro contato — concluída',
-   null, pg_temp.tester(), pg_temp.tester(),
+   null, (select id from public.seed_tester_ref), (select id from public.seed_tester_ref),
    now() - interval '2 days', now() - interval '2 days', 'done', 'normal',
    'lead', '70000000-0000-0000-0000-000000000002')
 on conflict do nothing;
@@ -326,11 +321,11 @@ on conflict do nothing;
 insert into public.visits (id, lead_id, broker_id, scheduled_at, performed_at, result, notes)
 values
   ('79000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000002',
-   pg_temp.tester(), now() + interval '3 days', null, 'scheduled', 'Visita ao decorado.'),
+   (select id from public.seed_tester_ref), now() + interval '3 days', null, 'scheduled', 'Visita ao decorado.'),
   ('79000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000002',
-   pg_temp.tester(), now() - interval '5 days', now() - interval '5 days', 'completed', 'Gostou da planta.'),
+   (select id from public.seed_tester_ref), now() - interval '5 days', now() - interval '5 days', 'completed', 'Gostou da planta.'),
   ('79000000-0000-0000-0000-000000000003', '70000000-0000-0000-0000-000000000002',
-   pg_temp.tester(), now() - interval '8 days', null, 'no_show', 'Cliente não apareceu.')
+   (select id from public.seed_tester_ref), now() - interval '8 days', null, 'no_show', 'Cliente não apareceu.')
 on conflict do nothing;
 
 -- =============================================================================
@@ -342,19 +337,19 @@ on conflict do nothing;
 
 insert into public.notifications (id, profile_id, kind, title, body, link, channel, read_at, sent_at)
 values
-  ('7a000000-0000-0000-0000-000000000001', pg_temp.tester(), 'lead_assigned',
+  ('7a000000-0000-0000-0000-000000000001', (select id from public.seed_tester_ref), 'lead_assigned',
    'Novo lead na sua fila', 'Roberto Teste Silva aguarda atendimento.', '/leads',
    'in_app', null, now()),
-  ('7a000000-0000-0000-0000-000000000002', pg_temp.tester(), 'deal_stage',
+  ('7a000000-0000-0000-0000-000000000002', (select id from public.seed_tester_ref), 'deal_stage',
    'Negócio avançou para Aprovado', 'Confira a esteira do CCA.', '/cca',
    'in_app', null, now()),
-  ('7a000000-0000-0000-0000-000000000003', pg_temp.tester(), 'task_due',
+  ('7a000000-0000-0000-0000-000000000003', (select id from public.seed_tester_ref), 'task_due',
    'Você tem atividade vencida', 'Retornar ligação venceu ontem.', '/leads',
    'in_app', null, now()),
-  ('7a000000-0000-0000-0000-000000000004', pg_temp.tester(), 'lead_assigned',
+  ('7a000000-0000-0000-0000-000000000004', (select id from public.seed_tester_ref), 'lead_assigned',
    'Lead atribuído (já lida)', 'Esta aparece esmaecida.', '/leads',
    'in_app', now() - interval '1 hour', now()),
-  ('7a000000-0000-0000-0000-000000000005', pg_temp.tester(), 'system',
+  ('7a000000-0000-0000-0000-000000000005', (select id from public.seed_tester_ref), 'system',
    'Bem-vindo ao FACEIMOB', 'Notificação antiga, já lida.', null,
    'in_app', now() - interval '2 days', now())
 on conflict do nothing;
@@ -415,7 +410,7 @@ on conflict do nothing;
 
 insert into public.closed_months (period, closed_by, notes)
 select public.month_start((date_trunc('month', current_date) - interval '6 months')::date),
-       pg_temp.tester(),
+       (select id from public.seed_tester_ref),
        'Fechado pelo seed de teste — editar negócio deste mês deve falhar.'
 on conflict do nothing;
 
@@ -448,7 +443,7 @@ insert into public.developer_submissions (id, deal_id, developer_id, to_email, s
                                           document_ids, status, attempts, last_error, sent_at, requested_by)
 select
   v.id, d.id, dev.id, v.to_email, v.subject, v.body,
-  '{}'::uuid[], v.status, v.attempts, v.last_error, v.sent_at, pg_temp.tester()
+  '{}'::uuid[], v.status, v.attempts, v.last_error, v.sent_at, (select id from public.seed_tester_ref)
 from (values
   ('7e000000-0000-0000-0000-000000000001'::uuid, 'analise@construtora.test', 'Dossiê — envio na fila',
    'Segue documentação para análise.', 'queued', 0, null::text, null::timestamptz),
@@ -466,7 +461,7 @@ on conflict do nothing;
 -- =============================================================================
 do $$
 declare
-  v_tester uuid := pg_temp.tester();
+  v_tester uuid := (select id from public.seed_tester_ref);
 begin
   raise notice '';
   raise notice '[050] ================= CENÁRIOS PRONTOS =================';
@@ -484,3 +479,5 @@ begin
   raise notice '[050] Mês fechado .................... %', (select max(period)::text from public.closed_months);
   raise notice '[050] =====================================================';
 end $$;
+
+drop table if exists public.seed_tester_ref;

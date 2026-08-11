@@ -23,7 +23,7 @@ export default function Links() {
     setLoading(true);
     const { data, error } = await supabase.from("useful_links").select("*").eq("active", true).order("sort_order").order("label");
     if (error) toast({ title: "Erro ao carregar", description: error.message, variant: "destructive" });
-    setLinks(((data as any[]) || []).map(row => ({ ...row, title: row.label })));
+    setLinks((data || []).map(row => ({ ...row, title: row.label })));
     setLoading(false);
   };
   useEffect(() => { load(); }, []);

@@ -13,10 +13,10 @@ import {
   RadialBarChart, RadialBar, PolarAngleAxis, LineChart, Line, Legend,
 } from "recharts";
 import { isResultado, isProducao, normalizeStatus, pickOpenMonth, compareMonth } from "@/lib/dealStatus";
-import { listLegacyLeads, loadDashboardPayload } from "@/integrations/supabase/newSchema";
+import { displayMonthToIso, getGlobalMonthlyGoal, listLegacyLeads, loadDashboardPayload } from "@/integrations/supabase/newSchema";
 
 // ─── Static tables ──────────────────────────────────────────────────────────
-const DEVELOPERS = ["VASCO", "TENDA", "MRV", "MELNICK", "LYX", "MAB", "ABACO", "MCG", "MITRANA"];
+// Cores fixas só para construtoras conhecidas; a lista em si vem dos negócios.
 const DEV_COLORS: Record<string, string> = {
   VASCO:   "#3B82F6",
   TENDA:   "#F59E0B",
@@ -53,6 +53,16 @@ type DashboardBiPayload = {
   staff?: { brokersTotal?: number; active?: number; managers?: number; directors?: number };
   closedMonths?: string[];
 };
+type DeveloperStats = {
+  dev: string;
+  vendas: number;
+  prop: number;
+  neg: number;
+  vgv: number;
+  propVgv: number;
+  color: string;
+};
+type MonthlyRow = { mes: string } & Record<string, string | number>;
 
 const brl = (n: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(n);
@@ -68,7 +78,7 @@ export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("geral");
 
-  const { data: bi = {} as DashboardBiPayload } = useQuery({
+  const { data: bi = {} as DashboardBiPayload, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard", "new-schema"],
     queryFn: async () => {
       return (await loadDashboardPayload()) as DashboardBiPayload;
@@ -77,14 +87,14 @@ export default function Dashboard() {
   });
 
   const deals = useMemo(() => {
-    return (bi.deals || []).map((x: any) => ({
+    return (bi.deals ?? []).map((x) => ({
       ...x,
       month_base: x.month_base || (x.created_at ? format(parseISO(x.created_at), "MM/yyyy") : null),
     })) as Deal[];
   }, [bi.deals]);
 
   const leadsCount = bi.leadsCount || 0;
-  const closedMonths = bi.closedMonths || [];
+  const closedMonths = useMemo(() => bi.closedMonths ?? [], [bi.closedMonths]);
 
   const months = useMemo(() => {
     const s = new Set<string>();
@@ -97,6 +107,15 @@ export default function Dashboard() {
   }, [month, months, closedMonths]);
 
   const activeMonth = month ?? "all";
+
+  // Meta global de vendas do mês em `goals` (scope 'global', metric 'sales') —
+  // mesmo vocabulário que Equipes.tsx usa no scope 'profile'. Sem meta = null.
+  const { data: salesGoal = null } = useQuery({
+    queryKey: ["dashboard", "sales-goal", activeMonth],
+    queryFn: () => getGlobalMonthlyGoal("sales", displayMonthToIso(activeMonth)),
+    enabled: activeMonth !== "all",
+    staleTime: 60_000,
+  });
 
   const filtered = useMemo(
     () => (activeMonth === "all" ? deals : deals.filter((d) => d.month_base === activeMonth)),
@@ -130,26 +149,32 @@ export default function Dashboard() {
     const perdas = quedas + distratos;
     const negocios = vendas + propostas;
     const vgv = filtered.filter((d) => isResultado(d.status)).reduce((a, d) => a + (d.deal_value || 0), 0);
-    const meta = 92;
-    const pct = Math.min(999, Math.round((vendas / meta) * 100));
+    // Meta vem do banco; sem meta cadastrada o medidor mostra "—", não um número inventado.
+    const meta = activeMonth === "all" ? null : salesGoal;
+    const pct = meta && meta > 0 ? Math.min(999, Math.round((vendas / meta) * 100)) : null;
     return { vendas, propostas, negocios, perdas, vgv, meta, pct };
-  }, [filtered, distratoPosteriorIds]);
+  }, [filtered, distratoPosteriorIds, activeMonth, salesGoal]);
 
+  // Construtoras derivadas dos negócios carregados — construtora nova aparece sozinha.
   const byDev = useMemo(() => {
-    return DEVELOPERS.map((dev) => {
-      const ds = filtered.filter((d) => (d.developer || "").toUpperCase() === dev);
+    const names = new Set<string>();
+    deals.forEach((d) => {
+      const name = (d.developer || "").trim().toUpperCase();
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort().map((dev, i) => {
+      const ds = filtered.filter((d) => (d.developer || "").trim().toUpperCase() === dev);
       const v = ds.filter((d) => isResultado(d.status));
       const p = ds.filter((d) => isProducao(d.status));
       const vgv = v.reduce((a, d) => a + (d.deal_value || 0), 0);
       const propVgv = p.reduce((a, d) => a + (d.deal_value || 0), 0);
-      const meta = 10;
       return {
         dev, vendas: v.length, prop: p.length, neg: v.length + p.length,
-        vgv, propVgv, meta, pctMeta: Math.round((v.length / meta) * 100),
-        color: DEV_COLORS[dev] || "#3B82F6",
+        vgv, propVgv,
+        color: DEV_COLORS[dev] || SOURCE_COLORS[i % SOURCE_COLORS.length],
       };
     });
-  }, [filtered]);
+  }, [deals, filtered]);
 
   // Aggregations per role — 100% real deals data.
   const rankBrokers = useMemo(() => {
@@ -192,10 +217,9 @@ export default function Dashboard() {
   }, [filtered]);
 
   // Real leads by source
-  const leadsBySource = bi.leadsBySource || [];
   const sourceData = useMemo(
-    () => leadsBySource.map((s, i) => ({ ...s, color: SOURCE_COLORS[i % SOURCE_COLORS.length] })),
-    [leadsBySource],
+    () => (bi.leadsBySource ?? []).map((s, i) => ({ ...s, color: SOURCE_COLORS[i % SOURCE_COLORS.length] })),
+    [bi.leadsBySource],
   );
 
   // Real CCA counts by status
@@ -240,7 +264,7 @@ export default function Dashboard() {
     { l: "Perdas",    v: stats.perdas,          Icon: XCircle,     color: "#EF4444" },
     { l: "Negócios",  v: stats.negocios,        Icon: CheckCircle2,color: "#F97316", highlight: true },
     { l: "VGV",       v: brl(stats.vgv || 0),   Icon: DollarSign,  color: "#EAB308", small: true },
-    { l: "Meta",      v: `${stats.pct}%`,       Icon: Target,      color: "#06B6D4", bar: stats.pct },
+    { l: "Meta",      v: stats.pct === null ? "—" : `${stats.pct}%`, Icon: Target, color: "#06B6D4", bar: stats.pct ?? undefined },
   ];
 
   return (
@@ -304,7 +328,28 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {isError && (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-300 flex items-center justify-between gap-3" role="alert">
+            <span>Não foi possível carregar os dados do painel.</span>
+            <button
+              onClick={() => refetch()}
+              className="px-2 py-1 rounded border border-red-400/40 hover:bg-red-500/20 font-semibold whitespace-nowrap"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="grid grid-cols-4 md:grid-cols-7 gap-2" aria-busy="true">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="h-16 rounded-lg bg-white/[0.04] border border-white/10 animate-pulse" />
+            ))}
+          </div>
+        )}
+
         {/* KPIs — ultra compact single row */}
+        {!isLoading && (
         <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
           {kpis.map((k, i) => (
             <motion.div
@@ -343,6 +388,7 @@ export default function Dashboard() {
             </motion.div>
           ))}
         </div>
+        )}
 
         {/* Tab content */}
         <AnimatePresence mode="wait">
@@ -373,7 +419,7 @@ export default function Dashboard() {
 }
 
 // ─── Tab: Visão Geral ───────────────────────────────────────────────────────
-function GeralTab({ byDev }: { byDev: any[] }) {
+function GeralTab({ byDev }: { byDev: DeveloperStats[] }) {
   const data = byDev.map((d) => ({ name: d.dev, Vendas: d.vendas, Propostas: d.prop, fill: d.color }));
   return (
     <div className={cn(panel, "p-4")}>
@@ -405,7 +451,7 @@ function GeralTab({ byDev }: { byDev: any[] }) {
 function PropostasTab({
   byDev, sources, ccaCounts, staffRows,
 }: {
-  byDev: any[];
+  byDev: DeveloperStats[];
   sources: { name: string; v: number; color: string }[];
   ccaCounts: Record<string, number>;
   staffRows: readonly (readonly [string, number, string])[];
@@ -652,19 +698,28 @@ function RankingBlock({
 function MetasTab({
   pct, vendas, meta, monthly,
 }: {
-  pct: number;
+  pct: number | null;
   vendas: number;
-  meta: number;
-  monthly: { rows: any[]; years: string[] };
+  meta: number | null;
+  monthly: { rows: MonthlyRow[]; years: string[] };
 }) {
-  const gaugeData = [{ name: "Atingimento", value: Math.min(100, pct), fill: pct >= 100 ? "#10B981" : pct >= 60 ? "#F59E0B" : "#EF4444" }];
+  // Sem meta cadastrada em `goals`, o termômetro fica neutro e mostra "—".
+  const gaugeData = [{
+    name: "Atingimento",
+    value: Math.min(100, pct ?? 0),
+    fill: pct === null ? "#6B7280" : pct >= 100 ? "#10B981" : pct >= 60 ? "#F59E0B" : "#EF4444",
+  }];
   const yearColors = ["#3B82F6", "#F97316", "#10B981", "#EC4899", "#8B5CF6"];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       {/* Thermometer / Radial */}
       <div className={cn(panel, "p-5")}>
-        <SectionHeader icon={<Target className="w-4 h-4" />} title="Meta Mensal · Termômetro" caption={`${vendas} de ${meta} vendas`} />
+        <SectionHeader
+          icon={<Target className="w-4 h-4" />}
+          title="Meta Mensal · Termômetro"
+          caption={meta === null ? "Sem meta cadastrada para o período" : `${vendas} de ${meta} vendas`}
+        />
         <div className="h-[300px] relative">
           <ResponsiveContainer width="100%" height="100%">
             <RadialBarChart innerRadius="70%" outerRadius="100%" data={gaugeData} startAngle={210} endAngle={-30}>
@@ -674,8 +729,8 @@ function MetasTab({
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <p className="text-[10px] uppercase font-bold tracking-widest text-white/40">Atingimento</p>
-            <p className="text-5xl font-black tabular-nums" style={{ color: gaugeData[0].fill }}>{pct}%</p>
-            <p className="text-xs text-white/50 mt-1">{vendas}/{meta}</p>
+            <p className="text-5xl font-black tabular-nums" style={{ color: gaugeData[0].fill }}>{pct === null ? "—" : `${pct}%`}</p>
+            <p className="text-xs text-white/50 mt-1">{meta === null ? `${vendas} vendas` : `${vendas}/${meta}`}</p>
           </div>
         </div>
       </div>
@@ -733,7 +788,7 @@ function LeadsTab() {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ["dashboard", "leads-all"],
     queryFn: async () => {
-      return (await listLegacyLeads()).slice(0, 2000) as any[];
+      return (await listLegacyLeads()).slice(0, 2000);
     },
     staleTime: 60_000,
   });
@@ -747,20 +802,20 @@ function LeadsTab() {
 
   const bySource = useMemo(() => {
     const m: Record<string, number> = {};
-    leads.forEach((l: any) => { const k = l.source || "Sem origem"; m[k] = (m[k] || 0) + 1; });
+    leads.forEach((lead) => { const k = lead.source || "Sem origem"; m[k] = (m[k] || 0) + 1; });
     return Object.entries(m).map(([name, v], i) => ({ name, v, fill: SOURCE_COLORS[i % SOURCE_COLORS.length] }))
       .sort((a, b) => b.v - a.v);
   }, [leads]);
 
   const byStatus = useMemo(() => {
     const m: Record<string, number> = {};
-    leads.forEach((l: any) => { const k = l.status || "new"; m[k] = (m[k] || 0) + 1; });
+    leads.forEach((lead) => { const k = lead.status || "new"; m[k] = (m[k] || 0) + 1; });
     return Object.entries(m).map(([name, v]) => ({ name, v }));
   }, [leads]);
 
   const byBroker = useMemo(() => {
     const m: Record<string, number> = {};
-    leads.forEach((l: any) => { const k = l.broker_name || "Não atribuído"; m[k] = (m[k] || 0) + 1; });
+    leads.forEach((lead) => { const k = lead.broker_name || "Não atribuído"; m[k] = (m[k] || 0) + 1; });
     return Object.entries(m).map(([name, v]) => ({ name, v })).sort((a, b) => b.v - a.v).slice(0, 10);
   }, [leads]);
 
@@ -770,8 +825,8 @@ function LeadsTab() {
       const d = new Date(); d.setDate(d.getDate() - i);
       m[format(d, "dd/MM")] = 0;
     }
-    leads.forEach((l: any) => {
-      const k = format(new Date(l.created_at), "dd/MM");
+    leads.forEach((lead) => {
+      const k = format(new Date(lead.created_at), "dd/MM");
       if (k in m) m[k]++;
     });
     return Object.entries(m).map(([name, v]) => ({ name, v }));
@@ -861,6 +916,3 @@ function LeadsTab() {
     </>
   );
 }
-
-
-export const brlFmt = brl;

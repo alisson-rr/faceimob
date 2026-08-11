@@ -120,7 +120,7 @@ export default function LeadDetailModal({
   const arrived = new Date(lead.created_at);
   const lastActivity = new Date(lead.last_activity_at || lead.created_at);
   const inactiveHours = (Date.now() - lastActivity.getTime()) / 3_600_000;
-  const answers: Record<string, any> = lead.form_answers || {};
+  const answers: Record<string, unknown> = lead.form_answers || {};
   const digits = (lead.phone || "").replace(/\D/g, "");
   const waLink = digits
     ? `https://wa.me/${digits.startsWith("55") ? digits : `55${digits}`}?text=${encodeURIComponent(`Olá ${lead.name}, tudo bem?`)}`
@@ -435,12 +435,12 @@ function EditFields({
   lead, fields, onSaved,
 }: {
   lead: LeadRecord;
-  fields: { k: keyof LeadPatch & string; label: string; type?: string }[];
+  fields: { k: "full_name" | "phone" | "email" | "document"; label: string; type?: string }[];
   onSaved?: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    fields.forEach((field) => { initial[field.k] = (lead as any)[field.k] ?? ""; });
+    fields.forEach((field) => { initial[field.k] = lead[field.k] ?? ""; });
     return initial;
   });
   const [saving, setSaving] = useState(false);
@@ -448,7 +448,7 @@ function EditFields({
   // O lead muda por baixo (roleta, realtime): reflete o registro atual.
   useEffect(() => {
     const next: Record<string, string> = {};
-    fields.forEach((field) => { next[field.k] = (lead as any)[field.k] ?? ""; });
+    fields.forEach((field) => { next[field.k] = lead[field.k] ?? ""; });
     setValues(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.id, lead.updated_at]);
@@ -458,10 +458,12 @@ function EditFields({
     try {
       const patch: LeadPatch = {};
       fields.forEach((field) => {
-        (patch as any)[field.k] = values[field.k]?.trim() || null;
+        const value = values[field.k]?.trim() || null;
+        if (field.k === "full_name") patch.full_name = value || undefined;
+        if (field.k === "phone") patch.phone = value;
+        if (field.k === "email") patch.email = value;
+        if (field.k === "document") patch.document = value;
       });
-      // `full_name` é `not null` no banco: não deixa apagar pela tela.
-      if (patch.full_name === null) delete patch.full_name;
       await updateLead(lead.id, patch);
       toast({ title: "Dados salvos" });
       onSaved?.();

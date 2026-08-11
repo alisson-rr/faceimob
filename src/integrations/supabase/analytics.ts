@@ -160,6 +160,7 @@ export type HistoryEntry = {
   kind: string;
   from_value: string | null;
   to_value: string | null;
+  detail: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -167,7 +168,7 @@ export type HistoryEntry = {
 export async function listDealHistory(dealId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase
     .from("deal_history")
-    .select("id,actor_id,kind,from_value,to_value,created_at")
+    .select("id,actor_id,kind,from_value,to_value,detail,created_at")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -177,7 +178,7 @@ export async function listDealHistory(dealId: string): Promise<HistoryEntry[]> {
 export async function listCcaCaseEvents(caseId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase
     .from("cca_case_events")
-    .select("id,actor_id,kind,from_value,to_value,created_at")
+    .select("id,actor_id,kind,from_value,to_value,detail,created_at")
     .eq("case_id", caseId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);

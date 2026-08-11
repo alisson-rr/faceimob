@@ -79,7 +79,8 @@ export function BrokerEditModal({
   useEffect(() => { setForm(broker); setCreds(null); }, [broker]);
 
   if (!form) return null;
-  const upd = (k: keyof EditableBroker, v: any) => setForm(p => p ? { ...p, [k]: v } : p);
+  const upd = <K extends keyof EditableBroker>(key: K, value: EditableBroker[K]) =>
+    setForm(previous => previous ? { ...previous, [key]: value } : previous);
 
   const save = async () => {
     setSaving(true);
@@ -151,20 +152,29 @@ export function BrokerEditModal({
         body: JSON.stringify({ broker_id: form.id, email: form.login_email || form.email, reset }),
       });
 
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error((data as any)?.error || `Falha na função (${response.status})`);
-      if ((data as any)?.error) throw new Error((data as any).error);
-      setCreds({ email: (data as any).email });
-      upd("user_id", (data as any).user_id);
-      upd("login_email", (data as any).email);
+      const data = await response.json().catch(() => ({})) as {
+        error?: string;
+        email?: string;
+        user_id?: string;
+      };
+      if (!response.ok) throw new Error(data.error || `Falha na função (${response.status})`);
+      if (data.error) throw new Error(data.error);
+      if (!data.email || !data.user_id) throw new Error("A função não devolveu o acesso criado.");
+      setCreds({ email: data.email });
+      upd("user_id", data.user_id);
+      upd("login_email", data.email);
 
       toast({
         title: reset ? "E-mail de acesso atualizado" : "Acesso criado com sucesso",
         description: "O colaborador entra em /login com esse e-mail e recebe o código.",
       });
       // Do NOT call onSaved() here — that would close the modal and hide the e-mail.
-    } catch (e: any) {
-      toast({ title: "Falha ao criar acesso", description: e.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({
+        title: "Falha ao criar acesso",
+        description: error instanceof Error ? error.message : "erro inesperado",
+        variant: "destructive",
+      });
     } finally {
       setProvisioning(false);
     }

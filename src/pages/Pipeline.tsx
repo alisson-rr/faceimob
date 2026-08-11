@@ -9,8 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { mockDevelopers, mockProjects, mockSources } from "@/data/mockData";
-import { DEAL_STAGES, type PipelineDeal, type DealStage, type Lead, type Broker } from "@/types/crm";
+import { DEAL_STAGES, type PipelineDeal, type DealStage, type Broker, type DocumentReviewStatus } from "@/types/crm";
 import { calcDealProbability } from "@/lib/aiAnalytics";
 import {
   Plus, Download, Search, Filter, Calendar as CalendarIcon,
@@ -18,7 +17,7 @@ import {
   CalendarCheck, StickyNote, AlertCircle, ChevronRight,
   ChevronLeft, LayoutGrid, List, LogIn, Users,
   ArrowRightCircle, Paperclip, UserPlus,
-  AlertTriangle, Target
+  AlertTriangle, Target, FileCheck2
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -31,13 +30,25 @@ import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
 import { scheduleVisit as scheduleVisitRecord } from "@/integrations/supabase/activities";
 import {
+  convertLeadToDeal,
+  listDevelopers,
+  listDeveloperProjects,
+  listLeadSources,
+  uploadLeadAttachment,
+  type LeadRecord,
+} from "@/integrations/supabase/leads";
+import {
   displayMonthToIso,
   getStageIdByCode,
   listLegacyDeals,
   listOpenCheckins,
   listPeople,
+  saveLegacyDeal,
   toDisplayMonth,
+  type PersonRecord,
 } from "@/integrations/supabase/newSchema";
+import { submitDealForManagerReview } from "@/integrations/supabase/documents";
+import { functionErrorMessage } from "@/lib/functionError";
 
 // ── Developer color map (distinct colors per developer) ──
 const developerColors: Record<string, string> = {
@@ -111,6 +122,13 @@ const FACEIMOB_STATUSES: { label: string; color: string }[] = [
 const faceimobStatusColor = (label: string) =>
   FACEIMOB_STATUSES.find(s => s.label === label)?.color || "bg-muted text-muted-foreground";
 
+const documentReviewMeta: Record<DocumentReviewStatus, { label: string; className: string }> = {
+  draft: { label: "Em preparação", className: "border-muted-foreground/40 text-muted-foreground" },
+  pending: { label: "Aguardando gerente", className: "border-warning/50 text-warning" },
+  returned: { label: "Devolvido", className: "border-destructive/50 text-destructive" },
+  approved: { label: "Conferido", className: "border-success/50 text-success" },
+};
+
 const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
   client: "", developer: "", project: "", unit: "", status: "Ativo", stage: "lead",
   broker1: "", broker2: "", manager1: "", manager2: "", deal_value: 0,
@@ -120,6 +138,7 @@ const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
 
 interface QueueBroker {
   id: string;
+  broker_id: string;
   name: string;
   checkedInAt: string;
 }
@@ -129,43 +148,68 @@ export default function Pipeline() {
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
 
-  // ── Brokers state ──
-  const [brokers, setBrokers] = useState<Broker[]>([]);
-  const fetchBrokers = useCallback(async () => {
+  // ── People & catalog state (dados reais; antes vinham de mockData) ──
+  const [people, setPeople] = useState<PersonRecord[]>([]);
+  const [developers, setDevelopers] = useState<{ id: string; name: string }[]>([]);
+  const [sources, setSources] = useState<{ id: string; label: string }[]>([]);
+  const fetchCatalogs = useCallback(async () => {
     try {
-      const people = await listPeople();
-      const mappedBrokers: Broker[] = people
-        .filter((person) => person.roles.includes("broker"))
-        .map((person) => ({
-        id: person.id,
-        name: person.name,
-        active: person.active,
-        monthly_sales: 0,
-        monthly_vgv: 0,
-        team: person.team,
-      }));
-      
-      setBrokers(mappedBrokers);
+      const [persons, devs, srcs] = await Promise.all([
+        listPeople(),
+        listDevelopers(),
+        listLeadSources(),
+      ]);
+      setPeople(persons);
+      setDevelopers(devs);
+      setSources(srcs.map((s) => ({ id: s.id, label: s.label })));
     } catch (error) {
-      console.error('Error fetching brokers:', error);
+      console.error("Error fetching catalogs:", error);
+      toast({ title: "Erro ao carregar catálogos", description: "Corretores e construtoras podem aparecer vazios.", variant: "destructive" });
     }
   }, []);
 
+  const brokers: Broker[] = useMemo(
+    () =>
+      people
+        .filter((person) => person.roles.includes("broker"))
+        .map((person) => ({
+          id: person.id,
+          name: person.name,
+          active: person.active,
+          monthly_sales: 0,
+          monthly_vgv: 0,
+          team: person.team,
+        })),
+    [people],
+  );
+  const managers = useMemo(
+    () =>
+      people.filter(
+        (person) =>
+          person.active &&
+          (person.roles.includes("manager") || person.roles.includes("director")),
+      ),
+    [people],
+  );
+
   // ── Deals state ──
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
+  const [dealsLoading, setDealsLoading] = useState(true);
   const fetchDeals = useCallback(async () => {
     try {
       setDeals(await listLegacyDeals());
     } catch (error) {
       console.error('Error fetching deals:', error);
       toast({ title: "Erro ao carregar negócios", variant: "destructive" });
+    } finally {
+      setDealsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchBrokers();
+    fetchCatalogs();
     fetchDeals();
-  }, [fetchBrokers, fetchDeals]);
+  }, [fetchCatalogs, fetchDeals]);
 
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -173,6 +217,7 @@ export default function Pipeline() {
   const [brokerFilter, setBrokerFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
   const [status2Filter, setStatus2Filter] = useState("all");
+  const [documentReviewFilter, setDocumentReviewFilter] = useState("all");
   const [managerFilter, setManagerFilter] = useState("all");
   const [clientNameFilter, setClientNameFilter] = useState("");
   const [clientName2Filter, setClientName2Filter] = useState("");
@@ -193,12 +238,25 @@ export default function Pipeline() {
   const [checkingIn, setCheckingIn] = useState(false);
   // ── Convert lead modal ──
   const [convertOpen, setConvertOpen] = useState(false);
-  const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
+  const [convertingLead, setConvertingLead] = useState<LeadRecord | null>(null);
   const [convertDoc, setConvertDoc] = useState<File | null>(null);
+  const [convertForm, setConvertForm] = useState({ developerId: "", projectId: "", unit: "", vgv: "" });
+  const [convertProjects, setConvertProjects] = useState<{ id: string; name: string }[]>([]);
+  const [converting, setConverting] = useState(false);
   const convertFileRef = useRef<HTMLInputElement>(null);
 
   // ── Deal modals ──
   const [dealFormOpen, setDealFormOpen] = useState(false);
+  const [formProjects, setFormProjects] = useState<{ id: string; name: string }[]>([]);
+  const loadFormProjects = useCallback(async (developerName: string) => {
+    const dev = developers.find((d) => d.name === developerName);
+    if (!dev) return setFormProjects([]);
+    try {
+      setFormProjects(await listDeveloperProjects(dev.id));
+    } catch {
+      setFormProjects([]);
+    }
+  }, [developers]);
   const [editingDeal, setEditingDeal] = useState<PipelineDeal | null>(null);
   const [detailDeal, setDetailDeal] = useState<PipelineDeal | null>(null);
   const [visitDeal, setVisitDeal] = useState<PipelineDeal | null>(null);
@@ -219,7 +277,7 @@ export default function Pipeline() {
     queryFn: async () => {
       const { data, error } = await supabase.from("closed_months").select("period");
       if (error) throw error;
-      return ((data as any[]) || [])
+      return (data ?? [])
         .map((row) => toDisplayMonth(row.period))
         .filter(Boolean) as string[];
     },
@@ -231,54 +289,27 @@ export default function Pipeline() {
     const currentMonth = monthFilter;
     const nextBase = nextMonthBase(currentMonth);
     try {
-      // Migra apenas PROPOSTA para o próximo mês (VENDA/QUEDA/DISTRATO/OFF ficam)
-      const { data: toMigrate, error: selErr } = await supabase
-        .from("deals")
-        .select("id,outcome")
-        .eq("month_base", displayMonthToIso(currentMonth));
-      if (selErr) throw selErr;
+      // Ata 14/07: fechar o mês zera jogo e sistema JUNTOS, numa transação só.
+      // A RPC migra as propostas abertas, congela o mês e encerra a temporada.
+      const { data, error } = await supabase.rpc("close_month_and_season", {
+        p_period: displayMonthToIso(currentMonth),
+      });
+      if (error) throw error;
 
-      const migrateIds = (toMigrate || [])
-        .filter((deal: any) => deal.outcome === "open")
-        .map((d: any) => d.id);
-
-      if (migrateIds.length > 0) {
-        const { error: updErr } = await supabase
-          .from("deals")
-          .update({ month_base: displayMonthToIso(nextBase) })
-          .in("id", migrateIds);
-        if (updErr) throw updErr;
-      }
-
-      // Marca o mês como fechado
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error: insErr } = await supabase
-        .from("closed_months")
-        .insert({ period: displayMonthToIso(currentMonth), closed_by: user?.id });
-      if (insErr && !String(insErr.message).includes("duplicate")) throw insErr;
-
-      // Reflete localmente
-      setDeals(prev => prev.map(deal => {
-        const dealMonth = deal.month_base || format(parseISO(deal.created_at), "MM/yyyy");
-        if (dealMonth !== currentMonth) return deal;
-        if (normalizeStatus(deal.status) === "PROPOSTA") {
-          return { ...deal, month_base: nextBase };
-        }
-        return deal;
-      }));
-
+      await fetchDeals();
       await queryClient.invalidateQueries({ queryKey: ["closed_months"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard", "new-schema"] });
       setMonthFilter(nextBase);
       setCloseMonthOpen(false);
+      const moved = (data as { moved_deals?: number } | null)?.moved_deals ?? 0;
       toast({
         title: "✅ Mês fechado com sucesso!",
-        description: `${currentMonth} está congelado. ${migrateIds.length} proposta(s) movida(s) para ${nextBase}.`,
+        description: `${currentMonth} congelado, temporada do jogo encerrada e ${moved} proposta(s) movida(s) para ${nextBase}.`,
       });
-    } catch (e: any) {
+    } catch (e) {
       toast({
         title: "Erro ao fechar mês",
-        description: e?.message || "Tente novamente.",
+        description: e instanceof Error ? e.message : "Tente novamente.",
         variant: "destructive",
       });
     }
@@ -290,7 +321,7 @@ export default function Pipeline() {
   useEffect(() => {
     setMyBrokerId(user?.id || null);
   }, [user?.id]);
-  const isInQueue = !!myBrokerId && queue.some((q: any) => q.broker_id === myBrokerId);
+  const isInQueue = !!myBrokerId && queue.some((row) => row.broker_id === myBrokerId);
 
   const loadQueue = useCallback(async () => {
     try {
@@ -317,21 +348,16 @@ export default function Pipeline() {
       if (!sess?.session) throw new Error("Você precisa estar logado.");
       const { data, error } = await supabase.functions.invoke("broker-checkin", { body: { action } });
       if (error) {
-        let msg = error.message;
-        try {
-          const ctx: any = (error as any).context;
-          if (ctx && typeof ctx.json === "function") {
-            const body = await ctx.json();
-            if (body?.error) msg = body.error;
-          }
-        } catch {}
-        throw new Error(msg);
+        throw new Error(await functionErrorMessage(error, "Falha no check-in"));
       }
-      if ((data as any)?.error) throw new Error((data as any).error);
+      const responseError = data && typeof data === "object" && "error" in data
+        ? (data as { error?: unknown }).error
+        : null;
+      if (typeof responseError === "string" && responseError) throw new Error(responseError);
       toast({ title: action === "checkin" ? "✅ Check-in realizado!" : "👋 Check-out realizado!" });
       await loadQueue();
-    } catch (e: any) {
-      toast({ title: "Erro", description: e.message || "Falha no check-in", variant: "destructive" });
+    } catch (e: unknown) {
+      toast({ title: "Erro", description: e instanceof Error ? e.message : "Falha no check-in", variant: "destructive" });
     } finally {
       setCheckingIn(false);
     }
@@ -340,44 +366,60 @@ export default function Pipeline() {
   const handleCheckIn = useCallback(() => invokeCheckin("checkin"), [invokeCheckin]);
   const handleCheckOut = useCallback(() => invokeCheckin("checkout"), [invokeCheckin]);
 
-  // ── Convert Lead to Deal ──
-  const openConvertLead = (lead: Lead) => {
+  // ── Convert Lead to Deal (fluxo real: anexo no lead + RPC convert_lead_to_deal) ──
+  const openConvertLead = (lead: LeadRecord) => {
     setConvertingLead(lead);
     setConvertDoc(null);
+    setConvertForm({ developerId: "", projectId: "", unit: "", vgv: "" });
+    setConvertProjects([]);
     setConvertOpen(true);
   };
 
-  const confirmConvert = () => {
+  const pickConvertDeveloper = async (developerId: string) => {
+    setConvertForm((prev) => ({ ...prev, developerId, projectId: "" }));
+    try {
+      setConvertProjects(await listDeveloperProjects(developerId));
+    } catch {
+      setConvertProjects([]);
+    }
+  };
+
+  const confirmConvert = async () => {
     if (!convertingLead) return;
-    if (!convertDoc) {
-      toast({ title: "📎 Documento obrigatório", description: "Anexe pelo menos 1 documento para converter o lead em negócio.", variant: "destructive" });
+    if (!convertForm.developerId) {
+      toast({ title: "Construtora obrigatória", description: "Escolha a construtora do negócio.", variant: "destructive" });
       return;
     }
-
-    // Create deal at "incomplete" stage
-    const newDeal: PipelineDeal = {
-      id: String(Date.now()),
-      client: convertingLead.name,
-      developer: "",
-      project: "",
-      unit: "",
-      status: "Ativo",
-      stage: "incomplete",
-      broker1: convertingLead.broker_name || "",
-      manager1: "",
-      deal_value: 0,
-      days_in_pipeline: 0,
-      active: true,
-      created_at: new Date().toISOString().slice(0, 10),
-      notes: `Convertido do lead. Doc: ${convertDoc.name}`,
-    };
-
-    setDeals(prev => [newDeal, ...prev]);
-    setConvertOpen(false);
-    setConvertingLead(null);
-    setConvertDoc(null);
-    setActiveTab("deals");
-    toast({ title: "🎉 Lead convertido em negócio!", description: `"${convertingLead.name}" inserido no pipeline como Incompleto.` });
+    setConverting(true);
+    try {
+      if (convertDoc) await uploadLeadAttachment(convertingLead.id, convertDoc);
+      await convertLeadToDeal({
+        leadId: convertingLead.id,
+        developerId: convertForm.developerId,
+        projectId: convertForm.projectId || null,
+        unit: convertForm.unit || null,
+        vgvGross: convertForm.vgv ? Number(convertForm.vgv.replace(",", ".")) : null,
+      });
+      await fetchDeals();
+      setConvertOpen(false);
+      setConvertingLead(null);
+      setConvertDoc(null);
+      setActiveTab("deals");
+      toast({
+        title: "🎉 Lead convertido em negócio!",
+        description: convertDoc
+          ? `"${convertingLead.name}" entrou no pipeline com o documento anexado.`
+          : `"${convertingLead.name}" entrou no pipeline. Os documentos podem ser anexados depois.`,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível converter",
+        description: err instanceof Error ? err.message : "verifique os dados do negócio",
+      });
+    } finally {
+      setConverting(false);
+    }
   };
 
   // ── Deal filters ──
@@ -388,12 +430,13 @@ export default function Pipeline() {
       const matchDev = developerFilter === "all" || d.developer === developerFilter;
       const matchBroker = brokerFilter === "all" || d.broker1 === brokerFilter;
       const matchStage = stageFilter === "all" || d.stage === stageFilter;
-      const matchStatus2 = status2Filter === "all" || d.stage === status2Filter;
+      const matchStatus2 = status2Filter === "all" || d.status === status2Filter;
+      const matchReview = documentReviewFilter === "all" || d.document_review_status === documentReviewFilter;
       const matchManager = managerFilter === "all" || d.manager1 === managerFilter;
       const matchClient = !clientNameFilter || d.client.toLowerCase().includes(clientNameFilter.toLowerCase());
       const dealMonth = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : "");
       const matchMonth = monthFilter === "all" || dealMonth === monthFilter;
-      return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient && matchMonth;
+      return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchReview && matchManager && matchClient && matchMonth;
     }).sort((a, b) => {
       // Sort by Construtora first, then Status 2 in the FACEIMOB_STATUSES order
       const devCmp = (a.developer || "").localeCompare(b.developer || "");
@@ -404,7 +447,7 @@ export default function Pipeline() {
       const aIdx = statusOrder.indexOf(aStatus); const bIdx = statusOrder.indexOf(bStatus);
       return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
     });
-  }, [deals, search, developerFilter, brokerFilter, stageFilter, status2Filter, managerFilter, clientNameFilter]);
+  }, [deals, search, developerFilter, brokerFilter, stageFilter, status2Filter, documentReviewFilter, managerFilter, clientNameFilter, monthFilter]);
 
   const dealsByStage = useMemo(() => {
     const map: Record<DealStage, PipelineDeal[]> = { incomplete: [], lead: [], proposal: [], visit_scheduled: [], under_analysis: [], approved: [], contract: [], closed: [] };
@@ -418,6 +461,7 @@ export default function Pipeline() {
   // ── Deal metrics ──
   const activeDeals = deals.filter((d) => d.active).length;
   const totalVGV = deals.filter((d) => d.active).reduce((a, d) => a + (d.deal_value || 0), 0);
+  const pendingDocumentReviews = deals.filter((d) => d.document_review_status === "pending").length;
 
   // Drag handlers
   const onDragStart = useCallback((dealId: string) => setDraggedDeal(dealId), []);
@@ -445,6 +489,19 @@ export default function Pipeline() {
           return;
         }
 
+        if (stage === "under_analysis" && oldStage !== "under_analysis"
+            && deal.document_review_status !== "approved") {
+          await submitDealForManagerReview(draggedDeal);
+          await fetchDeals();
+          toast({
+            title: "Enviado para conferência do gerente",
+            description: "O card seguirá para Em análise quando um gerente aprovar os documentos.",
+          });
+          setDraggedDeal(null);
+          setDragOverStage(null);
+          return;
+        }
+
         setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage } : d));
 
         const { error } = await supabase
@@ -454,27 +511,22 @@ export default function Pipeline() {
 
         if (error) throw error;
 
-        if (stage === "under_analysis" && oldStage !== "under_analysis") {
-          const { error: ccaError } = await supabase.rpc(
-            "submit_deal_for_analysis",
-            { p_deal_id: draggedDeal },
-          );
-          if (ccaError) throw ccaError;
-          toast({ title: "Enviado para análise" });
-        }
-
         toast({ title: `Deal movido para ${stageLabel}` });
       } catch (err) {
         // Sem este rollback o card ficava na coluna nova com o banco recusando a
         // gravação: a tela mentia sobre o estado real até o próximo reload.
         setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage: oldStage } : d));
         console.error("Error updating deal stage:", err);
-        toast({ variant: "destructive", title: "Erro ao salvar", description: "O status não foi atualizado no servidor." });
+        toast({
+          variant: "destructive",
+          title: "Não foi possível avançar o negócio",
+          description: err instanceof Error ? err.message : "O status não foi atualizado no servidor.",
+        });
       }
     }
     setDraggedDeal(null);
     setDragOverStage(null);
-  }, [draggedDeal, deals, canEnterStage]);
+  }, [draggedDeal, deals, canEnterStage, fetchDeals]);
 
   const openNewDeal = () => { setEditingDeal(null); setFormData(emptyDeal); setDealFormOpen(true); };
   const saveNewLead = async () => {
@@ -500,61 +552,29 @@ export default function Pipeline() {
   const saveDeal = async () => {
     if (!formData.client.trim()) return;
     try {
-      const stageId = await getStageIdByCode(formData.stage);
-      const developer = formData.developer
-        ? await supabase.from("developers").select("id").ilike("name", formData.developer).maybeSingle()
-        : { data: null };
-      const project = formData.project && developer.data?.id
-        ? await supabase.from("developer_projects").select("id")
-            .eq("developer_id", developer.data.id).ilike("name", formData.project).maybeSingle()
-        : { data: null };
-      const dealPayload = {
-        developer_id: developer.data?.id || null,
-        project_id: project.data?.id || null,
-        unit: formData.unit || null,
-        stage_id: stageId,
-        month_base: displayMonthToIso(formData.month_base || monthFilter),
-        vgv_gross: Number(formData.vgv_bruto || formData.deal_value || 0),
-        discount_pct: Number(formData.perc_desconto || 0),
-        lead_origin: formData.lead_origin || null,
-        notes: formData.notes || null,
-      };
-
-      let dealId = editingDeal?.id;
-      if (dealId) {
-        const { error } = await supabase.from("deals").update(dealPayload).eq("id", dealId);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.from("deals").insert(dealPayload).select("id").single();
-        if (error) throw error;
-        dealId = data.id;
-      }
-
-      const { error: clientError } = await supabase.from("deal_clients").upsert({
-        deal_id: dealId,
-        ordinal: 1,
-        full_name: formData.client,
-      }, { onConflict: "deal_id,ordinal" });
-      if (clientError) throw clientError;
-
-      const selectedBrokerIds = [formData.broker1, formData.broker2]
-        .filter(Boolean)
-        .map(name => brokers.find(person => person.name === name)?.id)
-        .filter(Boolean);
-      await supabase.from("deal_participants").delete().eq("deal_id", dealId).eq("role", "broker");
-      if (selectedBrokerIds.length) {
-        const { error: participantsError } = await supabase.from("deal_participants").insert(
-          selectedBrokerIds.map(profileId => ({ deal_id: dealId, profile_id: profileId, role: "broker" })),
-        );
-        if (participantsError) throw participantsError;
-      }
-
-      setDeals(await listLegacyDeals());
+      await saveLegacyDeal(
+        {
+          ...formData,
+          id: editingDeal?.id,
+          month_base: formData.month_base || (monthFilter !== "all" ? monthFilter : undefined),
+        },
+        people,
+      );
+      await fetchDeals();
       setDealFormOpen(false);
       toast({ title: editingDeal ? "Deal atualizado" : "Deal criado" });
-    } catch (error: any) {
-      toast({ title: "Erro ao salvar deal", description: error?.message, variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar deal",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
     }
+  };
+
+  const saveDetailDeal = async (updated: PipelineDeal) => {
+    await saveLegacyDeal(updated, people);
+    await fetchDeals();
   };
 
   const toggleDealActive = async (dealId: string) => {
@@ -570,20 +590,23 @@ export default function Pipeline() {
   };
 
   const updateDealStatus = async (dealId: string, newStatus: string) => {
+    const previous = deals.find((d) => d.id === dealId)?.status;
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, status: newStatus } : d));
     try {
       const normalized = normalizeStatus(newStatus);
+      const current = deals.find((d) => d.id === dealId);
       const stageCode =
         normalized === "VENDA"
           ? "closed"
           : normalized === "QUEDA" || normalized === "DISTRATO" || normalized === "OFF"
             ? "lost"
-            : "proposal";
+            : current?.stage || "proposal";
       const stageId = await getStageIdByCode(stageCode);
       const { error } = await supabase
         .from("deals")
         .update({
           stage_id: stageId,
+          status_detail: newStatus,
           lost_reason:
             normalized === "DISTRATO"
               ? "Distrato"
@@ -594,8 +617,14 @@ export default function Pipeline() {
         .eq("id", dealId);
       if (error) throw error;
     } catch (err) {
+      // Reverte: manter na tela um status que o banco recusou é mentir.
+      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, status: previous || d.status } : d));
       console.error("Error updating status:", err);
-      toast({ variant: "destructive", title: "Erro ao salvar status" });
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar status",
+        description: err instanceof Error ? err.message : undefined,
+      });
     }
   };
 
@@ -761,35 +790,52 @@ export default function Pipeline() {
                     <span className="text-sm font-semibold">Filtrar Negócio</span>
                     <button onClick={() => setShowFilters(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
                   </div>
+                  {/* `aria-label` em cada filtro: o gatilho do Select mostra o
+                      valor escolhido, então sem nome próprio ele deixa de ser
+                      identificável — para o leitor de tela e para qualquer um
+                      que precise achá-lo depois de já ter filtrado. */}
                   <div className="grid grid-cols-2 gap-3">
                     <Select value={stageFilter} onValueChange={setStageFilter}>
-                      <SelectTrigger><SelectValue placeholder="PROPOSTA" /></SelectTrigger>
+                      <SelectTrigger aria-label="Status"><SelectValue placeholder="PROPOSTA" /></SelectTrigger>
                       <SelectContent>{[{ value: "all", label: "Todos Status" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
                     </Select>
                     <Select value={status2Filter} onValueChange={setStatus2Filter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher Status 2" /></SelectTrigger>
-                      <SelectContent>{[{ value: "all", label: "Todos Status 2" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+                      <SelectTrigger aria-label="Status 2"><SelectValue placeholder="Escolher Status 2" /></SelectTrigger>
+                      <SelectContent className="max-h-80">
+                        <SelectItem value="all">Todos Status 2</SelectItem>
+                        {FACEIMOB_STATUSES.map(s => <SelectItem key={s.label} value={s.label}>{s.label}</SelectItem>)}
+                      </SelectContent>
                     </Select>
-                    <Input value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} placeholder="03/2026" />
+                    <Select value={documentReviewFilter} onValueChange={setDocumentReviewFilter}>
+                      <SelectTrigger aria-label="Conferência documental"><SelectValue placeholder="Conferência documental" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas conferências</SelectItem>
+                        <SelectItem value="draft">Em preparação</SelectItem>
+                        <SelectItem value="pending">Aguardando gerente</SelectItem>
+                        <SelectItem value="returned">Devolvido para correção</SelectItem>
+                        <SelectItem value="approved">Conferido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input aria-label="Mês" value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} placeholder="03/2026" />
                     <Select value={developerFilter} onValueChange={setDeveloperFilter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher uma Construtora" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todas Construtoras</SelectItem>{mockDevelopers.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                      <SelectTrigger aria-label="Construtora"><SelectValue placeholder="Escolher uma Construtora" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todas Construtoras</SelectItem>{developers.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent>
                     </Select>
                     <Select value={managerFilter} onValueChange={setManagerFilter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher Gerente 1" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{brokers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
+                      <SelectTrigger aria-label="Gerente"><SelectValue placeholder="Escolher Gerente 1" /></SelectTrigger>
+                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{managers.map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
                     </Select>
                     <Select value={brokerFilter} onValueChange={setBrokerFilter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher Corretor 1" /></SelectTrigger>
+                      <SelectTrigger aria-label="Corretor"><SelectValue placeholder="Escolher Corretor 1" /></SelectTrigger>
                       <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{brokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
                     </Select>
-                    <Input placeholder="Filtrar por nome cliente" value={clientNameFilter} onChange={(e) => setClientNameFilter(e.target.value)} />
+                    <Input aria-label="Nome do cliente" placeholder="Filtrar por nome cliente" value={clientNameFilter} onChange={(e) => setClientNameFilter(e.target.value)} />
                     <Input placeholder="Filtrar por nome 2º cliente" value={clientName2Filter} onChange={(e) => setClientName2Filter(e.target.value)} />
                     <Input placeholder="Filtrar por CPF Cliente" value={cpfFilter} onChange={(e) => setCpfFilter(e.target.value)} />
                     <Input placeholder="Filtrar por CPF 2º Cliente" value={cpf2Filter} onChange={(e) => setCpf2Filter(e.target.value)} />
                   </div>
                   <div className="flex justify-end mt-3">
-                    <Button variant="ghost" size="sm" onClick={() => { setStageFilter("all"); setStatus2Filter("all"); setDeveloperFilter("all"); setBrokerFilter("all"); setManagerFilter("all"); setClientNameFilter(""); setClientName2Filter(""); setCpfFilter(""); setCpf2Filter(""); setSearch(""); }}>
+                    <Button variant="ghost" size="sm" onClick={() => { setStageFilter("all"); setStatus2Filter("all"); setDocumentReviewFilter("all"); setDeveloperFilter("all"); setBrokerFilter("all"); setManagerFilter("all"); setClientNameFilter(""); setClientName2Filter(""); setCpfFilter(""); setCpf2Filter(""); setSearch(""); }}>
                       <X className="h-3 w-3 mr-1" /> Limpar Filtros
                     </Button>
                   </div>
@@ -822,6 +868,14 @@ export default function Pipeline() {
                 <span><span className="text-foreground font-medium">{approvedCond}</span> aprov. cond.</span>
                 <span><span className="text-foreground font-medium">{underAnalysis}</span> em análise</span>
                 <span><span className="text-warning font-semibold">{pendingDeals}</span> pendentes</span>
+                <button
+                  type="button"
+                  onClick={() => setDocumentReviewFilter("pending")}
+                  className="inline-flex items-center gap-1 hover:text-warning transition-colors"
+                >
+                  <FileCheck2 className="h-3 w-3" />
+                  <span className="text-warning font-semibold">{pendingDocumentReviews}</span> aguard. gerente
+                </button>
                 <span>•</span>
                 <span><span className="text-foreground font-medium">{proposalsToday}</span> hoje</span>
                 <span><span className="text-foreground font-medium">{proposalsPeriod}</span> no período</span>
@@ -876,6 +930,15 @@ export default function Pipeline() {
                                 </div>
                                 <p className="text-[10px] text-muted-foreground mb-0.5">{deal.project} • {deal.unit}</p>
                                 <p className="text-[10px] text-muted-foreground/60 mb-2">{deal.developer}</p>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "mb-2 h-5 px-1.5 text-[9px]",
+                                    documentReviewMeta[deal.document_review_status ?? "draft"].className,
+                                  )}
+                                >
+                                  {documentReviewMeta[deal.document_review_status ?? "draft"].label}
+                                </Badge>
                                 <div className="flex items-center justify-between">
                                   <span className="text-[11px] font-semibold text-primary">
                                     R$ {deal.deal_value >= 1000000 ? `${(deal.deal_value / 1000000).toFixed(1)}M` : `${(deal.deal_value / 1000).toFixed(0)}k`}
@@ -930,6 +993,7 @@ export default function Pipeline() {
                             <th className="p-2 font-medium">Unidade</th>
                             <th className="p-2 font-medium">Dias</th>
                             <th className="p-2 font-medium text-left">Status 2</th>
+                            <th className="p-2 font-medium text-left">Conferência</th>
                             <th className="p-2 font-medium">Visita</th>
                             <th className="p-2 font-medium text-left">Cliente</th>
                             <th className="p-2 font-medium text-left">Corretor 1</th>
@@ -940,12 +1004,19 @@ export default function Pipeline() {
                           </tr>
                         </thead>
                         <tbody>
+                          {dealsLoading && (
+                            <tr><td colSpan={15} className="p-6 text-center text-muted-foreground">Carregando negócios...</td></tr>
+                          )}
+                          {!dealsLoading && paginated.length === 0 && (
+                            <tr><td colSpan={15} className="p-6 text-center text-muted-foreground">Nenhum negócio encontrado com os filtros atuais.</td></tr>
+                          )}
                           {paginated.map((deal) => {
                             const statusDate = deal.created_at ? format(parseISO(deal.created_at), "MM/yy") : "";
                             const status2Label = (deal.status && deal.status !== "Ativo" && deal.status !== "OFF")
                               ? deal.status
                               : (tableStageLabels[deal.stage]?.label || "PROPOSTA");
                             const status2Color = faceimobStatusColor(status2Label);
+                            const review = documentReviewMeta[deal.document_review_status ?? "draft"];
                             const stripeColor =
                               deal.days_in_pipeline > 60 ? "bg-red-600" :
                               deal.days_in_pipeline > 30 ? "bg-orange-500" :
@@ -979,6 +1050,11 @@ export default function Pipeline() {
                                       ))}
                                     </SelectContent>
                                   </Select>
+                                </td>
+                                <td className="p-2">
+                                  <Badge variant="outline" className={cn("text-[9px] whitespace-nowrap", review.className)}>
+                                    {review.label}
+                                  </Badge>
                                 </td>
                                 <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button onClick={() => setVisitDeal(deal)} className={cn("hover:text-primary", deal.visit_date ? "text-destructive" : "text-muted-foreground")}><CalendarIcon className="h-3.5 w-3.5" /></button></td>
                                 <td className="p-2 whitespace-nowrap max-w-[130px] truncate font-medium">{deal.client.toUpperCase()}</td>
@@ -1061,7 +1137,7 @@ export default function Pipeline() {
         /* ═══ LEADS TAB (Funil) ═══ */
         <LeadFunnel
           actorName={user?.email || "Usuário"}
-          onConvert={(l) => openConvertLead(l as any)}
+          onConvert={openConvertLead}
         />
       )}
 
@@ -1085,13 +1161,42 @@ export default function Pipeline() {
               <div className="p-3 rounded-lg border border-warning/30 bg-warning/5">
                 <p className="text-xs text-warning font-medium flex items-center gap-1">
                   <AlertCircle className="h-3 w-3" />
-                  O negócio será inserido no status "Incompleto"
+                  O negócio será inserido na etapa inicial do funil
                 </p>
-                <p className="text-[10px] text-muted-foreground mt-1">É necessário anexar pelo menos 1 documento para converter.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Os documentos obrigatórios serão cobrados somente no envio para conferência do gerente.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Construtora *</label>
+                  <Select value={convertForm.developerId} onValueChange={pickConvertDeveloper}>
+                    <SelectTrigger><SelectValue placeholder="Escolher" /></SelectTrigger>
+                    <SelectContent>{developers.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Empreendimento</label>
+                  <Select
+                    value={convertForm.projectId}
+                    onValueChange={(v) => setConvertForm(p => ({ ...p, projectId: v }))}
+                    disabled={!convertForm.developerId || convertProjects.length === 0}
+                  >
+                    <SelectTrigger><SelectValue placeholder={convertProjects.length ? "Opcional" : "Sem empreendimentos"} /></SelectTrigger>
+                    <SelectContent>{convertProjects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">Unidade</label>
+                  <Input value={convertForm.unit} onChange={(e) => setConvertForm(p => ({ ...p, unit: e.target.value }))} placeholder="Opcional" />
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground mb-1 block">VGV bruto</label>
+                  <Input value={convertForm.vgv} onChange={(e) => setConvertForm(p => ({ ...p, vgv: e.target.value }))} placeholder="Opcional" />
+                </div>
               </div>
 
               <div>
-                <label className="text-sm text-muted-foreground mb-2 block">Documento obrigatório *</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Documento inicial (opcional)</label>
                 <input
                   ref={convertFileRef}
                   type="file"
@@ -1125,8 +1230,8 @@ export default function Pipeline() {
 
               <DialogFooter>
                 <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                <Button onClick={confirmConvert} disabled={!convertDoc} className="bg-success hover:bg-success/90 text-success-foreground">
-                  <ArrowRightCircle className="h-4 w-4 mr-1" /> Converter em Negócio
+                <Button onClick={confirmConvert} disabled={!convertForm.developerId || converting} className="bg-success hover:bg-success/90 text-success-foreground">
+                  <ArrowRightCircle className="h-4 w-4 mr-1" /> {converting ? "Convertendo..." : "Converter em Negócio"}
                 </Button>
               </DialogFooter>
             </div>
@@ -1140,8 +1245,11 @@ export default function Pipeline() {
           deal={detailDeal}
           open={!!detailDeal}
           onClose={() => setDetailDeal(null)}
-          onSave={(updated) => {
-            setDeals(prev => prev.map(d => d.id === updated.id ? updated : d));
+          people={people}
+          developers={developers}
+          onReviewChanged={fetchDeals}
+          onSave={async (updated) => {
+            await saveDetailDeal(updated);
             setDetailDeal(null);
           }}
         />
@@ -1154,18 +1262,18 @@ export default function Pipeline() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="text-sm text-muted-foreground mb-1 block">Cliente *</label><Input value={formData.client} onChange={(e) => setFormData((p) => ({ ...p, client: e.target.value }))} /></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Incorporadora</label>
-              <Select value={formData.developer} onValueChange={(v) => setFormData((p) => ({ ...p, developer: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{mockDevelopers.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.developer} onValueChange={(v) => { setFormData((p) => ({ ...p, developer: v, project: "" })); void loadFormProjects(v); }}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{developers.map((d) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Empreendimento</label>
-              <Select value={formData.project} onValueChange={(v) => setFormData((p) => ({ ...p, project: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{mockProjects.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.project} onValueChange={(v) => setFormData((p) => ({ ...p, project: v }))} disabled={!formData.developer}><SelectTrigger><SelectValue placeholder={formProjects.length ? "Selecione" : "Sem empreendimentos"} /></SelectTrigger><SelectContent>{formProjects.map((p) => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Unidade</label><Input value={formData.unit} onChange={(e) => setFormData((p) => ({ ...p, unit: e.target.value }))} /></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Corretor 1</label>
               <Select value={formData.broker1} onValueChange={(v) => setFormData((p) => ({ ...p, broker1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{brokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Corretor 2</label>
               <Select value={formData.broker2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, broker2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{brokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Gerente 1</label>
-              <Select value={formData.manager1} onValueChange={(v) => setFormData((p) => ({ ...p, manager1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{brokers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.manager1} onValueChange={(v) => setFormData((p) => ({ ...p, manager1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{managers.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Gerente 2</label>
-              <Select value={formData.manager2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, manager2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{brokers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
+              <Select value={formData.manager2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, manager2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{managers.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Valor</label><Input type="number" value={formData.deal_value} onChange={(e) => setFormData((p) => ({ ...p, deal_value: Number(e.target.value) }))} /></div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Etapa</label>
               <Select value={formData.stage} onValueChange={(v) => setFormData((p) => ({ ...p, stage: v as DealStage }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent></Select></div>
@@ -1208,7 +1316,7 @@ export default function Pipeline() {
             <div><label className="text-sm text-muted-foreground mb-1 block">Fonte</label>
               <Select value={newLeadData.source} onValueChange={(v) => setNewLeadData(p => ({ ...p, source: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione a fonte" /></SelectTrigger>
-                <SelectContent>{mockSources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                <SelectContent>{sources.map(s => <SelectItem key={s.id} value={s.label}>{s.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div><label className="text-sm text-muted-foreground mb-1 block">Corretor</label>

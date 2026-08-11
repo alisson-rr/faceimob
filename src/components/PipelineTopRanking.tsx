@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Medal, Star, Flame, Lightbulb, Megaphone, TrendingUp } from "lucide-react";
+import { Trophy, Medal, Flame, Lightbulb, Megaphone, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import type { PipelineDeal } from "@/types/crm";
@@ -13,13 +13,12 @@ type Props = { deals: PipelineDeal[] };
 
 export default function PipelineTopRanking({ deals }: Props) {
   const dealsForHook = deals.map((d) => ({
-    broker1_name: (d as any).broker1,
-    broker2_name: (d as any).broker2,
+    broker1_name: d.broker1,
+    broker2_name: d.broker2,
     stage: d.stage,
-    status: (d as any).status,
-    active: (d as any).active,
+    active: d.active,
   }));
-  const { role, myBroker, allScores, scoped } = useGameRanking(dealsForHook);
+  const { role, scoped } = useGameRanking(dealsForHook);
   const [openInfo, setOpenInfo] = useState(false);
   const [tip, setTip] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ title: string | null; message: string } | null>(null);
@@ -37,59 +36,7 @@ export default function PipelineTopRanking({ deals }: Props) {
 
   if (!scoped.length) return null;
 
-  // ============== BROKER VIEW ==============
-  if (role === "broker" && myBroker) {
-    const me = scoped[0];
-    const rank = allScores.findIndex((s) => s.broker.id === myBroker.id) + 1;
-    return (
-      <>
-        <Card
-          onClick={openInfoDialog}
-          className="cursor-pointer border-primary/40 bg-gradient-to-br from-primary/10 via-transparent to-amber-500/10 hover:from-primary/20 hover:to-amber-500/20 hover:scale-[1.015] hover:shadow-lg hover:shadow-amber-500/20 transition-all duration-300 max-w-3xl mx-auto"
-        >
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="relative">
-              <Avatar className="h-16 w-16 border-2 border-amber-400/60 shadow-[0_0_16px_hsl(45_90%_55%/0.35)]">
-                <AvatarImage src={me.broker.avatar_url || undefined} alt={me.broker.name} />
-                <AvatarFallback className="bg-primary/20 text-primary font-bold">
-                  {me.broker.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
-                </AvatarFallback>
-              </Avatar>
-              <div className="absolute -bottom-1 -right-1 bg-amber-500 text-black text-[10px] font-black rounded-full h-6 min-w-6 px-1.5 flex items-center justify-center border-2 border-background">
-                #{rank || "—"}
-              </div>
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-bold truncate">{me.broker.name}</p>
-                <Badge variant="outline" className="border-amber-500/40 text-amber-400 text-[10px] py-0 h-4">
-                  <Star className="h-2.5 w-2.5 mr-1" /> {me.points} pts
-                </Badge>
-              </div>
-              <div className="grid grid-cols-4 gap-2 mt-2">
-                <FunnelStat label="Leads" value={me.leads} tone="text-cyan-400" />
-                <FunnelStat label="Análises" value={me.analises} tone="text-sky-400" />
-                <FunnelStat label="Aprovados" value={me.aprovados} tone="text-emerald-400" />
-                <FunnelStat label="Vendas" value={me.vendas} tone="text-yellow-400" />
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center gap-1 pl-2 border-l border-border/40">
-              <Trophy className="h-5 w-5 text-amber-400" />
-              <span className="text-[10px] text-muted-foreground uppercase">Rank</span>
-              <span className="text-lg font-black text-amber-400">{rank ? `#${rank}` : "—"}</span>
-              <span className="text-[9px] text-muted-foreground">de {allScores.length}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
-      </>
-    );
-  }
-
-  // ============== PODIUM VIEW (admin/manager/director) ==============
+  // O escopo já vem do servidor: geral, diretoria, gerência ou equipe.
   const top3 = scoped.slice(0, 3);
   // Podium visual order: 2nd, 1st, 3rd
   const order = [top3[1], top3[0], top3[2]].filter(Boolean) as Score[];
@@ -118,7 +65,8 @@ export default function PipelineTopRanking({ deals }: Props) {
   const scopeLabel =
     role === "admin" ? "Ranking Geral" :
     role === "director" ? "Sua Diretoria" :
-    role === "manager" ? "Sua Gerência" : "Ranking";
+    role === "manager" ? "Sua Gerência" :
+    role === "broker" ? "Sua Equipe" : "Ranking";
 
   return (
     <>
@@ -184,15 +132,6 @@ export default function PipelineTopRanking({ deals }: Props) {
     </Card>
     <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
     </>
-  );
-}
-
-function FunnelStat({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="px-2 py-1 rounded-md border border-border/40 bg-secondary/20 text-center">
-      <p className="text-[9px] uppercase text-muted-foreground leading-none">{label}</p>
-      <p className={cn("text-base font-black leading-tight", tone)}>{value}</p>
-    </div>
   );
 }
 

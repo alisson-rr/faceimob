@@ -90,15 +90,15 @@ export default function AdminLeadAutomation() {
         leads_paused: s.leads_paused,
       }));
     }
-    setWindows(((w as any[]) || []).map((row) => ({ ...row, slot: row.code })));
+    setWindows((w ?? []).map((row) => ({ ...row, slot: row.code })));
     setBrokers(people.filter((person) => person.active && person.roles.includes("broker")));
-    setGroups(((g as any[]) || []).map((row) => ({
+    setGroups((g ?? []).map((row) => ({
       id: row.id, name: row.name, active: row.active,
-      brokers: ((gb as any[]) || []).filter((x) => x.group_id === row.id && x.active).map((x) => x.profile_id),
-      forms: ((gf as any[]) || []).filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
+      brokers: (gb ?? []).filter((x) => x.group_id === row.id && x.active).map((x) => x.profile_id),
+      forms: (gf ?? []).filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
     })));
     const map = new Map<string, string | null>();
-    ((lf as any[]) || []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, null); });
+    (lf ?? []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, null); });
     setDetectedForms(Array.from(map.entries()).map(([form_id, form_name]) => ({ form_id, form_name })));
   };
 
@@ -120,9 +120,14 @@ export default function AdminLeadAutomation() {
   };
 
   const upsertWindow = async (w: Window) => {
-    const payload: any = { ...w, code: w.slot };
-    delete payload.slot;
-    delete payload.created_at; delete payload.updated_at;
+    const payload = {
+      active: w.active,
+      checkin_start: w.checkin_start,
+      checkout_time: w.checkout_time,
+      code: w.slot,
+      distribution_start: w.distribution_start,
+      label: w.label,
+    };
     const { error } = w.id
       ? await supabase.from("work_shifts").update(payload).eq("id", w.id)
       : await supabase.from("work_shifts").insert(payload);

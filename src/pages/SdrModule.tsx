@@ -12,13 +12,21 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Bot, Plus, Trash2, Upload, Send, MessageSquare, Sparkles, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx";
+import { functionErrorMessage } from "@/lib/functionError";
+import type { Database } from "@/integrations/supabase/types";
 
-type Agent = {
-  id: string; name: string; role: string; is_orchestrator: boolean;
-  system_prompt: string | null; model: string; temperature: number; active: boolean;
-  handoff_to_agent_id: string | null;
-};
-type Source = { id: string; label: string; form_id: string | null; source_match: string | null; agent_id: string | null; active: boolean };
+/**
+ * Radix recusa `<SelectItem value="">` — string vazia é o valor que limpa a
+ * seleção, então usar isso numa opção derruba a tela inteira. Sentinela para as
+ * opções que significam "nenhum"; vira `null`/`""` na hora de gravar.
+ */
+const SEM_SELECAO = "__nenhum__";
+
+type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"];
+type Conversation = Database["public"]["Tables"]["sdr_conversations"]["Row"];
+type Message = Database["public"]["Tables"]["sdr_messages"]["Row"];
+type Source = { id: string; label: string; form_id: string | null; source_match: string | null; agent_id: string | null; welcome_template_id: string | null; active: boolean };
+type WhatsAppTemplate = Database["public"]["Tables"]["whatsapp_templates"]["Row"];
 type ListStats = { total: number; pending: number; sent: number; replied: number; failed: number };
 type Rlist = { id: string; name: string; description: string | null; template_name: string | null; template_language: string; stats: ListStats; status: string; agent_id: string | null };
 
@@ -27,7 +35,9 @@ export default function SdrModule() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [lists, setLists] = useState<Rlist[]>([]);
-  const [waConfig, setWaConfig] = useState<any>({});
+  const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [waConfig, setWaConfig] = useState<Partial<WhatsAppTemplate>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function loadAll() {
     const [a, s, l, w] = await Promise.all([
@@ -36,19 +46,31 @@ export default function SdrModule() {
       supabase.from("remarketing_lists").select("*").order("created_at", { ascending: false }),
       supabase.from("whatsapp_templates").select("*").order("created_at"),
     ]);
-    setAgents((a.data as any) || []);
-    setSources(((s.data as any[]) || []).map(row => ({
+    // Sem checar error, falha de RLS/rede virava empty state falso
+    // ("Nenhum agente..."). Erro aparece e a tela oferece retry.
+    const firstError = a.error || s.error || l.error || w.error;
+    if (firstError) {
+      setLoadError(firstError.message);
+      toast.error(`Falha ao carregar dados do SDR: ${firstError.message}`);
+      return;
+    }
+    setLoadError(null);
+    setAgents(a.data || []);
+    setSources((s.data || []).map(row => ({
       ...row,
       source_match: row.code,
       agent_id: row.sdr_agent_id,
     })));
-    const templates = (w.data as any[]) || [];
+    const templates = w.data || [];
+    setTemplates(templates);
     // `remarketing_list_stats` agrega no banco. A versão anterior baixava a
     // tabela inteira de contatos para contar no navegador — cresce com a base e
     // ainda assim só dava o total, sem enviados/respondidos.
-    const rows = (l.data as any[]) || [];
+    const rows = l.data || [];
+    let statsFailed = false;
     const withStats = await Promise.all(rows.map(async row => {
-      const { data: stats } = await supabase.rpc("remarketing_list_stats", { p_list_id: row.id });
+      const { data: stats, error: statsError } = await supabase.rpc("remarketing_list_stats", { p_list_id: row.id });
+      if (statsError) statsFailed = true;
       const s0 = (stats as ListStats[] | null)?.[0];
       return {
         ...row,
@@ -58,6 +80,7 @@ export default function SdrModule() {
       };
     }));
     setLists(withStats);
+    if (statsFailed) toast.error("Falha ao carregar estatísticas de uma ou mais listas de remarketing");
     setWaConfig(templates[0] || { name: "", language: "pt_BR", body: "", approved: false, active: true });
   }
   useEffect(() => { loadAll(); }, []);
@@ -72,6 +95,13 @@ export default function SdrModule() {
         </div>
       </div>
 
+      {loadError && (
+        <Card className="p-4 border-destructive/40 flex items-center justify-between gap-2 text-sm">
+          <span>Não foi possível carregar os dados do SDR: {loadError}</span>
+          <Button size="sm" variant="outline" onClick={loadAll}>Tentar novamente</Button>
+        </Card>
+      )}
+
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex flex-wrap">
           <TabsTrigger value="agents"><Bot className="h-4 w-4 mr-2" />Agentes</TabsTrigger>
@@ -83,7 +113,7 @@ export default function SdrModule() {
         </TabsList>
 
         <TabsContent value="agents"><AgentsTab agents={agents} reload={loadAll} /></TabsContent>
-        <TabsContent value="sources"><SourcesTab sources={sources} agents={agents} reload={loadAll} /></TabsContent>
+        <TabsContent value="sources"><SourcesTab sources={sources} agents={agents} templates={templates} reload={loadAll} /></TabsContent>
         <TabsContent value="playground"><PlaygroundTab agents={agents} /></TabsContent>
         <TabsContent value="conversations"><ConversationsTab agents={agents} /></TabsContent>
         <TabsContent value="remarketing"><RemarketingTab lists={lists} agents={agents} reload={loadAll} /></TabsContent>
@@ -99,7 +129,7 @@ function AgentsTab({ agents, reload }: { agents: Agent[]; reload: () => void }) 
 
   async function save() {
     if (!editing?.name) return toast.error("Nome obrigatório");
-    const payload: any = {
+    const payload: Database["public"]["Tables"]["sdr_agents"]["Insert"] = {
       name: editing.name, role: editing.role || "qualifier",
       is_orchestrator: !!editing.is_orchestrator,
       system_prompt: editing.system_prompt || null,
@@ -216,10 +246,10 @@ function AgentsTab({ agents, reload }: { agents: Agent[]; reload: () => void }) 
             </div>
             <div>
               <Label>Handoff para agente</Label>
-              <Select value={editing.handoff_to_agent_id || ""} onValueChange={v => setEditing({ ...editing, handoff_to_agent_id: v || null })}>
+              <Select value={editing.handoff_to_agent_id || SEM_SELECAO} onValueChange={v => setEditing({ ...editing, handoff_to_agent_id: v === SEM_SELECAO ? null : v })}>
                 <SelectTrigger><SelectValue placeholder="Nenhum" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhum</SelectItem>
+                  <SelectItem value={SEM_SELECAO}>Nenhum</SelectItem>
                   {agents.filter(a => a.id !== editing.id).map(a => (
                     <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                   ))}
@@ -238,32 +268,44 @@ function AgentsTab({ agents, reload }: { agents: Agent[]; reload: () => void }) 
 }
 
 /* ---------------- Sources ---------------- */
-function SourcesTab({ sources, agents, reload }: { sources: Source[]; agents: Agent[]; reload: () => void }) {
+function SourcesTab({ sources, agents, templates, reload }: { sources: Source[]; agents: Agent[]; templates: WhatsAppTemplate[]; reload: () => void }) {
   const [row, setRow] = useState<Partial<Source>>({ label: "", active: true });
   async function add() {
     if (!row.label) return toast.error("Label obrigatório");
     const code = (row.source_match || row.label).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
     const { error } = await supabase.from("lead_sources").insert({
       code, label: row.label, form_id: row.form_id || null,
-      sdr_agent_id: row.agent_id || null, active: row.active ?? true,
+      sdr_agent_id: row.agent_id || null,
+      welcome_template_id: row.welcome_template_id || null,
+      active: row.active ?? true,
     });
     if (error) return toast.error(error.message);
     setRow({ label: "", active: true }); reload();
   }
   async function remove(id: string) {
-    await supabase.from("lead_sources").delete().eq("id", id); reload();
+    const { error } = await supabase.from("lead_sources").delete().eq("id", id);
+    if (error) return toast.error(`Falha ao excluir origem: ${error.message}`);
+    reload();
   }
   return (
     <Card className="p-4 space-y-3">
       <p className="text-xs text-muted-foreground">Configure quais formulários/origens de lead entram automaticamente no atendimento IA. Deixe em branco para configurar depois — o cadastro fica pronto.</p>
-      <div className="grid md:grid-cols-5 gap-2">
+      <div className="grid md:grid-cols-6 gap-2">
         <Input placeholder="Rótulo" value={row.label || ""} onChange={e => setRow({ ...row, label: e.target.value })} />
         <Input placeholder="form_id (Meta Ads)" value={row.form_id || ""} onChange={e => setRow({ ...row, form_id: e.target.value })} />
         <Input placeholder="source contém..." value={row.source_match || ""} onChange={e => setRow({ ...row, source_match: e.target.value })} />
-        <Select value={row.agent_id || ""} onValueChange={v => setRow({ ...row, agent_id: v || null })}>
+        <Select value={row.agent_id || SEM_SELECAO} onValueChange={v => setRow({ ...row, agent_id: v === SEM_SELECAO ? null : v })}>
           <SelectTrigger><SelectValue placeholder="Agente" /></SelectTrigger>
           <SelectContent>
+            <SelectItem value={SEM_SELECAO}>Sem agente</SelectItem>
             {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={row.welcome_template_id || SEM_SELECAO} onValueChange={v => setRow({ ...row, welcome_template_id: v === SEM_SELECAO ? null : v })}>
+          <SelectTrigger><SelectValue placeholder="Template de boas-vindas" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SEM_SELECAO}>Sem template</SelectItem>
+            {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Button onClick={add}><Plus className="h-4 w-4 mr-1" />Adicionar</Button>
@@ -271,7 +313,7 @@ function SourcesTab({ sources, agents, reload }: { sources: Source[]; agents: Ag
       <div className="space-y-1">
         {sources.map(s => (
           <div key={s.id} className="flex items-center justify-between border rounded p-2 text-sm">
-            <div><b>{s.label}</b> <span className="text-muted-foreground text-xs">· {s.form_id || s.source_match || "sem filtro"} · {agents.find(a => a.id === s.agent_id)?.name || "sem agente"}</span></div>
+            <div><b>{s.label}</b> <span className="text-muted-foreground text-xs">· {s.form_id || s.source_match || "sem filtro"} · {agents.find(a => a.id === s.agent_id)?.name || "sem agente"} · {templates.find(t => t.id === s.welcome_template_id)?.name || "sem template"}</span></div>
             <Button size="icon" variant="ghost" onClick={() => remove(s.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
           </div>
         ))}
@@ -304,18 +346,18 @@ function PlaygroundTab({ agents }: { agents: Agent[] }) {
       if (!convId) setConvId(data.conversation_id);
       setMessages(m => [...m, { role: "assistant", content: data.reply }]);
       if (data.handoff_to) toast.info(`Orquestrador transferiu para: ${data.handoff_to.name}`);
-    } catch (e: any) {
-      toast.error(e.message || "Falha no agente");
+    } catch (e: unknown) {
+      toast.error(await functionErrorMessage(e, "Falha no agente"));
     } finally { setLoading(false); }
   }
 
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <Select value={agentId} onValueChange={setAgentId}>
+        <Select value={agentId || SEM_SELECAO} onValueChange={v => setAgentId(v === SEM_SELECAO ? "" : v)}>
           <SelectTrigger className="w-64"><SelectValue placeholder="Agente inicial (ou orquestrador automático)" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Automático (orquestrador)</SelectItem>
+            <SelectItem value={SEM_SELECAO}>Automático (orquestrador)</SelectItem>
             {agents.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -345,9 +387,9 @@ function PlaygroundTab({ agents }: { agents: Agent[] }) {
 
 /* ---------------- Conversations ---------------- */
 function ConversationsTab({ agents }: { agents: Agent[] }) {
-  const [rows, setRows] = useState<any[]>([]);
+  const [rows, setRows] = useState<Conversation[]>([]);
   const [sel, setSel] = useState<string>("");
-  const [msgs, setMsgs] = useState<any[]>([]);
+  const [msgs, setMsgs] = useState<Message[]>([]);
 
   async function load() {
     const { data } = await supabase.from("sdr_conversations").select("*").order("updated_at", { ascending: false }).limit(100);
@@ -356,7 +398,7 @@ function ConversationsTab({ agents }: { agents: Agent[] }) {
   useEffect(() => { load(); }, []);
   useEffect(() => {
     if (!sel) { setMsgs([]); return; }
-    supabase.from("sdr_messages").select("*").eq("conversation_id", sel).order("created_at").then(({ data }: any) => setMsgs(data || []));
+    supabase.from("sdr_messages").select("*").eq("conversation_id", sel).order("created_at").then(({ data }) => setMsgs(data || []));
   }, [sel]);
 
   return (
@@ -404,14 +446,14 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
       const buf = await f.arrayBuffer();
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
       // Aceita colunas: nome/name, fone/telefone/phone, campanha/campaign
       const parsed = rows.map(r => {
-        const keys = Object.keys(r).reduce((acc: any, k) => { acc[k.toLowerCase().trim()] = r[k]; return acc; }, {});
+        const keys = Object.fromEntries(Object.entries(r).map(([key, value]) => [key.toLowerCase().trim(), value]));
         return {
-          name: String(keys.nome || keys.name || keys.cliente || "").trim(),
-          phone: String(keys.fone || keys.telefone || keys.phone || keys.celular || "").trim(),
-          campaign: String(keys.campanha || keys.campaign || keys.origem || "").trim(),
+          name: String(keys.nome ?? keys.name ?? keys.cliente ?? "").trim(),
+          phone: String(keys.fone ?? keys.telefone ?? keys.phone ?? keys.celular ?? "").trim(),
+          campaign: String(keys.campanha ?? keys.campaign ?? keys.origem ?? "").trim(),
           extra: keys,
         };
       }).filter(r => r.phone);
@@ -421,37 +463,35 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
       const { data: templateRow } = template
         ? await supabase.from("whatsapp_templates").select("id").eq("name", template).maybeSingle()
         : { data: null };
-      const { data: list, error: lErr } = await supabase.from("remarketing_lists").insert({
-        name: newName, template_id: templateRow?.id || null, agent_id: agentId || null,
-        status: "draft",
-      }).select().single();
-      if (lErr) throw lErr;
-
-      const contacts = parsed.map(p => ({ full_name: p.name, phone: p.phone, extra: { campaign: p.campaign, ...p.extra }, list_id: list.id }));
-      const chunkSize = 500;
-      for (let i = 0; i < contacts.length; i += chunkSize) {
-        const { error } = await supabase.from("remarketing_contacts").insert(contacts.slice(i, i + chunkSize));
-        if (error) throw error;
-      }
+      const contacts = parsed.map(p => ({ full_name: p.name, phone: p.phone, extra: { campaign: p.campaign, ...p.extra } }));
+      const { error: importError } = await supabase.rpc("import_remarketing_list", {
+        p_name: newName,
+        p_template_id: templateRow?.id || null,
+        p_agent_id: agentId || null,
+        p_contacts: contacts,
+      });
+      if (importError) throw importError;
       toast.success(`Lista "${newName}" criada com ${parsed.length} contatos`);
       setNewName(""); setTemplate(""); if (fileRef.current) fileRef.current.value = "";
       reload();
-    } catch (err: any) {
-      toast.error(err.message || "Falha no upload");
+    } catch (err: unknown) {
+      toast.error(await functionErrorMessage(err, "Falha no upload"));
     } finally { setUploading(false); }
   }
 
   async function broadcast(listId: string) {
     if (!confirm("Disparar template WhatsApp para todos os contatos pendentes desta lista?")) return;
     const { data, error } = await supabase.functions.invoke("sdr-whatsapp-broadcast", { body: { list_id: listId } });
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(await functionErrorMessage(error, "Falha no disparo"));
     toast.success(`Enviados: ${data.sent} | Falhas: ${data.failed}`);
     reload();
   }
 
   async function removeList(id: string) {
     if (!confirm("Excluir lista?")) return;
-    await supabase.from("remarketing_lists").delete().eq("id", id); reload();
+    const { error } = await supabase.from("remarketing_lists").delete().eq("id", id);
+    if (error) return toast.error(`Falha ao excluir lista: ${error.message}`);
+    reload();
   }
 
   return (
@@ -495,8 +535,8 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
 }
 
 /* ---------------- WhatsApp Config ---------------- */
-function WhatsAppTab({ config, reload }: { config: any; reload: () => void }) {
-  const [c, setC] = useState<any>(config);
+function WhatsAppTab({ config, reload }: { config: Partial<WhatsAppTemplate>; reload: () => void }) {
+  const [c, setC] = useState<Partial<WhatsAppTemplate>>(config);
   useEffect(() => setC(config), [config]);
   async function save() {
     if (!c.name?.trim() || !c.body?.trim()) return toast.error("Informe nome e mensagem do template");
@@ -511,8 +551,9 @@ function WhatsAppTab({ config, reload }: { config: any; reload: () => void }) {
     const query = c.id
       ? supabase.from("whatsapp_templates").update(payload).eq("id", c.id)
       : supabase.from("whatsapp_templates").insert(payload);
-    const { error } = await query;
+    const { data, error } = await query.select("id");
     if (error) return toast.error(error.message);
+    if (!data?.length) return toast.error("A configuração não foi salva. Verifique sua permissão.");
     toast.success("Configuração salva"); reload();
   }
   return (

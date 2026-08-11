@@ -13,6 +13,7 @@
 // =============================================================================
 import { supabase } from "./client";
 import { listPeople, type PersonRecord } from "./newSchema";
+import type { Database } from "./types";
 
 // Fronteira sem tipo, num único lugar: `types.ts` é gerado pelo Dev A e ainda
 // está em trânsito (S1.3). Tipar este arquivo contra ele agora amarraria esta
@@ -21,6 +22,13 @@ import { listPeople, type PersonRecord } from "./newSchema";
 // Sem cast: os tipos gerados cobrem o schema novo. O `as any` daqui
 // anulava justamente a regeneração que a Sprint 1 pagou para fazer.
 const db = supabase;
+type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
+type DecoratableLead = Partial<LeadRow> & Pick<LeadRow, "id" | "full_name" | "created_at" | "updated_at">;
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 
 export const LEAD_ATTACHMENTS_BUCKET = "lead-attachments";
 
@@ -115,7 +123,7 @@ export type LeadRecord = {
   utm_content: string | null;
   utm_term: string | null;
   landing_page: string | null;
-  raw_payload: Record<string, any> | null;
+  raw_payload: Record<string, unknown> | null;
 
   status: LeadStatus;
   funnel_stage: LeadFunnelStage;
@@ -141,8 +149,8 @@ export type LeadRecord = {
   source: string;
   broker_name: string | null;
   form_name: string | null;
-  form_answers: Record<string, any>;
-  tracking: Record<string, any>;
+  form_answers: Record<string, unknown>;
+  tracking: Record<string, unknown>;
   stage_changed_at: string;
 };
 
@@ -152,23 +160,30 @@ const asError = (label: string, error: { message?: string } | null) => {
 
 /** Monta o `LeadRecord` a partir da linha crua + catálogos já carregados. */
 export const decorateLead = (
-  row: any,
+  row: DecoratableLead,
   sourceLabels: Map<string, string>,
   brokerNames: Map<string, string>,
-): LeadRecord => ({
-  ...row,
-  name: row.full_name,
-  whatsapp: row.phone || "",
-  source:
-    (row.source_id ? sourceLabels.get(row.source_id) : null) ||
-    row.utm_source ||
-    "",
-  broker_name: row.assigned_to ? brokerNames.get(row.assigned_to) || null : null,
-  form_name: row.form_id || null,
-  form_answers: row.raw_payload?.fields || {},
-  tracking: row.raw_payload || {},
-  stage_changed_at: row.updated_at || row.created_at,
-});
+): LeadRecord => {
+  // A API sempre entrega a linha inteira; o formato parcial mantém os helpers
+  // puros fáceis de exercitar com fixtures pequenas.
+  const complete = row as LeadRow;
+  const payload = asRecord(complete.raw_payload);
+  return {
+    ...complete,
+    raw_payload: complete.raw_payload == null ? null : payload,
+    name: complete.full_name,
+    whatsapp: complete.phone || "",
+    source:
+      (complete.source_id ? sourceLabels.get(complete.source_id) : null) ||
+      complete.utm_source ||
+      "",
+    broker_name: complete.assigned_to ? brokerNames.get(complete.assigned_to) || null : null,
+    form_name: complete.form_id || null,
+    form_answers: asRecord(payload.fields),
+    tracking: payload,
+    stage_changed_at: complete.updated_at || complete.created_at,
+  };
+};
 
 export type LeadSource = {
   id: string;
@@ -243,13 +258,13 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   asError("profiles", profilesRes.error);
 
   const sourceLabels = new Map<string, string>(
-    (sourcesRes.data || []).map((row: any) => [row.id, row.label]),
+    (sourcesRes.data || []).map((row) => [row.id, row.label]),
   );
   const brokerNames = new Map<string, string>(
-    (profilesRes.data || []).map((row: any) => [row.id, row.full_name]),
+    (profilesRes.data || []).map((row) => [row.id, row.full_name]),
   );
 
-  return (leadsRes.data || []).map((row: any) =>
+  return (leadsRes.data || []).map((row) =>
     decorateLead(row, sourceLabels, brokerNames),
   );
 }
@@ -419,7 +434,7 @@ export type LeadEvent = {
   actor_name: string | null;
   from_value: string | null;
   to_value: string | null;
-  detail: Record<string, any> | null;
+  detail: Record<string, unknown> | null;
   created_at: string;
   description: string;
 };
@@ -450,12 +465,13 @@ export const describeLeadEvent = (
     kind: string;
     from_value?: string | null;
     to_value?: string | null;
-    detail?: Record<string, any> | null;
+    detail?: Record<string, unknown> | null;
   },
   names: Map<string, string> = new Map(),
 ): string => {
   const base = EVENT_LABELS[row.kind] || row.kind;
-  const reason = row.detail?.reason ? RELEASE_REASONS[row.detail.reason] || row.detail.reason : null;
+  const detailReason = typeof row.detail?.reason === "string" ? row.detail.reason : null;
+  const reason = detailReason ? RELEASE_REASONS[detailReason] || detailReason : null;
 
   switch (row.kind) {
     case "stage_changed":
@@ -485,14 +501,18 @@ export async function listLeadEvents(leadId: string): Promise<LeadEvent[]> {
   asError("profiles", profilesRes.error);
 
   const names = new Map<string, string>(
-    (profilesRes.data || []).map((row: any) => [row.id, row.full_name]),
+    (profilesRes.data || []).map((row) => [row.id, row.full_name]),
   );
 
-  return (eventsRes.data || []).map((row: any) => ({
-    ...row,
-    actor_name: row.actor_id ? names.get(row.actor_id) || null : null,
-    description: describeLeadEvent(row, names),
-  }));
+  return (eventsRes.data || []).map((row) => {
+    const detail = row.detail == null ? null : asRecord(row.detail);
+    return {
+      ...row,
+      detail,
+      actor_name: row.actor_id ? names.get(row.actor_id) || null : null,
+      description: describeLeadEvent({ ...row, detail }, names),
+    };
+  });
 }
 
 export type LeadComment = {
@@ -517,10 +537,10 @@ export async function listLeadComments(leadId: string): Promise<LeadComment[]> {
   asError("profiles", profilesRes.error);
 
   const names = new Map<string, string>(
-    (profilesRes.data || []).map((row: any) => [row.id, row.full_name]),
+    (profilesRes.data || []).map((row) => [row.id, row.full_name]),
   );
 
-  return (commentsRes.data || []).map((row: any) => ({
+  return (commentsRes.data || []).map((row) => ({
     ...row,
     // Autor real do comentário — não o usuário que está olhando a tela.
     author_name: (row.author_id && names.get(row.author_id)) || "Autor removido",
@@ -608,7 +628,7 @@ export async function listTimeoutReleasesToday(): Promise<Map<string, number>> {
   asError("lead_assignments", error);
 
   const counts = new Map<string, number>();
-  for (const row of (data || []) as any[]) {
+  for (const row of data || []) {
     counts.set(row.profile_id, (counts.get(row.profile_id) || 0) + 1);
   }
   return counts;

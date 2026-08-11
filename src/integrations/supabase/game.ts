@@ -35,9 +35,18 @@ export type RankingRow = {
   season_id: string;
   profile_id: string;
   full_name: string;
+  avatar_url: string | null;
+  active: boolean;
   points: number;
   sales: number;
+  vgv: number;
   breakdown: Record<string, number> | null;
+  team_id: string | null;
+  team_name: string | null;
+  manager_id: string | null;
+  manager_name: string | null;
+  director_id: string | null;
+  director_name: string | null;
 };
 
 export type SeasonResultRow = {
@@ -99,9 +108,7 @@ export async function listSeasons(): Promise<GameSeason[]> {
 
 export async function listRanking(seasonId: string): Promise<RankingRow[]> {
   const { data, error } = await supabase
-    .from("game_ranking")
-    .select("season_id,profile_id,full_name,points,sales,breakdown")
-    .eq("season_id", seasonId)
+    .rpc("visible_game_ranking", { p_season_id: seasonId })
     .order("points", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as RankingRow[];

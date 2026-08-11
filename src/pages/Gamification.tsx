@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect, useCallback } from 'react';
-import { PipelineDeal, Broker } from '@/types/crm';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
-import { listLegacyDeals, listPeople } from '@/integrations/supabase/newSchema';
 import { motion } from "framer-motion";
 import {
   closeGameSeason,
@@ -39,13 +36,6 @@ const EVENT_LABELS: Record<string, string> = {
   distrato: 'Distrato/Queda',
 };
 type ScoringConfig = Record<string, number>;
-
-// Directors (3 directorships)
-const DIRECTORS = [
-  { id: 'dir1', name: 'André Martins', directorship: 'Diretoria A', teams: ['Alpha'] },
-  { id: 'dir2', name: 'Paula Ferreira', directorship: 'Diretoria B', teams: ['Beta'] },
-  { id: 'dir3', name: 'Lucas Andrade', directorship: 'Diretoria C', teams: ['Gamma'] },
-];
 
 interface GameRecord {
   id: string;
@@ -79,25 +69,28 @@ interface BrokerScore {
 /**
  * Monta as linhas da tela a partir do ranking do servidor.
  *
- * Os pontos vêm de `game_ranking` (agregação de `game_events`), não de um
+ * Os pontos vêm de `visible_game_ranking` (agregação de `game_events`), não de um
  * cálculo sobre `deals`: o cálculo no cliente dependia de pesos em `useState`,
  * então cada usuário podia ver um ranking diferente e nada era auditável.
  */
-function buildScores(brokers: Broker[], ranking: RankingRow[], deals: PipelineDeal[]): BrokerScore[] {
-  return brokers
-    .filter((b) => b.active)
-    .map((broker) => {
-      const row = ranking.find((r) => r.profile_id === broker.id);
-      const breakdown = row?.breakdown ?? {};
-      const brokerDeals = deals.filter((d) => d.broker1 === broker.name || d.broker2 === broker.name);
+function buildScores(
+  ranking: RankingRow[],
+): BrokerScore[] {
+  return ranking
+    .filter((row) => row.active)
+    .map((row) => {
+      const breakdown = row.breakdown ?? {};
       return {
-        brokerId: broker.id,
-        brokerName: broker.name,
-        team: broker.team || 'Default',
-        vendas: row?.sales ?? 0,
-        // VGV não é evento de jogo: continua vindo dos negócios.
-        vgv: brokerDeals.reduce((s, d) => s + (d.deal_value || 0), 0),
-        points: row?.points ?? 0,
+        brokerId: row.profile_id,
+        brokerName: row.full_name,
+        team: row.team_name || 'Sem equipe',
+        managerId: row.manager_id ?? undefined,
+        managerName: row.manager_name ?? undefined,
+        directorshipId: row.director_id ?? undefined,
+        directorship: row.director_name ?? undefined,
+        vendas: row.sales,
+        vgv: Number(row.vgv),
+        points: row.points,
         breakdown: {
           incompletos: Number(breakdown.incompleto_com_doc ?? 0),
           esteiras: Number(breakdown.esteira ?? 0),
@@ -131,45 +124,10 @@ export default function Gamification() {
   const { toast } = useToast();
   const isAdmin = role === 'admin';
 
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const fetchRealData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [people, dealRows] = await Promise.all([
-        listPeople(),
-        listLegacyDeals(),
-      ]);
-
-      const mappedBrokers: Broker[] = people
-        .filter((person) => person.roles.includes("broker"))
-        .map((person) => ({
-        id: person.id,
-        name: person.name,
-        active: person.active,
-        monthly_sales: 0,
-        monthly_vgv: 0,
-        team: person.team,
-      }));
-
-      setBrokers(mappedBrokers);
-      setDeals(dealRows);
-    } catch (error) {
-      console.error('Error fetching game data:', error);
-      toast({ title: "Erro ao carregar dados do Game", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchRealData();
-  }, [fetchRealData]);
 
   const [closedGames, setClosedGames] = useState<GameRecord[]>([]);
   const [rules, setRules] = useState<ScoringRule[]>([]);
@@ -183,21 +141,26 @@ export default function Gamification() {
 
   /** Temporada corrente, regras vigentes, ranking e histórico congelado. */
   const fetchGameState = useCallback(async () => {
+    setLoading(true);
     try {
       const current = await getCurrentSeasonId();
 
-      const [effectiveRules, allSeasons] = await Promise.all([
+      const [effectiveRules, allSeasons, currentRanking] = await Promise.all([
         listEffectiveScoringRules(current),
         listSeasons(),
+        current ? listRanking(current) : Promise.resolve([]),
       ]);
       setRules(effectiveRules);
       const asMap = Object.fromEntries(effectiveRules.map((r) => [r.event_code, r.points]));
       setScoring(asMap);
       setPendingScoring(asMap);
 
-      setRanking(current ? await listRanking(current) : []);
+      setRanking(currentRanking);
 
       // Temporadas fechadas trazem o ranking congelado em game_season_results.
+      // Nome, equipe e diretoria vêm do escopo atual — o resultado
+      // numérico é o congelado; só a identificação é resolvida na leitura.
+      const currentById = new Map(currentRanking.map((row) => [row.profile_id, row]));
       const closed = allSeasons.filter((s) => s.closed_at);
       const records = await Promise.all(
         closed.map(async (s) => {
@@ -208,21 +171,28 @@ export default function Gamification() {
             label: s.label,
             closed: true,
             closedAt: s.closed_at ?? undefined,
-            scores: results.map((r) => ({
-              brokerId: r.profile_id,
-              brokerName: brokers.find(b => b.id === r.profile_id)?.name ?? '—',
-              team: 'Default',
-              vendas: r.sales,
-              vgv: Number(r.vgv),
-              points: r.points,
-              breakdown: {
-                incompletos: Number(r.breakdown?.incompleto_com_doc ?? 0),
-                esteiras: Number(r.breakdown?.esteira ?? 0),
-                aprovados: Number(r.breakdown?.aprovado ?? 0),
-                vendas: Number(r.breakdown?.venda ?? 0),
-                distratos: Number(r.breakdown?.distrato ?? 0),
-              },
-            })) as BrokerScore[],
+            scores: results.filter((r) => currentById.has(r.profile_id)).map((r) => {
+              const person = currentById.get(r.profile_id);
+              return {
+                brokerId: r.profile_id,
+                brokerName: person?.full_name ?? '—',
+                team: person?.team_name || 'Sem equipe',
+                managerId: person?.manager_id ?? undefined,
+                managerName: person?.manager_name ?? undefined,
+                directorshipId: person?.director_id ?? undefined,
+                directorship: person?.director_name ?? undefined,
+                vendas: r.sales,
+                vgv: Number(r.vgv),
+                points: r.points,
+                breakdown: {
+                  incompletos: Number(r.breakdown?.incompleto_com_doc ?? 0),
+                  esteiras: Number(r.breakdown?.esteira ?? 0),
+                  aprovados: Number(r.breakdown?.aprovado ?? 0),
+                  vendas: Number(r.breakdown?.venda ?? 0),
+                  distratos: Number(r.breakdown?.distrato ?? 0),
+                },
+              };
+            }) as BrokerScore[],
           };
         }),
       );
@@ -230,14 +200,16 @@ export default function Gamification() {
     } catch (error) {
       console.error('Falha ao carregar o estado do jogo:', error);
       toast({ title: 'Erro ao carregar a gamificação', variant: 'destructive' });
+    } finally {
+      setLoading(false);
     }
   }, [toast]);
 
   useEffect(() => { void fetchGameState(); }, [fetchGameState]);
 
   const currentScores = useMemo(
-    () => buildScores(brokers, ranking, deals),
-    [brokers, ranking, deals],
+    () => buildScores(ranking),
+    [ranking],
   );
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const closedGame = closedGames.find(g => g.month === selectedMonth);
@@ -285,14 +257,23 @@ export default function Gamification() {
       opts.push({ value: currentMonthKey, label: getMonthLabel(now) + ' (ativo)', closed: false });
     }
     return opts.sort((a, b) => b.value.localeCompare(a.value));
-  }, [closedGames, currentMonthKey]);
+  }, [closedGames, currentMonthKey, now]);
 
   const top3General = scores.slice(0, 3);
 
-  const directorshipRankings = DIRECTORS.map(dir => {
-    const dirScores = scores.filter(s => s.directorship === dir.directorship).sort((a, b) => b.points - a.points);
-    return { ...dir, top3: dirScores.slice(0, 3), all: dirScores };
-  });
+  // Diretorias reais: agrupa o placar pelos director_id das equipes.
+  const directorshipRankings = useMemo(() => {
+    const byDir = new Map<string, { id: string; name: string; all: BrokerScore[] }>();
+    scores.forEach(s => {
+      if (!s.directorshipId) return;
+      const cur = byDir.get(s.directorshipId) ?? { id: s.directorshipId, name: s.directorship || '—', all: [] };
+      cur.all.push(s);
+      byDir.set(s.directorshipId, cur);
+    });
+    return Array.from(byDir.values())
+      .map(d => ({ ...d, all: [...d.all].sort((a, b) => b.points - a.points) }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }, [scores]);
 
   const managerRankings = useMemo(() => {
     const grouped: Record<string, { manager: string; scores: BrokerScore[] }> = {};
@@ -489,11 +470,17 @@ export default function Gamification() {
           </h2>
           <p className="text-sm text-muted-foreground">Premiação toda segunda-feira — Top 3 de cada diretoria</p>
 
+          {directorshipRankings.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma diretoria configurada — defina o diretor de cada equipe em Equipes.
+            </p>
+          )}
+
           {directorshipRankings.map(dir => (
             <Card key={dir.id} className="glass">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" /> {dir.directorship} — {dir.name}
+                  <Users className="h-4 w-4 text-primary" /> Diretoria {dir.name}
                 </CardTitle>
               </CardHeader>
               <CardContent>

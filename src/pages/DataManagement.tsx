@@ -96,6 +96,7 @@ export default function DataManagement() {
 
   return (
     <div className="space-y-4 max-w-5xl mx-auto">
+      <h1 className="text-2xl font-bold">Gestão de dados</h1>
       <Tabs defaultValue="leadfy" className="w-full">
         <TabsList className="bg-transparent border-b border-border/40 rounded-none w-full justify-start gap-4 h-auto p-0">
           {[["leadfy", "Leadfy"], ["marketing", "Marketing"]].map(([v, l]) => (

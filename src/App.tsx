@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "rea
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { permissionForPath } from "@/lib/routePermissions";
 import { UpdateNotifier } from "@/components/UpdateNotifier";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 const DashboardSwitcher = lazy(() => import("@/pages/DashboardSwitcher"));
@@ -35,7 +36,9 @@ const SdrModule = lazy(() => import("@/pages/SdrModule"));
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
-const bypassAuth = import.meta.env.VITE_BYPASS_AUTH === "true";
+// Ferramenta de dev: variável VITE_ vai para o bundle de produção, então o
+// bypass só vale em build de desenvolvimento — em produção é sempre falso.
+const bypassAuth = import.meta.env.DEV && import.meta.env.VITE_BYPASS_AUTH === "true";
 
 function RequireAuth() {
   const { session, loading } = useAuth();
@@ -90,6 +93,7 @@ const App = () => (
           {/* Uma rota por chunk: o bundle único de 2 MB obrigava a baixar todas
               as telas para abrir o login. O fallback é curto de propósito —
               chunk de rota carrega em milissegundos na rede da loja. */}
+          <ErrorBoundary>
           <Suspense fallback={<div className="min-h-screen grid place-items-center bg-background text-sm text-muted-foreground">Carregando...</div>}>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -131,6 +135,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
+          </ErrorBoundary>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

@@ -44,6 +44,7 @@ export default function CcaPipeline() {
   const [deals, setDeals] = useState<CcaDeal[]>([]);
   const [stages, setStages] = useState<CcaStage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showStageSettings, setShowStageSettings] = useState(false);
   const [editingStage, setEditingStage] = useState<CcaStage | null>(null);
   const [newStageName, setNewStageName] = useState("");
@@ -72,7 +73,7 @@ export default function CcaPipeline() {
       const casesData = casesResponse.data || [];
       setStages(stagesData);
 
-      const mapped: CcaDeal[] = casesData.map((cca: any) => {
+      const mapped: CcaDeal[] = casesData.map((cca) => {
         const deal = dealRows.find((row) => row.id === cca.deal_id);
         const stage =
           stagesData.find((row) => row.id === cca.stage_id) ||
@@ -94,8 +95,11 @@ export default function CcaPipeline() {
         };
       });
       setDeals(mapped);
+      setLoadError(null);
     } catch (err) {
       console.error("Error fetching CCA data:", err);
+      // Sem isto a esteira sumia em silêncio e parecia vazia.
+      setLoadError(err instanceof Error ? err.message : "erro inesperado");
     } finally {
       setLoading(false);
     }
@@ -143,15 +147,20 @@ export default function CcaPipeline() {
 
       let mainStageUpdate: DealStage | null = null;
       if (targetStage.status === "approved") mainStageUpdate = "approved";
-      
+
       if (mainStageUpdate) {
         const stageId = await getStageIdByCode(mainStageUpdate);
-        await supabase
+        const { error: dealError } = await supabase
           .from("deals")
           .update({ stage_id: stageId })
           .eq('id', actionDeal.dealId);
-        
-        toast({ title: "Status do Pipeline atualizado" });
+
+        if (dealError) {
+          // O caso CCA já avançou; avisar que o negócio principal ficou para trás.
+          toast({ variant: "destructive", title: "Pipeline não atualizado", description: dealError.message });
+        } else {
+          toast({ title: "Status do Pipeline atualizado" });
+        }
       }
 
       setDeals(prev => prev.map(d =>
@@ -185,7 +194,7 @@ export default function CcaPipeline() {
             color: newStageColor,
             position: stages.length + 1,
             status: "under_review",
-          } as any);
+          });
         if (error) throw error;
         toast({ title: "Estágio criado" });
       }
@@ -194,6 +203,11 @@ export default function CcaPipeline() {
       fetchData();
     } catch (err) {
       console.error("Error saving stage:", err);
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar estágio",
+        description: err instanceof Error ? err.message : "tente novamente",
+      });
     }
   };
 
@@ -206,6 +220,11 @@ export default function CcaPipeline() {
       fetchData();
     } catch (err) {
       console.error("Error deleting stage:", err);
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir estágio",
+        description: err instanceof Error ? err.message : "tente novamente",
+      });
     }
   };
 
@@ -220,6 +239,15 @@ export default function CcaPipeline() {
           <Settings className="h-4 w-4 mr-2" /> Gerenciar Estágios
         </Button>
       </div>
+
+      {loadError && (
+        <Card className="border-destructive/40">
+          <CardContent className="p-4 text-sm flex items-center justify-between gap-2">
+            <span>Não foi possível carregar a esteira CCA: {loadError}</span>
+            <Button size="sm" variant="outline" onClick={fetchData}>Tentar novamente</Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {stages.map(s => (

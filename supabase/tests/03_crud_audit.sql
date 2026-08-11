@@ -50,6 +50,10 @@ begin
   insert into public.work_shifts (code,label,checkin_start,distribution_start,checkout_time,position)
   values ('aud24','Aud 24h','00:00','00:00','23:59',-1);
 
+  -- A 0020 passou a exigir IP identificado no check-in.
+  insert into public.allowed_ips (label, ip_range)
+  values ('Loja Aud', '203.0.113.0/24');
+
   -- O teste 02 fecha o mês corrente e roda no mesmo banco. Reabrimos aqui para
   -- que este arquivo não dependa da ordem de execução.
   delete from public.closed_months where period = public.month_start(current_date);
@@ -149,8 +153,21 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role','authenticated')::text, false);
 
-  v_row := public.perform_checkin(null);
-  perform pg_temp.check2(v_row.id is not null, 'check-in via RPC funciona');
+  -- Regressão da 0020: sem IP identificado a trava de loja não existe, então a
+  -- RPC recusa — chamada direta pelo client não contorna a validação por IP.
+  begin
+    v_row := public.perform_checkin(null);
+    raise exception 'FALHOU: check-in sem IP deveria ser recusado';
+  exception when others then
+    if sqlerrm like 'IP não identificado%' then
+      raise notice '  ok  check-in sem IP é recusado';
+    else
+      raise;
+    end if;
+  end;
+
+  v_row := public.perform_checkin('203.0.113.10'::inet);
+  perform pg_temp.check2(v_row.id is not null, 'check-in via RPC funciona com IP liberado');
 
   v_row := public.perform_checkout();
   perform pg_temp.check2(v_row.checked_out_at is not null,

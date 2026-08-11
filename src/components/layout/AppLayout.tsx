@@ -65,7 +65,10 @@ export default function AppLayout() {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 flex items-center border-b border-border/30 glass px-5 sticky top-0 z-30 relative">
             <SidebarTrigger className="mr-3 md:hidden" />
-            <h1 className="text-[13px] font-semibold tracking-tight text-foreground mr-6">{pageTitle}</h1>
+            {/* Rótulo da barra, não o título do documento: cada tela tem o
+                próprio <h1>. Dois <h1> na página quebram a navegação por
+                cabeçalho do leitor de tela. */}
+            <p className="text-[13px] font-semibold tracking-tight text-foreground mr-6">{pageTitle}</p>
 
             <div className="hidden md:flex items-center gap-2 mx-auto overflow-hidden">
               {headerScores.map((s, i) => (

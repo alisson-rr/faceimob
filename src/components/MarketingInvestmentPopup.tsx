@@ -29,7 +29,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
     first.setDate(1);
     const from = first.toISOString().slice(0, 10);
     const { data } = await supabase.from("marketing_investments").select("amount").gte("period", from);
-    const t = (data || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+    const t = (data || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
     setMonthTotal(t);
   };
 

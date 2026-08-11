@@ -5,15 +5,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { KeyRound, Link2, Copy, Plus, RefreshCw, Eye, EyeOff, Users, ShieldCheck, Globe, ExternalLink } from "lucide-react";
+import { KeyRound, Link2, Copy, Plus, RefreshCw, Eye, EyeOff, Users, ShieldCheck, Globe, ExternalLink, type LucideIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
-import { listPeople } from "@/integrations/supabase/newSchema";
+import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
+import type { Database } from "@/integrations/supabase/types";
 import { slugify } from "@/lib/utils";
 
 const randomPin = () => Math.floor(100000 + Math.random() * 900000).toString();
 const managerSlug = (teamName: string) => slugify(teamName.replace(/^equipe\s+/i, ""));
 const DAILY_PUBLIC_ORIGIN = "https://crm-faceimob.com.br";
+type TeamRow = Pick<Database["public"]["Tables"]["teams"]["Row"], "id" | "name" | "active">;
+type TeamLink = Pick<Database["public"]["Tables"]["public_links"]["Row"], "id" | "team_id" | "slug" | "active" | "pin_hash">;
+type DailyTeam = TeamRow & { public_link: TeamLink | null };
+type PublicDirector = PersonRecord & { public_slug: string };
 
 export default function AdminDailyTeams() {
   const qc = useQueryClient();
@@ -28,8 +33,8 @@ export default function AdminDailyTeams() {
         supabase.from("teams").select("id,name,active").order("name"),
         supabase.from("public_links").select("id,team_id,slug,active,pin_hash").eq("kind", "daily_team"),
       ]);
-      const links = new Map(((linkRows as any[]) || []).map(link => [link.team_id, link]));
-      return ((teamRows as any[]) || []).map(team => ({ ...team, public_link: links.get(team.id) || null }));
+      const links = new Map((linkRows ?? []).flatMap(link => link.team_id ? [[link.team_id, link] as const] : []));
+      return (teamRows ?? []).map(team => ({ ...team, public_link: links.get(team.id) || null }));
     },
   });
 
@@ -48,8 +53,8 @@ export default function AdminDailyTeams() {
       const directors = people.filter(person => person.active && person.roles.includes("director"));
       const { data: links } = await supabase.from("public_links")
         .select("id,director_id,slug").eq("kind", "director_checkpoint");
-      const byDirector = new Map(((links as any[]) || []).map(link => [link.director_id, link]));
-      const result = [];
+      const byDirector = new Map((links ?? []).flatMap(link => link.director_id ? [[link.director_id, link] as const] : []));
+      const result: PublicDirector[] = [];
       for (const director of directors) {
         let link = byDirector.get(director.id);
         if (!link) {
@@ -67,8 +72,8 @@ export default function AdminDailyTeams() {
     },
   });
 
-  const activeIps = (ips ?? []).filter((r: any) => r.active).length;
-  const withPin = (teams ?? []).filter((t: any) => t.public_link?.active && t.public_link?.pin_hash).length;
+  const activeIps = (ips ?? []).filter((row) => row.active).length;
+  const withPin = (teams ?? []).filter((team) => team.public_link?.active && team.public_link?.pin_hash).length;
 
   const createTeam = async () => {
     if (!newTeam.trim()) return;
@@ -84,7 +89,7 @@ export default function AdminDailyTeams() {
 
   const regeneratePin = async (teamId: string) => {
     const pin = randomPin();
-    const team = (teams ?? []).find((row: any) => row.id === teamId) as any;
+    const team = (teams ?? []).find((row) => row.id === teamId);
     let linkId = team?.public_link?.id;
     if (!linkId) {
       const { data, error } = await supabase.from("public_links").insert({
@@ -104,8 +109,8 @@ export default function AdminDailyTeams() {
     qc.invalidateQueries({ queryKey: ["daily-teams"] });
   };
 
-  const linkFor = (t: any) => `${DAILY_PUBLIC_ORIGIN}/daily/${t.public_link?.slug || managerSlug(t.name)}?v=public`;
-  const adminLinkFor = (t: any) => `${window.location.origin}/daily/${t.public_link?.slug || managerSlug(t.name)}`;
+  const linkFor = (team: DailyTeam) => `${DAILY_PUBLIC_ORIGIN}/daily/${team.public_link?.slug || managerSlug(team.name)}?v=public`;
+  const adminLinkFor = (team: DailyTeam) => `${window.location.origin}/daily/${team.public_link?.slug || managerSlug(team.name)}`;
   const copy = (text: string, label = "Link") => {
     navigator.clipboard.writeText(text);
     toast({ title: `${label} copiado` });
@@ -138,7 +143,7 @@ export default function AdminDailyTeams() {
       {/* Linhas densas de equipes */}
       <Card className="border-border/50">
         <CardContent className="p-0 divide-y divide-border/40">
-          {(teams ?? []).map((t: any) => {
+          {(teams ?? []).map((t) => {
             const hasPin = !!t.public_link?.active && !!t.public_link?.pin_hash;
             const plain: string | null = generatedPins[t.id] ?? null;
             const isShown = revealed[t.id];
@@ -197,7 +202,7 @@ export default function AdminDailyTeams() {
             <div className="text-xs font-semibold flex items-center gap-2"><Link2 className="h-3.5 w-3.5 text-primary" /> Links públicos — Diretores (Checkpoint Semanal)</div>
           </div>
           <div className="divide-y divide-border/40">
-            {(directors ?? []).map((d: any) => {
+            {(directors ?? []).map((d) => {
               const dlink = `${DAILY_PUBLIC_ORIGIN}/diretor/${d.public_slug}`;
               return (
                 <div key={d.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
@@ -230,9 +235,9 @@ export default function AdminDailyTeams() {
             <Link to="/admin/allowed-ips" className="text-[10px] text-primary hover:underline">Ver todos</Link>
           </div>
           <div className="divide-y divide-border/40">
-            {(ips ?? []).slice(0, 6).map((r: any) => (
+            {(ips ?? []).slice(0, 6).map((r) => (
               <div key={r.id} className="flex items-center gap-2 px-3 py-1.5 text-[11px]">
-                <code className="font-mono">{r.ip_range}</code>
+                <code className="font-mono">{String(r.ip_range)}</code>
                 <span className="text-muted-foreground truncate flex-1">{r.label || "—"}</span>
                 <Badge variant={r.active ? "default" : "secondary"} className="text-[9px] h-4 px-1">{r.active ? "ativo" : "inativo"}</Badge>
               </div>
@@ -247,7 +252,7 @@ export default function AdminDailyTeams() {
   );
 }
 
-function KpiMini({ icon: Icon, label, value, tone }: { icon: any; label: string; value: number; tone: string }) {
+function KpiMini({ icon: Icon, label, value, tone }: { icon: LucideIcon; label: string; value: number; tone: string }) {
   return (
     <Card className="border-border/50">
       <CardContent className="px-3 py-2 flex items-center gap-2">

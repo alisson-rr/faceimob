@@ -316,6 +316,7 @@ declare
   c2    uuid := '00000000-0000-0000-0000-00000000aa05';
   v_dev  uuid;
   v_lead uuid;
+  v_lead_com_doc uuid;
   v_deal public.deals;
   v_soma numeric;
 begin
@@ -329,28 +330,30 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', chefe::text, 'role', 'authenticated')::text, false);
 
-  -- Sem documento, a conversão tem que falhar.
-  begin
-    v_deal := public.convert_lead_to_deal(v_lead, v_dev);
-    raise exception 'FALHOU: converteu lead sem documento anexado';
-  exception
-    when raise_exception then
-      if position('documento' in sqlerrm) = 0 then raise; end if;
-      raise notice '  ok  conversão sem documento é rejeitada';
-  end;
+  -- Decisão 10/08: o negócio nasce sem documento; a trava fica no envio para
+  -- conferência do gerente, coberto em 12_document_review.sql.
+  v_deal := public.convert_lead_to_deal(v_lead, v_dev);
+  perform pg_temp.check(v_deal.id is not null, 'conversão sem documento funciona');
+  perform pg_temp.check(
+    not exists (select 1 from public.deal_documents where deal_id = v_deal.id),
+    'negócio recém-convertido pode começar sem anexos');
 
-  -- Com documento, passa.
+  -- Anexos que já existiam no lead continuam sendo promovidos.
+  insert into public.leads (full_name, phone, status, assigned_to)
+  values ('Cliente Convertido Com Documento', '11900000021', 'in_progress', c1)
+  returning id into v_lead_com_doc;
+
   insert into public.lead_attachments
     (lead_id, document_type_id, storage_path, original_name, stored_name, uploaded_by)
-  values (v_lead,
+  values (v_lead_com_doc,
           (select id from public.document_types where code = 'rg_cpf'),
-          'leads/' || v_lead || '/rg.pdf', 'rg.pdf', 'rg-cliente.pdf', c1);
+          'leads/' || v_lead_com_doc || '/rg.pdf', 'rg.pdf', 'rg-cliente.pdf', c1);
 
-  v_deal := public.convert_lead_to_deal(v_lead, v_dev, null, 'Apto 101', 500000);
+  v_deal := public.convert_lead_to_deal(v_lead_com_doc, v_dev, null, 'Apto 101', 500000);
   perform pg_temp.check(v_deal.id is not null, 'conversão com documento funciona');
 
   perform pg_temp.check(
-    (select status from public.leads where id = v_lead) = 'converted',
+    (select status from public.leads where id = v_lead_com_doc) = 'converted',
     'lead marcado como convertido');
 
   perform pg_temp.check(

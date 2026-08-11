@@ -98,7 +98,9 @@ export default function AdminPermissions() {
 
   const toggleStage = async (role: NewAppRole, stageId: string, field: "enter" | "exit") => {
     const k = key(role, stageId);
-    const currentValue = stageGrants[k] ?? { enter: true, exit: true };
+    // Linha ausente no banco = negado (mesma base da exibição). Partir de
+    // true aqui gravava concessão não intencional no primeiro clique.
+    const currentValue = stageGrants[k] ?? { enter: false, exit: false };
     const next = { ...currentValue, [field]: !currentValue[field] };
     setSaving(k + field);
     setStageGrants((prev) => ({ ...prev, [k]: next }));

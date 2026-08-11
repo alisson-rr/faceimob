@@ -33,5 +33,9 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   "/admin/meta-ads": "menu.admin_lead_automation",
 };
 
-export const permissionForPath = (pathname: string): string | undefined =>
-  ROUTE_PERMISSION[pathname];
+export const permissionForPath = (pathname: string): string | undefined => {
+  // React Router casa rota ignorando caixa e barra final; sem normalizar aqui,
+  // '/Pipeline' ou '/pipeline/' renderizam a tela sem passar pelo guard.
+  const normalized = pathname.toLowerCase().replace(/\/+$/, "") || "/";
+  return ROUTE_PERMISSION[normalized];
+};

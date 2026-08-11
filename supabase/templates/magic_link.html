@@ -1,0 +1,28 @@
+<!--
+  Template do e-mail de acesso.
+
+  A tela de login (`Login.tsx`) pede um código de SEIS DÍGITOS — é o que a ata
+  de 23/07 pediu ("fluxo de autenticação via código enviado por e-mail"). O
+  template padrão do Supabase manda só `{{ .ConfirmationURL }}`, ou seja, um
+  link: quem recebesse aquele e-mail não teria código nenhum para digitar e a
+  tela viraria um beco sem saída.
+
+  `{{ .Token }}` é o código. O link fica como alternativa, não como único
+  caminho.
+
+  Este arquivo vale para o stack local (via config.toml). No projeto remoto o
+  mesmo conteúdo precisa estar em Authentication → Emails → Magic Link, ou ser
+  publicado com `supabase config push`.
+-->
+<h2>Seu código de acesso</h2>
+
+<p>Use o código abaixo para entrar no FACEIMOB:</p>
+
+<p style="font-size:28px;font-weight:bold;letter-spacing:6px;margin:16px 0">{{ .Token }}</p>
+
+<p>O código vale por pouco tempo e só pode ser usado uma vez.</p>
+
+<p style="color:#666;font-size:12px">
+  Prefere entrar direto? <a href="{{ .ConfirmationURL }}">Clique aqui</a>.
+  Se você não pediu este acesso, ignore esta mensagem.
+</p>

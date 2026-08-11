@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,59 +34,71 @@ export default function Checkpoint() {
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [targetsMap, setTargetsMap] = useState<Record<string, Targets>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [teamFilter, setTeamFilter] = useState<string>("all");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const [t, b, tg] = await Promise.all([
-      supabase.from("teams").select("id,name,manager_id,director_id").eq("active", true),
-      listPeople(),
-      supabase.from("funnel_targets").select("scope,team_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct").order("effective_from", { ascending: false }),
-    ]);
-    setTeams(((t.data as any[]) || []).map(team => ({ ...team, display_name: team.name })));
-    setBrokers((b as any[]).filter(person => person.active));
-    const tmap: Record<string, Targets> = {};
-    (tg.data || []).forEach((r: any) => {
-      const key = r.scope === "global" ? "__global__" : r.team_id;
-      if (!key || tmap[key]) return;
-      tmap[key] = {
-        analise_enviada_pct: Number(r.lead_to_analysis_pct),
-        aprovada_pct: Number(r.analysis_to_approval_pct),
-        venda_pct: Number(r.approval_to_sale_pct),
-      };
-    });
-    setTargetsMap(tmap);
+    setLoadError(null);
+    // Sem try/finally, qualquer exceção deixava o "Carregando…" para sempre.
+    try {
+      const [t, b, tg] = await Promise.all([
+        supabase.from("teams").select("id,name,manager_id,director_id").eq("active", true),
+        listPeople(),
+        supabase.from("funnel_targets").select("scope,team_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct").order("effective_from", { ascending: false }),
+      ]);
+      if (t.error) throw t.error;
+      if (tg.error) throw tg.error;
+      setTeams((t.data ?? []).map(team => ({ ...team, display_name: team.name })));
+      setBrokers(b.filter(person => person.active));
+      const tmap: Record<string, Targets> = {};
+      (tg.data ?? []).forEach((r) => {
+        const key = r.scope === "global" ? "__global__" : r.team_id;
+        if (!key || tmap[key]) return;
+        tmap[key] = {
+          analise_enviada_pct: Number(r.lead_to_analysis_pct),
+          aprovada_pct: Number(r.analysis_to_approval_pct),
+          venda_pct: Number(r.approval_to_sale_pct),
+        };
+      });
+      setTargetsMap(tmap);
 
-    const from = format(weekStart, "yyyy-MM-dd");
-    const to = format(weekEnd, "yyyy-MM-dd");
-    const { data: rep } = await supabase
-      .from("daily_reports")
-      .select("id,team_id,report_date")
-      .gte("report_date", from)
-      .lte("report_date", to);
-    setReports((rep as any) || []);
-    const ids = (rep || []).map((r: any) => r.id);
-    if (ids.length) {
-      const { data: ent } = await supabase
-        .from("daily_entries")
-        .select("report_id,leads,calls,doc_collections,analyses_sent,analyses_approved,sales")
-        .in("report_id", ids);
-      setEntries(((ent as any[]) || []).map(entry => ({
-        report_id: entry.report_id,
-        leads: entry.leads,
-        ligacoes: entry.calls,
-        coleta_docs: entry.doc_collections,
-        analises: entry.analyses_sent,
-        aprovados: entry.analyses_approved,
-        vendas: entry.sales,
-      })));
-    } else {
-      setEntries([]);
+      const from = format(weekStart, "yyyy-MM-dd");
+      const to = format(weekEnd, "yyyy-MM-dd");
+      const { data: rep, error: repError } = await supabase
+        .from("daily_reports")
+        .select("id,team_id,report_date")
+        .gte("report_date", from)
+        .lte("report_date", to);
+      if (repError) throw repError;
+      setReports(rep ?? []);
+      const ids = (rep ?? []).map((r) => r.id);
+      if (ids.length) {
+        const { data: ent, error: entError } = await supabase
+          .from("daily_entries")
+          .select("report_id,leads,calls,doc_collections,analyses_sent,analyses_approved,sales")
+          .in("report_id", ids);
+        if (entError) throw entError;
+        setEntries((ent ?? []).map(entry => ({
+          report_id: entry.report_id,
+          leads: entry.leads,
+          ligacoes: entry.calls,
+          coleta_docs: entry.doc_collections,
+          analises: entry.analyses_sent,
+          aprovados: entry.analyses_approved,
+          vendas: entry.sales,
+        })));
+      } else {
+        setEntries([]);
+      }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "erro inesperado");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
+  }, [weekEnd, weekStart]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [weekStart.getTime()]);
+  useEffect(() => { void load(); }, [load]);
 
   const myBroker = useMemo(() => brokers.find(b => b.user_id === user?.id) || null, [brokers, user]);
 
@@ -97,7 +109,7 @@ export default function Checkpoint() {
     }
     if (role === "manager" && myBroker) return teams.filter(t => t.manager_id === myBroker.id);
     return [];
-  }, [role, teams, brokers, myBroker]);
+  }, [role, teams, myBroker]);
 
   const filteredTeams = teamFilter === "all" ? visibleTeams : visibleTeams.filter(t => t.id === teamFilter);
 
@@ -146,6 +158,11 @@ export default function Checkpoint() {
 
       {loading ? (
         <div className="p-10 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Carregando…</div>
+      ) : loadError ? (
+        <Card className="p-8 text-center text-sm text-muted-foreground space-y-3">
+          <p>Não foi possível carregar o checkpoint: {loadError}</p>
+          <Button size="sm" variant="outline" onClick={load}>Tentar novamente</Button>
+        </Card>
       ) : filteredTeams.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">Nenhuma equipe visível para você.</Card>
       ) : (

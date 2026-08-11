@@ -33,3 +33,11 @@ electron-release/
 .env
 .env.*
 !.env.example
+
+# E2E (Playwright)
+e2e/.auth/
+playwright-report/
+test-results/
+/demo/
+
+crm-faceimob-main --OLD

@@ -9,7 +9,16 @@ const corsHeaders = {
 
 async function sendTemplate(phoneNumberId: string, token: string, to: string, template: string, lang: string, params: string[]) {
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
-  const body: any = {
+  const body: {
+    messaging_product: string;
+    to: string;
+    type: string;
+    template: {
+      name: string;
+      language: { code: string };
+      components?: Array<{ type: string; parameters: Array<{ type: string; text: string }> }>;
+    };
+  } = {
     messaging_product: 'whatsapp',
     to,
     type: 'template',
@@ -36,17 +45,62 @@ async function sendTemplate(phoneNumberId: string, token: string, to: string, te
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    // Cofre primeiro, secret da function como fallback (ver _shared/secrets.ts).
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+    // Disparo em massa para clientes reais não é para qualquer autenticado:
+    // exige o mesmo papel que a RLS de remarketing_lists exige para escrever.
+    const authClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: req.headers.get('Authorization') || '' } } },
+    );
+    const { data: authData, error: authErr } = await authClient.auth.getUser();
+    if (authErr || !authData.user) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { data: roles } = await supabase
+      .from('user_roles').select('role').eq('profile_id', authData.user.id);
+    const allowed = (roles || []).some((role: { role: string }) => ['admin', 'marketing', 'sdr'].includes(role.role));
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: 'Papel sem permissão para disparo em massa' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Só revela/configura integrações depois de autenticar e autorizar o papel.
     const token = await requireSecret('META_WHATSAPP_ACCESS_TOKEN');
     const phoneId = await requireSecret('META_WHATSAPP_PHONE_NUMBER_ID');
 
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const { list_id, test_phone } = await req.json();
     if (!list_id) throw new Error('list_id obrigatório');
 
     const { data: list, error: lErr } = await supabase
       .from('remarketing_lists').select('*').eq('id', list_id).single();
     if (lErr) throw lErr;
+
+    // Trava de concorrência: dois cliques em "Disparar" não podem rodar o
+    // mesmo lote duas vezes. O update condicional só passa para UMA chamada.
+    if (!test_phone) {
+      if (list.status === 'running') {
+        return new Response(JSON.stringify({ error: 'Disparo já em andamento para esta lista' }), {
+          status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const { data: lock, error: lockErr } = await supabase
+        .from('remarketing_lists')
+        .update({ status: 'running' })
+        .eq('id', list_id)
+        .neq('status', 'running')
+        .select('id');
+      if (lockErr) throw lockErr;
+      if (!lock || lock.length === 0) {
+        return new Response(JSON.stringify({ error: 'Disparo já em andamento para esta lista' }), {
+          status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     if (!list.template_id) throw new Error('Configure um template aprovado na lista');
     const { data: templateRow, error: templateErr } = await supabase
@@ -66,7 +120,6 @@ Deno.serve(async (req) => {
       .eq('list_id', list_id).eq('status', 'pending').limit(500);
 
     let sent = 0, failed = 0;
-    await supabase.from('remarketing_lists').update({ status: 'running' }).eq('id', list_id);
     for (const c of (contacts || [])) {
       const phone = (c.phone || '').replace(/\D/g, '');
       if (!phone) { failed++; continue; }
@@ -92,9 +145,9 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ sent, failed, total: contacts?.length || 0 }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('sdr-whatsapp-broadcast error:', e);
-    return new Response(JSON.stringify({ error: e.message }), {
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : 'Erro desconhecido' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

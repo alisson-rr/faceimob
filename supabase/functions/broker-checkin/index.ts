@@ -14,12 +14,20 @@ const json = (body: unknown, status = 200) =>
   });
 
 function clientIp(req: Request): string | null {
-  const forwarded =
-    req.headers.get("x-forwarded-for") ||
-    req.headers.get("cf-connecting-ip") ||
-    req.headers.get("x-real-ip") ||
-    "";
-  return forwarded.split(",")[0]?.trim() || null;
+  // Medição na hospedagem (10/08/2026): o x-forwarded-for chega como
+  // "cliente, cliente, 13.248.114.x" — o ÚLTIMO salto é o Global Accelerator
+  // da AWS (e rotaciona), nunca o cliente. Os headers que o gateway
+  // sobrescreve são sb-forwarded-for e cf-connecting-ip: forja testada com
+  // os três headers e todas descartadas antes de chegar à função.
+  // O último salto do x-forwarded-for fica só para o stack local, onde é o
+  // Kong quem anexa o IP real e os headers acima não existem.
+  const confiavel =
+    req.headers.get("sb-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("cf-connecting-ip")?.trim();
+  if (confiavel) return confiavel;
+  const forwarded = req.headers.get("x-forwarded-for") || "";
+  const last = forwarded.split(",").map((s) => s.trim()).filter(Boolean).pop();
+  return last || req.headers.get("x-real-ip")?.trim() || null;
 }
 
 Deno.serve(async (req) => {

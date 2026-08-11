@@ -1,5 +1,13 @@
 project_id = "mcmqgxvtwegtptfseqvw"
 
+# A tela de login pede um código de 6 dígitos; o template padrão do Supabase
+# manda só o link. Sem `{{ .Token }}` no corpo, o usuário recebe um e-mail sem
+# nenhum código para digitar. Vale para o stack local — no remoto, o mesmo
+# conteúdo em Authentication → Emails → Magic Link (ou `supabase config push`).
+[auth.email.template.magic_link]
+subject = "Seu código de acesso — FACEIMOB"
+content_path = "./supabase/templates/magic_link.html"
+
 [db.seed]
 enabled = true
 sql_paths = [
@@ -8,6 +16,9 @@ sql_paths = [
   "./seeds/020_catalog_distribution_sdr.sql",
   "./seeds/030_commercial_operation.sql",
   "./seeds/040_reports_game_workspace.sql",
+  # Resolve o testador. Arquivo próprio porque o seeder manda cada arquivo como
+  # um lote só: criar e usar o mesmo objeto num arquivo falha ao preparar.
+  "./seeds/045_tester_ref.sql",
   # Fase 5: cenários de teste. O rollback (059) NÃO entra aqui — é manual.
   "./seeds/050_test_scenarios.sql",
 ]
@@ -28,4 +39,9 @@ verify_jwt = false
 # do Supabase. Com verify_jwt ligado o gateway responde 401 antes de a function
 # rodar, e a plataforma de voz nunca chegaria ao nosso código.
 [functions.voice-ai-webhook]
+verify_jwt = false
+
+# Mensagens da WhatsApp Cloud API (respostas de lead ao SDR/remarketing).
+# Autentica pela assinatura X-Hub-Signature-256 da Meta, não por JWT.
+[functions.whatsapp-inbound-webhook]
 verify_jwt = false

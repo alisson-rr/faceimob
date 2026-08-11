@@ -1,5 +1,5 @@
-import { useState, useRef } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useCallback, useEffect, useState } from "react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,10 +8,12 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { X, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DEAL_STAGES, type PipelineDeal, type DealStage, type DealHistoryEntry } from "@/types/crm";
-import { mockDevelopers, mockProjects, mockBrokers, mockManagers } from "@/data/mockData";
+import { DEAL_STAGES, type PipelineDeal, type DealStage } from "@/types/crm";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { listDeveloperProjects } from "@/integrations/supabase/leads";
+import type { PersonRecord } from "@/integrations/supabase/newSchema";
 import DealDocumentUpload from "@/components/DealDocumentUpload";
 import TaskPanel from "@/components/TaskPanel";
 import DealHistoryPanel from "@/components/DealHistoryPanel";
@@ -22,7 +24,10 @@ interface Props {
   deal: PipelineDeal;
   open: boolean;
   onClose: () => void;
-  onSave: (deal: PipelineDeal) => void;
+  onSave: (deal: PipelineDeal) => Promise<void>;
+  onReviewChanged?: () => void | Promise<void>;
+  people: PersonRecord[];
+  developers: { id: string; name: string }[];
 }
 
 const statusOptions = [
@@ -48,33 +53,124 @@ const CCA_FIELDS: { key: string; label: string; type?: "select"; options?: strin
   { key: "prazo", label: "Prazo" },
 ];
 
-export default function DealDetailModal({ deal, open, onClose, onSave }: Props) {
+type DealComment = {
+  id: string;
+  actor_id: string | null;
+  to_value: string | null;
+  created_at: string;
+};
+
+export default function DealDetailModal({ deal, open, onClose, onSave, onReviewChanged, people, developers }: Props) {
   const { role } = useAuth();
   const [tab, setTab] = useState<"detalhes" | "anexos" | "agenda" | "historico" | "cca">("detalhes");
   const [form, setForm] = useState<PipelineDeal>({ ...deal });
   const [newNote, setNewNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [comments, setComments] = useState<DealComment[]>([]);
+  const [sendingNote, setSendingNote] = useState(false);
+  const [ccaCaseId, setCcaCaseId] = useState<string | null>(null);
   const [ccaData, setCcaData] = useState<Record<string, string>>({});
 
   const isAdmin = role === "admin";
   const canEditCca = role === "cca" || role === "admin";
 
-  const set = (key: keyof PipelineDeal, val: any) => setForm(p => ({ ...p, [key]: val }));
+  const brokerOptions = people.filter((p) => p.active && p.roles.includes("broker"));
+  const managerOptions = people.filter(
+    (p) => p.active && (p.roles.includes("manager") || p.roles.includes("director")),
+  );
+  const personName = (id: string | null) =>
+    id ? people.find((p) => p.id === id)?.name ?? "—" : "sistema";
 
-  const addHistoryEntry = () => {
-    if (!newNote.trim()) return;
-    const entry: DealHistoryEntry = {
-      id: String(Date.now()),
-      user_name: "Usuário Atual",
-      text: newNote.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    setForm(p => ({ ...p, history: [...(p.history || []), entry] }));
-    setNewNote("");
+  const set = (key: keyof PipelineDeal, val: unknown) => setForm(p => ({ ...p, [key]: val }));
+
+  const loadProjects = useCallback(async (developerName: string) => {
+    const dev = developers.find((d) => d.name === developerName);
+    if (!dev) return setProjects([]);
+    try {
+      setProjects(await listDeveloperProjects(dev.id));
+    } catch {
+      setProjects([]);
+    }
+  }, [developers]);
+
+  useEffect(() => {
+    if (form.developer) void loadProjects(form.developer);
+  }, [form.developer, loadProjects]);
+
+  // Comentários manuais do histórico (deal_history, kind = 'comment').
+  const loadComments = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("deal_history")
+      .select("id,actor_id,to_value,created_at")
+      .eq("deal_id", deal.id)
+      .eq("kind", "comment")
+      .order("created_at", { ascending: true });
+    if (!error) setComments((data as DealComment[]) || []);
+  }, [deal.id]);
+
+  // Análise de crédito (aba CCA) — existe a partir da entrada na esteira.
+  const loadCca = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("cca_cases")
+      .select("id,analysis")
+      .eq("deal_id", deal.id)
+      .maybeSingle();
+    if (!error && data) {
+      setCcaCaseId(data.id);
+      setCcaData((data.analysis as Record<string, string>) || {});
+    }
+  }, [deal.id]);
+
+  useEffect(() => {
+    void loadComments();
+    void loadCca();
+  }, [loadComments, loadCca]);
+
+  const addHistoryEntry = async () => {
+    const body = newNote.trim();
+    if (!body) return;
+    setSendingNote(true);
+    try {
+      const { error } = await supabase.rpc("add_deal_comment", {
+        p_deal_id: deal.id,
+        p_body: body,
+      });
+      if (error) throw new Error(error.message);
+      setNewNote("");
+      await loadComments();
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Comentário não gravado",
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setSendingNote(false);
+    }
   };
 
-  const handleSave = () => {
-    onSave(form);
-    toast({ title: "Alterações salvas" });
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(form);
+      if (canEditCca && ccaCaseId) {
+        const { error } = await supabase
+          .from("cca_cases")
+          .update({ analysis: ccaData })
+          .eq("id", ccaCaseId);
+        if (error) throw new Error(`análise CCA: ${error.message}`);
+      }
+      toast({ title: "Alterações salvas" });
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar",
+        description: e instanceof Error ? e.message : "As alterações não foram gravadas.",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const tabs = [
@@ -85,9 +181,21 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
     { key: "cca" as const, label: "CCA" },
   ];
 
+  // O Status 2 gravado pode ser qualquer um dos 34 rótulos; garante que o valor
+  // atual aparece no select mesmo fora da lista curta.
+  const statusChoices = form.status && !statusOptions.includes(form.status)
+    ? [form.status, ...statusOptions]
+    : statusOptions;
+
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent className="glass-strong max-w-2xl max-h-[92vh] overflow-y-auto p-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-300 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-bottom-4">
+        {/* O diálogo abre direto nas abas, sem faixa de título. O leitor de tela
+            precisa de um nome mesmo assim — sem ele o Radix reclama e o usuário
+            ouve só "diálogo". */}
+        <DialogTitle className="sr-only">
+          {form.client ? `Negócio de ${form.client}` : "Detalhe do negócio"}
+        </DialogTitle>
         {/* Tabs */}
         <div className="flex items-center justify-between border-b border-border px-4 pt-4 pb-0">
           <div className="flex gap-4">
@@ -116,7 +224,7 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
                 <div>
                   <label className="text-[10px] text-primary font-bold uppercase">Mês</label>
                   <Input
-                    value={form.month_base || format(new Date(), "dd/MM/yyyy")}
+                    value={form.month_base || format(new Date(), "MM/yyyy")}
                     onChange={e => isAdmin && set("month_base", e.target.value)}
                     disabled={!isAdmin}
                     className={cn("mt-1 text-xs", !isAdmin && "opacity-60")}
@@ -155,7 +263,7 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
 
               {/* Dates info */}
               <div className="flex gap-4 text-[10px] text-muted-foreground">
-                <span>Data Criação: <strong className="text-foreground">{form.created_at}</strong></span>
+                <span>Data Criação: <strong className="text-foreground">{form.created_at?.slice(0, 10)}</strong></span>
                 <span>Data Base Atual: <strong className="text-foreground">{form.month_base || format(new Date(), "MM/yyyy")}</strong></span>
               </div>
 
@@ -237,16 +345,16 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-[10px] text-warning font-bold uppercase">Construtora (Obrigatório)</label>
-                  <Select value={form.developer} onValueChange={v => set("developer", v)}>
+                  <Select value={form.developer} onValueChange={v => { set("developer", v); set("project", ""); }}>
                     <SelectTrigger className="mt-1 text-xs"><SelectValue placeholder="Escolher" /></SelectTrigger>
-                    <SelectContent>{mockDevelopers.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                    <SelectContent>{developers.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
                   <label className="text-[10px] text-warning font-bold uppercase">Empreendimento (Obrigatório)</label>
-                  <Select value={form.project} onValueChange={v => set("project", v)}>
-                    <SelectTrigger className="mt-1 text-xs"><SelectValue placeholder="Escolher" /></SelectTrigger>
-                    <SelectContent>{mockProjects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                  <Select value={form.project} onValueChange={v => set("project", v)} disabled={!form.developer}>
+                    <SelectTrigger className="mt-1 text-xs"><SelectValue placeholder={projects.length ? "Escolher" : "Sem empreendimentos"} /></SelectTrigger>
+                    <SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <Field label="Bloco | Unidade (Opcional)" value={form.unit} onChange={v => set("unit", v)} />
@@ -254,16 +362,16 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
 
               {/* Brokers */}
               <div className="grid grid-cols-3 gap-3">
-                <BrokerSelect label="Corretor 1 (Obrigatório)" value={form.broker1} onChange={v => set("broker1", v)} />
-                <BrokerSelect label="Corretor 2 (opcional)" value={form.broker2} onChange={v => set("broker2", v)} optional />
-                <BrokerSelect label="Corretor 3 (opcional)" value={form.broker3} onChange={v => set("broker3", v)} optional />
+                <PersonSelect label="Corretor 1 (Obrigatório)" value={form.broker1} onChange={v => set("broker1", v)} options={brokerOptions} />
+                <PersonSelect label="Corretor 2 (opcional)" value={form.broker2} onChange={v => set("broker2", v)} options={brokerOptions} optional />
+                <PersonSelect label="Corretor 3 (opcional)" value={form.broker3} onChange={v => set("broker3", v)} options={brokerOptions} optional />
               </div>
 
               {/* Managers */}
               <div className="grid grid-cols-3 gap-3">
-                <ManagerSelect label="Gerente 1 (Obrigatório)" value={form.manager1} onChange={v => set("manager1", v)} />
-                <ManagerSelect label="Gerente 2 (opcional)" value={form.manager2} onChange={v => set("manager2", v)} optional />
-                <ManagerSelect label="Gerente 3 (opcional)" value={form.manager3} onChange={v => set("manager3", v)} optional />
+                <PersonSelect label="Gerente 1 (Obrigatório)" value={form.manager1} onChange={v => set("manager1", v)} options={managerOptions} />
+                <PersonSelect label="Gerente 2 (opcional)" value={form.manager2} onChange={v => set("manager2", v)} options={managerOptions} optional />
+                <PersonSelect label="Gerente 3 (opcional)" value={form.manager3} onChange={v => set("manager3", v)} options={managerOptions} optional />
               </div>
 
               {/* VGV */}
@@ -278,23 +386,23 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
                 </div>
                 <div>
                   <label className="text-[10px] text-success font-bold uppercase">VGV Líquido</label>
-                  <Input type="number" value={form.vgv_liquido || 0} onChange={e => set("vgv_liquido", Number(e.target.value))} className="mt-1 text-xs" />
+                  <Input type="number" value={form.vgv_liquido || 0} readOnly disabled className="mt-1 text-xs opacity-60" title="Calculado pelo sistema a partir do VGV bruto e do desconto" />
                 </div>
               </div>
 
-              {/* Histórico */}
+              {/* Histórico (comentários manuais — deal_history) */}
               <div className="border-t border-border pt-3">
                 <p className="text-sm font-bold text-destructive mb-2">Histórico</p>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {(form.history || []).map(entry => (
+                  {comments.map(entry => (
                     <div key={entry.id} className="text-xs">
-                      <span className="text-muted-foreground">{format(new Date(entry.timestamp), "dd/MM")} </span>
-                      <span className="font-bold text-primary">{entry.user_name} :</span>
-                      <p className="text-muted-foreground ml-2">{entry.text}</p>
+                      <span className="text-muted-foreground">{format(new Date(entry.created_at), "dd/MM")} </span>
+                      <span className="font-bold text-primary">{personName(entry.actor_id)} :</span>
+                      <p className="text-muted-foreground ml-2">{entry.to_value}</p>
                     </div>
                   ))}
-                  {(!form.history || form.history.length === 0) && (
-                    <p className="text-xs text-muted-foreground">Nenhum histórico ainda.</p>
+                  {comments.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Nenhum comentário ainda.</p>
                   )}
                 </div>
                 <div className="flex gap-2 mt-2">
@@ -305,7 +413,7 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
                     rows={2}
                     className="text-xs flex-1"
                   />
-                  <Button size="icon" onClick={addHistoryEntry} className="self-end h-9 w-9">
+                  <Button size="icon" onClick={addHistoryEntry} disabled={sendingNote || !newNote.trim()} className="self-end h-9 w-9">
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
@@ -324,12 +432,12 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
                   <label className="text-[10px] font-bold uppercase flex items-center gap-1">
                     Qual o STATUS da venda?
                     <span className="text-destructive text-[8px]">Off</span>
-                    <Switch checked={form.status === "OFF"} onCheckedChange={v => set("status", v ? "OFF" : "Ativo")} className="ml-1" />
+                    <Switch checked={form.status === "OFF"} onCheckedChange={v => set("status", v ? "OFF" : "PROPOSTA")} className="ml-1" />
                   </label>
                   <Select value={form.status} onValueChange={v => set("status", v)}>
                     <SelectTrigger className="mt-1 text-xs border-success/50"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {statusOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      {statusChoices.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -342,7 +450,8 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
               <DealDocumentUpload
                 dealId={form.id}
                 clientName={form.client}
-                dealCode={form.id}
+                dealCode={form.code || form.id}
+                onReviewChanged={onReviewChanged}
               />
             </div>
           )}
@@ -372,6 +481,12 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
                   </Badge>
                 )}
               </div>
+              {!ccaCaseId && (
+                <p className="text-xs text-muted-foreground border border-dashed border-border rounded-lg p-3">
+                  Este negócio ainda não entrou na esteira do CCA. Os campos são
+                  habilitados quando o negócio for enviado para análise.
+                </p>
+              )}
               <div className="grid grid-cols-3 gap-3">
                 {CCA_FIELDS.map(f => (
                   <div key={f.key}>
@@ -380,9 +495,9 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
                       <Select
                         value={ccaData[f.key] || ""}
                         onValueChange={v => canEditCca && setCcaData(p => ({ ...p, [f.key]: v }))}
-                        disabled={!canEditCca}
+                        disabled={!canEditCca || !ccaCaseId}
                       >
-                        <SelectTrigger className={cn("mt-1 text-xs", !canEditCca && "opacity-60")}>
+                        <SelectTrigger className={cn("mt-1 text-xs", (!canEditCca || !ccaCaseId) && "opacity-60")}>
                           <SelectValue placeholder="Escolher" />
                         </SelectTrigger>
                         <SelectContent>
@@ -393,9 +508,9 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
                       <Input
                         value={ccaData[f.key] || ""}
                         onChange={e => canEditCca && setCcaData(p => ({ ...p, [f.key]: e.target.value }))}
-                        disabled={!canEditCca}
+                        disabled={!canEditCca || !ccaCaseId}
                         placeholder={`Inserir ${f.label}`}
-                        className={cn("mt-1 text-xs", !canEditCca && "opacity-60")}
+                        className={cn("mt-1 text-xs", (!canEditCca || !ccaCaseId) && "opacity-60")}
                       />
                     )}
                   </div>
@@ -408,7 +523,7 @@ export default function DealDetailModal({ deal, open, onClose, onSave }: Props) 
         {/* Footer */}
         <div className="flex justify-center gap-3 p-4 border-t border-border">
           <Button variant="outline" onClick={onClose} className="text-destructive border-destructive/50 hover:bg-destructive/10">Cancelar</Button>
-          <Button onClick={handleSave}>Confirmar Alterações</Button>
+          <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Confirmar Alterações"}</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -438,30 +553,23 @@ function SelectField({ label, value, onChange, options }: { label: string; value
   );
 }
 
-function BrokerSelect({ label, value, onChange, optional }: { label: string; value?: string; onChange: (v: string) => void; optional?: boolean }) {
+function PersonSelect({ label, value, onChange, options, optional }: {
+  label: string;
+  value?: string;
+  onChange: (v: string) => void;
+  options: PersonRecord[];
+  optional?: boolean;
+}) {
+  const currentIsOutsideCatalog = Boolean(value) && !options.some((person) => person.name === value);
   return (
     <div>
       <label className="text-[10px] text-muted-foreground font-bold uppercase">{label}</label>
       <Select value={value || (optional ? "none" : "")} onValueChange={v => onChange(v === "none" ? "" : v)}>
-        <SelectTrigger className="mt-1 text-xs"><SelectValue placeholder={optional ? "Inserir Corretor" : "Escolher"} /></SelectTrigger>
+        <SelectTrigger className="mt-1 text-xs"><SelectValue placeholder={optional ? "Nenhum" : "Escolher"} /></SelectTrigger>
         <SelectContent>
           {optional && <SelectItem value="none">Nenhum</SelectItem>}
-          {mockBrokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
-function ManagerSelect({ label, value, onChange, optional }: { label: string; value?: string; onChange: (v: string) => void; optional?: boolean }) {
-  return (
-    <div>
-      <label className="text-[10px] text-muted-foreground font-bold uppercase">{label}</label>
-      <Select value={value || (optional ? "none" : "")} onValueChange={v => onChange(v === "none" ? "" : v)}>
-        <SelectTrigger className="mt-1 text-xs"><SelectValue placeholder={optional ? "Inserir Gerente" : "Escolher"} /></SelectTrigger>
-        <SelectContent>
-          {optional && <SelectItem value="none">Nenhum</SelectItem>}
-          {mockManagers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}
+          {currentIsOutsideCatalog && <SelectItem value={value!}>{value}</SelectItem>}
+          {options.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
         </SelectContent>
       </Select>
     </div>

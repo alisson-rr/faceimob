@@ -46,6 +46,14 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
   },
   {
     provider: "meta",
+    label: "app_secret",
+    title: "Meta — app secret (assinatura do webhook)",
+    envName: "META_APP_SECRET",
+    usedBy: "meta-ads-webhook, whatsapp-inbound-webhook",
+    help: "Valida a assinatura X-Hub-Signature-256 de cada evento. Sem ele cadastrado, o webhook aceita POST sem prova de origem.",
+  },
+  {
+    provider: "meta",
     label: "whatsapp_access_token",
     title: "WhatsApp Cloud API — token",
     envName: "META_WHATSAPP_ACCESS_TOKEN",

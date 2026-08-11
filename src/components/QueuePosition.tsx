@@ -12,9 +12,11 @@ import { getMyQueues, type QueueEntry } from "@/integrations/supabase/checkin";
  * quem estoura o prazo cai para o fim — e é exatamente isso que este indicador
  * deixa visível. Sem ele, o corretor perde a vez e não entende por quê.
  *
- * Atualiza por realtime em `lead_assignments`: toda entrada e saída da roleta
- * passa por lá, então é o gatilho certo — mais barato que polling e não perde
- * evento como um intervalo fixo perderia.
+ * Atualiza por realtime em `lead_assignments` (toda entrada e saída da roleta
+ * passa por lá) e em `checkins` — é a presença que coloca o corretor na fila.
+ * Sem o segundo gatilho, quem acabava de bater ponto continuava lendo "fora da
+ * fila agora" até recarregar a página, bem no momento em que mais quer a
+ * confirmação de que está valendo.
  */
 export default function QueuePosition() {
   const { user } = useAuth();
@@ -41,6 +43,7 @@ export default function QueuePosition() {
     const channel = supabase
       .channel(`queue-position-${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, () => void load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${user.id}` }, () => void load())
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [user?.id, load]);
@@ -68,17 +71,34 @@ export default function QueuePosition() {
       {queues.map((q) => {
         const mine = q.entries.findIndex((e) => e.profile_id === user?.id);
         return (
-          <div key={q.groupId} className="flex items-center gap-2 flex-wrap">
-            <ListOrdered className="h-4 w-4 text-primary shrink-0" />
-            <span className="text-xs font-medium">{q.groupName}:</span>
-            {mine >= 0 ? (
-              <Badge variant="default" className="text-[11px]">
-                você é o {q.entries[mine].queue_position}º de {q.entries.length}
-              </Badge>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                fora da fila agora — é preciso estar em check-in no turno
-              </span>
+          <div key={q.groupId} className="space-y-2 rounded-md border border-border/40 p-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <ListOrdered className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-xs font-medium">{q.groupName}:</span>
+              {mine >= 0 ? (
+                <Badge variant="default" className="text-[11px]">
+                  você é o {q.entries[mine].queue_position}º de {q.entries.length}
+                </Badge>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  fora da fila agora — é preciso estar em check-in no turno
+                </span>
+              )}
+            </div>
+            {q.entries.length > 0 && (
+              <ol aria-label={`Fila ${q.groupName}`} className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                {q.entries.map((entry) => {
+                  const isMine = entry.profile_id === user?.id;
+                  return (
+                    <li key={entry.profile_id} className="flex items-center gap-2 rounded bg-secondary/40 px-2 py-1 text-xs">
+                      <Badge variant={isMine ? "default" : "outline"} className="min-w-7 justify-center px-1.5">
+                        {entry.queue_position}º
+                      </Badge>
+                      <span className="truncate">{entry.full_name}{isMine ? " (você)" : ""}</span>
+                    </li>
+                  );
+                })}
+              </ol>
             )}
           </div>
         );

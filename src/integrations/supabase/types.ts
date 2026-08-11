@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -277,6 +282,7 @@ export type Database = {
       cca_cases: {
         Row: {
           agency_name: string | null
+          analysis: Json
           analyst_id: string | null
           created_at: string
           deal_id: string
@@ -291,6 +297,7 @@ export type Database = {
         }
         Insert: {
           agency_name?: string | null
+          analysis?: Json
           analyst_id?: string | null
           created_at?: string
           deal_id: string
@@ -305,6 +312,7 @@ export type Database = {
         }
         Update: {
           agency_name?: string | null
+          analysis?: Json
           analyst_id?: string | null
           created_at?: string
           deal_id?: string
@@ -791,6 +799,7 @@ export type Database = {
           created_at: string
           deal_id: string
           id: string
+          ordinal: number
           profile_id: string
           role: string
           share_pct: number
@@ -800,6 +809,7 @@ export type Database = {
           created_at?: string
           deal_id: string
           id?: string
+          ordinal?: number
           profile_id: string
           role: string
           share_pct?: number
@@ -809,6 +819,7 @@ export type Database = {
           created_at?: string
           deal_id?: string
           id?: string
+          ordinal?: number
           profile_id?: string
           role?: string
           share_pct?: number
@@ -838,6 +849,12 @@ export type Database = {
           created_by: string | null
           developer_id: string | null
           discount_pct: number
+          document_review_reason: string | null
+          document_review_requested_at: string | null
+          document_review_requested_by: string | null
+          document_review_status: string
+          document_reviewed_at: string | null
+          document_reviewed_by: string | null
           id: string
           lead_id: string | null
           lead_origin: string | null
@@ -848,6 +865,7 @@ export type Database = {
           project_id: string | null
           stage_entered_at: string
           stage_id: string
+          status_detail: string | null
           unit: string | null
           updated_at: string
           vgv_gross: number | null
@@ -860,6 +878,12 @@ export type Database = {
           created_by?: string | null
           developer_id?: string | null
           discount_pct?: number
+          document_review_reason?: string | null
+          document_review_requested_at?: string | null
+          document_review_requested_by?: string | null
+          document_review_status?: string
+          document_reviewed_at?: string | null
+          document_reviewed_by?: string | null
           id?: string
           lead_id?: string | null
           lead_origin?: string | null
@@ -870,6 +894,7 @@ export type Database = {
           project_id?: string | null
           stage_entered_at?: string
           stage_id: string
+          status_detail?: string | null
           unit?: string | null
           updated_at?: string
           vgv_gross?: number | null
@@ -882,6 +907,12 @@ export type Database = {
           created_by?: string | null
           developer_id?: string | null
           discount_pct?: number
+          document_review_reason?: string | null
+          document_review_requested_at?: string | null
+          document_review_requested_by?: string | null
+          document_review_status?: string
+          document_reviewed_at?: string | null
+          document_reviewed_by?: string | null
           id?: string
           lead_id?: string | null
           lead_origin?: string | null
@@ -892,6 +923,7 @@ export type Database = {
           project_id?: string | null
           stage_entered_at?: string
           stage_id?: string
+          status_detail?: string | null
           unit?: string | null
           updated_at?: string
           vgv_gross?: number | null
@@ -2098,11 +2130,13 @@ export type Database = {
       }
       notifications: {
         Row: {
+          attempts: number
           body: string | null
           channel: Database["public"]["Enums"]["notification_channel"]
           created_at: string
           id: string
           kind: string
+          last_error: string | null
           link: string | null
           profile_id: string
           read_at: string | null
@@ -2110,11 +2144,13 @@ export type Database = {
           title: string
         }
         Insert: {
+          attempts?: number
           body?: string | null
           channel?: Database["public"]["Enums"]["notification_channel"]
           created_at?: string
           id?: string
           kind: string
+          last_error?: string | null
           link?: string | null
           profile_id: string
           read_at?: string | null
@@ -2122,11 +2158,13 @@ export type Database = {
           title: string
         }
         Update: {
+          attempts?: number
           body?: string | null
           channel?: Database["public"]["Enums"]["notification_channel"]
           created_at?: string
           id?: string
           kind?: string
+          last_error?: string | null
           link?: string | null
           profile_id?: string
           read_at?: string | null
@@ -3097,7 +3135,27 @@ export type Database = {
       }
     }
     Functions: {
+      add_deal_comment: {
+        Args: { p_body: string; p_deal_id: string }
+        Returns: {
+          actor_id: string | null
+          created_at: string
+          deal_id: string
+          detail: Json | null
+          from_value: string | null
+          id: string
+          kind: string
+          to_value: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "deal_history"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       assign_lead: { Args: { p_lead_id: string }; Returns: string }
+      assign_queued_leads: { Args: never; Returns: number }
       auth_led_team_ids: { Args: never; Returns: string[] }
       auth_roles: {
         Args: never
@@ -3117,6 +3175,7 @@ export type Database = {
       }
       can_edit_deal: { Args: { p_deal_id: string }; Returns: boolean }
       can_enter_stage: { Args: { target_stage: string }; Returns: boolean }
+      can_exit_stage: { Args: { target_stage: string }; Returns: boolean }
       can_read_all: { Args: never; Returns: boolean }
       can_see_deal: { Args: { p_deal_id: string }; Returns: boolean }
       can_see_profile: { Args: { target: string }; Returns: boolean }
@@ -3183,6 +3242,7 @@ export type Database = {
         Args: { p_close_month?: boolean; p_next_label?: string }
         Returns: string
       }
+      close_month_and_season: { Args: { p_period?: string }; Returns: Json }
       convert_lead_to_deal: {
         Args: {
           p_developer_id: string
@@ -3198,6 +3258,12 @@ export type Database = {
           created_by: string | null
           developer_id: string | null
           discount_pct: number
+          document_review_reason: string | null
+          document_review_requested_at: string | null
+          document_review_requested_by: string | null
+          document_review_status: string
+          document_reviewed_at: string | null
+          document_reviewed_by: string | null
           id: string
           lead_id: string | null
           lead_origin: string | null
@@ -3208,6 +3274,7 @@ export type Database = {
           project_id: string | null
           stage_entered_at: string
           stage_id: string
+          status_detail: string | null
           unit: string | null
           updated_at: string
           vgv_gross: number | null
@@ -3235,6 +3302,19 @@ export type Database = {
       }
       current_game_season: { Args: never; Returns: string }
       current_shift: { Args: { at_time?: string }; Returns: string }
+      current_work_date: { Args: never; Returns: string }
+      deal_participant_names: {
+        Args: never
+        Returns: {
+          deal_id: string
+          full_name: string
+          ordinal: number
+          profile_id: string
+          role: string
+        }[]
+      }
+      dispatch_pending_notifications: { Args: never; Returns: undefined }
+      dispatch_pending_submissions: { Args: never; Returns: undefined }
       distribution_queue: {
         Args: { p_group_id: string }
         Returns: {
@@ -3246,6 +3326,10 @@ export type Database = {
         }[]
       }
       effective_attend_timeout: { Args: { group_id: string }; Returns: number }
+      get_integration_secret: {
+        Args: { p_label: string; p_provider: string }
+        Returns: string
+      }
       has_any_role: {
         Args: { targets: Database["public"]["Enums"]["app_role"][] }
         Returns: boolean
@@ -3258,6 +3342,15 @@ export type Database = {
       ip_is_allowed: {
         Args: { candidate: unknown; who?: string }
         Returns: boolean
+      }
+      import_remarketing_list: {
+        Args: {
+          p_agent_id?: string | null
+          p_contacts?: Json
+          p_name: string
+          p_template_id?: string | null
+        }
+        Returns: string
       }
       is_admin: { Args: never; Returns: boolean }
       list_integrations: {
@@ -3273,6 +3366,14 @@ export type Database = {
         }[]
       }
       manages_profile: { Args: { target: string }; Returns: boolean }
+      marketing_campaign_stats: {
+        Args: never
+        Returns: {
+          campaign_id: string
+          conversions: number
+          leads: number
+        }[]
+      }
       month_start: { Args: { d: string }; Returns: string }
       normalize_phone: { Args: { raw: string }; Returns: string }
       overdue_lead_count: { Args: { who: string }; Returns: number }
@@ -3411,8 +3512,36 @@ export type Database = {
         Returns: undefined
       }
       slugify: { Args: { txt: string }; Returns: string }
+      review_deal_documents: {
+        Args: { p_approve: boolean; p_deal_id: string; p_reason?: string }
+        Returns: Json
+      }
+      submit_deal_for_manager_review: {
+        Args: { p_deal_id: string }
+        Returns: Json
+      }
       submit_deal_for_analysis: { Args: { p_deal_id: string }; Returns: Json }
       unaccent_fallback: { Args: { txt: string }; Returns: string }
+      visible_game_ranking: {
+        Args: { p_season_id: string }
+        Returns: {
+          active: boolean
+          avatar_url: string | null
+          breakdown: Json
+          director_id: string | null
+          director_name: string | null
+          full_name: string
+          manager_id: string | null
+          manager_name: string | null
+          points: number
+          profile_id: string
+          sales: number
+          season_id: string
+          team_id: string | null
+          team_name: string | null
+          vgv: number
+        }[]
+      }
     }
     Enums: {
       app_role:
@@ -3662,4 +3791,3 @@ export const Constants = {
     },
   },
 } as const
-

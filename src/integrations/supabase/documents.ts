@@ -36,6 +36,17 @@ export type DealDocumentRecord = {
   created_at: string;
 };
 
+export type DocumentReviewStatus = "draft" | "pending" | "returned" | "approved";
+
+export type DealDocumentReview = {
+  document_review_status: DocumentReviewStatus;
+  document_review_requested_at: string | null;
+  document_review_requested_by: string | null;
+  document_reviewed_at: string | null;
+  document_reviewed_by: string | null;
+  document_review_reason: string | null;
+};
+
 export async function listDocumentTypes(): Promise<DocumentTypeRecord[]> {
   const { data, error } = await supabase
     .from("document_types")
@@ -54,6 +65,26 @@ export async function listDealDocuments(dealId: string): Promise<DealDocumentRec
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as DealDocumentRecord[];
+}
+
+export async function getDealDocumentReview(dealId: string): Promise<DealDocumentReview> {
+  const { data, error } = await supabase
+    .from("deals")
+    .select("document_review_status,document_review_requested_at,document_review_requested_by,document_reviewed_at,document_reviewed_by,document_review_reason")
+    .eq("id", dealId)
+    .single();
+  if (error) throw new Error(error.message);
+  return data as DealDocumentReview;
+}
+
+export async function listMyDealRoles(dealId: string, profileId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("deal_participants")
+    .select("role")
+    .eq("deal_id", dealId)
+    .eq("profile_id", profileId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => row.role);
 }
 
 /** Remove acento e pontuação para o nome sobreviver a qualquer sistema de
@@ -167,8 +198,8 @@ export async function signedDocumentUrl(doc: Pick<DealDocumentRecord, "storage_p
   return data.signedUrl;
 }
 
-/** Tipos exigidos que ainda não têm documento vigente. Alimenta o aviso do card
- *  no pipeline — `required_for_conversion` é lido por `submit_deal_for_analysis`. */
+/** Tipos exigidos que ainda não têm documento vigente. Alimenta o aviso antes
+ *  de `submit_deal_for_manager_review`; a conversão do lead não exige anexo. */
 export function missingRequiredTypes(
   types: DocumentTypeRecord[],
   documents: DealDocumentRecord[],
@@ -177,4 +208,26 @@ export function missingRequiredTypes(
     documents.filter((d) => d.superseded_at === null).map((d) => d.document_type_id),
   );
   return types.filter((t) => t.required_for_conversion && !present.has(t.id));
+}
+
+/** Envia o dossiê completo para um dos gerentes participantes conferir. */
+export async function submitDealForManagerReview(dealId: string): Promise<void> {
+  const { error } = await supabase.rpc("submit_deal_for_manager_review", {
+    p_deal_id: dealId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Aprova e segue ao CCA, ou devolve ao corretor com motivo obrigatório. */
+export async function reviewDealDocuments(input: {
+  dealId: string;
+  approve: boolean;
+  reason?: string;
+}): Promise<void> {
+  const { error } = await supabase.rpc("review_deal_documents", {
+    p_deal_id: input.dealId,
+    p_approve: input.approve,
+    p_reason: input.reason || undefined,
+  });
+  if (error) throw new Error(error.message);
 }

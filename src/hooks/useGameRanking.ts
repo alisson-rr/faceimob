@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  listGameRanking,
-  listPeople,
-  type PersonRecord,
-} from "@/integrations/supabase/newSchema";
+  getCurrentSeasonId,
+  listRanking,
+  type RankingRow,
+} from "@/integrations/supabase/game";
 
-// Os pesos vivem em `game_scoring_rules`; nada de constante duplicada aqui.
-export type BrokerRow = PersonRecord;
+export type BrokerRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  full_name: string;
+  avatar_url: string | null;
+  active: boolean;
+  team_id: string | null;
+  team: string;
+  manager_id: string | null;
+  manager_name: string | null;
+  director_id: string | null;
+  director_name: string | null;
+};
 
 export type ScoreRow = {
   broker: BrokerRow;
@@ -21,89 +33,66 @@ export type ScoreRow = {
 type DealLite = {
   broker1_name?: string | null;
   broker2_name?: string | null;
+  broker1?: string | null;
+  broker2?: string | null;
   stage?: string | null;
-  status?: string | null;
   active?: boolean | null;
 };
 
 export function useGameRanking(dealsInput?: DealLite[]) {
   const { role, user } = useAuth();
-  const [brokers, setBrokers] = useState<BrokerRow[]>([]);
-  const [ranking, setRanking] = useState<any[]>([]);
+  const [ranking, setRanking] = useState<RankingRow[]>([]);
 
   useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
-        const [people, rows] = await Promise.all([
-          listPeople(),
-          listGameRanking(),
-        ]);
-        setBrokers(
-          people.filter(
-            (person) => person.active && person.roles.includes("broker"),
-          ),
-        );
-        setRanking(rows);
+        const seasonId = await getCurrentSeasonId();
+        setRanking(seasonId ? await listRanking(seasonId) : []);
       } catch (error) {
         console.error("Falha ao carregar ranking:", error);
-        setBrokers([]);
         setRanking([]);
       }
     })();
   }, []);
 
+  const allScores: ScoreRow[] = useMemo(() => ranking.map((row) => {
+    const breakdown = row.breakdown || {};
+    const deals = dealsInput?.filter((deal) =>
+      deal.broker1_name === row.full_name ||
+      deal.broker2_name === row.full_name ||
+      deal.broker1 === row.full_name ||
+      deal.broker2 === row.full_name
+    ) || [];
+    return {
+      broker: {
+        id: row.profile_id,
+        user_id: row.profile_id,
+        name: row.full_name,
+        full_name: row.full_name,
+        avatar_url: row.avatar_url,
+        active: row.active,
+        team_id: row.team_id,
+        team: row.team_name || "",
+        manager_id: row.manager_id,
+        manager_name: row.manager_name,
+        director_id: row.director_id,
+        director_name: row.director_name,
+      },
+      leads: deals.filter((deal) => deal.stage === "lead").length,
+      analises: Number(breakdown.esteira || 0),
+      aprovados: Number(breakdown.aprovado || 0),
+      vendas: row.sales,
+      points: row.points,
+    };
+  }), [dealsInput, ranking]);
+
   const myBroker = useMemo(
-    () => brokers.find((b) => b.user_id === user?.id) || null,
-    [brokers, user?.id]
+    () => allScores.find((score) => score.broker.user_id === user?.id)?.broker || null,
+    [allScores, user?.id],
   );
 
-  const allScores: ScoreRow[] = useMemo(() => {
-    return brokers
-      .map((b) => {
-        const serverRow = ranking.find((row) => row.profile_id === b.id);
-        const breakdown = serverRow?.breakdown || {};
-        const fallbackDeals = dealsInput?.filter(
-          (deal: any) =>
-            deal.broker1_name === b.name ||
-            deal.broker2_name === b.name ||
-            deal.broker1 === b.name ||
-            deal.broker2 === b.name,
-        ) || [];
-        const leads = fallbackDeals.filter((deal) => deal.stage === "lead").length;
-        const analises =
-          Number(breakdown.esteira || 0) ||
-          fallbackDeals.filter(
-            (deal) =>
-              deal.stage === "under_analysis" ||
-              deal.stage === "visit_scheduled",
-          ).length;
-        const aprovados =
-          Number(breakdown.aprovado || 0) ||
-          fallbackDeals.filter(
-            (deal) => deal.stage === "approved" || deal.stage === "contract",
-          ).length;
-        const vendas =
-          Number(serverRow?.sales || breakdown.venda || 0) ||
-          fallbackDeals.filter(
-            (deal) => deal.stage === "closed" && deal.active !== false,
-          ).length;
-        const points = Number(serverRow?.points || 0);
-        return { broker: b, leads, analises, aprovados, vendas, points };
-      })
-      .sort((a, b) => b.points - a.points);
-  }, [brokers, dealsInput, ranking]);
-
-  const scoped: ScoreRow[] = useMemo(() => {
-    if (role === "admin") return allScores;
-    if (role === "director" && myBroker) {
-      return allScores.filter((s) => s.broker.director_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (role === "manager" && myBroker) {
-      return allScores.filter((s) => s.broker.manager_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (myBroker) return allScores.filter((s) => s.broker.id === myBroker.id);
-    return [];
-  }, [allScores, role, myBroker]);
+  // O servidor já devolve exatamente a casa/diretoria/equipe permitida.
+  const scoped = allScores;
 
   return { role, myBroker, allScores, scoped };
 }

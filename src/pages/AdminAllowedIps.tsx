@@ -23,7 +23,7 @@ export default function AdminAllowedIps() {
 
   const load = async () => {
     const { data } = await supabase.from("allowed_ips").select("*").order("created_at", { ascending: false });
-    setRows((data as any) || []);
+    setRows((data || []).map(row => ({ ...row, ip_range: String(row.ip_range) })));
   };
   useEffect(() => {
     load();

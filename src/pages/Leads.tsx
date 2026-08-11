@@ -18,7 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { whatsappTemplates, emailTemplates, renderTemplate } from "@/lib/automationEngine";
+import { emailTemplates, renderTemplate } from "@/lib/automationEngine";
 import {
   listLeads, listLeadSources, listAssignableBrokers, getAutomationSettings,
   createLead, createLeads, updateLead, claimLead, reassignLead,
@@ -37,6 +37,9 @@ const emptyForm = {
 
 const GESTOR_ROLES = ["admin", "director", "manager", "marketing"];
 
+/** Templates de WhatsApp geridos no módulo SDR (tabela `whatsapp_templates`). */
+type WaTemplate = { id: string; name: string; body: string };
+
 export default function Leads() {
   const { user, role } = useAuth();
   const profileId = user?.id || null;
@@ -46,6 +49,7 @@ export default function Leads() {
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [brokers, setBrokers] = useState<PersonRecord[]>([]);
   const [settings, setSettings] = useState<AutomationSettings | null>(null);
+  const [waTemplates, setWaTemplates] = useState<WaTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Redesenha os cronômetros da trava de atendimento sem recarregar dados.
@@ -92,18 +96,37 @@ export default function Leads() {
     let active = true;
     (async () => {
       setLoading(true);
-      const [leadsResult, sourcesResult, brokersResult, settingsResult] = await Promise.allSettled([
+      const [leadsResult, sourcesResult, brokersResult, settingsResult, templatesResult] = await Promise.allSettled([
         listLeads(),
         listLeadSources(),
         isGestor ? listAssignableBrokers() : Promise.resolve([] as PersonRecord[]),
         getAutomationSettings(),
+        supabase.from("whatsapp_templates").select("id,name,body").eq("active", true).order("name"),
       ]);
       if (!active) return;
       if (leadsResult.status === "fulfilled") setLeads(leadsResult.value);
       else setLoadError(leadsResult.reason?.message || "falha ao carregar leads");
+      // Falha nas cargas auxiliares deixava filtros/selects vazios em silêncio;
+      // um único toast avisa sem bloquear a lista de leads.
+      let partialFailure = false;
       if (sourcesResult.status === "fulfilled") setSources(sourcesResult.value);
+      else partialFailure = true;
       if (brokersResult.status === "fulfilled") setBrokers(brokersResult.value);
+      else partialFailure = true;
       if (settingsResult.status === "fulfilled") setSettings(settingsResult.value);
+      else partialFailure = true;
+      if (templatesResult.status === "fulfilled" && !templatesResult.value.error) {
+        setWaTemplates((templatesResult.value.data as WaTemplate[]) ?? []);
+      } else {
+        partialFailure = true;
+      }
+      if (partialFailure) {
+        toast({
+          variant: "destructive",
+          title: "Parte dos filtros não carregou",
+          description: "Origens, corretores, automação ou templates podem estar incompletos. Recarregue a página.",
+        });
+      }
       setLoading(false);
     })();
     return () => { active = false; };
@@ -309,9 +332,9 @@ export default function Leads() {
 
   const applyWhatsAppTemplate = (templateId: string) => {
     setSelectedTemplate(templateId);
-    const tpl = whatsappTemplates.find((t) => t.id === templateId);
+    const tpl = waTemplates.find((t) => t.id === templateId);
     if (tpl && whatsappOpen) {
-      setWhatsappMessage(renderTemplate(tpl.template, {
+      setWhatsappMessage(renderTemplate(tpl.body, {
         client_name: whatsappOpen.name,
         broker_name: whatsappOpen.broker_name || "Faceimob",
         project: "Nossos empreendimentos",
@@ -364,8 +387,8 @@ export default function Leads() {
         const data = new Uint8Array(ev.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
-        rows = json.map((r) => r.map((c: any) => String(c ?? "").trim()));
+        const json = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
+        rows = json.map((row) => row.map((cell) => String(cell ?? "").trim()));
       } else {
         const text = ev.target?.result as string;
         rows = text.split(/\r?\n/).map((r) => r.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
@@ -788,10 +811,16 @@ export default function Leads() {
           <div className="space-y-4">
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Template</label>
-              <Select value={selectedTemplate} onValueChange={applyWhatsAppTemplate}>
-                <SelectTrigger><SelectValue placeholder="Selecione um template" /></SelectTrigger>
-                <SelectContent>{whatsappTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
-              </Select>
+              {waTemplates.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum template cadastrado. Cadastre os templates ativos no módulo SDR IA (aba WhatsApp).
+                </p>
+              ) : (
+                <Select value={selectedTemplate} onValueChange={applyWhatsAppTemplate}>
+                  <SelectTrigger><SelectValue placeholder="Selecione um template" /></SelectTrigger>
+                  <SelectContent>{waTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
             </div>
             <Textarea value={whatsappMessage} onChange={(e) => setWhatsappMessage(e.target.value)} rows={6} placeholder="Escreva ou selecione um template..." />
             <DialogFooter>

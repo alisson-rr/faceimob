@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Users, Pencil, Link2, Search, Crown, Shield, UserCog, User, Loader2, Ey
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { cn } from "@/lib/utils";
+import { cn, slugify } from "@/lib/utils";
 import { listPeople } from "@/integrations/supabase/newSchema";
 
 import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
@@ -52,7 +52,7 @@ function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }
         target: Number(yearly || 0),
       },
     ];
-    let error: any = null;
+    let error: { message: string } | null = null;
     for (const goal of periods) {
       const existing = await supabase
         .from("goals")
@@ -124,7 +124,8 @@ export default function Equipes() {
   const togglePw = (id: string) =>
     setShowPw(prev => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
 
@@ -134,7 +135,9 @@ export default function Equipes() {
       await navigator.clipboard.writeText(val);
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 1200);
-    } catch {}
+    } catch {
+      toast({ title: "Não foi possível copiar", variant: "destructive" });
+    }
   };
 
   const CredLine = ({ id }: { id: string }) => {
@@ -173,17 +176,17 @@ export default function Equipes() {
         manager_id: person.manager_id,
         director_id: person.director_id,
         active: person.active,
-        user_id: person.id,
+        user_id: person.user_id,
         email: person.email,
         avatar_url: person.avatar_url,
       })));
-    } catch (error: any) {
-      toast({ title: "Erro ao carregar equipe", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Erro ao carregar equipe", description: error instanceof Error ? error.message : "Erro inesperado", variant: "destructive" });
     }
     const { data: teamsData } = await supabase.from("teams").select("id,manager_id,name");
     const map: Record<string, { id: string; display_name: string | null }> = {};
     const drafts: Record<string, string> = {};
-    (teamsData || []).forEach((t: any) => {
+    (teamsData ?? []).forEach((t) => {
       if (t.manager_id) {
         map[t.manager_id] = { id: t.id, display_name: t.name };
         drafts[t.manager_id] = t.name ?? "";
@@ -202,7 +205,8 @@ export default function Equipes() {
       if (error) return toast({ title: "Falha ao salvar", description: error.message, variant: "destructive" });
       setTeamsByMgr(p => ({ ...p, [managerId]: { ...existing, display_name: name || null } }));
     } else {
-      const { data, error } = await supabase.from("teams").insert({ manager_id: managerId, name: name || managerName } as any).select("id").single();
+      const teamName = name || managerName;
+      const { data, error } = await supabase.from("teams").insert({ manager_id: managerId, name: teamName, slug: slugify(teamName) }).select("id").single();
       if (error) return toast({ title: "Falha ao criar equipe", description: error.message, variant: "destructive" });
       setTeamsByMgr(p => ({ ...p, [managerId]: { id: data.id, display_name: name || null } }));
     }
@@ -238,13 +242,13 @@ export default function Equipes() {
     return myBroker?.id ?? null;
   }, [role, myBroker]);
 
-  const inScope = (b: BrokerRow) => {
+  const inScope = useCallback((b: BrokerRow) => {
     if (role === "admin") return true;
     if (!myScopeDirectorId) return false;
     if (b.role === "director") return b.id === myScopeDirectorId;
     if (b.role === "manager") return b.director_id === myScopeDirectorId;
     return b.director_id === myScopeDirectorId;
-  };
+  }, [myScopeDirectorId, role]);
 
   const filter = (list: BrokerRow[]) =>
     list.filter(b => (search ? b.name.toLowerCase().includes(search.toLowerCase()) : true));
@@ -253,19 +257,22 @@ export default function Equipes() {
     const { data } = await supabase.from("profiles")
       .select("id,full_name,email,phone,avatar_url,status")
       .eq("id", m.id).maybeSingle();
-    const merged = {
-      ...(data as any),
-      name: data?.full_name,
+    const merged: EditableBroker = {
+      id: data?.id ?? m.id,
+      full_name: data?.full_name,
+      email: data?.email,
+      avatar_url: data?.avatar_url,
+      name: data?.full_name ?? m.name,
       celular: data?.phone,
       role: m.role,
       manager_id: m.manager_id,
       director_id: m.director_id,
       active: data?.status === "active",
-      user_id: m.id,
+      user_id: m.user_id,
       login_email: data?.email,
       login_email_confirmed: true,
     };
-    setProfileEdit(merged || (m as any));
+    setProfileEdit(merged);
   };
 
   const openBulk = (column: "manager" | "broker") => {
@@ -333,7 +340,7 @@ export default function Equipes() {
       const director = directors.find(d => d.id === m.director_id);
       return { manager: m, director, size: team.length, brokers: team };
     }).sort((a, b) => b.size - a.size);
-  }, [managers, brokers, directors, role, myScopeDirectorId]);
+  }, [managers, brokers, directors, inScope]);
 
   return (
     <div className="space-y-6">
@@ -659,7 +666,8 @@ export default function Equipes() {
                             onCheckedChange={(v) => {
                               setBulkSelected(prev => {
                                 const next = new Set(prev);
-                                v ? next.add(m.id) : next.delete(m.id);
+                                if (v) next.add(m.id);
+                                else next.delete(m.id);
                                 return next;
                               });
                             }}

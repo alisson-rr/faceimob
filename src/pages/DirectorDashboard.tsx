@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ComparativeFunnel, { type FunnelStep } from "@/components/ComparativeFunnel";
-import { Users, FileText, ClipboardCheck, CheckCircle2, DollarSign } from "lucide-react";
+import { Users, FileText, ClipboardCheck, CheckCircle2, DollarSign, type LucideIcon } from "lucide-react";
 import { listLegacyDeals, listLegacyLeads, listPeople } from "@/integrations/supabase/newSchema";
 
 const monthBaseNow = () => {
@@ -27,7 +28,7 @@ export default function DirectorDashboard() {
     : null;
 
   // Managers under this director + their brokers
-  const { data: scope } = useQuery({
+  const scopeQuery = useQuery({
     enabled: !!directorInfo?.id,
     queryKey: ["director-scope", directorInfo?.id],
     queryFn: async () => {
@@ -35,7 +36,10 @@ export default function DirectorDashboard() {
         listPeople(),
         supabase.from("teams").select("id,name,manager_id,director_id").eq("director_id", directorInfo!.id).eq("active", true),
       ]);
-      const teams = (teamsRes.data as any[]) || [];
+      // Erro engolido aqui virava painel com KPIs = 0; lançar deixa o
+      // useQuery expor isError em vez de fingir dado vazio.
+      if (teamsRes.error) throw teamsRes.error;
+      const teams = teamsRes.data ?? [];
       const teamIds = new Set(teams.map(team => team.id));
       return {
         managers: people.filter(person => person.roles.includes("manager") && person.director_id === directorInfo!.id),
@@ -44,6 +48,7 @@ export default function DirectorDashboard() {
       };
     },
   });
+  const scope = scopeQuery.data;
 
   const brokerIds = useMemo(() => {
     if (!scope) return [];
@@ -54,24 +59,26 @@ export default function DirectorDashboard() {
   }, [scope, teamFilter]);
 
   // Daily entries (mês corrente)
-  const { data: dailyAgg } = useQuery({
+  const dailyQuery = useQuery({
     enabled: brokerIds.length > 0,
     queryKey: ["director-daily", brokerIds, teamFilter],
     queryFn: async () => {
       const from = startOfMonth();
-      const { data: reports } = await supabase
+      const { data: reports, error: repError } = await supabase
         .from("daily_reports")
         .select("id, team_id, report_date")
         .gte("report_date", from);
+      if (repError) throw repError;
       const teamIds = teamFilter === "all" ? scope!.teams.map((t) => t.id) : [teamFilter];
       const reportIds = (reports ?? []).filter((r) => teamIds.includes(r.team_id!)).map((r) => r.id);
       if (!reportIds.length) return { leads: 0, coleta_docs: 0, analises: 0, aprovados: 0, vendas: 0 };
-      const { data: entries } = await supabase
+      const { data: entries, error: entError } = await supabase
         .from("daily_entries")
         .select("leads,doc_collections,analyses_sent,analyses_approved,sales")
         .in("report_id", reportIds);
+      if (entError) throw entError;
       return (entries ?? []).reduce(
-        (acc, e: any) => ({
+        (acc, e) => ({
           leads: acc.leads + (e.leads || 0),
           coleta_docs: acc.coleta_docs + (e.doc_collections || 0),
           analises: acc.analises + (e.analyses_sent || 0),
@@ -82,18 +89,19 @@ export default function DirectorDashboard() {
       );
     },
   });
+  const dailyAgg = dailyQuery.data;
 
   // Pipeline aggregates
-  const { data: pipeAgg } = useQuery({
+  const pipeQuery = useQuery({
     enabled: brokerIds.length > 0,
     queryKey: ["director-pipe", brokerIds],
     queryFn: async () => {
       const [allDeals, allLeads] = await Promise.all([listLegacyDeals(), listLegacyLeads()]);
       const rows = allDeals.filter(deal => brokerIds.includes(deal.broker1_id || "") && deal.month_base === monthBaseNow());
-      const leads = allLeads.filter((lead: any) => brokerIds.includes(lead.broker_id || lead.assigned_to) && lead.created_at >= startOfMonth());
-      const analises = rows.filter((deal: any) => ["under_analysis", "analysis"].includes(deal.stage)).length;
-      const aprovados = rows.filter((deal: any) => ["approved", "contract"].includes(deal.stage)).length;
-      const vendas = rows.filter((deal: any) => deal.outcome === "won").length;
+      const leads = allLeads.filter((lead) => brokerIds.includes(lead.broker_id) && lead.created_at >= startOfMonth());
+      const analises = rows.filter((deal) => ["under_analysis", "analysis"].includes(deal.stage)).length;
+      const aprovados = rows.filter((deal) => ["approved", "contract"].includes(deal.stage)).length;
+      const vendas = rows.filter((deal) => deal.outcome === "won").length;
       return {
         leads: (leads ?? []).length,
         analises,
@@ -102,6 +110,15 @@ export default function DirectorDashboard() {
       };
     },
   });
+  const pipeAgg = pipeQuery.data;
+
+  const isLoading = scopeQuery.isLoading || dailyQuery.isLoading || pipeQuery.isLoading;
+  const queryError = scopeQuery.error || dailyQuery.error || pipeQuery.error;
+  const retry = () => {
+    if (scopeQuery.error) void scopeQuery.refetch();
+    if (dailyQuery.error) void dailyQuery.refetch();
+    if (pipeQuery.error) void pipeQuery.refetch();
+  };
 
   const daily: FunnelStep[] = [
     { key: "leads",     label: "Leads",      value: dailyAgg?.leads ?? 0,     targetPct: 100 },
@@ -137,6 +154,20 @@ export default function DirectorDashboard() {
         </Select>
       </div>
 
+      {queryError && (
+        <Card className="border-destructive/40">
+          <CardContent className="px-3 py-2 text-xs flex items-center justify-between gap-2">
+            <span>Não foi possível carregar os dados: {queryError.message}</span>
+            <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={retry}>
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+      {isLoading && !queryError && (
+        <p className="text-xs text-muted-foreground">Carregando dados do painel…</p>
+      )}
+
       {/* KPIs compactos */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Kpi icon={Users}          label="Leads"       value={dailyAgg?.leads ?? 0} tone="text-blue-300" />
@@ -155,7 +186,7 @@ export default function DirectorDashboard() {
   );
 }
 
-function Kpi({ icon: Icon, label, value, tone }: { icon: any; label: string; value: number; tone: string }) {
+function Kpi({ icon: Icon, label, value, tone }: { icon: LucideIcon; label: string; value: number; tone: string }) {
   return (
     <Card className="border-border/60">
       <CardContent className="px-3 py-2 flex items-center gap-2">

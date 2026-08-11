@@ -3,13 +3,18 @@ import { Loader2, History } from "lucide-react";
 import { listDealHistory, type HistoryEntry } from "@/integrations/supabase/analytics";
 import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
 
+// Chaves = valores reais de `deal_history.kind` gravados pelos triggers e RPCs.
 const KIND_LABEL: Record<string, string> = {
-  stage: "Mudou de etapa",
-  status: "Mudou de status",
-  value: "Alterou o valor",
-  document: "Documento",
-  participant: "Participantes",
+  stage_changed: "Mudou de etapa",
+  status_changed: "Mudou de status",
+  cca_status_changed: "CCA mudou de status",
+  value_changed: "Alterou o valor",
+  sent_to_developer: "Enviado à construtora",
+  document_review_requested: "Enviado para conferência",
+  document_review_returned: "Documentos devolvidos",
+  document_review_approved: "Documentos aprovados",
   created: "Negócio criado",
+  comment: "Comentário",
 };
 
 const formatWhen = (v: string) => new Date(v).toLocaleString("pt-BR");
@@ -72,7 +77,12 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
                 <span className="text-muted-foreground">{formatWhen(e.created_at)}</span>
               </div>
               <div className="text-muted-foreground">
-                {e.from_value || e.to_value ? (
+                {e.kind === "comment" ? (
+                  <>
+                    <span className="text-foreground">{e.to_value}</span>
+                    {" · "}
+                  </>
+                ) : e.from_value || e.to_value ? (
                   <>
                     {e.from_value ?? "—"} → <span className="text-foreground">{e.to_value ?? "—"}</span>
                     {" · "}
@@ -80,6 +90,9 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
                 ) : null}
                 por {actorName(e.actor_id)}
               </div>
+              {typeof e.detail?.reason === "string" && (
+                <p className="mt-1 text-foreground">Motivo: {e.detail.reason}</p>
+              )}
             </div>
           ))}
         </div>

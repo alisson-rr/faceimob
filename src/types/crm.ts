@@ -4,6 +4,8 @@ export type DealStage = 'incomplete' | 'lead' | 'proposal' | 'visit_scheduled' |
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
 
+export type DocumentReviewStatus = 'draft' | 'pending' | 'returned' | 'approved';
+
 export interface User {
   id: string;
   name: string;
@@ -52,6 +54,7 @@ export interface DealHistoryEntry {
 
 export interface PipelineDeal {
   id: string;
+  code?: string;
   client: string;
   cpf?: string;
   contato?: string;
@@ -111,6 +114,9 @@ export interface PipelineDeal {
   active: boolean;
   created_at: string;
   notes?: string;
+  document_review_status?: DocumentReviewStatus;
+  document_review_requested_at?: string;
+  document_review_reason?: string;
   history?: DealHistoryEntry[];
 }
 
