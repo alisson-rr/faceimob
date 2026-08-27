@@ -6,6 +6,7 @@ import { Loader2, Megaphone, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { campaignPerformance, upsertAdCampaign, type CampaignPerformance } from "@/integrations/supabase/analytics";
+import { describeError } from "@/lib/supabaseError";
 
 const brl = (v: number | null) =>
   v === null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -36,7 +37,7 @@ export default function CampaignPerformancePanel() {
     } catch (e) {
       toast({
         title: "Falha ao carregar campanhas",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar o desempenho das campanhas."),
         variant: "destructive",
       });
     } finally {
@@ -64,7 +65,7 @@ export default function CampaignPerformancePanel() {
     } catch (e) {
       toast({
         title: "Não foi possível salvar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível registrar a campanha."),
         variant: "destructive",
       });
     } finally {
@@ -115,7 +116,7 @@ export default function CampaignPerformancePanel() {
             <Loader2 className="h-3 w-3 animate-spin" /> Carregando...
           </div>
         ) : rows.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground italic">
+          <p className="text-xs text-muted-foreground italic">
             Nenhuma campanha cadastrada. O ID precisa ser o mesmo que a Meta envia no webhook.
           </p>
         ) : (

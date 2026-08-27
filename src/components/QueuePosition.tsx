@@ -4,6 +4,7 @@ import { ListOrdered, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getMyQueues, type QueueEntry } from "@/integrations/supabase/checkin";
+import { describeError } from "@/lib/supabaseError";
 
 /**
  * Posição do corretor na roleta (ata 23/07).
@@ -30,7 +31,7 @@ export default function QueuePosition() {
       setQueues(await getMyQueues(user.id));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao ler a fila");
+      setError(describeError(e, "Não foi possível carregar sua posição na fila."));
     } finally {
       setLoading(false);
     }
@@ -76,7 +77,7 @@ export default function QueuePosition() {
               <ListOrdered className="h-4 w-4 text-primary shrink-0" />
               <span className="text-xs font-medium">{q.groupName}:</span>
               {mine >= 0 ? (
-                <Badge variant="default" className="text-[11px]">
+                <Badge variant="default">
                   você é o {q.entries[mine].queue_position}º de {q.entries.length}
                 </Badge>
               ) : (

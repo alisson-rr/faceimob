@@ -14,6 +14,7 @@
 import { supabase } from "./client";
 import { listPeople, type PersonRecord } from "./newSchema";
 import type { Database } from "./types";
+import { dbError } from "@/lib/supabaseError";
 
 // Fronteira sem tipo, num único lugar: `types.ts` é gerado pelo Dev A e ainda
 // está em trânsito (S1.3). Tipar este arquivo contra ele agora amarraria esta
@@ -56,37 +57,65 @@ export type LeadFunnelStage =
   | "scheduled_visit"
   | "qualified";
 
-export const LEAD_STATUSES: { value: LeadStatus; label: string; cls: string }[] = [
-  { value: "queued", label: "Na fila", cls: "bg-muted text-muted-foreground" },
-  { value: "assigned", label: "Aguardando atendimento", cls: "bg-warning/20 text-warning" },
-  { value: "attending", label: "Em atendimento", cls: "bg-primary/20 text-primary" },
-  { value: "in_progress", label: "Em relacionamento", cls: "bg-cyan-500/20 text-cyan-400" },
-  { value: "converted", label: "Convertido", cls: "bg-purple-500/20 text-purple-400" },
-  { value: "lost", label: "Perdido", cls: "bg-destructive/20 text-destructive" },
-  { value: "discarded", label: "Descartado", cls: "bg-secondary text-muted-foreground" },
+/**
+ * Tom semântico de um estado do lead. É exatamente o conjunto de tons do
+ * `StatusBadge` do kit (`@/components/shared`), então a tela repassa sem mapear.
+ *
+ * Antes cada rótulo carregava a classe pronta com paleta literal do Tailwind
+ * (`bg-cyan-500/20`, `border-violet-500/50`) — que não tem versão de tema claro
+ * e some do build quando o token não existe no `tailwind.config`. O tom é a
+ * decisão de negócio ("perdido é ruim"); a classe é do componente.
+ */
+export type LeadTone = "neutral" | "info" | "warning" | "danger" | "success" | "highlight";
+
+export const LEAD_STATUSES: { value: LeadStatus; label: string; tone: LeadTone }[] = [
+  { value: "queued", label: "Na fila", tone: "neutral" },
+  { value: "assigned", label: "Aguardando atendimento", tone: "warning" },
+  { value: "attending", label: "Em atendimento", tone: "info" },
+  { value: "in_progress", label: "Em relacionamento", tone: "info" },
+  { value: "converted", label: "Convertido", tone: "success" },
+  { value: "lost", label: "Perdido", tone: "danger" },
+  { value: "discarded", label: "Descartado", tone: "neutral" },
 ];
 
 // O funil é `funnel_stage` — "convertido" NÃO é etapa de funil, é `status`.
 // A coluna "Convertido" que existia no funil era uma etapa inexistente no enum.
-export const FUNNEL_STAGES: { key: LeadFunnelStage; label: string; accent: string }[] = [
-  { key: "new", label: "Novo Lead", accent: "border-blue-500/50" },
-  { key: "first_contact", label: "Primeiro Contato", accent: "border-cyan-500/50" },
-  { key: "no_response", label: "Sem Resposta", accent: "border-amber-500/50" },
-  { key: "warm", label: "Lead Morno", accent: "border-orange-500/50" },
-  { key: "hot", label: "Lead Quente", accent: "border-red-500/50" },
-  { key: "gathering_docs", label: "Juntando Doc", accent: "border-violet-500/50" },
-  { key: "scheduled_visit", label: "Visita Agendada", accent: "border-teal-500/50" },
-  { key: "qualified", label: "Qualificado", accent: "border-emerald-500/50" },
+export const FUNNEL_STAGES: { key: LeadFunnelStage; label: string; tone: LeadTone }[] = [
+  { key: "new", label: "Novo Lead", tone: "info" },
+  { key: "first_contact", label: "Primeiro Contato", tone: "info" },
+  { key: "no_response", label: "Sem Resposta", tone: "warning" },
+  { key: "warm", label: "Lead Morno", tone: "warning" },
+  { key: "hot", label: "Lead Quente", tone: "highlight" },
+  { key: "gathering_docs", label: "Juntando Doc", tone: "neutral" },
+  { key: "scheduled_visit", label: "Visita Agendada", tone: "info" },
+  { key: "qualified", label: "Qualificado", tone: "success" },
 ];
 
 export const leadStatusLabel = (status?: string | null) =>
   LEAD_STATUSES.find((item) => item.value === status)?.label || status || "—";
 
-export const leadStatusClass = (status?: string | null) =>
-  LEAD_STATUSES.find((item) => item.value === status)?.cls || "bg-secondary text-foreground";
+export const leadStatusTone = (status?: string | null): LeadTone =>
+  LEAD_STATUSES.find((item) => item.value === status)?.tone || "neutral";
 
 export const funnelStageLabel = (stage?: string | null) =>
   FUNNEL_STAGES.find((item) => item.key === stage)?.label || stage || "—";
+
+export const funnelStageTone = (stage?: string | null): LeadTone =>
+  FUNNEL_STAGES.find((item) => item.key === stage)?.tone || "neutral";
+
+/**
+ * Tom da origem do lead. Vivia copiado em `LeadDetailModal` (`sourceBadgeCls`) e
+ * em `LeadFunnel` (`sourceStyle`), com verdes diferentes para o mesmo WhatsApp
+ * (achado T13). Uma origem tem um tom, em qualquer tela.
+ */
+export const leadSourceTone = (source?: string | null): LeadTone => {
+  const value = (source || "").toLowerCase();
+  if (value.includes("meta") || value.includes("facebook") || value.includes("instagram")) return "info";
+  if (value.includes("whats")) return "success";
+  if (value.includes("google")) return "highlight";
+  if (value.includes("indica")) return "warning";
+  return "neutral";
+};
 
 // Status que o lead ainda está vivo na operação.
 export const OPEN_LEAD_STATUSES: LeadStatus[] = [
@@ -154,8 +183,21 @@ export type LeadRecord = {
   stage_changed_at: string;
 };
 
-const asError = (label: string, error: { message?: string } | null) => {
-  if (error) throw new Error(`${label}: ${error.message || "falha ao consultar o banco"}`);
+/**
+ * Sessão perdida antes de uma escrita que exige `auth.uid()`.
+ *
+ * Vai com `P0001` de propósito: é o código que `describeError` trata como
+ * "mensagem já escrita em pt-BR, mostre-a". Um `Error` cru aqui perde o texto —
+ * a tela cairia no fallback genérico ("tente novamente") e esconderia justamente
+ * a única instrução que resolve, que é entrar de novo.
+ */
+const sessionExpired = (acao: string) =>
+  dbError("sessão", { code: "P0001", message: `Sessão expirada: entre novamente para ${acao}.` });
+
+const asError = (label: string, error: { message?: string; code?: string } | null) => {
+  // `dbError` guarda o erro do Postgres no Error: a tela traduz pelo `code` em
+  // vez de mostrar o texto cru em inglês (`describeError`).
+  if (error) throw dbError(label, error);
 };
 
 /** Monta o `LeadRecord` a partir da linha crua + catálogos já carregados. */
@@ -200,6 +242,24 @@ export async function listLeadSources(): Promise<LeadSource[]> {
     .order("label");
   asError("lead_sources", error);
   return (data || []) as LeadSource[];
+}
+
+/** Template de mensagem cadastrado no módulo SDR (`whatsapp_templates`). */
+export type WhatsappTemplate = { id: string; name: string; body: string };
+
+/**
+ * Templates ativos de WhatsApp. Fica aqui, e não na tela, porque o erro precisa
+ * chegar embrulhado por `dbError` para o `describeError` traduzir o `code` —
+ * lendo `.from()` direto da tela o motivo do RLS chegava cru, em inglês (A05).
+ */
+export async function listWhatsappTemplates(): Promise<WhatsappTemplate[]> {
+  const { data, error } = await db
+    .from("whatsapp_templates")
+    .select("id,name,body")
+    .eq("active", true)
+    .order("name");
+  asError("whatsapp_templates", error);
+  return (data || []) as WhatsappTemplate[];
 }
 
 /** Corretores elegíveis para atribuição manual (realocação por gestor). */
@@ -387,8 +447,11 @@ export type ConvertLeadInput = {
 };
 
 /**
- * Conversão em negócio via `convert_lead_to_deal`. O banco exige pelo menos um
- * anexo no lead — a mensagem de erro é repassada tal e qual para a tela.
+ * Conversão em negócio via `convert_lead_to_deal`.
+ *
+ * O negócio nasce sem anexo: a migration `0028` tirou a exigência de documento
+ * daqui (decisão de 10/08). Os anexos que existirem são promovidos junto, e os
+ * documentos obrigatórios travam só o envio ao gerente.
  */
 export async function convertLeadToDeal(input: ConvertLeadInput): Promise<void> {
   const { error } = await db.rpc("convert_lead_to_deal", {
@@ -550,7 +613,7 @@ export async function listLeadComments(leadId: string): Promise<LeadComment[]> {
 /** `lead_comments_insert` exige `author_id = auth.uid()`. */
 export async function addLeadComment(leadId: string, body: string): Promise<void> {
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user?.id) throw new Error("Sessão expirada: entre novamente para comentar.");
+  if (!auth.user?.id) throw sessionExpired("comentar");
   const { error } = await db.from("lead_comments").insert({
     lead_id: leadId,
     author_id: auth.user.id,
@@ -582,7 +645,7 @@ export async function listLeadAttachments(leadId: string): Promise<LeadAttachmen
 
 export async function uploadLeadAttachment(leadId: string, file: File): Promise<void> {
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user?.id) throw new Error("Sessão expirada: entre novamente para anexar.");
+  if (!auth.user?.id) throw sessionExpired("anexar");
 
   const storedName = `${Date.now()}-${file.name}`;
   const path = `${leadId}/${storedName}`;
@@ -590,7 +653,10 @@ export async function uploadLeadAttachment(leadId: string, file: File): Promise<
   const { error: uploadError } = await supabase.storage
     .from(LEAD_ATTACHMENTS_BUCKET)
     .upload(path, file);
-  if (uploadError) throw new Error(`upload: ${uploadError.message}`);
+  // `dbError` mesmo sem `code` de Postgres: o Error passa a ter o objeto
+  // original em `.db`, então a tela chama `describeError` como em todo o resto
+  // e cai no fallback dela em vez de mostrar o texto do Storage em inglês.
+  if (uploadError) throw dbError("enviar anexo", uploadError);
 
   const { error } = await db.from("lead_attachments").insert({
     lead_id: leadId,
@@ -612,7 +678,7 @@ export async function signedAttachmentUrl(storagePath: string): Promise<string> 
   const { data, error } = await supabase.storage
     .from(LEAD_ATTACHMENTS_BUCKET)
     .createSignedUrl(storagePath, 60);
-  if (error || !data) throw new Error(error?.message || "não foi possível gerar o link");
+  if (error || !data) throw dbError("gerar link do anexo", error ?? { message: "link não gerado" });
   return data.signedUrl;
 }
 

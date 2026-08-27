@@ -1,77 +1,143 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Tokens do design system Faceimob.
+ *
+ * Escuro e o padrao (`:root`); `.light` no <html> sobrepoe (useTheme.ts).
+ *
+ * Regra do sistema, que explica por que os pares parecem invertidos entre os
+ * temas: no escuro a cor de marca e a CLARA e o `-foreground` e a tinta navy;
+ * no claro a cor de marca e a PROFUNDA e o `-foreground` e branco. E o unico
+ * jeito de a mesma variavel servir como preenchimento (botao) e como texto
+ * (`text-primary`) mantendo 4,5:1 nos dois temas.
+ *
+ * Excecao documentada: `--highlight` (amarelo da marca) e token de FUNDO. No
+ * claro `text-highlight` sobre `background` da 1,6:1 — para amarelo em texto
+ * use `--warning`, que e o mesmo tom escurecido.
+ */
 @layer base {
   :root {
-    --background: 232 35% 12%;
-    --foreground: 220 25% 95%;
-    --card: 232 30% 17%;
-    --card-foreground: 220 25% 95%;
-    --popover: 232 30% 17%;
-    --popover-foreground: 220 25% 95%;
-    --primary: 210 100% 66%;
-    --primary-foreground: 232 40% 10%;
-    --secondary: 232 25% 22%;
-    --secondary-foreground: 220 25% 95%;
-    --muted: 232 22% 20%;
-    --muted-foreground: 220 15% 72%;
-    --accent: 210 85% 32%;
-    --accent-foreground: 220 25% 95%;
-    --destructive: 4 78% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 232 25% 26%;
-    --input: 232 25% 24%;
-    --ring: 210 100% 66%;
-    --radius: 0.625rem;
-    --success: 145 63% 55%;
-    --success-foreground: 0 0% 100%;
-    --warning: 36 90% 55%;
-    --warning-foreground: 0 0% 0%;
-    --sidebar-background: 232 40% 10%;
-    --sidebar-foreground: 220 25% 95%;
-    --sidebar-primary: 210 100% 66%;
-    --sidebar-primary-foreground: 232 40% 10%;
-    --sidebar-accent: 210 85% 28%;
-    --sidebar-accent-foreground: 220 25% 95%;
-    --sidebar-border: 232 30% 18%;
-    --sidebar-ring: 210 100% 66%;
+    /* Superficies em camadas — navy da marca */
+    --background: 222 38% 10%;
+    --foreground: 210 30% 96%;
+    --card: 222 32% 14%;
+    --card-foreground: 210 30% 96%;
+    --popover: 222 34% 16%;
+    --popover-foreground: 210 30% 96%;
+    --secondary: 222 26% 20%;
+    --secondary-foreground: 210 30% 96%;
+    --muted: 222 24% 18%;
+    --muted-foreground: 214 18% 72%;
+    --accent: 222 30% 22%;
+    --accent-foreground: 210 30% 96%;
+    --border: 222 22% 24%;
+    --input: 220 14% 44%;
+
+    /* Marca */
+    --primary: 214 72% 62%;
+    --primary-foreground: 222 45% 10%;
+    --ring: 214 72% 62%;
+
+    /* Semanticos */
+    --destructive: 358 72% 62%;
+    --destructive-foreground: 222 45% 10%;
+    --success: 156 46% 62%;
+    --success-foreground: 222 45% 10%;
+    --warning: 33 92% 60%;
+    --warning-foreground: 222 45% 10%;
+    --info: 196 78% 60%;
+    --info-foreground: 222 45% 10%;
+    --highlight: 47 88% 58%;
+    --highlight-foreground: 222 45% 10%;
+
+    /* Cores literais do simbolo — so decoracao (motivo da marca), nunca texto */
+    --brand-blue: 216 60% 41%;
+    --brand-blue-light: 215 47% 60%;
+    --brand-mint: 153 35% 75%;
+    --brand-yellow: 50 80% 55%;
+
+    /* Graficos (Recharts) */
+    --chart-1: 214 72% 62%;
+    --chart-2: 156 46% 62%;
+    --chart-3: 47 88% 58%;
+    --chart-4: 196 78% 60%;
+    --chart-5: 268 55% 68%;
+
+    /* Podio */
+    --gold: 45 90% 60%;
+    --gold-foreground: 222 45% 10%;
+    --silver: 214 18% 76%;
+    --silver-foreground: 222 45% 10%;
+    --bronze: 25 68% 58%;
+    --bronze-foreground: 222 45% 10%;
+
+    /* Barra lateral — uma camada mais funda que o canvas */
+    --sidebar-background: 222 42% 8%;
+    --sidebar-foreground: 210 25% 88%;
+    --sidebar-primary: 214 72% 62%;
+    --sidebar-primary-foreground: 222 45% 10%;
+    --sidebar-accent: 222 30% 16%;
+    --sidebar-accent-foreground: 210 30% 96%;
+    --sidebar-border: 222 28% 16%;
+    --sidebar-ring: 214 72% 62%;
+
+    --radius: 1rem;
   }
 
   .light {
-    --background: 220 20% 97%;
-    --foreground: 224 60% 15%;
+    --background: 210 33% 97%;
+    --foreground: 222 45% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 224 60% 15%;
+    --card-foreground: 222 45% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 60% 15%;
-    --primary: 217 91% 60%;
+    --popover-foreground: 222 45% 14%;
+    --secondary: 214 30% 92%;
+    --secondary-foreground: 222 45% 18%;
+    --muted: 214 28% 94%;
+    --muted-foreground: 218 20% 40%;
+    --accent: 214 42% 90%;
+    --accent-foreground: 216 62% 30%;
+    --border: 214 22% 82%;
+    --input: 214 16% 54%;
+
+    --primary: 216 62% 40%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 92%;
-    --secondary-foreground: 224 60% 15%;
-    --muted: 220 14% 94%;
-    --muted-foreground: 224 20% 46%;
-    --accent: 217 91% 60%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 4 78% 56%;
+    --ring: 216 62% 40%;
+
+    --destructive: 358 66% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 14% 88%;
-    --input: 220 14% 88%;
-    --ring: 217 91% 60%;
-    --success: 145 63% 42%;
+    --success: 158 58% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 36 90% 51%;
-    --warning-foreground: 0 0% 0%;
+    --warning: 30 88% 36%;
+    --warning-foreground: 0 0% 100%;
+    --info: 200 82% 32%;
+    --info-foreground: 0 0% 100%;
+    --highlight: 46 92% 52%;
+    --highlight-foreground: 40 80% 12%;
+
+    --chart-1: 216 62% 42%;
+    --chart-2: 158 52% 34%;
+    --chart-3: 38 92% 36%;
+    --chart-4: 200 78% 36%;
+    --chart-5: 268 45% 48%;
+
+    --gold: 43 82% 28%;
+    --gold-foreground: 0 0% 100%;
+    --silver: 214 12% 44%;
+    --silver-foreground: 0 0% 100%;
+    --bronze: 22 62% 36%;
+    --bronze-foreground: 0 0% 100%;
+
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 224 60% 15%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-foreground: 222 45% 16%;
+    --sidebar-primary: 216 62% 40%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 95%;
-    --sidebar-accent-foreground: 224 60% 15%;
-    --sidebar-border: 220 14% 90%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 214 40% 95%;
+    --sidebar-accent-foreground: 216 62% 30%;
+    --sidebar-border: 214 22% 86%;
+    --sidebar-ring: 216 62% 40%;
   }
 }
 
@@ -82,144 +148,161 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
+  html {
+    color-scheme: dark;
+  }
+  html.light {
+    color-scheme: light;
+  }
   body {
-    @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
-    font-feature-settings: 'cv02','cv03','cv04','cv11','ss01';
+    /* Sem `background-color` literal aqui: era ele que deixava o modo claro
+       com fundo preto (achado T02). O token e a unica fonte. */
+    @apply bg-background text-foreground font-sans;
     letter-spacing: -0.01em;
-    background-color: #0a090b;
   }
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', system-ui, sans-serif;
-    letter-spacing: -0.025em;
-    font-weight: 600;
+    @apply font-display;
+    letter-spacing: -0.03em;
+    font-weight: 700;
   }
-  /* Smooth sidebar transitions */
   [data-sidebar="sidebar"],
   [data-sidebar="menu-button"],
   [data-sidebar="menu-item"],
   [data-sidebar="group"] {
-    transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1),
-                background-color 250ms ease,
-                color 200ms ease,
-                padding 250ms ease,
-                opacity 250ms ease;
-  }
-  [data-sidebar="sidebar"] * {
-    transition: opacity 250ms ease, color 200ms ease, background-color 200ms ease;
+    transition: width 300ms cubic-bezier(0.22, 1, 0.36, 1),
+                background-color 200ms ease,
+                color 150ms ease,
+                padding 200ms ease,
+                opacity 200ms ease;
   }
 }
 
 @layer utilities {
-  /* Premium glass system — tuned blur, refined borders, inset highlight */
+  /* Vidro — so em superficie SOBREPOSTA (header fixo, modal, popover) */
   .glass {
-    @apply bg-card/40 backdrop-blur-xl border border-border/30;
-    box-shadow:
-      0 1px 0 hsl(0 0% 100% / 0.04) inset,
-      0 8px 32px -8px rgba(0, 0, 0, 0.35),
-      0 24px 64px -24px rgba(0, 0, 0, 0.45);
+    @apply bg-card/70 backdrop-blur-xl border border-border/50;
+    box-shadow: 0 1px 0 hsl(var(--foreground) / 0.04) inset,
+                0 8px 32px -12px hsl(var(--background) / 0.6);
   }
   .glass-strong {
-    @apply bg-card/60 backdrop-blur-2xl border border-border/40;
-    box-shadow:
-      0 1px 0 hsl(0 0% 100% / 0.06) inset,
-      0 12px 40px -8px rgba(0, 0, 0, 0.45),
-      0 32px 80px -32px rgba(0, 0, 0, 0.55);
+    @apply bg-card/85 backdrop-blur-2xl border border-border/60;
+    box-shadow: 0 1px 0 hsl(var(--foreground) / 0.06) inset,
+                0 16px 48px -16px hsl(var(--background) / 0.7);
   }
   .glass-subtle {
-    @apply bg-card/20 backdrop-blur-lg border border-border/20;
+    @apply bg-card/40 backdrop-blur-lg border border-border/30;
   }
-  .glow-primary {
-    box-shadow:
-      inset 0 0 0 1px hsl(217 91% 60% / 0.35),
-      0 4px 20px -4px hsl(217 91% 60% / 0.45),
-      0 0 40px -8px hsl(217 91% 60% / 0.25);
-  }
-  .glow-success { box-shadow: 0 0 20px hsl(145 63% 49% / 0.2); }
-  .glow-warning { box-shadow: 0 0 20px hsl(36 90% 51% / 0.2); }
-  .shimmer {
-    background: linear-gradient(90deg, transparent 0%, hsl(217 91% 60% / 0.06) 50%, transparent 100%);
-    background-size: 200% 100%;
-    animation: shimmer 3s infinite;
-  }
-  .float-animation { animation: float 6s ease-in-out infinite; }
-  .pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
 
-  .font-display { font-family: 'Instrument Serif', serif; letter-spacing: -0.02em; }
-  .font-sans-premium { font-family: 'Inter', sans-serif; }
+  /* Halos coloridos — substituem as sombras cinzas do FixWear */
+  .glow-primary {
+    box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.35),
+                0 4px 20px -4px hsl(var(--primary) / 0.45),
+                0 0 40px -8px hsl(var(--primary) / 0.25);
+  }
+  .glow-highlight {
+    box-shadow: 0 4px 24px -6px hsl(var(--highlight) / 0.45),
+                0 0 40px -10px hsl(var(--highlight) / 0.3);
+  }
+  .glow-success { box-shadow: 0 0 20px hsl(var(--success) / 0.2); }
+  .glow-warning { box-shadow: 0 0 20px hsl(var(--warning) / 0.2); }
+
+  .shadow-elevate {
+    box-shadow: 0 1px 0 hsl(var(--foreground) / 0.04) inset,
+                0 12px 32px -14px hsl(var(--background) / 0.55),
+                0 2px 6px -2px hsl(var(--background) / 0.4);
+  }
+
+  .gradient-premium {
+    background-image:
+      radial-gradient(1200px 600px at -10% -20%, hsl(var(--primary) / 0.1), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, hsl(var(--highlight) / 0.07), transparent 60%);
+  }
+  .gradient-hairline {
+    background-image: linear-gradient(90deg, transparent, hsl(var(--border)) 20%, hsl(var(--border)) 80%, transparent);
+  }
+  .gradient-text {
+    background-image: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--highlight)));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+  .divider-h {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(var(--border)) 30%, hsl(var(--border)) 70%, transparent);
+  }
+
+  /*
+   * A UNICA excecao ao piso de 12 px do X07 (decisao de 27/08/2026).
+   *
+   * 11 px so se paga em rotulo curto em CAIXA ALTA com tracking aberto: caixa
+   * alta nao tem descendente, e o `letter-spacing` de 0.14em devolve a
+   * separacao que o corpo menor tira. Texto corrido de 11 px nao tem nem uma
+   * coisa nem outra — por isso a excecao e a FORMA, nao o numero.
+   *
+   * `src/lib/type-scale.test.ts` reprova qualquer regra abaixo de 0.75rem que
+   * nao traga `text-transform: uppercase` e `letter-spacing` de pelo menos
+   * 0.1em, e qualquer tamanho literal solto em `src/**`.
+   *
+   * A cor faz parte da classe de proposito: este bloco fica DEPOIS das
+   * utilities geradas, entao um `text-warning` ao lado nao vence. Precisa de
+   * rotulo em caixa alta com outra cor? Use `text-xs uppercase tracking-widest`
+   * — a 12 px a excecao nao e necessaria.
+   */
+  .text-eyebrow {
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+  }
   .text-balance { text-wrap: balance; }
 
-  /* Editorial typographic scale */
-  .text-display-1 { font-family: 'Instrument Serif', serif; font-size: clamp(2.5rem, 5vw, 4rem); line-height: 1.02; letter-spacing: -0.035em; font-weight: 400; }
-  .text-display-2 { font-family: 'Instrument Serif', serif; font-size: clamp(2rem, 3.5vw, 2.75rem); line-height: 1.05; letter-spacing: -0.03em; font-weight: 400; }
-  .text-eyebrow { font-size: 0.6875rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; color: hsl(var(--muted-foreground)); }
+  .ease-premium { transition-timing-function: cubic-bezier(.22, 1, .36, 1); }
+  .animate-fade-in { animation: fadeIn 0.3s cubic-bezier(.22, 1, .36, 1) both; }
+  .animate-slide-up { animation: slideUp 0.3s cubic-bezier(.22, 1, .36, 1) both; }
+  .animate-scale-in { animation: scaleIn 0.2s cubic-bezier(.22, 1, .36, 1) both; }
+  .interactive {
+    transition: transform .2s cubic-bezier(.22, 1, .36, 1), background-color .2s ease,
+                color .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .interactive:hover { transform: translateY(-1px); }
+  .interactive:active { transform: translateY(0); }
 
-  .shadow-premium { box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px -8px rgba(15,23,42,.08), 0 24px 48px -24px rgba(15,23,42,.12); }
-  .shadow-premium-lg { box-shadow: 0 2px 4px rgba(0,0,0,.04), 0 16px 40px -12px rgba(15,23,42,.12), 0 32px 64px -24px rgba(15,23,42,.18); }
-  .shadow-elevate { box-shadow: 0 1px 0 hsl(0 0% 100% / .04) inset, 0 12px 32px -12px rgba(0,0,0,.45), 0 2px 6px -2px rgba(0,0,0,.35); }
-
-  .gradient-premium { background-image: radial-gradient(1200px 600px at -10% -20%, hsl(217 91% 60% / .08), transparent 60%), radial-gradient(900px 500px at 110% 10%, hsl(36 90% 51% / .07), transparent 60%); }
-  .gradient-accent { background-image: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 45%)); }
-  .gradient-warm { background-image: linear-gradient(135deg, hsl(36 95% 58%), hsl(20 90% 55%)); }
-  .gradient-hairline { background-image: linear-gradient(90deg, transparent, hsl(var(--border)) 20%, hsl(var(--border)) 80%, transparent); }
-
-  .ring-soft { box-shadow: 0 0 0 1px hsl(220 10% 100% / .06), 0 1px 0 hsl(220 10% 100% / .04) inset; }
   .stagger-1 { animation-delay: 60ms; } .stagger-2 { animation-delay: 120ms; }
   .stagger-3 { animation-delay: 180ms; } .stagger-4 { animation-delay: 240ms; }
   .stagger-5 { animation-delay: 300ms; } .stagger-6 { animation-delay: 360ms; }
   .stagger-7 { animation-delay: 420ms; } .stagger-8 { animation-delay: 480ms; }
-  .ease-premium { transition-timing-function: cubic-bezier(.22,1,.36,1); }
-
-  /* Motion primitives */
-  .animate-fade-in { animation: fadeIn 0.5s cubic-bezier(.22,1,.36,1) both; }
-  .animate-slide-up { animation: slideUp 0.6s cubic-bezier(.22,1,.36,1) both; }
-  .animate-scale-in { animation: scaleIn 0.4s cubic-bezier(.22,1,.36,1) both; }
-  .hover-lift { transition: transform .35s cubic-bezier(.22,1,.36,1), box-shadow .35s cubic-bezier(.22,1,.36,1); }
-  .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 20px 40px -20px rgba(0,0,0,.5), 0 2px 6px -2px rgba(0,0,0,.35); }
-  .interactive { transition: transform .25s cubic-bezier(.22,1,.36,1), background-color .25s ease, color .25s ease, border-color .25s ease, box-shadow .25s ease; }
-  .interactive:hover { transform: translateY(-1px); }
-  .interactive:active { transform: translateY(0); }
-
-  /* Hairline dividers */
-  .divider-h { height: 1px; background: linear-gradient(90deg, transparent, hsl(var(--border)) 30%, hsl(var(--border)) 70%, transparent); }
 }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-}
-
-@keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 20px hsl(217 91% 60% / 0.15); }
-  50% { box-shadow: 0 0 40px hsl(217 91% 60% / 0.3); }
-}
-
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
+  from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.9); }
+  from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: hsl(220 10% 10%); }
-::-webkit-scrollbar-thumb { background: hsl(220 10% 22%); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(220 10% 30%); }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: hsl(var(--background)); }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
 
-.light ::-webkit-scrollbar-track { background: hsl(220 20% 95%); }
-.light ::-webkit-scrollbar-thumb { background: hsl(220 14% 80%); }
-.light ::-webkit-scrollbar-thumb:hover { background: hsl(220 14% 70%); }
+/*
+ * Quem pediu menos movimento recebe menos movimento — inclusive as animacoes
+ * continuas (float, glow-pulse, shimmer) e as que vem do tailwindcss-animate.
+ * O <MotionConfig reducedMotion="user"> cobre o framer-motion; este bloco cobre
+ * o CSS. Achados G11 / a11y.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

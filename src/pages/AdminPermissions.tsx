@@ -19,6 +19,7 @@ import {
   type PipelineStageRecord,
 } from "@/integrations/supabase/permissions";
 import type { NewAppRole } from "@/integrations/supabase/newSchema";
+import { describeError } from "@/lib/supabaseError";
 
 const key = (role: string, code: string) => `${role}::${code}`;
 
@@ -55,7 +56,7 @@ export default function AdminPermissions() {
     } catch (e) {
       toast({
         title: "Falha ao carregar permissões",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar a matriz de permissões."),
         variant: "destructive",
       });
     } finally {
@@ -88,7 +89,7 @@ export default function AdminPermissions() {
       setGrants((prev) => ({ ...prev, [k]: !next })); // desfaz
       toast({
         title: "Não foi possível salvar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível salvar a permissão."),
         variant: "destructive",
       });
     } finally {
@@ -110,7 +111,7 @@ export default function AdminPermissions() {
       setStageGrants((prev) => ({ ...prev, [k]: currentValue }));
       toast({
         title: "Não foi possível salvar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível salvar a permissão da etapa."),
         variant: "destructive",
       });
     } finally {
@@ -138,7 +139,7 @@ export default function AdminPermissions() {
       </div>
 
       {!isAdmin && (
-        <p className="text-xs text-amber-400">
+        <p className="text-xs text-warning">
           Você está vendo a matriz em modo leitura — só administradores gravam
           (o banco recusa a escrita pelo RLS, não só a tela).
         </p>
@@ -203,7 +204,7 @@ export default function AdminPermissions() {
                       <tr key={p.code} className="border-b border-border/10 hover:bg-primary/5">
                         <td className="p-2">
                           <span className="font-medium">{p.label}</span>
-                          {p.description && <span className="block text-[10px] text-muted-foreground">{p.description}</span>}
+                          {p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}
                         </td>
                         {EDITABLE_ROLES.map((r) => (
                           <td key={r.value} className="p-2 text-center">
@@ -277,7 +278,7 @@ export default function AdminPermissions() {
               </table>
             </CardContent>
           </Card>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             "Pode entrar" é o que <code>can_enter_stage()</code> lê ao mover um negócio.
           </p>
         </TabsContent>

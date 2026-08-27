@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 import type { NewAppRole } from "./newSchema";
 
 /**
@@ -46,13 +47,15 @@ export type StagePermissionRecord = {
  *  `can_enter_stage()` curto-circuitam em `is_admin()`, então conceder ou negar
  *  linha para admin não mudaria nada e daria a impressão errada de que muda. */
 export const EDITABLE_ROLES: { value: NewAppRole; label: string; color: string }[] = [
-  { value: "partner", label: "Sócio", color: "text-purple-400" },
-  { value: "director", label: "Diretor", color: "text-blue-400" },
-  { value: "manager", label: "Gerente", color: "text-cyan-400" },
-  { value: "broker", label: "Corretor", color: "text-emerald-400" },
-  { value: "cca", label: "CCA", color: "text-amber-400" },
-  { value: "sdr", label: "SDR", color: "text-pink-400" },
-  { value: "marketing", label: "Marketing", color: "text-orange-400" },
+  // Cor e apoio visual do chip; quem identifica o papel e o rotulo ao lado.
+  // A escala de grafico tem 5 tons, entao dois papeis repetem tom de proposito.
+  { value: "partner", label: "Sócio", color: "text-chart-5" },
+  { value: "director", label: "Diretor", color: "text-chart-1" },
+  { value: "manager", label: "Gerente", color: "text-chart-4" },
+  { value: "broker", label: "Corretor", color: "text-chart-2" },
+  { value: "cca", label: "CCA", color: "text-chart-3" },
+  { value: "sdr", label: "SDR", color: "text-chart-5" },
+  { value: "marketing", label: "Marketing", color: "text-chart-3" },
 ];
 
 export async function listPermissionCatalog(): Promise<PermissionRecord[]> {
@@ -61,7 +64,7 @@ export async function listPermissionCatalog(): Promise<PermissionRecord[]> {
     .select("code,label,category,description")
     .order("category")
     .order("code");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("catálogo de permissões", error);
   return (data ?? []) as PermissionRecord[];
 }
 
@@ -69,7 +72,7 @@ export async function listRolePermissions(): Promise<RolePermissionRecord[]> {
   const { data, error } = await supabase
     .from("role_permissions")
     .select("role,permission,allowed");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("permissões por papel", error);
   return (data ?? []) as RolePermissionRecord[];
 }
 
@@ -81,7 +84,7 @@ export async function setRolePermission(
   const { error } = await supabase
     .from("role_permissions")
     .upsert({ role, permission, allowed }, { onConflict: "role,permission" });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar permissão do papel", error);
 }
 
 export async function listPipelineStages(): Promise<PipelineStageRecord[]> {
@@ -90,7 +93,7 @@ export async function listPipelineStages(): Promise<PipelineStageRecord[]> {
     .select("id,code,label,position")
     .eq("active", true)
     .order("position");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("etapas do pipeline", error);
   return (data ?? []) as PipelineStageRecord[];
 }
 
@@ -98,7 +101,7 @@ export async function listStagePermissions(): Promise<StagePermissionRecord[]> {
   const { data, error } = await supabase
     .from("stage_permissions")
     .select("stage_id,role,can_enter,can_exit");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("permissões por etapa", error);
   return (data ?? []) as StagePermissionRecord[];
 }
 
@@ -116,7 +119,7 @@ export async function setStagePermission(
       { stage_id: stageId, role, can_enter: patch.can_enter ?? true, can_exit: patch.can_exit ?? true },
       { onConflict: "stage_id,role" },
     );
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar permissão da etapa", error);
 }
 
 /**

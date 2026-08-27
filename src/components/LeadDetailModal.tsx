@@ -1,41 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/integrations/supabase/client";
+import { StatusBadge } from "@/components/shared";
+import { useLeadDetail, useNowTicker } from "@/components/leads";
 import { useAuth } from "@/contexts/AuthContext";
 import TaskPanel from "@/components/TaskPanel";
 import VisitPanel from "@/components/VisitPanel";
 import { toast } from "@/hooks/use-toast";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  MessageCircle, Phone, Mail, Paperclip, Send, Upload,
-  Clock, User, ArrowRightCircle, AlertTriangle, Download, Save, HandMetal, Timer,
+  AlertTriangle, ArrowRightCircle, Clock, Download, HandMetal, Mail,
+  MessageCircle, Paperclip, Phone, Save, Send, Timer, Upload, User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Label } from "@/components/ui/label";
+import { dateTime } from "@/lib/format";
+import { describeError } from "@/lib/supabaseError";
 import {
-  listLeadEvents, listLeadComments, addLeadComment,
-  listLeadAttachments, uploadLeadAttachment, signedAttachmentUrl,
+  addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
   updateLead, moveLeadStage, claimLead,
-  FUNNEL_STAGES, funnelStageLabel, leadStatusLabel, leadStatusClass,
+  FUNNEL_STAGES, funnelStageLabel, funnelStageTone, leadSourceTone, leadStatusLabel, leadStatusTone,
   attendSecondsLeft, formatCountdown, canClaim, trackingFields,
-  type LeadRecord, type LeadEvent, type LeadComment, type LeadAttachment,
+  type LeadRecord, type LeadAttachment,
   type LeadFunnelStage, type LeadPatch,
 } from "@/integrations/supabase/leads";
 
-function sourceBadgeCls(source?: string) {
-  const s = (source || "").toLowerCase();
-  if (s.includes("meta") || s.includes("facebook") || s.includes("instagram")) return "bg-blue-600 text-white border-blue-500";
-  if (s.includes("whats")) return "bg-green-600 text-white border-green-500";
-  if (s.includes("google")) return "bg-yellow-500 text-black border-yellow-400";
-  if (s.includes("indica")) return "bg-purple-600 text-white border-purple-500";
-  return "bg-secondary text-foreground";
-}
+type EditableField = "full_name" | "phone" | "email" | "document";
 
 /** Item da linha do tempo: log automático e comentário manual no mesmo lugar. */
 type TimelineEntry = {
@@ -45,6 +39,13 @@ type TimelineEntry = {
   text: string;
   manual: boolean;
 };
+
+const EDIT_FIELDS: { key: EditableField; label: string; type?: string }[] = [
+  { key: "full_name", label: "Nome" },
+  { key: "phone", label: "Telefone / WhatsApp" },
+  { key: "email", label: "E-mail", type: "email" },
+  { key: "document", label: "CPF / documento" },
+];
 
 export default function LeadDetailModal({
   lead, open, onOpenChange, actorName, onConvert, onStageChanged,
@@ -59,40 +60,15 @@ export default function LeadDetailModal({
   const { user } = useAuth();
   const profileId = user?.id || null;
 
-  const [events, setEvents] = useState<LeadEvent[]>([]);
-  const [comments, setComments] = useState<LeadComment[]>([]);
-  const [attachments, setAttachments] = useState<LeadAttachment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const fileRef = useRef<HTMLInputElement>(null);
+  const commentId = useId();
 
-  const leadId = lead?.id;
-
-  const loadAll = useCallback(async () => {
-    if (!leadId) return;
-    const [eventsResult, commentsResult, attachmentsResult] = await Promise.allSettled([
-      listLeadEvents(leadId),
-      listLeadComments(leadId),
-      listLeadAttachments(leadId),
-    ]);
-    if (eventsResult.status === "fulfilled") setEvents(eventsResult.value);
-    if (commentsResult.status === "fulfilled") setComments(commentsResult.value);
-    if (attachmentsResult.status === "fulfilled") setAttachments(attachmentsResult.value);
-  }, [leadId]);
-
-  useEffect(() => {
-    if (!leadId || !open) return;
-    void loadAll();
-    const channel = supabase.channel(`lead-${leadId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_events", filter: `lead_id=eq.${leadId}` }, () => { void loadAll(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_comments", filter: `lead_id=eq.${leadId}` }, () => { void loadAll(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_attachments", filter: `lead_id=eq.${leadId}` }, () => { void loadAll(); })
-      .subscribe();
-    const ticker = setInterval(() => setNow(Date.now()), 1000);
-    return () => { supabase.removeChannel(channel); clearInterval(ticker); };
-  }, [leadId, open, loadAll]);
+  const { events, comments, attachments, reload } = useLeadDetail(lead?.id, open);
+  // Cronômetro da trava: só vale a pena o tique de 1s com o modal aberto.
+  const now = useNowTicker(open);
 
   // "O registro histórico deve permitir comentários manuais para manter um log
   // de toda a movimentação do lead" (ata 23/07): as duas fontes numa só linha.
@@ -133,15 +109,14 @@ export default function LeadDetailModal({
     try {
       await claimLead(lead.id);
       toast({ title: "Lead em atendimento", description: "O cronômetro parou: o lead é seu." });
-      onStageChanged?.();
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Não foi possível atender",
-        description: err instanceof Error ? err.message : "tente novamente",
+        description: describeError(err, "outro corretor pode ter assumido antes"),
       });
-      onStageChanged?.();
     }
+    onStageChanged?.();
   };
 
   const moveTo = async (stage: LeadFunnelStage) => {
@@ -153,7 +128,7 @@ export default function LeadDetailModal({
       toast({
         variant: "destructive",
         title: "Erro ao mover",
-        description: err instanceof Error ? err.message : "sem permissão para este lead",
+        description: describeError(err, "sem permissão para este lead"),
       });
     }
   };
@@ -176,12 +151,12 @@ export default function LeadDetailModal({
       await addLeadComment(lead.id, newComment);
       setNewComment("");
       await touchFirstContact();
-      await loadAll();
+      await reload();
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Erro ao comentar",
-        description: err instanceof Error ? err.message : "tente novamente",
+        description: describeError(err, "tente novamente"),
       });
     } finally {
       setSendingComment(false);
@@ -194,12 +169,12 @@ export default function LeadDetailModal({
       await uploadLeadAttachment(lead.id, file);
       toast({ title: "Anexo enviado" });
       await touchFirstContact();
-      await loadAll();
+      await reload();
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Erro no upload",
-        description: err instanceof Error ? err.message : "tente novamente",
+        description: describeError(err, "tente novamente"),
       });
     } finally {
       setUploading(false);
@@ -208,70 +183,72 @@ export default function LeadDetailModal({
 
   const download = async (attachment: LeadAttachment) => {
     try {
-      window.open(await signedAttachmentUrl(attachment.storage_path), "_blank");
+      window.open(await signedAttachmentUrl(attachment.storage_path), "_blank", "noopener");
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Erro ao baixar",
-        description: err instanceof Error ? err.message : "link não gerado",
+        description: describeError(err, "link não gerado"),
       });
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl glass-strong max-h-[92vh] overflow-y-auto">
+      <DialogContent className="glass-strong max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3 flex-wrap">
+          <DialogTitle className="flex flex-wrap items-center gap-2">
             <span>{lead.name}</span>
-            <Badge className={leadStatusClass(lead.status)}>{leadStatusLabel(lead.status)}</Badge>
-            <Badge variant="outline">{funnelStageLabel(lead.funnel_stage)}</Badge>
+            <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
+            <StatusBadge tone={funnelStageTone(lead.funnel_stage)}>{funnelStageLabel(lead.funnel_stage)}</StatusBadge>
             {secondsLeft !== null && (
-              <Badge className={cn("gap-1", secondsLeft <= 60 ? "bg-destructive text-destructive-foreground" : "bg-warning/20 text-warning")}>
-                <Timer className="h-3 w-3" /> {formatCountdown(secondsLeft)} para atender
-              </Badge>
+              <StatusBadge tone={secondsLeft <= 60 ? "danger" : "warning"} icon={Timer}>
+                <span className="tabular-nums">{formatCountdown(secondsLeft)}</span> para atender
+              </StatusBadge>
             )}
             {inactiveHours > 24 && (
-              <Badge className="bg-destructive text-destructive-foreground gap-1">
-                <AlertTriangle className="h-3 w-3" /> Inativo há {inactiveHours.toFixed(0)}h
-              </Badge>
+              <StatusBadge tone="danger" icon={AlertTriangle}>Inativo há {inactiveHours.toFixed(0)}h</StatusBadge>
             )}
           </DialogTitle>
-          <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap pt-1">
-            <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Chegou {formatDistanceToNow(arrived, { locale: ptBR, addSuffix: true })}</span>
-            <span className="flex items-center gap-1"><User className="h-3 w-3" /> {lead.broker_name || "Sem corretor"}</span>
-            <Badge className={cn("border text-[10px]", sourceBadgeCls(lead.source))}>{lead.source || "Origem —"}</Badge>
-            {lead.campaign_name && <Badge variant="outline" className="text-[10px]">📣 {lead.campaign_name}</Badge>}
-            {lead.form_name && <Badge variant="outline" className="text-[10px]">📋 {lead.form_name}</Badge>}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" aria-hidden /> Chegou {formatDistanceToNow(arrived, { locale: ptBR, addSuffix: true })}
+            </span>
+            <span className="flex items-center gap-1">
+              <User className="h-3.5 w-3.5" aria-hidden /> {lead.broker_name || "Sem corretor"}
+            </span>
+            <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
+            {lead.campaign_name && <StatusBadge tone="neutral">📣 {lead.campaign_name}</StatusBadge>}
+            {lead.form_name && <StatusBadge tone="neutral">📋 {lead.form_name}</StatusBadge>}
+          </div>
         </DialogHeader>
 
         {/* Ações rápidas */}
         <div className="flex flex-wrap gap-2">
           {claimable && (
-            <Button size="sm" onClick={attend} className="gap-1">
+            <Button size="sm" onClick={attend}>
               <HandMetal className="h-4 w-4" /> Atender
-              {secondsLeft !== null && <span className="font-mono">{formatCountdown(secondsLeft)}</span>}
+              {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
             </Button>
           )}
           {waLink && (
-            <Button size="sm" className="bg-green-600 hover:bg-green-700" asChild onClick={touchFirstContact}>
-              <a href={waLink} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4 mr-1" /> WhatsApp</a>
+            <Button size="sm" variant="outline" className="border-success/40 text-success hover:text-success" asChild onClick={touchFirstContact}>
+              <a href={waLink} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
             </Button>
           )}
           {lead.phone && (
             <Button size="sm" variant="outline" asChild onClick={touchFirstContact}>
-              <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4 mr-1" /> Ligar</a>
+              <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4" /> Ligar</a>
             </Button>
           )}
           {lead.email && (
             <Button size="sm" variant="outline" asChild>
-              <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4 mr-1" /> E-mail</a>
+              <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4" /> E-mail</a>
             </Button>
           )}
           {lead.status !== "converted" && !lead.converted_deal_id && (
-            <Button size="sm" variant="default" className="ml-auto" onClick={() => onConvert(lead)}>
-              <ArrowRightCircle className="h-4 w-4 mr-1" /> Converter
+            <Button size="sm" className="sm:ml-auto" onClick={() => onConvert(lead)}>
+              <ArrowRightCircle className="h-4 w-4" /> Converter
             </Button>
           )}
         </div>
@@ -282,7 +259,7 @@ export default function LeadDetailModal({
             <Button
               key={stage.key} size="sm"
               variant={lead.funnel_stage === stage.key ? "default" : "outline"}
-              className="text-[11px] h-7 px-2"
+              className="h-8 px-3 text-xs"
               onClick={() => moveTo(stage.key)}
             >
               {stage.label}
@@ -291,36 +268,32 @@ export default function LeadDetailModal({
         </div>
 
         <Tabs defaultValue="info" className="mt-2">
-          <TabsList className="grid grid-cols-6 w-full">
-            <TabsTrigger value="info" className="text-[11px]">Dados</TabsTrigger>
-            <TabsTrigger value="form" className="text-[11px]">Formulário</TabsTrigger>
-            <TabsTrigger value="comments" className="text-[11px]">Comentar</TabsTrigger>
-            <TabsTrigger value="attachments" className="text-[11px]">Anexos</TabsTrigger>
-            <TabsTrigger value="history" className="text-[11px]">Histórico</TabsTrigger>
-            <TabsTrigger value="agenda" className="text-[11px]">Agenda</TabsTrigger>
-            <TabsTrigger value="tracking" className="text-[11px]">Rastreio</TabsTrigger>
+          {/* 7 abas: `grid-cols-6` escondia a última e o `h-10` do TabsList
+              cortava o rótulo. Em tela estreita quebra em duas linhas. */}
+          <TabsList className="grid h-auto w-full grid-cols-4 sm:grid-cols-7">
+            <TabsTrigger value="info" className="text-xs">Dados</TabsTrigger>
+            <TabsTrigger value="form" className="text-xs">Formulário</TabsTrigger>
+            <TabsTrigger value="comments" className="text-xs">Comentar</TabsTrigger>
+            <TabsTrigger value="attachments" className="text-xs">Anexos</TabsTrigger>
+            <TabsTrigger value="history" className="text-xs">Histórico</TabsTrigger>
+            <TabsTrigger value="agenda" className="text-xs">Agenda</TabsTrigger>
+            <TabsTrigger value="tracking" className="text-xs">Rastreio</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="space-y-3">
             <div className="space-y-2 text-sm">
               <Row k="Origem" v={lead.source} />
               <Row k="Corretor" v={lead.broker_name} />
-              <Row k="Atribuído em" v={lead.assigned_at ? format(new Date(lead.assigned_at), "dd/MM/yyyy HH:mm") : null} />
-              <Row k="Primeiro contato" v={lead.first_contact_at ? format(new Date(lead.first_contact_at), "dd/MM/yyyy HH:mm") : null} />
-              <Row k="Próxima ação" v={lead.next_action_at ? format(new Date(lead.next_action_at), "dd/MM/yyyy HH:mm") : null} />
-              <Row k="Qualificado pela IA" v={lead.sdr_qualified_at ? format(new Date(lead.sdr_qualified_at), "dd/MM/yyyy HH:mm") : null} />
+              <Row k="Atribuído em" v={lead.assigned_at ? dateTime(lead.assigned_at) : null} />
+              <Row k="Primeiro contato" v={lead.first_contact_at ? dateTime(lead.first_contact_at) : null} />
+              <Row k="Próxima ação" v={lead.next_action_at ? dateTime(lead.next_action_at) : null} />
+              <Row k="Qualificado pela IA" v={lead.sdr_qualified_at ? dateTime(lead.sdr_qualified_at) : null} />
               <Row k="Notas" v={lead.notes} />
             </div>
-            <EditFields
-              lead={lead}
-              onSaved={() => onStageChanged?.()}
-              fields={[
-                { k: "full_name", label: "Nome" },
-                { k: "phone", label: "Telefone / WhatsApp" },
-                { k: "email", label: "E-mail", type: "email" },
-                { k: "document", label: "CPF / documento" },
-              ]}
-            />
+            {/* `key` por versão do lead: o registro muda por baixo (roleta,
+                realtime) e o formulário precisa refletir o que está no banco,
+                sem um efeito copiando prop para estado. */}
+            <EditFields key={`${lead.id}-${lead.updated_at}`} lead={lead} onSaved={() => onStageChanged?.()} />
           </TabsContent>
 
           <TabsContent value="form">
@@ -329,81 +302,95 @@ export default function LeadDetailModal({
             ) : (
               <div className="space-y-2">
                 {lead.form_name && <p className="text-xs text-muted-foreground">Formulário: <span className="font-medium">{lead.form_name}</span></p>}
-                {Object.entries(answers).map(([k, v]) => <Row key={k} k={k} v={String(v)} />)}
+                {Object.entries(answers).map(([key, value]) => <Row key={key} k={key} v={String(value)} />)}
               </div>
             )}
           </TabsContent>
 
           <TabsContent value="comments" className="space-y-3">
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
               {comments.map((comment) => (
-                <div key={comment.id} className="p-2 rounded-lg bg-secondary/40 border border-border/40">
+                <div key={comment.id} className="rounded-xl border border-border bg-muted/40 p-2">
                   <p className="text-xs text-muted-foreground">
-                    {comment.author_name} • {format(new Date(comment.created_at), "dd/MM HH:mm")}
+                    {comment.author_name} · {dateTime(comment.created_at)}
                   </p>
-                  <p className="text-sm mt-0.5 whitespace-pre-wrap">{comment.body}</p>
+                  <p className="mt-0.5 whitespace-pre-wrap text-sm">{comment.body}</p>
                 </div>
               ))}
               {comments.length === 0 && <p className="text-sm text-muted-foreground">Nenhum comentário ainda.</p>}
             </div>
-            <div className="flex gap-2">
-              <Textarea rows={2} value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder={`Comentar como ${actorName}...`} />
-              <Button onClick={submitComment} disabled={!newComment.trim() || sendingComment} className="self-end">
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="space-y-1.5">
+              <Label htmlFor={commentId}>Novo comentário</Label>
+              <div className="flex gap-2">
+                <Textarea
+                  id={commentId} rows={2} value={newComment}
+                  onChange={(event) => setNewComment(event.target.value)}
+                  placeholder={`Comentar como ${actorName}…`}
+                />
+                <Button
+                  size="icon" className="self-end" aria-label="Enviar comentário"
+                  onClick={submitComment} disabled={!newComment.trim() || sendingComment}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               O comentário entra no histórico do lead junto com o log automático.
             </p>
           </TabsContent>
 
           <TabsContent value="attachments" className="space-y-3">
-            <input ref={fileRef} type="file" className="hidden" onChange={(e) => {
-              const file = e.target.files?.[0];
+            <input ref={fileRef} type="file" className="hidden" onChange={(event) => {
+              const file = event.target.files?.[0];
               if (file) void upload(file);
-              e.currentTarget.value = "";
+              event.target.value = "";
             }} />
             <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Upload className="h-4 w-4 mr-1" /> {uploading ? "Enviando..." : "Anexar arquivo"}
+              <Upload className="h-4 w-4" /> {uploading ? "Enviando…" : "Anexar arquivo"}
             </Button>
             <div className="space-y-2">
               {attachments.map((attachment) => (
-                <div key={attachment.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/40 border border-border/40">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Paperclip className="h-4 w-4 shrink-0" />
-                    <span className="text-sm truncate">{attachment.original_name}</span>
+                <div key={attachment.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 p-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Paperclip className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="truncate text-sm">{attachment.original_name}</span>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => download(attachment)}>
+                  <Button
+                    size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                    aria-label={`Baixar ${attachment.original_name}`} onClick={() => download(attachment)}
+                  >
                     <Download className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
               {attachments.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Sem anexos. A conversão em negócio exige pelo menos um documento.
+                  Sem anexos. O negócio pode ser criado assim; os documentos
+                  obrigatórios são cobrados no envio ao gerente.
                 </p>
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="history">
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="max-h-96 space-y-2 overflow-y-auto">
               {timeline.map((entry) => (
                 <div
                   key={entry.id}
                   className={cn(
-                    "flex gap-3 items-start p-2 rounded-lg border",
-                    entry.manual ? "border-primary/30 bg-primary/5" : "border-border/30",
+                    "flex items-start gap-3 rounded-xl border p-2",
+                    entry.manual ? "border-primary/30 bg-primary/5" : "border-border",
                   )}
                 >
-                  <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", entry.manual ? "bg-primary" : "bg-muted-foreground/50")} />
-                  <div className="flex-1 min-w-0">
+                  <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", entry.manual ? "bg-primary" : "bg-muted-foreground/50")} aria-hidden />
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-muted-foreground">
-                      {format(new Date(entry.at), "dd/MM HH:mm")}
-                      {entry.author ? ` • ${entry.author}` : ""}
-                      {entry.manual ? " • comentário" : ""}
+                      {dateTime(entry.at)}
+                      {entry.author ? ` · ${entry.author}` : ""}
+                      {entry.manual ? " · comentário" : ""}
                     </p>
-                    <p className="text-sm whitespace-pre-wrap">{entry.text}</p>
+                    <p className="whitespace-pre-wrap text-sm">{entry.text}</p>
                   </div>
                 </div>
               ))}
@@ -413,7 +400,7 @@ export default function LeadDetailModal({
 
           <TabsContent value="agenda" className="space-y-4">
             <TaskPanel refType="lead" refId={lead.id} defaultAssignee={lead.assigned_to ?? null} />
-            <div className="pt-3 border-t border-border/40">
+            <div className="border-t border-border pt-3">
               <VisitPanel leadId={lead.id} brokerId={lead.assigned_to ?? null} />
             </div>
           </TabsContent>
@@ -431,39 +418,30 @@ export default function LeadDetailModal({
   );
 }
 
-function EditFields({
-  lead, fields, onSaved,
-}: {
-  lead: LeadRecord;
-  fields: { k: "full_name" | "phone" | "email" | "document"; label: string; type?: string }[];
-  onSaved?: () => void;
-}) {
-  const [values, setValues] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    fields.forEach((field) => { initial[field.k] = lead[field.k] ?? ""; });
-    return initial;
-  });
+/**
+ * Edição direta dos dados do lead. Cada campo tem `<label htmlFor>` ligado a um
+ * `id` de `useId` — o `<Label>` solto de antes não apontava para nada e o leitor
+ * de tela anunciava quatro campos sem nome (X04).
+ */
+function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void }) {
+  const fieldId = useId();
+  const [values, setValues] = useState<Record<EditableField, string>>(() => ({
+    full_name: lead.full_name ?? "",
+    phone: lead.phone ?? "",
+    email: lead.email ?? "",
+    document: lead.document ?? "",
+  }));
   const [saving, setSaving] = useState(false);
-
-  // O lead muda por baixo (roleta, realtime): reflete o registro atual.
-  useEffect(() => {
-    const next: Record<string, string> = {};
-    fields.forEach((field) => { next[field.k] = lead[field.k] ?? ""; });
-    setValues(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead.id, lead.updated_at]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const patch: LeadPatch = {};
-      fields.forEach((field) => {
-        const value = values[field.k]?.trim() || null;
-        if (field.k === "full_name") patch.full_name = value || undefined;
-        if (field.k === "phone") patch.phone = value;
-        if (field.k === "email") patch.email = value;
-        if (field.k === "document") patch.document = value;
-      });
+      const patch: LeadPatch = {
+        full_name: values.full_name.trim() || undefined,
+        phone: values.phone.trim() || null,
+        email: values.email.trim() || null,
+        document: values.document.trim() || null,
+      };
       await updateLead(lead.id, patch);
       toast({ title: "Dados salvos" });
       onSaved?.();
@@ -471,7 +449,7 @@ function EditFields({
       toast({
         variant: "destructive",
         title: "Erro ao salvar",
-        description: err instanceof Error ? err.message : "sem permissão para este lead",
+        description: describeError(err, "sem permissão para este lead"),
       });
     } finally {
       setSaving(false);
@@ -479,19 +457,22 @@ function EditFields({
   };
 
   return (
-    <div className="space-y-3 border-t border-border/40 pt-3">
-      {fields.map((field) => (
-        <div key={field.k} className="space-y-1">
-          <Label className="text-xs">{field.label}</Label>
-          <Input
-            type={field.type || "text"}
-            value={values[field.k] || ""}
-            onChange={(e) => setValues((prev) => ({ ...prev, [field.k]: e.target.value }))}
-          />
-        </div>
-      ))}
+    <div className="space-y-3 border-t border-border pt-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {EDIT_FIELDS.map((field) => (
+          <div key={field.key} className="space-y-1.5">
+            <Label htmlFor={`${fieldId}-${field.key}`}>{field.label}</Label>
+            <Input
+              id={`${fieldId}-${field.key}`}
+              type={field.type || "text"}
+              value={values[field.key]}
+              onChange={(event) => setValues((prev) => ({ ...prev, [field.key]: event.target.value }))}
+            />
+          </div>
+        ))}
+      </div>
       <Button size="sm" onClick={save} disabled={saving}>
-        <Save className="h-3 w-3 mr-1" /> {saving ? "Salvando..." : "Salvar"}
+        <Save className="h-4 w-4" /> {saving ? "Salvando…" : "Salvar"}
       </Button>
     </div>
   );
@@ -500,9 +481,9 @@ function EditFields({
 function Row({ k, v }: { k: string; v?: string | null }) {
   if (!v) return null;
   return (
-    <div className="flex gap-2 text-sm">
-      <span className="text-muted-foreground min-w-[130px] capitalize">{k.replace(/_/g, " ")}:</span>
-      <span className="flex-1 break-all">{v}</span>
+    <div className="flex flex-col gap-0.5 text-sm sm:flex-row sm:gap-2">
+      <span className="capitalize text-muted-foreground sm:min-w-[150px]">{k.replace(/_/g, " ")}:</span>
+      <span className="min-w-0 flex-1 break-words">{v}</span>
     </div>
   );
 }

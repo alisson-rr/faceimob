@@ -14,6 +14,7 @@ import {
   type VisitRecord,
   type VisitResult,
 } from "@/integrations/supabase/activities";
+import { describeError } from "@/lib/supabaseError";
 
 type Props = {
   leadId?: string;
@@ -39,7 +40,7 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
     } catch (e) {
       toast({
         title: "Falha ao carregar visitas",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar as visitas."),
         variant: "destructive",
       });
     } finally {
@@ -63,7 +64,7 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
     } catch (e) {
       toast({
         title: "Não foi possível agendar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível agendar a visita."),
         variant: "destructive",
       });
     } finally {
@@ -79,7 +80,7 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
     } catch (e) {
       toast({
         title: "Não foi possível atualizar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível registrar o resultado da visita."),
         variant: "destructive",
       });
     } finally {
@@ -112,20 +113,20 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
           <Loader2 className="h-3 w-3 animate-spin" /> Carregando...
         </div>
       ) : visits.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground italic">Nenhuma visita registrada.</p>
+        <p className="text-xs text-muted-foreground italic">Nenhuma visita registrada.</p>
       ) : (
         <div className="space-y-1">
           {visits.map((v) => (
-            <div key={v.id} className="flex items-center justify-between gap-2 rounded border border-border/50 px-2 py-1 text-[11px]">
+            <div key={v.id} className="flex items-center justify-between gap-2 rounded border border-border/50 px-2 py-1 text-xs">
               <span className="truncate">
                 {formatWhen(v.scheduled_at)}
-                <Badge variant={v.result === "completed" ? "default" : "outline"} className="ml-2 text-[9px]">
+                <Badge variant={v.result === "completed" ? "default" : "outline"} size="sm" className="ml-2">
                   {VISIT_RESULT_LABEL[v.result]}
                 </Badge>
               </span>
               {v.result === "scheduled" && (
                 <Select value="" onValueChange={(r) => change(v.id, r as VisitResult)} disabled={busy === v.id}>
-                  <SelectTrigger className="h-6 w-36 text-[10px]" aria-label="Resultado da visita">
+                  <SelectTrigger className="h-6 w-36 text-xs" aria-label="Resultado da visita">
                     <SelectValue placeholder="Registrar resultado" />
                   </SelectTrigger>
                   <SelectContent>

@@ -1,9 +1,4 @@
-import {
-  LayoutDashboard, GitBranch, Users, Megaphone,
-  Database, Settings, LogOut, Link2, Sun, Moon,
-  CreditCard, Shield, Building2, Trophy, KeyRound, Target, LogIn, Globe, TrendingUp, Zap, Bot,
-  UserSearch,
-} from "lucide-react";
+import { LogOut, Moon, Sun } from "lucide-react";
 import { permissionForPath } from "@/lib/routePermissions";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -12,46 +7,15 @@ import {
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
-import logoFaceimob from "@/assets/logo-faceimob-white.png";
-import logoFaceimobDark from "@/assets/logo-faceimob.png";
-import logoSymbol from "@/assets/logo-faceimob-symbol-white.png";
-import logoSymbolDark from "@/assets/logo-faceimob-symbol.png";
+import logoFaceimobWhite from "@/assets/logo-faceimob-white.png";
+import logoFaceimobColor from "@/assets/logo-faceimob.png";
+import logoSymbolWhite from "@/assets/logo-faceimob-symbol-white.png";
+import logoSymbolColor from "@/assets/logo-faceimob-symbol.png";
 import { useTheme } from "@/hooks/useTheme";
 import { useCallback, useRef } from "react";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-
-// A visibilidade sai da matriz `role_permissions` (migration 0015), não de uma
-// lista de papéis no código: era isso que a tela de permissões prometia e não
-// entregava. O código de cada item vem de `ROUTE_PERMISSION`, o mesmo mapa que
-// o guard de rota usa — item somindo do menu e URL aberta seria pior que nada.
-const mainNav = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Pipeline", url: "/pipeline", icon: GitBranch },
-  { title: "Leads", url: "/leads", icon: UserSearch },
-  { title: "CCA Pipeline", url: "/cca", icon: CreditCard },
-  { title: "Marketing", url: "/marketing", icon: Megaphone },
-  { title: "Equipes", url: "/equipes", icon: Users },
-  { title: "Links", url: "/links", icon: Link2 },
-  { title: "Gamificação", url: "/gamification", icon: Trophy },
-  { title: "Resultados", url: "/resultados", icon: TrendingUp },
-  { title: "Checkpoint", url: "/checkpoint", icon: Target },
-  { title: "Check-in", url: "/checkin", icon: LogIn },
-  { title: "SDR IA", url: "/sdr", icon: Bot },
-];
-
-const adminNav = [
-  { title: "Permissões", url: "/admin/permissions", icon: Shield },
-  { title: "Integrações", url: "/admin/integrations", icon: KeyRound },
-  { title: "Construtoras", url: "/admin/developers", icon: Building2 },
-  { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound },
-  { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe },
-  { title: "Automação Leads", url: "/admin/lead-automation", icon: Zap },
-];
-
-const systemNav = [
-  { title: "Dados", url: "/data", icon: Database },
-  { title: "Configurações", url: "/settings", icon: Settings },
-];
+import { NAV_GROUPS, NAV_ITEMS, type NavItem } from "@/components/layout/navigation";
 
 export function AppSidebar() {
   const { state, setOpen } = useSidebar();
@@ -76,59 +40,54 @@ export function AppSidebar() {
     hoverTimer.current = setTimeout(() => setOpen(false), 500);
   }, [setOpen]);
 
-  // Sem código mapeado a rota é livre — só o que exige permissão está no mapa.
-  const visible = (item: { url: string }) => {
+  // Sem codigo mapeado a rota e livre — so o que exige permissao esta no mapa.
+  const visible = (item: NavItem) => {
+    if (item.hidden) return false;
     const code = permissionForPath(item.url);
     return code ? can(code) : true;
   };
-  const visibleMainNav = mainNav.filter(visible);
-  const visibleAdminNav = adminNav.filter(visible);
-  const visibleSystemNav = systemNav.filter(visible);
+
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: NAV_ITEMS.filter((item) => item.group === group.id && visible(item)),
+  })).filter((group) => group.items.length > 0);
 
   return (
-    <Sidebar
-      collapsible="icon"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      <SidebarContent>
-        <div className="p-4 flex items-center justify-center transition-all duration-300">
+    <Sidebar collapsible="icon" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      <SidebarContent className="gap-0">
+        {/* Nao existe asset de logo com letra escura: `logo-faceimob.png` e
+            `logo-faceimob-white.png` sao o MESMO desenho de letra branca, que
+            some no sidebar claro. Ate a marca entregar a versao escura, o tema
+            claro usa a mesma arte sobre uma placa azul da marca — some com o
+            problema de contraste sem inventar outra tipografia. */}
+        <div className="flex h-16 items-center justify-center px-4">
           {!collapsed ? (
-            <img src={isLight ? logoFaceimobDark : logoFaceimob} alt="Faceimob" className="h-10 object-contain animate-fade-in" />
+            <img
+              src={isLight ? logoFaceimobColor : logoFaceimobWhite}
+              alt="Faceimob"
+              className={cn("h-9 object-contain", isLight && "rounded-xl bg-brand-blue px-3 py-1.5")}
+            />
           ) : (
-            <img src={isLight ? logoSymbolDark : logoSymbol} alt="Faceimob" className="w-8 h-8 object-contain animate-scale-in" />
+            <img
+              src={isLight ? logoSymbolColor : logoSymbolWhite}
+              alt="Faceimob"
+              className="h-8 w-8 object-contain"
+            />
           )}
         </div>
+        <div className="mx-3 h-px bg-sidebar-border" />
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {visibleMainNav.map((item, i) => (
-                <SidebarMenuItem key={item.title} style={{ animationDelay: `${i * 30}ms` }} className="animate-fade-in">
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">
-                      <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-                      {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {visibleAdminNav.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Administração</SidebarGroupLabel>
+        {groups.map((group) => (
+          <SidebarGroup key={group.id}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {visibleAdminNav.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                      <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">
-                        <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-                        {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
+                      <NavLink to={item.url} end activeClassName="glow-primary">
+                        <item.icon className="h-4 w-4" />
+                        {!collapsed && <span>{item.title}</span>}
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -136,37 +95,31 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        )}
-
-        <SidebarGroup>
-          <SidebarGroupLabel>Sistema</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {visibleSystemNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <NavLink to={item.url} end activeClassName="bg-gradient-to-r from-primary/20 to-primary/5 text-primary glow-primary">
-                      <item.icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
-                      {!collapsed && <span className="transition-opacity duration-200">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={toggleTheme} className="transition-all duration-200 hover:bg-primary/10">
+            <SidebarMenuButton
+              onClick={toggleTheme}
+              aria-label={isLight ? "Mudar para o tema escuro" : "Mudar para o tema claro"}
+              tooltip={isLight ? "Tema escuro" : "Tema claro"}
+            >
               {isLight ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-              {!collapsed && <span>{isLight ? "Modo Escuro" : "Versão White"}</span>}
+              {!collapsed && <span>{isLight ? "Tema escuro" : "Tema claro"}</span>}
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton className="text-destructive hover:text-destructive transition-all duration-200" onClick={async () => { await signOut(); navigate('/login'); }}>
+            <SidebarMenuButton
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={async () => {
+                await signOut();
+                navigate("/login");
+              }}
+              aria-label="Sair da conta"
+              tooltip="Sair"
+            >
               <LogOut className="h-4 w-4" />
               {!collapsed && <span>Sair</span>}
             </SidebarMenuButton>

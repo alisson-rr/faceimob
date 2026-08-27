@@ -30,6 +30,12 @@ export const SECRET_SLOTS = {
   VOICE_AI_WEBHOOK_SECRET: { provider: "voice_ai", label: "webhook_secret" },
   BREVO_API_KEY: { provider: "brevo", label: "api_key" },
   BREVO_SENDER_EMAIL: { provider: "brevo", label: "sender_email" },
+  // Não é credencial de terceiro: é a chave que o pg_cron manda no header ao
+  // chamar os workers (migrations 0018/0020). `requireServiceRole` compara o
+  // Bearer recebido com ESTE valor, então precisa ler do mesmo lugar de onde a
+  // migration lê — cofre à frente, `Deno.env` atrás. O par já estava no catálogo
+  // da tela de Integrações desde a 0018.
+  SUPABASE_SERVICE_ROLE_KEY: { provider: "supabase", label: "service_role_key" },
 } as const;
 
 export type SecretName = keyof typeof SECRET_SLOTS;

@@ -10,9 +10,18 @@
 
 export type Status1 = "VENDA" | "PROPOSTA" | "QUEDA" | "DISTRATO" | "OFF";
 
+/**
+ * Rótulo sem o prefixo numerado, aparado e em caixa alta.
+ *
+ * A tabela do Pipeline usa o rótulo numerado ("17. DISTRATO") e o modal usa o
+ * rótulo puro ("DISTRATO"). Sem tirar o prefixo só o modal marcava perda: o
+ * negócio seguia somando VGV e ranking depois de um distrato.
+ */
+const bare = (s: string | null | undefined): string =>
+  (s ?? "").toString().trim().toUpperCase().replace(/^\d+\.\s*/, "");
+
 export const normalizeStatus = (s: string | null | undefined): Status1 | null => {
-  if (!s) return null;
-  const u = s.toString().trim().toUpperCase();
+  const u = bare(s);
   if (u === "VENDA" || u === "PROPOSTA" || u === "QUEDA" || u === "DISTRATO" || u === "OFF") {
     return u as Status1;
   }
@@ -25,6 +34,28 @@ export const isPerda = (s: string | null | undefined) => {
   const n = normalizeStatus(s);
   return n === "QUEDA" || n === "DISTRATO";
 };
+
+/**
+ * Os rótulos do Status 2 que **encerram** o negócio: os motivos que o diálogo
+ * de perda oferece e os que o Select da tabela precisa desviar para a
+ * confirmação, em vez de gravar direto.
+ *
+ * Lista única, e não duas. Enquanto o diálogo tinha a sua e o `changeStatus`
+ * comparava contra três constantes soltas, "19. REPROVADO" encerrava o negócio
+ * quando escolhido no diálogo e não encerrava nada quando escolhido na tabela —
+ * o mesmo motivo com dois resultados.
+ *
+ * Encerrar ≠ contar como perda: `isPerda` é a semântica do relatório (só QUEDA
+ * e DISTRATO viram perda no dashboard) e continua intocada. "19. REPROVADO"
+ * e "OFF" tiram o negócio do funil sem entrar na conta de perdas.
+ */
+export const LOSS_REASONS = ["17. DISTRATO", "18. QUEDA", "19. REPROVADO", "OFF"];
+
+const LOSS_LABELS = new Set(LOSS_REASONS.map(bare));
+
+/** Escolher este rótulo encerra o negócio? Compara sem o prefixo numerado:
+ *  a tabela manda "18. QUEDA" e um `status_detail` importado pode vir "QUEDA". */
+export const isLossStatus = (s: string | null | undefined): boolean => LOSS_LABELS.has(bare(s));
 
 /** Ordena "MM/AAAA" ascendente. */
 export const compareMonth = (a: string, b: string) => {

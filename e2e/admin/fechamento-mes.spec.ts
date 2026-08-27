@@ -13,10 +13,35 @@ import { userFor } from "../support/users";
  * ainda aberto. Hoje é `close_month_and_season()`, uma transação só — então o
  * teste cobra os TRÊS efeitos no banco, não o toast.
  *
+ * **Como o mês é escolhido mudou (migration `0032` + Tarefa H).** Antes o mês
+ * saía do campo de texto do filtro; hoje sai da **temporada aberta do game**, e
+ * o diálogo mostra qual período vai congelar antes de confirmar. Digitar no
+ * filtro deixou de ter efeito aqui — de propósito: fechar um mês diferente do
+ * ciclo deixaria o ciclo aberto para sempre com os negócios dele fora do
+ * congelamento. Por isso o cenário passou a mover a temporada, não o filtro.
+ *
  * Mês escolhido de propósito: 10/2026 é futuro e não tem negócio de ninguém.
  * Fechar 08/2026 travaria a edição de negócios para os outros specs que rodam
  * ao mesmo tempo neste banco.
  */
+/**
+ * **Este arquivo não roda no alvo remoto — de propósito.**
+ *
+ * Ele é o único da suíte que encerra a temporada aberta do game: o `beforeAll`
+ * move `period_start` da temporada corrente para 10/2026, o teste a fecha e o
+ * `afterAll` desfaz os três passos. O `afterAll` só existe se a execução chegar
+ * até ele. Uma interrupção no meio (Ctrl+C, queda do processo, timeout global)
+ * deixa a homologação com a temporada de agosto **fechada** e o pódio da
+ * demonstração vazio — e o `globalTeardown` não tem como consertar, porque ele
+ * não sabe qual era o `period_start` de antes.
+ *
+ * Pular aqui é a alternativa honesta: cobrir configuração remota não paga
+ * arriscar o pódio da demonstração. O fechamento continua coberto no alvo
+ * local, contra o mesmo código e o mesmo schema. Está registrado no handoff-P.
+ */
+const REMOTO = resolveTarget().name === "remote";
+test.skip(REMOTO, "fecha a temporada aberta do game: uma interrupção deixaria o alvo remoto sem pódio");
+
 const tag = runTag();
 const MES = "10/2026";
 const ISO = "2026-10-01";
@@ -25,6 +50,7 @@ const ISO_SEGUINTE = "2026-11-01";
 let negocioAberto: string;
 let negocioGanho: string;
 let temporadaAntes: string;
+let inicioAntes: string;
 
 async function criarNegocio(rotulo: string, ganho: boolean): Promise<string> {
   const [etapa] = await db.select<{ id: string }>(
@@ -56,10 +82,15 @@ test.beforeAll(async () => {
   negocioAberto = await criarNegocio("ABERTO", false);
   negocioGanho = await criarNegocio("GANHO", true);
 
-  const [temporada] = await db.select<{ id: string }>(
-    "game_seasons?closed_at=is.null&select=id&order=period_start.desc&limit=1",
+  const [temporada] = await db.select<{ id: string; period_start: string }>(
+    "game_seasons?closed_at=is.null&select=id,period_start&order=period_start.desc&limit=1",
   );
   temporadaAntes = temporada.id;
+  inicioAntes = temporada.period_start;
+
+  // É a temporada aberta que define o mês a fechar. Movê-la para 10/2026 é o
+  // que faz a tela oferecer justamente o mês vazio deste cenário.
+  await db.update(`game_seasons?id=eq.${temporadaAntes}`, { period_start: ISO });
 });
 
 /**
@@ -79,6 +110,7 @@ test.afterAll(async () => {
     closed_at: null,
     period_end: null,
     closed_by: null,
+    period_start: inicioAntes,
   });
 
   await db.remove(`deals?notes=eq.${tag}`);
@@ -89,13 +121,19 @@ test.describe("fechamento de mês", () => {
     await page.goto("/pipeline");
     await aguardarCarregamento(page);
 
-    await page.getByRole("button", { name: /filtrar negócio/i }).click();
-    await page.getByPlaceholder("03/2026").fill(MES);
-
     await page.getByRole("button", { name: /^fechar mês$/i }).click();
-    await page.getByRole("button", { name: /confirmar fechamento/i }).click();
 
-    await expect(page.getByText(/mês fechado com sucesso/i)).toBeVisible();
+    // O diálogo escreve o período ANTES de confirmar, com a origem: o operador
+    // precisa ver qual mês vai congelar, não deduzir (Tarefa H).
+    const dialogo = page.getByRole("alertdialog");
+    await expect(dialogo).toContainText(MES);
+    await expect(dialogo).toContainText(ISO_SEGUINTE.slice(5, 7) + "/" + ISO_SEGUINTE.slice(0, 4));
+
+    // O botão de confirmar carrega o período no nome: quem aperta lê o mês que
+    // vai congelar, e o teste falha se a tela oferecer fechar outro.
+    await page.getByRole("button", { name: `Fechar ${MES}`, exact: true }).click();
+
+    await expect(page.getByText(`Mês ${MES} fechado`)).toBeVisible();
 
     // (b) o período ficou congelado
     await expect
@@ -133,11 +171,16 @@ test.describe("fechamento de mês", () => {
   test("a tela não oferece fechar de novo o mesmo mês", async ({ page }) => {
     expect(await db.select(`closed_months?period=eq.${ISO}&select=period`)).toHaveLength(1);
 
+    // O fechamento anterior abriu uma temporada nova. Apontá-la de volta para
+    // 10/2026 recria exatamente o caso que o botão precisa recusar: ciclo aberto
+    // num mês que já está congelado.
+    const [aberta] = await db.select<{ id: string }>(
+      "game_seasons?closed_at=is.null&select=id&order=period_start.desc&limit=1",
+    );
+    await db.update(`game_seasons?id=eq.${aberta.id}`, { period_start: ISO });
+
     await page.goto("/pipeline");
     await aguardarCarregamento(page);
-
-    await page.getByRole("button", { name: /filtrar negócio/i }).click();
-    await page.getByPlaceholder("03/2026").fill(MES);
 
     const botao = page.getByRole("button", { name: new RegExp(`${MES} fechado`, "i") });
     await expect(botao).toBeVisible();

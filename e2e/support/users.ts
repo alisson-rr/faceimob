@@ -178,12 +178,73 @@ export async function provisionE2EUsers(): Promise<Map<RoleKey, ProvisionedUser>
 }
 
 /**
- * Remove o que a suíte criou. No alvo local `npm run db:reset` já resolve; isto
- * existe para o remoto, onde apagar por engano o seed seria caro.
+ * Desfaz exatamente o que `provisionE2EUsers()` criou — nem um registro a mais.
+ *
+ * Sem isto, rodar a suíte contra a homologação deixava as dez contas
+ * `e2e.*@faceimob.test` e as duas equipes no banco da demonstração: "E2E
+ * Corretor" entrava nas listas de equipe e cinco corretores de teste entravam
+ * na contagem de staff que o cliente vê.
+ *
+ * **O marcador é explícito, nunca "criado recentemente".** Só saem daqui os dez
+ * e-mails literais de `E2E_USERS` e as duas equipes pelo `slug`. Uma varredura
+ * por data apagaria dado real da demonstração no primeiro fuso horário errado.
+ *
+ * As quatro tabelas com `on delete restrict` (`deal_participants`,
+ * `daily_entries`, `game_events`, `game_season_results`) precisam sair antes: o
+ * `DELETE` do usuário cascateia até `profiles` e para ali. O `removeE2EUsers()`
+ * anterior não conferia a resposta da Admin API, então falhava em silêncio
+ * justamente quando havia o que limpar.
  */
-export async function removeE2EUsers(): Promise<void> {
+export async function deprovisionE2EUsers(): Promise<{ usuarios: number; equipes: number }> {
+  const ids: string[] = [];
   for (const user of E2E_USERS) {
     const id = await findUserId(user.email);
-    if (id) await admin(`/auth/v1/admin/users/${id}`, { method: "DELETE" });
+    if (id) ids.push(id);
   }
+
+  // 1) As equipes primeiro: `team_members`, `daily_reports`, `funnel_targets`,
+  //    `public_links`, `goals` e `allowed_ips` das duas caem por cascade.
+  const slugs = Object.values(TEAMS).map((t) => t.slug);
+  const equipes = (await rest(`teams?slug=in.(${slugs.join(",")})&select=id`)) as { id: string }[];
+  if (equipes.length) {
+    await rest(`teams?id=in.(${equipes.map((t) => t.id).join(",")})`, { method: "DELETE" });
+  }
+
+  if (ids.length) {
+    const lista = ids.join(",");
+
+    // 2) O que trava o cascade. São dados destes perfis e de mais ninguém.
+    const negociosTocados = (await rest(
+      `deal_participants?profile_id=in.(${lista})&select=deal_id`,
+    )) as { deal_id: string }[];
+
+    for (const tabela of ["game_events", "game_season_results", "daily_entries", "deal_participants"]) {
+      await rest(`${tabela}?profile_id=in.(${lista})`, { method: "DELETE" });
+    }
+
+    // 3) Negócio que ficou sem NENHUM participante só pode ter sido criado pela
+    //    suíte — negócio do seed sempre tem corretor do seed. Sem isto a limpeza
+    //    trocaria "corretor de teste na lista" por "negócio órfão na contagem".
+    const orfaos = [...new Set(negociosTocados.map((p) => p.deal_id))];
+    if (orfaos.length) {
+      const restantes = (await rest(
+        `deal_participants?deal_id=in.(${orfaos.join(",")})&select=deal_id`,
+      )) as { deal_id: string }[];
+      const comDono = new Set(restantes.map((p) => p.deal_id));
+      const apagar = orfaos.filter((id) => !comDono.has(id));
+      if (apagar.length) await rest(`deals?id=in.(${apagar.join(",")})`, { method: "DELETE" });
+    }
+
+    // 4) As contas. `profiles` cai por cascade a partir de `auth.users`.
+    for (const id of ids) {
+      const res = await admin(`/auth/v1/admin/users/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        throw new Error(
+          `[e2e] não consegui remover o usuário ${id}: ${res.status} ${(await res.text()).slice(0, 200)}`,
+        );
+      }
+    }
+  }
+
+  return { usuarios: ids.length, equipes: equipes.length };
 }

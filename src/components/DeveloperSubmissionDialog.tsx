@@ -20,6 +20,7 @@ import {
   type DeveloperSubmissionRecord,
 } from "@/integrations/supabase/developerSubmissions";
 import { listDealDocuments, type DealDocumentRecord } from "@/integrations/supabase/documents";
+import { describeError } from "@/lib/supabaseError";
 
 type Props = {
   open: boolean;
@@ -68,7 +69,7 @@ export default function DeveloperSubmissionDialog({ open, onClose, dealId, clien
     } catch (e) {
       toast({
         title: "Falha ao carregar o envio",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar os dados do envio."),
         variant: "destructive",
       });
     } finally {
@@ -123,7 +124,7 @@ export default function DeveloperSubmissionDialog({ open, onClose, dealId, clien
     } catch (e) {
       toast({
         title: "Não foi possível enfileirar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível enfileirar o envio para a construtora."),
         variant: "destructive",
       });
     } finally {
@@ -139,7 +140,7 @@ export default function DeveloperSubmissionDialog({ open, onClose, dealId, clien
     } catch (e) {
       toast({
         title: "Ação não concluída",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível atualizar o envio à construtora."),
         variant: "destructive",
       });
     }
@@ -181,7 +182,7 @@ export default function DeveloperSubmissionDialog({ open, onClose, dealId, clien
                   className="h-9 text-xs"
                 />
                 {badCc.length > 0 && (
-                  <p className="text-[10px] text-destructive">Inválido: {badCc.join(", ")}</p>
+                  <p className="text-xs text-destructive">Inválido: {badCc.join(", ")}</p>
                 )}
               </div>
             </div>
@@ -199,13 +200,13 @@ export default function DeveloperSubmissionDialog({ open, onClose, dealId, clien
             <div className="space-y-2">
               <Label className="text-xs">Documentos ({selected.size} de {docs.length})</Label>
               {docs.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground italic">
+                <p className="text-xs text-muted-foreground italic">
                   Nenhum documento vigente neste negócio. Anexe na aba de documentos antes de enviar.
                 </p>
               ) : (
                 <div className="space-y-1 rounded-md border border-border/50 p-2">
                   {docs.map((d) => (
-                    <label key={d.id} className="flex items-center gap-2 text-[11px] cursor-pointer">
+                    <label key={d.id} className="flex items-center gap-2 text-xs cursor-pointer">
                       <Checkbox checked={selected.has(d.id)} onCheckedChange={() => toggle(d.id)} />
                       <span className="truncate">{d.stored_name}</span>
                       <span className="text-muted-foreground">v{d.version}</span>
@@ -220,9 +221,9 @@ export default function DeveloperSubmissionDialog({ open, onClose, dealId, clien
                 <Label className="text-xs">Envios anteriores</Label>
                 <div className="space-y-1">
                   {history.map((h) => (
-                    <div key={h.id} className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1 text-[10px]">
+                    <div key={h.id} className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1 text-xs">
                       <span className="truncate">
-                        <Badge variant={h.status === "sent" ? "default" : h.status === "failed" ? "destructive" : "outline"} className="text-[9px] mr-1">
+                        <Badge variant={h.status === "sent" ? "default" : h.status === "failed" ? "destructive" : "outline"} size="sm" className="mr-1">
                           {SUBMISSION_STATUS_LABEL[h.status]}
                         </Badge>
                         {h.to_email} · {h.document_ids.length} doc(s) · {formatDate(h.created_at)}

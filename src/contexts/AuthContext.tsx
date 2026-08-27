@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentProfile } from "@/integrations/supabase/newSchema";
 import {
@@ -51,6 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [rolePerms, setRolePerms] = useState<RolePermissionRecord[]>([]);
   const [stagePerms, setStagePerms] = useState<StagePermissionRecord[]>([]);
   const [previewRoleState, setPreviewRoleState] = useState<AppRole | null>(null);
+  /** Último usuário cuja matriz de permissões já foi carregada. */
+  const loadedForUser = useRef<string | null>(null);
 
   const realIsAdmin = roles.includes('admin');
 
@@ -76,9 +78,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRolePerms([]);
       setStagePerms([]);
       setPreviewRoleState(null);
+      loadedForUser.current = null;
       setLoading(false);
       return;
     }
+
+    // Sem voltar a `true` aqui, `can()` nega tudo entre o login e o fim do
+    // `Promise.all`: a tela pisca "Acesso não liberado" com a sidebar vazia.
+    // A comparação com o usuário já carregado evita remontar a rota a cada
+    // TOKEN_REFRESHED/USER_UPDATED do mesmo usuário, o que derrubaria filtro,
+    // modal e formulário abertos sem motivo.
+    if (loadedForUser.current !== nextSession.user.id) setLoading(true);
 
     try {
       const [current, rp, sp] = await Promise.all([
@@ -109,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRolePerms([]);
       setStagePerms([]);
     } finally {
+      loadedForUser.current = nextSession.user.id;
       setLoading(false);
     }
   }, []);

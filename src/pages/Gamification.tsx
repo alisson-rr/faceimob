@@ -1,28 +1,37 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trophy, Crown, Medal, Users, Lock, Unlock, Star, TrendingUp, AlertTriangle, Target, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Crown, Lock, Medal, PauseCircle, Play, Star, Target, Trophy, TrendingUp, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
-import { motion } from "framer-motion";
+import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from '@/components/shared';
+import { Podium, type PodiumEntry } from '@/components/engagement';
+import { useCurrentSeasonId, useSeasonRanking } from '@/hooks/useGameRanking';
+import { brl, date, num } from '@/lib/format';
+import { describeError } from '@/lib/supabaseError';
 import {
-  closeGameSeason,
-  getCurrentSeasonId,
+  closeMonthAndSeason,
+  gameKeys,
   listEffectiveScoringRules,
-  listRanking,
   listSeasonResults,
   listSeasons,
+  monthStart,
+  openGameSeason,
   setDefaultScoringPoints,
+  type GameSeason,
   type RankingRow,
-  type ScoringRule,
+  type SeasonResultRow,
 } from '@/integrations/supabase/game';
 
 // Os pesos vivem em `game_scoring_rules`; estes rótulos só traduzem o código do
@@ -35,16 +44,6 @@ const EVENT_LABELS: Record<string, string> = {
   venda: 'Venda',
   distrato: 'Distrato/Queda',
 };
-type ScoringConfig = Record<string, number>;
-
-interface GameRecord {
-  id: string;
-  month: string;
-  label: string;
-  closed: boolean;
-  closedAt?: string;
-  scores: BrokerScore[];
-}
 
 interface BrokerScore {
   brokerId: string;
@@ -57,13 +56,7 @@ interface BrokerScore {
   vendas: number;
   vgv: number;
   points: number;
-  breakdown: {
-    incompletos: number;
-    esteiras: number;
-    aprovados: number;
-    vendas: number;
-    distratos: number;
-  };
+  avatarUrl: string | null;
 }
 
 /**
@@ -73,288 +66,327 @@ interface BrokerScore {
  * cálculo sobre `deals`: o cálculo no cliente dependia de pesos em `useState`,
  * então cada usuário podia ver um ranking diferente e nada era auditável.
  */
-function buildScores(
-  ranking: RankingRow[],
-): BrokerScore[] {
+function buildScores(ranking: RankingRow[]): BrokerScore[] {
   return ranking
     .filter((row) => row.active)
-    .map((row) => {
-      const breakdown = row.breakdown ?? {};
-      return {
-        brokerId: row.profile_id,
-        brokerName: row.full_name,
-        team: row.team_name || 'Sem equipe',
-        managerId: row.manager_id ?? undefined,
-        managerName: row.manager_name ?? undefined,
-        directorshipId: row.director_id ?? undefined,
-        directorship: row.director_name ?? undefined,
-        vendas: row.sales,
-        vgv: Number(row.vgv),
-        points: row.points,
-        breakdown: {
-          incompletos: Number(breakdown.incompleto_com_doc ?? 0),
-          esteiras: Number(breakdown.esteira ?? 0),
-          aprovados: Number(breakdown.aprovado ?? 0),
-          vendas: Number(breakdown.venda ?? 0),
-          distratos: Number(breakdown.distrato ?? 0),
-        },
-      };
-    })
+    .map((row) => ({
+      brokerId: row.profile_id,
+      brokerName: row.full_name,
+      team: row.team_name || 'Sem equipe',
+      managerId: row.manager_id ?? undefined,
+      managerName: row.manager_name ?? undefined,
+      directorshipId: row.director_id ?? undefined,
+      directorship: row.director_name ?? undefined,
+      vendas: row.sales,
+      vgv: Number(row.vgv),
+      points: row.points,
+      avatarUrl: row.avatar_url,
+    }))
     .sort((a, b) => b.points - a.points);
 }
 
-const MONTHS = [
-  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
-];
+/**
+ * Temporada fechada: o número é o congelado em `game_season_results` e só a
+ * identificação (nome, equipe, diretoria) é resolvida no ranking de hoje. Quem
+ * saiu do escopo do usuário some da lista — é o mesmo recorte do RLS.
+ */
+function buildFrozenScores(results: SeasonResultRow[], people: Map<string, RankingRow>): BrokerScore[] {
+  return results
+    .filter((row) => people.has(row.profile_id))
+    .map((row) => {
+      const person = people.get(row.profile_id) as RankingRow;
+      return {
+        brokerId: row.profile_id,
+        brokerName: person.full_name,
+        team: person.team_name || 'Sem equipe',
+        managerId: person.manager_id ?? undefined,
+        managerName: person.manager_name ?? undefined,
+        directorshipId: person.director_id ?? undefined,
+        directorship: person.director_name ?? undefined,
+        vendas: row.sales,
+        vgv: Number(row.vgv),
+        points: row.points,
+        avatarUrl: person.avatar_url,
+      };
+    })
+    .sort((a, b) => a.points === b.points ? 0 : b.points - a.points);
+}
 
-function getMonthLabel(date: Date) {
-  return `${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+/**
+ * O ciclo do jogo não é mês de calendário (decisão de 21/08): começa quando o
+ * admin abre e termina quando ele fecha — 02/07 → 05/08 é um ciclo legítimo.
+ * A tela mostra o período real, nunca "Agosto 2026" derivado do relógio.
+ */
+function seasonPeriod(season: GameSeason) {
+  return `${date(season.period_start)} → ${season.period_end ? date(season.period_end) : 'em andamento'}`;
+}
+
+/** `2026-08-01` → `08/2026`, que é como o mês-base aparece no Pipeline. */
+function monthLabel(isoDate: string) {
+  const [year, month] = isoDate.split('-');
+  return `${month}/${year}`;
+}
+
+function nextSeasonLabel() {
+  const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date());
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 const MedalIcon = ({ position }: { position: number }) => {
-  if (position === 0) return <Crown className="h-5 w-5 text-yellow-400" />;
-  if (position === 1) return <Medal className="h-5 w-5 text-gray-300" />;
-  if (position === 2) return <Medal className="h-5 w-5 text-amber-600" />;
-  return <span className="text-muted-foreground font-mono text-sm">{position + 1}</span>;
+  if (position === 0) return <Crown className="h-5 w-5 text-gold" aria-hidden />;
+  if (position === 1) return <Medal className="h-5 w-5 text-silver" aria-hidden />;
+  if (position === 2) return <Medal className="h-5 w-5 text-bronze" aria-hidden />;
+  return <span className="font-mono text-sm tabular-nums text-muted-foreground">{position + 1}</span>;
 };
+
+function RankingTable({ scores, secondColumn }: { scores: BrokerScore[]; secondColumn: 'team' | 'manager' }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-12">#</TableHead>
+          <TableHead>Corretor</TableHead>
+          <TableHead>{secondColumn === 'team' ? 'Equipe' : 'Gerente'}</TableHead>
+          <TableHead className="text-center">Vendas</TableHead>
+          <TableHead className="text-right">VGV</TableHead>
+          <TableHead className="text-right">Pontos</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {scores.map((s, i) => (
+          <TableRow key={s.brokerId} className={i < 3 ? 'bg-highlight/5' : undefined}>
+            <TableCell><MedalIcon position={i} /><span className="sr-only">{i + 1}º</span></TableCell>
+            <TableCell className="font-medium">{s.brokerName}</TableCell>
+            <TableCell className="text-muted-foreground">
+              {secondColumn === 'team' ? s.team : s.managerName || '—'}
+            </TableCell>
+            <TableCell className="text-center tabular-nums">{num(s.vendas)}</TableCell>
+            <TableCell className="text-right tabular-nums">{brl(s.vgv)}</TableCell>
+            <TableCell className="text-right font-bold tabular-nums text-primary">{num(s.points)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 export default function Gamification() {
   const { role } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const isAdmin = role === 'admin';
 
-  const now = useMemo(() => new Date(), []);
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  const [loading, setLoading] = useState(true);
-
-  const [closedGames, setClosedGames] = useState<GameRecord[]>([]);
-  const [rules, setRules] = useState<ScoringRule[]>([]);
-  const [scoring, setScoring] = useState<ScoringConfig>({});
-  const [pendingScoring, setPendingScoring] = useState<ScoringConfig>({});
-  const [ranking, setRanking] = useState<RankingRow[]>([]);
-  const [closing, setClosing] = useState(false);
-
-  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [pendingScoring, setPendingScoring] = useState<Record<string, number>>({});
 
-  /** Temporada corrente, regras vigentes, ranking e histórico congelado. */
-  const fetchGameState = useCallback(async () => {
-    setLoading(true);
-    try {
-      const current = await getCurrentSeasonId();
+  const { data: currentSeasonId, isPending: seasonPending } = useCurrentSeasonId();
 
-      const [effectiveRules, allSeasons, currentRanking] = await Promise.all([
-        listEffectiveScoringRules(current),
-        listSeasons(),
-        current ? listRanking(current) : Promise.resolve([]),
-      ]);
-      setRules(effectiveRules);
-      const asMap = Object.fromEntries(effectiveRules.map((r) => [r.event_code, r.points]));
-      setScoring(asMap);
-      setPendingScoring(asMap);
+  const seasonsQuery = useQuery({ queryKey: gameKeys.seasons, queryFn: listSeasons, staleTime: 60_000 });
+  const seasons = useMemo(() => seasonsQuery.data ?? [], [seasonsQuery.data]);
 
-      setRanking(currentRanking);
+  const rankingQuery = useSeasonRanking(currentSeasonId);
+  const currentRanking = useMemo(() => rankingQuery.data ?? [], [rankingQuery.data]);
 
-      // Temporadas fechadas trazem o ranking congelado em game_season_results.
-      // Nome, equipe e diretoria vêm do escopo atual — o resultado
-      // numérico é o congelado; só a identificação é resolvida na leitura.
-      const currentById = new Map(currentRanking.map((row) => [row.profile_id, row]));
-      const closed = allSeasons.filter((s) => s.closed_at);
-      const records = await Promise.all(
-        closed.map(async (s) => {
-          const results = await listSeasonResults(s.id);
-          return {
-            id: s.id,
-            month: s.period_start.slice(0, 7),
-            label: s.label,
-            closed: true,
-            closedAt: s.closed_at ?? undefined,
-            scores: results.filter((r) => currentById.has(r.profile_id)).map((r) => {
-              const person = currentById.get(r.profile_id);
-              return {
-                brokerId: r.profile_id,
-                brokerName: person?.full_name ?? '—',
-                team: person?.team_name || 'Sem equipe',
-                managerId: person?.manager_id ?? undefined,
-                managerName: person?.manager_name ?? undefined,
-                directorshipId: person?.director_id ?? undefined,
-                directorship: person?.director_name ?? undefined,
-                vendas: r.sales,
-                vgv: Number(r.vgv),
-                points: r.points,
-                breakdown: {
-                  incompletos: Number(r.breakdown?.incompleto_com_doc ?? 0),
-                  esteiras: Number(r.breakdown?.esteira ?? 0),
-                  aprovados: Number(r.breakdown?.aprovado ?? 0),
-                  vendas: Number(r.breakdown?.venda ?? 0),
-                  distratos: Number(r.breakdown?.distrato ?? 0),
-                },
-              };
-            }) as BrokerScore[],
-          };
-        }),
-      );
-      setClosedGames(records);
-    } catch (error) {
-      console.error('Falha ao carregar o estado do jogo:', error);
-      toast({ title: 'Erro ao carregar a gamificação', variant: 'destructive' });
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
+  const rulesQuery = useQuery({
+    queryKey: gameKeys.rules(currentSeasonId ?? null),
+    queryFn: () => listEffectiveScoringRules(currentSeasonId ?? null),
+    staleTime: 60_000,
+  });
+  const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
 
-  useEffect(() => { void fetchGameState(); }, [fetchGameState]);
-
-  const currentScores = useMemo(
-    () => buildScores(ranking),
-    [ranking],
+  // Temporada exibida: a aberta por padrão; sem nenhuma aberta, a última fechada.
+  const selected = useMemo(
+    () => seasons.find((s) => s.id === selectedSeasonId)
+      ?? seasons.find((s) => s.id === currentSeasonId)
+      ?? seasons[0]
+      ?? null,
+    [seasons, selectedSeasonId, currentSeasonId],
   );
-  const isCurrentMonth = selectedMonth === currentMonthKey;
-  const closedGame = closedGames.find(g => g.month === selectedMonth);
-  const scores = closedGame ? closedGame.scores : currentScores;
-  const isClosed = !!closedGame?.closed;
+  const isCurrent = Boolean(selected && selected.id === currentSeasonId);
+  const isClosed = Boolean(selected?.closed_at);
 
-  /**
-   * Encerra a temporada de verdade.
-   *
-   * `close_game_season()` congela o ranking em `game_season_results` e abre a
-   * próxima na mesma transação — a versão anterior só empilhava um objeto em
-   * `useState`, então o "fechamento mensal zerando o jogo" (ata 14/07) sumia no
-   * primeiro reload. Os pesos novos são gravados ANTES do fechamento para valer
-   * já na temporada que abre.
-   */
-  const handleCloseGame = async () => {
-    if (!isAdmin || closing) return;
-    setClosing(true);
-    try {
-      const changed = rules.filter((r) => pendingScoring[r.event_code] !== scoring[r.event_code]);
-      for (const rule of changed) {
-        await setDefaultScoringPoints(rule.event_code, rule.label, pendingScoring[rule.event_code]);
-      }
+  const resultsQuery = useQuery({
+    queryKey: gameKeys.results(selected?.id ?? null),
+    queryFn: () => listSeasonResults(selected?.id as string),
+    enabled: Boolean(selected && isClosed),
+    staleTime: 60_000,
+  });
 
-      const label = getMonthLabel(now);
-      await closeGameSeason(undefined, true);
-      await fetchGameState();
-      setCloseConfirmOpen(false);
-      toast({ title: `Temporada "${label}" encerrada. Ranking congelado e novo ciclo aberto.` });
-    } catch (e) {
-      toast({
-        title: 'Não foi possível encerrar a temporada',
-        description: e instanceof Error ? e.message : 'Erro desconhecido',
-        variant: 'destructive',
-      });
-    } finally {
-      setClosing(false);
-    }
-  };
+  const peopleById = useMemo(
+    () => new Map(currentRanking.map((row) => [row.profile_id, row])),
+    [currentRanking],
+  );
 
-  const monthOptions = useMemo(() => {
-    const opts: { value: string; label: string; closed: boolean }[] = [];
-    closedGames.forEach(g => opts.push({ value: g.month, label: g.label, closed: true }));
-    if (!closedGames.find(g => g.month === currentMonthKey)) {
-      opts.push({ value: currentMonthKey, label: getMonthLabel(now) + ' (ativo)', closed: false });
-    }
-    return opts.sort((a, b) => b.value.localeCompare(a.value));
-  }, [closedGames, currentMonthKey, now]);
+  const scores = useMemo(
+    () => (isClosed
+      ? buildFrozenScores(resultsQuery.data ?? [], peopleById)
+      : buildScores(currentRanking)),
+    [isClosed, resultsQuery.data, peopleById, currentRanking],
+  );
 
-  const top3General = scores.slice(0, 3);
+  const loading = seasonPending || seasonsQuery.isPending
+    || (isClosed ? resultsQuery.isPending : rankingQuery.isPending && Boolean(currentSeasonId));
+  const loadError = seasonsQuery.error ?? rankingQuery.error ?? resultsQuery.error ?? rulesQuery.error;
+
+  const podium: PodiumEntry[] = scores.slice(0, 3).map((s) => ({
+    id: s.brokerId,
+    name: s.brokerName,
+    points: s.points,
+    avatarUrl: s.avatarUrl,
+    detail: s.team,
+  }));
 
   // Diretorias reais: agrupa o placar pelos director_id das equipes.
   const directorshipRankings = useMemo(() => {
     const byDir = new Map<string, { id: string; name: string; all: BrokerScore[] }>();
-    scores.forEach(s => {
+    scores.forEach((s) => {
       if (!s.directorshipId) return;
       const cur = byDir.get(s.directorshipId) ?? { id: s.directorshipId, name: s.directorship || '—', all: [] };
       cur.all.push(s);
       byDir.set(s.directorshipId, cur);
     });
-    return Array.from(byDir.values())
-      .map(d => ({ ...d, all: [...d.all].sort((a, b) => b.points - a.points) }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    return Array.from(byDir.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }, [scores]);
 
   const managerRankings = useMemo(() => {
-    const grouped: Record<string, { manager: string; scores: BrokerScore[] }> = {};
-    scores.forEach(s => {
-      const key = s.managerName || 'Sem Gerente';
-      if (!grouped[key]) grouped[key] = { manager: key, scores: [] };
-      grouped[key].scores.push(s);
+    const grouped = new Map<string, BrokerScore[]>();
+    scores.forEach((s) => {
+      const key = s.managerName || 'Sem gerente';
+      grouped.set(key, [...(grouped.get(key) ?? []), s]);
     });
-    return Object.values(grouped).map(g => ({
-      ...g,
-      scores: g.scores.sort((a, b) => b.points - a.points),
-    }));
+    return Array.from(grouped, ([manager, list]) => ({ manager, scores: list }));
   }, [scores]);
 
-  const displayLabel = closedGame ? closedGame.label : getMonthLabel(now);
+  /**
+   * Ponto único de fechamento (achado crítico G01).
+   *
+   * O botão chamava `close_game_season(p_close_month => true)`, que gravava o
+   * mês corrente em `closed_months` SEM migrar as propostas abertas — só
+   * `close_month_and_season` faz isso. O trigger `deals_guard_closed_month`
+   * passava então a recusar qualquer insert/update de não-admin em negócio
+   * daquele mês-base pelo resto do mês. Agora é a mesma RPC do Pipeline, e o
+   * mês travado é o do início da temporada, não o do relógio de quem clicou.
+   */
+  const closeMutation = useMutation({
+    mutationFn: async () => {
+      if (!selected) throw new Error('Nenhuma temporada aberta.');
+      const changed = rules.filter((rule) => {
+        const next = pendingScoring[rule.event_code];
+        return Number.isFinite(next) && next !== rule.points;
+      });
+      // Os pesos novos são gravados ANTES do fechamento para valerem já na
+      // temporada que abre na mesma transação.
+      for (const rule of changed) {
+        await setDefaultScoringPoints(rule.event_code, rule.label, pendingScoring[rule.event_code]);
+      }
+      return closeMonthAndSeason(monthStart(selected.period_start));
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: gameKeys.all });
+      await queryClient.invalidateQueries({ queryKey: ['closed_months'] });
+      setSelectedSeasonId(null);
+      setCloseConfirmOpen(false);
+      toast({
+        title: 'Temporada encerrada',
+        description: `Ranking congelado, mês ${monthLabel(String(result.period).slice(0, 10))} travado e ${num(result.moved_deals)} proposta(s) movida(s) para o mês seguinte.`,
+      });
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Não foi possível encerrar a temporada',
+        description: describeError(error, 'Não foi possível encerrar a temporada.'),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const openMutation = useMutation({
+    mutationFn: () => openGameSeason(nextSeasonLabel()),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: gameKeys.all });
+      setSelectedSeasonId(null);
+      toast({ title: 'Temporada aberta', description: 'O jogo voltou a pontuar.' });
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Não foi possível abrir a temporada',
+        description: describeError(error, 'Não foi possível abrir a temporada.'),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const jogoParado = !seasonPending && !currentSeasonId;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {loading && (
-        <div className="flex items-center justify-center p-8">
-          <RefreshCw className="h-8 w-8 animate-spin text-warning" />
-          <span className="ml-2">Carregando dados reais...</span>
-        </div>
-      )}
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <div className="flex items-center justify-center gap-3">
-          <Crown className="h-8 w-8 text-warning" />
-          <h1 className="text-3xl font-bold text-foreground">Ranking Geral</h1>
-          <Crown className="h-8 w-8 text-warning" />
-        </div>
-        <p className="text-muted-foreground">Gamificação • Ranking Mensal</p>
-      </div>
+    <div className="mx-auto max-w-7xl">
+      <PageHeader
+        title="Ranking do game"
+        eyebrow="Gamificação"
+        icon={Trophy}
+        description={selected
+          ? <>Temporada <strong className="text-foreground">{selected.label}</strong> · {seasonPeriod(selected)}</>
+          : 'Nenhuma temporada cadastrada ainda.'}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {seasons.length > 0 && (
+              <Select value={selected?.id ?? ''} onValueChange={setSelectedSeasonId}>
+                <SelectTrigger className="w-[300px]" aria-label="Temporada exibida">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {seasons.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.label} · {seasonPeriod(s)}{s.closed_at ? ' (fechada)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {isClosed && <StatusBadge tone="neutral" icon={Lock}>Temporada fechada</StatusBadge>}
+            {isCurrent && !isClosed && <StatusBadge tone="success">Game ativo</StatusBadge>}
+            {isAdmin && isCurrent && !isClosed && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setPendingScoring(Object.fromEntries(rules.map((r) => [r.event_code, r.points])));
+                  setCloseConfirmOpen(true);
+                }}
+              >
+                <Target className="h-4 w-4" /> Fechar gameficação
+              </Button>
+            )}
+          </div>
+        }
+      />
 
-      {/* Month selector + close game */}
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-          <SelectTrigger className="w-[260px] border-warning/40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {monthOptions.map(o => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label} {o.closed ? '(fechado)' : ''}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {isClosed && (
-          <Badge variant="outline" className="border-warning/40 text-warning gap-1">
-            <Lock className="h-3 w-3" /> Mês fechado
-          </Badge>
+      <div className="space-y-6">
+        {jogoParado && (
+          <SectionCard
+            title="Jogo parado — abra uma temporada"
+            icon={PauseCircle}
+            description="Sem temporada aberta o banco não pontua: award_game_points devolve nulo e nenhuma venda, esteira ou aprovação entra no placar."
+            actions={isAdmin
+              ? (
+                <Button onClick={() => openMutation.mutate()} disabled={openMutation.isPending}>
+                  <Play className="h-4 w-4" /> {openMutation.isPending ? 'Abrindo…' : 'Abrir temporada'}
+                </Button>
+              )
+              : <StatusBadge tone="warning">Peça ao administrador</StatusBadge>}
+          >
+            <p className="text-sm text-muted-foreground">
+              Os eventos que acontecerem enquanto o jogo estiver parado não são recuperados depois.
+            </p>
+          </SectionCard>
         )}
 
-        {isAdmin && isCurrentMonth && !isClosed && (
-          <Button variant="destructive" size="sm" onClick={() => { setPendingScoring(scoring); setCloseConfirmOpen(true); }} className="gap-1">
-            <Target className="h-4 w-4" /> Fechar Gameficação
-          </Button>
-        )}
-
-        {isAdmin && isCurrentMonth && !isClosed && (
-          <Badge variant="outline" className="border-green-500/40 text-green-400 gap-1">
-            <Unlock className="h-3 w-3" /> Game ativo
-          </Badge>
-        )}
-      </div>
-
-      {/* Scoring weights card */}
-      <Card className="glass-subtle border-warning/20">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground">
-            <Star className="h-4 w-4 text-warning" /> Pontuação por Movimento
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3 text-xs">
+        <SectionCard title="Pontuação por movimento" icon={Star} description="Pesos vigentes em game_scoring_rules.">
+          <div className="flex flex-wrap gap-2">
             {rules.map((rule) => (
               <Badge key={rule.event_code} variant="secondary" className="gap-1">
                 {EVENT_LABELS[rule.event_code] ?? rule.label}:{' '}
-                <span className={rule.points < 0 ? 'text-destructive font-bold' : 'text-primary font-bold'}>
+                <span className={rule.points < 0 ? 'font-bold text-destructive' : 'font-bold text-primary'}>
                   {rule.points} pts
                 </span>
               </Badge>
@@ -365,249 +397,143 @@ export default function Gamification() {
               </span>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      <GamificationBanners />
+        <GamificationBanners />
 
-      <Tabs defaultValue="geral" className="space-y-4">
-        <TabsList className={`grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} w-full max-w-lg mx-auto`}>
-          <TabsTrigger value="geral">Geral</TabsTrigger>
-          <TabsTrigger value="diretoria">Diretorias</TabsTrigger>
-          <TabsTrigger value="gerencia">Gerências</TabsTrigger>
-          {isAdmin && <TabsTrigger value="admin">Admin</TabsTrigger>}
-        </TabsList>
+        {loading ? (
+          <LoadingState variant="table" rows={6} label="Carregando o ranking…" />
+        ) : loadError ? (
+          <EmptyState
+            icon={AlertTriangle}
+            tone="danger"
+            title="Não consegui carregar a gamificação"
+            description={describeError(loadError, 'Não foi possível carregar a gamificação.')}
+            action={<Button variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: gameKeys.all })}>Tentar de novo</Button>}
+          />
+        ) : (
+          <Tabs defaultValue="geral" className="space-y-4">
+            <TabsList className={`grid ${isAdmin ? 'grid-cols-4' : 'grid-cols-3'} mx-auto w-full max-w-lg`}>
+              <TabsTrigger value="geral">Geral</TabsTrigger>
+              <TabsTrigger value="diretoria">Diretorias</TabsTrigger>
+              <TabsTrigger value="gerencia">Gerências</TabsTrigger>
+              {isAdmin && <TabsTrigger value="admin">Admin</TabsTrigger>}
+            </TabsList>
 
-        {/* ========== GERAL ========== */}
-        <TabsContent value="geral" className="space-y-6">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-warning" /> Campeões Gerais — {displayLabel}
-          </h2>
+            {/* ========== GERAL ========== */}
+            <TabsContent value="geral" className="space-y-6">
+              {scores.length === 0 ? (
+                <EmptyState
+                  icon={Trophy}
+                  title="Ninguém pontuou nesta temporada"
+                  description="Assim que uma esteira, aprovação ou venda for registrada, o placar aparece aqui."
+                />
+              ) : (
+                <>
+                  <SectionCard title="Campeões gerais" icon={Trophy} description={selected ? seasonPeriod(selected) : undefined}>
+                    <Podium entries={podium} />
+                  </SectionCard>
 
-          {/* Top 3 podium */}
-          <div className="grid grid-cols-3 gap-4">
-            {top3General.map((s, i) => (
-              // Pódio animado (ata 14/07: ranking mais atrativo que o Bubble).
-              // A ordem de entrada é 3º → 2º → 1º e a altura acompanha a
-              // colocação: o primeiro chega por último e fica acima dos outros.
-              <motion.div
-                key={s.brokerId}
-                initial={{ opacity: 0, y: 30, scale: 0.9 }}
-                animate={{ opacity: 1, y: i === 0 ? -12 : 0, scale: i === 0 ? 1.04 : 1 }}
-                transition={{ delay: (2 - i) * 0.18, type: "spring", stiffness: 200, damping: 16 }}
-              >
-                <Card className={`text-center glass h-full ${i === 0 ? 'border-yellow-500/40 glow-warning' : i === 1 ? 'border-gray-400/30' : 'border-amber-700/30'}`}>
-                  <CardContent className="pt-6 space-y-2">
-                    <motion.div
-                      animate={i === 0 ? { scale: [1, 1.18, 1] } : undefined}
-                      transition={i === 0 ? { duration: 2.2, repeat: Infinity, ease: "easeInOut" } : undefined}
-                      className="flex justify-center"
-                    >
-                      <MedalIcon position={i} />
-                    </motion.div>
-                    <p className="font-semibold text-foreground">{s.brokerName}</p>
-                    <p className="text-xs text-muted-foreground">{s.team}</p>
-                    <motion.p
-                      key={s.points}
-                      initial={{ scale: 1.4, color: "#fbbf24" }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 300, damping: 14 }}
-                      className="text-2xl font-bold text-warning"
-                    >
-                      {s.points}
-                    </motion.p>
-                    <p className="text-xs text-muted-foreground">pontos</p>
-                    <div className="text-xs text-muted-foreground space-y-0.5">
-                      <p>{s.vendas} vendas</p>
-                      <p>VGV: {(s.vgv / 1000000).toFixed(1)}M</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+                  <SectionCard title="Ranking completo" icon={TrendingUp} flush>
+                    <RankingTable scores={scores} secondColumn="team" />
+                  </SectionCard>
+                </>
+              )}
+            </TabsContent>
 
-          {/* Full ranking table */}
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-primary" /> Ranking Completo — {displayLabel}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Corretor</TableHead>
-                    <TableHead>Equipe</TableHead>
-                    <TableHead className="text-center">Vendas</TableHead>
-                    <TableHead className="text-right">VGV</TableHead>
-                    <TableHead className="text-right">Pontos</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {scores.map((s, i) => (
-                    <TableRow key={s.brokerId} className={i < 3 ? 'bg-warning/5' : ''}>
-                      <TableCell><MedalIcon position={i} /></TableCell>
-                      <TableCell className="font-medium">{s.brokerName}</TableCell>
-                      <TableCell className="text-muted-foreground">{s.team}</TableCell>
-                      <TableCell className="text-center">{s.vendas}</TableCell>
-                      <TableCell className="text-right">{(s.vgv / 1000).toFixed(0)}k</TableCell>
-                      <TableCell className="text-right font-bold text-warning">{s.points}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            {/* ========== DIRETORIAS ========== */}
+            <TabsContent value="diretoria" className="space-y-4">
+              {directorshipRankings.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title="Nenhuma diretoria configurada"
+                  description="Defina o diretor de cada equipe em Equipes para o placar sair por diretoria."
+                />
+              ) : (
+                directorshipRankings.map((dir) => (
+                  <SectionCard key={dir.id} title={`Diretoria ${dir.name}`} icon={Crown} flush>
+                    <RankingTable scores={dir.all} secondColumn="manager" />
+                  </SectionCard>
+                ))
+              )}
+            </TabsContent>
 
-        {/* ========== DIRETORIAS ========== */}
-        <TabsContent value="diretoria" className="space-y-6">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Crown className="h-5 w-5 text-warning" /> Campeões da Semana por Diretoria
-          </h2>
-          <p className="text-sm text-muted-foreground">Premiação toda segunda-feira — Top 3 de cada diretoria</p>
+            {/* ========== GERÊNCIAS ========== */}
+            <TabsContent value="gerencia" className="space-y-4">
+              {managerRankings.length === 0 ? (
+                <EmptyState icon={Users} title="Nenhuma gerência com pontuação nesta temporada" />
+              ) : (
+                managerRankings.map((mr) => (
+                  <SectionCard key={mr.manager} title={mr.manager} icon={Users} flush>
+                    <RankingTable scores={mr.scores} secondColumn="team" />
+                  </SectionCard>
+                ))
+              )}
+            </TabsContent>
 
-          {directorshipRankings.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Nenhuma diretoria configurada — defina o diretor de cada equipe em Equipes.
-            </p>
-          )}
-
-          {directorshipRankings.map(dir => (
-            <Card key={dir.id} className="glass">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" /> Diretoria {dir.name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {dir.all.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhum corretor nesta diretoria</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        <TableHead>Corretor</TableHead>
-                        <TableHead>Gerente</TableHead>
-                        <TableHead className="text-center">Vendas</TableHead>
-                        <TableHead className="text-right">Pontos</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {dir.all.map((s, i) => (
-                        <TableRow key={s.brokerId} className={i < 3 ? 'bg-warning/5' : ''}>
-                          <TableCell><MedalIcon position={i} /></TableCell>
-                          <TableCell className="font-medium">{s.brokerName}</TableCell>
-                          <TableCell className="text-muted-foreground">{s.managerName || '—'}</TableCell>
-                          <TableCell className="text-center">{s.vendas}</TableCell>
-                          <TableCell className="text-right font-bold text-warning">{s.points}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-
-        {/* ========== GERÊNCIAS ========== */}
-        <TabsContent value="gerencia" className="space-y-6">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Users className="h-5 w-5 text-warning" /> Campeões por Gerência
-          </h2>
-
-          {managerRankings.map(mr => (
-            <Card key={mr.manager} className="glass">
-              <CardHeader>
-                <CardTitle className="text-base">{mr.manager}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">#</TableHead>
-                      <TableHead>Corretor</TableHead>
-                      <TableHead>Equipe</TableHead>
-                      <TableHead className="text-center">Vendas</TableHead>
-                      <TableHead className="text-right">Pontos</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mr.scores.map((s, i) => (
-                      <TableRow key={s.brokerId} className={i < 3 ? 'bg-warning/5' : ''}>
-                        <TableCell><MedalIcon position={i} /></TableCell>
-                        <TableCell className="font-medium">{s.brokerName}</TableCell>
-                        <TableCell className="text-muted-foreground">{s.team}</TableCell>
-                        <TableCell className="text-center">{s.vendas}</TableCell>
-                        <TableCell className="text-right font-bold text-warning">{s.points}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-
-        {isAdmin && (
-          <TabsContent value="admin" className="space-y-4">
-            <GamificationAdmin />
-          </TabsContent>
+            {isAdmin && (
+              <TabsContent value="admin" className="space-y-4">
+                <GamificationAdmin />
+              </TabsContent>
+            )}
+          </Tabs>
         )}
-      </Tabs>
+      </div>
 
-      {/* ── CLOSE GAME CONFIRMATION DIALOG ─── */}
-      <Dialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
-        <DialogContent className="glass-strong max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-destructive" />
-              Fechar Gameficação & Definir Próximo Ciclo
-            </DialogTitle>
-          </DialogHeader>
+      {/* ── FECHAMENTO: um único ponto, o mesmo do Pipeline ─────────────── */}
+      <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-destructive" /> Fechar a gameficação
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Encerra a temporada <strong className="text-foreground">{selected?.label}</strong>, congela o ranking,
+              trava o mês-base <strong className="text-foreground">{selected ? monthLabel(monthStart(selected.period_start)) : '—'}</strong>{' '}
+              e move as propostas abertas para o mês seguinte. Uma nova temporada abre na mesma transação.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Congela a pontuação de <strong className="text-foreground">{getMonthLabel(now)}</strong> e inicia um novo ciclo com os pontos definidos abaixo para cada movimento.
-            </p>
-
-            <div className="grid grid-cols-2 gap-3">
-              {rules.map((rule) => (
-                <div key={rule.event_code} className="space-y-1">
-                  <Label className="text-xs">{EVENT_LABELS[rule.event_code] ?? rule.label}</Label>
-                  <Input
-                    type="number"
-                    value={pendingScoring[rule.event_code] ?? rule.points}
-                    onChange={(e) =>
-                      setPendingScoring(p => ({ ...p, [rule.event_code]: Number(e.target.value) }))
-                    }
-                    className="h-8"
-                  />
-                </div>
-              ))}
+            <div>
+              <p className="text-eyebrow mb-2">Pontuação da próxima temporada</p>
+              <div className="grid grid-cols-2 gap-3">
+                {rules.map((rule) => (
+                  <div key={rule.event_code} className="space-y-1">
+                    <Label className="text-xs" htmlFor={`peso-${rule.event_code}`}>
+                      {EVENT_LABELS[rule.event_code] ?? rule.label}
+                    </Label>
+                    <Input
+                      id={`peso-${rule.event_code}`}
+                      type="number"
+                      value={pendingScoring[rule.event_code] ?? rule.points}
+                      onChange={(e) => setPendingScoring((p) => ({ ...p, [rule.event_code]: Number(e.target.value) }))}
+                      className="h-9"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
-              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning/10 p-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
               <p className="text-xs text-muted-foreground">
-                Esta ação não pode ser desfeita. As novas pontuações valem a partir do próximo ciclo.
+                Não dá para desfazer. As novas pontuações valem a partir da temporada que abrir agora.
               </p>
             </div>
           </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button variant="destructive" onClick={handleCloseGame} disabled={closing}>
-              {closing ? 'Encerrando...' : 'Confirmar Fechamento'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); closeMutation.mutate(); }}
+              disabled={closeMutation.isPending}
+            >
+              {closeMutation.isPending ? 'Encerrando…' : 'Encerrar e travar o mês'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

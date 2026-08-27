@@ -236,14 +236,28 @@ export async function abrirNegocio(page: Page, cliente: string): Promise<void> {
   await page.goto("/pipeline");
   await aguardarCarregamento(page);
   await page.getByPlaceholder(/buscar cliente/i).fill(cliente);
-  // A linha inteira abre o modal, mas as células de Status 2, visita e "Off"
-  // param a propagação; a célula do cliente é o alvo seguro.
-  await page.getByRole("cell", { name: new RegExp(cliente, "i") }).click();
+  // A linha inteira deixou de ser clicável (achado X01: `<tr onClick>` não
+  // recebia foco nem Enter). Quem abre o modal é o BOTÃO na célula do cliente.
+  //
+  // Casar a célula por nome parou de servir: a Tarefa H nomeou os botões de
+  // ícone da linha (achado X03), e o "Agendar visita de <cliente>" faz a busca
+  // por nome resolver duas células — Playwright recusa em modo estrito.
+  // Sem `exact`: a célula é renderizada em caixa alta por CSS, e o nome
+  // acessível acompanha a transformação.
+  const nomeExato = new RegExp(`^${cliente.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+  await page.getByRole("button", { name: nomeExato }).click();
   await expect(page.getByRole("button", { name: /confirmar alterações/i })).toBeVisible();
 }
 
+/**
+ * Aba do modal de negócio.
+ *
+ * A Tarefa H deu semântica de verdade à navegação: as abas são `role="tab"`
+ * dentro de um `tablist`, não `<button>` solto. Casar por `button` deixou de
+ * achar qualquer uma delas.
+ */
 export const abaDoModal = (page: Page, nome: RegExp) =>
-  page.getByRole("button", { name: nome });
+  page.getByRole("tab", { name: nome });
 
 /**
  * O `<input type="file">` de cada tipo é `hidden` e não tem nome acessível —

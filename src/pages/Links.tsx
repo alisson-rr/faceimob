@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Link2, Plus, ExternalLink, Copy, Pencil, Trash2, Loader2, Save } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 
 type LinkRow = { id: string; title: string; url: string; category: string | null; sort_order: number };
@@ -22,7 +23,7 @@ export default function Links() {
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase.from("useful_links").select("*").eq("active", true).order("sort_order").order("label");
-    if (error) toast({ title: "Erro ao carregar", description: error.message, variant: "destructive" });
+    if (error) toast({ title: "Erro ao carregar", description: describeError(error, "Não foi possível carregar os links."), variant: "destructive" });
     setLinks((data || []).map(row => ({ ...row, title: row.label })));
     setLoading(false);
   };
@@ -38,7 +39,7 @@ export default function Links() {
       ? await supabase.from("useful_links").update(payload).eq("id", edit.id)
       : await supabase.from("useful_links").insert(payload);
     setSaving(false);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Erro ao salvar", description: describeError(error, "Não foi possível salvar o link."), variant: "destructive" });
     toast({ title: "Salvo!" });
     setEdit(null); load();
   };
@@ -46,7 +47,7 @@ export default function Links() {
   const remove = async (id: string) => {
     if (!confirm("Excluir este link?")) return;
     const { error } = await supabase.from("useful_links").delete().eq("id", id);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Erro ao excluir", description: describeError(error, "Não foi possível excluir o link."), variant: "destructive" });
     load();
   };
 

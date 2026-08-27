@@ -8,6 +8,7 @@ import { Building2, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { slugify } from "@/lib/utils";
+import { describeError } from "@/lib/supabaseError";
 
 type DeveloperRow = {
   id: string;
@@ -53,7 +54,7 @@ export default function AdminDevelopers() {
       .select("id,name,flow,submission_email,active")
       .order("name");
     if (error) {
-      toast({ title: "Erro ao carregar construtoras", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao carregar construtoras", description: describeError(error, "Não foi possível carregar as construtoras."), variant: "destructive" });
     } else {
       setDevelopers((data ?? []) as DeveloperRow[]);
     }
@@ -65,7 +66,7 @@ export default function AdminDevelopers() {
   const update = async (id: string, patch: Partial<DeveloperRow>) => {
     const { data, error } = await supabase.from("developers").update(patch).eq("id", id).select("id");
     if (error) {
-      toast({ title: "Erro ao atualizar", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao atualizar", description: describeError(error, "Não foi possível atualizar a construtora."), variant: "destructive" });
       return false;
     }
     if (!data?.length) {
@@ -108,7 +109,7 @@ export default function AdminDevelopers() {
     });
     setSaving(false);
     if (error) {
-      return toast({ title: "Erro ao adicionar construtora", description: error.message, variant: "destructive" });
+      return toast({ title: "Erro ao adicionar construtora", description: describeError(error, "Não foi possível adicionar a construtora."), variant: "destructive" });
     }
     setNewDev("");
     setNewEmail("");
@@ -121,7 +122,7 @@ export default function AdminDevelopers() {
     if (error) {
       return toast({
         title: "Não foi possível remover",
-        description: `${error.message}. Se houver negócios vinculados, desative a construtora em vez de removê-la.`,
+        description: `${describeError(error, "Não foi possível remover a construtora.")} Se houver negócios vinculados, desative a construtora em vez de removê-la.`,
         variant: "destructive",
       });
     }
@@ -176,7 +177,7 @@ export default function AdminDevelopers() {
                   <tr key={dev.id} className="border-b border-border/10 hover:bg-primary/5">
                     <td className="p-3 font-medium">
                       {dev.name}{" "}
-                      <Badge variant="outline" className={dev.flow === "internal" ? "ml-1 text-amber-400 border-amber-400/30" : "ml-1 text-muted-foreground"}>
+                      <Badge variant="outline" className={dev.flow === "internal" ? "ml-1 text-warning border-warning/30" : "ml-1 text-muted-foreground"}>
                         {dev.flow === "internal" ? "CCA Ativo" : "Fluxo externo"}
                       </Badge>
                     </td>

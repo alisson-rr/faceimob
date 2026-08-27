@@ -33,7 +33,7 @@ test("corretor envia os documentos completos para conferência do gerente", asyn
   await abrirPipeline(page);
   await buscar(page, cliente);
   const modal = await abrirDetalhe(page, cliente);
-  await modal.getByRole("button", { name: "Anexos", exact: true }).click();
+  await modal.getByRole("tab", { name: "Anexos", exact: true }).click();
 
   await expect(modal.getByText("Em preparação", { exact: true })).toBeVisible();
   await modal.getByRole("button", { name: /enviar ao gerente/i }).click();

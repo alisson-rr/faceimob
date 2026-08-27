@@ -4,7 +4,7 @@ const rotas = [
   ["/pipeline", /^Pipeline$/i],
   ["/leads", /^Leads$/i],
   ["/checkin", /Check-in de Corretor/i],
-  ["/cca", /Pipeline CCA/i],
+  ["/cca", /Esteira CCA/i],
   ["/equipes", /^Equipes$/i],
   ["/admin/developers", /Construtoras & CCA/i],
   ["/links", /^Links$/i],

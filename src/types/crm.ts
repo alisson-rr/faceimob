@@ -100,12 +100,25 @@ export interface PipelineDeal {
   month_base?: string; // MM/YYYY - data base do negócio
   visit_date?: string;
   visit_result?: 'pending' | 'completed' | 'cancelled';
+  // Nome dos participantes — só para exibir. Quem identifica é o `*_id`:
+  // homônimo colide no `find` por nome e renomear o perfil trocava o dono do
+  // rateio de VGV (achado F06). Escrita SEMPRE pelo id.
   broker1: string;
   broker2?: string;
   broker3?: string;
   manager1: string;
   manager2?: string;
   manager3?: string;
+  broker1_id?: string | null;
+  broker2_id?: string | null;
+  broker3_id?: string | null;
+  manager1_id?: string | null;
+  manager2_id?: string | null;
+  manager3_id?: string | null;
+  developer_id?: string | null;
+  project_id?: string | null;
+  /** Rótulo da etapa vindo de `pipeline_stages.label` — a fonte única (F11). */
+  stage_label?: string;
   vgv_bruto?: number;
   perc_desconto?: string;
   vgv_liquido?: number;
@@ -149,6 +162,19 @@ export interface Campaign {
   deals_converted: number;
 }
 
+/**
+ * Espelho de `pipeline_stages` para as telas de ANÁLISE (funil do Dashboard,
+ * `aiAnalytics`), que precisam da ordem do funil sem consultar o catálogo.
+ *
+ * A fonte de verdade das etapas é a tabela `pipeline_stages` no banco: é dela
+ * que saem o `label`, a posição e — o que importa de verdade — o `id` que
+ * `can_enter_stage()` autoriza. O Pipeline lê o catálogo (`listPipelineStages`)
+ * e o `stage_label` que `listLegacyDeals` já traz junto; não usa esta lista.
+ * `src/components/pipeline/stages.test.ts` reprova se as duas divergirem.
+ *
+ * Falta aqui, de propósito, a etapa `lost` ('Perdido'): ela é desfecho, não
+ * coluna de funil, e incluí-la mudaria o funil do Dashboard.
+ */
 export const DEAL_STAGES: { value: DealStage; label: string }[] = [
   { value: 'incomplete', label: 'Incompleto' },
   { value: 'lead', label: 'Lead' },

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { DollarSign, Trash2, Save, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { describeError } from "@/lib/supabaseError";
 
 type Developer = { id: string; name: string };
 type Investment = { id: string; period: string; amount: number; developer_id: string; notes: string | null };
@@ -60,7 +61,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
       notes: form.notes || null,
     });
     setSaving(false);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Falha ao salvar o aporte", description: describeError(error, "Não foi possível salvar o aporte."), variant: "destructive" });
     toast({ title: "Aporte salvo" });
     setForm({ period: new Date().toISOString().slice(0, 7), amount: "", developer_id: "", notes: "" });
     load(); loadTotal();
@@ -69,7 +70,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
   const remove = async (id: string) => {
     if (!confirm("Excluir aporte?")) return;
     const { error } = await supabase.from("marketing_investments").delete().eq("id", id);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Falha ao excluir o aporte", description: describeError(error, "Não foi possível excluir o aporte."), variant: "destructive" });
     load(); loadTotal();
   };
 
@@ -86,19 +87,19 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
 
   return (
     <>
-      <Button variant="outline" size="sm" className="gap-2 border-emerald-500/40" onClick={() => setOpen(true)}>
-        <DollarSign className="h-4 w-4 text-emerald-400" />
+      <Button variant="outline" size="sm" className="gap-2 border-success/40" onClick={() => setOpen(true)}>
+        <DollarSign className="h-4 w-4 text-success" />
         <span className="text-xs">Aporte {MESES[now.getMonth()]}:</span>
-        <strong className="text-emerald-400">{fmt(monthTotal)}</strong>
+        <strong className="text-success">{fmt(monthTotal)}</strong>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-emerald-400" />
+              <DollarSign className="h-5 w-5 text-success" />
               Aportes de Marketing — {MESES[now.getMonth()]}/{now.getFullYear()}
-              <Badge variant="outline" className="ml-auto text-emerald-400 border-emerald-500/40">Total: {fmt(monthTotal)}</Badge>
+              <Badge variant="outline" className="ml-auto text-success border-success/40">Total: {fmt(monthTotal)}</Badge>
             </DialogTitle>
           </DialogHeader>
 
@@ -106,16 +107,16 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
             <div className="border border-border/40 rounded-lg p-3 bg-secondary/20 space-y-2">
               <p className="text-xs font-semibold">Novo Aporte</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div><Label className="text-[10px]">Mês</Label><Input type="month" value={form.period} onChange={e => setForm(p => ({ ...p, period: e.target.value }))} className="h-8 text-xs" /></div>
-                <div><Label className="text-[10px]">Valor (R$)</Label><Input type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} className="h-8 text-xs" placeholder="5000" /></div>
+                <div><Label className="text-xs">Mês</Label><Input type="month" value={form.period} onChange={e => setForm(p => ({ ...p, period: e.target.value }))} className="h-8 text-xs" /></div>
+                <div><Label className="text-xs">Valor (R$)</Label><Input type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} className="h-8 text-xs" placeholder="5000" /></div>
                 <div>
-                  <Label className="text-[10px]">Construtora</Label>
+                  <Label className="text-xs">Construtora</Label>
                   <Select value={form.developer_id} onValueChange={v => setForm(p => ({ ...p, developer_id: v }))}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar" /></SelectTrigger>
                     <SelectContent>{devs.map(d => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div><Label className="text-[10px]">Nota</Label><Input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="h-8 text-xs" placeholder="opcional" /></div>
+                <div><Label className="text-xs">Nota</Label><Input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="h-8 text-xs" placeholder="opcional" /></div>
               </div>
               <div className="flex justify-end">
                 <Button size="sm" onClick={save} disabled={saving} className="gap-1"><Save className="h-3.5 w-3.5" />{saving ? "Salvando..." : "Salvar"}</Button>
@@ -128,7 +129,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
               <p className="text-xs font-semibold mb-1">Por construtora</p>
               <div className="flex flex-wrap gap-1">
                 {grouped.map(([dev, amt]) => (
-                  <Badge key={dev} variant="secondary" className="text-[11px]">{dev}: <strong className="ml-1 text-emerald-400">{fmt(amt)}</strong></Badge>
+                  <Badge key={dev} variant="secondary">{dev}: <strong className="ml-1 text-success">{fmt(amt)}</strong></Badge>
                 ))}
                 {grouped.length === 0 && <span className="text-xs text-muted-foreground">Sem aportes no mês</span>}
               </div>
@@ -143,8 +144,8 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
                 <div key={r.id} className="flex items-center gap-2 px-3 py-1.5 border-b border-border/20 text-xs last:border-0">
                   <span className="w-20 text-muted-foreground">{r.period.slice(5, 7)}/{r.period.slice(0, 4)}</span>
                   <span className="flex-1 truncate">{devs.find(d => d.id === r.developer_id)?.name || "—"}</span>
-                  <span className="text-muted-foreground text-[10px] truncate max-w-[100px]">{r.notes}</span>
-                  <strong className="text-emerald-400 w-24 text-right">{fmt(Number(r.amount))}</strong>
+                  <span className="text-muted-foreground text-xs truncate max-w-[100px]">{r.notes}</span>
+                  <strong className="text-success w-24 text-right">{fmt(Number(r.amount))}</strong>
                   {canEdit && <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => remove(r.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>}
                 </div>
               ))}

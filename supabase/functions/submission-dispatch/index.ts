@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireSecret } from "../_shared/secrets.ts";
 import { sendEmail } from "../_shared/brevo.ts";
+import { requireServiceRole } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +48,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // Mesma porta do notify-dispatch: só o pg_cron (0020) chama. Aberto, o
+    // endpoint mandava dossiê de cliente por e-mail a pedido de qualquer um
+    // com a chave publicável (achado S04).
+    const denied = await requireServiceRole(req, corsHeaders);
+    if (denied) return denied;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,

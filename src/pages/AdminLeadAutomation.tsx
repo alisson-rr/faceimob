@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { listPeople } from "@/integrations/supabase/newSchema";
+import { describeError } from "@/lib/supabaseError";
 import { slugify } from "@/lib/utils";
 
 type Settings = {
@@ -115,7 +116,7 @@ export default function AdminLeadAutomation() {
         leads_paused: settings.leads_paused,
       }).eq("id", true);
     setSavingSettings(false);
-    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    if (error) return toast({ variant: "destructive", title: "Erro ao salvar", description: describeError(error, "Não foi possível salvar as regras de automação.") });
     toast({ title: "Automação salva" });
   };
 
@@ -131,7 +132,7 @@ export default function AdminLeadAutomation() {
     const { error } = w.id
       ? await supabase.from("work_shifts").update(payload).eq("id", w.id)
       : await supabase.from("work_shifts").insert(payload);
-    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    if (error) return toast({ variant: "destructive", title: "Erro ao salvar", description: describeError(error, "Não foi possível salvar a janela de atendimento.") });
     toast({ title: "Grupo salvo" });
     load();
   };
@@ -139,7 +140,7 @@ export default function AdminLeadAutomation() {
   const deleteWindow = async (id: string) => {
     if (!confirm("Excluir este grupo?")) return;
     const { error } = await supabase.from("work_shifts").delete().eq("id", id);
-    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    if (error) return toast({ variant: "destructive", title: "Erro ao excluir", description: describeError(error, "Não foi possível excluir a janela de atendimento.") });
     load();
   };
 
@@ -154,7 +155,7 @@ export default function AdminLeadAutomation() {
     const name = prompt("Nome do grupo:");
     if (!name) return;
     const { error } = await supabase.from("distribution_groups").insert({ name, slug: slugify(name), active: true });
-    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    if (error) return toast({ variant: "destructive", title: "Erro ao criar", description: describeError(error, "Não foi possível criar o grupo de distribuição.") });
     load();
   };
   const renameGroup = async (id: string, current: string) => {
@@ -193,7 +194,7 @@ export default function AdminLeadAutomation() {
     setSettings((s) => ({ ...s, leads_paused: v }));
     const { error } = await supabase.from("automation_settings")
       .update({ leads_paused: v }).eq("id", true);
-    if (error) return toast({ variant: "destructive", title: "Erro", description: error.message });
+    if (error) return toast({ variant: "destructive", title: "Erro", description: describeError(error, v ? "Não foi possível pausar a chegada de leads." : "Não foi possível retomar a chegada de leads.") });
     toast({ title: v ? "⏸️ Chegada de leads pausada" : "▶️ Chegada de leads retomada" });
   };
   const removeGroupForm = async (groupId: string, formId: string) => {
@@ -209,10 +210,10 @@ export default function AdminLeadAutomation() {
       </div>
 
       {/* Pause switch */}
-      <Card className={settings.leads_paused ? "border-amber-500/60 bg-amber-500/5" : ""}>
+      <Card className={settings.leads_paused ? "border-warning/60 bg-warning/5" : ""}>
         <CardContent className="flex items-center justify-between gap-3 py-4">
           <div className="flex items-center gap-3">
-            <PauseCircle className={`h-6 w-6 ${settings.leads_paused ? "text-amber-500" : "text-muted-foreground"}`} />
+            <PauseCircle className={`h-6 w-6 ${settings.leads_paused ? "text-warning" : "text-muted-foreground"}`} />
             <div>
               <p className="font-semibold text-sm">Pausar chegada de leads</p>
               <p className="text-xs text-muted-foreground">
@@ -233,24 +234,24 @@ export default function AdminLeadAutomation() {
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
           <div className="space-y-1">
-            <Label className="text-[11px]">Roleta (s)</Label>
+            <Label className="text-xs">Roleta (s)</Label>
             <Input className="h-8" type="number" min={30} value={settings.roleta_seconds}
               onChange={e => setSettings(s => ({ ...s, roleta_seconds: +e.target.value }))} />
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px]">Sem resposta (h)</Label>
+            <Label className="text-xs">Sem resposta (h)</Label>
             <Input className="h-8" type="number" min={1} value={settings.no_response_hours}
               onChange={e => setSettings(s => ({ ...s, no_response_hours: +e.target.value }))} />
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px]">Inatividade (h)</Label>
+            <Label className="text-xs">Inatividade (h)</Label>
             <Input className="h-8" type="number" min={1} value={settings.inactivity_alert_hours}
               onChange={e => setSettings(s => ({ ...s, inactivity_alert_hours: +e.target.value }))} />
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={settings.auto_first_contact}
               onCheckedChange={v => setSettings(s => ({ ...s, auto_first_contact: v }))} />
-            <Label className="text-[11px]">Auto 1º contato</Label>
+            <Label className="text-xs">Auto 1º contato</Label>
           </div>
           <Button size="sm" onClick={saveSettings} disabled={savingSettings} className="h-8">
             <Save className="h-3.5 w-3.5 mr-1" /> {savingSettings ? "..." : "Salvar"}
@@ -266,7 +267,7 @@ export default function AdminLeadAutomation() {
         <CardContent className="grid grid-cols-3 md:grid-cols-6 gap-2 items-end">
           {STAGE_LABELS.map(st => (
             <div key={st.key} className="space-y-1">
-              <Label className="text-[10px]">{st.label}</Label>
+              <Label className="text-xs">{st.label}</Label>
               <Input className="h-8" type="number" min={1}
                 value={settings.stage_max_minutes?.[st.key] ?? 0}
                 onChange={e => setSettings(s => ({
@@ -303,7 +304,7 @@ export default function AdminLeadAutomation() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate">{g.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{g.active ? "Ativo" : "Inativo"}</p>
+                    <p className="text-xs text-muted-foreground">{g.active ? "Ativo" : "Inativo"}</p>
                   </div>
                   <div className="flex items-center gap-1">
                     <Switch checked={g.active} onCheckedChange={(v) => toggleGroup(g.id, v)} />
@@ -317,13 +318,13 @@ export default function AdminLeadAutomation() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="rounded-md bg-muted/40 p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                       <UserCheck className="h-3 w-3" /> Corretores
                     </div>
                     <p className="text-lg font-bold leading-tight">{g.brokers.length}</p>
                   </div>
                   <div className="rounded-md bg-muted/40 p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                       <FileText className="h-3 w-3" /> Formulários
                     </div>
                     <p className="text-lg font-bold leading-tight">{g.forms.length}</p>
@@ -353,7 +354,7 @@ export default function AdminLeadAutomation() {
                   <Label className="text-xs font-semibold flex items-center gap-1">
                     <UserCheck className="h-3.5 w-3.5" /> Corretores
                   </Label>
-                  <Badge variant="secondary" className="text-[10px]">{editingGroup.brokers.length} selecionados</Badge>
+                  <Badge variant="secondary">{editingGroup.brokers.length} selecionados</Badge>
                 </div>
                 <ScrollArea className="h-72 rounded border border-border/60 p-2">
                   <div className="space-y-1">
@@ -375,7 +376,7 @@ export default function AdminLeadAutomation() {
                   <Label className="text-xs font-semibold flex items-center gap-1">
                     <FileText className="h-3.5 w-3.5" /> Formulários Meta
                   </Label>
-                  <Badge variant="secondary" className="text-[10px]">{editingGroup.forms.length} selecionados</Badge>
+                  <Badge variant="secondary">{editingGroup.forms.length} selecionados</Badge>
                 </div>
                 <ScrollArea className="h-72 rounded border border-border/60 p-2">
                   <div className="space-y-1">
@@ -391,7 +392,7 @@ export default function AdminLeadAutomation() {
                             }}
                           />
                           <span className="truncate flex-1">{d.form_name || d.form_id}</span>
-                          {!d.form_name && <span className="text-[10px] text-muted-foreground truncate">{d.form_id}</span>}
+                          {!d.form_name && <span className="text-xs text-muted-foreground truncate">{d.form_id}</span>}
                         </label>
                       );
                     })}
@@ -403,7 +404,7 @@ export default function AdminLeadAutomation() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="w-full mt-2 h-7 text-[11px]"
+                  className="w-full mt-2 h-7 text-xs"
                   onClick={() => {
                     const form_id = prompt("ID do formulário Meta (form_id):");
                     if (!form_id) return;
@@ -461,7 +462,7 @@ export default function AdminLeadAutomation() {
                 <Button size="sm" onClick={() => upsertWindow(w)}><Save className="h-4 w-4" /></Button>
                 {w.id && <Button size="sm" variant="destructive" onClick={() => deleteWindow(w.id!)}><Trash2 className="h-4 w-4" /></Button>}
               </div>
-              {w.id && <Badge variant="outline" className="text-[10px] md:col-span-7 w-fit">id: {w.id}</Badge>}
+              {w.id && <Badge variant="outline" className="md:col-span-7 w-fit">id: {w.id}</Badge>}
             </div>
           ))}
         </CardContent>

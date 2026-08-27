@@ -35,7 +35,12 @@ const PublicDirectorCheckpoint = lazy(() => import("@/pages/PublicDirectorCheckp
 const SdrModule = lazy(() => import("@/pages/SdrModule"));
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+// `staleTime` de um minuto: sem ele toda volta de aba refazia as consultas do
+// painel inteiro. `retry: 1` porque erro de RLS ou de permissão não melhora na
+// terceira tentativa — só atrasa a mensagem que a tela tem para dar (achado A03).
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 60_000, retry: 1 } },
+});
 // Ferramenta de dev: variável VITE_ vai para o bundle de produção, então o
 // bypass só vale em build de desenvolvimento — em produção é sempre falso.
 const bypassAuth = import.meta.env.DEV && import.meta.env.VITE_BYPASS_AUTH === "true";

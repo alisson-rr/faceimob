@@ -41,3 +41,9 @@ test-results/
 /demo/
 
 crm-faceimob-main --OLD
+
+# Supabase
+supabase/.temp/
+
+.vercel
+.env*

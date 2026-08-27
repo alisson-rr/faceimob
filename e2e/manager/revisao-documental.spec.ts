@@ -42,7 +42,7 @@ test("um gerente vinculado aprova e o negócio entra no CCA", async ({ page }) =
   await abrirPipeline(page);
   await buscar(page, clienteAprovacao);
   const modal = await abrirDetalhe(page, clienteAprovacao);
-  await modal.getByRole("button", { name: "Anexos", exact: true }).click();
+  await modal.getByRole("tab", { name: "Anexos", exact: true }).click();
 
   await expect(modal.getByText("Aguardando gerente", { exact: true })).toBeVisible();
   await modal.getByRole("button", { name: /aprovar e enviar ao cca/i }).click();
@@ -65,7 +65,7 @@ test("gerente só devolve com motivo e o corretor é notificado", async ({ page 
   await abrirPipeline(page);
   await buscar(page, clienteDevolucao);
   const modal = await abrirDetalhe(page, clienteDevolucao);
-  await modal.getByRole("button", { name: "Anexos", exact: true }).click();
+  await modal.getByRole("tab", { name: "Anexos", exact: true }).click();
 
   const devolver = modal.getByRole("button", { name: "Devolver", exact: true });
   await expect(devolver).toBeDisabled();

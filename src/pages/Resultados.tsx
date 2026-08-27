@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { listLegacyDeals } from "@/integrations/supabase/newSchema";
 import { listAnnualResults, upsertAnnualResult, type AnnualResultRow } from "@/integrations/supabase/analytics";
+import { describeError } from "@/lib/supabaseError";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -46,7 +47,7 @@ export default function Resultados() {
     } catch (e) {
       toast({
         title: "Falha ao carregar o consolidado",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar o consolidado."),
         variant: "destructive",
       });
     } finally {
@@ -84,7 +85,7 @@ export default function Resultados() {
     } catch (e) {
       toast({
         title: "Não foi possível salvar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível salvar o resultado do mês."),
         variant: "destructive",
       });
     } finally {
@@ -117,7 +118,7 @@ export default function Resultados() {
     } catch (e) {
       toast({
         title: "Falha ao recalcular",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível recalcular o ano a partir do pipeline."),
         variant: "destructive",
       });
     } finally {
@@ -147,7 +148,7 @@ export default function Resultados() {
                     <span className="font-bold text-base">{y}</span>
                     <div className="flex gap-4 text-xs">
                       <span><span className="text-muted-foreground">Vendas:</span> <strong>{t.sales}</strong></span>
-                      <span><span className="text-muted-foreground">VGV:</span> <strong className="text-emerald-400">{fmt(t.vgv)}</strong></span>
+                      <span><span className="text-muted-foreground">VGV:</span> <strong className="text-success">{fmt(t.vgv)}</strong></span>
                     </div>
                   </div>
                 </AccordionTrigger>

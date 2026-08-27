@@ -1,16 +1,21 @@
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Trophy, Medal, Flame, Lightbulb, Megaphone, TrendingUp } from "lucide-react";
+import { Flame, Lightbulb, Megaphone, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { cn } from "@/lib/utils";
+import { SectionCard, StatusBadge } from "@/components/shared";
+import { Podium, type PodiumEntry } from "@/components/engagement";
 import type { PipelineDeal } from "@/types/crm";
-import { useGameRanking, type ScoreRow as Score } from "@/hooks/useGameRanking";
+import { useGameRanking } from "@/hooks/useGameRanking";
 
 type Props = { deals: PipelineDeal[] };
 
+/**
+ * Faixa de pódio do Pipeline. O desenho vem do `Podium` compartilhado — a
+ * configuração de medalha vivia aqui com cores fixas de tema escuro
+ * (`slate-300`, `amber-400`, `orange-400`), invisíveis no tema claro e
+ * divergentes do pódio da Gamificação. Agora é o mesmo componente e os mesmos
+ * tokens `gold/silver/bronze` do pódio do header.
+ */
 export default function PipelineTopRanking({ deals }: Props) {
   const dealsForHook = deals.map((d) => ({
     broker1_name: d.broker1,
@@ -37,100 +42,35 @@ export default function PipelineTopRanking({ deals }: Props) {
   if (!scoped.length) return null;
 
   // O escopo já vem do servidor: geral, diretoria, gerência ou equipe.
-  const top3 = scoped.slice(0, 3);
-  // Podium visual order: 2nd, 1st, 3rd
-  const order = [top3[1], top3[0], top3[2]].filter(Boolean) as Score[];
-
-  const medalConfig = [
-    { // silver (2nd)
-      label: "2",
-      icon: <Medal className="h-5 w-5 text-slate-300" />,
-      wrap: "border-slate-400/40 bg-gradient-to-br from-slate-700/30 via-slate-800/40 to-transparent",
-      color: "text-slate-200",
-    },
-    { // gold (1st)
-      label: "1",
-      icon: <Trophy className="h-6 w-6 text-amber-400" />,
-      wrap: "border-amber-400/60 bg-gradient-to-br from-amber-500/25 via-amber-800/20 to-transparent shadow-[0_0_24px_hsl(45_90%_55%/0.25)]",
-      color: "text-amber-300",
-    },
-    { // bronze (3rd)
-      label: "3",
-      icon: <Medal className="h-5 w-5 text-orange-400" />,
-      wrap: "border-orange-500/40 bg-gradient-to-br from-orange-800/30 via-orange-900/20 to-transparent",
-      color: "text-orange-300",
-    },
-  ];
+  const entries: PodiumEntry[] = scoped.slice(0, 3).map((s) => ({
+    id: s.broker.id,
+    name: s.broker.name,
+    points: s.points,
+    avatarUrl: s.broker.avatar_url,
+    detail: `${s.vendas}V · ${s.aprovados}A · ${s.analises}An`,
+  }));
 
   const scopeLabel =
-    role === "admin" ? "Ranking Geral" :
-    role === "director" ? "Sua Diretoria" :
-    role === "manager" ? "Sua Gerência" :
-    role === "broker" ? "Sua Equipe" : "Ranking";
+    role === "admin" ? "Ranking geral" :
+    role === "director" ? "Sua diretoria" :
+    role === "manager" ? "Sua gerência" :
+    role === "broker" ? "Sua equipe" : "Ranking";
 
   return (
     <>
-    <Card className="border-primary/30 bg-card/60 backdrop-blur-xl max-w-4xl mx-auto">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-4 gap-2">
-          <div className="w-[110px]" />
-          <div className="flex items-center gap-2">
-            <Flame className="h-4 w-4 text-amber-400" />
-            <h2 className="text-sm font-bold">Ranking do Game — {scopeLabel}</h2>
-          </div>
-          <Badge variant="outline" className="text-[10px] border-primary/30 w-[110px] justify-center">
-            <TrendingUp className="h-3 w-3 mr-1" /> {scoped.length} participantes
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 items-end">
-          {order.map((s, idx) => {
-            // Visual layout: idx 0 = left (2nd), idx 1 = center (1st), idx 2 = right (3rd)
-            const pos = idx; // matches medalConfig: [silver, gold, bronze]
-            const cfg = medalConfig[pos];
-            const positionNumber = pos === 0 ? 2 : pos === 1 ? 1 : 3;
-            const isFirst = pos === 1;
-            return (
-              <button
-                type="button"
-                key={s.broker.id}
-                onClick={openInfoDialog}
-                className={cn(
-                  "w-full h-full text-left rounded-xl border flex items-center gap-3 cursor-pointer",
-                  "transition-all duration-300 hover:shadow-xl",
-                  isFirst
-                    ? "p-4 hover:scale-[1.03] hover:-translate-y-1 hover:shadow-amber-500/30"
-                    : "p-3 hover:scale-[1.04] hover:-translate-y-0.5 hover:shadow-primary/20",
-                  cfg.wrap
-                )}
-              >
-                <div className="relative shrink-0">
-                  <Avatar className={cn(isFirst ? "h-14 w-14" : "h-12 w-12", "border-2", isFirst ? "border-amber-400/70" : "border-border/50")}>
-                    <AvatarImage src={s.broker.avatar_url || undefined} alt={s.broker.name} />
-                    <AvatarFallback className="bg-primary/20 text-primary font-bold text-xs">
-                      {s.broker.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="absolute -top-1 -left-1">{cfg.icon}</div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className={cn("text-xs font-bold truncate", cfg.color)}>{positionNumber}º · {s.broker.name}</p>
-                  <p className={cn("font-black leading-tight", isFirst ? "text-xl" : "text-lg")}>
-                    {s.points} <span className="text-[10px] font-medium text-muted-foreground">pts</span>
-                  </p>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <span>V:<b className="text-yellow-400 ml-0.5">{s.vendas}</b></span>
-                    <span>A:<b className="text-emerald-400 ml-0.5">{s.aprovados}</b></span>
-                    <span>An:<b className="text-sky-400 ml-0.5">{s.analises}</b></span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-    <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
+      <SectionCard
+        title={`Ranking do game — ${scopeLabel}`}
+        icon={Flame}
+        className="mx-auto max-w-4xl"
+        actions={
+          <StatusBadge tone="neutral" icon={TrendingUp}>
+            {scoped.length} participantes
+          </StatusBadge>
+        }
+      >
+        <Podium entries={entries} size="sm" onSelect={() => void openInfoDialog()} />
+      </SectionCard>
+      <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
     </>
   );
 }
@@ -146,23 +86,23 @@ function InfoDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Flame className="h-5 w-5 text-amber-400" /> Mensagem do dia
+            <Flame className="h-5 w-5 text-warning" /> Mensagem do dia
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <div className="flex items-center gap-2 mb-1 text-xs font-semibold text-primary">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+            <div className="mb-1 flex items-center gap-2 text-xs font-semibold text-primary">
               <Megaphone className="h-4 w-4" /> {notice?.title || "Aviso"}
             </div>
-            <p className="text-sm text-foreground/90 whitespace-pre-wrap">
+            <p className="whitespace-pre-wrap text-sm text-foreground">
               {notice?.message || "Sem avisos ativos no momento."}
             </p>
           </div>
-          <div className="rounded-lg border border-amber-500/40 bg-gradient-to-br from-amber-500/10 to-transparent p-3">
-            <div className="flex items-center gap-2 mb-1 text-xs font-semibold text-amber-400">
-              <Lightbulb className="h-4 w-4" /> Dica de Ouro
+          <div className="rounded-xl border border-warning/40 bg-warning/10 p-3">
+            <div className="mb-1 flex items-center gap-2 text-xs font-semibold text-warning">
+              <Lightbulb className="h-4 w-4" /> Dica de ouro
             </div>
-            <p className="text-sm text-foreground/90 whitespace-pre-wrap">
+            <p className="whitespace-pre-wrap text-sm text-foreground">
               {tip || "Nenhuma dica de ouro publicada ainda."}
             </p>
           </div>

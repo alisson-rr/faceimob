@@ -10,7 +10,9 @@ npm run db:reset          # aplica as 31 migrations + seeds
 npm run e2e               # roda tudo
 ```
 
-Último placar local (10/08/2026): **134/134 testes passaram**, sem `fixme`.
+Último placar local (27/08/2026): **147 testes · 142 passam · 5 falham**, sem
+`fixme`. As 5 são o mesmo achado — a tela de Gamificação está fora do kit que a
+suíte cobra; ver `docs/prompts/handoff-P.md` §7.1.
 
 Recortes úteis:
 
@@ -31,6 +33,39 @@ Isso exige `SUPABASE_SERVICE_ROLE_KEY` no ambiente (Supabase → Project Setting
 API → service_role). Ela **nunca** entra no repositório. No alvo local não é
 preciso segredo nenhum: a chave do CLI é de demonstração e sai de
 `supabase status`.
+
+### O que a suíte deixa no banco alvo — e como tirar
+
+O preparo cria dez contas `e2e.*@faceimob.test` e duas equipes (`Equipe E2E
+Alfa` e `Beta`) **no banco apontado**. No remoto isso é a homologação, com os
+dados da demonstração: sem faxina, "E2E Corretor" entra nas listas de equipe e
+cinco corretores de teste entram na contagem de staff que o cliente vê.
+
+O `globalTeardown` (`e2e/global-teardown.ts`) desfaz exatamente isso ao final —
+inclusive quando a suíte fica vermelha. **Ele não roda em duas situações**,
+ambas medidas: **Ctrl+C** no meio da execução e **`--global-timeout`**
+estourando. Depois de qualquer uma delas, a faxina é uma linha:
+
+```bash
+npm run e2e:remote -- --grep "nada-para-rodar"
+```
+
+O preparo reaproveita as contas que ficaram, o Playwright responde `No tests
+found` e o teardown remove tudo. Confira com:
+
+```sql
+select count(*) from public.profiles where email like 'e2e.%@faceimob.test';  -- 0
+select count(*) from public.teams    where slug  like 'equipe-e2e-%';          -- 0
+```
+
+O que a faxina **não** desfaz: linhas que um spec interrompido criou e marcou
+com a própria `runTag()` (`deals`/`leads` com `notes` começando em `e2e-`, e
+regras de pontuação com `event_code` no mesmo padrão). Elas são de cada spec, e
+o `afterAll` de cada um é que as remove.
+
+`e2e/admin/fechamento-mes.spec.ts` **não roda no alvo remoto**, de propósito: é
+o único que encerra a temporada aberta do game, e uma interrupção no meio dele
+deixaria a homologação sem pódio — sem que o teardown tenha como consertar.
 
 ## Vídeo de demonstração
 

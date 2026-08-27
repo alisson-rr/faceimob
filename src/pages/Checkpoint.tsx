@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { addDays, endOfWeek, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { describeError } from "@/lib/supabaseError";
 import { listPeople } from "@/integrations/supabase/newSchema";
 
 
@@ -92,7 +93,9 @@ export default function Checkpoint() {
         setEntries([]);
       }
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "erro inesperado");
+      // A mensagem crua do Postgres cita tabela e policy; fica no log, não na tela.
+      console.error("checkpoint: falha ao carregar a semana", err);
+      setLoadError(describeError(err, "Verifique a conexão e tente de novo."));
     } finally {
       setLoading(false);
     }
@@ -139,7 +142,10 @@ export default function Checkpoint() {
           <Target className="h-5 w-5 text-primary" />
           <h1 className="text-2xl font-bold">Checkpoint Semanal</h1>
         </div>
-        <div className="flex items-center gap-2">
+        {/* `flex-wrap` aqui, e nao so no <header>: os 4 botoes mais o Select de
+            224 px pedem 472 px numa faixa de 311 px a 375 px, e sem quebra de
+            linha eles transbordavam 137 px a pagina inteira (handoff-N §6.1). */}
+        <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, -7))}><ChevronLeft className="h-4 w-4" /></Button>
           <div className="px-3 py-1 rounded-md border border-primary/30 bg-primary/5 text-xs">
             {format(weekStart, "dd MMM", { locale: ptBR })} — {format(weekEnd, "dd MMM yyyy", { locale: ptBR })}
@@ -147,7 +153,7 @@ export default function Checkpoint() {
           <Button size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, 7))}><ChevronRight className="h-4 w-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Hoje</Button>
           <Select value={teamFilter} onValueChange={setTeamFilter}>
-            <SelectTrigger className="w-56 h-8 text-xs"><SelectValue placeholder="Filtrar equipe" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-56 h-8 text-xs"><SelectValue placeholder="Filtrar equipe" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as equipes</SelectItem>
               {visibleTeams.map(t => <SelectItem key={t.id} value={t.id}>{teamNameFor(t)}</SelectItem>)}
@@ -218,11 +224,11 @@ export function TeamCheckpointCard({ aggr, targets, name }: {
           <TrendingUp className="h-3.5 w-3.5 text-primary" /> {name}
         </CardTitle>
         {anyBelow ? (
-          <Badge variant="outline" className="border-rose-500/50 text-rose-400 text-[9px] py-0 h-5">
+          <Badge variant="outline" size="sm" className="border-destructive/50 text-destructive">
             <AlertTriangle className="h-2.5 w-2.5 mr-1" /> Gargalo: {worst.label}
           </Badge>
         ) : (
-          <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 text-[9px] py-0 h-5">No ritmo</Badge>
+          <Badge variant="outline" size="sm" className="border-success/50 text-success">No ritmo</Badge>
         )}
       </CardHeader>
       <CardContent className="px-3 pb-3 pt-0 space-y-2">
@@ -233,35 +239,35 @@ export function TeamCheckpointCard({ aggr, targets, name }: {
             return (
               <div key={s.label} className={cn(
                 "px-2 py-1.5 rounded-md border bg-secondary/20 flex flex-col gap-0.5",
-                below ? "border-rose-500/50 bg-rose-500/5" : "border-emerald-500/30",
+                below ? "border-destructive/50 bg-destructive/5" : "border-success/30",
               )}>
                 <div className="flex items-baseline justify-between gap-1">
-                  <span className="text-[9px] uppercase text-muted-foreground truncate">{s.label}</span>
-                  {i > 0 && <span className="text-[8px] text-muted-foreground shrink-0">m{s.target}%</span>}
+                  <span className="text-eyebrow truncate">{s.label}</span>
+                  {i > 0 && <span className="text-eyebrow shrink-0">m{s.target}%</span>}
                 </div>
                 <div className="flex items-baseline justify-between gap-1">
-                  <span className={cn("text-lg font-black leading-none", ok ? "text-emerald-400" : "text-rose-400")}>{s.value}</span>
-                  <span className={cn("text-[10px] font-semibold", ok ? "text-emerald-400" : "text-rose-400")}>{s.pct.toFixed(0)}%</span>
+                  <span className={cn("text-lg font-black leading-none", ok ? "text-success" : "text-destructive")}>{s.value}</span>
+                  <span className={cn("text-xs font-semibold", ok ? "text-success" : "text-destructive")}>{s.pct.toFixed(0)}%</span>
                 </div>
                 <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
-                  <div className={cn("h-full", below ? "bg-rose-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, s.pct)}%` }} />
+                  <div className={cn("h-full", below ? "bg-destructive" : "bg-success")} style={{ width: `${Math.min(100, s.pct)}%` }} />
                 </div>
               </div>
             );
           })}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-[10px]">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="px-2 py-0.5 rounded border border-border/40 bg-secondary/20">
             <span className="text-muted-foreground uppercase mr-1">Ligações</span>
-            <span className="font-bold text-sky-400">{aggr.ligacoes}</span>
+            <span className="font-bold text-info">{aggr.ligacoes}</span>
           </span>
           <span className="px-2 py-0.5 rounded border border-border/40 bg-secondary/20">
             <span className="text-muted-foreground uppercase mr-1">Coleta docs</span>
-            <span className="font-bold text-indigo-400">{aggr.coleta_docs}</span>
+            <span className="font-bold text-info">{aggr.coleta_docs}</span>
           </span>
           {anyBelow && (
-            <span className="ml-auto text-rose-400">
+            <span className="ml-auto text-destructive">
               ⚠ {worst.label}: {worst.pct.toFixed(1)}% (faltam {(worst.target - worst.pct).toFixed(1)}pp para meta {worst.target}%)
             </span>
           )}
@@ -364,14 +370,14 @@ export function DirectorFunnelCard({
   const [open, setOpen] = useState(false);
 
   return (
-    <Card className="border-yellow-400/30 bg-gradient-to-br from-yellow-400/5 via-transparent to-primary/5">
+    <Card className="border-warning/30 bg-gradient-to-br from-warning/5 via-transparent to-primary/5">
       <CardHeader className="py-2 px-3 flex flex-row items-center justify-between">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Target className="h-4 w-4 text-yellow-400" /> Diretor: {title}
+          <Target className="h-4 w-4 text-warning" /> Diretor: {title}
         </CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1">
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
               <Users className="h-3 w-3" /> Ver gerentes ({teams.length})
             </Button>
           </DialogTrigger>
@@ -424,18 +430,18 @@ export function DirectorFunnelCard({
               return (
                 <div key={r.key} className={cn(
                   "px-2 py-1.5 rounded-md border bg-secondary/20",
-                  below ? "border-rose-500/50 bg-rose-500/5" : above ? "border-emerald-500/40 bg-emerald-500/5" : "border-border/40",
+                  below ? "border-destructive/50 bg-destructive/5" : above ? "border-success/40 bg-success/5" : "border-border/40",
                 )}>
                   <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-[9px] uppercase text-muted-foreground truncate">{r.label}</span>
-                    {i > 0 && <span className="text-[8px] text-muted-foreground">m{r.target}%</span>}
+                    <span className="text-eyebrow truncate">{r.label}</span>
+                    {i > 0 && <span className="text-eyebrow">m{r.target}%</span>}
                   </div>
                   <div className="flex items-baseline justify-between gap-1">
-                    <span className={cn("text-lg font-black leading-none", below ? "text-rose-400" : above ? "text-emerald-400" : "text-foreground")}>{r.value}</span>
-                    <span className={cn("text-[10px] font-semibold", below ? "text-rose-400" : above ? "text-emerald-400" : "text-muted-foreground")}>{r.pct.toFixed(0)}%</span>
+                    <span className={cn("text-lg font-black leading-none", below ? "text-destructive" : above ? "text-success" : "text-foreground")}>{r.value}</span>
+                    <span className={cn("text-xs font-semibold", below ? "text-destructive" : above ? "text-success" : "text-muted-foreground")}>{r.pct.toFixed(0)}%</span>
                   </div>
                   <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mt-1">
-                    <div className={cn("h-full", below ? "bg-rose-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, r.pct)}%` }} />
+                    <div className={cn("h-full", below ? "bg-destructive" : "bg-success")} style={{ width: `${Math.min(100, r.pct)}%` }} />
                   </div>
                 </div>
               );

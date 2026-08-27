@@ -51,9 +51,16 @@ test.afterAll(async () => {
   await db.remove(`deals?notes=eq.${tag}`);
 });
 
-/** Valor do cartão de KPI: o rótulo e o número são irmãos, sem rótulo acessível. */
-const valorDoKpi = (page: Page, rotulo: string) =>
-  page.getByText(rotulo, { exact: true }).locator("xpath=../following-sibling::p[1]");
+/**
+ * O medidor da meta.
+ *
+ * A Tarefa F tirou a meta da régua de KPIs e a pôs num cartão próprio
+ * (`GoalCard`), porque "Meta —" no meio de seis números não dizia nada a quem
+ * estava olhando. O número grande do cartão é montado em dois nós (`25` e `%`),
+ * então a asserção precisa é a barra: ela declara `aria-valuenow` e um
+ * `aria-label` com o período, a realização e o alvo.
+ */
+const medidorDaMeta = (page: Page) => page.getByRole("progressbar", { name: /meta de vendas de/i });
 
 async function abrirMetasDe(page: Page, mes: string) {
   await page.goto("/dashboard");
@@ -66,16 +73,19 @@ async function abrirMetasDe(page: Page, mes: string) {
   await page.getByRole("option", { name: new RegExp(`^${mes.replace("/", "\\/")}`) }).click();
   await expect(seletorDeMes).toContainText(mes);
 
-  await page.getByRole("button", { name: "Metas", exact: true }).click();
+  // A aba "Metas" é a que hospeda o `GoalCard` desde a Tarefa F.
+  await page.getByRole("tab", { name: "Metas", exact: true }).click();
 }
 
 test.describe("dashboard · meta mensal", () => {
-  test("sem linha em goals o medidor mostra '—', não um alvo inventado", async ({ page }) => {
+  test("sem linha em goals o cartão diz que não há meta, em vez de inventar um alvo", async ({ page }) => {
     await abrirMetasDe(page, MES);
 
-    await expect(page.getByText("Sem meta cadastrada para o período")).toBeVisible();
-    await expect(page.getByText("—", { exact: true }).first()).toBeVisible();
-    await expect(valorDoKpi(page, "Meta")).toHaveText("—");
+    await expect(page.getByText(`Sem meta cadastrada para ${MES}`)).toBeVisible();
+    // E ensina como cadastrar, já que a tela para isso ainda não existe.
+    await expect(page.getByText(/ainda não há tela para cadastrar meta/i)).toBeVisible();
+    // Nenhum medidor: sem alvo não há percentual a mostrar.
+    await expect(medidorDaMeta(page)).toHaveCount(0);
   });
 
   test("cadastrada a meta em goals, o medidor passa a usá-la", async ({ page }) => {
@@ -92,7 +102,11 @@ test.describe("dashboard · meta mensal", () => {
 
     // Uma venda no mês contra a meta de quatro: 25%.
     await expect(page.getByText(`1 de ${META} vendas`)).toBeVisible();
-    // O medidor aparece no cartão e no KPI; o KPI é a asserção precisa.
-    await expect(valorDoKpi(page, "Meta")).toHaveText("25%");
+    await expect(page.getByText(`Faltam 3 para bater a meta`)).toBeVisible();
+    await expect(medidorDaMeta(page)).toHaveAttribute("aria-valuenow", "25");
+    await expect(medidorDaMeta(page)).toHaveAttribute(
+      "aria-label",
+      `Meta de vendas de ${MES}: 1 de ${META}`,
+    );
   });
 });

@@ -82,6 +82,13 @@ const pontosNaTela = (page: import("@playwright/test").Page, nome: string) =>
   linhaDoRanking(page, nome).getByRole("cell").last();
 
 /**
+ * A tela formata número com `num()` de `lib/format.ts` (fonte única de pt-BR
+ * desde a Tarefa A): 9000 aparece como "9.000". Comparar com `String(n)` só
+ * passava enquanto o placar tinha menos de quatro dígitos.
+ */
+const emPtBr = (n: number) => n.toLocaleString("pt-BR");
+
+/**
  * Placar do corretor segundo o banco.
  *
  * A asserção compara tela × `game_ranking` em vez de tela × constante: o banco é
@@ -107,7 +114,7 @@ test.describe("gamificação · ranking", () => {
     await page.goto("/gamification");
     await aguardarCarregamento(page);
 
-    await expect(pontosNaTela(page, CORRETOR)).toHaveText(String(noBanco));
+    await expect(pontosNaTela(page, CORRETOR)).toHaveText(emPtBr(noBanco));
   });
 
   test("mudar a pontuação em game_scoring_rules muda o placar", async ({ page }) => {
@@ -149,7 +156,7 @@ test.describe("gamificação · ranking", () => {
     await aguardarCarregamento(page);
 
     // A tela soma os eventos e mostra o peso vigente no cartão de regras.
-    await expect(pontosNaTela(page, CORRETOR)).toHaveText(String(depois));
+    await expect(pontosNaTela(page, CORRETOR)).toHaveText(emPtBr(depois));
     await expect(page.getByText(`${rotulo}: ${PESO_NOVO} pts`)).toBeVisible();
   });
 
@@ -168,8 +175,10 @@ test.describe("gamificação · ranking", () => {
     const top3 = [await nomeDaLinha(1), await nomeDaLinha(2), await nomeDaLinha(3)];
     const quarto = await nomeDaLinha(4);
 
-    // Três cartões, nem mais nem menos.
-    await expect(painel.getByText("pontos", { exact: true })).toHaveCount(3);
+    // Três degraus, nem mais nem menos. O degrau escreve "pts" na tela desde a
+    // Tarefa B; o rótulo acessível ("1º lugar: Fulano, N pontos") é o que dá
+    // para contar sem depender da abreviação.
+    await expect(painel.getByLabel(/lugar:/)).toHaveCount(3);
 
     // Quem está no pódio aparece duas vezes (cartão + tabela); o 4º, só uma.
     for (const nome of top3) {
@@ -190,8 +199,10 @@ test.describe("gamificação · diretorias", () => {
 
     // Cada diretoria é um cartão com título "Diretoria <nome>". O título tem
     // ícone antes do texto, então casar por papel é mais firme do que ancorar
-    // uma expressão no começo do texto do elemento.
-    const titulos = page.getByRole("tabpanel").getByRole("heading", { level: 3 });
+    // uma expressão no começo do texto do elemento. O `SectionCard` do kit
+    // (Tarefa A) titula em <h2>: <h1> é do cabeçalho da página, <h2> de cada
+    // seção — antes disto o cartão usava <h3>.
+    const titulos = page.getByRole("tabpanel").getByRole("heading", { level: 2 });
     await expect(titulos.first()).toBeVisible();
 
     const naTela = (await titulos.allInnerTexts())

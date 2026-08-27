@@ -158,7 +158,7 @@ test.describe("IPs autorizados para check-in", () => {
   test.describe(() => {
     test.use({ errosEsperados: [/status of 400/i] });
 
-  test("endereço inválido não entra na lista", async ({ page }) => {
+  test("endereço inválido não entra na lista, e o erro sai em pt-BR", async ({ page }) => {
     const rotulo = rotuloPara("invalido");
 
     await page.goto("/admin/allowed-ips");
@@ -168,9 +168,13 @@ test.describe("IPs autorizados para check-in", () => {
     await campoDescricao(page).fill(rotulo);
     await page.getByRole("button", { name: /adicionar/i }).click();
 
-    // A recusa vem do tipo `cidr` do Postgres — a tela não valida antes de
-    // enviar e repassa a mensagem crua do banco (achado no relatório).
-    await expect(page.getByText(/invalid input syntax|cidr/i)).toBeVisible();
+    // A recusa vem do tipo `cidr` do Postgres (SQLSTATE 22P02). Até a Tarefa D a
+    // tela repassava a mensagem crua ("invalid input syntax for type cidr"), que
+    // entrega o schema a quem estiver olhando e não diz o que fazer; hoje o
+    // `describeError` traduz por código. O teste cobra as duas metades: a frase
+    // em pt-BR aparece E a mensagem do Postgres não vaza.
+    await expect(page.getByText(/um dos campos está em formato inválido/i)).toBeVisible();
+    await expect(page.getByText(/invalid input syntax|for type cidr/i)).toHaveCount(0);
     expect(await buscarPorRotulo(rotulo), "entrada inválida não pode gravar").toHaveLength(0);
   });
 

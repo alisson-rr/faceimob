@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Swords, Flame, Trophy, Sparkles, Lock, Loader2, Info, AlertTriangle, RefreshCw, TrendingUp, History, Pencil, Target, Users, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
+import { describeError } from "@/lib/supabaseError";
 import { format, startOfMonth, eachDayOfInterval, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -39,14 +40,14 @@ type PublicDailyPayload = {
 
 
 const FIELDS = [
-  { key: "leads", label: "Leads", color: "text-cyan-400" },
-  { key: "ligacoes", label: "Ligações", color: "text-sky-400" },
-  { key: "coleta_docs", label: "Coleta Docs", color: "text-indigo-400" },
-  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-fuchsia-400" },
-  { key: "visitas_realizadas", label: "Visita Real.", color: "text-pink-400" },
-  { key: "analises", label: "Análise Env.", color: "text-amber-400" },
-  { key: "aprovados", label: "Análise Aprov.", color: "text-emerald-400" },
-  { key: "vendas", label: "Venda", color: "text-yellow-400" },
+  { key: "leads", label: "Leads", color: "text-info" },
+  { key: "ligacoes", label: "Ligações", color: "text-info" },
+  { key: "coleta_docs", label: "Coleta Docs", color: "text-info" },
+  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-chart-5" },
+  { key: "visitas_realizadas", label: "Visita Real.", color: "text-chart-5" },
+  { key: "analises", label: "Análise Env.", color: "text-warning" },
+  { key: "aprovados", label: "Análise Aprov.", color: "text-success" },
+  { key: "vendas", label: "Venda", color: "text-warning" },
 ] as const;
 
 type FieldKey = typeof FIELDS[number]["key"];
@@ -82,9 +83,15 @@ export default function DailyReport() {
   const [expandedBroker, setExpandedBroker] = useState<Record<string, boolean>>({});
 
 
-  const yesterday = new Date();
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  // `public_daily_submit` (0009, endurecida na 0034) grava sempre
+  // `report_date = current_date` e não recebe data: esta tela lança o
+  // checkpoint DE HOJE. A variável chamava `yesterday` e valia `new Date()` —
+  // o nome mentia e os rótulos repetiam a mentira.
+  const today = new Date();
+  const todayStr = format(today, "yyyy-MM-dd");
   const todayFilled = filledDates.includes(todayStr);
+  /** Dia anterior aberto pelo Histórico: dá para ler, não dá para gravar. */
+  const viewingPastDay = date !== todayStr;
 
   const activeRoster = useMemo(() => roster.filter((b) => b.active !== false), [roster]);
 
@@ -287,6 +294,17 @@ export default function DailyReport() {
   };
 
   const submit = async () => {
+    // A RPC não recebe data: o `on conflict (team_id, report_date)` casa com a
+    // linha de HOJE, então enviar com um dia anterior na tela sobrescreveria o
+    // checkpoint de hoje — e o gerente acharia que corrigiu o passado. O botão
+    // já vem desabilitado; o guard fica aqui porque é por onde todo envio passa.
+    if (viewingPastDay) {
+      return toast({
+        title: "Esta tela grava só o checkpoint de hoje",
+        description: "O dia anterior abre para conferência. Para corrigi-lo, fale com a administração.",
+        variant: "destructive",
+      });
+    }
     if (!filledBy.trim()) {
       toast({ title: "Informe seu nome no campo 'Gerente' antes de salvar", variant: "destructive" });
       const el = document.getElementById("filled-by-input") as HTMLInputElement | null;
@@ -306,14 +324,31 @@ export default function DailyReport() {
       analyses_approved: entries[b.broker_id]?.aprovados || 0,
       sales: entries[b.broker_id]?.vendas || 0,
     }));
-    const { error } = await supabase.rpc("public_daily_submit", {
+    const { data, error } = await supabase.rpc("public_daily_submit", {
       p_slug: identifier,
       p_pin: pin || null,
       p_entries: payload,
     });
     setSubmitting(false);
     if (error) {
-      return toast({ title: "Falha ao enviar", description: error.message || "Erro desconhecido", variant: "destructive" });
+      // A mensagem crua do Postgres cita tabela e constraint; fica no log, não na tela.
+      console.error("daily report: falha ao enviar o checkpoint", error);
+      return toast({
+        title: "Falha ao enviar o checkpoint",
+        description: describeError(error, "Não foi possível enviar o checkpoint. Tente de novo."),
+        variant: "destructive",
+      });
+    }
+    // Desde a 0034 a recusa vem como `null` com HTTP 200, não como exceção:
+    // sinalizar por exceção fazia o PostgREST abortar a transação e apagava
+    // junto a tentativa que o lockout tinha acabado de contar. Sem este `!data`
+    // a tela comemoraria "+XP" para um envio que não gravou linha nenhuma.
+    if (!data) {
+      return toast({
+        title: "Envio recusado",
+        description: "PIN incorreto, ou o link está bloqueado por 15 minutos após 5 tentativas erradas. Peça um PIN novo à administração.",
+        variant: "destructive",
+      });
     }
     setXpBurst(xpEarned);
     toast({ title: `🎯 Checkpoint concluído! +${xpEarned} XP`, description: "Dados da equipe registrados." });
@@ -324,7 +359,7 @@ export default function DailyReport() {
   if (!identifier) return <div className="p-8 text-center">Equipe inválida.</div>;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0F0E19] via-[#12122a] to-[#0F0E19] text-foreground">
+    <div className="gradient-premium min-h-screen bg-background text-foreground">
       {/* Aura */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[800px] rounded-full bg-primary/10 blur-3xl animate-pulse" />
@@ -336,10 +371,10 @@ export default function DailyReport() {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs uppercase tracking-widest">
             <Swords className="h-3 w-3 text-primary" /> Checkpoint Diário
           </div>
-          <h1 className="text-4xl font-black bg-gradient-to-r from-primary via-cyan-400 to-fuchsia-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-black bg-gradient-to-r from-primary via-info to-chart-5 bg-clip-text text-transparent">
             {team?.team_name ?? "Carregando equipe..."}
           </h1>
-          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de ontem</p>
+          <p className="text-xs text-muted-foreground">Registre a performance da sua equipe de hoje</p>
         </header>
 
         <UpdateBanner />
@@ -362,7 +397,7 @@ export default function DailyReport() {
                 <Sparkles className="h-4 w-4 mr-2" /> Entrar na missão
               </Button>
               {team && !team.has_pin && (
-                <p className="text-xs text-amber-400">⚠️ Nenhum PIN configurado. Contate o admin.</p>
+                <p className="text-xs text-warning">⚠️ Nenhum PIN configurado. Contate o admin.</p>
               )}
             </CardContent>
           </Card>
@@ -372,26 +407,28 @@ export default function DailyReport() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
                 <CardContent className="p-3">
-                  <label className="text-[10px] uppercase text-muted-foreground">Data {formOpen && date !== todayStr ? "(editando)" : "(ontem)"}</label>
+                  <label className="text-xs uppercase text-muted-foreground">Data {formOpen && viewingPastDay ? "(dia anterior — só leitura)" : "(hoje)"}</label>
                   <Input type="date" value={date} readOnly disabled className="h-8 text-xs [color-scheme:dark] opacity-70 cursor-not-allowed" />
 
                 </CardContent>
               </Card>
-              <Card className={`bg-card/60 backdrop-blur-xl ${!filledBy.trim() && formOpen ? "border-rose-500/60 ring-2 ring-rose-500/30 animate-pulse" : "border-primary/30"}`}>
+              <Card className={`bg-card/60 backdrop-blur-xl ${!filledBy.trim() && formOpen ? "border-destructive/60 ring-2 ring-destructive/30 animate-pulse" : "border-primary/30"}`}>
                 <CardContent className="p-3">
-                  <label className="text-[10px] uppercase text-muted-foreground">Gerente {!filledBy.trim() && formOpen && <span className="text-rose-400">*obrigatório</span>}</label>
+                  <label className="text-xs uppercase text-muted-foreground">Gerente {!filledBy.trim() && formOpen && <span className="text-destructive">*obrigatório</span>}</label>
                   <Input id="filled-by-input" value={filledBy} onChange={(e) => setFilledBy(e.target.value)} placeholder="Seu nome" className="h-8 text-xs" />
                 </CardContent>
               </Card>
               <TooltipProvider>
-                <Card className="border-yellow-400/40 bg-yellow-400/5 backdrop-blur-xl">
+                <Card className="border-warning/40 bg-warning/5 backdrop-blur-xl">
                   <CardContent className="p-3 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-[10px] uppercase text-muted-foreground">{formOpen ? "XP do checkpoint" : "XP do mês"}</p>
+                        <p className="text-xs uppercase text-muted-foreground">{formOpen ? "XP do checkpoint" : "XP do mês"}</p>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button type="button"><Info className="h-3 w-3 text-muted-foreground hover:text-yellow-400" /></button>
+                            <button type="button" aria-label="Como o XP é calculado">
+                              <Info className="h-3 w-3 text-muted-foreground hover:text-warning" />
+                            </button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom" className="text-xs max-w-[260px]">
                             <p className="font-bold mb-1">Como é calculado:</p>
@@ -401,14 +438,14 @@ export default function DailyReport() {
                               <li>• Análise enviada = <b>10 XP</b></li>
                               <li>• Lead recebido = <b>1 XP</b></li>
                             </ul>
-                            <p className="mt-2 text-[10px] text-muted-foreground">Fechado: mostra o acumulado do mês. Editando: mostra o XP do dia.</p>
+                            <p className="mt-2 text-xs text-muted-foreground">Fechado: mostra o acumulado do mês. Editando: mostra o XP do dia.</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
-                      <p className="text-xl font-black text-yellow-400">{xpDisplay.toLocaleString()}</p>
+                      <p className="text-xl font-black text-warning">{xpDisplay.toLocaleString()}</p>
                     </div>
 
-                    <Trophy className="h-8 w-8 text-yellow-400" />
+                    <Trophy className="h-8 w-8 text-warning" />
                   </CardContent>
                 </Card>
               </TooltipProvider>
@@ -428,10 +465,14 @@ export default function DailyReport() {
             />
 
             {/* Funil IDEAL — 4 estágios 3D, compacto */}
-            <div className="flex items-center gap-4 px-3 py-2 rounded-lg border border-border/40 bg-muted/10">
+            {/* `flex-wrap`: a tira tem rótulo + SVG de 96px + coluna de metas +
+                painel de texto, e a 375 px isso não cabe numa linha — era a
+                única fonte de rolagem horizontal da página (medido: 463 px de
+                conteúdo em 375 px de viewport; com o wrap, 375). */}
+            <div className="flex flex-wrap items-center gap-4 px-3 py-2 rounded-lg border border-border/40 bg-muted/10">
               <div className="flex items-center gap-1.5 shrink-0">
-                <Target className="h-3.5 w-3.5 text-yellow-400/80" />
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Funil Ideal</span>
+                <Target className="h-3.5 w-3.5 text-warning/80" />
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Funil Ideal</span>
               </div>
 
               <svg viewBox="0 0 140 160" className="h-24 shrink-0" preserveAspectRatio="xMidYMid meet">
@@ -471,7 +512,7 @@ export default function DailyReport() {
                 })}
               </svg>
 
-              <div className="flex flex-col justify-between h-24 py-1 text-[10px] leading-tight">
+              <div className="flex flex-col justify-between h-24 py-1 text-xs leading-tight">
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">100%</b><span className="text-muted-foreground">Leads</span></div>
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">10%</b><span className="text-muted-foreground">Análises</span></div>
                 <div className="flex items-center gap-1.5"><span className="text-muted-foreground">→</span><b className="text-foreground">40%</b><span className="text-muted-foreground">Aprovações</span></div>
@@ -479,17 +520,17 @@ export default function DailyReport() {
               </div>
 
 
-              <div className="flex-1 min-w-0 border-l border-border/40 pl-4 ml-1 text-[10px] leading-snug space-y-1">
-                <p className="text-[10px] uppercase tracking-wider text-yellow-400/80 font-semibold">Instrua seu time</p>
+              <div className="flex-1 min-w-0 border-l border-border/40 pl-4 ml-1 text-xs leading-snug space-y-1">
+                <p className="text-xs uppercase tracking-wider text-warning/80 font-semibold">Instrua seu time</p>
                 <p className="text-muted-foreground">
                   A cada <b className="text-foreground">100 leads</b> trabalhados, o esperado é:
                 </p>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-foreground">
-                  <span><b className="text-cyan-300">10</b> análises</span>
+                  <span><b className="text-info">10</b> análises</span>
                   <span className="text-muted-foreground">→</span>
-                  <span><b className="text-emerald-300">4</b> aprovações</span>
+                  <span><b className="text-success">4</b> aprovações</span>
                   <span className="text-muted-foreground">→</span>
-                  <span><b className="text-yellow-300">2</b> vendas</span>
+                  <span><b className="text-warning">2</b> vendas</span>
                 </div>
                 <p className="text-muted-foreground pt-0.5">
                   Cálculo: 100 × 10% = <b className="text-foreground">10</b> · 10 × 40% = <b className="text-foreground">4</b> · 4 × 50% = <b className="text-foreground">2</b>
@@ -500,13 +541,13 @@ export default function DailyReport() {
 
 
             {/* Month funnel + missing days */}
-            <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
+            <Card className="border-info/30 bg-card/60 backdrop-blur-xl">
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-cyan-400" /> Funil do mês ({format(new Date(), "MMMM", { locale: ptBR })})
+                    <TrendingUp className="h-4 w-4 text-info" /> Funil do mês ({format(new Date(), "MMMM", { locale: ptBR })})
                   </CardTitle>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Período considerado: segunda a domingo</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Período considerado: segunda a domingo</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
@@ -522,12 +563,14 @@ export default function DailyReport() {
                         </DialogTitle>
                       </DialogHeader>
                       <div className="space-y-3">
-                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> Preenchido</span>
-                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" /> Não preenchido</span>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-success" /> Preenchido</span>
+                          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-destructive" /> Não preenchido</span>
                         </div>
                         <div className="grid grid-cols-7 gap-1.5">
-                          {eachDayOfInterval({ start: startOfMonth(new Date()), end: yesterday }).map((d) => {
+                          {/* Do dia 1 até hoje — o intervalo não muda com o
+                              nome da variável: `yesterday` já era `new Date()`. */}
+                          {eachDayOfInterval({ start: startOfMonth(new Date()), end: today }).map((d) => {
                             const ds = format(d, "yyyy-MM-dd");
                             const done = filledDates.includes(ds);
                             return (
@@ -537,13 +580,17 @@ export default function DailyReport() {
                                 disabled={loadingDay}
                                 className={`relative aspect-square rounded-md text-xs font-bold flex flex-col items-center justify-center transition border ${
                                   done
-                                    ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/25"
-                                    : "bg-rose-500/10 border-rose-500/40 text-rose-300 hover:bg-rose-500/20"
+                                    ? "bg-success/15 border-success/50 text-success hover:bg-success/25"
+                                    : "bg-destructive/10 border-destructive/40 text-destructive hover:bg-destructive/20"
                                 }`}
-                                title={done ? "Preenchido — clique para editar" : "Não preenchido"}
+                                title={
+                                  ds === todayStr
+                                    ? (done ? "Hoje — clique para editar o checkpoint" : "Hoje — clique para preencher")
+                                    : "Dia anterior — abre só para conferir; esta tela grava o checkpoint de hoje"
+                                }
                               >
                                 <span className="text-sm leading-none">{format(d, "dd")}</span>
-                                <span className="text-[8px] uppercase mt-0.5 opacity-70">{format(d, "EEE", { locale: ptBR })}</span>
+                                <span className="text-xs uppercase mt-0.5 opacity-70">{format(d, "EEE", { locale: ptBR })}</span>
                                 {done && <Pencil className="absolute top-0.5 right-0.5 h-2.5 w-2.5 opacity-70" />}
                               </button>
                             );
@@ -563,16 +610,16 @@ export default function DailyReport() {
                 <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2 justify-items-center max-w-3xl mx-auto">
                   {FIELDS.map(f => (
                     <div key={f.key} className="px-2 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-center">
-                      <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
+                      <p className="text-xs uppercase text-muted-foreground">{f.label}</p>
                       <p className={`text-lg font-black ${f.color}`}>{monthTotals[f.key]}</p>
                     </div>
                   ))}
                 </div>
                 {missingDays.length > 0 && (
-                  <div className="rounded-md border border-rose-500/40 bg-rose-500/5 p-2 flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div className="rounded-md border border-destructive/40 bg-destructive/5 p-2 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
                     <div className="text-xs">
-                      <p className="font-bold text-rose-400">Checkpoint não efetuado ({missingDays.length} {missingDays.length === 1 ? "dia" : "dias"}):</p>
+                      <p className="font-bold text-destructive">Checkpoint não efetuado ({missingDays.length} {missingDays.length === 1 ? "dia" : "dias"}):</p>
                       <p className="text-muted-foreground mt-0.5">
                         {missingDays.map(d => format(parseISO(d), "dd/MM", { locale: ptBR })).join(" • ")}
                       </p>
@@ -584,9 +631,9 @@ export default function DailyReport() {
 
 
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Users className="h-3 w-3" /> {activeRoster.length} corretor{activeRoster.length === 1 ? "" : "es"} ativo{activeRoster.length === 1 ? "" : "s"}
-                {roster.length !== activeRoster.length && <span className="text-rose-400 ml-1">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
+                {roster.length !== activeRoster.length && <span className="text-destructive ml-1">• {roster.length - activeRoster.length} desligado{roster.length - activeRoster.length === 1 ? "" : "s"}</span>}
               </p>
               <Button
                 type="button"
@@ -604,7 +651,7 @@ export default function DailyReport() {
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Corretores da equipe</DialogTitle>
                 </DialogHeader>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   A escala do diário acompanha os membros ativos da equipe. Para
                   incluir ou desligar corretores, o gestor logado usa a tela <b>Equipes</b>.
                 </p>
@@ -614,7 +661,7 @@ export default function DailyReport() {
                       <p className="font-medium truncate">{b.broker_name}</p>
                     </div>
                   ))}
-                  {roster.length === 0 && <p className="p-4 text-center text-[11px] text-muted-foreground">Nenhum corretor.</p>}
+                  {roster.length === 0 && <p className="p-4 text-center text-xs text-muted-foreground">Nenhum corretor.</p>}
                 </div>
               </DialogContent>
             </Dialog>
@@ -623,25 +670,25 @@ export default function DailyReport() {
 
             {!formOpen ? (
 
-              <Card className="border-primary/40 bg-gradient-to-br from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl">
+              <Card className="border-primary/40 bg-gradient-to-br from-primary/10 via-chart-5/5 to-primary/10 backdrop-blur-xl">
                 <CardContent className="p-6 flex flex-col items-center gap-3 text-center">
                   <Sparkles className="h-8 w-8 text-primary" />
                   <div>
-                    <p className="text-sm font-bold">Pronto para registrar o dia de ontem?</p>
+                    <p className="text-sm font-bold">Pronto para registrar o dia de hoje?</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Clique abaixo para abrir o checkpoint de <b>ontem ({format(yesterday, "dd/MM", { locale: ptBR })})</b> com todos os corretores da equipe.
+                      Clique abaixo para abrir o checkpoint de <b>hoje ({format(today, "dd/MM", { locale: ptBR })})</b> com todos os corretores da equipe.
                     </p>
                     {todayFilled && (
-                      <p className="text-xs text-emerald-400 mt-2 flex items-center justify-center gap-1">
-                        <Info className="h-3 w-3" /> O checkpoint de ontem já foi preenchido — você pode editar os valores.
+                      <p className="text-xs text-success mt-2 flex items-center justify-center gap-1">
+                        <Info className="h-3 w-3" /> O checkpoint de hoje já foi preenchido — você pode editar os valores.
                       </p>
                     )}
                   </div>
-                  <Button size="lg" onClick={openTodayForm} disabled={loadingDay || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
+                  <Button size="lg" onClick={openTodayForm} disabled={loadingDay || roster.length === 0} className="bg-gradient-to-r from-primary to-chart-5 hover:opacity-90">
                     {loadingDay ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Pencil className="h-4 w-4 mr-2" />}
-                    {todayFilled ? "Editar daily de ontem" : "Preencher o daily de ontem"}
+                    {todayFilled ? "Editar daily de hoje" : "Preencher o daily de hoje"}
                   </Button>
-                  <p className="text-[10px] text-muted-foreground">Para editar outros dias, use o botão <b>Histórico</b> acima.</p>
+                  <p className="text-xs text-muted-foreground">O <b>Histórico</b> acima abre os outros dias para conferir; gravar, só o de hoje.</p>
                 </CardContent>
               </Card>
             ) : (
@@ -651,23 +698,31 @@ export default function DailyReport() {
                   <Card className="p-8 text-center text-sm text-muted-foreground">Nenhum corretor vinculado a esta equipe.</Card>
                 ) : (
                   <>
-                    {date !== todayStr && (
-                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-400" />
-                        Editando um dia anterior: <b>{format(parseISO(date), "dd/MM/yyyy", { locale: ptBR })}</b>
+                    {viewingPastDay && (
+                      <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold text-warning">
+                            Dia anterior aberto só para conferir: {format(parseISO(date), "dd/MM/yyyy", { locale: ptBR })}
+                          </p>
+                          <p className="text-muted-foreground mt-0.5">
+                            Esta tela grava sempre o checkpoint de <b>hoje</b> ({format(today, "dd/MM/yyyy", { locale: ptBR })}),
+                            por isso o botão <b>Salvar</b> está desligado aqui. Para corrigir um dia anterior, fale com a administração.
+                          </p>
+                        </div>
                       </div>
                     )}
-                    {date === todayStr && todayFilled && (
-                      <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-2 text-xs flex items-center gap-2">
-                        <Info className="h-4 w-4 text-emerald-400" />
+                    {!viewingPastDay && todayFilled && (
+                      <div className="rounded-md border border-success/40 bg-success/10 p-2 text-xs flex items-center gap-2">
+                        <Info className="h-4 w-4 text-success" />
                         Este dia já foi preenchido — alterações vão sobrescrever o checkpoint.
                       </div>
                     )}
                     {emptyBrokers.length > 0 && (
-                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-start gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-bold text-amber-300">
+                          <p className="font-bold text-warning">
                             {emptyBrokers.length} de {roster.length} corretor{emptyBrokers.length === 1 ? "" : "es"} sem lançamentos
                           </p>
                           <p className="text-muted-foreground mt-0.5">{emptyBrokers.map((b) => b.broker_name).join(" • ")}</p>
@@ -677,7 +732,7 @@ export default function DailyReport() {
                     <Card className="border-primary/20 bg-card/60 backdrop-blur-xl overflow-hidden">
 
                       <div
-                        className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-[9px] uppercase font-bold tracking-wider text-muted-foreground md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
+                        className="hidden md:grid gap-2 px-3 py-2 border-b border-border/40 bg-secondary/30 text-xs uppercase font-bold tracking-wider text-muted-foreground md:[grid-template-columns:minmax(140px,1.4fr)_repeat(8,minmax(52px,1fr))_56px]"
                       >
                         <span>Corretor</span>
                         {FIELDS.map((f) => <span key={f.key} className={`text-center ${f.color}`}>{f.label}</span>)}
@@ -696,17 +751,17 @@ export default function DailyReport() {
                               title={inactive ? "Corretor desligado — histórico preservado, sem novas inserções" : undefined}
                             >
                               <div className="flex items-center gap-2 col-span-3 md:col-span-1 min-w-0">
-                                <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-fuchsia-500/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
+                                <div className="w-7 h-7 rounded-md bg-gradient-to-br from-primary/40 to-chart-5/30 flex items-center justify-center font-black text-xs border border-primary/40 shrink-0">
                                   {b.broker_name.charAt(0).toUpperCase()}
                                 </div>
                                 <span className="text-xs font-medium truncate flex-1">
                                   {b.broker_name}
-                                  {inactive && <span className="ml-1 text-[9px] uppercase text-rose-400">(desligado)</span>}
+                                  {inactive && <span className="ml-1 text-xs uppercase text-destructive">(desligado)</span>}
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => setExpandedBroker((p) => ({ ...p, [b.broker_id]: !p[b.broker_id] }))}
-                                  className="text-[10px] px-1.5 py-0.5 rounded border border-primary/30 text-primary/90 hover:bg-primary/10 flex items-center gap-1 shrink-0"
+                                  className="text-xs px-1.5 py-0.5 rounded border border-primary/30 text-primary/90 hover:bg-primary/10 flex items-center gap-1 shrink-0"
                                   title="Mostrar/ocultar totais do mês"
                                 >
                                   <BarChart3 className="h-3 w-3" />
@@ -715,7 +770,7 @@ export default function DailyReport() {
                               </div>
                               {FIELDS.map((f) => (
                                 <div key={f.key} className="flex flex-col md:block min-w-0">
-                                  <label className={`md:hidden text-[9px] uppercase font-bold ${f.color} truncate`}>{f.label}</label>
+                                  <label className={`md:hidden text-xs uppercase font-bold ${f.color} truncate`}>{f.label}</label>
                                   <Input
                                     type="number" min={0} step={0.5}
                                     inputMode="decimal"
@@ -729,23 +784,23 @@ export default function DailyReport() {
                                   />
                                 </div>
                               ))}
-                              <Badge variant="outline" className="text-[10px] justify-center col-span-3 md:col-span-1">Total {total}</Badge>
+                              <Badge variant="outline" className="text-xs justify-center col-span-3 md:col-span-1">Total {total}</Badge>
                             </div>
                             {isExp && (
                               <div className="px-3 pb-2 -mt-1">
                                 <div className="rounded-md border border-primary/25 bg-primary/5 px-2 py-1.5">
                                   <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[10px] uppercase tracking-wider text-primary/80 font-bold flex items-center gap-1">
+                                    <span className="text-xs uppercase tracking-wider text-primary/80 font-bold flex items-center gap-1">
                                       <BarChart3 className="h-3 w-3" /> Totais do mês
                                     </span>
-                                    <span className="text-[9px] text-muted-foreground">
+                                    <span className="text-xs text-muted-foreground">
                                       {bm?.days_filled ? `${bm.days_filled} dia${bm.days_filled === 1 ? "" : "s"} preenchidos` : "sem lançamentos"}
                                     </span>
                                   </div>
                                   <div className="grid grid-cols-4 md:grid-cols-8 gap-1">
                                     {FIELDS.map((f) => (
                                       <div key={f.key} className="text-center px-1 py-1 rounded bg-background/40 border border-border/30">
-                                        <p className={`text-[9px] uppercase ${f.color} truncate`}>{f.label}</p>
+                                        <p className={`text-xs uppercase ${f.color} truncate`}>{f.label}</p>
                                         <p className="text-sm font-black">{bm?.[f.key] ?? 0}</p>
                                       </div>
                                     ))}
@@ -758,7 +813,7 @@ export default function DailyReport() {
                         })}
                         {roster.some((b) => b.active === false) && (
                           <div className="px-3 py-2 flex justify-center">
-                            <Button size="sm" variant="ghost" className="h-7 text-[11px] text-muted-foreground" onClick={() => setShowInactive((v) => !v)}>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setShowInactive((v) => !v)}>
                               {showInactive
                                 ? "Ocultar corretores desligados"
                                 : `Mostrar ${roster.filter((b) => b.active === false).length} corretor${roster.filter((b) => b.active === false).length === 1 ? "" : "es"} desligado${roster.filter((b) => b.active === false).length === 1 ? "" : "s"}`}
@@ -773,7 +828,7 @@ export default function DailyReport() {
                 )}
 
                 <Card className="border-primary/20 bg-card/60 backdrop-blur-xl">
-                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Flame className="h-4 w-4 text-orange-400" /> Observações do dia</CardTitle></CardHeader>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Flame className="h-4 w-4 text-warning" /> Observações do dia</CardTitle></CardHeader>
                   <CardContent>
                     <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Contexto, dificuldades, vitórias..." rows={3} className="text-xs" />
                   </CardContent>
@@ -807,12 +862,12 @@ export default function DailyReport() {
 
 
                 {/* Totals + submit */}
-                <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-fuchsia-500/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
+                <Card className="border-primary/40 bg-gradient-to-r from-primary/10 via-chart-5/5 to-primary/10 backdrop-blur-xl sticky bottom-4 shadow-2xl shadow-primary/20">
                   <CardContent className="p-4 flex flex-col items-center gap-3">
                     <div className="grid grid-cols-4 md:grid-cols-8 gap-3 justify-items-center w-full max-w-2xl">
                       {FIELDS.map((f) => (
                         <div key={f.key} className="text-center min-w-0">
-                          <p className="text-[9px] uppercase text-muted-foreground truncate">{f.label}</p>
+                          <p className="text-xs uppercase text-muted-foreground truncate">{f.label}</p>
                           <p className={`text-lg font-black ${f.color}`}>{totals[f.key]}</p>
                         </div>
                       ))}
@@ -821,7 +876,13 @@ export default function DailyReport() {
                       <Button size="lg" variant="outline" onClick={() => setFormOpen(false)}>
                         Fechar
                       </Button>
-                      <Button size="lg" onClick={submit} disabled={submitting || roster.length === 0} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
+                      <Button
+                        size="lg"
+                        onClick={submit}
+                        disabled={submitting || roster.length === 0 || viewingPastDay}
+                        title={viewingPastDay ? "Esta tela grava só o checkpoint de hoje" : undefined}
+                        className="bg-gradient-to-r from-primary to-chart-5 hover:opacity-90"
+                      >
                         {submitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
                         Salvar Checkpoint
                       </Button>
@@ -836,7 +897,7 @@ export default function DailyReport() {
 
         {xpBurst > 0 && (
           <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-50">
-            <div className="text-8xl font-black text-yellow-400 animate-scale-in drop-shadow-[0_0_40px_rgba(250,204,21,0.8)]">
+            <div className="text-8xl font-black text-warning animate-scale-in drop-shadow-[0_0_40px_hsl(var(--highlight)/0.7)]">
               +{xpBurst} XP
             </div>
           </div>

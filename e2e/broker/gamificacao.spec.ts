@@ -48,7 +48,9 @@ test.describe("corretor · gamificação", () => {
     const minhaLinha = page
       .getByRole("row")
       .filter({ has: page.getByRole("cell", { name: "E2E Corretor", exact: true }) });
-    await expect(minhaLinha.getByRole("cell").last()).toHaveText(String(placar.points));
+    // `num()` de `lib/format.ts` formata em pt-BR desde a Tarefa A: 4321 vira
+    // "4.321". Comparar com `String(n)` só passava com placar de 3 dígitos.
+    await expect(minhaLinha.getByRole("cell").last()).toHaveText(placar.points.toLocaleString("pt-BR"));
   });
 
   test("o ranking do corretor mostra a equipe, sem mostrar a equipe rival", async ({ page }) => {
@@ -73,7 +75,8 @@ test.describe("corretor · gamificação", () => {
     await aguardarCarregamento(page);
 
     // Âncora: a tela carregou de verdade.
-    await expect(page.getByRole("heading", { name: /ranking geral/i })).toBeVisible();
+    // O cartão passou a se chamar "Ranking completo" no kit da Tarefa A.
+    await expect(page.getByRole("heading", { name: /ranking completo/i })).toBeVisible();
 
     await expect(page.getByRole("button", { name: /fechar gameficação/i })).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Admin" })).toHaveCount(0);

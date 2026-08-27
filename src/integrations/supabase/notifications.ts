@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Central de notificações.
@@ -28,7 +29,7 @@ export async function listMyNotifications(limit = 30): Promise<NotificationRecor
     .select(COLUMNS)
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("listar notificações", error);
   return (data ?? []) as NotificationRecord[];
 }
 
@@ -38,7 +39,7 @@ export async function markNotificationRead(id: string): Promise<void> {
     .update({ read_at: new Date().toISOString() })
     .eq("id", id)
     .is("read_at", null);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("marcar notificação como lida", error);
 }
 
 export async function markAllNotificationsRead(profileId: string): Promise<void> {
@@ -47,5 +48,5 @@ export async function markAllNotificationsRead(profileId: string): Promise<void>
     .update({ read_at: new Date().toISOString() })
     .eq("profile_id", profileId)
     .is("read_at", null);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("marcar notificações como lidas", error);
 }

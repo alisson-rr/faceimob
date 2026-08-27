@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Star, Megaphone, Save, Trash2, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { describeError } from "@/lib/supabaseError";
 
 type Tip = { id: string; content: string; active: boolean };
 type Notice = { id: string; title: string; message: string; pinned: boolean; active: boolean };
@@ -38,7 +39,7 @@ export function GamificationAdmin() {
     await supabase.from("gold_tips").update({ active: false }).eq("active", true);
     const { error } = await supabase.from("gold_tips").insert({ title: "Dica de Ouro", body: tipDraft, active: true });
     setSaving(false);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Falha ao publicar a dica", description: describeError(error, "Não foi possível publicar a dica de ouro."), variant: "destructive" });
     toast({ title: "Dica de ouro publicada" });
     setTipDraft(""); load();
   };
@@ -59,7 +60,7 @@ export function GamificationAdmin() {
       active: true,
     });
     setSaving(false);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Falha ao publicar o recado", description: describeError(error, "Não foi possível publicar o recado."), variant: "destructive" });
     toast({ title: "Recado publicado" });
     setNoticeDraft({ title: "", message: "", pinned: false }); load();
   };
@@ -92,8 +93,8 @@ export function GamificationAdmin() {
       <Card className="glass border-primary/30">
         <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Megaphone className="h-4 w-4 text-primary" /> Recado Importante</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <div><Label className="text-[10px]">Título</Label><Input value={noticeDraft.title} onChange={e => setNoticeDraft(p => ({ ...p, title: e.target.value }))} /></div>
-          <div><Label className="text-[10px]">Mensagem</Label><Textarea rows={3} value={noticeDraft.message} onChange={e => setNoticeDraft(p => ({ ...p, message: e.target.value }))} /></div>
+          <div><Label className="text-xs">Título</Label><Input value={noticeDraft.title} onChange={e => setNoticeDraft(p => ({ ...p, title: e.target.value }))} /></div>
+          <div><Label className="text-xs">Mensagem</Label><Textarea rows={3} value={noticeDraft.message} onChange={e => setNoticeDraft(p => ({ ...p, message: e.target.value }))} /></div>
           <div className="flex items-center gap-2"><Switch checked={noticeDraft.pinned} onCheckedChange={v => setNoticeDraft(p => ({ ...p, pinned: v }))} /><span className="text-xs">Fixar no topo</span></div>
           <div className="flex justify-end"><Button size="sm" onClick={saveNotice} disabled={saving} className="gap-1"><Save className="h-3.5 w-3.5" />Publicar recado</Button></div>
 

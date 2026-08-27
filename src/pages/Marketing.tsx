@@ -11,6 +11,7 @@ import { MarketingInvestmentPopup } from "@/components/MarketingInvestmentPopup"
 import { cn } from "@/lib/utils";
 import CampaignPerformancePanel from "@/components/CampaignPerformancePanel";
 import { listAdCampaigns } from "@/integrations/supabase/analytics";
+import { dbError, describeError } from "@/lib/supabaseError";
 
 type CampaignRow = {
   id: string;
@@ -36,8 +37,8 @@ const statusLabel = (s: string | null) =>
   !s ? "—" : /^active$/i.test(s) ? "Ativa" : /^paused$/i.test(s) ? "Pausada" : s;
 
 const statusColor: Record<string, string> = {
-  Ativa: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  Pausada: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  Ativa: "bg-success/20 text-success border-success/30",
+  Pausada: "bg-warning/20 text-warning border-warning/30",
 };
 
 const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -53,8 +54,8 @@ async function loadCampaigns(): Promise<{ rows: CampaignRow[]; totalLeads: numbe
     supabase.from("developers").select("id,name"),
     supabase.rpc("marketing_campaign_stats"),
   ]);
-  if (devsRes.error) throw new Error(`developers: ${devsRes.error.message}`);
-  if (statsRes.error) throw new Error(`marketing_campaign_stats: ${statsRes.error.message}`);
+  if (devsRes.error) throw dbError("developers", devsRes.error);
+  if (statsRes.error) throw dbError("marketing_campaign_stats", statsRes.error);
 
   const devName = new Map((devsRes.data ?? []).map((d) => [d.id, d.name]));
   const stats = new Map((statsRes.data ?? []).map((row) => [row.campaign_id, row]));
@@ -150,7 +151,7 @@ export default function Marketing() {
       {isError && (
         <Card className="glass border-destructive/40">
           <CardContent className="p-4 text-xs text-destructive">
-            Falha ao carregar campanhas: {error instanceof Error ? error.message : "erro desconhecido"}
+            Falha ao carregar campanhas: {describeError(error, "Não foi possível carregar as campanhas.")}
           </CardContent>
         </Card>
       )}
@@ -175,7 +176,7 @@ export default function Marketing() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">Investimento</p>
-                  <DollarSign className="h-4 w-4 text-emerald-400" />
+                  <DollarSign className="h-4 w-4 text-success" />
                 </div>
                 <p className="text-2xl font-bold mt-1">{fmtBRL(totals.spend)}</p>
               </CardContent>
@@ -187,14 +188,14 @@ export default function Marketing() {
                   <Users className="h-4 w-4 text-primary" />
                 </div>
                 <p className="text-2xl font-bold mt-1">{totals.leads.toLocaleString("pt-BR")}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">{totals.conversions} convertidos em negócio</p>
+                <p className="text-xs text-muted-foreground mt-1">{totals.conversions} convertidos em negócio</p>
               </CardContent>
             </Card>
             <Card className="glass">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">CPL Médio</p>
-                  <Target className="h-4 w-4 text-amber-400" />
+                  <Target className="h-4 w-4 text-warning" />
                 </div>
                 <p className="text-2xl font-bold mt-1">{totals.leads > 0 ? fmtBRL(totals.cpl) : "—"}</p>
               </CardContent>
@@ -203,10 +204,10 @@ export default function Marketing() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground">Campanhas Ativas</p>
-                  <Megaphone className="h-4 w-4 text-purple-400" />
+                  <Megaphone className="h-4 w-4 text-chart-5" />
                 </div>
                 <p className="text-2xl font-bold mt-1">{totals.active}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">de {filtered.length} no período</p>
+                <p className="text-xs text-muted-foreground mt-1">de {filtered.length} no período</p>
               </CardContent>
             </Card>
           </div>
@@ -223,9 +224,9 @@ export default function Marketing() {
                       <span className="font-semibold">{c.channel}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div><p className="text-[10px] text-muted-foreground">Gasto</p><p className="text-sm font-bold">{fmtBRL(c.spend)}</p></div>
-                      <div><p className="text-[10px] text-muted-foreground">Leads</p><p className="text-sm font-bold">{c.leads}</p></div>
-                      <div><p className="text-[10px] text-muted-foreground">CPL</p><p className="text-sm font-bold text-amber-400">{c.leads > 0 ? fmtBRL(c.cpl) : "—"}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Gasto</p><p className="text-sm font-bold">{fmtBRL(c.spend)}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Leads</p><p className="text-sm font-bold">{c.leads}</p></div>
+                      <div><p className="text-xs text-muted-foreground">CPL</p><p className="text-sm font-bold text-warning">{c.leads > 0 ? fmtBRL(c.cpl) : "—"}</p></div>
                     </div>
                   </CardContent>
                 </Card>
@@ -281,11 +282,11 @@ export default function Marketing() {
                         <td className="p-3 font-medium">{c.name}</td>
                         <td className="p-3"><div className="flex items-center gap-1.5"><Icon className="h-3 w-3" />{c.channel}</div></td>
                         <td className="p-3">{c.developer}</td>
-                        <td className="p-3 text-center"><Badge variant="outline" className={cn("text-[10px]", statusColor[c.status] || "text-muted-foreground")}>{c.status}</Badge></td>
+                        <td className="p-3 text-center"><Badge variant="outline" className={statusColor[c.status] || "text-muted-foreground"}>{c.status}</Badge></td>
                         <td className="p-3 text-right font-semibold">{fmtBRL(c.spend)}</td>
                         <td className="p-3 text-right">{c.leads}</td>
                         <td className="p-3 text-right">{c.conversions}</td>
-                        <td className={cn("p-3 text-right font-bold", cpl === null ? "text-muted-foreground" : cpl < 15 ? "text-emerald-400" : cpl < 25 ? "text-amber-400" : "text-red-400")}>{cpl === null ? "—" : fmtBRL(cpl)}</td>
+                        <td className={cn("p-3 text-right font-bold", cpl === null ? "text-muted-foreground" : cpl < 15 ? "text-success" : cpl < 25 ? "text-warning" : "text-destructive")}>{cpl === null ? "—" : fmtBRL(cpl)}</td>
                       </tr>
                     );
                   })}

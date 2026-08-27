@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, History } from "lucide-react";
 import { listDealHistory, type HistoryEntry } from "@/integrations/supabase/analytics";
+import { dateTime } from "@/lib/format";
+import { describeError } from "@/lib/supabaseError";
 import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
 
 // Chaves = valores reais de `deal_history.kind` gravados pelos triggers e RPCs.
@@ -16,8 +18,6 @@ const KIND_LABEL: Record<string, string> = {
   created: "Negócio criado",
   comment: "Comentário",
 };
-
-const formatWhen = (v: string) => new Date(v).toLocaleString("pt-BR");
 
 /**
  * Trilha de auditoria do negócio.
@@ -40,7 +40,7 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
       setPeople(persons);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao carregar o histórico");
+      setError(describeError(e, "Não consegui carregar o histórico deste negócio."));
     } finally {
       setLoading(false);
     }
@@ -64,17 +64,17 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <History className="h-4 w-4 text-primary" />
-        <p className="text-sm font-bold">Histórico de alterações</p>
+        <h3 className="text-sm font-bold">Histórico de alterações</h3>
       </div>
       {entries.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground italic">Nenhuma alteração registrada.</p>
+        <p className="text-xs text-muted-foreground italic">Nenhuma alteração registrada.</p>
       ) : (
         <div className="space-y-1">
           {entries.map((e) => (
-            <div key={e.id} className="rounded border border-border/40 px-2 py-1 text-[11px]">
+            <div key={e.id} className="rounded border border-border/40 px-2 py-1 text-xs">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium">{KIND_LABEL[e.kind] ?? e.kind}</span>
-                <span className="text-muted-foreground">{formatWhen(e.created_at)}</span>
+                <span className="text-muted-foreground">{dateTime(e.created_at)}</span>
               </div>
               <div className="text-muted-foreground">
                 {e.kind === "comment" ? (

@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Consolidado anual, campanhas e trilha de auditoria.
@@ -26,7 +27,7 @@ export async function listAnnualResults(year?: number): Promise<AnnualResultRow[
     .select("id,year,month,sales_count,vgv,notes,updated_at");
   if (year !== undefined) query = query.eq("year", year);
   const { data, error } = await query.order("year", { ascending: false }).order("month");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("listar resultados anuais", error);
   return (data ?? []) as AnnualResultRow[];
 }
 
@@ -52,7 +53,7 @@ export async function upsertAnnualResult(input: {
       },
       { onConflict: "year,month" },
     );
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar resultado anual", error);
 }
 
 // -----------------------------------------------------------------------------
@@ -76,7 +77,7 @@ export async function listAdCampaigns(): Promise<AdCampaignRow[]> {
     .from("ad_campaigns")
     .select("id,external_id,platform,name,developer_id,status,daily_budget,total_spend,synced_at")
     .order("name");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("listar campanhas", error);
   return (data ?? []) as AdCampaignRow[];
 }
 
@@ -101,7 +102,7 @@ export async function upsertAdCampaign(input: {
       },
       { onConflict: "platform,external_id" },
     );
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar campanha", error);
 }
 
 export type CampaignPerformance = {
@@ -127,7 +128,7 @@ export async function campaignPerformance(): Promise<CampaignPerformance[]> {
     listAdCampaigns(),
     supabase.from("leads").select("campaign_id,converted_at"),
   ]);
-  if (leadRows.error) throw new Error(leadRows.error.message);
+  if (leadRows.error) throw dbError("ler leads das campanhas", leadRows.error);
 
   const leads = (leadRows.data ?? []) as { campaign_id: string | null; converted_at: string | null }[];
 
@@ -171,7 +172,7 @@ export async function listDealHistory(dealId: string): Promise<HistoryEntry[]> {
     .select("id,actor_id,kind,from_value,to_value,detail,created_at")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("histórico do negócio", error);
   return (data ?? []) as HistoryEntry[];
 }
 
@@ -181,6 +182,6 @@ export async function listCcaCaseEvents(caseId: string): Promise<HistoryEntry[]>
     .select("id,actor_id,kind,from_value,to_value,detail,created_at")
     .eq("case_id", caseId)
     .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("eventos do caso CCA", error);
   return (data ?? []) as HistoryEntry[];
 }

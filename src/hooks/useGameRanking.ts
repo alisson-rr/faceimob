@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  gameKeys,
   getCurrentSeasonId,
   listRanking,
   type RankingRow,
@@ -39,23 +41,43 @@ type DealLite = {
   active?: boolean | null;
 };
 
+/**
+ * Temporada aberta. `null` quando o admin não abriu nenhuma — nesse estado o
+ * `award_game_points` devolve null em silêncio e o jogo está parado.
+ */
+export function useCurrentSeasonId() {
+  return useQuery({
+    queryKey: gameKeys.season,
+    queryFn: getCurrentSeasonId,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Ranking da temporada, já no escopo que o servidor permite ver.
+ *
+ * Era um `useEffect` com `useState` que buscava uma vez e nunca mais: uma venda
+ * fechada com a tela aberta não mexia o placar. Agora é cache do TanStack Query,
+ * e o `EngagementLayer` invalida a chave `["game"]` a cada INSERT em
+ * `game_events` — o placar acompanha o realtime sem cada tela assinar um canal.
+ */
+export function useSeasonRanking(seasonId: string | null | undefined) {
+  return useQuery({
+    queryKey: gameKeys.ranking(seasonId ?? null),
+    queryFn: () => listRanking(seasonId as string),
+    enabled: Boolean(seasonId),
+    staleTime: 30_000,
+  });
+}
+
 export function useGameRanking(dealsInput?: DealLite[]) {
   const { role, user } = useAuth();
-  const [ranking, setRanking] = useState<RankingRow[]>([]);
+  const { data: seasonId } = useCurrentSeasonId();
+  const { data: ranking, isLoading } = useSeasonRanking(seasonId);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const seasonId = await getCurrentSeasonId();
-        setRanking(seasonId ? await listRanking(seasonId) : []);
-      } catch (error) {
-        console.error("Falha ao carregar ranking:", error);
-        setRanking([]);
-      }
-    })();
-  }, []);
+  const rows: RankingRow[] = useMemo(() => ranking ?? [], [ranking]);
 
-  const allScores: ScoreRow[] = useMemo(() => ranking.map((row) => {
+  const allScores: ScoreRow[] = useMemo(() => rows.map((row) => {
     const breakdown = row.breakdown || {};
     const deals = dealsInput?.filter((deal) =>
       deal.broker1_name === row.full_name ||
@@ -84,7 +106,7 @@ export function useGameRanking(dealsInput?: DealLite[]) {
       vendas: row.sales,
       points: row.points,
     };
-  }), [dealsInput, ranking]);
+  }), [dealsInput, rows]);
 
   const myBroker = useMemo(
     () => allScores.find((score) => score.broker.user_id === user?.id)?.broker || null,
@@ -94,5 +116,7 @@ export function useGameRanking(dealsInput?: DealLite[]) {
   // O servidor já devolve exatamente a casa/diretoria/equipe permitida.
   const scoped = allScores;
 
-  return { role, myBroker, allScores, scoped };
+  // `isLoading` e nao `isPending`: consulta desabilitada (sem temporada aberta)
+  // fica `pending` para sempre e travaria qualquer esqueleto ligado nele.
+  return { role, myBroker, allScores, scoped, seasonId: seasonId ?? null, loading: isLoading };
 }

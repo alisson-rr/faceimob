@@ -1,6 +1,17 @@
 import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
 
+/**
+ * Todo token de `src/index.css` precisa de espelho aqui — um token sem espelho
+ * compila zero regras e a classe some em silencio (era o achado T01: `success`
+ * e `warning` existiam no CSS, nao aqui, e ~40 classes nao pintavam nada).
+ * Regra: mexeu em `:root`/`.light`, mexa em `colors`.
+ */
+const withForeground = (name: string) => ({
+  DEFAULT: `hsl(var(--${name}))`,
+  foreground: `hsl(var(--${name}-foreground))`,
+});
+
 export default {
   darkMode: ["class"],
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
@@ -15,8 +26,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Arial", "sans-serif"],
-        display: ["'Instrument Serif'", "Georgia", "serif"],
+        sans: ["'DM Sans Variable'", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        display: ["'Bricolage Grotesque Variable'", "system-ui", "Segoe UI", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -24,37 +35,32 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+        primary: withForeground("primary"),
+        secondary: withForeground("secondary"),
+        destructive: withForeground("destructive"),
+        muted: withForeground("muted"),
+        accent: withForeground("accent"),
+        popover: withForeground("popover"),
+        card: withForeground("card"),
+        success: withForeground("success"),
+        warning: withForeground("warning"),
+        info: withForeground("info"),
+        highlight: withForeground("highlight"),
+        gold: withForeground("gold"),
+        silver: withForeground("silver"),
+        bronze: withForeground("bronze"),
+        brand: {
+          blue: "hsl(var(--brand-blue))",
+          "blue-light": "hsl(var(--brand-blue-light))",
+          mint: "hsl(var(--brand-mint))",
+          yellow: "hsl(var(--brand-yellow))",
         },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
-        hero: {
-          DEFAULT: "hsl(var(--hero-bg))",
-          foreground: "hsl(var(--hero-foreground))",
+        chart: {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
@@ -68,9 +74,15 @@ export default {
         },
       },
       borderRadius: {
+        sm: "calc(var(--radius) - 0.5rem)",
+        md: "calc(var(--radius) - 0.25rem)",
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        xl: "calc(var(--radius) + 0.25rem)",
+        "2xl": "calc(var(--radius) + 0.5rem)",
+        "3xl": "calc(var(--radius) + 1rem)",
+      },
+      transitionTimingFunction: {
+        premium: "cubic-bezier(.22, 1, .36, 1)",
       },
       keyframes: {
         "accordion-down": {
@@ -89,13 +101,13 @@ export default {
           "0%": { opacity: "0", transform: "translateX(30px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
         },
-        "float": {
-          "0%, 100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-10px)" },
+        float: {
+          "0%, 100%": { transform: "translateY(0) rotate(0deg)" },
+          "50%": { transform: "translateY(-10px) rotate(2deg)" },
         },
         "glow-pulse": {
-          "0%, 100%": { boxShadow: "0 0 20px -5px hsl(32 95% 52% / 0.3)" },
-          "50%": { boxShadow: "0 0 40px -5px hsl(32 95% 52% / 0.6)" },
+          "0%, 100%": { boxShadow: "0 0 20px -5px hsl(var(--highlight) / 0.3)" },
+          "50%": { boxShadow: "0 0 40px -5px hsl(var(--highlight) / 0.6)" },
         },
         "bg-slide": {
           "0%": { opacity: "1" },
@@ -108,9 +120,9 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "fade-in-up": "fade-in-up 0.6s ease-out forwards",
-        "slide-in-right": "slide-in-right 0.6s ease-out forwards",
-        "float": "float 4s ease-in-out infinite",
+        "fade-in-up": "fade-in-up 0.4s cubic-bezier(.22,1,.36,1) forwards",
+        "slide-in-right": "slide-in-right 0.4s cubic-bezier(.22,1,.36,1) forwards",
+        float: "float 7s ease-in-out infinite",
         "glow-pulse": "glow-pulse 3s ease-in-out infinite",
       },
     },

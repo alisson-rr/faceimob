@@ -35,7 +35,7 @@ test.afterEach(async () => {
 
 const abrirAnexos = async (page: Page) => {
   await abrirNegocio(page, negocio.cliente);
-  await page.getByRole("button", { name: "Anexos", exact: true }).click();
+  await page.getByRole("tab", { name: "Anexos", exact: true }).click();
   await expect(page.getByText(/anexar documentos/i)).toBeVisible();
 };
 

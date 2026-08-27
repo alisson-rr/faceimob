@@ -8,6 +8,7 @@ import { Trash2, Plus, Globe, ShieldCheck, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { checkIpAllowed } from "@/integrations/supabase/checkin";
+import { describeError } from "@/lib/supabaseError";
 
 type Ip = { id: string; ip_range: string; label: string; active: boolean; created_at: string };
 
@@ -37,7 +38,7 @@ export default function AdminAllowedIps() {
       ip_range: ipRange,
       label: label.trim() || "IP autorizado",
     });
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(describeError(error, "Não foi possível autorizar o IP."));
     toast.success("IP autorizado.");
     setIp(""); setLabel(""); load();
   };
@@ -50,12 +51,12 @@ export default function AdminAllowedIps() {
   const remove = async (id: string) => {
     if (!confirm("Remover este IP?")) return;
     const { error } = await supabase.from("allowed_ips").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(describeError(error, "Não foi possível remover o IP."));
     load();
   };
   const toggle = async (row: Ip) => {
     const { error } = await supabase.from("allowed_ips").update({ active: !row.active }).eq("id", row.id);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(describeError(error, "Não foi possível alterar o status do IP."));
     load();
   };
 
@@ -86,12 +87,12 @@ export default function AdminAllowedIps() {
               </span>
             )}
             {myIp && myIpCovered === true && (
-              <span className="text-emerald-500 flex items-center gap-1">
+              <span className="text-success flex items-center gap-1">
                 <ShieldCheck className="h-3.5 w-3.5" /> já coberto por uma faixa cadastrada
               </span>
             )}
             {myIp && myIpCovered === false && (
-              <span className="text-amber-500 flex items-center gap-1">
+              <span className="text-warning flex items-center gap-1">
                 <ShieldAlert className="h-3.5 w-3.5" /> não coberto — o check-in daqui seria barrado
               </span>
             )}

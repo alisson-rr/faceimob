@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireSecret } from "../_shared/secrets.ts";
+import { requireServiceRole } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,6 +71,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // Worker de fila: o único chamador legítimo é o pg_cron (0018), que manda a
+    // chave de serviço no header. Sem esta porta, a chave publicável do bundle
+    // dispara a fila de WhatsApp de fora (achado S04).
+    const denied = await requireServiceRole(req, corsHeaders);
+    if (denied) return denied;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,

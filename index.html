@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,31 +8,31 @@
     <meta name="author" content="Faceimob" />
     <link rel="icon" href="/favicon.png" type="image/png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#ffffff" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- O app abre no escuro; `color-scheme` faz o navegador pintar a barra de
+         rolagem, os controles nativos e o flash inicial no tema certo, e o
+         `theme-color` por media acompanha a troca de tema. -->
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#131a26" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)" />
 
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Faceimob" />
 
-
-    
-    
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/MRFoZpjMj8VPBS8PqQt1a6QrRSY2/social-images/social-1783186622414-Logotipo_Azul_2.webp">
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@faceimob" />
     <meta name="twitter:image" content="https://storage.googleapis.com/gpt-engineer-file-uploads/MRFoZpjMj8VPBS8PqQt1a6QrRSY2/social-images/social-1783186622414-Logotipo_Azul_2.webp">
-    
-  
-  
-  
-  <meta property="og:title" content="CRM Faceimob">
-  <meta name="twitter:title" content="CRM Faceimob">
-  <meta property="og:description" content="Faceimob - Líder em vendas do 1º imóvel. Apartamentos, casas, galpões e terrenos em Porto Alegre e região.">
-  <meta name="twitter:description" content="Faceimob - Líder em vendas do 1º imóvel. Apartamentos, casas, galpões e terrenos em Porto Alegre e região.">
-</head>
+
+    <meta property="og:title" content="CRM Faceimob">
+    <meta name="twitter:title" content="CRM Faceimob">
+    <meta property="og:description" content="Faceimob - Líder em vendas do 1º imóvel. Apartamentos, casas, galpões e terrenos em Porto Alegre e região.">
+    <meta name="twitter:description" content="Faceimob - Líder em vendas do 1º imóvel. Apartamentos, casas, galpões e terrenos em Porto Alegre e região.">
+  </head>
 
   <body>
     <div id="root"></div>

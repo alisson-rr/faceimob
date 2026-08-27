@@ -15,6 +15,7 @@ import {
   type IntegrationRecord,
 } from "@/integrations/supabase/integrations";
 import { INTEGRATION_SLOTS, slotKey } from "@/lib/integrationCatalog";
+import { describeError } from "@/lib/supabaseError";
 
 const formatDate = (value: string | null) => {
   if (!value) return "—";
@@ -44,7 +45,7 @@ export default function AdminIntegrations() {
     } catch (e) {
       toast({
         title: "Falha ao carregar integrações",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar as integrações."),
         variant: "destructive",
       });
     } finally {
@@ -78,7 +79,7 @@ export default function AdminIntegrations() {
     } catch (e) {
       toast({
         title: "Não foi possível salvar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível salvar a credencial no cofre."),
         variant: "destructive",
       });
     } finally {
@@ -123,10 +124,10 @@ export default function AdminIntegrations() {
                 <CardHeader className="py-3 px-4">
                   <CardTitle className="text-sm flex items-center justify-between gap-2">
                     <span className="flex items-center gap-2">
-                      <ShieldCheck className={configured ? "h-4 w-4 text-emerald-400" : "h-4 w-4 text-muted-foreground"} />
+                      <ShieldCheck className={configured ? "h-4 w-4 text-success" : "h-4 w-4 text-muted-foreground"} />
                       {slot.title}
                     </span>
-                    <Badge variant={configured ? "default" : "outline"} className="text-[10px]">
+                    <Badge variant={configured ? "default" : "outline"}>
                       {configured ? "no cofre" : `usando secret ${slot.envName}`}
                     </Badge>
                   </CardTitle>
@@ -154,7 +155,7 @@ export default function AdminIntegrations() {
                       {saving === k ? <Loader2 className="h-3 w-3 animate-spin" /> : "Salvar"}
                     </Button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Última atualização: {formatDate(current?.updated_at ?? null)}
                   </p>
                 </CardContent>
@@ -191,8 +192,8 @@ export default function AdminIntegrations() {
                       <tr key={j.job_name} className="border-b border-border/10">
                         <td className="p-2 font-medium flex items-center gap-1">
                           {j.active && j.failures_24h === 0
-                            ? <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                            : <AlertTriangle className="h-3 w-3 text-amber-400" />}
+                            ? <CheckCircle2 className="h-3 w-3 text-success" />
+                            : <AlertTriangle className="h-3 w-3 text-warning" />}
                           {j.job_name}
                         </td>
                         <td className="p-2 font-mono">{j.schedule}</td>
@@ -207,7 +208,7 @@ export default function AdminIntegrations() {
               </CardContent>
             </Card>
           )}
-          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
             <Activity className="h-3 w-3" />
             Sem estes jobs a roleta não gira: a trava de 5 minutos nunca libera o lead.
           </p>

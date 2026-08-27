@@ -35,7 +35,7 @@ Docker — não usa a CLI do Supabase:
 ```
 
 Ele falha se: alguma migration não aplicar, alguma tabela em `public` ficar sem
-RLS, ou algum dos 86 asserts de comportamento quebrar.
+RLS, ou algum dos 253 asserts de comportamento quebrar.
 
 A imagem do harness é Postgres puro, sem as extensões e schemas do Supabase.
 `supabase/tests/00_supabase_stubs.sql` provê o mínimo que as migrations assumem:
@@ -60,8 +60,31 @@ um stub de `cron.*` no lugar do pg_cron.
 | `0012_crud_fixes` | correções da auditoria de CRUD, `cca_stages`, `annual_results`, buckets de storage |
 | `0013_cron_scheduling` | agendamento por pg_cron da varredura de leads vencidos e do check-out de turno, poda do histórico, `cron_jobs_health()` |
 | `0014_queue_turn_order` | fila ordenada pelo fim da vez: quem perde o lead no prazo vai para o fim |
+| `0015_menu_permissions` | item de menu vira código no catálogo `permissions`: menu, funcionalidade e etapa passam a ser governados pelo mesmo `role_permissions` + `has_permission`, com as concessões iniciais reproduzindo o sidebar que era fixo no código |
+| `0016_vault_service_reader` | `get_integration_secret()` abre a leitura do cofre para as edge functions — exclusiva de `service_role`, com dupla trava (grant e checagem de `auth.role()`) — e cria o menu `Admin · Integrações` |
+| `0017_notification_dispatch` | fila de WhatsApp ganha índice parcial (`notifications_pending_whatsapp_idx`) e a tentativa de agendar `notify-dispatch` por `pg_net`, que avisa alto em vez de calar quando a extensão falta |
+| `0018_notification_dispatch_job` | o agendamento que a `0017` não conseguiu fazer: `pg_net` habilitada e `dispatch_pending_notifications()` lendo URL e chave do cofre em vez de GUC, no cron a cada minuto |
+| `0019_anon_surface_hardening` | superfície anônima volta a ser só as três RPCs do Diário: revoga `execute` de `anon` nas demais funções, muda o default privilege, fecha `recalc_deal_shares` (reescrevia rateio sem sessão) e pina `search_path` em 11 funções |
+| `0020_core_fixes` | dez correções da auditoria de 08/08: triggers de log em `security definer`, publication do realtime, matriz de estágios aplicada por trigger, `deals.status_detail`, `cca_cases.analysis`, check-in sem IP recusado, `assign_queued_leads()`, `dispatch_pending_submissions()`, `notifications.attempts` e `add_deal_comment()` |
+| `0021_close_month_rpc` | `close_month_and_season()` fecha mês e temporada numa transação só: migra as propostas abertas, grava `closed_months` e encerra o placar — antes eram três operações soltas no navegador |
+| `0022_sdr_queue_guard` | a varredura da fila pula lead com conversa SDR ativa: quem está em qualificação pela IA não é puxado de volta para a roleta no minuto seguinte |
+| `0023_role_grants` | `grant` de tabela, sequência e função para `anon`/`authenticated`/`service_role`, mais default privileges: sem eles um banco criado só pelas migrations nascia com "permission denied" antes de o RLS entrar em cena |
+| `0024_ip_is_allowed_host` | `ip_is_allowed` troca `<<` por `<<=`: IP de loja cadastrado como host único (/32) voltou a liberar o check-in, e a faixa em CIDR continua valendo |
+| `0025_deal_participant_ordinal` | `deal_participants.ordinal` guarda o slot (Corretor 1/2/3, Gerente 1/2): reconstruir a ordem por `created_at` trocava as pessoas de lugar a cada reload |
+| `0026_public_daily_flows` | as RPCs públicas deixam de ser `stable` porque gravam `last_seen_at`, e `public_director_checkpoint` passa a pedir PIN (`pin_required`) e devolver metas, totais por equipe e dias sem diário |
+| `0027_product_visibility` | `deal_participant_names()` e `visible_game_ranking()` liberam nome de participante e ranking da equipe sem ampliar `auth_visible_profiles()` nem a carteira de leads |
+| `0028_document_review` | conferência documental entre corretor e gerente antes do CCA: `document_review_status` no negócio, trigger que impede aprovar a própria revisão por PATCH, `submit_deal_for_manager_review()` e `review_deal_documents()`, que aprova e enfileira CCA ou construtora na mesma transação |
+| `0029_checkin_work_date` | `current_work_date()` põe a data do check-in no banco: com o Postgres em UTC, entre 21h e 21h30 de Brasília a presença recém-gravada sumia da tela e travava o checkout |
+| `0030_cca_pipeline_access` | papel `cca` ganha `menu.pipeline`: a análise de crédito é editada na aba CCA do modal de negócio e o guard da rota barrava antes do formulário |
+| `0031_sprint3_core_flows` | `lead_sources` editável também pelo SDR, `import_remarketing_list()` criando lista e contatos numa transação só (telefone inválido desfaz a lista) e `marketing_campaign_stats()` agregando campanha sem expor o lead |
+| `0032_game_cycle_month` | mês-base do negócio nasce do ciclo aberto do jogo (`current_season_month()`), não do calendário; `close_game_season` deixa de travar mês; link da notificação de lead |
+| `0033_public_link_hardening` | link público deixa de nascer adivinhável: slug sorteado (`gen_random_uuid()`), criação só por `create_public_link()` com PIN obrigatório, `INSERT` direto fora do contrato de `authenticated`, e lockout de 15 min após 5 PINs errados em `resolve_public_link` (`failed_attempts`/`locked_until`) |
+| `0034_submit_lockout` | `public_daily_submit` recusa com `NULL` em vez de `raise`: a exceção abortava a transação do PostgREST e descartava junto o contador do lockout gravado por `resolve_public_link`, então o caminho de escrita nunca travava — 10^6 PINs varridos por `POST /rpc/public_daily_submit`. Metade de banco de uma correção que também toca `DailyReport.tsx` |
 
-58 tabelas · 123 policies · 71 funções · 86 asserts de teste.
+58 tabelas · 1 view · 124 policies · 89 funções · 13 enums · 253 asserts de teste.
+Os cinco primeiros números são os que `./scripts/validate-schema.sh --all` imprime no bloco
+`==> sanidade`; os asserts são as linhas `ok` que os 17 arquivos de `supabase/tests/` emitem
+na mesma execução.
 
 ## Auditoria de CRUD
 
@@ -167,20 +190,34 @@ Espera-se três linhas `faceimob-*` com `active = true`, `last_status =
 
 ## O que ainda falta
 
-1. **Frontend** — cerca de 15 telas ainda consultam a forma antiga. Não é
-   reescrita: `src/integrations/supabase/newSchema.ts` já traduz o schema novo
-   para o formato que as telas esperam (`broker1/2/3`, `manager1/2/3`,
-   `cotista2`, …), então migrar uma tela é trocar a fonte de dados. A exceção é
-   `DailyBI.tsx`, que aponta para `daily_broker_entries`/`daily_team_reports` —
-   tabelas que não existem — e precisa de remapeamento real para
-   `daily_entries`/`daily_reports`.
-2. **Cofre de tokens** — `private.integration_credentials` está pronto e sem uso
-   nas duas pontas: nenhuma tela grava (não há UI) e as 8 edge functions leem de
-   `Deno.env`. Construir só a tela não entrega o requisito.
-3. **Login por código no e-mail** — `Login.tsx` ainda usa
-   `signInWithPassword`. O schema já não guarda senha; falta o fluxo OTP.
+*Revisado em 26/08/2026 (Tarefa J). Os três primeiros itens desta lista já não
+eram verdade e foram corrigidos; o que sobrou está abaixo.*
+
+1. ~~**Frontend** — cerca de 15 telas consultando a forma antiga~~ — resolvido.
+   Todas passam por `src/integrations/supabase/newSchema.ts`, e as cinco do
+   caminho da demonstração (Dashboard, Check-in, Leads, Pipeline, CCA) foram
+   decompostas e migradas para `useQuery` nas Tarefas F, G e H. `DailyBI.tsx`
+   não foi remapeada: foi apagada, e `/admin/daily-bi` redireciona para
+   `/checkpoint`.
+2. ~~**Cofre de tokens** sem uso nas duas pontas~~ — resolvido.
+   **Admin · Integrações** grava por `set_integration_secret()` e as edge
+   functions leem por `functions/_shared/secrets.ts`, com `Deno.env` como
+   retaguarda. O que falta é **cadastrar as chaves reais**: o cofre da
+   homologação está vazio.
+3. ~~**Login por código no e-mail**~~ — entregue. `Login.tsx` usa
+   `signInWithOtp` (6 dígitos) e mantém `signInWithPassword` como alternativa,
+   por decisão de 25/08 — a demonstração não podia depender de SMTP. Nenhuma
+   senha é gravada em `public.profiles`; o hash vive no GoTrue.
 4. **Brevo, King Host, gestão de campanhas Meta** — previstos nas atas, sem
    investigação de viabilidade. Ver `docs/sprints/`.
+5. **Ajustes que só o dono do projeto faz no painel do Supabase:** desligar o
+   auto-cadastro (Authentication → Sign In / Providers) e configurar o SMTP.
+   O `config.toml` só vale para o stack local.
+6. **Dois links públicos de diretoria sem PIN** (`seed-diretoria-daniela`,
+   `diretor-ricardo-sampaio`): a `0034` não protege link sem PIN, porque não há
+   segredo a adivinhar. Fechar em Admin · Diário → *Gerar PIN*.
+7. **`handle_new_auth_user` concede `broker` a toda conta nova** (`0002`).
+   Inofensivo com o auto-cadastro desligado; volta a ser buraco se religarem.
 
 ## Migrations antigas
 

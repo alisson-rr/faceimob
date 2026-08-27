@@ -23,7 +23,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
       <div className="flex gap-2">
         <Input readOnly value={value} className="font-mono text-xs" />
         <Button variant="outline" size="icon" onClick={onCopy}>
-          {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+          {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
         </Button>
       </div>
     </div>
@@ -88,7 +88,7 @@ export default function MetaAdsSetup() {
               d: "O lead aparecerá em Pipeline → aba Leads e no Dashboard → aba Leads em segundos.",
             },
           ].map((s, i) => (
-            <div key={i} className="flex gap-3 p-3 rounded-lg border border-white/10 bg-white/[0.02]">
+            <div key={i} className="flex gap-3 p-3 rounded-lg border border-border bg-card">
               <div className="w-7 h-7 shrink-0 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">
                 {i + 1}
               </div>
@@ -114,7 +114,7 @@ export default function MetaAdsSetup() {
           <p className="text-xs text-muted-foreground mb-2">
             Se preferir enviar leads via POST direto (Zapier, Make, N8N), use a mesma URL com este JSON:
           </p>
-          <pre className="text-[11px] bg-black/40 border border-white/10 rounded-lg p-3 overflow-x-auto font-mono">
+          <pre className="text-xs bg-muted text-muted-foreground border border-border rounded-lg p-3 overflow-x-auto font-mono">
 {`POST ${WEBHOOK_URL}
 Content-Type: application/json
 

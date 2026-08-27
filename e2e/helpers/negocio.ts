@@ -1,11 +1,17 @@
 /**
  * Apoio dos specs de pipeline/negócio.
  *
- * Por que XPath e não `getByLabel`: no Pipeline e no DealDetailModal o rótulo é
- * um `<label>` solto ao lado do controle, sem `htmlFor`/`id`, então o campo não
- * tem nome acessível e `getByLabel` não acha nada. Ancorar no texto visível do
- * rótulo é o mais próximo disso que dá para fazer sem mexer na aplicação — e a
- * ausência da associação está relatada como achado de acessibilidade.
+ * **Voltou a ser `getByLabel`.** Até a Tarefa H o rótulo era um `<label>` solto
+ * ao lado do controle, sem `htmlFor`/`id`: o campo não tinha nome acessível e
+ * só dava para ancorar por XPath no texto visível (achado X04). O editor único
+ * de negócio passou a usar `useId` + `<Label htmlFor>` em todos os ~40 campos,
+ * então o nome acessível existe — e o seletor do teste passou a exercitar a
+ * mesma associação que o leitor de tela usa.
+ *
+ * Os rótulos também mudaram na mesma tarefa, porque os DOIS editores que
+ * gravavam o mesmo registro viraram um só: "Incorporadora" e "Corretor 1
+ * (Obrigatório)" (modal de detalhe) e "Corretor 1" (criação) convergiram para
+ * "Construtora *" e "Corretor 1 *".
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 import { aguardarCarregamento, db } from "../support/fixtures";
@@ -16,16 +22,15 @@ export async function abrirPipeline(page: Page) {
   await aguardarCarregamento(page);
 }
 
-const literalXPath = (texto: string) => `"${texto.replace(/"/g, "")}"`;
 const literalRegex = (texto: string) => texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Input identificado pelo rótulo visível imediatamente antes dele. */
+/** Campo identificado pelo rótulo associado por `htmlFor`. */
 export const campo = (escopo: Locator, rotulo: string): Locator =>
-  escopo.locator(`xpath=.//label[normalize-space(.)=${literalXPath(rotulo)}]/following-sibling::input[1]`);
+  escopo.getByLabel(rotulo, { exact: true });
 
-/** Gatilho de `<Select>` (Radix) identificado pelo rótulo visível ao lado. */
+/** Gatilho de `<Select>` (Radix), também pelo rótulo associado. */
 export const seletor = (escopo: Locator, rotulo: string): Locator =>
-  escopo.locator(`xpath=.//label[normalize-space(.)=${literalXPath(rotulo)}]/following-sibling::button[1]`);
+  escopo.getByLabel(rotulo, { exact: true });
 
 /** Abre o select e escolhe a opção pelo texto exato. */
 export async function escolher(gatilho: Locator, opcao: string) {
@@ -50,7 +55,7 @@ export const linhaDoNegocio = (page: Page, cliente: string): Locator =>
 
 /** Deixa na tabela só o negócio procurado. */
 export async function buscar(page: Page, termo: string) {
-  const busca = page.getByPlaceholder(/buscar cliente, projeto, corretor/i);
+  const busca = page.getByPlaceholder(/buscar cliente, empreendimento, corretor/i);
   await busca.fill(termo);
   await expect(linhaDoNegocio(page, termo)).toHaveCount(1);
 }
@@ -143,6 +148,10 @@ export type DealRow = {
   developer_id: string | null;
   project_id: string | null;
   stage_id: string;
+  /** Desfecho e motivo: o que a confirmação de perda (F14) grava. */
+  outcome: "open" | "won" | "lost" | "cancelled";
+  closed_at: string | null;
+  lost_reason: string | null;
 };
 
 /** Negócio no banco a partir do nome do cliente — o caminho que a tela gravou. */

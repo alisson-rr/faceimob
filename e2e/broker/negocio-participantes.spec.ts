@@ -30,6 +30,6 @@ test("mostra todos os gerentes do negócio sem abrir o cadastro da empresa", asy
   await buscar(page, cliente);
   const modal = await abrirDetalhe(page, cliente);
 
-  await expect(seletor(modal, "Gerente 1 (Obrigatório)")).toContainText("E2E Gerente");
-  await expect(seletor(modal, "Gerente 2 (opcional)")).toContainText("E2E Diretor");
+  await expect(seletor(modal, "Gerente 1 *")).toContainText("E2E Gerente");
+  await expect(seletor(modal, "Gerente 2")).toContainText("E2E Diretor");
 });

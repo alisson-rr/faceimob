@@ -1,5 +1,16 @@
 project_id = "mcmqgxvtwegtptfseqvw"
 
+# Achado S03: nenhum caminho da aplicação cria conta. O login por senha usa
+# `signInWithPassword` e o por código usa `signInWithOtp` com
+# `shouldCreateUser: false`; quem entra na empresa é provisionado pelo admin
+# (`provision-broker-user`). Com o signup aberto, qualquer um com o endereço do
+# projeto e a chave publicável — que vai no bundle do navegador — criava usuário
+# autenticado, e `authenticated` é o papel que abre a superfície inteira do
+# PostgREST. O mesmo ajuste precisa ser feito no painel do projeto remoto
+# (Authentication → Sign In / Providers → "Allow new users to sign up").
+[auth]
+enable_signup = false
+
 # A tela de login pede um código de 6 dígitos; o template padrão do Supabase
 # manda só o link. Sem `{{ .Token }}` no corpo, o usuário recebe um e-mail sem
 # nenhum código para digitar. Vale para o stack local — no remoto, o mesmo
@@ -23,14 +34,11 @@ sql_paths = [
   "./seeds/050_test_scenarios.sql",
 ]
 
-[functions.daily-team-info]
-verify_jwt = false
-
-[functions.submit-daily-report]
-verify_jwt = false
-
-[functions.director-weekly]
-verify_jwt = false
+# `daily-team-info`, `submit-daily-report` e `director-weekly` foram removidas
+# em 26/08/2026. Estavam aposentadas desde 08/08 respondendo 410: o frontend
+# chama as RPCs públicas direto. Enquanto o diretório existia, o endpoint
+# continuava publicado com `verify_jwt = false` — superfície anônima a mais sem
+# nenhum chamador. Registrado em docs/sprints/decisoes.md.
 
 [functions.meta-ads-webhook]
 verify_jwt = false

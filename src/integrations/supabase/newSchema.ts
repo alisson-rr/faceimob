@@ -2,6 +2,7 @@ import { differenceInDays, format, parseISO } from "date-fns";
 import { supabase } from "./client";
 import { getCurrentWorkDate } from "./checkin";
 import { normalizeStatus } from "@/lib/dealStatus";
+import { dbError } from "@/lib/supabaseError";
 import type { Lead, LeadStatus, PipelineDeal } from "@/types/crm";
 import type { Database } from "./types";
 
@@ -39,11 +40,10 @@ export type PersonRecord = {
 
 export type LegacyDealRecord = PipelineDeal & {
   stage_id: string;
+  /** `pipeline_stages.label` — o rótulo já vinha na consulta e ninguém lia (F11). */
+  stage_label: string;
+  stage_position: number;
   outcome: "open" | "won" | "lost" | "cancelled";
-  broker1_id: string | null;
-  broker2_id: string | null;
-  manager1_id: string | null;
-  manager2_id: string | null;
   director1_id: string | null;
   director2_id: string | null;
   broker1_name: string | null;
@@ -52,15 +52,13 @@ export type LegacyDealRecord = PipelineDeal & {
   manager2_name: string | null;
   director1_name: string | null;
   director2_name: string | null;
-  developer_id: string | null;
-  project_id: string | null;
 };
 
 type QueryResult = { error: { message?: string } | null };
 
 const throwIfError = (label: string, result: QueryResult) => {
   if (result.error) {
-    throw new Error(`${label}: ${result.error.message || "falha ao consultar o banco"}`);
+    throw dbError(label, result.error);
   }
 };
 
@@ -149,8 +147,8 @@ export async function getCurrentProfile(userId: string) {
       .maybeSingle(),
     db.from("user_roles").select("role").eq("profile_id", userId),
   ]);
-  if (profileRes.error) throw new Error(profileRes.error.message);
-  if (rolesRes.error) throw new Error(rolesRes.error.message);
+  if (profileRes.error) throw dbError("profiles", profileRes.error);
+  if (rolesRes.error) throw dbError("user_roles", rolesRes.error);
   const roles = (rolesRes.data || []).map((row) => row.role as NewAppRole);
   return {
     profile: profileRes.data,
@@ -294,6 +292,10 @@ export async function listLegacyDeals(): Promise<LegacyDealRecord[]> {
       status: deal.status_detail || legacyStatus(deal.outcome, deal.lost_reason),
       stage: (stage?.code || "incomplete") as PipelineDeal["stage"],
       stage_id: deal.stage_id,
+      // Rótulo do catálogo. Sem ele a tabela caía num mapa próprio que divergia
+      // do banco e, para `lost`, escrevia "PROPOSTA" num negócio perdido (F09/F11).
+      stage_label: stage?.label || "Sem etapa",
+      stage_position: stage?.position ?? 0,
       outcome: deal.outcome,
       lead_origin: deal.lead_origin || undefined,
       month_base: isoMonthToDisplay(deal.month_base) || undefined,
@@ -305,8 +307,10 @@ export async function listLegacyDeals(): Promise<LegacyDealRecord[]> {
       manager3: profileById.get(managers[2]?.profile_id) || undefined,
       broker1_id: brokers[0]?.profile_id || null,
       broker2_id: brokers[1]?.profile_id || null,
+      broker3_id: brokers[2]?.profile_id || null,
       manager1_id: managers[0]?.profile_id || null,
       manager2_id: managers[1]?.profile_id || null,
+      manager3_id: managers[2]?.profile_id || null,
       director1_id: directors[0]?.profile_id || null,
       director2_id: directors[1]?.profile_id || null,
       broker1_name: profileById.get(brokers[0]?.profile_id) || null,
@@ -404,8 +408,8 @@ export async function loadDashboardPayload(): Promise<DashboardPayload> {
     db.from("cca_cases").select("status"),
     db.from("closed_months").select("period"),
   ]);
-  if (ccaRes.error) throw new Error(ccaRes.error.message);
-  if (closedRes.error) throw new Error(closedRes.error.message);
+  if (ccaRes.error) throw dbError("cca_cases", ccaRes.error);
+  if (closedRes.error) throw dbError("closed_months", closedRes.error);
 
   const sourceCounts = new Map<string, number>();
   for (const lead of leads) {
@@ -454,7 +458,7 @@ export async function getGlobalMonthlyGoal(
     .eq("period", periodIso)
     .eq("metric", metric)
     .maybeSingle();
-  if (error) throw new Error(`goals: ${error.message}`);
+  if (error) throw dbError("goals", error);
   return data ? Number(data.target) : null;
 }
 
@@ -464,7 +468,7 @@ export async function getStageIdByCode(code: string): Promise<string> {
     .select("id")
     .eq("code", code)
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("pipeline_stages", error);
   return data.id;
 }
 
@@ -561,13 +565,7 @@ const clientRow = (form: SaveLegacyDealInput, ordinal: 1 | 2) => {
 export type SaveLegacyDealInput =
   Omit<PipelineDeal, "id" | "days_in_pipeline"> & Partial<LegacyDealRecord>;
 
-export async function saveLegacyDeal(
-  form: SaveLegacyDealInput,
-  people: PersonRecord[],
-): Promise<string> {
-  const nameToId = (name?: string | null) =>
-    name ? people.find((p) => p.name === name)?.id ?? null : null;
-
+export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string> {
   // Status final força a etapa (mesma regra do updateDealStatus antigo, agora
   // num lugar só): VENDA fecha, QUEDA/DISTRATO/OFF perdem, o resto mantém a
   // etapa escolhida na tela.
@@ -584,7 +582,7 @@ export async function saveLegacyDeal(
   if (!developerId && form.developer) {
     const { data, error } = await db
       .from("developers").select("id").ilike("name", form.developer).maybeSingle();
-    if (error) throw new Error(`developers: ${error.message}`);
+    if (error) throw dbError("developers", error);
     developerId = data?.id ?? null;
   }
   let projectId = form.project_id ?? null;
@@ -592,7 +590,7 @@ export async function saveLegacyDeal(
     const { data, error } = await db
       .from("developer_projects").select("id")
       .eq("developer_id", developerId).ilike("name", form.project).maybeSingle();
-    if (error) throw new Error(`developer_projects: ${error.message}`);
+    if (error) throw dbError("developer_projects", error);
     projectId = data?.id ?? null;
   }
 
@@ -618,10 +616,10 @@ export async function saveLegacyDeal(
   let dealId = form.id && !/^\d+$/.test(form.id) ? form.id : null;
   if (dealId) {
     const { error } = await db.from("deals").update(dealPayload).eq("id", dealId);
-    if (error) throw new Error(`deals: ${error.message}`);
+    if (error) throw dbError("deals", error);
   } else {
     const { data, error } = await db.from("deals").insert(dealPayload).select("id").single();
-    if (error) throw new Error(`deals: ${error.message}`);
+    if (error) throw dbError("deals", error);
     dealId = data.id;
   }
 
@@ -629,24 +627,29 @@ export async function saveLegacyDeal(
     { deal_id: dealId, ...clientRow(form, 1) },
     { onConflict: "deal_id,ordinal" },
   );
-  if (c1Error) throw new Error(`deal_clients: ${c1Error.message}`);
+  if (c1Error) throw dbError("deal_clients", c1Error);
 
   if (form.has_second_client && form.client2) {
     const { error } = await db.from("deal_clients").upsert(
       { deal_id: dealId, ...clientRow(form, 2) },
       { onConflict: "deal_id,ordinal" },
     );
-    if (error) throw new Error(`deal_clients(2): ${error.message}`);
+    if (error) throw dbError("deal_clients(2)", error);
   } else {
     const { error } = await db.from("deal_clients")
       .delete().eq("deal_id", dealId).eq("ordinal", 2);
-    if (error) throw new Error(`deal_clients(2): ${error.message}`);
+    if (error) throw dbError("deal_clients(2)", error);
   }
 
-  const brokerIds = [form.broker1, form.broker2, form.broker3]
-    .map(nameToId).filter((id): id is string => Boolean(id));
-  const managerIds = [form.manager1, form.manager2, form.manager3]
-    .map(nameToId).filter((id): id is string => Boolean(id))
+  // Participante entra por `id`, nunca por nome (F06). O `find` pelo nome que
+  // existia aqui punha o negócio no primeiro homônimo e perdia o vínculo assim
+  // que alguém renomeasse o perfil — com o rateio de VGV junto.
+  // `dedupe` porque o mesmo perfil em dois slots viraria conflito no upsert
+  // (`deal_id,profile_id,role` é único) e derrubaria o salvamento inteiro.
+  const dedupe = (ids: (string | null | undefined)[]) =>
+    [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  const brokerIds = dedupe([form.broker1_id, form.broker2_id, form.broker3_id]);
+  const managerIds = dedupe([form.manager1_id, form.manager2_id, form.manager3_id])
     .filter((id) => !brokerIds.includes(id));
 
   // `ordinal` é o slot da tela (Corretor 1/2/3, Gerente 1/2). Sem ele a leitura
@@ -668,7 +671,7 @@ export async function saveLegacyDeal(
   if (desejados.length) {
     const { error } = await db.from("deal_participants")
       .upsert(desejados, { onConflict: "deal_id,profile_id,role" });
-    if (error) throw new Error(`deal_participants: ${error.message}`);
+    if (error) throw dbError("deal_participants", error);
   }
 
   // A limpeza é por papel e só quando o formulário trouxe alguém daquele papel.
@@ -685,7 +688,7 @@ export async function saveLegacyDeal(
       .eq("deal_id", dealId)
       .eq("role", papel)
       .not("profile_id", "in", `(${mantidos.join(",")})`);
-    if (error) throw new Error(`deal_participants: ${error.message}`);
+    if (error) throw dbError("deal_participants", error);
   }
 
   return dealId as string;

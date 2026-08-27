@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BellRing, ExternalLink, HandMetal, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { describeError } from "@/lib/supabaseError";
 import { claimLead, formatCountdown } from "@/integrations/supabase/leads";
-import { playLeadAlert } from "@/lib/sound";
+import { useCelebration } from "@/components/engagement/context";
 
 /** Só o que o payload do realtime entrega — não é o `LeadRecord` decorado. */
 type IncomingLead = {
@@ -24,15 +25,31 @@ type IncomingLead = {
   utm_source: string | null;
   form_id: string | null;
   created_at: string | null;
+  distribution_group_id: string | null;
 };
 
 const GESTOR_ROLES = ["admin", "director", "manager", "marketing"];
 
+/** Quem enxerga a fila inteira; os demais gestores veem só os grupos deles. */
+const FILA_INTEIRA_ROLES = ["admin", "director"];
+
 /** Janela em que a mudança ainda é "acabou de acontecer". */
 const FRESH_MS = 20_000;
 
-const isFresh = (iso?: string | null) =>
-  Boolean(iso) && Date.now() - new Date(iso as string).getTime() < FRESH_MS;
+/**
+ * Idade do fato medida com o relógio do servidor.
+ *
+ * `commit_timestamp` é a hora do commit no Postgres e `assigned_at`/`created_at`
+ * saem do mesmo relógio, então a comparação não depende da hora da máquina do
+ * corretor — antes um micro em atraso deixava de anunciar leads legítimos e um
+ * adiantado anunciava atribuição antiga.
+ */
+const isFresh = (iso: string | null | undefined, commitTimestamp?: string) => {
+  if (!iso) return false;
+  const reference = commitTimestamp ? new Date(commitTimestamp).getTime() : Date.now();
+  if (!Number.isFinite(reference)) return false;
+  return reference - new Date(iso).getTime() < FRESH_MS;
+};
 
 /**
  * Aviso global de lead (ata 23/07: "notificação independente de onde o corretor
@@ -40,12 +57,14 @@ const isFresh = (iso?: string | null) =>
  *
  *   · corretor — a roleta atribuiu um lead a ele: popup, som e o cronômetro da
  *     trava, com o botão "Atender" ali mesmo;
- *   · gestor — chegou lead novo na fila.
+ *   · gestor — chegou lead novo na fila dos grupos dele.
  */
 export default function NewLeadNotifier() {
   const { user, role } = useAuth();
   const profileId = user?.id || null;
   const isGestor = GESTOR_ROLES.includes(role);
+  const veFilaInteira = FILA_INTEIRA_ROLES.includes(role);
+  const celebrate = useCelebration();
 
   const [lead, setLead] = useState<IncomingLead | null>(null);
   const [kind, setKind] = useState<"assigned" | "queued">("assigned");
@@ -54,6 +73,8 @@ export default function NewLeadNotifier() {
   const navigate = useNavigate();
   // Evita repetir o mesmo aviso quando o lead sofre outros UPDATEs na sequência.
   const notified = useRef<Set<string>>(new Set());
+  // Grupos de distribuição em que a equipe visível do gestor está inscrita.
+  const meusGrupos = useRef<Set<string> | null>(null);
 
   const announce = useCallback((row: IncomingLead, nextKind: "assigned" | "queued") => {
     const key = `${nextKind}:${row.id}:${row.assigned_at || row.created_at || ""}`;
@@ -62,12 +83,34 @@ export default function NewLeadNotifier() {
 
     setLead(row);
     setKind(nextKind);
-    playLeadAlert();
+    celebrate("lead_new");
     toast({
       title: nextKind === "assigned" ? "🔔 Lead atribuído a você!" : "🔔 Novo lead na fila",
       description: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
     });
-  }, []);
+  }, [celebrate]);
+
+  /**
+   * Carrega os grupos do gestor uma vez. `profiles` já é filtrada pelo RLS
+   * (`auth_visible_profiles`), então a lista que volta é exatamente a equipe
+   * dele — sem ela, o gerente recebia popup de todo lead da casa.
+   */
+  useEffect(() => {
+    if (!isGestor || veFilaInteira) return;
+    let cancelado = false;
+    void (async () => {
+      const { data: visiveis } = await supabase.from("profiles").select("id");
+      const ids = (visiveis ?? []).map((row) => row.id);
+      if (!ids.length) { if (!cancelado) meusGrupos.current = new Set(); return; }
+      const { data: membros } = await supabase
+        .from("distribution_group_members")
+        .select("group_id")
+        .in("profile_id", ids)
+        .eq("active", true);
+      if (!cancelado) meusGrupos.current = new Set((membros ?? []).map((row) => row.group_id));
+    })();
+    return () => { cancelado = true; };
+  }, [isGestor, veFilaInteira]);
 
   useEffect(() => {
     if (!profileId) return;
@@ -83,7 +126,7 @@ export default function NewLeadNotifier() {
       (payload) => {
         const row = payload.new as IncomingLead;
         if (row?.status !== "assigned") return;
-        if (!isFresh(row.assigned_at)) return;
+        if (!isFresh(row.assigned_at, payload.commit_timestamp)) return;
         announce(row, "assigned");
       },
     );
@@ -107,7 +150,13 @@ export default function NewLeadNotifier() {
         (payload) => {
           const row = payload.new as IncomingLead;
           if (row?.assigned_to) return; // já tem dono: o aviso é dele
-          if (!isFresh(row.created_at)) return;
+          if (!isFresh(row.created_at, payload.commit_timestamp)) return;
+          // Fila geral (sem grupo) é de todo mundo; fila específica é só de
+          // quem tem gente no grupo. Enquanto os grupos não carregaram, o
+          // gestor só recebe o que é da fila geral.
+          if (!veFilaInteira && row.distribution_group_id) {
+            if (!meusGrupos.current?.has(row.distribution_group_id)) return;
+          }
           announce(row, "queued");
         },
       );
@@ -115,7 +164,7 @@ export default function NewLeadNotifier() {
 
     channel.subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [profileId, isGestor, announce]);
+  }, [profileId, isGestor, veFilaInteira, announce]);
 
   useEffect(() => {
     if (!lead) return;
@@ -132,14 +181,15 @@ export default function NewLeadNotifier() {
     setClaiming(true);
     try {
       await claimLead(lead.id);
-      toast({ title: "Lead em atendimento", description: `${lead.full_name || "Lead"} está travado com você.` });
       setLead(null);
-      navigate("/pipeline");
+      // O toast e o som saem da comemoração de `lead_claimed`, disparada pelo
+      // realtime de `lead_events` no EngagementLayer.
+      navigate("/leads");
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Não foi possível atender",
-        description: err instanceof Error ? err.message : "o lead pode ter voltado à fila",
+        description: describeError(err, "o lead pode ter voltado à fila ou outro corretor assumiu antes"),
       });
       setLead(null);
     } finally {
@@ -193,8 +243,8 @@ export default function NewLeadNotifier() {
               <HandMetal className="h-4 w-4 mr-1" /> {claiming ? "Atendendo..." : "Atender agora"}
             </Button>
           ) : (
-            <Button onClick={() => { setLead(null); navigate("/pipeline"); }}>
-              <ExternalLink className="h-4 w-4 mr-1" /> Abrir funil
+            <Button onClick={() => { setLead(null); navigate("/leads"); }}>
+              <ExternalLink className="h-4 w-4 mr-1" /> Abrir leads
             </Button>
           )}
         </DialogFooter>

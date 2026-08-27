@@ -45,9 +45,9 @@ test.describe("corretor · matriz de etapas", () => {
   test("arrastar para uma etapa negada avisa e não muda o estágio no banco", async ({ page }) => {
     await abrirPipelineFiltrado(page, tag);
 
-    // A alternância tabela/kanban é um botão só com ícone, sem nome acessível —
-    // por isso o seletor pelo ícone. Está registrado como achado no relatório.
-    await page.locator("button:has(svg.lucide-layout-grid)").click();
+    // A alternância tabela/kanban ganhou nome acessível na Tarefa H (achado
+    // X03): dá para pedir pelo papel, em vez de ancorar na classe do ícone.
+    await page.getByRole("button", { name: /ver em kanban/i }).click();
 
     const card = page.getByText(negocio.cliente, { exact: true });
     await expect(card).toBeVisible();
@@ -76,7 +76,7 @@ test.describe("corretor · matriz de etapas", () => {
   // documento — as etapas com `requires_document` teriam outro motivo de recusa.
   test("arrastar para uma etapa permitida move o card e grava", async ({ page }) => {
     await abrirPipelineFiltrado(page, tag);
-    await page.locator("button:has(svg.lucide-layout-grid)").click();
+    await page.getByRole("button", { name: /ver em kanban/i }).click();
 
     const card = page.getByText(negocio.cliente, { exact: true });
     await expect(card).toBeVisible();

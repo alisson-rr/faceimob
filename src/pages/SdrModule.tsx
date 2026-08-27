@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Bot, Plus, Trash2, Upload, Send, MessageSquare, Sparkles, RefreshCw } from "lucide-react";
-import * as XLSX from "xlsx";
+import { ImportError, parseSheet, rowsToRecords } from "@/components/leads/importSheet";
 import { functionErrorMessage } from "@/lib/functionError";
+import { describeError } from "@/lib/supabaseError";
 import type { Database } from "@/integrations/supabase/types";
 
 /**
@@ -50,8 +51,8 @@ export default function SdrModule() {
     // ("Nenhum agente..."). Erro aparece e a tela oferece retry.
     const firstError = a.error || s.error || l.error || w.error;
     if (firstError) {
-      setLoadError(firstError.message);
-      toast.error(`Falha ao carregar dados do SDR: ${firstError.message}`);
+      setLoadError(describeError(firstError, "verifique sua permissão e tente de novo"));
+      toast.error("Falha ao carregar os dados do SDR.");
       return;
     }
     setLoadError(null);
@@ -142,14 +143,14 @@ function AgentsTab({ agents, reload }: { agents: Agent[]; reload: () => void }) 
       ? supabase.from("sdr_agents").update(payload).eq("id", editing.id)
       : supabase.from("sdr_agents").insert(payload);
     const { error } = await q;
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(describeError(error, "Não foi possível salvar o agente."));
     toast.success("Agente salvo");
     setEditing(null); reload();
   }
   async function remove(id: string) {
     if (!confirm("Excluir agente?")) return;
     const { error } = await supabase.from("sdr_agents").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(describeError(error, "Não foi possível excluir o agente."));
     reload();
   }
 
@@ -167,15 +168,15 @@ function AgentsTab({ agents, reload }: { agents: Agent[]; reload: () => void }) 
           {agents.map(a => (
             <div key={a.id} className="flex items-center justify-between border rounded-md p-2 hover:bg-muted/40 cursor-pointer" onClick={() => setEditing(a)}>
               <div className="flex items-center gap-2">
-                <Bot className={`h-4 w-4 ${a.is_orchestrator ? "text-amber-500" : "text-primary"}`} />
+                <Bot className={`h-4 w-4 ${a.is_orchestrator ? "text-warning" : "text-primary"}`} />
                 <div>
                   <div className="text-sm font-medium">{a.name}</div>
-                  <div className="text-[10px] text-muted-foreground">{a.role} · {a.model}</div>
+                  <div className="text-xs text-muted-foreground">{a.role} · {a.model}</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {a.is_orchestrator && <Badge variant="secondary" className="text-[10px]">Orquestrador</Badge>}
-                {!a.active && <Badge variant="outline" className="text-[10px]">Inativo</Badge>}
+                {a.is_orchestrator && <Badge variant="secondary">Orquestrador</Badge>}
+                {!a.active && <Badge variant="outline">Inativo</Badge>}
                 <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); remove(a.id); }}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -279,12 +280,12 @@ function SourcesTab({ sources, agents, templates, reload }: { sources: Source[];
       welcome_template_id: row.welcome_template_id || null,
       active: row.active ?? true,
     });
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(describeError(error, "Não foi possível cadastrar a origem."));
     setRow({ label: "", active: true }); reload();
   }
   async function remove(id: string) {
     const { error } = await supabase.from("lead_sources").delete().eq("id", id);
-    if (error) return toast.error(`Falha ao excluir origem: ${error.message}`);
+    if (error) return toast.error(describeError(error, "Não foi possível excluir a origem."));
     reload();
   }
   return (
@@ -409,10 +410,10 @@ function ConversationsTab({ agents }: { agents: Agent[] }) {
           <button key={r.id} onClick={() => setSel(r.id)} className={`w-full text-left p-2 rounded text-xs hover:bg-muted ${sel === r.id ? "bg-muted" : ""}`}>
             <div className="flex items-center justify-between">
               <b>{r.status}</b>
-              <Badge variant="outline" className="text-[9px]">{r.score ?? "—"}</Badge>
+              <Badge variant="outline" size="sm">{r.score ?? "—"}</Badge>
             </div>
             <div className="text-muted-foreground">{agents.find(a => a.id === r.agent_id)?.name || "—"}</div>
-            <div className="text-[10px] text-muted-foreground">{new Date(r.updated_at).toLocaleString("pt-BR")}</div>
+            <div className="text-xs text-muted-foreground">{new Date(r.updated_at).toLocaleString("pt-BR")}</div>
           </button>
         ))}
       </Card>
@@ -443,20 +444,17 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
     if (!newName) return toast.error("Dê um nome para a lista antes");
     setUploading(true);
     try {
-      const buf = await f.arrayBuffer();
-      const wb = XLSX.read(buf);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+      // Mesmo leitor da importação de leads: é dele que vêm os limites de
+      // tamanho e de linhas, que este upload não tinha, e é ele que passou a
+      // ser o único ponto do app que abre planilha de terceiro.
+      const rows = rowsToRecords(await parseSheet(f));
       // Aceita colunas: nome/name, fone/telefone/phone, campanha/campaign
-      const parsed = rows.map(r => {
-        const keys = Object.fromEntries(Object.entries(r).map(([key, value]) => [key.toLowerCase().trim(), value]));
-        return {
-          name: String(keys.nome ?? keys.name ?? keys.cliente ?? "").trim(),
-          phone: String(keys.fone ?? keys.telefone ?? keys.phone ?? keys.celular ?? "").trim(),
-          campaign: String(keys.campanha ?? keys.campaign ?? keys.origem ?? "").trim(),
-          extra: keys,
-        };
-      }).filter(r => r.phone);
+      const parsed = rows.map(keys => ({
+        name: keys.nome || keys.name || keys.cliente || "",
+        phone: keys.fone || keys.telefone || keys.phone || keys.celular || "",
+        campaign: keys.campanha || keys.campaign || keys.origem || "",
+        extra: keys,
+      })).filter(r => r.phone);
 
       if (parsed.length === 0) return toast.error("Nenhum contato válido (verifique colunas nome/fone/campanha)");
 
@@ -475,7 +473,9 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
       setNewName(""); setTemplate(""); if (fileRef.current) fileRef.current.value = "";
       reload();
     } catch (err: unknown) {
-      toast.error(await functionErrorMessage(err, "Falha no upload"));
+      // A planilha recusada já explica o motivo em pt-BR; o resto é erro do
+      // banco vindo da RPC de importação, e aí quem traduz é o describeError.
+      toast.error(err instanceof ImportError ? err.message : describeError(err, "Falha ao importar a lista."));
     } finally { setUploading(false); }
   }
 
@@ -490,7 +490,7 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
   async function removeList(id: string) {
     if (!confirm("Excluir lista?")) return;
     const { error } = await supabase.from("remarketing_lists").delete().eq("id", id);
-    if (error) return toast.error(`Falha ao excluir lista: ${error.message}`);
+    if (error) return toast.error(describeError(error, "Não foi possível excluir a lista."));
     reload();
   }
 
@@ -519,8 +519,8 @@ function RemarketingTab({ lists, agents, reload }: { lists: Rlist[]; agents: Age
           {lists.map(l => (
             <div key={l.id} className="flex items-center justify-between border rounded p-3">
               <div>
-                <div className="text-sm font-medium">{l.name} <Badge variant="outline" className="ml-2 text-[10px]">{l.status}</Badge></div>
-                <div className="text-[10px] text-muted-foreground">Template: {l.template_name || "—"} · {l.stats.total} contatos ({l.stats.pending} pendentes · {l.stats.sent} enviados · {l.stats.replied} respondidos{l.stats.failed > 0 ? ` · ${l.stats.failed} falhas` : ""}) · Agente: {agents.find(a => a.id === l.agent_id)?.name || "—"}</div>
+                <div className="text-sm font-medium">{l.name} <Badge variant="outline" className="ml-2">{l.status}</Badge></div>
+                <div className="text-xs text-muted-foreground">Template: {l.template_name || "—"} · {l.stats.total} contatos ({l.stats.pending} pendentes · {l.stats.sent} enviados · {l.stats.replied} respondidos{l.stats.failed > 0 ? ` · ${l.stats.failed} falhas` : ""}) · Agente: {agents.find(a => a.id === l.agent_id)?.name || "—"}</div>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => broadcast(l.id)}><Send className="h-3.5 w-3.5 mr-1" />Disparar</Button>
@@ -552,7 +552,7 @@ function WhatsAppTab({ config, reload }: { config: Partial<WhatsAppTemplate>; re
       ? supabase.from("whatsapp_templates").update(payload).eq("id", c.id)
       : supabase.from("whatsapp_templates").insert(payload);
     const { data, error } = await query.select("id");
-    if (error) return toast.error(error.message);
+    if (error) return toast.error(describeError(error, "Não foi possível salvar o template."));
     if (!data?.length) return toast.error("A configuração não foi salva. Verifique sua permissão.");
     toast.success("Configuração salva"); reload();
   }

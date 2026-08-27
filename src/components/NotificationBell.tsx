@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { resolveLink } from "@/lib/notificationLink";
 import {
   listMyNotifications,
   markAllNotificationsRead,
@@ -63,7 +64,7 @@ export default function NotificationBell() {
     }
     if (item.link) {
       setOpen(false);
-      navigate(item.link);
+      navigate(resolveLink(item.link));
     }
   };
 
@@ -84,7 +85,7 @@ export default function NotificationBell() {
       >
         <Bell className="h-4 w-4 text-muted-foreground" />
         {unread > 0 && (
-          <Badge className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-[9px] tabular-nums">{unread}</Badge>
+          <Badge size="sm" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 tabular-nums">{unread}</Badge>
         )}
       </button>
 
@@ -101,7 +102,7 @@ export default function NotificationBell() {
             <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
               <span className="text-xs font-semibold">Notificações</span>
               {unread > 0 && (
-                <Button variant="ghost" size="sm" className="h-6 text-[10px]" onClick={readAll}>
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={readAll}>
                   Marcar todas como lidas
                 </Button>
               )}
@@ -124,8 +125,8 @@ export default function NotificationBell() {
                     }`}
                   >
                     <p className="text-xs font-medium truncate">{i.title}</p>
-                    {i.body && <p className="text-[10px] text-muted-foreground line-clamp-2">{i.body}</p>}
-                    <p className="text-[10px] text-muted-foreground">{formatWhen(i.created_at)}</p>
+                    {i.body && <p className="text-xs text-muted-foreground line-clamp-2">{i.body}</p>}
+                    <p className="text-xs text-muted-foreground">{formatWhen(i.created_at)}</p>
                   </button>
                 ))
               )}

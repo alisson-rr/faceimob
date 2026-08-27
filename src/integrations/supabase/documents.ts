@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Documentos do negócio — upload com renomeação, download assinado e histórico.
@@ -53,7 +54,7 @@ export async function listDocumentTypes(): Promise<DocumentTypeRecord[]> {
     .select("id,code,label,category,required_for_conversion,allows_multiple,naming_pattern,sort_order")
     .eq("active", true)
     .order("sort_order");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("document_types", error);
   return (data ?? []) as DocumentTypeRecord[];
 }
 
@@ -63,7 +64,7 @@ export async function listDealDocuments(dealId: string): Promise<DealDocumentRec
     .select("id,deal_id,document_type_id,storage_path,original_name,stored_name,mime_type,size_bytes,version,superseded_at,created_at")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("deal_documents", error);
   return (data ?? []) as DealDocumentRecord[];
 }
 
@@ -73,7 +74,7 @@ export async function getDealDocumentReview(dealId: string): Promise<DealDocumen
     .select("document_review_status,document_review_requested_at,document_review_requested_by,document_reviewed_at,document_reviewed_by,document_review_reason")
     .eq("id", dealId)
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("deals", error);
   return data as DealDocumentReview;
 }
 
@@ -83,7 +84,7 @@ export async function listMyDealRoles(dealId: string, profileId: string): Promis
     .select("role")
     .eq("deal_id", dealId)
     .eq("profile_id", profileId);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("deal_participants", error);
   return (data ?? []).map((row) => row.role);
 }
 
@@ -164,7 +165,7 @@ export async function uploadDealDocument(input: UploadDealDocumentInput): Promis
   const { error: uploadError } = await supabase.storage
     .from(DEAL_DOCUMENTS_BUCKET)
     .upload(path, file, { contentType: file.type || undefined, upsert: false });
-  if (uploadError) throw new Error(uploadError.message);
+  if (uploadError) throw dbError("enviar documento", uploadError);
 
   const { data, error } = await supabase
     .from("deal_documents")
@@ -184,7 +185,7 @@ export async function uploadDealDocument(input: UploadDealDocumentInput): Promis
     // Não deixa arquivo órfão no bucket quando o insert é barrado pela RLS —
     // mesmo cuidado que `uploadLeadAttachment` já tomava.
     await supabase.storage.from(DEAL_DOCUMENTS_BUCKET).remove([path]);
-    throw new Error(error.message);
+    throw dbError("registrar documento", error);
   }
   return data as DealDocumentRecord;
 }
@@ -194,7 +195,7 @@ export async function signedDocumentUrl(doc: Pick<DealDocumentRecord, "storage_p
   const { data, error } = await supabase.storage
     .from(DEAL_DOCUMENTS_BUCKET)
     .createSignedUrl(doc.storage_path, 300, { download: doc.stored_name });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("gerar link do documento", error);
   return data.signedUrl;
 }
 
@@ -215,7 +216,7 @@ export async function submitDealForManagerReview(dealId: string): Promise<void> 
   const { error } = await supabase.rpc("submit_deal_for_manager_review", {
     p_deal_id: dealId,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("submit_deal_for_manager_review", error);
 }
 
 /** Aprova e segue ao CCA, ou devolve ao corretor com motivo obrigatório. */
@@ -229,5 +230,5 @@ export async function reviewDealDocuments(input: {
     p_approve: input.approve,
     p_reason: input.reason || undefined,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("review_deal_documents", error);
 }

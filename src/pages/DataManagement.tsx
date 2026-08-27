@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Save, Trash2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -35,7 +36,7 @@ function FileUpload({ onFile, hint, accept = ".csv,.xlsx,.xls" }: { onFile: (f: 
     >
       <input type="file" className="hidden" accept={accept} onChange={e => { const f = e.target.files?.[0]; if (f) { setName(f.name); onFile(f); } }} />
       <p className="text-xs font-medium">{name ? `📄 ${name}` : (hint || "Clique ou arraste o arquivo aqui")}</p>
-      <p className="text-[10px] text-muted-foreground">CSV, XLSX ou XLS</p>
+      <p className="text-xs text-muted-foreground">CSV, XLSX ou XLS</p>
     </label>
   );
 }
@@ -81,7 +82,7 @@ export default function DataManagement() {
       period: aporte.period.slice(0, 7) + "-01", amount: Number(aporte.amount), developer_id: aporte.developer_id,
     });
     setSavingAporte(false);
-    if (error) return toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Erro ao salvar", description: describeError(error, "Não foi possível salvar o aporte."), variant: "destructive" });
     toast({ title: "Aporte salvo" });
     setAporte({ period: monthStart(), amount: "", developer_id: "" });
     loadAportes();
@@ -110,7 +111,7 @@ export default function DataManagement() {
         <TabsContent value="leadfy" className="mt-6 grid md:grid-cols-2 gap-4">
           <SectionCard title="Upload Leadfy">
             <FileUpload onFile={(f) => toast({ title: `Arquivo ${f.name} carregado — vá para Leads para importar` })} hint="Solte o CSV/XLSX do Leadfy" />
-            <p className="text-[11px] text-muted-foreground mt-3">Após carregar, abra <strong>Pipeline → Leads</strong> e clique em "Importar Leadfy" para processar os leads.</p>
+            <p className="text-xs text-muted-foreground mt-3">Após carregar, abra <strong>Pipeline → Leads</strong> e clique em "Importar Leadfy" para processar os leads.</p>
           </SectionCard>
           <SectionCard title="Formato esperado">
             <div className="text-xs space-y-1 text-muted-foreground">
@@ -128,7 +129,7 @@ export default function DataManagement() {
             </SectionCard>
 
             <SectionCard title={`Aporte de Mídia — ${MONTHS[new Date().getMonth()]}/${new Date().getFullYear()}`}>
-              <div className="text-right text-sm mb-2">Total do mês: <strong className="text-emerald-400">{fmt(monthTotal)}</strong></div>
+              <div className="text-right text-sm mb-2">Total do mês: <strong className="text-success">{fmt(monthTotal)}</strong></div>
               {canEditAporte && (
                 <div className="space-y-2">
                   <div className="grid grid-cols-3 gap-2">
@@ -162,7 +163,7 @@ export default function DataManagement() {
                       <TableRow key={a.id}>
                         <TableCell className="text-xs">{a.period.slice(0, 7).split("-").reverse().join("/")}</TableCell>
                         <TableCell className="text-xs">{devs.find(d => d.id === a.developer_id)?.name || "—"}</TableCell>
-                        <TableCell className="text-xs text-right text-emerald-400 font-semibold">{fmt(Number(a.amount))}</TableCell>
+                        <TableCell className="text-xs text-right text-success font-semibold">{fmt(Number(a.amount))}</TableCell>
                         <TableCell className="text-right">
                           {canEditAporte && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeAporte(a.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>}
                         </TableCell>

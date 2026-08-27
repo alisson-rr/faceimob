@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn, slugify } from "@/lib/utils";
+import { describeError } from "@/lib/supabaseError";
 import { listPeople } from "@/integrations/supabase/newSchema";
 
 import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
@@ -79,16 +80,16 @@ function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }
       }
     }
     setSaving(false);
-    if (error) return toast({ title: "Erro ao salvar meta", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Erro ao salvar meta", description: describeError(error, "Não foi possível salvar a meta."), variant: "destructive" });
     toast({ title: "Meta salva" });
     onSaved();
   };
   return (
     <div className="flex items-center gap-1">
-      <span className="text-[9px] uppercase text-muted-foreground shrink-0">Metas R$</span>
-      <Input type="number" value={monthly} onChange={e => setMonthly(e.target.value)} placeholder="mês" className="h-6 text-[11px] px-2" title="Meta mensal (R$)" />
-      <Input type="number" value={yearly} onChange={e => setYearly(e.target.value)} placeholder="ano" className="h-6 text-[11px] px-2" title="Meta anual (R$)" />
-      <Button size="sm" variant={dirty ? "default" : "ghost"} className="h-6 px-2 text-[10px]" onClick={save} disabled={saving || !dirty}>
+      <span className="text-eyebrow shrink-0">Metas R$</span>
+      <Input type="number" value={monthly} onChange={e => setMonthly(e.target.value)} placeholder="mês" className="h-6 text-xs px-2" title="Meta mensal (R$)" />
+      <Input type="number" value={yearly} onChange={e => setYearly(e.target.value)} placeholder="ano" className="h-6 text-xs px-2" title="Meta anual (R$)" />
+      <Button size="sm" variant={dirty ? "default" : "ghost"} className="h-6 px-2 text-xs" onClick={save} disabled={saving || !dirty}>
         {saving ? "..." : "Salvar"}
       </Button>
     </div>
@@ -148,9 +149,9 @@ export default function Equipes() {
     return (
       <div className="flex items-center gap-1 mt-1 rounded-md bg-background/60 border border-border/30 px-1.5 py-1">
         <KeyRound className="h-3 w-3 text-primary shrink-0" />
-        <code className="text-[10px] truncate flex-1" title={c.email || ""}>{c.email || "—"}</code>
-        <span className="text-muted-foreground text-[10px]">·</span>
-        <code className="text-[10px] font-mono">{c.password ? (visible ? c.password : "••••••••") : "—"}</code>
+        <code className="text-xs truncate flex-1" title={c.email || ""}>{c.email || "—"}</code>
+        <span className="text-muted-foreground text-xs">·</span>
+        <code className="text-xs font-mono">{c.password ? (visible ? c.password : "••••••••") : "—"}</code>
         {c.password && (
           <button type="button" onClick={() => togglePw(id)} className="text-muted-foreground hover:text-foreground p-0.5" title={visible ? "Ocultar" : "Mostrar"}>
             {visible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -158,7 +159,7 @@ export default function Equipes() {
         )}
         {c.password && (
           <button type="button" onClick={() => copyValue(`pw-${id}`, c.password!)} className="text-muted-foreground hover:text-foreground p-0.5" title="Copiar senha">
-            {copiedKey === `pw-${id}` ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+            {copiedKey === `pw-${id}` ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
           </button>
         )}
       </div>
@@ -181,7 +182,7 @@ export default function Equipes() {
         avatar_url: person.avatar_url,
       })));
     } catch (error: unknown) {
-      toast({ title: "Erro ao carregar equipe", description: error instanceof Error ? error.message : "Erro inesperado", variant: "destructive" });
+      toast({ title: "Erro ao carregar equipe", description: describeError(error, "Não foi possível carregar a equipe."), variant: "destructive" });
     }
     const { data: teamsData } = await supabase.from("teams").select("id,manager_id,name");
     const map: Record<string, { id: string; display_name: string | null }> = {};
@@ -202,12 +203,12 @@ export default function Equipes() {
     const existing = teamsByMgr[managerId];
     if (existing) {
       const { error } = await supabase.from("teams").update({ name: name || managerName }).eq("id", existing.id);
-      if (error) return toast({ title: "Falha ao salvar", description: error.message, variant: "destructive" });
+      if (error) return toast({ title: "Falha ao salvar", description: describeError(error, "Não foi possível salvar o nome da equipe."), variant: "destructive" });
       setTeamsByMgr(p => ({ ...p, [managerId]: { ...existing, display_name: name || null } }));
     } else {
       const teamName = name || managerName;
       const { data, error } = await supabase.from("teams").insert({ manager_id: managerId, name: teamName, slug: slugify(teamName) }).select("id").single();
-      if (error) return toast({ title: "Falha ao criar equipe", description: error.message, variant: "destructive" });
+      if (error) return toast({ title: "Falha ao criar equipe", description: describeError(error, "Não foi possível criar a equipe."), variant: "destructive" });
       setTeamsByMgr(p => ({ ...p, [managerId]: { id: data.id, display_name: name || null } }));
     }
     toast({ title: "Nome da equipe salvo" });
@@ -300,7 +301,7 @@ export default function Equipes() {
         .maybeSingle();
       if (teamError || !targetTeam) {
         setSaving(false);
-        return toast({ title: "Erro", description: teamError?.message || "O gerente não possui uma equipe ativa.", variant: "destructive" });
+        return toast({ title: "Falha ao vincular", description: teamError ? describeError(teamError, "Não foi possível carregar a equipe do gerente.") : "O gerente não possui uma equipe ativa.", variant: "destructive" });
       }
       for (const profileId of ids) {
         await supabase
@@ -313,7 +314,7 @@ export default function Equipes() {
           .insert({ team_id: targetTeam.id, profile_id: profileId });
         if (error) {
           setSaving(false);
-          return toast({ title: "Erro", description: error.message, variant: "destructive" });
+          return toast({ title: "Falha ao vincular", description: describeError(error, "Não foi possível vincular o corretor à equipe."), variant: "destructive" });
         }
       }
     } else {
@@ -321,7 +322,7 @@ export default function Equipes() {
         .from("teams")
         .update({ director_id: bulkTarget })
         .in("manager_id", ids);
-      if (error) { setSaving(false); return toast({ title: "Erro", description: error.message, variant: "destructive" }); }
+      if (error) { setSaving(false); return toast({ title: "Falha ao vincular", description: describeError(error, "Não foi possível vincular o gerente à diretoria."), variant: "destructive" }); }
     }
     setSaving(false);
     toast({ title: `${ids.length} vínculo(s) atualizados` });
@@ -399,9 +400,9 @@ export default function Equipes() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Diretores */}
-          <Card className="border-blue-500/30">
+          <Card className="border-info/30">
             <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-blue-400 flex items-center gap-2">
+              <CardTitle className="text-sm text-info flex items-center gap-2">
                 <Crown className="h-4 w-4" /> Diretores ({filter(directors).filter(inScope).length})
               </CardTitle>
             </CardHeader>
@@ -413,29 +414,29 @@ export default function Equipes() {
                 const monthsLeft = 12 - new Date().getMonth();
                 const perMonthLeft = sumYearly > 0 ? sumYearly / 12 : 0;
                 return (
-                  <div key={d.id} className="p-2 rounded-lg border border-border/30 bg-blue-500/5 space-y-1.5">
+                  <div key={d.id} className="p-2 rounded-lg border border-border/30 bg-info/5 space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-xs font-bold text-blue-400">{initials(d.name)}</div>
+                      <div className="w-8 h-8 rounded-full bg-info/20 flex items-center justify-center text-xs font-bold text-info">{initials(d.name)}</div>
                       <span className="text-xs font-medium flex-1 truncate">{d.name}</span>
-                      <Badge variant="outline" className="text-[10px] border-blue-500/30 text-blue-400">{dirManagers.length} ger.</Badge>
+                      <Badge variant="outline" className="border-info/30 text-info">{dirManagers.length} ger.</Badge>
                       {canEdit && (
                         <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("manager", d)}>
                           <Pencil className="h-3 w-3" />
                         </Button>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-1 text-[10px]">
+                    <div className="grid grid-cols-2 gap-1 text-xs">
                       <div className="p-1.5 rounded bg-background/60 border border-border/30">
-                        <p className="text-muted-foreground uppercase text-[9px]">Meta mês (Σ ger.)</p>
-                        <p className="font-bold text-blue-400">{sumMonthly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+                        <p className="text-eyebrow">Meta mês (Σ ger.)</p>
+                        <p className="font-bold text-info">{sumMonthly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
                       </div>
                       <div className="p-1.5 rounded bg-background/60 border border-border/30">
-                        <p className="text-muted-foreground uppercase text-[9px]">Meta ano (Σ ger.)</p>
-                        <p className="font-bold text-blue-400">{sumYearly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
+                        <p className="text-eyebrow">Meta ano (Σ ger.)</p>
+                        <p className="font-bold text-info">{sumYearly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
                       </div>
                     </div>
                     {sumYearly > 0 && (
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Meses restantes: <strong className="text-foreground">{monthsLeft}</strong> · Ritmo/mês: <strong className="text-foreground">{perMonthLeft.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</strong>
                       </p>
                     )}
@@ -448,13 +449,13 @@ export default function Equipes() {
           </Card>
 
           {/* Gerentes */}
-          <Card className="border-cyan-500/30">
+          <Card className="border-info/30">
             <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-cyan-400 flex items-center gap-2">
+              <CardTitle className="text-sm text-info flex items-center gap-2">
                 <UserCog className="h-4 w-4" /> Gerentes ({filter(managers).filter(inScope).length})
               </CardTitle>
               {canEdit && (
-                <Button size="sm" variant="outline" className="h-7 text-[11px] border-cyan-500/40 text-cyan-400" onClick={() => openBulk("manager")}>
+                <Button size="sm" variant="outline" className="h-7 text-xs border-info/40 text-info" onClick={() => openBulk("manager")}>
                   <Link2 className="h-3 w-3 mr-1" /> Vincular em massa
                 </Button>
               )}
@@ -463,16 +464,16 @@ export default function Equipes() {
               {filter(managers).filter(inScope).map(m => {
                 const dir = directors.find(d => d.id === m.director_id);
                 return (
-                  <div key={m.id} className="p-2 rounded-lg border border-border/30 bg-cyan-500/5 space-y-1.5">
+                  <div key={m.id} className="p-2 rounded-lg border border-border/30 bg-info/5 space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">{initials(m.name)}</div>
+                      <div className="w-8 h-8 rounded-full bg-info/20 flex items-center justify-center text-xs font-bold text-info">{initials(m.name)}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">{m.name}</p>
-                        <p className={cn("text-[10px] truncate", dir ? "text-blue-400" : "text-muted-foreground")}>
+                        <p className={cn("text-xs truncate", dir ? "text-info" : "text-muted-foreground")}>
                           {dir ? `↑ ${dir.name}` : "Sem diretor"}
                         </p>
                       </div>
-                      <Badge variant="outline" className="text-[10px] border-cyan-500/30 text-cyan-400">
+                      <Badge variant="outline" className="border-info/30 text-info">
                         {brokers.filter(b => b.manager_id === m.id).length}
                       </Badge>
                       {canEdit && (
@@ -483,7 +484,7 @@ export default function Equipes() {
                     </div>
                     {canEdit && (
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] uppercase text-muted-foreground shrink-0">Equipe</span>
+                        <span className="text-eyebrow shrink-0">Equipe</span>
                         <Input
                           value={teamNameDrafts[m.id] ?? ""}
                           onChange={(e) => setTeamNameDrafts(p => ({ ...p, [m.id]: e.target.value }))}
@@ -492,7 +493,7 @@ export default function Equipes() {
                             if ((teamNameDrafts[m.id] ?? "") !== current) saveTeamName(m.id, m.name);
                           }}
                           placeholder={`Equipe ${m.name.split(" ")[0]}`}
-                          className="h-6 text-[11px] px-2"
+                          className="h-6 text-xs px-2"
                         />
                       </div>
                     )}
@@ -505,13 +506,13 @@ export default function Equipes() {
           </Card>
 
           {/* Corretores */}
-          <Card className="border-emerald-500/30">
+          <Card className="border-success/30">
             <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-emerald-400 flex items-center gap-2">
+              <CardTitle className="text-sm text-success flex items-center gap-2">
                 <Users className="h-4 w-4" /> Corretores ({filter(brokers).filter(inScope).length})
               </CardTitle>
               {canEdit && (
-                <Button size="sm" variant="outline" className="h-7 text-[11px] border-emerald-500/40 text-emerald-400" onClick={() => openBulk("broker")}>
+                <Button size="sm" variant="outline" className="h-7 text-xs border-success/40 text-success" onClick={() => openBulk("broker")}>
                   <Link2 className="h-3 w-3 mr-1" /> Vincular em massa
                 </Button>
               )}
@@ -520,12 +521,12 @@ export default function Equipes() {
               {filter(brokers).filter(inScope).map(b => {
                 const mgr = managers.find(m => m.id === b.manager_id);
                 return (
-                  <div key={b.id} className="p-2 rounded-lg border border-border/30 bg-emerald-500/5 space-y-1">
+                  <div key={b.id} className="p-2 rounded-lg border border-border/30 bg-success/5 space-y-1">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400">{initials(b.name)}</div>
+                      <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center text-xs font-bold text-success">{initials(b.name)}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">{b.name}</p>
-                        <p className={cn("text-[10px] truncate", mgr ? "text-cyan-400" : "text-muted-foreground")}>
+                        <p className={cn("text-xs truncate", mgr ? "text-info" : "text-muted-foreground")}>
                           {mgr ? `↑ ${mgr.name}` : "Sem gerente"}
                         </p>
                       </div>
@@ -545,17 +546,17 @@ export default function Equipes() {
       )}
 
       {/* CCAs */}
-      <Card className="border-amber-500/30">
+      <Card className="border-warning/30">
         <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm text-amber-400 flex items-center gap-2">
+          <CardTitle className="text-sm text-warning flex items-center gap-2">
             <Shield className="h-4 w-4" /> CCAs ({filter(ccas).length})
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
           {filter(ccas).map(c => (
-            <div key={c.id} className="p-2 rounded-lg border border-border/30 bg-amber-500/5 space-y-1">
+            <div key={c.id} className="p-2 rounded-lg border border-border/30 bg-warning/5 space-y-1">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-xs font-bold text-amber-400">{initials(c.name)}</div>
+                <div className="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center text-xs font-bold text-warning">{initials(c.name)}</div>
                 <p className="text-xs font-medium flex-1 truncate">{c.name}</p>
                 {canEdit && (
                   <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => openEdit("broker", c)}>
@@ -585,18 +586,18 @@ export default function Equipes() {
             {teamStats.map(t => (
               <div key={t.manager.id} className="shrink-0 w-[280px] snap-start p-3 rounded-lg border border-border/30 bg-secondary/20">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-cyan-500/20 flex items-center justify-center text-xs font-bold text-cyan-400">{initials(t.manager.name)}</div>
+                  <div className="w-8 h-8 rounded-full bg-info/20 flex items-center justify-center text-xs font-bold text-info">{initials(t.manager.name)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold truncate">{t.manager.name}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{t.director?.name ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{t.director?.name ?? "—"}</p>
                   </div>
-                  <Badge className="text-[10px] bg-emerald-600/20 text-emerald-400 border-emerald-500/30 shrink-0">{t.size}</Badge>
+                  <Badge className="bg-success/20 text-success border-success/30 shrink-0">{t.size}</Badge>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {t.brokers.map(b => (
-                    <span key={b.id} className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
+                    <span key={b.id} className="text-xs px-2 py-0.5 rounded-full bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
                   ))}
-                  {t.brokers.length === 0 && <span className="text-[10px] text-muted-foreground">Sem corretores</span>}
+                  {t.brokers.length === 0 && <span className="text-xs text-muted-foreground">Sem corretores</span>}
                 </div>
               </div>
             ))}
@@ -648,7 +649,7 @@ export default function Equipes() {
                   <Search className="h-3.5 w-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
                   <Input placeholder="Filtrar..." value={bulkFilter} onChange={e => setBulkFilter(e.target.value)} className="pl-8 h-8 text-xs" />
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{bulkSelected.size} selecionado(s) de {bulkFiltered.length}</span>
                   <div className="flex gap-2">
                     <button className="hover:text-primary" onClick={() => setBulkSelected(new Set(bulkFiltered.map(b => b.id)))}>Todos</button>
@@ -672,10 +673,10 @@ export default function Equipes() {
                               });
                             }}
                           />
-                          <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold">{initials(m.name)}</div>
+                          <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">{initials(m.name)}</div>
                           <span className="flex-1 truncate">{m.name}</span>
                           {bulk?.column === "broker" && m.manager_id && m.manager_id !== bulkTarget && (
-                            <span className="text-[10px] text-amber-400">
+                            <span className="text-xs text-warning">
                               já em {managers.find(x => x.id === m.manager_id)?.name.split(" ")[0]}
                             </span>
                           )}

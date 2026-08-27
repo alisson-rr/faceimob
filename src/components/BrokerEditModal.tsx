@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { describeError } from "@/lib/supabaseError";
 import { Camera, KeyRound, Loader2, Copy, Check, IdCard, Sparkles } from "lucide-react";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
@@ -100,7 +101,7 @@ export function BrokerEditModal({
         .upsert({ profile_id: form.id, role: form.role as AppRoleValue });
     }
     setSaving(false);
-    if (error) return toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+    if (error) return toast({ title: "Erro ao salvar", description: describeError(error, "Não foi possível salvar os dados do corretor."), variant: "destructive" });
     toast({ title: "Dados atualizados" });
     onSaved();
   };
@@ -110,7 +111,7 @@ export function BrokerEditModal({
     const ext = file.name.split(".").pop() || "jpg";
     const path = `${form.id}/${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-    if (upErr) { setUploading(false); return toast({ title: "Falha no upload", description: upErr.message, variant: "destructive" }); }
+    if (upErr) { setUploading(false); return toast({ title: "Falha no upload", description: describeError(upErr, "Não foi possível enviar a foto."), variant: "destructive" }); }
     const { data: signed } = await supabase.storage.from("avatars").createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
     const url = signed?.signedUrl || null;
     upd("avatar_url", url);
@@ -130,12 +131,12 @@ export function BrokerEditModal({
         // Enviar `active` fazia o update ser recusado em silêncio.
         status: form.active === false ? "suspended" : "active",
       }).eq("id", form.id);
-      if (saveErr) throw new Error(saveErr.message);
+      if (saveErr) throw new Error(describeError(saveErr, "Não foi possível salvar os dados antes de criar o acesso."));
       if (isAdmin && form.role) {
         const { error: roleErr } = await supabase
           .from("user_roles")
           .upsert({ profile_id: form.id, role: form.role as AppRoleValue });
-        if (roleErr) throw new Error(roleErr.message);
+        if (roleErr) throw new Error(describeError(roleErr, "Não foi possível salvar o papel antes de criar o acesso."));
       }
 
       const { data: sess } = await supabase.auth.getSession();
@@ -172,7 +173,7 @@ export function BrokerEditModal({
     } catch (error: unknown) {
       toast({
         title: "Falha ao criar acesso",
-        description: error instanceof Error ? error.message : "erro inesperado",
+        description: error instanceof Error ? error.message : "Não foi possível criar o acesso.",
         variant: "destructive",
       });
     } finally {
@@ -284,7 +285,7 @@ export function BrokerEditModal({
 
             {/* Email suggestion */}
             <div className="rounded-md border bg-background/60 p-2 space-y-2">
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Sparkles className="h-3 w-3 text-primary" /> Sugestão
                 <code className="text-foreground">{suggested || "preencha o nome completo"}</code>
                 {suggested && (
@@ -292,7 +293,7 @@ export function BrokerEditModal({
                     <Button type="button" size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("sug", suggested)}>
                       {copied === "sug" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                     </Button>
-                    <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]"
+                    <Button type="button" size="sm" variant="outline" className="h-6 text-xs"
                       onClick={() => { upd("login_email", suggested); upd("login_email_confirmed", false); }}>
                       Usar sugestão
                     </Button>
@@ -303,7 +304,7 @@ export function BrokerEditModal({
                 <Input placeholder="e-mail de login" value={form.login_email || ""}
                   onChange={e => { upd("login_email", e.target.value); upd("login_email_confirmed", false); }} />
                 {emailConfirmed ? (
-                  <span className="text-[11px] text-emerald-400 whitespace-nowrap flex items-center gap-1"><Check className="h-3 w-3" /> confirmado</span>
+                  <span className="text-xs text-success whitespace-nowrap flex items-center gap-1"><Check className="h-3 w-3" /> confirmado</span>
                 ) : (
                   <Button type="button" size="sm" variant="secondary" disabled={!currentEmail}
                     onClick={() => upd("login_email_confirmed", true)}>
@@ -311,7 +312,7 @@ export function BrokerEditModal({
                   </Button>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Confirme o e-mail antes de gerar o acesso — o endereço pode já existir. Salve as alterações após confirmar.
               </p>
             </div>
@@ -330,13 +331,13 @@ export function BrokerEditModal({
                 </Button>
               )}
             </div>
-            {!emailConfirmed && <p className="text-[11px] text-amber-400">Confirme o e-mail para liberar a criação do acesso.</p>}
+            {!emailConfirmed && <p className="text-xs text-warning">Confirme o e-mail para liberar a criação do acesso.</p>}
 
             {/* Acesso do colaborador — só o e-mail. Não há senha para entregar:
                 o login é por código enviado no ato de cada entrada. */}
             {creds && (
               <div className="rounded-md bg-background/60 border p-2 text-xs space-y-1">
-                <p className="font-semibold text-emerald-400">Acesso do colaborador:</p>
+                <p className="font-semibold text-success">Acesso do colaborador:</p>
                 <div className="flex items-center gap-2"><span className="text-muted-foreground w-16">E-mail:</span>
                   <code className="flex-1">{creds.email}</code>
                   <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copy("email", creds.email)}>{copied === "email" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}</Button>
@@ -352,9 +353,9 @@ export function BrokerEditModal({
         })()}
 
         {/* Badge (crachá) */}
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold flex items-center gap-2"><IdCard className="h-4 w-4 text-amber-400" /> Crachá</div>
+            <div className="text-sm font-semibold flex items-center gap-2"><IdCard className="h-4 w-4 text-warning" /> Crachá</div>
             <div className="flex items-center gap-2">
               <Label className="text-xs">Solicitado</Label>
               <Switch checked={!!form.badge_requested} onCheckedChange={v => {
@@ -372,10 +373,10 @@ export function BrokerEditModal({
                 <Input type="date" value={form.badge_delivered_at || ""} onChange={e => upd("badge_delivered_at", e.target.value)} />
               </Field>
               {form.badge_requested_at && !form.badge_delivered_at && (
-                <p className="col-span-2 text-[11px] text-amber-400">⏳ Crachá solicitado em {form.badge_requested_at} — aguardando entrega.</p>
+                <p className="col-span-2 text-xs text-warning">⏳ Crachá solicitado em {form.badge_requested_at} — aguardando entrega.</p>
               )}
               {form.badge_delivered_at && (
-                <p className="col-span-2 text-[11px] text-emerald-400">✔ Entregue em {form.badge_delivered_at}.</p>
+                <p className="col-span-2 text-xs text-success">✔ Entregue em {form.badge_delivered_at}.</p>
               )}
             </div>
           )}
@@ -393,7 +394,7 @@ export function BrokerEditModal({
 function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={className}>
-      <Label className="text-[10px] uppercase text-muted-foreground">{label}</Label>
+      <Label className="text-eyebrow">{label}</Label>
       <div className="mt-1">{children}</div>
     </div>
   );

@@ -111,9 +111,16 @@ test.describe("roleta, check-in e fila", () => {
     if (turnoAtual) {
       const turno = turnos.find((t) => t.id === turnoAtual);
       expect(turno, "current_shift devolveu um turno que não está em work_shifts").toBeTruthy();
+      // O texto da janela atual foi reescrito na Tarefa G (era
+      // "Check-in: HH:MM · Distribuição inicia: HH:MM · Check-out: HH:MM").
+      // O que importa continua sendo o mesmo: os TRÊS horários da janela vêm de
+      // `work_shifts`, não de constante no front.
       await expect(
         page.getByText(
-          `Check-in: ${hhmm(turno!.checkin_start)} · Distribuição inicia: ${hhmm(turno!.distribution_start)} · Check-out: ${hhmm(turno!.checkout_time)}`,
+          new RegExp(
+            `Check-in ${hhmm(turno!.checkin_start)}.*distribuição a partir de ${hhmm(turno!.distribution_start)}.*check-out ${hhmm(turno!.checkout_time)}`,
+            "i",
+          ),
         ),
       ).toBeVisible();
       await expect(page.getByText("Fora do expediente")).toHaveCount(0);
@@ -336,7 +343,9 @@ test.describe("roleta, check-in e fila", () => {
 
       const browserDate = await page.evaluate(() => new Date().toLocaleDateString("en-CA"));
       expect(browserDate).not.toBe(workDate);
-      await expect(page.getByText("Leads recebidos: 7", { exact: true })).toBeVisible();
+      // O selo do turno virou "Pela roleta neste turno: N" no card de janelas
+      // de trabalho (Tarefa G) — o texto mudou, o que ele prova não.
+      await expect(page.getByText(/pela roleta neste turno/i)).toContainText("7");
     } finally {
       await db.remove(`checkins?profile_id=eq.${brokerId}`);
     }

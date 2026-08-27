@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Atividades (`tasks`) e visitas (`visits`).
@@ -38,7 +39,7 @@ export async function listTasksFor(refType: TaskRefType, refId: string): Promise
     .eq("ref_type", refType)
     .eq("ref_id", refId)
     .order("due_at", { ascending: true, nullsFirst: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("tasks", error);
   return (data ?? []) as TaskRecord[];
 }
 
@@ -50,7 +51,7 @@ export async function listMyOpenTasks(profileId: string): Promise<TaskRecord[]> 
     .eq("assigned_to", profileId)
     .eq("status", "open")
     .order("due_at", { ascending: true, nullsFirst: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("tasks", error);
   return (data ?? []) as TaskRecord[];
 }
 
@@ -80,7 +81,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskRecord> {
     })
     .select(TASK_COLUMNS)
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("criar atividade", error);
   return data as TaskRecord;
 }
 
@@ -93,7 +94,7 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<voi
     .from("tasks")
     .update({ status, completed_at: status === "done" ? new Date().toISOString() : null })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("atualizar atividade", error);
 }
 
 export const isTaskOverdue = (task: TaskRecord, now: Date = new Date()) =>
@@ -131,7 +132,7 @@ export async function listVisitsFor(ref: { leadId?: string; dealId?: string }): 
   else if (ref.dealId) query = query.eq("deal_id", ref.dealId);
   else return [];
   const { data, error } = await query.order("scheduled_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("visits", error);
   return (data ?? []) as VisitRecord[];
 }
 
@@ -153,7 +154,7 @@ export async function scheduleVisit(input: {
     })
     .select(VISIT_COLUMNS)
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("agendar visita", error);
   return data as VisitRecord;
 }
 
@@ -167,5 +168,5 @@ export async function setVisitResult(id: string, result: VisitResult, notes?: st
       ...(notes !== undefined ? { notes: notes || null } : {}),
     })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("atualizar visita", error);
 }

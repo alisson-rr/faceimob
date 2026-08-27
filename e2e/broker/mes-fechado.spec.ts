@@ -82,7 +82,7 @@ test.describe("corretor · mês fechado", () => {
   test("em mês aberto a edição do próprio negócio é gravada", async ({ page }) => {
     await abrirNegocio(page, negocioAberto.cliente);
 
-    await page.getByPlaceholder("Inserir VGV Bruto").fill(String(VGV_NOVO));
+    await page.getByLabel("VGV bruto", { exact: true }).fill(String(VGV_NOVO));
     await page.getByRole("button", { name: /confirmar alterações/i }).click();
 
     await expect(page.getByText(/alterações salvas/i)).toBeVisible();
@@ -97,7 +97,7 @@ test.describe("corretor · mês fechado", () => {
   test("em mês fechado a edição é recusada e o banco não muda", async ({ page }) => {
     await abrirNegocio(page, negocioFechado.cliente);
 
-    await page.getByPlaceholder("Inserir VGV Bruto").fill(String(VGV_NOVO));
+    await page.getByLabel("VGV bruto", { exact: true }).fill(String(VGV_NOVO));
     await page.getByRole("button", { name: /confirmar alterações/i }).click();
 
     // Mensagem de gente, com o mês e o que fazer a respeito.

@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { describeError } from "@/lib/supabaseError";
 import {
   getDealDocumentReview,
   listDealDocuments,
@@ -78,7 +79,7 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
     } catch (e) {
       toast({
         title: "Falha ao carregar documentos",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar os documentos do negócio."),
         variant: "destructive",
       });
     } finally {
@@ -114,7 +115,7 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
     } catch (e) {
       toast({
         title: "Falha no envio",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível anexar o documento."),
         variant: "destructive",
       });
     } finally {
@@ -132,9 +133,7 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
     } catch (e) {
       toast({
         title: "Não foi possível baixar",
-        description: e instanceof Error
-          ? e.message
-          : "O arquivo pode estar fora do seu acesso a este negócio.",
+        description: describeError(e, "O arquivo pode estar fora do seu acesso a este negócio."),
         variant: "destructive",
       });
     }
@@ -153,7 +152,7 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
     } catch (e) {
       toast({
         title: "Não foi possível enviar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível enviar os documentos ao gerente."),
         variant: "destructive",
       });
     } finally {
@@ -175,7 +174,12 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
     } catch (e) {
       toast({
         title: approve ? "Não foi possível aprovar" : "Não foi possível devolver",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(
+          e,
+          approve
+            ? "Não foi possível aprovar os documentos."
+            : "Não foi possível devolver os documentos ao corretor.",
+        ),
         variant: "destructive",
       });
     } finally {
@@ -205,21 +209,21 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div>
             <p className="text-sm font-bold">Conferência documental</p>
-            <p className="text-[10px] text-muted-foreground">Corretor → gerente → CCA</p>
+            <p className="text-xs text-muted-foreground">Corretor → gerente → CCA</p>
           </div>
-          <Badge variant="outline" className={`text-[10px] ${meta.className}`}>{meta.label}</Badge>
+          <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
         </div>
 
         {status === "returned" && review?.document_review_reason && (
           <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2">
-            <p className="text-[10px] font-semibold text-destructive">Motivo da devolução</p>
+            <p className="text-xs font-semibold text-destructive">Motivo da devolução</p>
             <p className="text-xs text-foreground mt-0.5">{review.document_review_reason}</p>
           </div>
         )}
 
         {canSubmit && (status === "draft" || status === "returned") && (
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {missing.length > 0
                 ? `Anexe os ${missing.length} tipo(s) obrigatório(s) antes de enviar.`
                 : "Dossiê pronto para o gerente conferir."}
@@ -281,16 +285,16 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm font-bold text-success">Anexar Documentos</p>
         {missing.length > 0 ? (
-          <Badge variant="destructive" className="text-[10px]">
+          <Badge variant="destructive">
             Faltam {missing.length} obrigatório{missing.length > 1 ? "s" : ""}
           </Badge>
         ) : (
-          <Badge variant="outline" className="text-[10px]">Obrigatórios completos</Badge>
+          <Badge variant="outline">Obrigatórios completos</Badge>
         )}
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 text-[10px] gap-1 ml-auto"
+          className="h-6 text-xs gap-1 ml-auto"
           onClick={() => setShowHistory((v) => !v)}
         >
           <History className="h-3 w-3" /> {showHistory ? "Ocultar" : "Ver"} histórico
@@ -307,11 +311,11 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
           return (
             <div key={type.id} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label className="text-[11px] font-semibold text-foreground flex-1">
+                <label className="text-xs font-semibold text-foreground flex-1">
                   {type.required_for_conversion && <span className="text-destructive mr-1">*</span>}
                   {type.label}
                   {type.allows_multiple && (
-                    <span className="ml-1 text-[10px] font-normal text-muted-foreground">(vários)</span>
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">(vários)</span>
                   )}
                 </label>
                 <input
@@ -324,7 +328,7 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-[10px] gap-1"
+                  className="h-7 text-xs gap-1"
                   disabled={busy === type.id}
                   onClick={() => inputRefs.current[type.id]?.click()}
                 >
@@ -340,7 +344,7 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
                   {visible.map((d) => (
                     <div
                       key={d.id}
-                      className={`flex items-center justify-between rounded px-2 py-1 text-[10px] ${
+                      className={`flex items-center justify-between rounded px-2 py-1 text-xs ${
                         d.superseded_at ? "bg-muted/40 opacity-70" : "bg-success/10"
                       }`}
                     >
@@ -362,11 +366,11 @@ export default function DealDocumentUpload({ dealId, clientName, dealCode, onRev
                   ))}
                 </div>
               ) : (
-                <p className="text-[10px] text-muted-foreground italic">Nenhum arquivo anexado</p>
+                <p className="text-xs text-muted-foreground italic">Nenhum arquivo anexado</p>
               )}
 
               {!showHistory && superseded.length > 0 && (
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   +{superseded.length} versão(ões) no histórico
                 </p>
               )}

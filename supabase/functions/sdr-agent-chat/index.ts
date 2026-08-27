@@ -1,8 +1,8 @@
 // SDR Agent Chat — playground interno de conversa com o agente.
 // A lógica do turno (histórico, OpenAI, persistência, tag de qualificação) é a
 // mesma do webhook de WhatsApp: vive em ../_shared/sdrAgent.ts.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { runSdrAgentTurn } from '../_shared/sdrAgent.ts';
+import { requireUserPermission, serviceClient } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,10 +12,14 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    // Antes de qualquer coisa: quem está falando. A function roda com service
+    // role e gasta a chave da OpenAI a cada turno — sem esta porta, a chave
+    // publicável do bundle bastava para queimar crédito e ler conversa de lead
+    // (achado S01). `menu.sdr` é a mesma permissão que abre a tela do SDR.
+    const { denied } = await requireUserPermission(req, 'menu.sdr', corsHeaders);
+    if (denied) return denied;
+
+    const supabase = serviceClient();
 
     const body = await req.json().catch(() => ({}));
     const { conversation_id, lead_id, agent_id, message } = body ?? {};

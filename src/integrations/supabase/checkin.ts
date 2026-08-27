@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Check-in, turno e fila de distribuição.
@@ -45,7 +46,7 @@ export type QueueEntry = {
 
 export async function getCheckinEligibility(): Promise<CheckinEligibility> {
   const { data, error } = await supabase.rpc("checkin_eligibility");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("checkin_eligibility", error);
   const row = (data as CheckinEligibility[] | null)?.[0];
   // Falha fechada: sem resposta, não liberar o check-in por omissão.
   return row ?? { allowed: false, reason: "Não foi possível verificar sua elegibilidade.", overdue_count: 0, threshold: 20 };
@@ -54,7 +55,7 @@ export async function getCheckinEligibility(): Promise<CheckinEligibility> {
 /** Id do turno vigente agora, ou null fora de qualquer janela. */
 export async function getCurrentShiftId(): Promise<string | null> {
   const { data, error } = await supabase.rpc("current_shift");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("current_shift", error);
   return (data as string | null) ?? null;
 }
 
@@ -64,14 +65,14 @@ export async function listWorkShifts(): Promise<WorkShift[]> {
     .select("id,code,label,checkin_start,distribution_start,checkout_time,position")
     .eq("active", true)
     .order("position");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("work_shifts", error);
   return (data ?? []) as WorkShift[];
 }
 
 /** Data usada pelo banco nas presenças e na fila; não depende do relógio do navegador. */
 export async function getCurrentWorkDate(): Promise<string> {
   const { data, error } = await supabase.rpc("current_work_date");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("current_work_date", error);
   return data;
 }
 
@@ -82,7 +83,7 @@ export async function listTodayCheckins(profileId: string): Promise<CheckinRecor
     .select("id,shift_id,work_date,checked_in_at,checked_out_at,leads_received")
     .eq("profile_id", profileId)
     .eq("work_date", workDate);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("checkins", error);
   return (data ?? []) as CheckinRecord[];
 }
 
@@ -99,14 +100,14 @@ export async function getMyQueues(profileId: string): Promise<{ groupId: string;
     .select("group_id, distribution_groups(name)")
     .eq("profile_id", profileId)
     .eq("active", true);
-  if (memberError) throw new Error(memberError.message);
+  if (memberError) throw dbError("distribution_group_members", memberError);
 
   const groups = (memberships ?? []) as unknown as { group_id: string; distribution_groups: { name: string } | null }[];
 
   const results = await Promise.all(
     groups.map(async (g) => {
       const { data, error } = await supabase.rpc("distribution_queue", { p_group_id: g.group_id });
-      if (error) throw new Error(error.message);
+      if (error) throw dbError("distribution_queue", error);
       return {
         groupId: g.group_id,
         groupName: g.distribution_groups?.name ?? "Grupo",
@@ -125,15 +126,20 @@ export type LeadCounts = { today: number; week: number; month: number };
  * Conta `lead_assignments`, não `leads`: o que interessa é quantos chegaram
  * para o corretor, incluindo os que ele perdeu por prazo. Contar `leads` por
  * `assigned_to` mostraria só o que ainda está com ele.
+ *
+ * O dia vem de `current_work_date()`, não do relógio do navegador: é a mesma
+ * data que `assign_lead` e `checkins` usam. Com a meia-noite local, entre 21h e
+ * meia-noite em Brasília o "hoje" da tela já era o dia anterior do banco e o
+ * contador divergia do check-in (F13).
  */
 export async function getLeadCounts(profileId: string): Promise<LeadCounts> {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const workDate = await getCurrentWorkDate(); // "AAAA-MM-DD" na data do banco
+  const dayStart = new Date(`${workDate}T00:00:00Z`);
   // Semana começa na segunda: é como a operação fala de "essa semana".
-  const weekday = (startOfDay.getDay() + 6) % 7;
-  const startOfWeek = new Date(startOfDay);
-  startOfWeek.setDate(startOfDay.getDate() - weekday);
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const weekday = (dayStart.getUTCDay() + 6) % 7;
+  const weekStart = new Date(dayStart);
+  weekStart.setUTCDate(dayStart.getUTCDate() - weekday);
+  const monthStart = new Date(Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), 1));
 
   const countSince = async (since: Date) => {
     const { count, error } = await supabase
@@ -141,14 +147,14 @@ export async function getLeadCounts(profileId: string): Promise<LeadCounts> {
       .select("id", { count: "exact", head: true })
       .eq("profile_id", profileId)
       .gte("assigned_at", since.toISOString());
-    if (error) throw new Error(error.message);
+    if (error) throw dbError("lead_assignments", error);
     return count ?? 0;
   };
 
   const [today, week, month] = await Promise.all([
-    countSince(startOfDay),
-    countSince(startOfWeek),
-    countSince(startOfMonth),
+    countSince(dayStart),
+    countSince(weekStart),
+    countSince(monthStart),
   ]);
   return { today, week, month };
 }
@@ -156,6 +162,6 @@ export async function getLeadCounts(profileId: string): Promise<LeadCounts> {
 /** Confere se um IP está liberado para o usuário — usado pelo admin de IPs. */
 export async function checkIpAllowed(ip: string, profileId: string): Promise<boolean> {
   const { data, error } = await supabase.rpc("ip_is_allowed", { candidate: ip, who: profileId });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("ip_is_allowed", error);
   return Boolean(data);
 }

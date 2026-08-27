@@ -44,16 +44,16 @@ test("cria negócio pela tela e grava deals, deal_clients e deal_participants", 
   await page.getByRole("button", { name: /adicionar negócio/i }).click();
 
   const modal = page.getByRole("dialog");
-  await expect(modal.getByText("Novo Deal")).toBeVisible();
+  await expect(modal.getByRole("button", { name: /criar negócio/i })).toBeVisible();
 
   await campo(modal, "Cliente *").fill(cliente);
-  await escolher(seletor(modal, "Incorporadora"), construtora.name);
-  await escolher(seletor(modal, "Empreendimento"), empreendimento.name);
-  await campo(modal, "Unidade").fill("101");
-  await escolher(seletor(modal, "Corretor 1"), "E2E Corretor");
-  await escolher(seletor(modal, "Gerente 1"), "E2E Gerente");
-  await campo(modal, "Valor").fill("500000");
-  await modal.getByRole("button", { name: /criar deal/i }).click();
+  await escolher(seletor(modal, "Construtora *"), construtora.name);
+  await escolher(seletor(modal, "Empreendimento *"), empreendimento.name);
+  await campo(modal, "Bloco | unidade").fill("101");
+  await escolher(seletor(modal, "Corretor 1 *"), "E2E Corretor");
+  await escolher(seletor(modal, "Gerente 1 *"), "E2E Gerente");
+  await campo(modal, "VGV bruto").fill("500000");
+  await modal.getByRole("button", { name: /criar negócio/i }).click();
   await expect(modal).toBeHidden();
 
   const negocio = await negocioPorCliente(cliente);
@@ -90,11 +90,11 @@ test("catálogos de construtora e corretor vêm do banco, não de lista fixa", a
   await page.getByRole("button", { name: /adicionar negócio/i }).click();
   const modal = page.getByRole("dialog");
 
-  expect(await opcoesDe(seletor(modal, "Incorporadora"))).toEqual(
+  expect(await opcoesDe(seletor(modal, "Construtora *"))).toEqual(
     construtoras.map((c) => c.name),
   );
 
-  const corretores = await opcoesDe(seletor(modal, "Corretor 1"));
+  const corretores = await opcoesDe(seletor(modal, "Corretor 1 *"));
   expect(corretores.length).toBeGreaterThan(0);
   expect(corretores).toContain("E2E Corretor");
 });
@@ -108,14 +108,14 @@ test("modal de detalhe: cliente, CPF, VGV, corretores e gerentes sobrevivem ao r
   await buscar(page, original);
   const modal = await abrirDetalhe(page, original);
 
-  await campo(modal, "Cliente").first().fill(corrigido);
+  await campo(modal, "Cliente *").fill(corrigido);
   await campo(modal, "CPF").first().fill("529.982.247-25");
-  await campo(modal, "VGV Bruto").fill("750000");
-  await campo(modal, "Perc. Desconto").fill("10");
-  await escolher(seletor(modal, "Corretor 1 (Obrigatório)"), "E2E Corretor");
-  await escolher(seletor(modal, "Corretor 2 (opcional)"), "E2E Corretor Rival");
-  await escolher(seletor(modal, "Gerente 1 (Obrigatório)"), "E2E Gerente");
-  await escolher(seletor(modal, "Gerente 2 (opcional)"), "E2E Diretor");
+  await campo(modal, "VGV bruto").fill("750000");
+  await campo(modal, "Percentual de desconto").fill("10");
+  await escolher(seletor(modal, "Corretor 1 *"), "E2E Corretor");
+  await escolher(seletor(modal, "Corretor 2"), "E2E Corretor Rival");
+  await escolher(seletor(modal, "Gerente 1 *"), "E2E Gerente");
+  await escolher(seletor(modal, "Gerente 2"), "E2E Diretor");
   await confirmarModal(page, modal);
 
   // 1) Banco: é aqui que a regressão de 08/08 aparecia (tela dizia "salvo",
@@ -142,11 +142,11 @@ test("modal de detalhe: cliente, CPF, VGV, corretores e gerentes sobrevivem ao r
   await abrirPipeline(page);
   await buscar(page, corrigido);
   const reaberto = await abrirDetalhe(page, corrigido);
-  await expect(campo(reaberto, "Cliente").first()).toHaveValue(corrigido);
+  await expect(campo(reaberto, "Cliente *")).toHaveValue(corrigido);
   await expect(campo(reaberto, "CPF").first()).toHaveValue("529.982.247-25");
-  await expect(campo(reaberto, "VGV Bruto")).toHaveValue("750000");
-  await expect(seletor(reaberto, "Corretor 1 (Obrigatório)")).toContainText("E2E Corretor");
-  await expect(seletor(reaberto, "Gerente 1 (Obrigatório)")).toContainText("E2E Gerente");
+  await expect(campo(reaberto, "VGV bruto")).toHaveValue("750000");
+  await expect(seletor(reaberto, "Corretor 1 *")).toContainText("E2E Corretor");
+  await expect(seletor(reaberto, "Gerente 1 *")).toContainText("E2E Gerente");
 });
 
 test("rateio de VGV fecha 100% com 2 e com 3 corretores", async ({ page }) => {
@@ -156,8 +156,8 @@ test("rateio de VGV fecha 100% com 2 e com 3 corretores", async ({ page }) => {
   await abrirPipeline(page);
   await buscar(page, cliente);
   let modal = await abrirDetalhe(page, cliente);
-  await escolher(seletor(modal, "Corretor 1 (Obrigatório)"), "E2E Corretor");
-  await escolher(seletor(modal, "Corretor 2 (opcional)"), "E2E Corretor Rival");
+  await escolher(seletor(modal, "Corretor 1 *"), "E2E Corretor");
+  await escolher(seletor(modal, "Corretor 2"), "E2E Corretor Rival");
   await confirmarModal(page, modal);
 
   let corretores = (await participantesDe(negocio.id)).filter((p) => p.role === "broker");
@@ -166,7 +166,7 @@ test("rateio de VGV fecha 100% com 2 e com 3 corretores", async ({ page }) => {
 
   await buscar(page, cliente);
   modal = await abrirDetalhe(page, cliente);
-  await escolher(seletor(modal, "Corretor 3 (opcional)"), "E2E Diretor Corretor");
+  await escolher(seletor(modal, "Corretor 3"), "E2E Diretor Corretor");
   await confirmarModal(page, modal);
 
   corretores = (await participantesDe(negocio.id)).filter((p) => p.role === "broker");
@@ -208,13 +208,18 @@ test("filtro de mês reduz a tabela ao mês pedido", async ({ page }) => {
   await semearNegocio({ cliente: fevereiro, monthBase: "2030-02-01" });
 
   await abrirPipeline(page);
-  await page.getByRole("button", { name: /filtrar negócio/i }).click();
-  await page.getByPlaceholder("03/2026").fill("01/2030");
+  // O botão passou a se chamar só "Filtrar" (o título do painel é que continua
+  // "Filtrar negócio"), e o mês virou um `<Select>` alimentado pelos meses que
+  // existem em `deals` — antes era campo de texto livre, onde dava para digitar
+  // um mês que não existia e ficar olhando uma tabela vazia sem entender.
+  await page.getByRole("button", { name: /^filtrar$/i }).click();
+  const filtroDeMes = page.getByRole("combobox", { name: "Mês-base" });
 
+  await escolher(filtroDeMes, "01/2030");
   await expect(linhaDoNegocio(page, janeiro)).toBeVisible();
   await expect(linhaDoNegocio(page, fevereiro)).toHaveCount(0);
 
-  await page.getByPlaceholder("03/2026").fill("02/2030");
+  await escolher(filtroDeMes, "02/2030");
   await expect(linhaDoNegocio(page, fevereiro)).toBeVisible();
   await expect(linhaDoNegocio(page, janeiro)).toHaveCount(0);
 });
@@ -226,11 +231,14 @@ test("filtro de Status 2 reduz a tabela ao rótulo pedido", async ({ page }) => 
   await semearNegocio({ cliente: pendente, statusDetail: "16. PENDENTE" });
 
   await abrirPipeline(page);
-  await page.getByRole("button", { name: /filtrar negócio/i }).click();
+  await page.getByRole("button", { name: /^filtrar$/i }).click();
   // Pelo nome acessível, não pelo texto atual: o gatilho passa a mostrar o
   // valor escolhido, então um locator baseado no texto deixa de casar logo
   // depois do clique.
-  await escolher(page.getByRole("combobox", { name: "Status 2" }), "13. ESTEIRA AGIL");
+  // `exact: true` não é preciosismo: cada linha da tabela tem o próprio Select
+  // de Status 2, nomeado "Status 2 de <cliente>" (achado X03), e o casamento por
+  // substring do `getByRole` acha os 15 de uma vez.
+  await escolher(page.getByRole("combobox", { name: "Status 2", exact: true }), "13. ESTEIRA AGIL");
 
   await expect(linhaDoNegocio(page, esteira)).toBeVisible();
   await expect(linhaDoNegocio(page, pendente)).toHaveCount(0);
@@ -245,9 +253,11 @@ test("comentário manual do histórico grava em deal_history com kind='comment'"
   await buscar(page, cliente);
   const modal = await abrirDetalhe(page, cliente);
 
-  const caixa = modal.getByPlaceholder(/digite aqui o novo histórico/i);
+  // O painel de comentários virou bloco próprio na Tarefa H: o texto mudou e o
+  // botão de enviar ganhou nome acessível, então o XPath de irmão saiu.
+  const caixa = modal.getByPlaceholder(/escreva o próximo passo deste negócio/i);
   await caixa.fill(texto);
-  await caixa.locator("xpath=following-sibling::button[1]").click();
+  await modal.getByRole("button", { name: /enviar comentário/i }).click();
 
   await expect(modal.getByText(texto)).toBeVisible();
   await expect(caixa).toHaveValue("");

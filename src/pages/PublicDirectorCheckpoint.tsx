@@ -12,14 +12,14 @@ import { CompactFunnel } from "@/components/ComparativeFunnel";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
 const MONTH_FIELDS = [
-  { key: "leads", label: "Leads", color: "text-cyan-400" },
-  { key: "ligacoes", label: "Ligações", color: "text-sky-400" },
-  { key: "coleta_docs", label: "Coleta Docs", color: "text-indigo-400" },
-  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-fuchsia-400" },
-  { key: "visitas_realizadas", label: "Visita Real.", color: "text-pink-400" },
-  { key: "analises", label: "Análise Env.", color: "text-amber-400" },
-  { key: "aprovados", label: "Análise Aprov.", color: "text-emerald-400" },
-  { key: "vendas", label: "Venda", color: "text-yellow-400" },
+  { key: "leads", label: "Leads", color: "text-info" },
+  { key: "ligacoes", label: "Ligações", color: "text-info" },
+  { key: "coleta_docs", label: "Coleta Docs", color: "text-info" },
+  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-chart-5" },
+  { key: "visitas_realizadas", label: "Visita Real.", color: "text-chart-5" },
+  { key: "analises", label: "Análise Env.", color: "text-warning" },
+  { key: "aprovados", label: "Análise Aprov.", color: "text-success" },
+  { key: "vendas", label: "Venda", color: "text-warning" },
 ] as const;
 
 type TeamOut = {
@@ -99,10 +99,10 @@ function DirectorSummaryCard({
   ];
 
   return (
-    <Card className="border-yellow-400/30 bg-card/60 backdrop-blur-xl">
+    <Card className="border-warning/30 bg-card/60 backdrop-blur-xl">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <Target className="h-4 w-4 text-yellow-400" /> Diretor: {title}
+          <Target className="h-4 w-4 text-warning" /> Diretor: {title}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -111,17 +111,17 @@ function DirectorSummaryCard({
             const below = i > 0 && r.pct < r.target;
             const above = i > 0 && r.pct >= r.target;
             return (
-              <div key={r.key} className={`px-2 py-1.5 rounded-md border bg-secondary/20 ${below ? "border-rose-500/50 bg-rose-500/5" : above ? "border-emerald-500/40 bg-emerald-500/5" : "border-border/40"}`}>
+              <div key={r.key} className={`px-2 py-1.5 rounded-md border bg-secondary/20 ${below ? "border-destructive/50 bg-destructive/5" : above ? "border-success/40 bg-success/5" : "border-border/40"}`}>
                 <div className="flex items-baseline justify-between gap-1">
-                  <span className="text-[9px] uppercase text-muted-foreground truncate">{r.label}</span>
-                  {i > 0 && <span className="text-[8px] text-muted-foreground">m{r.target}%</span>}
+                  <span className="text-eyebrow truncate">{r.label}</span>
+                  {i > 0 && <span className="text-eyebrow">m{r.target}%</span>}
                 </div>
                 <div className="flex items-baseline justify-between gap-1">
-                  <span className={`text-lg font-black leading-none ${below ? "text-rose-400" : above ? "text-emerald-400" : "text-foreground"}`}>{r.value}</span>
-                  <span className={`text-[10px] font-semibold ${below ? "text-rose-400" : above ? "text-emerald-400" : "text-muted-foreground"}`}>{r.pct.toFixed(0)}%</span>
+                  <span className={`text-lg font-black leading-none ${below ? "text-destructive" : above ? "text-success" : "text-foreground"}`}>{r.value}</span>
+                  <span className={`text-xs font-semibold ${below ? "text-destructive" : above ? "text-success" : "text-muted-foreground"}`}>{r.pct.toFixed(0)}%</span>
                 </div>
                 <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mt-1">
-                  <div className={below ? "h-full bg-rose-500" : "h-full bg-emerald-500"} style={{ width: `${Math.min(100, r.pct)}%` }} />
+                  <div className={below ? "h-full bg-destructive" : "h-full bg-success"} style={{ width: `${Math.min(100, r.pct)}%` }} />
                 </div>
               </div>
             );
@@ -135,11 +135,11 @@ function DirectorSummaryCard({
             return (
               <div key={team.id} className="rounded-md border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs">
                 <div className="font-semibold truncate">{team.name}</div>
-                <div className="mt-1 grid grid-cols-4 gap-1 text-[10px] text-muted-foreground">
-                  <span>Leads <b className="text-cyan-400">{a.leads}</b></span>
-                  <span>An. <b className={anPct >= tg.analise_enviada_pct ? "text-emerald-400" : "text-rose-400"}>{a.enviadas}</b></span>
-                  <span>Aprov. <b className="text-emerald-400">{a.aprovadas}</b></span>
-                  <span>Venda <b className="text-yellow-400">{a.vendas}</b></span>
+                <div className="mt-1 grid grid-cols-4 gap-1 text-xs text-muted-foreground">
+                  <span>Leads <b className="text-info">{a.leads}</b></span>
+                  <span>An. <b className={anPct >= tg.analise_enviada_pct ? "text-success" : "text-destructive"}>{a.enviadas}</b></span>
+                  <span>Aprov. <b className="text-success">{a.aprovadas}</b></span>
+                  <span>Venda <b className="text-warning">{a.vendas}</b></span>
                 </div>
               </div>
             );
@@ -281,7 +281,7 @@ export default function PublicDirectorCheckpoint() {
   }, [month]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0F0E19] via-[#12122a] to-[#0F0E19] text-foreground">
+    <div className="gradient-premium min-h-screen bg-background text-foreground">
       <div className="max-w-6xl mx-auto p-6 space-y-4">
         <header className="flex flex-wrap items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
@@ -329,13 +329,13 @@ export default function PublicDirectorCheckpoint() {
                   className="text-center text-2xl tracking-[0.5em] font-bold h-14"
                   autoFocus
                 />
-                {error && <p className="text-sm text-rose-400 text-center">{error}</p>}
+                {error && <p className="text-sm text-destructive text-center">{error}</p>}
                 <Button type="submit" className="w-full" disabled={pin.length < 4}>Entrar</Button>
               </form>
             </CardContent>
           </Card>
         ) : error ? (
-          <Card className="p-8 text-center text-sm text-rose-400">{error}</Card>
+          <Card className="p-8 text-center text-sm text-destructive">{error}</Card>
         ) : !director ? (
           <Card className="p-8 text-center text-sm text-muted-foreground">Diretor não encontrado.</Card>
         ) : teams.length === 0 ? (
@@ -348,7 +348,7 @@ export default function PublicDirectorCheckpoint() {
                 <CardTitle className="text-sm flex items-center gap-2">
                   <ExternalLink className="h-4 w-4 text-primary" /> Preencher meu daily
                 </CardTitle>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Acesse o daily de cada equipe para preenchimento.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Acesse o daily de cada equipe para preenchimento.</p>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
                 {teams.map(t => (
@@ -390,13 +390,13 @@ export default function PublicDirectorCheckpoint() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-xs space-y-1">
-                  <p>Leads → Análises: <span className={funnelSummary.pAn >= 10 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>{funnelSummary.pAn.toFixed(1)}%</span> (meta 10%)</p>
-                  <p>Análises → Aprovações: <span className={funnelSummary.pAp >= 40 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>{funnelSummary.pAp.toFixed(1)}%</span> (meta 40%)</p>
-                  <p>Aprovações → Vendas: <span className={funnelSummary.pVd >= 50 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>{funnelSummary.pVd.toFixed(1)}%</span> (meta 50%)</p>
+                  <p>Leads → Análises: <span className={funnelSummary.pAn >= 10 ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pAn.toFixed(1)}%</span> (meta 10%)</p>
+                  <p>Análises → Aprovações: <span className={funnelSummary.pAp >= 40 ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pAp.toFixed(1)}%</span> (meta 40%)</p>
+                  <p>Aprovações → Vendas: <span className={funnelSummary.pVd >= 50 ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pVd.toFixed(1)}%</span> (meta 50%)</p>
                   {funnelSummary.issues.length === 0 ? (
-                    <p className="text-emerald-400 mt-2">Funil dentro das metas em todas as etapas.</p>
+                    <p className="text-success mt-2">Funil dentro das metas em todas as etapas.</p>
                   ) : (
-                    <ul className="mt-2 list-disc list-inside text-rose-400">
+                    <ul className="mt-2 list-disc list-inside text-destructive">
                       {funnelSummary.issues.map((i, k) => <li key={k}>{i}</li>)}
                     </ul>
                   )}
@@ -405,18 +405,18 @@ export default function PublicDirectorCheckpoint() {
             )}
 
             {month && (
-              <Card className="border-cyan-400/30 bg-card/60 backdrop-blur-xl">
+              <Card className="border-info/30 bg-card/60 backdrop-blur-xl">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-cyan-400" /> Resumo do mês ({format(new Date(), "MMMM", { locale: ptBR })}) — Diretoria
+                    <TrendingUp className="h-4 w-4 text-info" /> Resumo do mês ({format(new Date(), "MMMM", { locale: ptBR })}) — Diretoria
                   </CardTitle>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Somatório de todas as equipes do diretor</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Somatório de todas as equipes do diretor</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2 justify-items-center max-w-3xl mx-auto">
                     {MONTH_FIELDS.map(f => (
                       <div key={f.key} className="px-2 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-center">
-                        <p className="text-[9px] uppercase text-muted-foreground">{f.label}</p>
+                        <p className="text-eyebrow">{f.label}</p>
                         <p className={`text-lg font-black ${f.color}`}>{month.totals?.[f.key] ?? 0}</p>
                       </div>
                     ))}
@@ -425,11 +425,11 @@ export default function PublicDirectorCheckpoint() {
                     <button
                       type="button"
                       onClick={() => setMissingOpen(true)}
-                      className="w-full rounded-md border border-rose-500/40 bg-rose-500/5 p-2 flex items-start gap-2 text-left hover:bg-rose-500/10 transition"
+                      className="w-full rounded-md border border-destructive/40 bg-destructive/5 p-2 flex items-start gap-2 text-left hover:bg-destructive/10 transition"
                     >
-                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                      <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
                       <div className="text-xs flex-1">
-                        <p className="font-bold text-rose-400">
+                        <p className="font-bold text-destructive">
                           Checkpoints não efetuados ({month.missing_days.length} {month.missing_days.length === 1 ? "dia" : "dias"}) — clique para ver quem não preencheu
                         </p>
                         <p className="text-muted-foreground mt-0.5">
@@ -447,7 +447,7 @@ export default function PublicDirectorCheckpoint() {
         <Dialog open={missingOpen} onOpenChange={setMissingOpen}>
           <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-rose-400">
+              <DialogTitle className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="h-4 w-4" /> Pendências do mês
               </DialogTitle>
             </DialogHeader>

@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Fila de envio do dossiê para a construtora — o passo que fecha a esteira do CCA.
@@ -45,7 +46,7 @@ export async function listDealSubmissions(dealId: string): Promise<DeveloperSubm
     .select("id,deal_id,developer_id,to_email,cc_emails,subject,body,document_ids,status,attempts,last_error,sent_at,created_at")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("listar envios à construtora", error);
   return (data ?? []) as DeveloperSubmissionRecord[];
 }
 
@@ -75,7 +76,7 @@ export async function createDeveloperSubmission(input: CreateSubmissionInput): P
     })
     .select("id,deal_id,developer_id,to_email,cc_emails,subject,body,document_ids,status,attempts,last_error,sent_at,created_at")
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("criar envio à construtora", error);
   return data as DeveloperSubmissionRecord;
 }
 
@@ -87,7 +88,7 @@ export async function requeueSubmission(id: string): Promise<void> {
     // tentativas, e reenfileirar sem zerar era um botão que não fazia nada.
     .update({ status: "queued", last_error: null, attempts: 0 })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("reenfileirar envio", error);
 }
 
 export async function cancelSubmission(id: string): Promise<void> {
@@ -95,7 +96,7 @@ export async function cancelSubmission(id: string): Promise<void> {
     .from("developer_submissions")
     .update({ status: "cancelled" })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("cancelar envio", error);
 }
 
 /** Split tolerante para o campo de cópias: aceita vírgula, ponto e vírgula ou

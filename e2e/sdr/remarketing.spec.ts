@@ -12,18 +12,35 @@
 import { test, expect, db, aguardarCarregamento, runTag } from "../support/fixtures";
 import { mintSession } from "../support/session";
 import { resolveTarget } from "../support/target";
-import * as XLSX from "xlsx";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const tag = runTag();
 
 type ListaRow = { id: string; name: string; status: string; template_id: string | null; agent_id: string | null };
 type ContatoRow = { id: string; full_name: string | null; phone: string; status: string };
 
+/**
+ * A planilha do teste virou CSV.
+ *
+ * O parser do app trocou de biblioteca (S06: `xlsx` 0.18.5 tinha duas CVEs
+ * abertas). A nova, `read-excel-file`, só LÊ — não há como gerar um `.xlsx`
+ * aqui sem reintroduzir a dependência que acabou de sair. O `<input>` do
+ * remarketing aceita `.xlsx,.xls,.csv` e `parseSheet` decide pelo nome do
+ * arquivo, então o CSV percorre o mesmo caminho a partir de `rowsToRecords`.
+ * O ramo binário fica coberto pelo teste do fim deste arquivo, que sobe o
+ * `.xlsx` de verdade de `__fixtures__`.
+ */
 const planilha = (linhas: Record<string, string>[]) => {
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), "Contatos");
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  const colunas = Object.keys(linhas[0]);
+  const celula = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const texto = [colunas.join(","), ...linhas.map((l) => colunas.map((c) => celula(l[c])).join(","))].join("\n");
+  return Buffer.from(texto, "utf8");
 };
+
+/** Planilha binária de verdade, a mesma que `importSheet.test.ts` usa. */
+const XLSX_FIXTURE = () => readFileSync(resolve("src/components/leads/__fixtures__/leads-teste.xlsx"));
+
 
 const listaChamada = (nome: string) =>
   db.select<ListaRow>(
@@ -68,8 +85,8 @@ test.describe("SDR · importação de lista", () => {
     await page.getByRole("option", { name: agente.name }).click();
 
     await seletorDeArquivo(page).setInputFiles({
-      name: "remarketing.xlsx",
-      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      name: "remarketing.csv",
+      mimeType: "text/csv",
       buffer: planilha([
         { nome: "Ana Teste", fone: "(11) 98888-1234", campanha: "Retomada Julho" },
         { nome: "Bruno Teste", fone: "11 97777 4321", campanha: "Retomada Julho" },
@@ -96,6 +113,38 @@ test.describe("SDR · importação de lista", () => {
     expect(contatos.find((c) => c.phone === "5511988881234")?.full_name).toBe("Ana Teste");
   });
 
+  /**
+   * O ramo binário do parser, ponta a ponta.
+   *
+   * Os outros casos deste arquivo entram por CSV; sem este, a troca de
+   * biblioteca do S06 passaria no e2e sem nenhum `.xlsx` de verdade ter sido
+   * aberto pelo app. O fixture é o mesmo de `importSheet.test.ts` — colunas
+   * `Cliente`/`Telefone`, que o `handleFile` do SDR também aceita.
+   */
+  test("planilha .xlsx de verdade também importa", async ({ page }) => {
+    const nome = `Lista xlsx ${tag}`;
+
+    const painel = await abrirRemarketing(page);
+    await painel.getByPlaceholder("Nome da lista").fill(nome);
+    await seletorDeArquivo(page).setInputFiles({
+      name: "leads-teste.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: XLSX_FIXTURE(),
+    });
+
+    await expect(page.getByText(/criada com 3 contatos/i)).toBeVisible({ timeout: 20_000 });
+
+    const [lista] = await listaChamada(nome);
+    expect(lista, "lista não chegou em remarketing_lists").toBeTruthy();
+    const contatos = await contatosDa(lista.id);
+    expect(contatos.map((c) => c.phone)).toEqual([
+      "5511988770001",
+      "5511988770002",
+      "5511988770003",
+    ]);
+    expect(contatos.find((c) => c.phone === "5511988770001")?.full_name).toBe("Ana Paula Ribeiro");
+  });
+
   // O 400 do trigger é o que se quer provocar; o teste cobra o aviso na tela.
   test.describe(() => {
     test.use({ errosEsperados: [/status of 400/i] });
@@ -106,8 +155,8 @@ test.describe("SDR · importação de lista", () => {
     const painel = await abrirRemarketing(page);
     await painel.getByPlaceholder("Nome da lista").fill(nome);
     await seletorDeArquivo(page).setInputFiles({
-      name: "invalida.xlsx",
-      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      name: "invalida.csv",
+      mimeType: "text/csv",
       buffer: planilha([
         { nome: "Ok", fone: "(11) 95555-0001", campanha: "x" },
         { nome: "Sem número", fone: "telefone não informado", campanha: "x" },
@@ -133,8 +182,8 @@ test.describe("SDR · importação de lista", () => {
       const painel = await abrirRemarketing(page);
       await painel.getByPlaceholder("Nome da lista").fill(nome);
       await seletorDeArquivo(page).setInputFiles({
-        name: "invalida.xlsx",
-        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        name: "invalida.csv",
+        mimeType: "text/csv",
         buffer: planilha([{ nome: "Sem número", fone: "abc", campanha: "x" }]),
       });
 

@@ -35,7 +35,9 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
 
     await abrirNegocio(page, cenario.cliente);
     await abaDoModal(page, /^cca$/i).click();
-    await page.getByPlaceholder("Inserir Renda Aprovada").fill("R$ 8.500,00");
+    // Os campos da aba CCA ganharam `useId` + `<Label htmlFor>` na Tarefa H
+    // (achado X04): o placeholder deixou de ser a única pista do que é o campo.
+    await page.getByLabel("Renda aprovada", { exact: true }).fill("R$ 8.500,00");
     await page.getByRole("button", { name: /confirmar alterações/i }).click();
     await expect(page.getByText("Alterações salvas", { exact: true })).toBeVisible();
 
@@ -48,13 +50,18 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
 
     await page.goto("/cca");
     await aguardarCarregamento(page);
-    const card = page.getByText(cenario.cliente, { exact: true })
-      .locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]");
-    await card.hover();
-    await card.getByRole("button", { name: /mover p\/ aprovado/i }).click();
-    await page.getByPlaceholder("Observações...").fill("Crédito aprovado no teste E2E");
+    // O cartão virou `<article>` e o "Mover p/ X" — que só aparecia no hover,
+    // em 8 px (achado X02) — virou um `<Select>` **sempre visível**, com nome
+    // acessível. Sem hover: quem usa no celular não tem hover para dar.
+    const card = page.getByRole("article").filter({ hasText: cenario.cliente });
+    await expect(card).toHaveCount(1);
+    await card.getByRole("combobox", { name: `Mover ${cenario.cliente} para outro estágio` }).click();
+    await page.getByRole("option", { name: "Aprovado", exact: true }).click();
+    await page.getByLabel("Observações", { exact: true }).fill("Crédito aprovado no teste E2E");
     await page.getByRole("button", { name: /^confirmar$/i }).click();
-    await expect(page.getByText(/movido para aprovado/i)).toBeVisible();
+    // O aviso passou a ser "Caso movido — <cliente> → <estágio>".
+    await expect(page.getByText("Caso movido", { exact: true })).toBeVisible();
+    await expect(page.getByText(`${cenario.cliente} → Aprovado.`)).toBeVisible();
 
     await expect.poll(async () => {
       const [row] = await db.select<{ status: string }>(`cca_cases?id=eq.${casoId}&select=status`);
@@ -87,7 +94,10 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
       attempts: 3,
       last_error: "SMTP indisponível",
     });
-    await page.getByRole("button", { name: /^fechar$/i }).click();
+    // Dois "Fechar" na página: o do rodapé do diálogo e o "×" do primitivo
+    // `dialog.tsx`, que ganhou `sr-only` "Fechar" (achado X03). Ancorar no
+    // diálogo aberto resolve sem depender de qual dos dois vem primeiro.
+    await page.getByRole("dialog").getByRole("button", { name: /^fechar$/i }).first().click();
     await card.getByRole("button", { name: /enviar à construtora/i }).click();
     await page.getByRole("button", { name: /reenviar/i }).click();
     await expect(page.getByText("Reenfileirado", { exact: true })).toBeVisible();
