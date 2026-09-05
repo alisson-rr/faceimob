@@ -21,8 +21,39 @@ export class ImportError extends Error {}
 
 const isExcel = (name: string) => /\.(xlsx|xls)$/i.test(name);
 
+/** Separadores que aparecem em CSV de verdade, na ordem de desempate. */
+const CSV_DELIMITERS = [",", ";", "\t"] as const;
+export type CsvDelimiter = (typeof CSV_DELIMITERS)[number];
+
+/**
+ * Qual caractere separa as colunas desta planilha.
+ *
+ * O Excel em pt-BR salva CSV com `;` — é o separador de lista do Windows em
+ * português. Assumir vírgula fazia a linha inteira virar UMA coluna: o
+ * mapeamento não achava campo nenhum, `rowsToLeads` descartava tudo pelo
+ * `row.length > 1` e a tela dizia "0 leads serão importados" sem motivo.
+ *
+ * Conta fora das aspas, no cabeçalho, e vence quem aparece mais. Empate fica
+ * com a vírgula, que é o formato de exportação do Leadfy.
+ */
+export const detectDelimiter = (headerLine: string): CsvDelimiter => {
+  let melhor: CsvDelimiter = ",";
+  let maior = 0;
+  for (const delimiter of CSV_DELIMITERS) {
+    let count = 0;
+    let quoted = false;
+    for (let i = 0; i < headerLine.length; i += 1) {
+      const char = headerLine[i];
+      if (char === '"') quoted = !quoted;
+      else if (char === delimiter && !quoted) count += 1;
+    }
+    if (count > maior) { maior = count; melhor = delimiter; }
+  }
+  return melhor;
+};
+
 /** Divide uma linha de CSV respeitando aspas — endereço com vírgula é comum. */
-const splitCsvLine = (line: string): string[] => {
+const splitCsvLine = (line: string, delimiter: CsvDelimiter = ","): string[] => {
   const cells: string[] = [];
   let current = "";
   let quoted = false;
@@ -31,7 +62,7 @@ const splitCsvLine = (line: string): string[] => {
     if (char === '"') {
       if (quoted && line[i + 1] === '"') { current += '"'; i += 1; }
       else quoted = !quoted;
-    } else if (char === "," && !quoted) {
+    } else if (char === delimiter && !quoted) {
       cells.push(current.trim());
       current = "";
     } else {
@@ -40,6 +71,14 @@ const splitCsvLine = (line: string): string[] => {
   }
   cells.push(current.trim());
   return cells;
+};
+
+/** CSV inteiro em matriz, com o separador descoberto no cabeçalho. */
+export const parseCsv = (text: string): string[][] => {
+  const lines = text.split(/\r?\n/);
+  const header = lines.find((line) => line.trim()) ?? "";
+  const delimiter = detectDelimiter(header);
+  return lines.map((line) => splitCsvLine(line, delimiter));
 };
 
 /** Primeira aba do XLSX como matriz de texto. */
@@ -88,7 +127,7 @@ export async function parseSheet(file: File): Promise<string[][]> {
   try {
     rows = isExcel(file.name)
       ? await readWorkbook(await readFile(file, "buffer"))
-      : (await readFile(file, "text")).split(/\r?\n/).map(splitCsvLine);
+      : parseCsv(await readFile(file, "text"));
   } catch (err) {
     throw asImportError(err);
   }
@@ -117,38 +156,157 @@ export function rowsToRecords(rows: string[][]): Record<string, string>[] {
 }
 
 /**
+ * Qual coluna da planilha alimenta cada campo do lead. `-1` = não encontrada.
+ *
+ * A detecção era `headers.findIndex(h => keys.some(k => h.includes(k)))`: o
+ * PRIMEIRO cabeçalho que casasse com QUALQUER sinônimo vencia, sem prioridade.
+ * Uma planilha com "E-mail do cliente" à esquerda de "Nome" punha o e-mail em
+ * `full_name` (porque "cliente" batia), e "Canal" à esquerda de "Telefone"
+ * virava o telefone — erro que só aparecia depois de gravado, porque a prévia
+ * repete a planilha crua.
+ *
+ * Duas regras resolvem: cada campo procura os sinônimos NA ORDEM (o específico
+ * antes do genérico), e o nome — que tem os sinônimos mais frouxos — é o último
+ * a escolher, sobre as colunas que sobraram.
+ */
+export type ColumnMap = {
+  name: number;
+  phone: number;
+  email: number;
+  source: number;
+  notes: number;
+};
+
+export const COLUMN_LABELS: Record<keyof ColumnMap, string> = {
+  name: "Nome",
+  phone: "Telefone",
+  email: "E-mail",
+  source: "Origem",
+  notes: "Observação",
+};
+
+const SYNONYMS: Record<keyof ColumnMap, string[]> = {
+  email: ["e-mail", "email"],
+  phone: ["telefone", "whatsapp", "celular", "phone", "fone", "canal"],
+  source: ["fonte", "origem", "source"],
+  notes: ["observaç", "observac", "mensagem", "obs"],
+  name: ["nome", "cliente", "name", "lead"],
+};
+
+export function mapColumns(header: string[]): ColumnMap {
+  const headers = header.map((cell) => cell.toLowerCase().trim());
+  const taken = new Set<number>();
+  const map: ColumnMap = { name: -1, phone: -1, email: -1, source: -1, notes: -1 };
+
+  // A ordem das chaves é a ordem de escolha: `name` por último, de propósito.
+  for (const field of Object.keys(SYNONYMS) as (keyof ColumnMap)[]) {
+    for (const key of SYNONYMS[field]) {
+      const index = headers.findIndex((cell, i) => !taken.has(i) && cell.includes(key));
+      if (index >= 0) {
+        map[field] = index;
+        taken.add(index);
+        break;
+      }
+    }
+  }
+  return map;
+}
+
+/**
  * Linhas da planilha → leads para `createLeads`.
  *
  * A origem sai do rótulo da própria planilha quando ele bate com uma origem
  * cadastrada; senão cai na origem de canal `import` (Leadfy). O `utm_source`
  * guarda o rótulo cru, que é o que permite auditar de onde veio depois.
  */
-export function rowsToLeads(rows: string[][], sources: LeadSource[]): NewLeadInput[] {
-  const headers = rows[0].map((header) => header.toLowerCase().trim());
-  const find = (...keys: string[]) => headers.findIndex((header) => keys.some((key) => header.includes(key)));
-  const nameIdx = find("cliente", "nome", "name");
-  const phoneIdx = find("telefone", "phone", "whatsapp", "canal");
-  const emailIdx = find("email", "e-mail");
-  const sourceIdx = find("fonte", "origem", "source");
-  const notesIdx = find("observaç", "mensagem", "obs");
+export function rowsToLeads(
+  rows: string[][],
+  sources: LeadSource[],
+  groupId?: string | null,
+): NewLeadInput[] {
+  const columns = mapColumns(rows[0]);
 
   const importSource = sources.find((source) => source.channel === "import")
     || sources.find((source) => /leadfy/i.test(source.label));
 
+  // Uma resposta só para "esta linha tem nome?": o filtro aceitava a linha por
+  // `row[0]` (uma data, um id) e a gravação mandava `full_name` vazio — o
+  // CHECK do banco derrubava a importação inteira sem dizer qual linha.
+  const nameOf = (row: string[]) => ((columns.name >= 0 ? row[columns.name] : row[0]) ?? "").trim();
+
   return rows.slice(1)
-    .filter((row) => row.length > 1 && (row[nameIdx] || row[0]))
+    .filter((row) => row.length > 1 && nameOf(row))
     .map((row) => {
-      const label = sourceIdx >= 0 ? row[sourceIdx] : "";
+      const label = columns.source >= 0 ? row[columns.source] : "";
       const matched = label
         ? sources.find((source) => source.label.toLowerCase() === label.toLowerCase())
         : null;
       return {
-        full_name: (nameIdx >= 0 ? row[nameIdx] : row[0]) || "",
-        phone: phoneIdx >= 0 ? row[phoneIdx] : null,
-        email: emailIdx >= 0 ? row[emailIdx] : null,
+        full_name: nameOf(row),
+        phone: columns.phone >= 0 ? row[columns.phone] : null,
+        email: columns.email >= 0 ? row[columns.email] : null,
         source_id: (matched || importSource)?.id || null,
         utm_source: label || "Leadfy",
-        notes: notesIdx >= 0 ? row[notesIdx] : "Importado via Leadfy",
+        notes: columns.notes >= 0 ? row[columns.notes] : "Importado via Leadfy",
+        distribution_group_id: groupId || null,
       };
     });
+}
+
+/**
+ * Por que nenhuma linha virou lead.
+ *
+ * "0 leads serão importados" sem motivo é o pior estado da tela: a planilha
+ * está lá, a prévia mostra as linhas, e o botão não faz nada. As três causas
+ * reais têm conserto diferente — separador errado, coluna de nome ausente,
+ * linhas sem nome —, então a mensagem precisa dizer qual delas é.
+ *
+ * `null` quando não há o que explicar (a importação vai acontecer).
+ */
+export function explainEmptyImport(rows: string[][], sources: LeadSource[]): string | null {
+  if (rows.length < 2) return null;
+  if (rowsToLeads(rows, sources).length > 0) return null;
+
+  const header = rows[0] ?? [];
+  if (header.length <= 1) {
+    return "A planilha veio com uma coluna só. Isso costuma ser CSV salvo com outro separador "
+      + "(ponto e vírgula, tabulação) ou um arquivo de texto comum: salve de novo como CSV ou "
+      + "XLSX e reenvie.";
+  }
+  if (mapColumns(header).name < 0 && !(rows[1]?.[0] ?? "").trim()) {
+    return "Nenhuma coluna foi reconhecida como o nome do cliente, e a primeira coluna está "
+      + "vazia. Renomeie o cabeçalho da coluna do nome para “Nome” e reenvie.";
+  }
+  return "Todas as linhas estão sem nome de cliente. O nome é o único campo obrigatório do lead.";
+}
+
+/**
+ * Separa o que já existe do que é novo.
+ *
+ * `existing` são os telefones (só dígitos) que o banco devolveu por
+ * `existing_lead_phones`. A repetição DENTRO da própria planilha conta junto:
+ * a mesma exportação do Leadfy costuma trazer a linha duas vezes, e duas linhas
+ * iguais viram dois leads na roleta — dois corretores no mesmo cliente.
+ *
+ * Lead sem telefone não tem como ser comparado: entra como novo, porque
+ * recusá-lo perderia lead legítimo de planilha só com nome e e-mail.
+ */
+export function splitDuplicates<T extends { phone?: string | null }>(
+  inputs: T[],
+  existing: Set<string>,
+): { novos: T[]; repetidos: T[] } {
+  const novos: T[] = [];
+  const repetidos: T[] = [];
+  const vistos = new Set<string>();
+
+  for (const input of inputs) {
+    const digits = (input.phone || "").replace(/\D/g, "");
+    if (digits && (existing.has(digits) || vistos.has(digits))) {
+      repetidos.push(input);
+      continue;
+    }
+    if (digits) vistos.add(digits);
+    novos.push(input);
+  }
+  return { novos, repetidos };
 }

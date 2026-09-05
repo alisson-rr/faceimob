@@ -48,9 +48,11 @@ begin
            coalesce(extras, 'nenhuma')));
 
   -- As 3 continuam acessíveis — revogar demais quebraria o Diário público.
+  -- `public_daily_submit` é a assinatura da 0038 (notas e gerente): a 0019
+  -- revoga EXECUTE de função nova, e o grant reemitido lá é o que se cobra aqui.
   perform pg_temp.check6(
     has_function_privilege('anon', 'public.public_daily_team(text,text)', 'execute')
-    and has_function_privilege('anon', 'public.public_daily_submit(text,text,jsonb)', 'execute')
+    and has_function_privilege('anon', 'public.public_daily_submit(text,text,jsonb,text,text)', 'execute')
     and has_function_privilege('anon', 'public.public_director_checkpoint(text,date,text)', 'execute'),
     'as 3 RPCs do Diário seguem executáveis por anon');
 

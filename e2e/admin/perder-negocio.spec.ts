@@ -28,9 +28,11 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test, db, runTag } from "../support/fixtures";
 import {
+  abrirDetalhe,
   abrirPipeline,
   buscar,
   campo,
+  confirmarModal,
   escolher,
   idDaEtapa,
   limparNegocios,
@@ -184,7 +186,13 @@ test.describe("pipeline · perder negócio", () => {
     await abrirPipeline(page);
     await buscar(page, cliente);
     await expect(linhaDoNegocio(page, cliente)).toContainText("Perdido");
-    await expect(botaoPerder(page, cliente)).toBeDisabled();
+    // Perder de novo o que já está perdido não é oferecido: a linha TROCA o
+    // botão pelo de reabrir (o caminho do gestor), em vez de deixar um "perder"
+    // desabilitado. É a mesma conferência do teste "negócio perdido não reabre
+    // pelo botão de agendar visita", que já cobrava a ausência aqui embaixo.
+    await expect(botaoPerder(page, cliente)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: `Reabrir o negócio de ${cliente}` }))
+      .toBeVisible();
     await expect(linhaDoNegocio(page, cliente).getByRole("combobox")).toBeDisabled();
   });
 
@@ -257,5 +265,164 @@ test.describe("pipeline · perder negócio", () => {
 
     const ativos = await db.select(`deals?id=eq.${depois.id}&outcome=eq.open&select=id`);
     expect(ativos, "reprovado confirmado sai da conta de ativos").toHaveLength(0);
+  });
+
+  test("negócio perdido não reabre pelo botão de agendar visita", async ({ page }) => {
+    // O buraco que este teste fecha: só o botão de perder olhava `deal.active`.
+    // O de calendário, ao lado, continuava ativo — e um clique nele gravava
+    // `stage_id` de "Visita agendada", o que faz `deals_guard_stage` devolver
+    // `outcome='open'` e limpar `closed_at`. O negócio encerrado voltava para o
+    // funil, para o VGV e para o ranking, com o motivo da perda ainda gravado.
+    const cliente = nomeCliente("Marta Encerrada");
+    const negocio = await semearNegocio({ cliente, statusDetail: STATUS_INICIAL });
+    await db.update(`deals?id=eq.${negocio.id}`, {
+      stage_id: etapaPerdido,
+      outcome: "lost",
+      closed_at: new Date().toISOString(),
+      lost_reason: "18. QUEDA",
+      status_detail: "18. QUEDA",
+    });
+    const antes = await estadoDe(cliente);
+
+    await abrirPipeline(page);
+    await buscar(page, cliente);
+
+    const agendar = page.getByRole("button", { name: `Agendar visita de ${cliente}` });
+    await expect(agendar, "encerrado não agenda visita").toBeDisabled();
+    // Perder de novo o que já está perdido deixou de ser oferecido: a linha
+    // troca o botão pelo de reabrir, que é o caminho do gestor.
+    await expect(botaoPerder(page, cliente)).toHaveCount(0);
+
+    // Clique num botão desabilitado não dispara nada; a janela existe para o
+    // caso de a trava sumir e o app tentar escrever mesmo assim.
+    await agendar.click({ force: true }).catch(() => undefined);
+    await page.waitForTimeout(JANELA_DE_ESCRITA);
+    expect(await estadoDe(cliente), "o negócio perdido continua perdido").toEqual(antes);
+  });
+
+  /**
+   * O desfazer que não existia.
+   *
+   * O próprio diálogo de perda diz "reabrir depois exige um gestor", e não
+   * havia tela, botão nem RPC que o gestor usasse: o único caminho era UPDATE
+   * direto no banco — o que na prática significa que ninguém desfazia um
+   * encerramento por engano.
+   */
+  test("o admin reabre um negócio encerrado e ele volta ao funil", async ({ page }) => {
+    const cliente = nomeCliente("Rita Reaberta");
+    const negocio = await semearNegocio({
+      cliente, statusDetail: STATUS_INICIAL, brokerId: await db.profileIdOf("broker"),
+    });
+    await db.update(`deals?id=eq.${negocio.id}`, {
+      stage_id: etapaPerdido,
+      outcome: "lost",
+      closed_at: new Date().toISOString(),
+      lost_reason: "18. QUEDA — cliente desistiu",
+      status_detail: "18. QUEDA",
+    });
+
+    await abrirPipeline(page);
+    await buscar(page, cliente);
+
+    await page.getByRole("button", { name: `Reabrir o negócio de ${cliente}` }).click();
+    const dialogo = confirmacao(page);
+    // A confirmação diz o que vai acontecer, inclusive que o motivo some.
+    await expect(dialogo).toContainText("Proposta");
+    await expect(dialogo).toContainText("18. QUEDA — cliente desistiu");
+    await campo(dialogo, "Por que está reabrindo? (opcional)").fill("encerrado por engano");
+    await dialogo.getByRole("button", { name: /reabrir negócio/i }).click();
+    await expect(dialogo).toBeHidden();
+
+    await expect.poll(async () => (await negocioPorCliente(cliente)).outcome).toBe("open");
+    const depois = await negocioPorCliente(cliente);
+    expect(depois.stage_id, "volta para Proposta").toBe(await idDaEtapa("proposal"));
+    expect(depois.lost_reason, "o motivo da perda é apagado").toBeNull();
+    // O rótulo de perda também sai. Limpar só o `lost_reason` deixava o negócio
+    // reaberto exibindo "18. QUEDA" no Status 2 — e o salvamento seguinte lia
+    // esse rótulo (`dealStageCodeFor` → `isLossStatus`), mandava o negócio de
+    // volta para `lost` e desfazia a reabertura sem ninguém pedir.
+    expect(depois.status_detail, "o rótulo de perda também sai do Status 2").toBeNull();
+    expect(depois.closed_at, "o gatilho da etapa limpa o fechamento").toBeNull();
+
+    // E o porquê da reabertura fica registrado — `deal_history` é log imútavel
+    // escrito por RPC, então a nota só existe se a tela a gravar.
+    await expect
+      .poll(async () => {
+        const linhas = await db.select<{ to_value: string | null }>(
+          `deal_history?deal_id=eq.${negocio.id}&kind=eq.comment&select=to_value`,
+        );
+        return linhas.map((l) => l.to_value).join(" | ");
+      })
+      .toContain("encerrado por engano");
+  });
+
+  /**
+   * `saveLegacyDeal` reescrevia `lost_reason` em TODO update: abrir o negócio
+   * perdido e confirmar apagava a observação que a confirmação de perda
+   * concatenou — e virava `null` para qualquer rótulo que não normalizasse,
+   * como "19. REPROVADO".
+   */
+  test("salvar pelo modal não apaga o motivo da perda", async ({ page }) => {
+    const cliente = nomeCliente("Otavio Motivo");
+    const negocio = await semearNegocio({
+      cliente, statusDetail: "19. REPROVADO", brokerId: await db.profileIdOf("broker"),
+    });
+    await db.update(`deals?id=eq.${negocio.id}`, {
+      stage_id: etapaPerdido,
+      outcome: "lost",
+      closed_at: new Date().toISOString(),
+      lost_reason: "19. REPROVADO — renda insuficiente",
+    });
+
+    await abrirPipeline(page);
+    await buscar(page, cliente);
+    const modal = await abrirDetalhe(page, cliente);
+    await campo(modal, "Bloco | unidade").fill("902");
+    await confirmarModal(page, modal);
+
+    await expect.poll(async () => (await negocioPorCliente(cliente)).unit).toBe("902");
+    const depois = await negocioPorCliente(cliente);
+    expect(depois.lost_reason, "o motivo sobrevive ao salvamento")
+      .toBe("19. REPROVADO — renda insuficiente");
+    expect(depois.outcome, "e o negócio continua encerrado").toBe("lost");
+  });
+
+  /**
+   * O recorte que o teste acima NÃO cobria — e que é o dos dados reais.
+   *
+   * Ele semeia `status_detail` junto do `lost_reason`, que é exatamente o único
+   * ramo em que a comparação antiga funcionava. Com `status_detail` NULO — o
+   * caso dos negócios `…0004` ("Comprou com concorrente.") e `…0025` da
+   * homologação — o "Status 2" que a tela mostra é o rótulo DERIVADO de
+   * `outcome` ("QUEDA"), que nunca casa com um motivo em texto livre: o
+   * primeiro salvamento pelo modal trocava a frase do operador por "QUEDA".
+   */
+  test("salvar pelo modal não apaga motivo em texto livre (sem Status 2 escolhido)", async ({ page }) => {
+    const cliente = nomeCliente("Paula TextoLivre");
+    const motivo = "Comprou com concorrente.";
+    // Sem `statusDetail`: é assim que os negócios importados chegaram.
+    const negocio = await semearNegocio({ cliente, brokerId: await db.profileIdOf("broker") });
+    await db.update(`deals?id=eq.${negocio.id}`, {
+      stage_id: etapaPerdido,
+      outcome: "lost",
+      closed_at: new Date().toISOString(),
+      lost_reason: motivo,
+      status_detail: null,
+    });
+
+    await abrirPipeline(page);
+    await buscar(page, cliente);
+    const modal = await abrirDetalhe(page, cliente);
+    // A tela exibe o rótulo deduzido, e não uma escolha de ninguém.
+    await expect(seletor(modal, "Status da venda (Status 2)")).toContainText("QUEDA");
+
+    await campo(modal, "Bloco | unidade").fill("1502");
+    await confirmarModal(page, modal);
+
+    await expect.poll(async () => (await negocioPorCliente(cliente)).unit).toBe("1502");
+    const depois = await negocioPorCliente(cliente);
+    expect(depois.lost_reason, "o motivo em texto livre não vira rótulo").toBe(motivo);
+    expect(depois.status_detail, "e a dedução não vira escolha gravada").toBeNull();
+    expect(depois.outcome).toBe("lost");
   });
 });

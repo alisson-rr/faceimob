@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
@@ -7,7 +7,11 @@ import { BrandMotif } from "@/components/shared/BrandMotif";
 import { ArrowLeft, KeyRound, Lock, Mail } from "lucide-react";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 import { supabase } from "@/integrations/supabase/client";
+import { classifyLoginError } from "@/lib/loginErrors";
+import { safeRedirect } from "@/lib/routePermissions";
 import { toast } from "@/hooks/use-toast";
+import { useTheme } from "@/hooks/useTheme";
+import { cn } from "@/lib/utils";
 
 /**
  * Duas formas de entrar (decisao do cliente em 21/08/2026, que reverte a de
@@ -25,10 +29,55 @@ import { toast } from "@/hooks/use-toast";
 const RESEND_SECONDS = 60;
 const CODE_LENGTH = 6;
 
+/**
+ * Mesma frase no sucesso e na recusa: fora o rate limit, a tela nao pode dizer
+ * se o e-mail existe.
+ *
+ * NAO promete entrega. Ela e tambem a descricao do toast de FALHA do envio, e
+ * "chega em instantes" afirmava justamente no momento em que o GoTrue tinha
+ * acabado de recusar. Pior: sem SMTP configurado (ver `AVISO_TEMPLATE`), o
+ * remetente embutido do Supabase recusa endereco fora da equipe do projeto —
+ * para o corretor, nada chega mesmo no caminho de sucesso.
+ */
+const AVISO_ENVIO =
+  "Se este e-mail estiver cadastrado, a mensagem de acesso será enviada. Se nada chegar, fale com um administrador da Faceimob — o envio depende de configuração do servidor.";
+
+/**
+ * O estado real do envio, escrito na tela. Sao DOIS bloqueios, nao um:
+ *
+ *   1. O SMTP nunca foi configurado no projeto remoto
+ *      (`docs/sprints/decisoes.md`). O remetente embutido do Supabase so
+ *      entrega para endereco da equipe do projeto e tem cota baixa por hora —
+ *      para quem nao esta na equipe, o e-mail simplesmente nao chega.
+ *   2. O template de Magic Link tambem nao foi publicado, entao o GoTrue manda
+ *      o modelo padrao: um LINK, nao seis digitos.
+ *
+ * A tela citava so o (2) e prometia entrega. Enquanto ela pedia codigo e
+ * prometia codigo, quem abria o e-mail achava que o envio tinha falhado; e quem
+ * nao recebia nada ficava esperando uma mensagem que nunca sairia.
+ */
+const AVISO_TEMPLATE =
+  "O envio de e-mail deste projeto ainda não está configurado (Authentication → Emails → SMTP Settings) e o modelo de código não foi publicado (Authentication → Emails → Magic Link). Enquanto isso, a mensagem pode não chegar; se chegar, vem como link de acesso em vez de código — clicar no link também entra.";
+
+/**
+ * Falha de rede não é recusa de credencial.
+ *
+ * A frase precisa dizer as duas coisas: que o servidor não respondeu e que o
+ * que a pessoa digitou pode estar certo. Sem a segunda metade, quem lê "não
+ * conseguimos entrar" troca a senha CERTA achando que errou.
+ */
+const AVISO_REDE =
+  "Não conseguimos falar com o servidor. Verifique sua conexão e tente de novo — o que você digitou pode estar certo.";
+const AVISO_BLOQUEIO = "Este acesso está bloqueado. Fale com um administrador da Faceimob.";
+const AVISO_RATE = "Muitas tentativas seguidas. Espere um minuto e tente de novo.";
+
 type Mode = "password" | "otp";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { theme } = useTheme();
+  const isLight = theme === "light";
   const [mode, setMode] = useState<Mode>("password");
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -37,6 +86,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,10 +99,22 @@ export default function Login() {
     if (mode === "otp" && step === "code") codeInputRef.current?.focus();
   }, [mode, step]);
 
-  /** Unico ponto que marca a sessao como recem-aberta — vale nos dois caminhos. */
+  /**
+   * Unico ponto que marca a sessao como recem-aberta — vale nos dois caminhos.
+   *
+   * O padrao e "/", nao "/dashboard": quem e so cca, sdr ou marketing nao tem
+   * `menu.dashboard` e cairia em "Acesso nao liberado" logo apos entrar. Quem
+   * escolhe a tela e `HomeRedirect` (App.tsx), que roda depois de a matriz de
+   * permissoes carregar — aqui o `can` ainda seria o de antes da sessao.
+   *
+   * Quando o guard barrou um link especifico, ele guardou o caminho em
+   * `location.state.from` e e para la que se volta: abrir um link de /pipeline
+   * sem sessao levava ao login e depois jogava na home, perdendo o que a pessoa
+   * queria abrir.
+   */
   const enter = () => {
     sessionStorage.setItem("faceimob-just-logged", "true");
-    navigate("/dashboard");
+    navigate(safeRedirect(location.state), { replace: true });
   };
 
   const signInWithPassword = async (e: React.FormEvent) => {
@@ -68,7 +130,21 @@ export default function Login() {
     setLoading(false);
 
     if (error) {
-      setPassword("");
+      // Excesso de tentativas, conta bloqueada e QUEDA DE REDE ficavam sob a
+      // mesma frase de "senha inválida": quem estava barrado — ou sem conexão —
+      // repetia a senha CERTA sem entender. A mensagem genérica continua
+      // valendo para o resto: é ela que impede a tela de virar um verificador
+      // de quem trabalha aqui.
+      const motivo = classifyLoginError(error);
+      // A senha só é apagada quando ela PODE ser o problema: limpar o campo
+      // depois de uma queda de rede obriga a redigitar à toa.
+      if (motivo === "credencial") setPassword("");
+      if (motivo === "rede") return setFormError(AVISO_REDE);
+      if (motivo === "rate") return setFormError(AVISO_RATE);
+      if (motivo === "bloqueado") return setFormError(AVISO_BLOQUEIO);
+      if (motivo === "nao_confirmado") {
+        return setFormError("Este acesso ainda não foi confirmado. Fale com um administrador da Faceimob.");
+      }
       return setFormError("E-mail ou senha inválidos.");
     }
 
@@ -91,14 +167,20 @@ export default function Login() {
     setLoading(false);
 
     if (error) {
-      // Rate limit tem mensagem própria; o resto vira uma resposta única para
-      // não revelar quais e-mails existem no sistema.
-      const rateLimited = /rate|limit|seconds/i.test(error.message);
+      // Rate limit e queda de rede têm mensagem própria; o resto vira uma
+      // resposta única para não revelar quais e-mails existem no sistema.
+      // A rede sai do balde genérico porque ali o pedido nem saiu da máquina —
+      // e o `AVISO_ENVIO` fala de um pedido que chegou ao servidor.
+      const motivo = classifyLoginError(error);
+      if (motivo === "rede") {
+        return toast({ title: "Sem resposta do servidor", description: AVISO_REDE, variant: "destructive" });
+      }
+      const rateLimited = motivo === "rate";
       return toast({
-        title: rateLimited ? "Aguarde para pedir outro código" : "Não foi possível enviar",
+        title: rateLimited ? "Aguarde para pedir outro acesso" : "Não foi possível enviar",
         description: rateLimited
-          ? "Já enviamos um código há pouco. Espere um minuto e tente de novo."
-          : "Se este e-mail estiver cadastrado, o código chegará em instantes.",
+          ? "Já pedimos um acesso há pouco. Espere um minuto e tente de novo."
+          : AVISO_ENVIO,
         variant: "destructive",
       });
     }
@@ -106,7 +188,15 @@ export default function Login() {
     setEmail(target);
     setStep("code");
     setCooldown(RESEND_SECONDS);
-    toast({ title: "Código enviado", description: `Enviamos um código de ${CODE_LENGTH} dígitos para ${target}.` });
+    // "Pedido enviado", e não "Código enviado": o que se confirma aqui é a
+    // chamada ao GoTrue, não a entrega. Sem SMTP configurado o remetente
+    // embutido recusa endereço fora da equipe do projeto, e o template de
+    // Magic Link não publicado faz a mensagem (quando chega) vir como LINK, não
+    // como seis dígitos — os dois limites estão escritos em `AVISO_TEMPLATE`,
+    // no passo do código. A descrição é a mesma da recusa de propósito —
+    // afirmar "enviamos para você" só quando a conta existe transformaria a
+    // tela em um verificador de quem trabalha aqui.
+    toast({ title: "Pedido enviado", description: AVISO_ENVIO });
   };
 
   const verifyCode = async (e: React.FormEvent) => {
@@ -122,6 +212,18 @@ export default function Login() {
     setLoading(false);
 
     if (error) {
+      const motivo = classifyLoginError(error);
+      // O código continua valendo: apagar o campo por causa de uma queda de
+      // rede manda a pessoa pedir outro sem necessidade nenhuma.
+      if (motivo === "rede") {
+        return toast({ title: "Sem resposta do servidor", description: AVISO_REDE, variant: "destructive" });
+      }
+      if (motivo === "rate") {
+        return toast({ title: "Muitas tentativas seguidas", description: AVISO_RATE, variant: "destructive" });
+      }
+      if (motivo === "bloqueado") {
+        return toast({ title: "Acesso bloqueado", description: AVISO_BLOQUEIO, variant: "destructive" });
+      }
       const expired = /expired/i.test(error.message);
       setCode("");
       codeInputRef.current?.focus();
@@ -146,6 +248,7 @@ export default function Login() {
     setCode("");
     setPassword("");
     setFormError(null);
+    setShowHelp(false);
   };
 
   const errorBlock = formError && (
@@ -177,7 +280,21 @@ export default function Login() {
         <BrandMotif className="opacity-30 lg:hidden" />
 
         <div className="animate-slide-up relative w-full max-w-md">
-          <img src={logoWhite} alt="" aria-hidden className="mx-auto mb-8 h-10 object-contain lg:hidden" />
+          {/* Mesmo contorno do sidebar (`AppSidebar.tsx`): nao existe asset de
+              logo com letra escura — `logo-faceimob.png` e o mesmo desenho de
+              letra branca —, entao no tema claro a arte vai sobre uma placa
+              azul da marca. Sem isso a marca some no fundo quase branco, e este
+              e o unico logo que aparece abaixo de 1024 px (o painel da esquerda
+              e `lg:flex`). */}
+          <img
+            src={logoWhite}
+            alt=""
+            aria-hidden
+            className={cn(
+              "mx-auto mb-8 h-10 object-contain lg:hidden",
+              isLight && "rounded-xl bg-brand-blue px-3 py-1.5",
+            )}
+          />
 
           <Card className="border-border">
             <CardHeader className="space-y-2">
@@ -186,8 +303,8 @@ export default function Login() {
                 {mode === "password"
                   ? "Use o e-mail e a senha cadastrados."
                   : step === "email"
-                    ? "Enviamos um código de acesso para o seu e-mail."
-                    : `Digite o código enviado para ${email}`}
+                    ? "Informe o e-mail cadastrado para receber o acesso."
+                    : `Confira a mensagem que enviamos para ${email}`}
               </CardDescription>
             </CardHeader>
 
@@ -224,6 +341,43 @@ export default function Login() {
                   <Button type="submit" size="lg" className="w-full" disabled={loading}>
                     {loading ? "Entrando…" : "Entrar"}
                   </Button>
+                  {/* Não existe autoatendimento de redefinição: ligar o envio
+                      do e-mail de recuperação depende do SMTP do projeto
+                      (`/reset-password` já sabe o que fazer com o link quando
+                      ele passar a chegar). Enquanto isso, a tela DIZ qual é o
+                      caminho — e o oferece — em vez de deixar a pessoa
+                      procurando um link que não existe. */}
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowHelp((v) => !v)}
+                      aria-expanded={showHelp}
+                      className="rounded-full px-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Esqueci minha senha
+                    </button>
+                  </div>
+                  {showHelp && (
+                    <div className="space-y-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Você pode entrar por <strong className="font-medium text-foreground">código no e-mail</strong>{" "}
+                        e definir uma senha nova em Configurações. Se o código não chegar, peça a um
+                        administrador da Faceimob para redefinir a sua senha — hoje a redefinição
+                        automática não é enviada por esta tela.
+                      </p>
+                      {/* O caminho que funciona fica a um clique, e não só
+                          descrito: quem chegou aqui já não sabe a senha. */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => switchTo("otp")}
+                      >
+                        <KeyRound className="h-4 w-4" aria-hidden /> Entrar por código no e-mail
+                      </Button>
+                    </div>
+                  )}
                 </form>
               )}
 
@@ -264,6 +418,12 @@ export default function Login() {
                       onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                     />
                   </div>
+                  {/* O limite real do envio, escrito onde a pessoa espera o
+                      código — sem isto a tela pede seis dígitos que o servidor
+                      ainda não manda. */}
+                  <p className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                    {AVISO_TEMPLATE}
+                  </p>
                   <Button type="submit" size="lg" className="w-full" disabled={loading || code.length !== CODE_LENGTH}>
                     {loading ? "Verificando…" : "Entrar"}
                   </Button>

@@ -7,9 +7,9 @@ import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 import type { DealStage } from "@/types/crm";
 import { toast } from "@/hooks/use-toast";
-import type { PersonRecord, SaveLegacyDealInput } from "@/integrations/supabase/newSchema";
+import { primaryRole, type PersonRecord, type SaveLegacyDealInput } from "@/integrations/supabase/newSchema";
 import {
-  DealCcaPanel, DealCommentsPanel, DealForm, saveCcaAnalysis,
+  DealCcaPanel, DealCommentsPanel, DealForm, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
 import DealDocumentUpload from "@/components/DealDocumentUpload";
@@ -41,6 +41,17 @@ type TabKey = "detalhes" | "anexos" | "agenda" | "historico" | "cca";
  * editar o negócio vem de estar em `deal_participants` (`can_edit_deal`), então
  * criar um negócio sem nenhum participante trancaria o criador para fora do que
  * ele acabou de criar — sem conseguir nem reabrir para corrigir.
+ *
+ * "Ser corretor" aqui é `primaryRole(roles) === 'broker'`, a mesma precedência
+ * que a migration 0048 aplica no gatilho `deals_add_creator_participant`, e não
+ * `roles.includes('broker')`: `handle_new_auth_user` (0002) dá `broker` a TODO
+ * perfil novo e nunca o retira, então admin, gerente e diretor caíam neste
+ * pré-preenchimento, viravam "Corretor 1" com 100% do rateio de VGV e os pontos
+ * de venda do game — exatamente o que a 0048 tirou do banco e que este
+ * formulário estava recolocando por cima. Para eles o campo nasce vazio e a
+ * escolha é ato explícito; ninguém fica trancado fora do negócio: admin e CCA
+ * passam por `has_permission('cca.review')` e gerente/diretor ganham a própria
+ * linha pelo gatilho da 0048.
  */
 const emptyDeal = (stageCode: string, month?: string, selfBrokerId?: string): SaveLegacyDealInput => ({
   client: "", developer: "", project: "", unit: "",
@@ -72,12 +83,27 @@ export default function DealDetailModal({
 
   const [form, setForm] = useState<SaveLegacyDealInput>(() => {
     if (deal) return { ...deal };
-    const self = people.find((person) => person.id === user?.id && person.roles.includes("broker"));
+    const self = people.find((person) => person.id === user?.id && primaryRole(person.roles) === "broker");
     return emptyDeal(stages[0]?.code ?? "incomplete", defaultMonth, self?.id);
   });
   const [tab, setTab] = useState<TabKey>("detalhes");
   const [cca, setCca] = useState<CcaAnalysis>({});
   const [saving, setSaving] = useState(false);
+  /** Já houve uma tentativa de salvar. Só depois dela o campo obrigatório vazio
+   *  vira erro: cobrar antes pintaria de vermelho um formulário recém-aberto. */
+  const [tentouSalvar, setTentouSalvar] = useState(false);
+
+  // A MESMA resposta que desabilita os campos (`DealForm` chama este hook com
+  // este mesmo `form`). Enquanto só o formulário a lia, o mês fechado e o perfil
+  // sem escrita deixavam ~40 campos cinzas com "Confirmar alterações"
+  // habilitado: o clique ia ao banco só para voltar recusado por
+  // `deals_guard_closed_month`/`can_edit_deal`. Gesto que a tela oferece e o
+  // banco recusa é exatamente o que `useDealWriteLock` existe para eliminar.
+  const lock = useDealWriteLock(form);
+
+  // Derivado na renderização, não guardado em state: escolher a construtora
+  // apaga a frase no mesmo instante, sem efeito nem segundo clique em salvar.
+  const developerError = tentouSalvar ? dealRequiredError(form) : null;
 
   const dealId = deal?.id ?? null;
   const isNew = !dealId;
@@ -100,6 +126,15 @@ export default function DealDetailModal({
       });
       return;
     }
+    // "Construtora *" é recusa de CAMPO, e por isso não vai para toast: a frase
+    // aparece uma vez, presa ao Select que a causou (`aria-invalid` +
+    // `aria-describedby`), e o mesmo `dealRequiredError` continua guardando a
+    // gravação em `Pipeline.onSave` para qualquer caminho que não passe aqui.
+    setTentouSalvar(true);
+    // A frase fica na aba "Detalhes", e é onde o operador está: `dealRequiredError`
+    // só cobra na CRIAÇÃO, e no negócio novo as outras quatro abas estão
+    // desabilitadas até existir um `id`.
+    if (dealRequiredError(form)) return;
     setSaving(true);
     try {
       await onSave(form);
@@ -164,11 +199,47 @@ export default function DealDetailModal({
         </div>
 
         <div className="space-y-4 p-4">
+          {/* O motivo da trava vive AQUI, acima das abas, e não dentro do
+              `DealForm`: o "Confirmar alterações" do rodapé está desabilitado
+              nas cinco abas, e o formulário que explicava o cinza só é montado
+              em "Detalhes". O caso concreto é o CCA — o analista preenchia a
+              análise inteira, achava o botão apagado e não recebia motivo
+              nenhum. Mesmo `lock` que desabilita o botão; uma frase, um lugar. */}
+          {lock.reason === "role" && (
+            <p className="rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Somente leitura. Seu perfil enxerga o negócio, mas o banco recusa a gravação
+              (<code>can_edit_deal</code>) — por isso os campos e o botão de confirmar ficam
+              desabilitados em vez de aceitar o que seria perdido no salvamento.
+            </p>
+          )}
+
+          {lock.reason === "month" && (
+            <p className="rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Mês <strong className="text-foreground">{lock.month}</strong> fechado. O banco
+              recusa qualquer gravação neste negócio (<code>deals_guard_closed_month</code>) até um
+              administrador reabrir o período — por isso os campos e o botão de confirmar ficam
+              desabilitados em vez de aceitar o que seria perdido no salvamento.
+            </p>
+          )}
+
+          {/* A terceira razão do `lock`, e a que mais confundia: `useDealWriteLock`
+              fecha a trava quando a consulta de `closed_months` está pendente ou
+              FALHOU, e a frase morava só no `DealForm` — que nem é montado fora de
+              "Detalhes". Nas outras quatro abas o botão ficava cinza sem motivo. */}
+          {lock.reason === "unknown" && (
+            <p className="rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Não consegui confirmar se o mês <strong className="text-foreground">{lock.month}</strong>{" "}
+              está fechado, então a gravação fica bloqueada em vez de arriscar perder o que for
+              digitado. Recarregue a página para tentar de novo.
+            </p>
+          )}
+
           {tab === "detalhes" && (
             <>
               <DealForm
                 form={form} onChange={patch} field={field}
                 people={people} developers={developers} stages={stages} isNew={isNew}
+                developerError={developerError}
               />
               {dealId && <DealCommentsPanel dealId={dealId} people={people} />}
             </>
@@ -179,6 +250,17 @@ export default function DealDetailModal({
               dealId={dealId}
               clientName={form.client}
               dealCode={form.code || dealId}
+              // O que vale é o gravado (`deal`), não o `form`: trocar a construtora
+              // na aba Detalhes sem confirmar ainda deixa o banco sem ela.
+              hasDeveloper={Boolean(deal?.developer_id)}
+              // A MESMA resposta que desabilita os campos: sem ela o gerente
+              // clicava "Aprovar e enviar ao CCA" num negócio de mês fechado e
+              // recebia a recusa crua de `deals_guard_closed_month` em toast.
+              closedMonth={lock.reason === "month" ? lock.month : null}
+              // A trava por mês não confirmado desce junto: sem ela "Enviar ao
+              // gerente", "Devolver" e "Aprovar e enviar ao CCA" ficavam vivos
+              // enquanto o resto do modal já estava travado pelo mesmo `lock`.
+              unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
               onReviewChanged={onReviewChanged}
             />
           )}
@@ -197,7 +279,10 @@ export default function DealDetailModal({
 
         <div className="flex justify-end gap-3 border-t border-border p-4">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void handleSave()} disabled={saving || !form.client.trim()}>
+          <Button
+            onClick={() => void handleSave()}
+            disabled={saving || lock.readOnly || !form.client.trim()}
+          >
             {saving ? "Salvando…" : isNew ? "Criar negócio" : "Confirmar alterações"}
           </Button>
         </div>

@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { PersonRecord } from "@/integrations/supabase/newSchema";
 
 /**
  * Campos do formulário de negócio.
@@ -65,24 +64,50 @@ const NONE = "none";
  * Select abriria vazio e o primeiro salvamento tiraria o gerente do negócio —
  * junto com o acesso dele.
  */
-export function PersonField({ id, label, value, fallbackName, options, onChange, optional }: {
+export function PersonField({ id, label, value, fallbackName, options, onChange, optional, hint }: {
   id: string;
   label: string;
   value?: string | null;
   fallbackName?: string;
-  options: PersonRecord[];
+  /** `{ id, name }` e não `PersonRecord`: a lista de corretores selecionáveis
+   *  vem de uma RPC `security definer` que devolve só id e nome (a RLS de
+   *  `profiles` esconde o resto), e o Select nunca usou mais do que isso. */
+  options: { id: string; name: string }[];
   onChange: (value: string | null) => void;
   optional?: boolean;
+  /** Texto curto ao lado do rótulo — hoje o rateio de VGV do participante. */
+  hint?: string;
 }) {
   const outsideCatalog = Boolean(value) && !options.some((person) => person.id === value);
+  const hintId = `${id}-hint`;
   return (
     <div>
-      <Label htmlFor={id} className="text-eyebrow">{label}</Label>
+      {/* O rateio fica FORA do `<label>`, como descrição.
+          Dentro dele o nome acessível do campo virava "Corretor 1 *50% do VGV"
+          e mudava sozinho a cada corretor que entra ou sai do negócio: o campo
+          deixava de ser alcançável pelo próprio rótulo ("Corretor 1 *") e quem
+          usa leitor de tela ouvia um número no lugar do nome. Percentual é
+          informação SOBRE o campo — `aria-describedby` é onde ela cabe. */}
+      <div className="flex flex-wrap items-baseline gap-1">
+        <Label htmlFor={id} className="text-eyebrow">{label}</Label>
+        {/* `text-xs` (12 px) e não só `normal-case`: a exceção do piso
+            tipográfico é a FORMA — caixa alta com `tracking >= 0.1em` —, e não
+            o número. Tirando a caixa alta de `.text-eyebrow` sobrava texto
+            corrido de 11 px, abaixo do piso, sem que `type-scale.test.ts`
+            reprovasse (ele varre literais `text-[Npx]`, não classe que anula a
+            condição da exceção). A 12 px a exceção deixa de ser necessária,
+            como o próprio comentário do `index.css` recomenda. */}
+        {hint && (
+          <span id={hintId} className="text-xs font-normal normal-case tracking-normal text-primary">
+            {hint}
+          </span>
+        )}
+      </div>
       <Select
         value={value || (optional ? NONE : "")}
         onValueChange={(next) => onChange(next === NONE ? null : next)}
       >
-        <SelectTrigger id={id} className="mt-1 text-xs">
+        <SelectTrigger id={id} aria-describedby={hint ? hintId : undefined} className="mt-1 text-xs">
           <SelectValue placeholder={optional ? "Nenhum" : "Escolher"} />
         </SelectTrigger>
         <SelectContent className="max-h-80">

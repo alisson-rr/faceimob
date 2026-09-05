@@ -257,6 +257,18 @@ begin
     when insufficient_privilege then
       raise notice '  ok  corretor não comenta em lead de outra equipe';
   end;
+
+  -- 0041: anexo segue a mesma regra do comentário. Antes o insert só olhava
+  -- `uploaded_by`, gravava, e o select policy escondia a linha — anexo
+  -- "enviado" que ninguém via.
+  begin
+    insert into public.lead_attachments (lead_id, storage_path, original_name, stored_name, uploaded_by)
+    values (v_lead, v_lead || '/espiando.pdf', 'espiando.pdf', 'espiando.pdf', cor);
+    raise exception 'FALHOU: corretor anexou em lead que não enxerga';
+  exception
+    when insufficient_privilege then
+      raise notice '  ok  corretor não anexa em lead de outra equipe';
+  end;
 end
 $$;
 

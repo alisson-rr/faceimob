@@ -66,3 +66,48 @@ export const dateTime = (value: string | number | Date | null | undefined): stri
   const parsed = toDate(value);
   return parsed ? `${dateFmt.format(parsed)} ${timeFmt.format(parsed)}` : EMPTY;
 };
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * `YYYY-MM-01` do mes da data, no fuso LOCAL. O caminho antigo (`setDate(1)` +
+ * `toISOString()`) converte para UTC e, depois das 21h em Brasilia, ja devolve o
+ * dia seguinte: `gte(period, "2026-09-02")` deixava de fora o aporte que acabou
+ * de ser gravado em 2026-09-01.
+ */
+export const monthStart = (value: Date = new Date()): string =>
+  `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-01`;
+
+/**
+ * Mes digitado ou vindo de planilha -> `YYYY-MM-01`, ou `null` se nao for mes.
+ * Aceita `2026-08`, `2026-08-01`, `08/2026`, `01/08/2026` e a celula de data que
+ * o Excel entrega como texto (`Sat Aug 01 2026 00:00:00 GMT-0300`).
+ */
+export const parseMonthStart = (text: string | null | undefined): string | null => {
+  const value = (text ?? "").trim();
+  const iso = /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/.exec(value);
+  const br = /^(?:\d{1,2}\/)?(\d{1,2})\/(\d{4})$/.exec(value);
+  const parts = iso ? [Number(iso[1]), Number(iso[2])] : br ? [Number(br[2]), Number(br[1])] : null;
+  if (parts) {
+    const [y, m] = parts;
+    return m >= 1 && m <= 12 ? `${y}-${pad2(m)}-01` : null;
+  }
+  // So o formato textual do Excel cai aqui: `new Date("1")` seria 2001-01-01.
+  if (!/[A-Za-z]/.test(value) || !/\d{4}/.test(value)) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : monthStart(parsed);
+};
+
+/**
+ * "R$ 5.000,50", "5.000", "5000.5" -> numero, ou `null` se nao for valor.
+ * Virgula e decimal; ponto e milhar quando ha virgula ou quando agrupa de 3 em 3.
+ */
+export const parseBrl = (text: string | null | undefined): number | null => {
+  // `\s` ja cobre o espaco duro (U+00A0) que o Excel poe entre "R$" e o numero.
+  const raw = (text ?? "").replace(/R\$|\s/g, "");
+  if (!raw) return null;
+  const normalized = raw.includes(",")
+    ? raw.replace(/\./g, "").replace(",", ".")
+    : /^-?\d{1,3}(\.\d{3})+$/.test(raw) ? raw.replace(/\./g, "") : raw;
+  return /^-?\d+(\.\d+)?$/.test(normalized) ? Number(normalized) : null;
+};

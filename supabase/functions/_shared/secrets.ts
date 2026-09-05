@@ -27,6 +27,13 @@ export const SECRET_SLOTS = {
   META_APP_SECRET: { provider: "meta", label: "app_secret" },
   META_WHATSAPP_ACCESS_TOKEN: { provider: "meta", label: "whatsapp_access_token" },
   META_WHATSAPP_PHONE_NUMBER_ID: { provider: "meta", label: "whatsapp_phone_number_id" },
+  // Nome do template aprovado que o `notify-dispatch` usa para o aviso de lead
+  // perdido por prazo. OPCIONAL por desenho: sem ele o worker manda texto
+  // livre, que funciona dentro da janela de 24 h e no ambiente de teste da
+  // Meta. Com a operação real ele é obrigatório — o destinatário é o próprio
+  // corretor, que nunca escreveu para o número da empresa, então a janela nunca
+  // está aberta e a Meta recusa texto livre com o código 131047.
+  META_WHATSAPP_NOTIFY_TEMPLATE: { provider: "meta", label: "whatsapp_notify_template" },
   VOICE_AI_WEBHOOK_SECRET: { provider: "voice_ai", label: "webhook_secret" },
   BREVO_API_KEY: { provider: "brevo", label: "api_key" },
   BREVO_SENDER_EMAIL: { provider: "brevo", label: "sender_email" },
@@ -50,7 +57,8 @@ function adminClient(): SupabaseClient {
   );
 }
 
-const cache = new Map<SecretName, string | null>();
+/** Só valor encontrado entra aqui — ver o comentário de `getSecret`. */
+const cache = new Map<SecretName, string>();
 
 /**
  * Devolve o segredo, ou `null` se não houver nem no cofre nem no ambiente.
@@ -59,9 +67,19 @@ const cache = new Map<SecretName, string | null>();
  * de uma vez e o cofre não muda no meio de uma requisição. Instância nova (ou
  * redeploy) relê — trocar a chave pela tela não exige redeploy, mas pode levar
  * alguns minutos para todas as instâncias quentes pegarem o valor novo.
+ *
+ * A AUSÊNCIA NÃO É CACHEADA, de propósito. O cache guardava `null` também, e
+ * com o cron da 0065 chamando `notify-dispatch` a cada minuto a instância fica
+ * quente indefinidamente: uma vez lido "sem credencial", a function continuaria
+ * devolvendo 503 mesmo depois de o admin cadastrar a chave em Integrações — e é
+ * exatamente isso que docs/integracoes/whatsapp-cloud-api.md promete que não
+ * acontece ("para ligar, nada precisa ser feito no console do banco"). Uma
+ * leitura a mais por minuto no cofre é irrelevante perto de a fila ficar parada
+ * com a chave já cadastrada.
  */
 export async function getSecret(name: SecretName): Promise<string | null> {
-  if (cache.has(name)) return cache.get(name) ?? null;
+  const cached = cache.get(name);
+  if (cached) return cached;
 
   const slot = SECRET_SLOTS[name];
   let value: string | null = null;
@@ -81,7 +99,7 @@ export async function getSecret(name: SecretName): Promise<string | null> {
 
   if (!value) value = Deno.env.get(name) || null;
 
-  cache.set(name, value);
+  if (value) cache.set(name, value);
   return value;
 }
 

@@ -20,6 +20,8 @@ export { DealsTable } from "./DealsTable";
 export { DealsToolbar } from "./DealsToolbar";
 export { LoseDealDialog } from "./LoseDealDialog";
 export { PipelineAnalytics } from "./PipelineAnalytics";
+export { ReopenDealDialog } from "./ReopenDealDialog";
+export { ReopenMonthDialog } from "./ReopenMonthDialog";
 export { ScheduleVisitDialog } from "./ScheduleVisitDialog";
 export { ChoiceField, PersonField, Section, TextField } from "./fields";
 
@@ -38,13 +40,19 @@ export {
 
 // ── Dados e regras ──────────────────────────────────────────────────────────
 export {
-  pipelineKeys, useCheckinQueue, useClosedMonths, useDeals, useDealsRealtime,
-  useDevelopers, useInvalidateDeals, useOpenSeason, usePeople, usePipelineStages,
+  pipelineKeys, reopenMonth, useCanExitStage, useCheckinQueue,
+  useClosedMonths, useDealWriteLock, useDeals, useDevelopers, usePipelineRealtime,
+  useInvalidateDeals, useOpenSeason, usePeople, usePipelineStages, useStagePermissions,
 } from "./data";
+export {
+  blockedMoveReason, dealLock, dealRangeError, dealRequiredError, exitableStages,
+  findDuplicateDeal, projectPlaceholder, type DealLock,
+} from "./guards";
 export { dealsCsv, downloadDealsCsv } from "./csv";
 export {
-  ALL, EMPTY_FILTERS, applyDealFilters, dealMonth, hasActiveFilter, sortDeals,
-  type DealFilterState,
+  ALL, EMPTY_FILTERS, applyDealFilters, dealMonth, hasActiveFilter,
+  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy,
+  type DealFilterState, type DealSortKey,
 } from "./filters";
 export { DOCUMENT_REVIEW_META } from "./review";
 export {
@@ -55,3 +63,4 @@ export {
   FACEIMOB_STATUSES, STATUS_TONE_CLASS, faceimobStatusRank, faceimobStatusTone,
   statusChoices, type FaceimobStatus,
 } from "./statuses";
+export { canWriteDeals } from "./writeAccess";

@@ -11,7 +11,9 @@
 // Regra da casa: nenhuma tela chama `.from("leads")` direto. Toda leitura e
 // escrita passa por este arquivo.
 // =============================================================================
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
+import { DEAL_DOCUMENTS_BUCKET } from "./documents";
 import { listPeople, type PersonRecord } from "./newSchema";
 import type { Database } from "./types";
 import { dbError } from "@/lib/supabaseError";
@@ -23,6 +25,8 @@ import { dbError } from "@/lib/supabaseError";
 // Sem cast: os tipos gerados cobrem o schema novo. O `as any` daqui
 // anulava justamente a regeneração que a Sprint 1 pagou para fazer.
 const db = supabase;
+/** Só para as RPCs que a 0056 criou e `types.ts` ainda não conhece. */
+const untyped = supabase as unknown as SupabaseClient;
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type DecoratableLead = Partial<LeadRow> & Pick<LeadRow, "id" | "full_name" | "created_at" | "updated_at">;
 
@@ -171,6 +175,14 @@ export type LeadRecord = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Quantas vezes este lead voltou à fila por prazo de atendimento vencido
+   * (`leads.roulette_misses`, 0074). Batido o teto de
+   * `automation_settings.roulette_max_rounds`, ele sai da roleta e espera na
+   * bandeja "sem atendimento" — antes circulava sem fim (havia leads com 22
+   * voltas em homologação) e nenhuma tela sabia distingui-lo de um lead novo.
+   */
+  roulette_misses: number;
 
   // Derivados para a UI.
   name: string;
@@ -210,9 +222,13 @@ export const decorateLead = (
   // puros fáceis de exercitar com fixtures pequenas.
   const complete = row as LeadRow;
   const payload = asRecord(complete.raw_payload);
+  // `types.ts` é gerado e ainda não conhece a coluna da 0074; ler por índice
+  // mantém o adaptador funcionando antes e depois da regeneração.
+  const misses = Number((row as Record<string, unknown>).roulette_misses ?? 0);
   return {
     ...complete,
     raw_payload: complete.raw_payload == null ? null : payload,
+    roulette_misses: Number.isFinite(misses) ? misses : 0,
     name: complete.full_name,
     whatsapp: complete.phone || "",
     source:
@@ -244,8 +260,13 @@ export async function listLeadSources(): Promise<LeadSource[]> {
   return (data || []) as LeadSource[];
 }
 
-/** Template de mensagem cadastrado no módulo SDR (`whatsapp_templates`). */
-export type WhatsappTemplate = { id: string; name: string; body: string };
+/**
+ * Template de mensagem cadastrado no módulo SDR (`whatsapp_templates`).
+ *
+ * O `body` é posicional por contrato da Meta (`{{1}}`, `{{2}}`…) e `variables`
+ * diz o nome de cada posição — é ela que permite preencher o texto na tela.
+ */
+export type WhatsappTemplate = { id: string; name: string; body: string; variables: string[] };
 
 /**
  * Templates ativos de WhatsApp. Fica aqui, e não na tela, porque o erro precisa
@@ -255,7 +276,7 @@ export type WhatsappTemplate = { id: string; name: string; body: string };
 export async function listWhatsappTemplates(): Promise<WhatsappTemplate[]> {
   const { data, error } = await db
     .from("whatsapp_templates")
-    .select("id,name,body")
+    .select("id,name,body,variables")
     .eq("active", true)
     .order("name");
   asError("whatsapp_templates", error);
@@ -274,6 +295,8 @@ export type AutomationSettings = {
   inactivity_alert_hours: number;
   no_response_hours: number;
   leads_paused: boolean;
+  /** Teto de voltas do mesmo lead na roleta antes da bandeja (0074). */
+  roulette_max_rounds: number;
 };
 
 const AUTOMATION_DEFAULTS: AutomationSettings = {
@@ -282,13 +305,16 @@ const AUTOMATION_DEFAULTS: AutomationSettings = {
   inactivity_alert_hours: 48,
   no_response_hours: 24,
   leads_paused: false,
+  roulette_max_rounds: 5,
 };
 
 export async function getAutomationSettings(): Promise<AutomationSettings> {
-  const { data, error } = await db
+  // `untyped`: `roulette_max_rounds` é da 0074 e `types.ts` (gerado) ainda não
+  // a conhece — o mesmo desvio pontual das RPCs novas, até a regeneração.
+  const { data, error } = await untyped
     .from("automation_settings")
     .select(
-      "attend_timeout_seconds,overdue_block_threshold,inactivity_alert_hours,no_response_hours,leads_paused",
+      "attend_timeout_seconds,overdue_block_threshold,inactivity_alert_hours,no_response_hours,leads_paused,roulette_max_rounds",
     )
     .eq("id", true)
     .maybeSingle();
@@ -301,12 +327,64 @@ export type ListLeadsOptions = {
   /** Por padrão traz tudo; o funil pede só os leads ainda em operação. */
   statuses?: LeadStatus[];
   limit?: number;
+  /**
+   * Busca no BANCO por nome, telefone ou e-mail.
+   *
+   * Existe porque a lista trunca em `LEADS_PAGE_SIZE` e o rodapé mandava "usar
+   * a busca do sistema pelo telefone" — uma busca que não existia: o filtro
+   * rodava no cliente, sobre as linhas que já tinham vindo, então um lead fora
+   * do recorte era invisível por qualquer termo.
+   */
+  search?: string;
 };
+
+/**
+ * Termo pronto para o `or` do PostgREST.
+ *
+ * `,` separa condições e `(`/`)` delimitam o `or=(…)`: um desses caracteres no
+ * que o corretor digitou vira erro de sintaxe (400) em vez de busca. O PONTO
+ * fica — o PostgREST usa só os dois primeiros pontos de `coluna.operador.valor`
+ * como separadores, e tirá-lo transformava "maria@gmail.com" em
+ * `*maria@gmail com*`, que não casa com e-mail nenhum: buscar pelo e-mail
+ * inteiro, que é o jeito natural de usar um campo anunciado como buscável por
+ * e-mail, não achava nada.
+ *
+ * Telefone entra só com dígitos porque o banco grava normalizado com DDI —
+ * procurar "(11) 98888-7777" não acharia nada. Campanha entra porque o
+ * placeholder do campo a promete: sem ela, o lead que só casava por campanha
+ * aparecia com 2 letras (filtro do cliente) e sumia na 3ª (consulta ao banco).
+ */
+export const leadSearchFilter = (term: string): string | null => {
+  const clean = term.trim().replace(/[,*()\\%"']/g, " ").replace(/\s+/g, " ").trim();
+  if (clean.length < 3) return null;
+  const digits = term.replace(/\D/g, "");
+  const parts = [
+    `full_name.ilike.*${clean}*`,
+    `email.ilike.*${clean}*`,
+    `campaign_name.ilike.*${clean}*`,
+  ];
+  if (digits.length >= 3) parts.push(`phone.ilike.*${digits}*`);
+  return parts.join(",");
+};
+
+/**
+ * Teto de linhas por carga da lista.
+ *
+ * A consulta não tinha `limit`: acima do teto de linhas do PostgREST a lista
+ * truncava sem ninguém saber. Com um teto explícito a tela sabe quando bateu
+ * nele (`leads.length === LEADS_PAGE_SIZE`) e pode dizer que há mais.
+ *
+ * ponytail: recorte no cliente com aviso, não paginação de verdade; evoluir
+ * para filtro no servidor quando a base passar de alguns milhares de leads.
+ */
+export const LEADS_PAGE_SIZE = 1_000;
 
 export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRecord[]> {
   let query = db.from("leads").select("*").order("created_at", { ascending: false });
   if (options.statuses?.length) query = query.in("status", options.statuses);
-  if (options.limit) query = query.limit(options.limit);
+  const filtro = options.search ? leadSearchFilter(options.search) : null;
+  if (filtro) query = query.or(filtro);
+  query = query.limit(options.limit ?? LEADS_PAGE_SIZE);
 
   const [leadsRes, sourcesRes, profilesRes] = await Promise.all([
     query,
@@ -338,7 +416,26 @@ export type NewLeadInput = {
   utm_source?: string | null;
   utm_campaign?: string | null;
   notes?: string | null;
+  /**
+   * Grupo de distribuição do lead. Vazio = `lead_distribution_group()` decide
+   * (formulário → fila geral). Sem este campo, planilha importada caía sempre
+   * na Fila Geral e os outros grupos configurados eram inalcançáveis.
+   */
+  distribution_group_id?: string | null;
 };
+
+export type DistributionGroup = { id: string; name: string; kind: string };
+
+/** Grupos ativos — destino possível de um lead importado e filtro da lista. */
+export async function listDistributionGroups(): Promise<DistributionGroup[]> {
+  const { data, error } = await db
+    .from("distribution_groups")
+    .select("id,name,kind")
+    .eq("active", true)
+    .order("name");
+  asError("distribution_groups", error);
+  return (data || []) as DistributionGroup[];
+}
 
 /**
  * Criação manual (indicação, importação). O lead entra `queued`: quem distribui
@@ -357,6 +454,7 @@ export async function createLead(input: NewLeadInput): Promise<LeadRecord> {
       utm_source: input.utm_source || null,
       utm_campaign: input.utm_campaign || null,
       notes: input.notes || null,
+      distribution_group_id: input.distribution_group_id || null,
     })
     .select("*")
     .single();
@@ -364,25 +462,88 @@ export async function createLead(input: NewLeadInput): Promise<LeadRecord> {
   return decorateLead(data, new Map(), new Map());
 }
 
-export async function createLeads(inputs: NewLeadInput[]): Promise<number> {
+/** Quantas linhas por INSERT na importação. Ver `createLeads`. */
+export const IMPORT_CHUNK_SIZE = 200;
+
+const leadInsertRow = (input: NewLeadInput) => ({
+  full_name: input.full_name.trim(),
+  phone: input.phone || null,
+  email: input.email || null,
+  document: input.document || null,
+  source_id: input.source_id || null,
+  utm_source: input.utm_source || null,
+  utm_campaign: input.utm_campaign || null,
+  notes: input.notes || null,
+  distribution_group_id: input.distribution_group_id || null,
+});
+
+/**
+ * Importação em lotes de `IMPORT_CHUNK_SIZE`.
+ *
+ * Era um INSERT único: 5.000 linhas iam numa requisição só, a aba ficava parada
+ * sem sinal de progresso e um único CHECK do banco derrubava tudo sem dizer
+ * onde. Em lotes, o que já entrou fica, `onProgress` move a barra, e o erro
+ * chega dizendo quantos leads foram gravados e a partir de qual linha da
+ * planilha o lote falhou — que é a informação que permite corrigir o arquivo.
+ */
+export async function createLeads(
+  inputs: NewLeadInput[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<number> {
   if (!inputs.length) return 0;
-  const { data, error } = await db
-    .from("leads")
-    .insert(
-      inputs.map((input) => ({
-        full_name: input.full_name.trim(),
-        phone: input.phone || null,
-        email: input.email || null,
-        document: input.document || null,
-        source_id: input.source_id || null,
-        utm_source: input.utm_source || null,
-        utm_campaign: input.utm_campaign || null,
-        notes: input.notes || null,
-      })),
-    )
-    .select("id");
-  asError("importar leads", error);
-  return (data || []).length;
+  let saved = 0;
+  for (let start = 0; start < inputs.length; start += IMPORT_CHUNK_SIZE) {
+    const chunk = inputs.slice(start, start + IMPORT_CHUNK_SIZE);
+    const { data, error } = await db.from("leads").insert(chunk.map(leadInsertRow)).select("id");
+    if (error) {
+      throw dbError(
+        `importar leads (${error.message})`,
+        {
+          code: "P0001",
+          message:
+            `${saved} lead(s) foram importados. O erro começou no lote da linha ` +
+            `${start + 1} da planilha (${chunk[0]?.full_name || "sem nome"}): ` +
+            `${error.message}. Corrija essas linhas e importe só o restante.`,
+        },
+      );
+    }
+    saved += (data || []).length;
+    onProgress?.(saved, inputs.length);
+  }
+  return saved;
+}
+
+/**
+ * Telefones (só dígitos) que já existem em `leads`, entre os informados.
+ *
+ * A RPC é `security definer` porque a duplicata pode estar num lead de outra
+ * equipe, invisível para quem importa — devolve só o telefone, nunca a linha.
+ * Sem ela, reimportar a mesma exportação do Leadfy criava tudo de novo e
+ * mandava dois corretores para o mesmo cliente.
+ */
+export async function existingLeadPhones(phones: string[]): Promise<Set<string>> {
+  const digits = Array.from(
+    new Set(phones.map((phone) => phone.replace(/\D/g, "")).filter(Boolean)),
+  );
+  if (!digits.length) return new Set();
+  // `types.ts` é gerado e ainda não conhece a RPC da 0056; o mesmo desvio de
+  // `analytics.ts`, num ponto só, até a regeneração.
+  const { data, error } = await untyped.rpc("existing_lead_phones", { p_phones: digits });
+  asError("conferir telefones repetidos", error);
+  return new Set(((data || []) as { phone_digits: string }[]).map((row) => row.phone_digits));
+}
+
+/**
+ * Exclusão de lead (`leads_delete` exige a permissão `leads.delete`).
+ *
+ * Pede a linha de volta pelo mesmo motivo de `updateLead`: DELETE recusado pela
+ * RLS casa 0 linhas e volta 204 sem erro — o toast diria "excluído" com o lead
+ * ainda lá.
+ */
+export async function deleteLead(id: string): Promise<void> {
+  const { data, error } = await db.from("leads").delete().eq("id", id).select("id").maybeSingle();
+  asError("excluir lead", error);
+  if (!data) throw dbError("excluir lead", { code: "42501", message: "sem permissão para excluir este lead" });
 }
 
 /** Campos que a tela pode editar direto (RLS decide quem consegue). */
@@ -402,8 +563,11 @@ export type LeadPatch = Partial<
 >;
 
 export async function updateLead(id: string, patch: LeadPatch): Promise<void> {
-  const { error } = await db.from("leads").update(patch).eq("id", id);
+  // Pede a linha de volta: UPDATE que a RLS recusa casa 0 linhas e volta 204,
+  // sem `error` — o toast de "Dados salvos" disparava com nada gravado.
+  const { data, error } = await db.from("leads").update(patch).eq("id", id).select("id").maybeSingle();
   asError("atualizar lead", error);
+  if (!data) throw dbError("atualizar lead", { code: "42501", message: "sem permissão para editar este lead" });
 }
 
 /** Move de etapa. `first_contact` também marca o primeiro contato. */
@@ -429,6 +593,78 @@ export async function claimLead(id: string): Promise<void> {
   asError("atender lead", error);
 }
 
+/**
+ * Empurra um lead parado na fila para a roleta (`distribute_queued_lead`).
+ *
+ * Não escolhe corretor — quem recebe continua sendo o primeiro da fila.
+ *
+ * A RPC recusa com o motivo em pt-BR (`P0001`, que `describeError` repassa)
+ * quando a distribuição está pausada em Admin, quando o lead não tem grupo e
+ * não há fila geral ativa, ou quando ele já saiu da fila. `null` sobrou para um
+ * caso só: ninguém elegível na fila agora — e a tela precisa dizer isso em vez
+ * de comemorar, que era o silêncio que deixava 9 leads em `queued` sem ninguém
+ * saber. O teto de reentregas da 0056 não vale aqui: o gestor clicou sabendo.
+ */
+export async function distributeQueuedLead(id: string): Promise<string | null> {
+  const { data, error } = await untyped.rpc("distribute_queued_lead", { p_lead_id: id });
+  asError("distribuir lead", error);
+  return (data as string | null) ?? null;
+}
+
+/**
+ * Motivos de encerramento do lead.
+ *
+ * Lista curta e fixa, como o `LOSS_REASONS` do Pipeline: motivo em texto livre
+ * vira relatório impossível de somar, e o gestor precisa contar "quantos
+ * perdemos por preço". O corretor complementa em observação quando quiser.
+ */
+export const LEAD_CLOSE_REASONS = [
+  "Sem interesse",
+  "Não responde",
+  "Comprou com concorrente",
+  "Fora do perfil de crédito",
+  "Fora da região atendida",
+  "Contato inválido",
+  "Duplicado",
+] as const;
+
+/** Status de encerramento aceitos por `close_lead`. */
+export const LEAD_CLOSE_STATUSES: { value: Extract<LeadStatus, "lost" | "discarded">; label: string; hint: string }[] = [
+  { value: "lost", label: "Perdido", hint: "houve contato e o cliente não seguiu" },
+  { value: "discarded", label: "Descartado", hint: "o lead não era um cliente de verdade" },
+];
+
+/**
+ * Encerra o lead como perdido ou descartado, com motivo (`close_lead`, 0074).
+ *
+ * É a saída que faltava: `next_action_at` no passado é o que conta em
+ * `overdue_lead_count` e bloqueia o check-in em 20, e até aqui só reagendar ou
+ * converter tirava o lead da conta — quem nunca ia responder ficava atrasado
+ * para sempre e o bloqueio era contornável por reagendamento infinito.
+ *
+ * A RPC recusa (P0001/42501, texto em pt-BR) quando falta motivo, quando o lead
+ * já virou negócio, quando já está encerrado ou quando quem chama não escreve
+ * no lead — a tela repassa por `describeError`.
+ */
+export async function closeLead(
+  id: string,
+  status: "lost" | "discarded",
+  reason: string,
+): Promise<void> {
+  const { data, error } = await untyped.rpc("close_lead", {
+    p_lead_id: id,
+    p_status: status,
+    p_reason: reason,
+  });
+  asError("encerrar lead", error);
+  // A RPC devolve a linha gravada: sem linha, nada mudou — e um toast de
+  // "encerrado" com o lead intacto é o defeito que este confere existe para
+  // impedir.
+  if (!data) {
+    throw dbError("encerrar lead", { code: "P0001", message: "O lead não foi encerrado no servidor." });
+  }
+}
+
 /** Realocação manual por gestor (`reassign_lead`). Reinicia a trava. */
 export async function reassignLead(id: string, targetProfileId: string): Promise<void> {
   const { error } = await db.rpc("reassign_lead", {
@@ -452,6 +688,9 @@ export type ConvertLeadInput = {
  * O negócio nasce sem anexo: a migration `0028` tirou a exigência de documento
  * daqui (decisão de 10/08). Os anexos que existirem são promovidos junto, e os
  * documentos obrigatórios travam só o envio ao gerente.
+ *
+ * A RPC promove só a LINHA do anexo; o arquivo fica no bucket do lead. Quem
+ * converte chama `promoteLeadAttachments` logo em seguida.
  */
 export async function convertLeadToDeal(input: ConvertLeadInput): Promise<void> {
   const { error } = await db.rpc("convert_lead_to_deal", {
@@ -459,9 +698,39 @@ export async function convertLeadToDeal(input: ConvertLeadInput): Promise<void> 
     p_developer_id: input.developerId,
     p_project_id: input.projectId || null,
     p_unit: input.unit || null,
-    p_vgv_gross: input.vgvGross ?? null,
+    // `??` deixa NaN passar e o JSON o serializa como null: o negócio nascia
+    // sem VGV e sem aviso. A tela valida antes; aqui é a rede de segurança.
+    p_vgv_gross: Number.isFinite(input.vgvGross) ? (input.vgvGross as number) : null,
   });
   asError("converter lead", error);
+}
+
+/**
+ * Copia os anexos do lead para o bucket do negócio, com a mesma chave.
+ *
+ * `convert_lead_to_deal` grava em `deal_documents` o `storage_path` de
+ * `lead_attachments`, mas o objeto continua em `lead-attachments` — e tudo que
+ * lê documento do negócio (botão Baixar, `submission-dispatch`) assina em
+ * `deal-documents`. SQL não move bytes; a cópia é aqui, depois da conversão.
+ *
+ * ponytail: cópia no cliente depois de a RPC ter commitado; se falhar, a linha
+ * promovida fica sem arquivo e o usuário é avisado para anexar de novo. Evoluir
+ * para cópia no servidor quando houver edge function de conversão.
+ */
+export async function promoteLeadAttachments(leadId: string): Promise<void> {
+  for (const attachment of await listLeadAttachments(leadId)) {
+    const { error } = await supabase.storage
+      .from(LEAD_ATTACHMENTS_BUCKET)
+      .copy(attachment.storage_path, attachment.storage_path, { destinationBucket: DEAL_DOCUMENTS_BUCKET });
+    if (error) {
+      // O motivo do Storage fica no rótulo (console); a tela mostra só a
+      // instrução em pt-BR, via `P0001`.
+      throw dbError(`copiar anexo (${error.message})`, {
+        code: "P0001",
+        message: `O anexo «${attachment.original_name}» não foi copiado para o negócio. Anexe-o de novo na aba Anexos.`,
+      });
+    }
+  }
 }
 
 export async function listDevelopers(): Promise<{ id: string; name: string }[]> {
@@ -512,6 +781,13 @@ const EVENT_LABELS: Record<string, string> = {
   status_changed: "Status alterado",
   converted: "Convertido em negócio",
   sdr_handoff: "Repassado pela IA de SDR",
+  // `close_lead` (0074) grava só o MOTIVO: a mudança de status já entra pelo
+  // gatilho `leads_log_changes`. Dois eventos com o mesmo texto duplicavam a
+  // linha do histórico e dobravam a conta de "quantos perdemos por preço".
+  closed: "Lead encerrado",
+  // `assign_lead` estourando o teto de voltas. Sem rótulo, o histórico mostrava
+  // a palavra "unattended" crua para o gestor.
+  unattended: "Saiu da roleta sem atendimento",
 };
 
 const RELEASE_REASONS: Record<string, string> = {
@@ -546,6 +822,16 @@ export const describeLeadEvent = (
       return `${base}: ${(row.to_value && names.get(row.to_value)) || "corretor"}`;
     case "released":
       return reason ? `${base} (${reason})` : base;
+    case "closed":
+      // O motivo é texto escolhido no diálogo ("Preço", "Sem interesse — …"),
+      // não um enum: entra como veio, que é o que o relatório de perda lê.
+      return reason
+        ? `${base} como ${leadStatusLabel(row.to_value)}: ${reason}`
+        : `${base} como ${leadStatusLabel(row.to_value)}`;
+    case "unattended": {
+      const voltas = typeof row.detail?.misses === "number" ? row.detail.misses : null;
+      return voltas ? `${base} (${voltas} voltas)` : base;
+    }
     default:
       return base;
   }
@@ -643,7 +929,51 @@ export async function listLeadAttachments(leadId: string): Promise<LeadAttachmen
   return (data || []) as LeadAttachment[];
 }
 
+/**
+ * Teto do anexo de lead. O mesmo da importação de planilha, e o mesmo que a
+ * 0056 gravou em `storage.buckets.file_size_limit` — o bucket estava sem
+ * limite nenhum. Validar aqui é o que permite dizer o motivo em pt-BR: o erro
+ * do Storage para arquivo grande chega em inglês e sem o número.
+ */
+export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+
+/** Tipos aceitos no bucket `lead-attachments` (0056). Documento, não executável. */
+export const ATTACHMENT_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv", "text/plain",
+];
+
+/** O que a tela mostra ao lado do botão de anexar. */
+export const ATTACHMENT_HINT = "PDF, imagem, Word, Excel ou texto · até 8 MB";
+
+/**
+ * Recusa antes de subir: tamanho e tipo. `null` quando o arquivo passa.
+ *
+ * Puro de propósito (testado em `model.test.ts`): é a mesma regra do bucket, e
+ * o usuário precisa saber qual das duas o reprovou.
+ */
+export const rejectAttachment = (file: { name: string; size: number; type: string }): string | null => {
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    return `«${file.name}» tem mais de 8 MB. Comprima o arquivo ou envie em partes.`;
+  }
+  // Arquivo sem `type` (alguns navegadores, alguns .heic) não é motivo de
+  // recusa aqui: o bucket ainda barra, e recusar em silêncio um documento
+  // válido seria pior que a mensagem do Storage.
+  if (file.type && !ATTACHMENT_MIME_TYPES.includes(file.type)) {
+    return `Tipo de arquivo não aceito (${file.type}). Envie ${ATTACHMENT_HINT.toLowerCase()}.`;
+  }
+  return null;
+};
+
 export async function uploadLeadAttachment(leadId: string, file: File): Promise<void> {
+  const recusa = rejectAttachment(file);
+  if (recusa) throw dbError("anexar", { code: "P0001", message: recusa });
+
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user?.id) throw sessionExpired("anexar");
 
@@ -700,6 +1030,51 @@ export async function listTimeoutReleasesToday(): Promise<Map<string, number>> {
   return counts;
 }
 
+export type GroupQueueEntry = { profile_id: string; full_name: string; queue_position: number };
+
+export type GroupQueue = {
+  groupId: string;
+  groupName: string;
+  kind: string;
+  entries: GroupQueueEntry[];
+  /** Erro desta fila só. Um grupo recusado não pode apagar os outros da tela. */
+  error: unknown;
+};
+
+/**
+ * A fila de cada grupo ativo — a saúde da roleta para quem responde por ela.
+ *
+ * `distribution_queue` é a única fonte de "quem está pronto para receber":
+ * junta presença aberta, turno já distribuindo, perfil ativo e o bloqueio por
+ * leads atrasados. Sem isso, gerente e diretor não tinham onde responder "por
+ * que fulano não recebeu lead?" nem enxergar que a roleta está parada.
+ *
+ * Desde a 0056 a RPC exige ser membro do grupo ou ter `leads.view_queue`: por
+ * isso cada grupo carrega o próprio erro em vez de derrubar a lista.
+ */
+export async function listGroupQueues(): Promise<GroupQueue[]> {
+  const { data, error } = await db
+    .from("distribution_groups")
+    .select("id,name,kind")
+    .eq("active", true)
+    .order("name");
+  asError("distribution_groups", error);
+
+  const groups = (data || []) as { id: string; name: string; kind: string }[];
+  return Promise.all(
+    groups.map(async (group) => {
+      const res = await db.rpc("distribution_queue", { p_group_id: group.id });
+      return {
+        groupId: group.id,
+        groupName: group.name,
+        kind: group.kind,
+        entries: res.error ? [] : ((res.data || []) as GroupQueueEntry[]),
+        error: res.error ? dbError("fila do grupo", res.error) : null,
+      };
+    }),
+  );
+}
+
 // -----------------------------------------------------------------------------
 // Helpers puros (testados em leads.test.ts)
 // -----------------------------------------------------------------------------
@@ -725,6 +1100,39 @@ export const formatCountdown = (seconds: number): string => {
   return `${mm}:${ss}`;
 };
 
+/**
+ * Quem a tela deixa escrever no lead.
+ *
+ * Espelha `can_write_lead()` e a policy `leads_update` — dono, admin, gestor do
+ * dono, ou lead sem corretor para quem tem `leads.view_queue`. Sem isso a linha
+ * mostrava Editar e Converter para todo mundo e o banco recusava com 42501
+ * depois do clique: o sócio descobria a falta de permissão preenchendo um
+ * formulário inteiro.
+ *
+ * ponytail: `managesTeam` é `leads.reassign` (gerente/diretor), não a equipe de
+ * verdade — o cliente não sabe quem lidera quem. Um gerente ainda pode receber
+ * 42501 num lead de outra equipe; evoluir quando a tela carregar a hierarquia.
+ */
+export type LeadWriteAbility = {
+  profileId: string | null;
+  isAdmin: boolean;
+  /** `can("leads.reassign")` — quem gere equipe. */
+  managesTeam: boolean;
+  /** `can("leads.view_queue")` — quem alcança lead sem corretor. */
+  canViewQueue: boolean;
+};
+
+export const canWriteLead = (
+  lead: Pick<LeadRecord, "assigned_to">,
+  ability: LeadWriteAbility,
+): boolean => {
+  if (ability.isAdmin) return true;
+  if (lead.assigned_to) {
+    return lead.assigned_to === ability.profileId || ability.managesTeam;
+  }
+  return ability.canViewQueue;
+};
+
 /** O lead está na minha mão aguardando o clique em "Atender"? */
 export const canClaim = (
   lead: Pick<LeadRecord, "status" | "assigned_to">,
@@ -744,6 +1152,19 @@ export const isLeadOverdue = (
   if (!lead.next_action_at) return false;
   return new Date(lead.next_action_at).getTime() < now;
 };
+
+/**
+ * O lead saiu da roleta por falta de atendimento (bandeja do gestor).
+ *
+ * Mesma condição de `assign_lead` (0074): parado na fila com o teto de voltas
+ * batido. A roleta não o oferece mais a ninguém — só o botão "Distribuir" do
+ * gestor ou uma realocação tiram ele daqui, e é por isso que a tela precisa
+ * separá-lo do lead que acabou de chegar.
+ */
+export const isLeadUnattended = (
+  lead: Pick<LeadRecord, "status" | "roulette_misses">,
+  maxRounds: number,
+): boolean => lead.status === "queued" && maxRounds > 0 && lead.roulette_misses >= maxRounds;
 
 export type SourcePerformance = {
   source: string;

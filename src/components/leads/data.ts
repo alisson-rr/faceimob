@@ -19,7 +19,9 @@ import {
   listLeadAttachments,
   listLeadComments,
   listLeadEvents,
+  listDistributionGroups,
   listLeadSources,
+  listGroupQueues,
   listLeads,
   listTimeoutReleasesToday,
   listWhatsappTemplates,
@@ -37,7 +39,9 @@ export const leadKeys = {
   list: ["leads", "records", "all"] as const,
   open: ["leads", "records", "open"] as const,
   timeoutReleases: ["leads", "timeout-releases"] as const,
+  groupQueues: ["leads", "group-queues"] as const,
   sources: ["leads", "sources"] as const,
+  groups: ["leads", "distribution-groups"] as const,
   brokers: ["leads", "brokers"] as const,
   automation: ["leads", "automation"] as const,
   whatsappTemplates: ["leads", "whatsapp-templates"] as const,
@@ -45,8 +49,40 @@ export const leadKeys = {
   projects: (developerId: string) => ["leads", "projects", developerId] as const,
 };
 
-export const useLeads = () =>
-  useQuery({ queryKey: leadKeys.list, queryFn: () => listLeads() });
+/**
+ * Atraso do termo antes de consultar o banco.
+ *
+ * A busca deixou de ser só do cliente: sem espera, cada tecla viraria uma
+ * consulta. 350 ms é o intervalo em que a pessoa termina de digitar um nome.
+ */
+export function useDebounced<T>(value: T, delay = 350): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
+/**
+ * A lista de leads, com a busca resolvida NO BANCO.
+ *
+ * A tela trunca em `LEADS_PAGE_SIZE` e o rodapé mandava "usar a busca do
+ * sistema pelo telefone" — busca que não existia: o filtro rodava sobre as
+ * linhas que já tinham vindo, então um lead antigo era inalcançável por
+ * qualquer termo. Com o termo na consulta, procurar por nome, telefone ou
+ * e-mail passa a olhar a base inteira; o filtro do cliente continua por cima,
+ * para campanha e para os recortes de status, origem, corretor e grupo.
+ *
+ * `placeholderData` mantém a lista anterior enquanto a nova chega: sem isso a
+ * tabela pisca em branco a cada pausa na digitação.
+ */
+export const useLeads = (search = "") =>
+  useQuery({
+    queryKey: [...leadKeys.list, search],
+    queryFn: () => listLeads({ search }),
+    placeholderData: (previous) => previous,
+  });
 
 /** Só o que ainda está em operação: convertido/perdido/descartado sai do funil. */
 export const useOpenLeads = () =>
@@ -61,6 +97,10 @@ export const useTimeoutReleasesToday = () =>
 
 export const useLeadSources = () =>
   useQuery({ queryKey: leadKeys.sources, queryFn: listLeadSources });
+
+/** Grupos de distribuição ativos — filtro da lista e destino da importação. */
+export const useDistributionGroups = () =>
+  useQuery({ queryKey: leadKeys.groups, queryFn: listDistributionGroups });
 
 /** Só gestor realoca lead: sem permissão a consulta nem sai. */
 export const useAssignableBrokers = (enabled: boolean) =>
@@ -132,9 +172,28 @@ export function useLeadDetail(leadId: string | undefined, open: boolean) {
     comments: comments.data ?? [],
     attachments: attachments.data ?? [],
     isPending: enabled && (events.isPending || comments.isPending || attachments.isPending),
+    // Sem isto, falha de rede ou recusa da RLS mostrava "Sem histórico" — o
+    // mesmo texto de um lead que acabou de nascer. O primeiro erro basta: as
+    // três consultas caem juntas quando o motivo é sessão ou rede.
+    error: events.error ?? comments.error ?? attachments.error ?? null,
     reload: () => queryClient.invalidateQueries({ queryKey: leadDetailKey(leadId ?? "") }),
   };
 }
+
+/**
+ * Fila de cada grupo ativo — o card de saúde da roleta.
+ *
+ * Recarrega sozinho a cada minuto: a fila abre no horário de distribuição do
+ * turno sem que nenhuma linha mude, e um gestor com a tela aberta veria "roleta
+ * parada" depois de ela ter voltado a girar.
+ */
+export const useGroupQueues = (enabled: boolean) =>
+  useQuery({
+    queryKey: leadKeys.groupQueues,
+    queryFn: listGroupQueues,
+    enabled,
+    refetchInterval: enabled ? 60_000 : false,
+  });
 
 /**
  * Recarrega a lista depois de uma escrita.
@@ -156,11 +215,25 @@ export function useInvalidateLeads() {
 export function useLeadsRealtime(channelName = "leads-page") {
   const queryClient = useQueryClient();
   useEffect(() => {
+    const invalidar = () => { void queryClient.invalidateQueries({ queryKey: leadKeys.records }); };
     const channel = supabase
       .channel(channelName)
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
-        void queryClient.invalidateQueries({ queryKey: leadKeys.records });
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, invalidar)
+      /**
+       * O lead que SAI da mão do corretor não chega por `leads`.
+       *
+       * `leads_select` exige `assigned_to` visível, e o Realtime não entrega
+       * linha que a RLS esconde: quando `release_expired_leads` zera
+       * `assigned_to`, o UPDATE que interessa a quem acabou de perder o lead é
+       * exatamente o que ele deixa de poder ler — a tela ficava com a linha
+       * velha até alguém recarregar, e o aviso "Lead fora da sua mão" nunca
+       * disparava.
+       *
+       * `lead_assignments` continua visível (o `profile_id` é dele) e é onde a
+       * mesma transação grava `released_at`/`release_reason` ANTES de mexer no
+       * lead. É por ela que a tela fica sabendo.
+       */
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, invalidar)
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [queryClient, channelName]);

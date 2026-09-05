@@ -1,12 +1,12 @@
 import { useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
 import { isLossStatus, normalizeStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { useInvalidateDeals } from "./data";
+import { updateDeal, useCanExitStage, useInvalidateDeals } from "./data";
+import { blockedMoveReason } from "./guards";
 import type { PipelineStage } from "./stages";
 
 /**
@@ -17,21 +17,26 @@ import type { PipelineStage } from "./stages";
  * da tabela precisam chamar exatamente a mesma função. Duplicar a regra em cada
  * gatilho era o jeito garantido de o teclado permitir o que o mouse recusa.
  */
-export function useDealActions({ stages, onNeedsLossConfirmation }: {
+export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }: {
   stages: PipelineStage[];
+  /** Meses em `closed_months`: o gatilho recusa edição de negócio deles. */
+  closedMonths: string[];
   /** Status que significa perda não grava direto: vai para a confirmação (F14). */
   onNeedsLossConfirmation: (deal: LegacyDealRecord, status: string) => void;
 }) {
-  const { canEnterStage } = useAuth();
+  const { canEnterStage, isAdmin } = useAuth();
+  const canExitStage = useCanExitStage();
   const invalidateDeals = useInvalidateDeals();
 
   const moveDeal = useCallback(async (deal: LegacyDealRecord, stage: PipelineStage) => {
-    if (!canEnterStage(stage.id)) {
-      toast({
-        variant: "destructive",
-        title: "Movimentação não permitida",
-        description: `Seu perfil não pode mover negócios para "${stage.label}".`,
-      });
+    // As quatro recusas do banco (sair da etapa, entrar na etapa, mês fechado e
+    // conferência documental) num lugar só, ANTES da escrita — e o mesmo lugar
+    // para o arraste, a seta do teclado e o botão de mover do cartão.
+    const blocked = blockedMoveReason(deal, stage, {
+      isAdmin, canEnterStage, canExitStage, closedMonths,
+    });
+    if (blocked) {
+      toast({ variant: "destructive", title: "Movimentação não permitida", description: blocked });
       return;
     }
 
@@ -52,8 +57,7 @@ export function useDealActions({ stages, onNeedsLossConfirmation }: {
       // Sem atualização otimista de propósito: quando a escrita falhava, o card
       // ficava na coluna nova com o banco recusando — a tela mentia sobre o
       // estado real até o próximo reload.
-      const { error } = await supabase.from("deals").update({ stage_id: stage.id }).eq("id", deal.id);
-      if (error) throw error;
+      await updateDeal(deal.id, { stage_id: stage.id });
       await invalidateDeals();
       toast({ title: `Negócio movido para ${stage.label}` });
     } catch (err) {
@@ -63,7 +67,7 @@ export function useDealActions({ stages, onNeedsLossConfirmation }: {
         description: describeError(err, "A etapa não foi atualizada no servidor."),
       });
     }
-  }, [canEnterStage, invalidateDeals]);
+  }, [canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin]);
 
   const changeStatus = useCallback(async (deal: LegacyDealRecord, status: string) => {
     // Contra a lista de motivos do diálogo, não contra `normalizeStatus`: este
@@ -79,24 +83,20 @@ export function useDealActions({ stages, onNeedsLossConfirmation }: {
     try {
       const closedStage = outcome === "VENDA" ? stages.find((row) => row.code === "closed") : null;
       if (outcome === "VENDA" && !closedStage) throw new Error("Etapa de fechamento não encontrada.");
-      if (closedStage && !canEnterStage(closedStage.id)) {
-        toast({
-          variant: "destructive",
-          title: "Movimentação não permitida",
-          description: 'Seu perfil não pode marcar um negócio como "Fechado".',
-        });
+      // Mesmas travas do arraste: marcar "VENDA" aqui MOVE o negócio para
+      // "Fechado", e a etapa exige sair da atual e ter a documentação aprovada.
+      const blocked = closedStage
+        && blockedMoveReason(deal, closedStage, { isAdmin, canEnterStage, canExitStage, closedMonths });
+      if (blocked) {
+        toast({ variant: "destructive", title: "Movimentação não permitida", description: blocked });
         return;
       }
 
-      const { error } = await supabase
-        .from("deals")
-        .update({
-          status_detail: status,
-          lost_reason: null,
-          ...(closedStage ? { stage_id: closedStage.id } : {}),
-        })
-        .eq("id", deal.id);
-      if (error) throw error;
+      await updateDeal(deal.id, {
+        status_detail: status,
+        lost_reason: null,
+        ...(closedStage ? { stage_id: closedStage.id } : {}),
+      });
       await invalidateDeals();
     } catch (err) {
       toast({
@@ -105,7 +105,7 @@ export function useDealActions({ stages, onNeedsLossConfirmation }: {
         description: describeError(err, "O status não foi atualizado no servidor."),
       });
     }
-  }, [canEnterStage, invalidateDeals, onNeedsLossConfirmation, stages]);
+  }, [canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin, onNeedsLossConfirmation, stages]);
 
   return { moveDeal, changeStatus };
 }

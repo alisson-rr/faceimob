@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { dbError } from "@/lib/supabaseError";
 import { listLegacyDeals } from "@/integrations/supabase/newSchema";
 import type { CcaCaseStatus } from "./ccaStage";
 
@@ -26,7 +27,24 @@ export interface CcaDeal {
 
 export type CcaAnalysis = Record<string, string>;
 
-export const ccaKeys = { board: ["cca", "board"] as const };
+export const ccaKeys = {
+  board: ["cca", "board"] as const,
+  case: (dealId: string) => ["cca", "case", dealId] as const,
+};
+
+/**
+ * Caso do negócio na esteira, para a aba CCA do detalhe.
+ *
+ * `maybeSingle` porque a maioria dos negócios não tem caso — a ausência é
+ * estado normal, não erro. O erro do SELECT, esse, sobe: engoli-lo fazia a aba
+ * afirmar "não entrou na esteira" para um negócio que pode ter entrado.
+ */
+export async function loadCcaCase(dealId: string): Promise<{ id: string; analysis: CcaAnalysis } | null> {
+  const { data, error } = await supabase
+    .from("cca_cases").select("id,analysis").eq("deal_id", dealId).maybeSingle();
+  if (error) throw dbError("cca_cases", error);
+  return data ? { id: data.id, analysis: (data.analysis as CcaAnalysis) ?? {} } : null;
+}
 
 /**
  * Grava a análise de crédito da aba CCA do negócio.
@@ -38,11 +56,23 @@ export const ccaKeys = { board: ["cca", "board"] as const };
 export async function saveCcaAnalysis(dealId: string, analysis: CcaAnalysis): Promise<void> {
   const { data, error } = await supabase
     .from("cca_cases").select("id").eq("deal_id", dealId).maybeSingle();
-  if (error) throw error;
+  if (error) throw dbError("cca_cases", error);
   if (!data) return; // Negócio fora da esteira: não há o que gravar.
-  const { error: updateError } = await supabase
-    .from("cca_cases").update({ analysis }).eq("id", data.id);
-  if (updateError) throw updateError;
+
+  // `.select("id")` pelo mesmo motivo de `updateDeal`: a policy `cca_cases_write`
+  // é `has_permission('cca.review')` e a aba habilitava por `roles`. Basta o
+  // admin desmarcar a permissão para o UPDATE casar 0 linhas — o PostgREST
+  // devolve 204 com `error: null` e o modal toastava "Alterações salvas" com a
+  // análise de crédito descartada.
+  const { data: gravado, error: updateError } = await supabase
+    .from("cca_cases").update({ analysis }).eq("id", data.id).select("id");
+  if (updateError) throw dbError("cca_cases", updateError);
+  if (!gravado?.length) {
+    throw dbError("cca_cases", {
+      code: "P0001",
+      message: "Seu perfil não pode gravar a análise deste caso.",
+    });
+  }
 }
 
 /**

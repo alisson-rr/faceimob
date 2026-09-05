@@ -105,11 +105,30 @@ export async function aguardarCarregamento(page: Page) {
  * defeito. Esses testes declaram o que esperam com
  * `test.use({ errosEsperados: [/status of 403/] })`; qualquer erro fora da lista
  * continua reprovando.
+ *
+ * ARMADILHA DO PLAYWRIGHT (1.62): em `test.use`, o valor de uma opção passa por
+ * `isFixtureTuple = Array.isArray(v) && typeof v[1] === "object"` — sem olhar as
+ * chaves de `v[1]`. Como RegExp é `object`, uma lista com DOIS OU MAIS padrões é
+ * lida como a tupla `[valorPadrão, opções]`: só o elemento 0 sobrevive e o resto
+ * é descartado ANTES de chegar aqui. Por isso a forma obrigatória é sempre uma
+ * lista de UM item, com alternância quando há mais de um padrão (`[/a|b/i]`).
+ *
+ * Aceitar o RegExp solto que sobra da truncagem seria pior que reprovar: o teste
+ * rodaria com um padrão declarado a menos e ninguém saberia. Daí o guard abaixo.
  */
 export const test = base.extend<{ errosEsperados: RegExp[]; semErroDeConsole: void }>({
   errosEsperados: [[], { option: true }],
   semErroDeConsole: [
     async ({ page, errosEsperados }, use) => {
+      // Chegar aqui como não-array só acontece pela truncagem descrita acima: o
+      // que sobrou de `[/a/, /b/]`. Falhar alto é a única defesa possível — a
+      // fixture não tem como recuperar o padrão que o Playwright já jogou fora.
+      if (!Array.isArray(errosEsperados)) {
+        throw new Error(
+          "errosEsperados: declare UMA lista com um único RegExp de alternância " +
+            "(`[/a|b/i]`) — o Playwright descarta o 2º elemento de `[/a/, /b/]`.",
+        );
+      }
       const erros: string[] = [];
       const ignorar = (texto: string) =>
         // Ruído conhecido de ambiente, não defeito da aplicação.

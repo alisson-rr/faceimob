@@ -1,0 +1,38 @@
+-- =============================================================================
+-- 0072 — Aposenta a permissão `menu.settings`.
+--
+-- POR QUÊ
+--
+-- `/settings` deixou de ser rota guardada (`src/lib/routePermissions.ts`):
+-- ela é o FALLBACK do pós-login para quem não abre item de menu nenhum — papel
+-- revogado, conta criada antes do gatilho de papel, falha ao ler a matriz. Um
+-- fallback guardado não é fallback: enquanto a rota exigia `menu.settings`,
+-- essas pessoas caíam em "Acesso não liberado" como primeira e única tela do
+-- sistema, sem saída.
+--
+-- Com a rota livre, a permissão virou um INTERRUPTOR MORTO. A aba Menu da tela
+-- de Permissões continuava oferecendo o controle e afirmando, por escrito, que
+-- "item de menu vale na tela (barra lateral e guard da rota)" — mas nenhuma
+-- policy consulta o código
+--   select ... from pg_policies where qual ilike '%menu.settings%'  → vazio
+-- e a barra lateral libera rota sem código. O admin desmarcava Configurações
+-- para `broker`, a linha gravava `allowed = false`, e nada acontecia: o
+-- corretor recarregava e continuava vendo e abrindo a tela.
+--
+-- Apagar a permissão fecha o laço no ponto mais estreito: a tela de Permissões
+-- se monta do catálogo (`listPermissions` → `category = 'menu'`), então a linha
+-- some sozinha, sem tocar em `AdminPermissions.tsx`.
+--
+-- CONSEQUÊNCIA ASSUMIDA: não há mais como esconder "Configurações" de um papel.
+-- A tela só mexe no próprio perfil, na própria senha e nas próprias sessões, e
+-- quem autoriza isso é a RLS do dado (`profiles_update_self` + o gatilho
+-- `profiles_guard_admin_columns`), não o menu. Negar a alguém o acesso à
+-- própria senha não é caso de uso real — tanto que a concessão existia para os
+-- 7 papéis desde a 0015.
+--
+-- Idempotente: dois `delete ... where`. A ordem importa por causa da FK
+-- `role_permissions.permission → permissions.code`.
+-- =============================================================================
+
+delete from public.role_permissions where permission = 'menu.settings';
+delete from public.permissions where code = 'menu.settings';

@@ -12,6 +12,7 @@
  * e uma dependência a mais só para exportar variável não se paga.
  */
 import { spawn } from "node:child_process";
+import { travar } from "./e2e-lock.mjs";
 import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -20,6 +21,10 @@ const remoto = args.includes("--remote");
 const demo = args.includes("--demo");
 const resto = args.filter((a) => a !== "--remote" && a !== "--demo");
 if (demo) resto.push("--project=demo");
+
+// Uma execução por vez contra o mesmo alvo: os dez usuários da suíte têm
+// identidade fixa e o `global-teardown` os apaga. Ver `scripts/e2e-lock.mjs`.
+const liberarTrava = await travar();
 
 const filho = spawn("npx", ["playwright", "test", ...resto], {
   stdio: "inherit",
@@ -54,6 +59,7 @@ function publicarVideo() {
 }
 
 filho.on("exit", (code) => {
+  liberarTrava();
   if (demo && code === 0) {
     try {
       publicarVideo();

@@ -60,8 +60,16 @@ const isFresh = (iso: string | null | undefined, commitTimestamp?: string) => {
  *   · gestor — chegou lead novo na fila dos grupos dele.
  */
 export default function NewLeadNotifier() {
-  const { user, role } = useAuth();
+  const { user, role, can } = useAuth();
   const profileId = user?.id || null;
+  /**
+   * Marketing está em `GESTOR_ROLES` (quem paga a campanha quer saber que ela
+   * gerou lead), mas a matriz não dá `menu.leads` a esse papel: o botão "Abrir
+   * leads" levava direto ao "Acesso não liberado" do guard de rota. Ou o botão
+   * some, ou o banco passa a permitir — conceder a tela é decisão de produto,
+   * então aqui o aviso chega sem a promessa que não se cumpre.
+   */
+  const podeAbrirLeads = can("menu.leads");
   const isGestor = GESTOR_ROLES.includes(role);
   const veFilaInteira = FILA_INTEIRA_ROLES.includes(role);
   const celebrate = useCelebration();
@@ -183,8 +191,10 @@ export default function NewLeadNotifier() {
       await claimLead(lead.id);
       setLead(null);
       // O toast e o som saem da comemoração de `lead_claimed`, disparada pelo
-      // realtime de `lead_events` no EngagementLayer.
-      navigate("/leads");
+      // realtime de `lead_events` no EngagementLayer. Sem `menu.leads` o
+      // destino é a home do papel ("/" resolve em `HomeRedirect`), não uma tela
+      // que o guard nega logo depois de o atendimento ter dado certo.
+      navigate(podeAbrirLeads ? "/leads" : "/");
     } catch (err) {
       toast({
         variant: "destructive",
@@ -242,11 +252,11 @@ export default function NewLeadNotifier() {
             <Button onClick={attend} disabled={claiming || secondsLeft === 0}>
               <HandMetal className="h-4 w-4 mr-1" /> {claiming ? "Atendendo..." : "Atender agora"}
             </Button>
-          ) : (
+          ) : podeAbrirLeads ? (
             <Button onClick={() => { setLead(null); navigate("/leads"); }}>
               <ExternalLink className="h-4 w-4 mr-1" /> Abrir leads
             </Button>
-          )}
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

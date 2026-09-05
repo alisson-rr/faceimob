@@ -31,6 +31,11 @@ export function TopBrokers({ title, description, rows, scroll = false }: TopBrok
   const top = rows.slice(0, 3);
   const rest = rows.slice(3);
 
+  // O rodape e o estado vazio tinham uma variante para "participante que a RLS
+  // de `profiles` nao deixou nomear". Ela nunca acontecia: o nome sai de
+  // `deal_participant_names()`, SECURITY DEFINER, que devolve o nome de todo
+  // participante de negocio visivel. Codigo que descreve um comportamento que o
+  // banco nao tem confunde mais do que ajuda — saiu em 02/09/2026.
   if (rows.length === 0) {
     return (
       <SectionCard title={title} description={description} icon={Trophy}>
@@ -79,7 +84,20 @@ export function TopBrokers({ title, description, rows, scroll = false }: TopBrok
       </ol>
 
       {rest.length > 0 && (
-        <div className={scroll ? "mt-5 max-h-96 overflow-y-auto rounded-xl border border-border" : "mt-5 rounded-xl border border-border"}>
+        // Area rolavel precisa de foco: a tabela do 4º colocado em diante nao
+        // tem UM elemento focavel dentro (so texto), entao sem `tabIndex` quem
+        // navega por teclado nao consegue rolar ate o fim da lista — e a
+        // violacao WCAG 2.1.1 que o axe reporta como
+        // `scrollable-region-focusable`. Com foco, ela precisa de nome: dai o
+        // `role="region"` com o titulo do bloco.
+        <div
+          className={
+            scroll
+              ? "mt-5 max-h-96 overflow-y-auto rounded-xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              : "mt-5 rounded-xl border border-border"
+          }
+          {...(scroll ? { tabIndex: 0, role: "region", "aria-label": title } : {})}
+        >
           <Table>
             <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>

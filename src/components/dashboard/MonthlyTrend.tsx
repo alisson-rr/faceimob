@@ -4,6 +4,7 @@ import { ptBR } from "date-fns/locale";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { EmptyState, SectionCard } from "@/components/shared";
 import { chartAxis, chartGrid, chartLegend, chartStill, chartTooltip, seriesToken, tone } from "@/lib/tone";
+import { ChartData } from "./ChartData";
 import type { MonthlySeries } from "./data";
 
 /** "03" → "mar". O eixo com numero de mes obriga o leitor a traduzir de cabeca. */
@@ -27,7 +28,16 @@ export function MonthlyTrend({ series }: { series: MonthlySeries }) {
           description="A comparação entre anos aparece assim que houver vendas registradas em mais de um mês."
         />
       ) : (
-        <div className="h-[280px] w-full">
+        <>
+        <ChartData
+          caption="Vendas fechadas em cada mês, ano a ano"
+          columns={["Mês", ...series.years]}
+          rows={series.rows.map((row) => [
+            monthLabel(String(row.mes)),
+            ...series.years.map((year) => Number(row[year] ?? 0)),
+          ])}
+        />
+        <div className="h-[280px] w-full" aria-hidden="true">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={series.rows} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
@@ -51,6 +61,7 @@ export function MonthlyTrend({ series }: { series: MonthlySeries }) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+        </>
       )}
     </SectionCard>
   );

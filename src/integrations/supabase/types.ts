@@ -39,6 +39,65 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_provision_log: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_id: string | null
+          created_at: string
+          email: string
+          id: string
+          profile_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          profile_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_provision_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_provision_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_provision_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_provision_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ad_campaigns: {
         Row: {
           created_at: string
@@ -129,6 +188,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "allowed_ips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "allowed_ips_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
@@ -179,6 +245,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "annual_results_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
         ]
       }
       automation_settings: {
@@ -192,6 +265,7 @@ export type Database = {
           notify_on_assign: boolean
           notify_on_timeout: boolean
           overdue_block_threshold: number
+          roulette_max_rounds: number
           updated_at: string
           updated_by: string | null
         }
@@ -205,6 +279,7 @@ export type Database = {
           notify_on_assign?: boolean
           notify_on_timeout?: boolean
           overdue_block_threshold?: number
+          roulette_max_rounds?: number
           updated_at?: string
           updated_by?: string | null
         }
@@ -218,6 +293,7 @@ export type Database = {
           notify_on_assign?: boolean
           notify_on_timeout?: boolean
           overdue_block_threshold?: number
+          roulette_max_rounds?: number
           updated_at?: string
           updated_by?: string | null
         }
@@ -227,6 +303,13 @@ export type Database = {
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -268,6 +351,13 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cca_case_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -331,6 +421,13 @@ export type Database = {
             columns: ["analyst_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cca_cases_analyst_id_fkey"
+            columns: ["analyst_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -428,6 +525,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "checkins_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "checkins_shift_id_fkey"
             columns: ["shift_id"]
             isOneToOne: false
@@ -461,6 +565,13 @@ export type Database = {
             columns: ["closed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closed_months_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -520,6 +631,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "daily_entries_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "daily_entries_report_id_fkey"
             columns: ["report_id"]
             isOneToOne: false
@@ -531,6 +649,7 @@ export type Database = {
       daily_reports: {
         Row: {
           created_at: string
+          filled_by_name: string | null
           id: string
           notes: string | null
           report_date: string
@@ -541,6 +660,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          filled_by_name?: string | null
           id?: string
           notes?: string | null
           report_date?: string
@@ -551,6 +671,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          filled_by_name?: string | null
           id?: string
           notes?: string | null
           report_date?: string
@@ -565,6 +686,13 @@ export type Database = {
             columns: ["submitted_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_reports_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -743,6 +871,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "deal_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
         ]
       }
       deal_history: {
@@ -782,6 +917,13 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_history_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -837,6 +979,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_participants_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -938,10 +1087,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "deals_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "deals_developer_id_fkey"
             columns: ["developer_id"]
             isOneToOne: false
             referencedRelation: "developers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_document_review_requested_by_fkey"
+            columns: ["document_review_requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_document_review_requested_by_fkey"
+            columns: ["document_review_requested_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_document_reviewed_by_fkey"
+            columns: ["document_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_document_reviewed_by_fkey"
+            columns: ["document_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -1082,6 +1266,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "developer_submissions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
         ]
       }
       developers: {
@@ -1187,6 +1378,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distribution_group_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -1312,6 +1510,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "funnel_targets_director_id_fkey"
+            columns: ["director_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "funnel_targets_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
@@ -1360,6 +1565,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_events_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -1452,6 +1664,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "game_season_results_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "game_season_results_season_id_fkey"
             columns: ["season_id"]
             isOneToOne: false
@@ -1497,6 +1716,13 @@ export type Database = {
             columns: ["closed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_seasons_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -1550,10 +1776,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "goals_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "goals_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -1604,6 +1844,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "gold_tips_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
         ]
       }
       important_notices: {
@@ -1649,6 +1896,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "important_notices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -1718,6 +1972,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lead_assignments_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
         ]
       }
       lead_attachments: {
@@ -1779,6 +2040,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lead_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
         ]
       }
       lead_comments: {
@@ -1812,6 +2080,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -1860,6 +2135,13 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -1957,6 +2239,7 @@ export type Database = {
           phone: string | null
           phone_raw: string | null
           raw_payload: Json | null
+          roulette_misses: number
           sdr_qualified_at: string | null
           source_id: string | null
           status: Database["public"]["Enums"]["lead_status"]
@@ -1998,6 +2281,7 @@ export type Database = {
           phone?: string | null
           phone_raw?: string | null
           raw_payload?: Json | null
+          roulette_misses?: number
           sdr_qualified_at?: string | null
           source_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
@@ -2039,6 +2323,7 @@ export type Database = {
           phone?: string | null
           phone_raw?: string | null
           raw_payload?: Json | null
+          roulette_misses?: number
           sdr_qualified_at?: string | null
           source_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
@@ -2055,6 +2340,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -2120,10 +2412,73 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "marketing_investments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "marketing_investments_developer_id_fkey"
             columns: ["developer_id"]
             isOneToOne: false
             referencedRelation: "developers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      month_reopenings: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          id: string
+          period: string
+          reopened_at: string
+          reopened_by: string | null
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          id?: string
+          period: string
+          reopened_at?: string
+          reopened_by?: string | null
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          id?: string
+          period?: string
+          reopened_at?: string
+          reopened_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "month_reopenings_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "month_reopenings_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "month_reopenings_reopened_by_fkey"
+            columns: ["reopened_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "month_reopenings_reopened_by_fkey"
+            columns: ["reopened_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -2177,6 +2532,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -2249,13 +2611,22 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address: string | null
           avatar_url: string | null
+          badge_delivered_at: string | null
+          badge_requested_at: string | null
+          birth_date: string | null
           bypass_ip_check: boolean
+          cpf: string | null
           created_at: string
+          creci: string | null
+          division: string | null
           email: string
           full_name: string
+          habilitation: string | null
           hired_at: string | null
           id: string
+          indication: string | null
           phone: string | null
           slug: string | null
           status: Database["public"]["Enums"]["profile_status"]
@@ -2263,13 +2634,22 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          address?: string | null
           avatar_url?: string | null
+          badge_delivered_at?: string | null
+          badge_requested_at?: string | null
+          birth_date?: string | null
           bypass_ip_check?: boolean
+          cpf?: string | null
           created_at?: string
+          creci?: string | null
+          division?: string | null
           email: string
           full_name: string
+          habilitation?: string | null
           hired_at?: string | null
           id: string
+          indication?: string | null
           phone?: string | null
           slug?: string | null
           status?: Database["public"]["Enums"]["profile_status"]
@@ -2277,13 +2657,22 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          address?: string | null
           avatar_url?: string | null
+          badge_delivered_at?: string | null
+          badge_requested_at?: string | null
+          birth_date?: string | null
           bypass_ip_check?: boolean
+          cpf?: string | null
           created_at?: string
+          creci?: string | null
+          division?: string | null
           email?: string
           full_name?: string
+          habilitation?: string | null
           hired_at?: string | null
           id?: string
+          indication?: string | null
           phone?: string | null
           slug?: string | null
           status?: Database["public"]["Enums"]["profile_status"]
@@ -2299,10 +2688,14 @@ export type Database = {
           created_by: string | null
           director_id: string | null
           expires_at: string | null
+          failed_attempts: number
+          has_pin: boolean | null
           id: string
           kind: string
           last_seen_at: string | null
+          locked_until: string | null
           pin_hash: string | null
+          pin_set_at: string | null
           slug: string
           team_id: string | null
           updated_at: string
@@ -2313,11 +2706,15 @@ export type Database = {
           created_by?: string | null
           director_id?: string | null
           expires_at?: string | null
+          failed_attempts?: number
+          has_pin?: boolean | null
           id?: string
           kind: string
           last_seen_at?: string | null
+          locked_until?: string | null
           pin_hash?: string | null
-          slug: string
+          pin_set_at?: string | null
+          slug?: string
           team_id?: string | null
           updated_at?: string
         }
@@ -2327,10 +2724,14 @@ export type Database = {
           created_by?: string | null
           director_id?: string | null
           expires_at?: string | null
+          failed_attempts?: number
+          has_pin?: boolean | null
           id?: string
           kind?: string
           last_seen_at?: string | null
+          locked_until?: string | null
           pin_hash?: string | null
+          pin_set_at?: string | null
           slug?: string
           team_id?: string | null
           updated_at?: string
@@ -2344,10 +2745,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "public_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "public_links_director_id_fkey"
             columns: ["director_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "public_links_director_id_fkey"
+            columns: ["director_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -2478,6 +2893,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "remarketing_lists_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "remarketing_lists_handoff_group_id_fkey"
             columns: ["handoff_group_id"]
             isOneToOne: false
@@ -2489,6 +2911,68 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_change_log: {
+        Row: {
+          actor_email: string | null
+          actor_id: string | null
+          created_at: string
+          id: string
+          profile_email: string | null
+          profile_id: string | null
+          roles_after: Database["public"]["Enums"]["app_role"][]
+          roles_before: Database["public"]["Enums"]["app_role"][]
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          profile_email?: string | null
+          profile_id?: string | null
+          roles_after?: Database["public"]["Enums"]["app_role"][]
+          roles_before?: Database["public"]["Enums"]["app_role"][]
+        }
+        Update: {
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          profile_email?: string | null
+          profile_id?: string | null
+          roles_after?: Database["public"]["Enums"]["app_role"][]
+          roles_before?: Database["public"]["Enums"]["app_role"][]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_change_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "role_change_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "role_change_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "role_change_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -2650,6 +3134,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sdr_conversations_handed_off_to_fkey"
+            columns: ["handed_off_to"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sdr_conversations_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -2660,6 +3151,7 @@ export type Database = {
       }
       sdr_messages: {
         Row: {
+          agent_id: string | null
           author: Database["public"]["Enums"]["message_author"]
           body: string
           conversation_id: string
@@ -2671,6 +3163,7 @@ export type Database = {
           tokens_out: number | null
         }
         Insert: {
+          agent_id?: string | null
           author: Database["public"]["Enums"]["message_author"]
           body: string
           conversation_id: string
@@ -2682,6 +3175,7 @@ export type Database = {
           tokens_out?: number | null
         }
         Update: {
+          agent_id?: string | null
           author?: Database["public"]["Enums"]["message_author"]
           body?: string
           conversation_id?: string
@@ -2693,6 +3187,13 @@ export type Database = {
           tokens_out?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "sdr_messages_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sdr_messages_conversation_id_fkey"
             columns: ["conversation_id"]
@@ -2793,10 +3294,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tasks_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -2832,6 +3347,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -2883,10 +3405,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "teams_director_id_fkey"
+            columns: ["director_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "teams_manager_id_fkey"
             columns: ["manager_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teams_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -2955,10 +3491,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "user_roles_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "user_roles_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -3009,6 +3559,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "visits_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "visits_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -3017,6 +3574,77 @@ export type Database = {
           },
           {
             foreignKeyName: "visits_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_inbound_messages: {
+        Row: {
+          body: string | null
+          conversation_id: string | null
+          created_at: string
+          detail: string | null
+          from_phone: string
+          handled_at: string | null
+          handled_by: string | null
+          id: string
+          lead_id: string | null
+          outcome: string
+          provider_message_id: string
+        }
+        Insert: {
+          body?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          detail?: string | null
+          from_phone: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          lead_id?: string | null
+          outcome?: string
+          provider_message_id: string
+        }
+        Update: {
+          body?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          detail?: string | null
+          from_phone?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          lead_id?: string | null
+          outcome?: string
+          provider_message_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_inbound_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_inbound_messages_handled_by_fkey"
+            columns: ["handled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_inbound_messages_handled_by_fkey"
+            columns: ["handled_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_inbound_messages_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
@@ -3125,6 +3753,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "game_events_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "game_events_season_id_fkey"
             columns: ["season_id"]
             isOneToOne: false
@@ -3132,6 +3767,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      team_leader_names: {
+        Row: {
+          avatar_url: string | null
+          full_name: string | null
+          id: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          full_name?: string | null
+          id?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          full_name?: string | null
+          id?: string | null
+        }
+        Relationships: []
       }
     }
     Functions: {
@@ -3154,8 +3807,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      assign_lead: { Args: { p_lead_id: string }; Returns: string }
+      assign_lead: {
+        Args: { p_force?: boolean; p_lead_id: string }
+        Returns: string
+      }
       assign_queued_leads: { Args: never; Returns: number }
+      auth_effective_role: {
+        Args: { p_profile: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
       auth_led_team_ids: { Args: never; Returns: string[] }
       auth_roles: {
         Args: never
@@ -3176,9 +3836,17 @@ export type Database = {
       can_edit_deal: { Args: { p_deal_id: string }; Returns: boolean }
       can_enter_stage: { Args: { target_stage: string }; Returns: boolean }
       can_exit_stage: { Args: { target_stage: string }; Returns: boolean }
+      can_manage_public_link: {
+        Args: { p_director_id: string; p_team_id: string }
+        Returns: boolean
+      }
+      can_probe_profile: { Args: { who: string }; Returns: boolean }
       can_read_all: { Args: never; Returns: boolean }
       can_see_deal: { Args: { p_deal_id: string }; Returns: boolean }
+      can_see_game_profile: { Args: { p_profile_id: string }; Returns: boolean }
+      can_see_lead: { Args: { p_lead_id: string }; Returns: boolean }
       can_see_profile: { Args: { target: string }; Returns: boolean }
+      can_write_lead: { Args: { p_lead_id: string }; Returns: boolean }
       checkin_eligibility: {
         Args: { who?: string }
         Returns: {
@@ -3221,6 +3889,7 @@ export type Database = {
           phone: string | null
           phone_raw: string | null
           raw_payload: Json | null
+          roulette_misses: number
           sdr_qualified_at: string | null
           source_id: string | null
           status: Database["public"]["Enums"]["lead_status"]
@@ -3241,6 +3910,61 @@ export type Database = {
       close_game_season: {
         Args: { p_close_month?: boolean; p_next_label?: string }
         Returns: string
+      }
+      close_lead: {
+        Args: {
+          p_lead_id: string
+          p_reason: string
+          p_status: Database["public"]["Enums"]["lead_status"]
+        }
+        Returns: {
+          ad_id: string | null
+          ad_name: string | null
+          adset_id: string | null
+          adset_name: string | null
+          assigned_at: string | null
+          assigned_to: string | null
+          attend_deadline: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          converted_at: string | null
+          converted_deal_id: string | null
+          created_at: string
+          distribution_group_id: string | null
+          document: string | null
+          email: string | null
+          external_id: string | null
+          first_contact_at: string | null
+          form_id: string | null
+          full_name: string
+          funnel_stage: Database["public"]["Enums"]["lead_funnel_stage"]
+          id: string
+          landing_page: string | null
+          last_activity_at: string
+          lost_at: string | null
+          lost_reason: string | null
+          next_action_at: string | null
+          notes: string | null
+          phone: string | null
+          phone_raw: string | null
+          raw_payload: Json | null
+          roulette_misses: number
+          sdr_qualified_at: string | null
+          source_id: string | null
+          status: Database["public"]["Enums"]["lead_status"]
+          updated_at: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "leads"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       close_month_and_season: { Args: { p_period?: string }; Returns: Json }
       convert_lead_to_deal: {
@@ -3287,6 +4011,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_public_link: {
+        Args: {
+          p_director_id?: string
+          p_kind: string
+          p_pin: string
+          p_team_id?: string
+        }
+        Returns: Json
+      }
       cron_jobs_health: {
         Args: never
         Returns: {
@@ -3301,8 +4034,10 @@ export type Database = {
         }[]
       }
       current_game_season: { Args: never; Returns: string }
+      current_season_month: { Args: never; Returns: string }
       current_shift: { Args: { at_time?: string }; Returns: string }
       current_work_date: { Args: never; Returns: string }
+      deal_id_of_object: { Args: { p_name: string }; Returns: string }
       deal_participant_names: {
         Args: never
         Returns: {
@@ -3313,8 +4048,10 @@ export type Database = {
           role: string
         }[]
       }
+      deal_status_bare: { Args: { p_label: string }; Returns: string }
       dispatch_pending_notifications: { Args: never; Returns: undefined }
       dispatch_pending_submissions: { Args: never; Returns: undefined }
+      distribute_queued_lead: { Args: { p_lead_id: string }; Returns: string }
       distribution_queue: {
         Args: { p_group_id: string }
         Returns: {
@@ -3326,6 +4063,17 @@ export type Database = {
         }[]
       }
       effective_attend_timeout: { Args: { group_id: string }; Returns: number }
+      existing_lead_phones: {
+        Args: { p_phones: string[] }
+        Returns: {
+          lead_count: number
+          phone_digits: string
+        }[]
+      }
+      expire_stale_outbound_notifications: {
+        Args: { p_max_age?: string }
+        Returns: number
+      }
       get_integration_secret: {
         Args: { p_label: string; p_provider: string }
         Returns: string
@@ -3339,20 +4087,22 @@ export type Database = {
         Args: { target: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
       }
+      import_remarketing_list: {
+        Args: {
+          p_agent_id?: string
+          p_contacts?: Json
+          p_name: string
+          p_template_id?: string
+        }
+        Returns: string
+      }
       ip_is_allowed: {
         Args: { candidate: unknown; who?: string }
         Returns: boolean
       }
-      import_remarketing_list: {
-        Args: {
-          p_agent_id?: string | null
-          p_contacts?: Json
-          p_name: string
-          p_template_id?: string | null
-        }
-        Returns: string
-      }
       is_admin: { Args: never; Returns: boolean }
+      lead_distribution_group: { Args: { p_lead_id: string }; Returns: string }
+      lead_in_sdr_conversation: { Args: { p_lead: string }; Returns: boolean }
       list_integrations: {
         Args: never
         Returns: {
@@ -3366,16 +4116,48 @@ export type Database = {
         }[]
       }
       manages_profile: { Args: { target: string }; Returns: boolean }
+      mark_no_response_leads: { Args: never; Returns: number }
       marketing_campaign_stats: {
         Args: never
         Returns: {
           campaign_id: string
           conversions: number
           leads: number
+          revenue: number
+          sales: number
+        }[]
+      }
+      marketing_developer_summary: {
+        Args: { p_period?: string }
+        Returns: {
+          active: boolean
+          campaign_spend: number
+          campaigns: number
+          deals: number
+          developer_id: string
+          developer_name: string
+          investment: number
+          leads: number
+          sales: number
+          vgv: number
         }[]
       }
       month_start: { Args: { d: string }; Returns: string }
       normalize_phone: { Args: { raw: string }; Returns: string }
+      notification_queue_health: {
+        Args: never
+        Returns: {
+          channel: string
+          com_erro: number
+          mais_antiga: string
+          max_tentativas: number
+          pendentes: number
+          ultimo_erro: string
+        }[]
+      }
+      notify_cron_failures: { Args: never; Returns: number }
+      notify_due_tasks: { Args: never; Returns: number }
+      notify_expiring_public_links: { Args: never; Returns: number }
       overdue_lead_count: { Args: { who: string }; Returns: number }
       perform_checkin: {
         Args: { client_ip?: unknown }
@@ -3419,10 +4201,28 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      public_daily_submit: {
-        Args: { p_entries: Json; p_pin: string; p_slug: string }
-        Returns: Json
-      }
+      public_daily_submit:
+        | {
+            Args: {
+              p_entries: Json
+              p_filled_by?: string
+              p_notes?: string
+              p_pin: string
+              p_slug: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_date: string
+              p_entries: Json
+              p_filled_by: string
+              p_notes: string
+              p_pin: string
+              p_slug: string
+            }
+            Returns: Json
+          }
       public_daily_team: {
         Args: { p_pin?: string; p_slug: string }
         Returns: Json
@@ -3464,6 +4264,7 @@ export type Database = {
           phone: string | null
           phone_raw: string | null
           raw_payload: Json | null
+          roulette_misses: number
           sdr_qualified_at: string | null
           source_id: string | null
           status: Database["public"]["Enums"]["lead_status"]
@@ -3493,11 +4294,30 @@ export type Database = {
           total: number
         }[]
       }
+      review_deal_documents: {
+        Args: { p_approve: boolean; p_deal_id: string; p_reason?: string }
+        Returns: Json
+      }
+      revoke_integration_secret: {
+        Args: { p_label: string; p_provider: string }
+        Returns: boolean
+      }
       scoring_points: {
         Args: { p_event_code: string; p_season_id: string }
         Returns: number
       }
-      sdr_handoff: { Args: { p_conversation_id: string }; Returns: string }
+      sdr_handoff: {
+        Args: { p_conversation_id: string; p_reason?: string }
+        Returns: string
+      }
+      season_label_ptbr: { Args: { d: string }; Returns: string }
+      selectable_brokers: {
+        Args: never
+        Returns: {
+          full_name: string
+          id: string
+        }[]
+      }
       set_integration_secret: {
         Args: {
           p_config?: Json
@@ -3507,38 +4327,41 @@ export type Database = {
         }
         Returns: string
       }
+      set_profile_roles: {
+        Args: {
+          p_profile_id: string
+          p_roles: Database["public"]["Enums"]["app_role"][]
+        }
+        Returns: Database["public"]["Enums"]["app_role"][]
+      }
       set_public_link_pin: {
         Args: { p_link_id: string; p_pin: string }
         Returns: undefined
       }
       slugify: { Args: { txt: string }; Returns: string }
-      review_deal_documents: {
-        Args: { p_approve: boolean; p_deal_id: string; p_reason?: string }
-        Returns: Json
-      }
+      submit_deal_for_analysis: { Args: { p_deal_id: string }; Returns: Json }
       submit_deal_for_manager_review: {
         Args: { p_deal_id: string }
         Returns: Json
       }
-      submit_deal_for_analysis: { Args: { p_deal_id: string }; Returns: Json }
       unaccent_fallback: { Args: { txt: string }; Returns: string }
       visible_game_ranking: {
         Args: { p_season_id: string }
         Returns: {
           active: boolean
-          avatar_url: string | null
+          avatar_url: string
           breakdown: Json
-          director_id: string | null
-          director_name: string | null
+          director_id: string
+          director_name: string
           full_name: string
-          manager_id: string | null
-          manager_name: string | null
+          manager_id: string
+          manager_name: string
           points: number
           profile_id: string
           sales: number
           season_id: string
-          team_id: string | null
-          team_name: string | null
+          team_id: string
+          team_name: string
           vgv: number
         }[]
       }
@@ -3613,12 +4436,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3642,11 +4465,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3667,11 +4490,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3692,11 +4515,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3709,11 +4532,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireSecret } from "../_shared/secrets.ts";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSecret } from "../_shared/secrets.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,19 +16,13 @@ const json = (body: unknown, status = 200) =>
 /**
  * Ponto de entrada da plataforma de IA de voz/WhatsApp (ata 23/07, item 11).
  *
- * Contrato aceito:
- *   POST /functions/v1/voice-ai-webhook
- *   Authorization: Bearer <VOICE_AI_WEBHOOK_SECRET>
- *   {
- *     "event_id":   "evt_123",              // opcional, para rastreio
- *     "type":       "lead_qualified" | "transcript" | "status",
- *     "external_id":"chamada-987",          // OBRIGATÓRIO: chave do lead lá
- *     "full_name":  "Maria Silva",
- *     "phone":      "+5511999998888",
- *     "transcript": "...",                  // type=transcript
- *     "status":     "qualified" | "lost",   // type=status
- *     "source_code":"ia-voz"                // origem opcional
- *   }
+ * O CONTRATO PARA O FORNECEDOR MORA EM `docs/integracoes/voice-ai-webhook.md`.
+ * Este comentário é o resumo; o documento é o que se entrega. Até 02/09/2026 o
+ * contrato existia só aqui e documentava `source_code` como coluna de `leads`
+ * — coluna que nunca existiu (a tabela tem `source_id uuid`), então a function
+ * respondia 500 mesmo com credencial e payload corretos. O campo do PAYLOAD
+ * continua se chamando `source_code`: é o `code` de `lead_sources`, resolvido
+ * aqui para o id, do mesmo jeito que o `meta-ads-webhook` faz.
  *
  * Idempotência: `external_id` casa com o índice único parcial
  * `leads_external_id_idx`. Reenviar o mesmo evento não cria um segundo lead —
@@ -38,12 +32,47 @@ const json = (body: unknown, status = 200) =>
  * A distribuição continua sendo do banco: quem escolhe o corretor é
  * `assign_lead`, com o grupo resolvido lá dentro. O webhook não decide fila.
  */
+
+/** Códigos de origem conhecidos vivem em `lead_sources.code` (slug minúsculo e
+ *  único). Código desconhecido não derruba o lead: o lead entra sem origem e o
+ *  payload inteiro fica em `raw_payload` para a conferência. Perder o lead
+ *  seria pior do que perder a etiqueta de origem. */
+async function resolveSourceId(
+  supabase: SupabaseClient,
+  code: string | null,
+): Promise<string | null> {
+  const slug = (code || "").trim().toLowerCase();
+  if (!slug) return null;
+  const { data, error } = await supabase
+    .from("lead_sources")
+    .select("id")
+    .eq("code", slug)
+    .eq("active", true)
+    .maybeSingle();
+  if (error || !data) {
+    console.warn(`voice-ai-webhook: source_code desconhecido (${slug}); lead entra sem origem`);
+    return null;
+  }
+  return data.id as string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
   try {
-    const expected = await requireSecret("VOICE_AI_WEBHOOK_SECRET");
+    // Sem segredo compartilhado a integração não existe ainda. 503 e não 500:
+    // 500 diz "quebrou aqui dentro" e faz a plataforma de voz retentar para
+    // sempre; 503 com motivo diz o que falta e a quem pedir.
+    const expected = await getSecret("VOICE_AI_WEBHOOK_SECRET");
+    if (!expected) {
+      console.error("voice-ai-webhook: VOICE_AI_WEBHOOK_SECRET ausente no cofre");
+      return json({
+        error: "Integração de voz não configurada.",
+        detail: "Cadastre voice_ai/webhook_secret em Admin → Integrações antes de apontar o webhook.",
+      }, 503);
+    }
+
     const provided = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     // Comparação de tamanho fixo não importa aqui (o segredo não é derivado de
     // input do atacante), mas responder 401 sem detalhe evita sondagem.
@@ -91,13 +120,15 @@ Deno.serve(async (req) => {
       return json({ ok: true, lead_id: existing.id, duplicate: true });
     }
 
+    const sourceId = await resolveSourceId(supabase, body.source_code ? String(body.source_code) : null);
+
     const { data: created, error: insertError } = await supabase
       .from("leads")
       .insert({
         external_id: externalId,
         full_name: String(body.full_name || "Lead da IA de voz"),
         phone_raw: String(body.phone || ""),
-        source_code: body.source_code ? String(body.source_code) : null,
+        source_id: sourceId,
         status: "queued",
         funnel_stage: "new",
         sdr_qualified_at: new Date().toISOString(),

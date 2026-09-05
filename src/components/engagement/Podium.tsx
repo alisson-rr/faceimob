@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Crown } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { num } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,6 +27,15 @@ export type PodiumEntry = {
   avatarUrl?: string | null;
   /** Linha de apoio: equipe, gerência, métricas curtas. */
   detail?: ReactNode;
+  /**
+   * Colocação real, quando ela não é a posição na lista.
+   *
+   * O ranking congelado de uma temporada fechada chega filtrado pelo escopo de
+   * quem olha: o primeiro degrau pode ser o 5º da casa. Sem isto o cartão
+   * coroava como 1º quem a tabela ao lado numerava "#5". Ausente = a posição
+   * na lista, que é o caso do ranking vivo.
+   */
+  place?: number;
 };
 
 export interface PodiumProps {
@@ -39,16 +49,25 @@ export interface PodiumProps {
 
 /** Posição no pódio → token de cor e altura do degrau. */
 const PLACE = [
-  { label: "1º", tone: "gold", step: "h-20", stepSm: "h-12" },
-  { label: "2º", tone: "silver", step: "h-14", stepSm: "h-9" },
-  { label: "3º", tone: "bronze", step: "h-10", stepSm: "h-7" },
+  { tone: "gold", step: "h-20", stepSm: "h-12" },
+  { tone: "silver", step: "h-14", stepSm: "h-9" },
+  { tone: "bronze", step: "h-10", stepSm: "h-7" },
 ] as const;
 
 const TONE_CLASS: Record<string, { ring: string; text: string; step: string }> = {
   gold: { ring: "ring-gold", text: "text-gold", step: "border-gold/40 bg-gold/15" },
   silver: { ring: "ring-silver", text: "text-silver", step: "border-silver/40 bg-silver/15" },
   bronze: { ring: "ring-bronze", text: "text-bronze", step: "border-bronze/40 bg-bronze/15" },
+  /** Colocação fora do trio: nada de medalha, só o número. */
+  plain: { ring: "ring-border", text: "text-muted-foreground", step: "border-border bg-muted/40" },
 };
+
+/**
+ * Colocação a escrever no degrau: a congelada quando existe, senão a da lista.
+ * Coroa, medalha e altura seguem daí — 5º lugar não recebe ouro.
+ */
+const placeOf = (entry: PodiumEntry, index: number) => entry.place ?? index + 1;
+const toneOf = (place: number) => TONE_CLASS[place <= 3 ? PLACE[place - 1].tone : "plain"];
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
@@ -102,8 +121,9 @@ function Step({
   still: boolean;
 }) {
   const config = PLACE[place];
-  const tone = TONE_CLASS[config.tone];
-  const first = place === 0;
+  const colocacao = placeOf(entry, place);
+  const tone = toneOf(colocacao);
+  const first = colocacao === 1;
   const points = useCountUp(entry.points, !still);
 
   const body = (
@@ -145,7 +165,7 @@ function Step({
       </p>
       {entry.detail && <p className="max-w-full truncate text-xs text-muted-foreground">{entry.detail}</p>}
       <p className={cn("font-display font-bold tabular-nums", tone.text, size === "sm" ? "text-lg" : "text-2xl")}>
-        {points}
+        {num(points)}
         <span className="ml-1 text-xs font-medium text-muted-foreground">pts</span>
       </p>
     </>
@@ -178,7 +198,7 @@ function Step({
         )}
       >
         <span className={cn("font-display font-bold", tone.text, size === "sm" ? "text-sm" : "text-lg")}>
-          {config.label}
+          {colocacao}º
         </span>
       </div>
     </motion.div>
@@ -199,7 +219,7 @@ export function Podium({ entries, size = "md", onSelect, className }: PodiumProp
   return (
     <ol className={cn("grid grid-cols-3 items-end gap-2 sm:gap-4", className)}>
       {layout.map(({ entry, place }) => (
-        <li key={entry.id} className="min-w-0" aria-label={`${PLACE[place].label} lugar: ${entry.name}, ${entry.points} pontos`}>
+        <li key={entry.id} className="min-w-0" aria-label={`${placeOf(entry, place)}º lugar: ${entry.name}, ${num(entry.points)} pontos`}>
           <Step entry={entry} place={place} size={size} onSelect={onSelect} still={still} />
         </li>
       ))}

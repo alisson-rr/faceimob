@@ -12,6 +12,7 @@
  * `@/lib/dealStatus` — `normalizeStatus` já tira o prefixo numerado.
  */
 import type { StatusTone } from "@/components/shared";
+import { isSystemStatus } from "@/lib/dealStatus";
 
 export type FaceimobStatus = { label: string; tone: StatusTone };
 
@@ -67,11 +68,18 @@ export const faceimobStatusRank = (label?: string | null): number => {
  * Um `status_detail` gravado por importação (ou por um rótulo antigo) que não
  * esteja no catálogo deixaria o Select em branco — e o primeiro clique
  * sobrescreveria o valor sem ninguém ver qual era.
+ *
+ * Os rótulos do sistema (`SYSTEM_STATUSES`) ficam de fora: o banco os escreve
+ * quando o caso entra na esteira e recusa a escolha manual. O valor atual
+ * continua aparecendo — senão o negócio que está na esteira abriria o Select
+ * em branco, que é o achado F10 de novo.
  */
-export const statusChoices = (current?: string | null): FaceimobStatus[] =>
-  current && !TONE_BY_LABEL.has(current)
-    ? [{ label: current, tone: "neutral" as StatusTone }, ...FACEIMOB_STATUSES]
-    : FACEIMOB_STATUSES;
+export const statusChoices = (current?: string | null): FaceimobStatus[] => {
+  const choices = FACEIMOB_STATUSES.filter((s) => s.label === current || !isSystemStatus(s.label));
+  return current && !TONE_BY_LABEL.has(current)
+    ? [{ label: current, tone: "neutral" as StatusTone }, ...choices]
+    : choices;
+};
 
 /** Classes do gatilho colorido na tabela. Literais, para o Tailwind enxergar. */
 export const STATUS_TONE_CLASS: Record<StatusTone, string> = {

@@ -17,7 +17,9 @@
  */
 export { EngagementLayer } from "./EngagementLayer";
 export { SoundToggle } from "./SoundToggle";
+export { SoundPreview } from "./SoundPreview";
 export { Podium, type PodiumEntry, type PodiumProps } from "./Podium";
 export { useCelebration, type Celebrate, type CelebrationPayload } from "./context";
 export { fireConfetti, type ConfettiOrigin } from "./Confetti";
+export { buildScores, buildFrozenScores, UNKNOWN_PERSON, type BrokerScore } from "./ranking";
 export type { CelebrationKind } from "@/lib/engagement/celebrations";

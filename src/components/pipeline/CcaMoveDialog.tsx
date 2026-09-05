@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { describeError } from "@/lib/supabaseError";
+import { dbError, describeError } from "@/lib/supabaseError";
+import { updateDeal } from "./data";
 import { ccaStatusLabel, isDecision } from "./ccaStage";
 import type { CcaDeal, CcaStage } from "./ccaData";
 
@@ -24,6 +25,18 @@ interface Props {
  * O desfecho vem do estágio (`cca_stages.status`), que o operador escolhe ao
  * criar o estágio: um "Aprovado" criado pela tela nascia `under_review` e não
  * decidia nem movia nada (achado P10).
+ *
+ * **O negócio vai primeiro.** São duas escritas em transações separadas, e a do
+ * negócio é a que pode ser recusada — `deals_guard_closed_month` só perdoa
+ * admin. Na ordem antiga o caso já estava Aprovado quando o guard barrava o
+ * negócio: sobravam um toast de sucesso e um de erro juntos, o caso decidido e o
+ * negócio parado no Pipeline, sem caminho de conserto para a analista. Movendo
+ * o negócio antes, mês fechado recusa tudo e nada fica gravado pela metade.
+ *
+ * ponytail: sobra o risco inverso — `cca_cases` falhar com o negócio já movido.
+ * É bem menos provável (quem abriu a tela é justamente quem `cca_cases_write`
+ * aceita, e ali não há guard de mês). Evoluir para uma RPC `security definer`
+ * com as duas escritas se aparecer um caso real de caso e negócio divergentes.
  */
 export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }: Props) {
   const [notes, setNotes] = useState(deal.notes || "");
@@ -33,7 +46,25 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
     setSaving(true);
     try {
       const decision = isDecision(stage.status);
-      const { error } = await supabase
+
+      // Aprovar na esteira também aprova o negócio no funil comercial.
+      //
+      // O `&& approvedStageId` que estava aqui era a mesma porta pelo outro
+      // lado: com o catálogo de etapas ainda carregando a prop chega
+      // `undefined`, o `if` inteiro era pulado em silêncio e o caso virava
+      // Aprovado com o negócio parado no Pipeline. A falta da etapa é erro, não
+      // motivo para seguir — o `catch` abaixo já diz que nada foi alterado.
+      if (stage.status === "approved") {
+        if (!approvedStageId) {
+          throw new Error('A etapa "Aprovado" do funil ainda não carregou. Tente de novo.');
+        }
+        await updateDeal(deal.dealId, { stage_id: approvedStageId });
+      }
+
+      // `.select("id")`: `cca_cases_write` exige `has_permission('cca.review')`
+      // e a esteira habilita o botão pelo papel. Sem conferir a linha, a recusa
+      // da RLS voltava 204 sem erro e a tela dizia "Caso movido" sem gravar.
+      const { data: gravado, error } = await supabase
         .from("cca_cases")
         .update({
           stage_id: stage.id,
@@ -41,20 +72,14 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
           decision_notes: notes || null,
           decided_at: decision ? new Date().toISOString() : null,
         })
-        .eq("id", deal.caseId);
-      if (error) throw error;
-
-      // Aprovar na esteira também aprova o negócio no funil comercial.
-      if (stage.status === "approved" && approvedStageId) {
-        const { error: dealError } = await supabase
-          .from("deals").update({ stage_id: approvedStageId }).eq("id", deal.dealId);
-        if (dealError) {
-          toast({
-            variant: "destructive",
-            title: "Caso atualizado, mas o negócio ficou para trás",
-            description: describeError(dealError, "Mova o negócio no Pipeline."),
-          });
-        }
+        .eq("id", deal.caseId)
+        .select("id");
+      if (error) throw dbError("cca_cases", error);
+      if (!gravado?.length) {
+        throw dbError("cca_cases", {
+          code: "P0001",
+          message: "Seu perfil não pode mover este caso na esteira.",
+        });
       }
 
       toast({ title: "Caso movido", description: `${deal.client} → ${stage.name}.` });

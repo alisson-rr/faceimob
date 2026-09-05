@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { emailTemplates, renderTemplate } from "@/lib/automationEngine";
 import type { LeadRecord, WhatsappTemplate } from "@/integrations/supabase/leads";
-import { waNumber } from "./model";
+import { fillWhatsappTemplate, waNumber } from "./model";
 
 /** Abre o WhatsApp Web com a mensagem pronta — o envio é no aplicativo. */
 export function WhatsAppDialog({
@@ -26,13 +26,23 @@ export function WhatsAppDialog({
     setTemplateId(id);
     const template = templates.find((item) => item.id === id);
     if (!template) return;
-    setMessage(renderTemplate(template.body, {
+    const broker = lead.broker_name || "Faceimob";
+    // Passe nomeado (templates da automação) e depois o posicional da tabela
+    // `whatsapp_templates`, que é o que chega aqui do módulo SDR.
+    //
+    // Só o que se sabe do lead entra. `renderTemplate` troca apenas as chaves
+    // recebidas, então `{{project}}`, `{{visit_date}}` e companhia continuam
+    // visíveis para o corretor completar no textarea — mandar string vazia
+    // produziria "Sua visita ao  está confirmada para .". Mesma regra do
+    // posicional `{{n}}` (ver `fillWhatsappTemplate`).
+    const named = renderTemplate(template.body, {
       client_name: lead.name,
-      broker_name: lead.broker_name || "Faceimob",
-      project: "Nossos empreendimentos",
-      visit_date: "",
-      visit_time: "",
-      address: "",
+      broker_name: broker,
+    });
+    setMessage(fillWhatsappTemplate(named, template.variables, {
+      nome: lead.name,
+      cliente: lead.name,
+      corretor: broker,
     }));
   };
 
@@ -98,19 +108,18 @@ export function EmailDialog({ lead, onClose }: { lead: LeadRecord; onClose: () =
   const fieldId = useId();
   const [templateId, setTemplateId] = useState("");
   const template = emailTemplates.find((item) => item.id === templateId);
+  // Só o nome do cliente e o do corretor saem do lead. `{{project}}`,
+  // `{{unit}}` e `{{visit_date}}` ficam visíveis no rascunho — com string vazia
+  // o cliente receberia "Visita Confirmada - " e "está confirmada para .".
+  const vars = { client_name: lead.name, broker_name: lead.broker_name || "Faceimob" };
+  const subject = template ? renderTemplate(template.subject, vars) : "";
+  const body = template ? renderTemplate(template.body, vars) : "";
 
   const send = () => {
     if (!template) return;
-    const vars = {
-      client_name: lead.name,
-      project: "",
-      broker_name: lead.broker_name || "Faceimob",
-      unit: "",
-      visit_date: "",
-    };
-    const subject = encodeURIComponent(renderTemplate(template.subject, vars));
-    const body = encodeURIComponent(renderTemplate(template.body, vars));
-    window.open(`mailto:${lead.email || ""}?subject=${subject}&body=${body}`);
+    window.open(
+      `mailto:${lead.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+    );
     onClose();
   };
 
@@ -137,9 +146,11 @@ export function EmailDialog({ lead, onClose }: { lead: LeadRecord; onClose: () =
         </div>
 
         {template && (
+          // Pré-visualização do que vai ser enviado, não do template cru: as
+          // chaves que sobram são as que o corretor precisa completar no e-mail.
           <div className="space-y-2 rounded-xl bg-muted/60 p-3 text-xs">
-            <p className="text-sm font-semibold text-foreground">Assunto: {template.subject}</p>
-            <p className="whitespace-pre-line text-muted-foreground">{template.body}</p>
+            <p className="text-sm font-semibold text-foreground">Assunto: {subject}</p>
+            <p className="whitespace-pre-line text-muted-foreground">{body}</p>
           </div>
         )}
 

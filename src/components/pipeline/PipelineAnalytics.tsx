@@ -1,7 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { brl } from "@/lib/format";
+import { brl, num } from "@/lib/format";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { pct } from "./filters";
 import { funnelStages, stageSurface, type PipelineStage } from "./stages";
 
 interface Props {
@@ -31,7 +32,10 @@ export function PipelineAnalytics({ deals, stages }: Props) {
   const avgDays = active.length
     ? active.reduce((total, deal) => total + deal.days_in_pipeline, 0) / active.length
     : 0;
-  const closeRate = active.length + closed > 0 ? (closed / (active.length + closed)) * 100 : 0;
+  // `active` já contém os fechados (`active` é "não perdido nem cancelado"),
+  // então somar `closed` ao denominador contava cada venda duas vezes e a taxa
+  // saía sempre menor que a real (9 de 30 virava 23,1% em vez de 30%).
+  const closeRate = active.length ? (closed / active.length) * 100 : 0;
 
   const byBroker = [...active.reduce((map, deal) => {
     const name = deal.broker1 || "Sem corretor";
@@ -72,8 +76,8 @@ export function PipelineAnalytics({ deals, stages }: Props) {
 
       <Panel title="Indicadores">
         <div><p className="text-xs text-muted-foreground">Ticket médio</p><p className="text-sm font-bold tabular-nums">{brl(avgTicket)}</p></div>
-        <div><p className="text-xs text-muted-foreground">Tempo médio</p><p className="text-sm font-bold tabular-nums">{avgDays.toFixed(0)} dias</p></div>
-        <div><p className="text-xs text-muted-foreground">Taxa de fechamento</p><p className="text-sm font-bold tabular-nums">{closeRate.toFixed(1)}%</p></div>
+        <div><p className="text-xs text-muted-foreground">Tempo médio</p><p className="text-sm font-bold tabular-nums">{num(Math.round(avgDays))} dias</p></div>
+        <div><p className="text-xs text-muted-foreground">Taxa de fechamento</p><p className="text-sm font-bold tabular-nums">{pct(closeRate)}</p></div>
       </Panel>
     </div>
   );

@@ -2,6 +2,7 @@ import { test, expect, db, aguardarCarregamento, runTag } from "../support/fixtu
 import { mintSession } from "../support/session";
 import { resolveTarget } from "../support/target";
 import { userFor } from "../support/users";
+import { opcoesDe, seletor } from "../helpers/negocio";
 
 /**
  * Fechamento de mês — ata de 14/07: "fechamento que não dependa do calendário
@@ -25,7 +26,13 @@ import { userFor } from "../support/users";
  * ao mesmo tempo neste banco.
  */
 /**
- * **Este arquivo não roda no alvo remoto — de propósito.**
+ * **O fechamento não roda no alvo remoto — de propósito. A REABERTURA roda.**
+ *
+ * O `test.skip` era do ARQUIVO inteiro, e por isso o alvo remoto não tinha
+ * nenhuma cobertura de fim de mês: nem a que arrisca o pódio (fechar) nem a que
+ * não arrisca nada (reabrir). Ele passou para dentro do `describe` que mexe na
+ * temporada; o `describe` da reabertura roda nos dois alvos, porque só toca
+ * `closed_months` num mês sem negócio e sem ciclo de jogo.
  *
  * Ele é o único da suíte que encerra a temporada aberta do game: o `beforeAll`
  * move `period_start` da temporada corrente para 10/2026, o teste a fecha e o
@@ -40,17 +47,24 @@ import { userFor } from "../support/users";
  * local, contra o mesmo código e o mesmo schema. Está registrado no handoff-P.
  */
 const REMOTO = resolveTarget().name === "remote";
-test.skip(REMOTO, "fecha a temporada aberta do game: uma interrupção deixaria o alvo remoto sem pódio");
 
 const tag = runTag();
 const MES = "10/2026";
 const ISO = "2026-10-01";
 const ISO_SEGUINTE = "2026-11-01";
 
+/** Regra padrão exclusiva desta execução: o 4º teste muda o peso dela pelo diálogo. */
+const codigoPeso = `${tag}-peso`;
+const rotuloPeso = `Peso E2E ${tag}`;
+const PESO_INICIAL = 5;
+const PESO_NOVO = 55;
+
 let negocioAberto: string;
 let negocioGanho: string;
 let temporadaAntes: string;
 let inicioAntes: string;
+/** Temporadas que já existiam: tudo que nascer durante o cenário é apagado no fim. */
+let idsAntes: Set<string> | null = null;
 
 async function criarNegocio(rotulo: string, ganho: boolean): Promise<string> {
   const [etapa] = await db.select<{ id: string }>(
@@ -73,50 +87,77 @@ async function criarNegocio(rotulo: string, ganho: boolean): Promise<string> {
   return deal.id;
 }
 
-test.beforeAll(async () => {
-  const jaFechado = await db.select(`closed_months?period=eq.${ISO}&select=period`);
-  if (jaFechado.length) {
-    throw new Error(`${MES} já está em closed_months — outro teste não limpou; reabra antes de rodar`);
-  }
+test.describe("fechamento de mês", () => {
+  // Só este bloco mexe na temporada aberta do game: o `beforeAll` move o
+  // `period_start` e o `afterAll` desfaz. Uma interrupção no meio deixaria a
+  // homologação com a temporada fechada e o pódio da demonstração vazio — e o
+  // `globalTeardown` não sabe qual era o `period_start` de antes.
+  test.skip(REMOTO, "fecha a temporada aberta do game: uma interrupção deixaria o alvo remoto sem pódio");
 
-  negocioAberto = await criarNegocio("ABERTO", false);
-  negocioGanho = await criarNegocio("GANHO", true);
+  test.beforeAll(async () => {
+    const jaFechado = await db.select(`closed_months?period=eq.${ISO}&select=period`);
+    if (jaFechado.length) {
+      throw new Error(`${MES} já está em closed_months — outro teste não limpou; reabra antes de rodar`);
+    }
 
-  const [temporada] = await db.select<{ id: string; period_start: string }>(
-    "game_seasons?closed_at=is.null&select=id,period_start&order=period_start.desc&limit=1",
-  );
-  temporadaAntes = temporada.id;
-  inicioAntes = temporada.period_start;
+    negocioAberto = await criarNegocio("ABERTO", false);
+    negocioGanho = await criarNegocio("GANHO", true);
 
-  // É a temporada aberta que define o mês a fechar. Movê-la para 10/2026 é o
-  // que faz a tela oferecer justamente o mês vazio deste cenário.
-  await db.update(`game_seasons?id=eq.${temporadaAntes}`, { period_start: ISO });
-});
+    idsAntes = new Set((await db.select<{ id: string }>("game_seasons?select=id")).map((s) => s.id));
+    await db.insert("game_scoring_rules", {
+      season_id: null,
+      event_code: codigoPeso,
+      label: rotuloPeso,
+      points: PESO_INICIAL,
+      active: true,
+    });
 
-/**
- * Devolve o banco ao estado anterior: o mês reabre, a temporada nova some e a
- * original volta a ser a aberta. A ordem importa — o índice único
- * `game_seasons_one_open` não aceita duas temporadas abertas ao mesmo tempo.
- */
-test.afterAll(async () => {
-  await db.remove(`closed_months?period=eq.${ISO}`);
+    const [temporada] = await db.select<{ id: string; period_start: string }>(
+      "game_seasons?closed_at=is.null&select=id,period_start&order=period_start.desc&limit=1",
+    );
+    temporadaAntes = temporada.id;
+    inicioAntes = temporada.period_start;
 
-  const abertas = await db.select<{ id: string }>("game_seasons?closed_at=is.null&select=id");
-  for (const s of abertas) {
-    if (s.id !== temporadaAntes) await db.remove(`game_seasons?id=eq.${s.id}`);
-  }
-  await db.remove(`game_season_results?season_id=eq.${temporadaAntes}`);
-  await db.update(`game_seasons?id=eq.${temporadaAntes}`, {
-    closed_at: null,
-    period_end: null,
-    closed_by: null,
-    period_start: inicioAntes,
+    // É a temporada aberta que define o mês a fechar. Movê-la para 10/2026 é o
+    // que faz a tela oferecer justamente o mês vazio deste cenário.
+    await db.update(`game_seasons?id=eq.${temporadaAntes}`, { period_start: ISO });
   });
 
-  await db.remove(`deals?notes=eq.${tag}`);
-});
+  /**
+   * Devolve o banco ao estado anterior: o mês reabre, a temporada nova some e a
+   * original volta a ser a aberta. A ordem importa — o índice único
+   * `game_seasons_one_open` não aceita duas temporadas abertas ao mesmo tempo.
+   */
+  test.afterAll(async () => {
+    await db.remove(`closed_months?period=eq.${ISO}`);
+    // O DELETE acima é limpeza, não reabertura — mas o gatilho
+    // `closed_months_log_reopen` (0076) não distingue os dois e grava a linha
+    // com `reopened_by` nulo. Sem isto, cada execução da suíte enche de
+    // reabertura fantasma a tabela que a diretoria lê. O `catch` cobre o banco
+    // que ainda não tem a migration.
+    await db.remove(`month_reopenings?period=eq.${ISO}`).catch(() => undefined);
 
-test.describe("fechamento de mês", () => {
+    // Toda temporada nascida no cenário some — a que o 1º teste abriu e a que o
+    // 4º abriu ao encerrá-la; results e events caem em cascata. Só as que já
+    // existiam ficam, e a original reabre por último.
+    if (idsAntes) {
+      const todas = await db.select<{ id: string }>("game_seasons?select=id");
+      for (const s of todas) {
+        if (!idsAntes.has(s.id)) await db.remove(`game_seasons?id=eq.${s.id}`);
+      }
+    }
+    await db.remove(`game_season_results?season_id=eq.${temporadaAntes}`);
+    await db.update(`game_seasons?id=eq.${temporadaAntes}`, {
+      closed_at: null,
+      period_end: null,
+      closed_by: null,
+      period_start: inicioAntes,
+    });
+
+    await db.remove(`game_scoring_rules?event_code=eq.${codigoPeso}`);
+    await db.remove(`deals?notes=eq.${tag}`);
+  });
+
   test("fecha o mês, migra as propostas e encerra a temporada na mesma ação", async ({ page }) => {
     await page.goto("/pipeline");
     await aguardarCarregamento(page);
@@ -168,11 +209,19 @@ test.describe("fechamento de mês", () => {
     expect(abertas[0].id).not.toBe(temporadaAntes);
   });
 
-  test("a tela não oferece fechar de novo o mesmo mês", async ({ page }) => {
+  /**
+   * **Mudou o critério, de propósito.** O botão morria quando o mês da
+   * temporada aberta já estava fechado — e era exatamente aí que 08/2026, com
+   * 26 dos 32 negócios da homologação, ficava sem nenhuma tela capaz de
+   * congelá-lo: os dois relógios (mês e temporada) saem de fase sozinhos
+   * quando a Gamificação encerra a temporada sem fechar o mês. Agora o mês
+   * fechado some da LISTA e o botão só morre quando não sobra nenhum mês.
+   */
+  test("a tela não oferece de novo o mês já fechado", async ({ page }) => {
     expect(await db.select(`closed_months?period=eq.${ISO}&select=period`)).toHaveLength(1);
 
     // O fechamento anterior abriu uma temporada nova. Apontá-la de volta para
-    // 10/2026 recria exatamente o caso que o botão precisa recusar: ciclo aberto
+    // 10/2026 recria exatamente o caso que a tela precisa recusar: ciclo aberto
     // num mês que já está congelado.
     const [aberta] = await db.select<{ id: string }>(
       "game_seasons?closed_at=is.null&select=id&order=period_start.desc&limit=1",
@@ -182,9 +231,21 @@ test.describe("fechamento de mês", () => {
     await page.goto("/pipeline");
     await aguardarCarregamento(page);
 
-    const botao = page.getByRole("button", { name: new RegExp(`${MES} fechado`, "i") });
-    await expect(botao).toBeVisible();
-    await expect(botao).toBeDisabled();
+    await page.getByRole("button", { name: /^fechar mês$/i }).click();
+    const dialogo = page.getByRole("alertdialog");
+
+    // O diálogo explica por que o mês do ciclo não está na lista…
+    await expect(dialogo).toContainText(`${MES} (mês da temporada aberta) já está fechado`);
+    // …e não o oferece.
+    const opcoes = (await opcoesDe(seletor(dialogo, "Período a fechar")))
+      .map((texto) => texto.split(" — ")[0]);
+    expect(opcoes).not.toContain(MES);
+    // A proposta migrada continua fechando o próprio mês: 11/2026 é oferecível.
+    expect(opcoes).toContain(`${ISO_SEGUINTE.slice(5, 7)}/${ISO_SEGUINTE.slice(0, 4)}`);
+
+    await dialogo.getByRole("button", { name: /^cancelar$/i }).click();
+    await expect(dialogo).toBeHidden();
+    expect(await db.select(`closed_months?period=eq.${ISO}&select=period`)).toHaveLength(1);
   });
 
   test("o banco recusa o segundo fechamento com mensagem legível", async () => {
@@ -215,5 +276,172 @@ test.describe("fechamento de mês", () => {
       `deals?id=eq.${negocioAberto}&select=month_base`,
     );
     expect(aberto.month_base).toBe(ISO_SEGUINTE);
+  });
+
+  /**
+   * Ciclo livre: a temporada que nasce depois de um fechamento cai no MESMO mês
+   * de calendário, já em `closed_months`. Pela Gamificação, o botão mandava
+   * fechar esse mês de novo, levava o "já está fechado" do banco e a temporada
+   * ficava aberta para sempre. Agora a tela reconhece o mês travado e encerra
+   * só a temporada — e o peso alterado no diálogo é gravado (antes o upsert
+   * estourava em índice parcial e derrubava o fechamento inteiro).
+   */
+  test("com o mês já travado, a Gamificação encerra só a temporada e grava o peso novo", async ({ page }) => {
+    expect(await db.select(`closed_months?period=eq.${ISO}&select=period`)).toHaveLength(1);
+    const [aberta] = await db.select<{ id: string; period_start: string }>(
+      "game_seasons?closed_at=is.null&select=id,period_start&order=period_start.desc&limit=1",
+    );
+    expect(aberta.period_start).toBe(ISO);
+
+    await page.goto("/gamification");
+    await aguardarCarregamento(page);
+    await page.getByRole("button", { name: /fechar gameficação/i }).click();
+
+    // O diálogo diz, antes do clique, que o mês já está travado e que nada se move.
+    const dialogo = page.getByRole("alertdialog");
+    await expect(dialogo).toContainText(`${MES} já está travado`);
+    await dialogo.getByLabel(rotuloPeso).fill(String(PESO_NOVO));
+    await dialogo.getByRole("button", { name: "Encerrar temporada", exact: true }).click();
+
+    await expect(page.getByText("Temporada encerrada")).toBeVisible();
+    await expect(page.getByText(/já estava travado/i)).toBeVisible();
+
+    // (a) o peso novo está na regra padrão
+    await expect
+      .poll(async () => {
+        const [regra] = await db.select<{ points: number }>(
+          `game_scoring_rules?event_code=eq.${codigoPeso}&season_id=is.null&select=points`,
+        );
+        return regra?.points;
+      })
+      .toBe(PESO_NOVO);
+
+    // (b) a temporada encerrou e a próxima nasceu aberta
+    const [fechada] = await db.select<{ closed_at: string | null }>(
+      `game_seasons?id=eq.${aberta.id}&select=closed_at`,
+    );
+    expect(fechada.closed_at).not.toBeNull();
+    const abertas = await db.select<{ id: string }>("game_seasons?closed_at=is.null&select=id");
+    expect(abertas).toHaveLength(1);
+    expect(abertas[0].id).not.toBe(aberta.id);
+
+    // (c) o mês continua fechado uma vez só e a proposta não andou de novo
+    expect(await db.select(`closed_months?period=eq.${ISO}&select=period`)).toHaveLength(1);
+    const [aberto] = await db.select<{ month_base: string }>(
+      `deals?id=eq.${negocioAberto}&select=month_base`,
+    );
+    expect(aberto.month_base).toBe(ISO_SEGUINTE);
+  });
+});
+
+/**
+ * Reabertura de mês — o caminho que a tela prometia em três lugares e não
+ * existia.
+ *
+ * `blockedMoveReason` ("Fale com o administrador para reabrir"), o aviso do
+ * modal ("até um administrador reabrir o período") e a própria mensagem do
+ * gatilho `deals_guard_closed_month` mandavam procurar um administrador que não
+ * tinha botão nenhum: reabrir era `delete from closed_months` na mão. A policy
+ * `closed_months_write` sempre foi `is_admin()`.
+ *
+ * **Roda também no alvo remoto**, ao contrário do fechamento: aqui nada encosta
+ * na temporada do game. O mês é 05/2028 — futuro, sem negócio de ninguém —, e o
+ * único negócio do período é criado e apagado por este cenário.
+ */
+test.describe("reabertura de mês", () => {
+  const MES_REABRIR = "05/2028";
+  const ISO_REABRIR = "2028-05-01";
+  const marcaReabertura = `${tag}-reabertura`;
+
+  test.beforeAll(async () => {
+    const jaFechado = await db.select(`closed_months?period=eq.${ISO_REABRIR}&select=period`);
+    if (jaFechado.length) {
+      throw new Error(`${MES_REABRIR} já está em closed_months — outro teste não limpou`);
+    }
+
+    // A ordem importa: `deals_guard_closed_month` recusa até o INSERT em mês
+    // fechado, então o negócio nasce antes do congelamento.
+    const [etapa] = await db.select<{ id: string }>("pipeline_stages?code=eq.proposal&select=id");
+    const [deal] = await db.insert<{ id: string }>("deals", {
+      stage_id: etapa.id,
+      month_base: ISO_REABRIR,
+      outcome: "open",
+      vgv_gross: 250000,
+      status_detail: "PROPOSTA",
+      notes: marcaReabertura,
+    });
+    await db.insert("deal_clients", {
+      deal_id: deal.id,
+      ordinal: 1,
+      full_name: `Reabertura ${marcaReabertura}`,
+    });
+
+    await db.insert("closed_months", { period: ISO_REABRIR, notes: marcaReabertura });
+  });
+
+  test.afterAll(async () => {
+    await db.remove(`closed_months?period=eq.${ISO_REABRIR}`);
+    await db.remove(`deals?notes=eq.${marcaReabertura}`);
+    // A tabela de registro nasce na migration 0076; num banco sem ela o DELETE
+    // devolve 404 e a limpeza não pode derrubar o cenário por causa disso.
+    await db.remove(`month_reopenings?period=eq.${ISO_REABRIR}`).catch(() => undefined);
+  });
+
+  test("o admin reabre o mês pela tela e a linha some de closed_months", async ({ page }) => {
+    await page.goto("/pipeline");
+    await aguardarCarregamento(page);
+
+    await page.getByRole("button", { name: /^reabrir mês$/i }).click();
+    const dialogo = page.getByRole("alertdialog");
+
+    // Não dá para usar `escolher()` aqui: ele casa a opção por texto EXATO e
+    // este cenário fecha 05/2028 com uma proposta aberta de propósito, então o
+    // diálogo rotula a opção "05/2028 — tem proposta aberta". O prefixo é o que
+    // a copy garante; o sufixo é o aviso de incoerência que o teste seguinte
+    // cobra no corpo do diálogo.
+    const periodo = seletor(dialogo, "Período a reabrir");
+    await periodo.click();
+    await page.getByRole("option", { name: new RegExp(`^${MES_REABRIR}`) }).click();
+    await expect(periodo).toContainText(MES_REABRIR);
+
+    // O diálogo diz o que muda ANTES de confirmar — e diz o que NÃO desfaz.
+    await expect(dialogo).toContainText(`1 negócio(s) de ${MES_REABRIR}`);
+    await expect(dialogo).toContainText(/não há registro de quais linhas migraram/i);
+
+    await dialogo.getByRole("button", { name: `Reabrir ${MES_REABRIR}`, exact: true }).click();
+    await expect(page.getByText(`Mês ${MES_REABRIR} reaberto`)).toBeVisible();
+
+    // O que prova a reabertura é o banco, não o toast.
+    await expect
+      .poll(async () => (await db.select(`closed_months?period=eq.${ISO_REABRIR}&select=period`)).length)
+      .toBe(0);
+
+    // E o ato fica registrado: apagar a linha muda relatório que a diretoria já
+    // leu, então precisa sobrar rastro de quem reabriu.
+    const registro = await db
+      .select<{ period: string }>(`month_reopenings?period=eq.${ISO_REABRIR}&select=period,reopened_by`)
+      .catch(() => null);
+    expect(registro, "aplique a migration 0076: o gatilho de registro da reabertura vem dela")
+      .not.toBeNull();
+    expect(registro ?? []).toHaveLength(1);
+  });
+
+  test("depois de reaberto, o mês volta a ser oferecido no fechamento", async ({ page }) => {
+    expect(
+      await db.select(`closed_months?period=eq.${ISO_REABRIR}&select=period`),
+      "o teste anterior precisa ter reaberto o mês",
+    ).toEqual([]);
+
+    await page.goto("/pipeline");
+    await aguardarCarregamento(page);
+
+    await page.getByRole("button", { name: /^fechar mês$/i }).click();
+    const dialogo = page.getByRole("alertdialog");
+    const opcoes = (await opcoesDe(seletor(dialogo, "Período a fechar")))
+      .map((texto) => texto.split(" — ")[0]);
+    expect(opcoes, "reabrir e fechar são o mesmo relógio").toContain(MES_REABRIR);
+
+    await dialogo.getByRole("button", { name: /^cancelar$/i }).click();
+    await expect(dialogo).toBeHidden();
   });
 });

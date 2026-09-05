@@ -221,4 +221,25 @@ begin
 end
 $$;
 
+\echo '== 6. rótulo da temporada em pt-BR (0035) =='
+
+do $$
+begin
+  perform pg_temp.check16(public.season_label_ptbr('2026-08-15') = 'Agosto 2026',
+    'season_label_ptbr(2026-08-15) = Agosto 2026');
+
+  -- Mesmo caminho do UPDATE da 0035: nome inglês lido por to_date sem TM.
+  perform pg_temp.check16(
+    public.season_label_ptbr(to_date('August 2026', 'Month YYYY')) = 'Agosto 2026',
+    'rótulo inglês já gravado traduz para pt-BR');
+
+  -- A temporada aberta é a que o bloco 4 abriu sem p_next_label: antes da 0035
+  -- saía "September 2026" pelo lc_time en_US do container.
+  perform pg_temp.check16(
+    (select label from public.game_seasons where closed_at is null)
+      = public.season_label_ptbr(current_date + 1),
+    'close_game_season sem rótulo abre a próxima temporada em pt-BR');
+end
+$$;
+
 \echo 'ciclo do game ok'

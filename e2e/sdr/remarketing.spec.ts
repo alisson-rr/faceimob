@@ -80,8 +80,11 @@ test.describe("SDR · importação de lista", () => {
 
     const painel = await abrirRemarketing(page);
     await painel.getByPlaceholder("Nome da lista").fill(nome);
-    await painel.getByPlaceholder(/template Meta/).fill(template.name);
-    await painel.getByRole("combobox").click();
+    // Template e agente saem de seletores: era campo de texto, e nome digitado
+    // errado criava a lista sem template com toast de sucesso.
+    await painel.getByRole("combobox").filter({ hasText: /template/i }).click();
+    await page.getByRole("option", { name: template.name }).click();
+    await painel.getByRole("combobox").filter({ hasText: /agente/i }).click();
     await page.getByRole("option", { name: agente.name }).click();
 
     await seletorDeArquivo(page).setInputFiles({
@@ -173,6 +176,28 @@ test.describe("SDR · importação de lista", () => {
 
   });
 
+  // Era defeito: escolher o arquivo antes do nome deixava o input preso com o
+  // mesmo arquivo (o browser não dispara `change` para seleção idêntica) e o
+  // formulário morria. O valor é limpo assim que o arquivo é capturado.
+  test("arquivo escolhido antes do nome não trava o formulário", async ({ page }) => {
+    const nome = `Lista tardia ${tag}`;
+    const arquivo = {
+      name: "tardia.csv",
+      mimeType: "text/csv",
+      buffer: planilha([{ nome: "Dani Teste", fone: "(11) 94444-0001", campanha: "x" }]),
+    };
+
+    const painel = await abrirRemarketing(page);
+    await seletorDeArquivo(page).setInputFiles(arquivo);
+    await expect(page.getByText(/dê um nome para a lista/i)).toBeVisible();
+    await expect(seletorDeArquivo(page)).toHaveValue("");
+
+    await painel.getByPlaceholder("Nome da lista").fill(nome);
+    await seletorDeArquivo(page).setInputFiles(arquivo);
+    await expect(page.getByText(/criada com 1 contatos/i)).toBeVisible({ timeout: 20_000 });
+    expect(await listaChamada(nome)).toHaveLength(1);
+  });
+
   test.describe("atomicidade", () => {
     test.use({ errosEsperados: [/status of 400/i] });
 
@@ -220,6 +245,12 @@ test.describe("SDR · estatísticas e disparo", () => {
     await expect(cartao).toContainText("1 enviados");
     await expect(cartao).toContainText("1 respondidos");
     await expect(cartao).toContainText("1 falhas");
+
+    // O selo sai dos CONTATOS, não da coluna `status`: com 1 enviado e 1
+    // respondido a lista ainda estava gravada como 'draft' (o broadcast grava
+    // 'draft' sempre que sobra fila), e o selo dizia "rascunho" em inglês.
+    await expect(cartao).toContainText("Envio parcial · 1 na fila");
+    await expect(cartao).not.toContainText("draft");
   });
 
   // A edge function aborta sem a credencial da Meta: 5xx no console é o
@@ -234,13 +265,19 @@ test.describe("SDR · estatísticas e disparo", () => {
       { list_id: lista.id, full_name: "Alvo", phone: "11930000001" },
     ]);
 
-    page.on("dialog", (d) => void d.accept());
     const painel = await abrirRemarketing(page);
     await painel
       .locator("div.border.rounded")
       .filter({ hasText: nome })
-      .getByRole("button", { name: /disparar/i })
+      .getByRole("button", { name: /^disparar$/i })
       .click();
+
+    // A confirmação virou AlertDialog do app: o `confirm()` nativo não dizia
+    // para quantos contatos a mensagem sairia, e disparo em massa vai para
+    // número de cliente real.
+    const confirmacao = page.getByRole("alertdialog");
+    await expect(confirmacao).toContainText("1 contato");
+    await confirmacao.getByRole("button", { name: /disparar agora/i }).click();
 
     await expect(page.locator("[data-sonner-toast]")).toBeVisible({ timeout: 25_000 });
     // Nada de "Enviados: 0 | Falhas: 0" fingindo disparo: a function abortou.
@@ -251,6 +288,43 @@ test.describe("SDR · estatísticas e disparo", () => {
     expect((await contatosDa(lista.id))[0].status).toBe("pending");
   });
 
+  });
+
+  /**
+   * O toast do disparo diz que "o motivo ficou gravado nele" — e não havia onde
+   * ler: `remarketing_contacts.last_error` só existia no banco, e um lote
+   * inteiro em 'failed' virava um número na tela. Sem o motivo, o operador não
+   * distingue "template não aprovado na Meta" de "número inválido", que é a
+   * diferença entre reeditar o template e limpar a planilha.
+   */
+  test("a lista mostra os contatos e o motivo da falha de cada um", async ({ page }) => {
+    const nome = `Lista motivos ${tag}`;
+    const [lista] = await db.insert<ListaRow>("remarketing_lists", { name: nome });
+    const motivo = `Template name does not exist ${tag}`;
+    await db.insert("remarketing_contacts", [
+      { list_id: lista.id, full_name: "Contato que falhou", phone: "11930000011", status: "failed", last_error: motivo },
+      { list_id: lista.id, full_name: "Contato na fila", phone: "11930000012", status: "pending", last_error: null },
+    ]);
+
+    const painel = await abrirRemarketing(page);
+    const cartao = painel.locator("div.border.rounded").filter({ hasText: nome });
+    await cartao.getByRole("button", { name: /ver contatos/i }).click();
+
+    await expect(cartao.getByText("Contato que falhou")).toBeVisible();
+    await expect(cartao.getByText(motivo), "o motivo da falha precisa ser legível na tela").toBeVisible();
+    // Situação em pt-BR: 'failed'/'pending' crus não dizem nada a quem opera.
+    // `exact`, porque `getByText` casa por SUBSTRING: o selo "Falhou" e a
+    // célula "Contato que falhou" são dois textos corretos e diferentes, e sem
+    // a âncora o seletor pegava os dois (strict mode). Mesma coisa em
+    // "Na fila" × "Contato na fila".
+    await expect(cartao.getByText("Falhou", { exact: true })).toBeVisible();
+    await expect(cartao.getByText("Na fila", { exact: true })).toBeVisible();
+
+    // O filtro isola o que exige decisão.
+    await cartao.getByLabel(/filtrar contatos por situação/i).click();
+    await page.getByRole("option", { name: "Falhou" }).click();
+    await expect(cartao.getByText("Contato na fila")).toHaveCount(0);
+    await expect(cartao.getByText("Contato que falhou")).toBeVisible();
   });
 
   // Regressão de segurança: autenticação e papel são validados antes de tocar

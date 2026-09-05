@@ -34,6 +34,21 @@ API → service_role). Ela **nunca** entra no repositório. No alvo local não �
 preciso segredo nenhum: a chave do CLI é de demonstração e sai de
 `supabase status`.
 
+### Uma execução por vez, e o runner cuida disso
+
+Os dez usuários da suíte têm identidade **fixa** e a faxina do final os apaga.
+Duas execuções ao mesmo tempo contra o mesmo alvo — dois terminais, ou vários
+agentes em paralelo — se atropelam: a faxina de uma remove as contas que a
+outra ainda está usando, e a segunda falha com "a sessão não foi aceita pelo
+app". O sintoma aponta para o produto; a causa é ambiente.
+
+`scripts/e2e-lock.mjs` fecha isso: quem chega depois **espera a vez** em vez de
+correr junto (aviso na saída, `PID` de quem está na frente). A trava vive em
+`os.tmpdir()`, é derivada do caminho do repositório e se solta sozinha quando a
+execução dona morre — inclusive no Ctrl+C. Ela só protege quem entra por
+`npm run e2e` / `scripts/e2e.mjs`: chamar `npx playwright test` na mão passa por
+fora.
+
 ### O que a suíte deixa no banco alvo — e como tirar
 
 O preparo cria dez contas `e2e.*@faceimob.test` e duas equipes (`Equipe E2E

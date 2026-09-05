@@ -118,7 +118,7 @@ select
   'orchestrator',
   true,
   'Identifique o interesse, a renda aproximada, a cidade e o prazo de compra. Encaminhe leads qualificados para um corretor.',
-  'claude-sonnet-5',
+  'gpt-4o-mini',
   0.4,
   10,
   g.id
@@ -137,7 +137,7 @@ select
   'qualifier',
   false,
   'Colete renda familiar, FGTS, entrada disponivel e restricoes de credito sem prometer aprovacao.',
-  'claude-sonnet-5',
+  'gpt-4o-mini',
   0.3,
   8,
   g.id

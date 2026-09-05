@@ -11,10 +11,16 @@ import { DuplicateMessageError, runSdrAgentTurn } from "../_shared/sdrAgent.ts";
  *     qualifica, `sdr_handoff` devolve o lead à roleta do grupo.
  *  2. Resposta de contato de remarketing → vira lead, abre conversa com o
  *     agente da lista e segue o mesmo fluxo.
- *  3. Qualquer outra mensagem → ACK 200 sem efeito (não é assunto do SDR).
+ *  3. Qualquer outra mensagem → ACK 200, REGISTRADA em
+ *     `whatsapp_inbound_messages` e com aviso ao SDR no sino (migration 0083).
+ *     Até aqui esse terceiro caminho era um `continue` puro: quem escrevia para
+ *     o número da empresa sem ser lead em SDR nem contato de remarketing sumia
+ *     — sem registro, sem caixa de entrada e sem encaminhamento a humano.
  *
  * Idempotência: o id da mensagem do provedor tem índice único em
- * `sdr_messages.provider_message_id` — replay da Meta não duplica turno.
+ * `sdr_messages.provider_message_id` (turno do agente) e em
+ * `whatsapp_inbound_messages.provider_message_id` (registro bruto) — replay da
+ * Meta não duplica turno nem aviso.
  */
 
 const corsHeaders = {
@@ -31,6 +37,7 @@ const ok = (body: unknown) =>
 type InboundMessage = { from: string; id: string; text: string };
 type UnknownRecord = Record<string, unknown>;
 type RemarketingListConfig = { agent_id: string | null; handoff_group_id: string | null };
+type InboundOutcome = "sdr_turn" | "remarketing_lead" | "unmatched" | "agent_error";
 
 const recordValue = (value: unknown): UnknownRecord =>
   value && typeof value === "object" && !Array.isArray(value) ? value as UnknownRecord : {};
@@ -92,7 +99,23 @@ Deno.serve(async (req) => {
       return new Response("Invalid signature", { status: 401, headers: corsHeaders });
     }
     if (sig === "unconfigured") {
-      console.warn("whatsapp-inbound: META_APP_SECRET não cadastrado — aceitando sem verificação");
+      // Antes daqui a function ACEITAVA o POST sem prova de origem quando o
+      // app secret não estava cadastrado. Quem descobrisse a URL injetava
+      // conversa de SDR, criava lead de remarketing e gastava token da OpenAI
+      // — e o único sinal era uma linha de log.
+      //
+      // Recusar deixa o webhook inerte até a credencial existir, e isso é o
+      // comportamento correto: sem `META_APP_SECRET` não há como registrar o
+      // webhook no painel da Meta de qualquer jeito, então nada de legítimo é
+      // perdido. O 401 diz o motivo em vez de falhar em silêncio.
+      console.error("whatsapp-inbound: META_APP_SECRET não cadastrado — POST recusado");
+      return new Response(
+        JSON.stringify({
+          error: "Webhook não configurado.",
+          detail: "Cadastre meta/app_secret em Admin → Integrações para validar a assinatura da Meta.",
+        }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     let body: unknown = {};
@@ -109,10 +132,52 @@ Deno.serve(async (req) => {
 
     const messages = parseMessages(body);
     let handled = 0;
+    let registradas = 0;
+
+    /**
+     * Registra a mensagem recebida com o desfecho do roteamento.
+     *
+     * Chamada em TODOS os caminhos, inclusive nos que antes terminavam em
+     * `continue`. Duas perdas de dado morrem aqui: a mensagem de quem escreve
+     * para o número da empresa sem ser lead em SDR nem contato de remarketing,
+     * e a mensagem cujo turno do agente falhou — `sdrAgent.ts` só grava as duas
+     * linhas DEPOIS de a resposta existir (decisão certa lá, buraco aqui).
+     *
+     * `ignoreDuplicates` sobre o único de `provider_message_id`: replay da Meta
+     * não cria segunda linha nem segundo aviso ao SDR (o gatilho é AFTER
+     * INSERT). Falha no registro não derruba o processamento — é log, não fluxo
+     * — mas aparece no console para não sumir por sua vez.
+     */
+    const registrar = async (
+      msg: InboundMessage,
+      phone: string,
+      outcome: InboundOutcome,
+      extra: { leadId?: string | null; conversationId?: string | null; detail?: string | null } = {},
+    ) => {
+      const { error } = await supabase
+        .from("whatsapp_inbound_messages")
+        .upsert({
+          provider_message_id: msg.id,
+          from_phone: phone,
+          body: msg.text,
+          lead_id: extra.leadId ?? null,
+          conversation_id: extra.conversationId ?? null,
+          outcome,
+          detail: extra.detail ? extra.detail.slice(0, 500) : null,
+        }, { onConflict: "provider_message_id", ignoreDuplicates: true });
+      if (error) {
+        console.error("whatsapp-inbound: falha ao registrar mensagem recebida —", error.message);
+        return;
+      }
+      registradas++;
+    };
 
     for (const msg of messages) {
       const phone = normalizePhone(msg.from);
-      if (!phone) continue;
+      if (!phone) {
+        console.warn("whatsapp-inbound: mensagem sem telefone utilizável, descartada");
+        continue;
+      }
 
       // 1) Conversa SDR ativa do lead com este telefone.
       const { data: convRow } = await supabase
@@ -125,6 +190,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       let conversationId = convRow?.id as string | undefined;
+      let leadId = (convRow?.lead_id as string | undefined) ?? null;
+      let origem: InboundOutcome = "sdr_turn";
 
       // 2) Sem conversa: pode ser contato de remarketing respondendo o template.
       if (!conversationId) {
@@ -138,9 +205,14 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (contact) {
+          origem = "remarketing_lead";
           const listConfig = contact.remarketing_lists as RemarketingListConfig | null;
-          let leadId = contact.lead_id as string | null;
+          leadId = contact.lead_id as string | null;
           if (!leadId) {
+            // `status: 'queued'` sem `assigned_to` de propósito: quem acha dono
+            // é o cron `faceimob-assign-queued`, que roda a cada minuto e chama
+            // `assign_lead`. Distribuir daqui furaria a roleta — grupo, turno e
+            // trava de atendimento saem do banco, não do webhook.
             const { data: lead, error: leadErr } = await supabase
               .from("leads")
               .insert({
@@ -157,6 +229,9 @@ Deno.serve(async (req) => {
               .single();
             if (leadErr) {
               console.error("whatsapp-inbound: falha ao criar lead de remarketing —", leadErr.message);
+              await registrar(msg, phone, "agent_error", {
+                detail: `falha ao criar lead de remarketing: ${leadErr.message}`,
+              });
               continue;
             }
             leadId = lead.id;
@@ -175,6 +250,10 @@ Deno.serve(async (req) => {
             .single();
           if (convErr) {
             console.error("whatsapp-inbound: falha ao abrir conversa —", convErr.message);
+            await registrar(msg, phone, "agent_error", {
+              leadId,
+              detail: `falha ao abrir conversa: ${convErr.message}`,
+            });
             continue;
           }
           conversationId = newConv.id;
@@ -182,7 +261,10 @@ Deno.serve(async (req) => {
       }
 
       if (!conversationId) {
-        // Não é lead em SDR nem remarketing — mensagem fora do escopo do robô.
+        // Não é lead em SDR nem remarketing. Era `continue` puro: a mensagem do
+        // cliente sumia com ACK 200 para a Meta. Agora fica registrada e o
+        // gatilho da 0083 avisa SDR e admin no sino.
+        await registrar(msg, phone, "unmatched");
         continue;
       }
 
@@ -210,18 +292,24 @@ Deno.serve(async (req) => {
             console.log("whatsapp-inbound: conversa", conversationId, "qualificada e devolvida à roleta");
           }
         }
+        await registrar(msg, phone, origem, { leadId, conversationId });
         handled++;
       } catch (e) {
         if (e instanceof DuplicateMessageError) {
-          // Replay da Meta: já processada, ACK silencioso.
+          // Replay da Meta: já processada, ACK silencioso. O registro da
+          // primeira passagem continua lá; `ignoreDuplicates` cuida do resto.
           continue;
         }
-        console.error("whatsapp-inbound: turno falhou —", e instanceof Error ? e.message : String(e));
+        const motivo = e instanceof Error ? e.message : String(e);
+        console.error("whatsapp-inbound: turno falhou —", motivo);
+        // A mensagem do cliente NÃO se perde por falha do modelo: fica
+        // registrada com o motivo, e o SDR é avisado para responder à mão.
+        await registrar(msg, phone, "agent_error", { leadId, conversationId, detail: motivo });
       }
     }
 
     // Sempre 200: a Meta re-tenta em qualquer outra resposta e replays duplicam trabalho.
-    return ok({ success: true, received: messages.length, handled });
+    return ok({ success: true, received: messages.length, handled, registradas });
   } catch (error) {
     console.error("whatsapp-inbound error:", error);
     return ok({ success: false });

@@ -18,11 +18,19 @@ interface Props {
   onRetry: () => void;
   onClearFilters: () => void;
   onNewDeal: () => void;
+  /** Espelha `deals_insert`/`can_edit_deal`. Sem isto o vazio-de-verdade
+   *  oferecia "Adicionar negócio" ao sócio — e a tabela e o kanban seguiam
+   *  oferecendo mover, trocar status, agendar visita e perder, que o banco
+   *  recusa. O cabeçalho dizia "Somente leitura" e a linha dizia o contrário. */
+  canWrite: boolean;
+  /** Meses congelados (`closed_months`): a linha e o cartão precisam dizer. */
+  closedMonths: string[];
   onOpen: (deal: LegacyDealRecord) => void;
   onMove: (deal: LegacyDealRecord, stage: PipelineStage) => void;
   onStatusChange: (deal: LegacyDealRecord, status: string) => void;
   onScheduleVisit: (deal: LegacyDealRecord) => void;
   onLose: (deal: LegacyDealRecord) => void;
+  onReopen: (deal: LegacyDealRecord) => void;
 }
 
 /**
@@ -34,8 +42,9 @@ interface Props {
  * e vazio-de-verdade são telas distintas, cada uma com a sua saída.
  */
 export function DealsBoard({
-  view, deals, stages, isPending, error, filtered,
+  view, deals, stages, isPending, error, filtered, canWrite, closedMonths,
   onRetry, onClearFilters, onNewDeal, onOpen, onMove, onStatusChange, onScheduleVisit, onLose,
+  onReopen,
 }: Props) {
   if (isPending) return <LoadingState variant="table" rows={8} label="Carregando negócios…" />;
 
@@ -64,7 +73,7 @@ export function DealsBoard({
         icon={Inbox}
         title="Nenhum negócio no pipeline"
         description="Converta um lead do funil ou crie o negócio direto por aqui."
-        action={<Button onClick={onNewDeal}>Adicionar negócio</Button>}
+        action={canWrite ? <Button onClick={onNewDeal}>Adicionar negócio</Button> : undefined}
       />
     );
   }
@@ -75,14 +84,20 @@ export function DealsBoard({
       deals={deals.filter((deal) => deal.active)}
       onOpen={onOpen}
       onMove={onMove}
+      onLose={onLose}
+      canWrite={canWrite}
+      closedMonths={closedMonths}
     />
   ) : (
     <DealsTable
       deals={deals}
+      canWrite={canWrite}
+      closedMonths={closedMonths}
       onOpen={onOpen}
       onStatusChange={onStatusChange}
       onScheduleVisit={onScheduleVisit}
       onLose={onLose}
+      onReopen={onReopen}
     />
   );
 }

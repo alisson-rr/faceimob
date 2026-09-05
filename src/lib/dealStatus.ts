@@ -16,12 +16,18 @@ export type Status1 = "VENDA" | "PROPOSTA" | "QUEDA" | "DISTRATO" | "OFF";
  * A tabela do Pipeline usa o rótulo numerado ("17. DISTRATO") e o modal usa o
  * rótulo puro ("DISTRATO"). Sem tirar o prefixo só o modal marcava perda: o
  * negócio seguia somando VGV e ranking depois de um distrato.
+ *
+ * Exportado porque o gravador (`legacyDealFields`) compara o rótulo escolhido
+ * com o `lost_reason` já gravado, e `startsWith` cru só casava um dos formatos:
+ * "18. QUEDA" não é prefixo de "QUEDA — cliente desistiu", então o motivo era
+ * reescrito por cima e a observação sumia. A normalização é a MESMA que o banco
+ * aplica em `deal_status_bare`; ter duas seria ter duas respostas.
  */
-const bare = (s: string | null | undefined): string =>
+export const bareStatus = (s: string | null | undefined): string =>
   (s ?? "").toString().trim().toUpperCase().replace(/^\d+\.\s*/, "");
 
 export const normalizeStatus = (s: string | null | undefined): Status1 | null => {
-  const u = bare(s);
+  const u = bareStatus(s);
   if (u === "VENDA" || u === "PROPOSTA" || u === "QUEDA" || u === "DISTRATO" || u === "OFF") {
     return u as Status1;
   }
@@ -51,11 +57,31 @@ export const isPerda = (s: string | null | undefined) => {
  */
 export const LOSS_REASONS = ["17. DISTRATO", "18. QUEDA", "19. REPROVADO", "OFF"];
 
-const LOSS_LABELS = new Set(LOSS_REASONS.map(bare));
+const LOSS_LABELS = new Set(LOSS_REASONS.map(bareStatus));
 
 /** Escolher este rótulo encerra o negócio? Compara sem o prefixo numerado:
  *  a tabela manda "18. QUEDA" e um `status_detail` importado pode vir "QUEDA". */
-export const isLossStatus = (s: string | null | undefined): boolean => LOSS_LABELS.has(bare(s));
+export const isLossStatus = (s: string | null | undefined): boolean => LOSS_LABELS.has(bareStatus(s));
+
+/**
+ * Os rótulos do Status 2 que o **sistema** escreve e ninguém escolhe.
+ *
+ * "Esteira Ágil" é a entrada do negócio na análise de crédito — o mesmo evento
+ * que a aprovação da conferência do gerente dispara. Enquanto o Select oferecia
+ * os dois, qualquer pessoa marcava "13. ESTEIRA AGIL" em verde num negócio que
+ * nunca foi conferido e não tem caso no CCA. Agora o banco grava o rótulo
+ * quando o caso entra na esteira (`under_review`) e quando volta dela
+ * (`pending_documents`), e recusa a escrita manual (migration 0037). Aqui eles
+ * só saem das opções; continuam no catálogo para exibir, colorir e ordenar.
+ * Decisão de 01/09/2026, caminho (a).
+ */
+export const SYSTEM_STATUSES = ["13. ESTEIRA AGIL", "RET. ESTEIRA AGIL"];
+
+const SYSTEM_LABELS = new Set(SYSTEM_STATUSES.map(bareStatus));
+
+/** Este rótulo é escrito pelo sistema? Compara sem o prefixo numerado, como
+ *  `isLossStatus` — o banco (`deal_status_bare`) normaliza do mesmo jeito. */
+export const isSystemStatus = (s: string | null | undefined): boolean => SYSTEM_LABELS.has(bareStatus(s));
 
 /** Ordena "MM/AAAA" ascendente. */
 export const compareMonth = (a: string, b: string) => {
@@ -76,6 +102,31 @@ export const nextMonthBase = (month: string): string => {
 export const currentMonthBase = (): string => {
   const d = new Date();
   return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+};
+
+/**
+ * Meses que o "Fechar mês" pode congelar, do mais novo para o mais antigo.
+ *
+ * Enquanto o período era fixado na temporada aberta do game, o botão só sabia
+ * fechar UM mês — e os dois relógios saem de fase sozinhos: a Gamificação
+ * encerra a temporada sem fechar o mês, e o mês que ficou para trás não tinha
+ * como ser congelado por tela nenhuma. Medido na homologação em 02/09/2026: a
+ * temporada aberta era 09/2026 (zero negócios) e 26 dos 32 negócios estavam em
+ * 08/2026, que ficaria aberto para sempre.
+ *
+ * Entram os meses com negócio e o mês da temporada aberta (ele pode não ter
+ * negócio nenhum e ainda assim precisar ser fechado para o ciclo andar); saem
+ * os que já estão em `closed_months`.
+ */
+export const closableMonths = (
+  monthsWithDeals: string[],
+  closedMonths: string[],
+  seasonMonth?: string | null,
+): string[] => {
+  const closed = new Set(closedMonths);
+  const all = new Set(monthsWithDeals.filter(Boolean));
+  if (seasonMonth) all.add(seasonMonth);
+  return [...all].filter((month) => !closed.has(month)).sort((a, b) => compareMonth(b, a));
 };
 
 /**

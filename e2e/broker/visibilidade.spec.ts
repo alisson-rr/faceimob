@@ -62,6 +62,17 @@ test.describe("corretor · menu e rotas administrativas", () => {
     await expect(page.getByText("Administração")).toHaveCount(0);
   });
 
+  // A entrada do sistema ("/" e o pós-login) manda para a primeira tela que o
+  // papel abre, não para /dashboard fixo — quem não tem `menu.dashboard` caía
+  // em "Acesso não liberado" logo depois de entrar. Corretor tem, então o
+  // destino continua sendo o dashboard.
+  test('"/" leva o corretor ao dashboard', async ({ page }) => {
+    await page.goto("/");
+    await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+    await aguardarCarregamento(page);
+    await expect(page.getByText(/acesso não liberado/i)).toHaveCount(0);
+  });
+
   test("URL direta de /admin/permissions é negada", async ({ page }) => {
     await page.goto("/admin/permissions");
     await aguardarCarregamento(page);

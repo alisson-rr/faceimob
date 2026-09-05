@@ -1,12 +1,15 @@
-import { useId, useMemo, useRef, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/shared";
-import { useLeadDetail, useNowTicker } from "@/components/leads";
+import {
+  CloseLeadDialog, NextActionDialog, useAutomationSettings, useDistributionGroups, useLeadDetail,
+  useNowTicker,
+} from "@/components/leads";
 import { useAuth } from "@/contexts/AuthContext";
 import TaskPanel from "@/components/TaskPanel";
 import VisitPanel from "@/components/VisitPanel";
@@ -14,8 +17,8 @@ import { toast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  AlertTriangle, ArrowRightCircle, Clock, Download, HandMetal, Mail,
-  MessageCircle, Paperclip, Phone, Save, Send, Timer, Upload, User,
+  AlertTriangle, ArrowRightCircle, Clock, Download, HandMetal, Loader2, Mail,
+  MessageCircle, Paperclip, Phone, RefreshCcw, Save, Send, Timer, Upload, User, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
@@ -23,11 +26,13 @@ import { describeError } from "@/lib/supabaseError";
 import {
   addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
   updateLead, moveLeadStage, claimLead,
-  FUNNEL_STAGES, funnelStageLabel, funnelStageTone, leadSourceTone, leadStatusLabel, leadStatusTone,
-  attendSecondsLeft, formatCountdown, canClaim, trackingFields,
+  ATTACHMENT_HINT, FUNNEL_STAGES, funnelStageLabel, funnelStageTone, leadSourceTone,
+  leadStatusLabel, leadStatusTone,
+  attendSecondsLeft, canWriteLead, formatCountdown, canClaim, isLeadUnattended, trackingFields,
   type LeadRecord, type LeadAttachment,
   type LeadFunnelStage, type LeadPatch,
 } from "@/integrations/supabase/leads";
+import { toDateTimeInput } from "@/components/leads";
 
 type EditableField = "full_name" | "phone" | "email" | "document";
 
@@ -57,16 +62,39 @@ export default function LeadDetailModal({
   onConvert: (l: LeadRecord) => void;
   onStageChanged?: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, isAdmin, can } = useAuth();
   const profileId = user?.id || null;
+  // Espelha `can_write_lead()`: Salvar, Comentar, Anexar e as 8 etapas do funil
+  // apareciam para qualquer papel que enxergasse o lead, e o banco recusava com
+  // 42501 depois do clique. Fica aqui, e não numa prop, porque o LeadFunnel usa
+  // o mesmo modal e precisa da mesma regra.
+  const writable = lead
+    ? canWriteLead(lead, {
+      profileId,
+      isAdmin,
+      managesTeam: can("leads.reassign"),
+      canViewQueue: can("leads.view_queue"),
+    })
+    : false;
 
+  // Os dois diálogos moram AQUI, e não na página: o mesmo modal é aberto pela
+  // lista de Leads e pelo funil, e a próxima ação (que decide o bloqueio dos
+  // 20) não pode existir num host e faltar no outro.
+  const [askNextAction, setAskNextAction] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const commentId = useId();
 
-  const { events, comments, attachments, reload } = useLeadDetail(lead?.id, open);
+  const {
+    events, comments, attachments, isPending: detailPending, error: detailError, reload,
+  } = useLeadDetail(lead?.id, open);
+  // O grupo de distribuição não aparecia em lugar nenhum do detalhe: com leads
+  // circulando 20 vezes, saber por qual fila ele passa deixou de ser cosmético.
+  const groupsQuery = useDistributionGroups();
+  const settingsQuery = useAutomationSettings();
   // Cronômetro da trava: só vale a pena o tique de 1s com o modal aberto.
   const now = useNowTicker(open);
 
@@ -104,10 +132,16 @@ export default function LeadDetailModal({
   const secondsLeft = attendSecondsLeft(lead, now);
   const claimable = canClaim(lead, profileId);
   const tracking = trackingFields(lead);
+  const grupo = (groupsQuery.data ?? []).find((item) => item.id === lead.distribution_group_id);
+  const semAtendimento = isLeadUnattended(lead, settingsQuery.data?.roulette_max_rounds ?? 5);
+  const encerravel = !["converted", "lost", "discarded"].includes(lead.status)
+    && !lead.converted_deal_id;
 
   const attend = async () => {
+    let travado = false;
     try {
       await claimLead(lead.id);
+      travado = true;
       toast({ title: "Lead em atendimento", description: "O cronômetro parou: o lead é seu." });
     } catch (err) {
       toast({
@@ -117,6 +151,11 @@ export default function LeadDetailModal({
       });
     }
     onStageChanged?.();
+    // Igual ao "Atender" da lista: `claim_lead` grava um padrão de 24 h, e quem
+    // sabe quando volta a falar com o cliente é o corretor — é essa data que
+    // decide se o lead atrasa e trava o check-in dele em 20. Quem atendia por
+    // aqui nunca era perguntado e o prazo nascia de um chute.
+    if (travado) setAskNextAction(true);
   };
 
   const moveTo = async (stage: LeadFunnelStage) => {
@@ -210,6 +249,13 @@ export default function LeadDetailModal({
               <StatusBadge tone="danger" icon={AlertTriangle}>Inativo há {inactiveHours.toFixed(0)}h</StatusBadge>
             )}
           </DialogTitle>
+          {/* `DialogDescription` de verdade, e não `aria-describedby={undefined}`:
+              esta linha É a descrição do diálogo (de onde o lead veio, com quem
+              está, quantas voltas deu). Sem ela o Radix avisava em runtime e o
+              leitor de tela anunciava o título e parava. `asChild` porque o
+              conteúdo é uma linha de badges, e `<div>` dentro de `<p>` é HTML
+              inválido. */}
+          <DialogDescription asChild>
           <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" aria-hidden /> Chegou {formatDistanceToNow(arrived, { locale: ptBR, addSuffix: true })}
@@ -220,7 +266,16 @@ export default function LeadDetailModal({
             <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
             {lead.campaign_name && <StatusBadge tone="neutral">📣 {lead.campaign_name}</StatusBadge>}
             {lead.form_name && <StatusBadge tone="neutral">📋 {lead.form_name}</StatusBadge>}
+            {grupo && <StatusBadge tone="neutral">Fila: {grupo.name}</StatusBadge>}
+            {lead.roulette_misses > 0 && (
+              <StatusBadge tone={semAtendimento ? "danger" : "warning"} icon={RefreshCcw}>
+                {semAtendimento
+                  ? `Sem atendimento · ${lead.roulette_misses} voltas na roleta`
+                  : `${lead.roulette_misses}ª volta na roleta`}
+              </StatusBadge>
+            )}
           </div>
+          </DialogDescription>
         </DialogHeader>
 
         {/* Ações rápidas */}
@@ -246,26 +301,43 @@ export default function LeadDetailModal({
               <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4" /> E-mail</a>
             </Button>
           )}
-          {lead.status !== "converted" && !lead.converted_deal_id && (
+          {/* `convert_lead_to_deal` exige dono, gestor do dono ou admin (0028):
+              o mesmo `writable` da lista. Sem ele o sócio via o botão aceso,
+              preenchia construtora e VGV e só então tomava 42501. */}
+          {writable && lead.status !== "converted" && !lead.converted_deal_id && (
             <Button size="sm" className="sm:ml-auto" onClick={() => onConvert(lead)}>
               <ArrowRightCircle className="h-4 w-4" /> Converter
             </Button>
           )}
+          {/* Encerrar com motivo: a saída que faltava. Sem ela o único jeito de
+              tirar o lead da conta dos atrasados era reagendar para sempre. */}
+          {writable && encerravel && (
+            <Button size="sm" variant="outline" onClick={() => setClosing(true)}>
+              <XCircle className="h-4 w-4" /> Encerrar
+            </Button>
+          )}
         </div>
 
-        {/* Mover de etapa */}
-        <div className="flex flex-wrap gap-1">
-          {FUNNEL_STAGES.map((stage) => (
-            <Button
-              key={stage.key} size="sm"
-              variant={lead.funnel_stage === stage.key ? "default" : "outline"}
-              className="h-8 px-3 text-xs"
-              onClick={() => moveTo(stage.key)}
-            >
-              {stage.label}
-            </Button>
-          ))}
-        </div>
+        {/* Mover de etapa — só para quem o banco deixa escrever no lead. */}
+        {writable ? (
+          <div className="flex flex-wrap gap-1">
+            {FUNNEL_STAGES.map((stage) => (
+              <Button
+                key={stage.key} size="sm"
+                variant={lead.funnel_stage === stage.key ? "default" : "outline"}
+                className="h-8 px-3 text-xs"
+                onClick={() => moveTo(stage.key)}
+              >
+                {stage.label}
+              </Button>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Você acompanha este lead em modo leitura: mover de etapa, editar, comentar, anexar e
+            converter são do corretor responsável, do gestor da equipe dele e do administrador.
+          </p>
+        )}
 
         <Tabs defaultValue="info" className="mt-2">
           {/* 7 abas: `grid-cols-6` escondia a última e o `h-10` do TabsList
@@ -293,7 +365,14 @@ export default function LeadDetailModal({
             {/* `key` por versão do lead: o registro muda por baixo (roleta,
                 realtime) e o formulário precisa refletir o que está no banco,
                 sem um efeito copiando prop para estado. */}
-            <EditFields key={`${lead.id}-${lead.updated_at}`} lead={lead} onSaved={() => onStageChanged?.()} />
+            {/* `key` só pelo id: a chave antiga levava `updated_at` junto e o
+                formulário se remontava a cada mudança do lead vinda do realtime
+                da roleta — o corretor perdia no meio da frase o que estava
+                digitando. Quem confere o que está no banco são as linhas acima,
+                que continuam derivadas do registro. */}
+            {writable && (
+              <EditFields key={lead.id} lead={lead} onSaved={() => onStageChanged?.()} />
+            )}
           </TabsContent>
 
           <TabsContent value="form">
@@ -317,27 +396,43 @@ export default function LeadDetailModal({
                   <p className="mt-0.5 whitespace-pre-wrap text-sm">{comment.body}</p>
                 </div>
               ))}
-              {comments.length === 0 && <p className="text-sm text-muted-foreground">Nenhum comentário ainda.</p>}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={commentId}>Novo comentário</Label>
-              <div className="flex gap-2">
-                <Textarea
-                  id={commentId} rows={2} value={newComment}
-                  onChange={(event) => setNewComment(event.target.value)}
-                  placeholder={`Comentar como ${actorName}…`}
-                />
-                <Button
-                  size="icon" className="self-end" aria-label="Enviar comentário"
-                  onClick={submitComment} disabled={!newComment.trim() || sendingComment}
+              {comments.length === 0 && (
+                <DetailFallback
+                  pending={detailPending} error={detailError} onRetry={() => void reload()}
+                  loading="Carregando os comentários…"
+                  failed="não foi possível carregar os comentários deste lead"
                 >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
+                  <p className="text-sm text-muted-foreground">Nenhum comentário ainda.</p>
+                </DetailFallback>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              O comentário entra no histórico do lead junto com o log automático.
-            </p>
+            {writable ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor={commentId}>Novo comentário</Label>
+                  <div className="flex gap-2">
+                    <Textarea
+                      id={commentId} rows={2} value={newComment}
+                      onChange={(event) => setNewComment(event.target.value)}
+                      placeholder={`Comentar como ${actorName}…`}
+                    />
+                    <Button
+                      size="icon" className="self-end" aria-label="Enviar comentário"
+                      onClick={submitComment} disabled={!newComment.trim() || sendingComment}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  O comentário entra no histórico do lead junto com o log automático.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Comentar é do corretor responsável, do gestor da equipe dele e do administrador.
+              </p>
+            )}
           </TabsContent>
 
           <TabsContent value="attachments" className="space-y-3">
@@ -346,9 +441,16 @@ export default function LeadDetailModal({
               if (file) void upload(file);
               event.target.value = "";
             }} />
-            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Upload className="h-4 w-4" /> {uploading ? "Enviando…" : "Anexar arquivo"}
-            </Button>
+            {writable && (
+              <div className="space-y-1.5">
+                <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                  <Upload className="h-4 w-4" /> {uploading ? "Enviando…" : "Anexar arquivo"}
+                </Button>
+                {/* O teto é do bucket (0056) e de `rejectAttachment`: dizê-lo
+                    antes evita o upload que o Storage recusa em inglês. */}
+                <p className="text-xs text-muted-foreground">{ATTACHMENT_HINT}</p>
+              </div>
+            )}
             <div className="space-y-2">
               {attachments.map((attachment) => (
                 <div key={attachment.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 p-2">
@@ -365,10 +467,16 @@ export default function LeadDetailModal({
                 </div>
               ))}
               {attachments.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Sem anexos. O negócio pode ser criado assim; os documentos
-                  obrigatórios são cobrados no envio ao gerente.
-                </p>
+                <DetailFallback
+                  pending={detailPending} error={detailError} onRetry={() => void reload()}
+                  loading="Carregando os anexos…"
+                  failed="não foi possível carregar os anexos deste lead"
+                >
+                  <p className="text-sm text-muted-foreground">
+                    Sem anexos. O negócio pode ser criado assim; os documentos
+                    obrigatórios são cobrados no envio ao gerente.
+                  </p>
+                </DetailFallback>
               )}
             </div>
           </TabsContent>
@@ -394,7 +502,19 @@ export default function LeadDetailModal({
                   </div>
                 </div>
               ))}
-              {timeline.length === 0 && <p className="text-sm text-muted-foreground">Sem histórico.</p>}
+              {/* "Sem histórico" só quando o banco respondeu: falha de rede,
+                  recusa da RLS e consulta ainda correndo diziam a mesma frase de
+                  um lead recém-criado. Num lead com linha do tempo longa o
+                  corretor lia "Sem histórico" antes de ela aparecer. */}
+              {timeline.length === 0 && (
+                <DetailFallback
+                  pending={detailPending} error={detailError} onRetry={() => void reload()}
+                  loading="Carregando o histórico…"
+                  failed="não foi possível carregar o histórico deste lead"
+                >
+                  <p className="text-sm text-muted-foreground">Sem histórico.</p>
+                </DetailFallback>
+              )}
             </div>
           </TabsContent>
 
@@ -414,8 +534,62 @@ export default function LeadDetailModal({
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {askNextAction && (
+        <NextActionDialog
+          lead={lead}
+          onClose={() => setAskNextAction(false)}
+          onSaved={() => onStageChanged?.()}
+        />
+      )}
+
+      {closing && (
+        <CloseLeadDialog
+          lead={lead}
+          onClose={() => setClosing(false)}
+          onClosed={() => { onStageChanged?.(); onOpenChange(false); }}
+        />
+      )}
     </Dialog>
   );
+}
+
+/**
+ * Carregando → erro → vazio, nesta ordem, nas três listas do detalhe.
+ *
+ * As três chegam vazias enquanto o banco responde, e a tela afirmava o contrário
+ * do que sabia: "Sem histórico.", "Nenhum comentário ainda." e "Sem anexos"
+ * apareciam antes de qualquer resposta. Só a frase de vazio é o fim da linha.
+ */
+function DetailFallback({
+  pending, error, onRetry, loading, failed, children,
+}: {
+  pending: boolean;
+  error: unknown;
+  onRetry: () => void;
+  loading: string;
+  failed: string;
+  children: ReactNode;
+}) {
+  if (pending) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> {loading}
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <p className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+        {describeError(error, failed)}
+        <Button variant="outline" size="sm" className="h-7" onClick={onRetry}>
+          Tentar de novo
+        </Button>
+      </p>
+    );
+  }
+  return <>{children}</>;
 }
 
 /**
@@ -431,17 +605,59 @@ function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void 
     email: lead.email ?? "",
     document: lead.document ?? "",
   }));
+  // A próxima ação sai do mesmo formulário: até aqui só uma tarefa com data na
+  // aba Agenda a preenchia, e é ela que faz o lead atrasar e travar o check-in
+  // do corretor em 20 atrasados. Sem campo direto, quem não criava tarefa nunca
+  // era barrado — o bloqueio era opcional na prática.
+  const [nextAction, setNextAction] = useState(() =>
+    lead.next_action_at ? toDateTimeInput(new Date(lead.next_action_at)) : "",
+  );
+  // Enquanto o corretor não mexe no campo, ele é ESPELHO do banco — e o Salvar
+  // não manda `next_action_at` nenhum. A aba Agenda vive no mesmo modal e o
+  // gatilho `tasks_sync_lead_deadline` reescreve `leads.next_action_at` com o
+  // `min(due_at)` das tarefas abertas: sem isto, abrir Dados → criar tarefa na
+  // Agenda → voltar e corrigir o telefone mandava de volta a data velha e
+  // desfazia a tarefa em silêncio, com um toast dizendo "Dados salvos". É a
+  // data que decide `overdue_lead_count` e o bloqueio dos 20.
+  const [nextActionTouched, setNextActionTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (nextActionTouched) return;
+    setNextAction(lead.next_action_at ? toDateTimeInput(new Date(lead.next_action_at)) : "");
+  }, [lead.next_action_at, nextActionTouched]);
+
+  // `leads_keep_next_action` (0074) recusa limpar o prazo de um lead em
+  // atendimento: é essa data que sustenta o bloqueio dos 20 atrasados. A tela
+  // não pode oferecer o que o banco recusa — então o campo vira obrigatório
+  // enquanto o lead estiver em operação, e o Salvar diz por quê.
+  const emOperacao = ["assigned", "attending", "in_progress"].includes(lead.status);
+  const exigePrazo = emOperacao && Boolean(lead.next_action_at);
+  // Só é "apagou o prazo" quando o corretor apagou de fato. Campo espelhando um
+  // banco que acabou de ganhar a data (logo depois de "Atender") não é erro dele
+  // e não pode travar o Salvar.
+  const semPrazo = exigePrazo && nextActionTouched && !nextAction;
+
   const save = async () => {
+    if (semPrazo) return;
     setSaving(true);
     try {
+      const quando = nextAction ? new Date(nextAction) : null;
+      const valida = quando && !Number.isNaN(quando.getTime());
       const patch: LeadPatch = {
         full_name: values.full_name.trim() || undefined,
         phone: values.phone.trim() || null,
         email: values.email.trim() || null,
         document: values.document.trim() || null,
       };
+      // Campo intocado não entra no PATCH: o valor de verdade é o do banco, que
+      // a Agenda pode ter mudado desde que o formulário montou. Tocado e vazio
+      // num lead que ainda pode ficar sem prazo continua limpando; num lead em
+      // operação o campo nunca chega vazio até aqui.
+      if (nextActionTouched) {
+        if (valida) patch.next_action_at = (quando as Date).toISOString();
+        else if (!exigePrazo) patch.next_action_at = null;
+      }
       await updateLead(lead.id, patch);
       toast({ title: "Dados salvos" });
       onSaved?.();
@@ -470,8 +686,30 @@ function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void 
             />
           </div>
         ))}
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor={`${fieldId}-next-action`}>Próxima ação</Label>
+          <Input
+            id={`${fieldId}-next-action`}
+            type="datetime-local"
+            value={nextAction}
+            onChange={(event) => { setNextActionTouched(true); setNextAction(event.target.value); }}
+            aria-describedby={`${fieldId}-next-action-hint`}
+            aria-invalid={semPrazo || undefined}
+            required={exigePrazo}
+          />
+          <p
+            id={`${fieldId}-next-action-hint`}
+            className={semPrazo ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+          >
+            {semPrazo
+              ? "Lead em atendimento não fica sem próxima ação. Marque uma data ou use “Encerrar”, com motivo, para tirá-lo da operação."
+              : nextAction
+                ? "Passou da hora, o lead conta como atrasado — 20 atrasados travam seu check-in."
+                : "Sem próxima ação este lead nunca aparece como atrasado, e ninguém é cobrado por ele."}
+          </p>
+        </div>
       </div>
-      <Button size="sm" onClick={save} disabled={saving}>
+      <Button size="sm" onClick={save} disabled={saving || semPrazo}>
         <Save className="h-4 w-4" /> {saving ? "Salvando…" : "Salvar"}
       </Button>
     </div>

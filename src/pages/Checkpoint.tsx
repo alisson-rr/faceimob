@@ -1,133 +1,202 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCallback, useMemo } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Target, AlertTriangle, TrendingUp, Loader2, Users } from "lucide-react";
+import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
+import { AlertTriangle, ChevronLeft, ChevronRight, Download, RefreshCw, Target, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { addDays, endOfWeek, format, startOfWeek } from "date-fns";
+import { addDays, endOfWeek, format, isValid, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils";
 import { describeError } from "@/lib/supabaseError";
 import { listPeople } from "@/integrations/supabase/newSchema";
+import {
+  DirectorFunnelSection, TeamCheckpointCard,
+  type BrokerRow, type TeamRow,
+} from "@/components/checkpoint/FunnelCards";
+import {
+  buildTargetsMap, emptyAggr, targetsFrom,
+  type Targets, type TeamAggr,
+} from "@/components/checkpoint/funnel";
+import { downloadCheckpointCsv } from "@/components/checkpoint/export";
+import {
+  checkpointTeams, readsEveryReport, showsEveryTeam, teamsNoQuadro,
+} from "@/components/checkpoint/visibility";
 
-
-type TeamRow = { id: string; name: string; display_name: string | null; manager_id: string | null; director_id: string | null };
-type BrokerRow = { id: string; name: string; manager_id: string | null; director_id: string | null; user_id: string | null };
 type EntryRow = {
   report_id: string; leads: number; ligacoes: number; coleta_docs: number;
+  visitas_agendadas: number; visitas_feitas: number;
   analises: number; aprovados: number; vendas: number;
 };
 type ReportRow = { id: string; team_id: string; report_date: string };
-type Targets = { analise_enviada_pct: number; aprovada_pct: number; venda_pct: number };
 
-const DEFAULT_TARGETS: Targets = { analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 };
+/** Parâmetro da URL com a segunda-feira da semana exibida. */
+const PARAM_SEMANA = "semana";
+const ISO = "yyyy-MM-dd";
+
+/**
+ * Semana da URL, sempre normalizada para a segunda-feira.
+ *
+ * A tela guardava a semana só em `useState`: F5 e link compartilhado voltavam
+ * para a semana corrente, e numa tela feita para reunião isso obriga todo mundo
+ * a renavegar. Data inválida no parâmetro cai na semana corrente em vez de
+ * quebrar o `format()` mais adiante.
+ */
+function weekFromParam(raw: string | null): Date {
+  const parsed = raw ? parseISO(raw) : null;
+  const base = parsed && isValid(parsed) ? parsed : new Date();
+  return startOfWeek(base, { weekStartsOn: 1 });
+}
+
+/** Catálogo que não depende da semana — equipes, pessoas e metas. */
+async function loadCatalogo() {
+  const [t, b, tg] = await Promise.all([
+    // Sem `active=true`: equipe desativada no meio da semana sumia do quadro
+    // junto com os lançamentos dela, sem nenhum aviso. Quem entra no quadro é
+    // decidido abaixo, com o que o banco de fato entrega para cada papel.
+    supabase.from("teams").select("id,name,manager_id,director_id,active"),
+    listPeople(),
+    supabase.from("funnel_targets")
+      .select("scope,team_id,director_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct")
+      .order("effective_from", { ascending: false }),
+  ]);
+  if (t.error) throw t.error;
+  if (tg.error) throw tg.error;
+  return {
+    teams: (t.data ?? []).map((team) => ({ ...team, display_name: team.name })) as TeamRow[],
+    brokers: b.filter((person) => person.active) as BrokerRow[],
+    targetsMap: buildTargetsMap(tg.data ?? []),
+  };
+}
+
+/** Diários da semana. Só isto muda ao navegar entre semanas. */
+async function loadSemana(from: string, to: string) {
+  const { data: rep, error: repError } = await supabase
+    .from("daily_reports")
+    .select("id,team_id,report_date")
+    .gte("report_date", from)
+    .lte("report_date", to);
+  if (repError) throw repError;
+  const reports = (rep ?? []) as ReportRow[];
+  if (!reports.length) return { reports, entries: [] as EntryRow[] };
+
+  const { data: ent, error: entError } = await supabase
+    .from("daily_entries")
+    .select("report_id,leads,calls,doc_collections,visits_scheduled,visits_done,analyses_sent,analyses_approved,sales")
+    .in("report_id", reports.map((r) => r.id));
+  if (entError) throw entError;
+  const entries = (ent ?? []).map((entry) => ({
+    report_id: entry.report_id,
+    leads: entry.leads,
+    ligacoes: entry.calls,
+    coleta_docs: entry.doc_collections,
+    visitas_agendadas: entry.visits_scheduled,
+    visitas_feitas: entry.visits_done,
+    analises: entry.analyses_sent,
+    aprovados: entry.analyses_approved,
+    vendas: entry.sales,
+  }));
+  return { reports, entries };
+}
 
 export default function Checkpoint() {
-  const { role, user } = useAuth();
-  const [weekStart, setWeekStart] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const { roles, user } = useAuth();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const weekStart = weekFromParam(searchParams.get(PARAM_SEMANA));
   const weekEnd = useMemo(() => endOfWeek(weekStart, { weekStartsOn: 1 }), [weekStart]);
-  const [teams, setTeams] = useState<TeamRow[]>([]);
-  const [brokers, setBrokers] = useState<BrokerRow[]>([]);
-  const [reports, setReports] = useState<ReportRow[]>([]);
-  const [entries, setEntries] = useState<EntryRow[]>([]);
-  const [targetsMap, setTargetsMap] = useState<Record<string, Targets>>({});
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const from = format(weekStart, ISO);
+  const to = format(weekEnd, ISO);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    // Sem try/finally, qualquer exceção deixava o "Carregando…" para sempre.
-    try {
-      const [t, b, tg] = await Promise.all([
-        supabase.from("teams").select("id,name,manager_id,director_id").eq("active", true),
-        listPeople(),
-        supabase.from("funnel_targets").select("scope,team_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct").order("effective_from", { ascending: false }),
-      ]);
-      if (t.error) throw t.error;
-      if (tg.error) throw tg.error;
-      setTeams((t.data ?? []).map(team => ({ ...team, display_name: team.name })));
-      setBrokers(b.filter(person => person.active));
-      const tmap: Record<string, Targets> = {};
-      (tg.data ?? []).forEach((r) => {
-        const key = r.scope === "global" ? "__global__" : r.team_id;
-        if (!key || tmap[key]) return;
-        tmap[key] = {
-          analise_enviada_pct: Number(r.lead_to_analysis_pct),
-          aprovada_pct: Number(r.analysis_to_approval_pct),
-          venda_pct: Number(r.approval_to_sale_pct),
-        };
-      });
-      setTargetsMap(tmap);
+  const irPara = useCallback((dia: Date) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set(PARAM_SEMANA, format(startOfWeek(dia, { weekStartsOn: 1 }), ISO));
+      return next;
+    });
+  }, [setSearchParams]);
 
-      const from = format(weekStart, "yyyy-MM-dd");
-      const to = format(weekEnd, "yyyy-MM-dd");
-      const { data: rep, error: repError } = await supabase
-        .from("daily_reports")
-        .select("id,team_id,report_date")
-        .gte("report_date", from)
-        .lte("report_date", to);
-      if (repError) throw repError;
-      setReports(rep ?? []);
-      const ids = (rep ?? []).map((r) => r.id);
-      if (ids.length) {
-        const { data: ent, error: entError } = await supabase
-          .from("daily_entries")
-          .select("report_id,leads,calls,doc_collections,analyses_sent,analyses_approved,sales")
-          .in("report_id", ids);
-        if (entError) throw entError;
-        setEntries((ent ?? []).map(entry => ({
-          report_id: entry.report_id,
-          leads: entry.leads,
-          ligacoes: entry.calls,
-          coleta_docs: entry.doc_collections,
-          analises: entry.analyses_sent,
-          aprovados: entry.analyses_approved,
-          vendas: entry.sales,
-        })));
-      } else {
-        setEntries([]);
-      }
-    } catch (err) {
-      // A mensagem crua do Postgres cita tabela e policy; fica no log, não na tela.
-      console.error("checkpoint: falha ao carregar a semana", err);
-      setLoadError(describeError(err, "Verifique a conexão e tente de novo."));
-    } finally {
-      setLoading(false);
-    }
-  }, [weekEnd, weekStart]);
+  const equipeParam = searchParams.get("equipe");
+  const filtrarEquipe = (valor: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (valor === "all") next.delete("equipe"); else next.set("equipe", valor);
+      return next;
+    });
+  };
 
-  useEffect(() => { void load(); }, [load]);
+  // Duas consultas, não uma: navegar entre semanas refazia as 5 idas ao banco.
+  // O catálogo (equipes, pessoas, metas) não muda de semana para semana, e a
+  // semana já vista volta do cache do react-query.
+  const catalogo = useQuery({ queryKey: ["checkpoint", "catalogo"], queryFn: loadCatalogo });
+  const semana = useQuery({
+    queryKey: ["checkpoint", "semana", from, to],
+    queryFn: () => loadSemana(from, to),
+  });
 
-  const myBroker = useMemo(() => brokers.find(b => b.user_id === user?.id) || null, [brokers, user]);
+  // `useMemo` e não `?? []` solto: a lista nova a cada render invalidava os
+  // memos que dependem dela (lint react-hooks/exhaustive-deps).
+  const teams = useMemo(() => catalogo.data?.teams ?? [], [catalogo.data]);
+  const brokers = catalogo.data?.brokers ?? [];
+  const targetsMap = catalogo.data?.targetsMap ?? {};
+  const reports = useMemo(() => semana.data?.reports ?? [], [semana.data]);
+  const entries = semana.data?.entries ?? [];
 
-  const visibleTeams = useMemo(() => {
-    if (role === "admin") return teams;
-    if (role === "director" && myBroker) {
-      return teams.filter(t => t.director_id === myBroker.id);
-    }
-    if (role === "manager" && myBroker) return teams.filter(t => t.manager_id === myBroker.id);
-    return [];
-  }, [role, teams, myBroker]);
+  const loading = catalogo.isPending || semana.isPending;
+  const loadError = catalogo.error ?? semana.error;
 
-  const filteredTeams = teamFilter === "all" ? visibleTeams : visibleTeams.filter(t => t.id === teamFilter);
+  // O recorte usa TODOS os papéis (papel é N:N) e a liderança de cada equipe.
+  // O quadro do diretor é o das equipes que ele lidera — decisão de tela, mais
+  // estreita do que `can_read_all()`; ver `checkpoint/visibility.ts`.
+  const escopo = useMemo(
+    () => checkpointTeams(teams, roles, user?.id ?? null),
+    [teams, roles, user?.id],
+  );
+
+  // Equipe desativada entra no quadro ou vira aviso — a regra e o porquê de
+  // cada ramo estão em `checkpoint/visibility.ts` (`teamsNoQuadro`).
+  const comLancamento = useMemo(() => new Set(reports.map((r) => r.team_id)), [reports]);
+  const { quadro, foraPorRecorte } = useMemo(
+    () => teamsNoQuadro(escopo.visible, roles, comLancamento),
+    [escopo.visible, roles, comLancamento],
+  );
+  const idsNoQuadro = useMemo(() => new Set(quadro.map((t) => t.id)), [quadro]);
+
+  /**
+   * Filtro de equipe vindo da URL, validado contra as opções que existem.
+   *
+   * O `?equipe=<id>` é o parâmetro do "manda o link", e é justamente aí que ele
+   * chega em quem não lidera aquela equipe — ou depois de a equipe sair do
+   * quadro. Sem validação, o Radix voltava ao placeholder (nada na tela dizia
+   * que havia filtro) e o quadro caía no vazio "você não lidera nenhuma equipe",
+   * diagnóstico errado: a pessoa lidera equipes, só não a filtrada.
+   */
+  const teamFilter = equipeParam && idsNoQuadro.has(equipeParam) ? equipeParam : "all";
+  const filtroIgnorado = !loading && !loadError && !!equipeParam && equipeParam !== teamFilter;
+
+  const soDoFiltro = (lista: TeamRow[]) =>
+    lista.filter((t) => idsNoQuadro.has(t.id)).filter((t) => teamFilter === "all" || t.id === teamFilter);
+  const equipesDirigidas = soDoFiltro(escopo.directed);
+  const equipesGerenciadas = soDoFiltro(escopo.managed);
+  const filteredTeams = [...equipesDirigidas, ...equipesGerenciadas];
 
   const teamNameFor = (t: TeamRow) => t.display_name?.trim() || t.name || "Equipe";
 
-  const targetsFor = (teamId: string): Targets => targetsMap[teamId] ?? targetsMap["__global__"] ?? DEFAULT_TARGETS;
+  const targetsFor = (key: string): Targets => targetsFrom(targetsMap, key);
 
-  const aggregate = (teamId: string) => {
+  const aggregate = (teamId: string): TeamAggr => {
     const rIds = new Set(reports.filter(r => r.team_id === teamId).map(r => r.id));
-    const acc = { leads: 0, ligacoes: 0, coleta_docs: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
+    const acc = emptyAggr();
+    acc.lancamentos = rIds.size;
     entries.forEach(e => {
       if (!rIds.has(e.report_id)) return;
       acc.leads += e.leads || 0;
       acc.ligacoes += e.ligacoes || 0;
       acc.coleta_docs += e.coleta_docs || 0;
+      acc.visitas_agendadas += e.visitas_agendadas || 0;
+      acc.visitas_feitas += e.visitas_feitas || 0;
       acc.enviadas += e.analises || 0;
       acc.aprovadas += e.aprovados || 0;
       acc.vendas += e.vendas || 0;
@@ -135,320 +204,170 @@ export default function Checkpoint() {
     return acc;
   };
 
+  const exportar = () => {
+    downloadCheckpointCsv(
+      filteredTeams.map((t) => ({
+        equipe: teamNameFor(t),
+        ativa: t.active,
+        aggr: aggregate(t.id),
+        targets: targetsFor(t.id),
+      })),
+      from,
+    );
+  };
+
+  const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["checkpoint"] }); };
+
+  /**
+   * Quadro vazio tem quatro causas distintas e cada uma pede uma saída diferente.
+   *
+   * A versão anterior dizia "você não lidera nenhuma delas" para todo mundo,
+   * inclusive para o admin — que lidera nada por definição e mesmo assim lê o
+   * diário da empresa inteira.
+   */
+  const motivoDoQuadroVazio = () => {
+    if (foraPorRecorte.length > 0)
+      return "As equipes que você lidera estão desativadas e nenhum lançamento delas chegou nesta semana — o banco libera o diário apenas de equipe ativa para quem a lidera. Reative a equipe em Equipes para o quadro voltar.";
+    if (showsEveryTeam(roles))
+      return "Nenhuma equipe ativa cadastrada. Equipe desativada só aparece na semana em que tem lançamento — navegue até a semana da operação ou reative a equipe em Equipes.";
+    if (readsEveryReport(roles))
+      return "Você não é gerente nem diretor de nenhuma equipe ativa. Seu papel lê o diário de todas as equipes no banco, mas este quadro é montado por quem lidera cada uma — o funil da diretoria some as equipes que você dirige.";
+    return "Há equipes ativas, mas você não lidera nenhuma delas — o recorte é o mesmo do banco (gerente ou diretor da equipe).";
+  };
+
   return (
     <div className="p-6 space-y-4">
-      <header className="flex flex-wrap items-center gap-3 justify-between">
-        <div className="flex items-center gap-2">
-          <Target className="h-5 w-5 text-primary" />
-          <h1 className="text-2xl font-bold">Checkpoint Semanal</h1>
-        </div>
-        {/* `flex-wrap` aqui, e nao so no <header>: os 4 botoes mais o Select de
-            224 px pedem 472 px numa faixa de 311 px a 375 px, e sem quebra de
-            linha eles transbordavam 137 px a pagina inteira (handoff-N §6.1). */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, -7))}><ChevronLeft className="h-4 w-4" /></Button>
-          <div className="px-3 py-1 rounded-md border border-primary/30 bg-primary/5 text-xs">
-            {format(weekStart, "dd MMM", { locale: ptBR })} — {format(weekEnd, "dd MMM yyyy", { locale: ptBR })}
-          </div>
-          <Button size="sm" variant="outline" onClick={() => setWeekStart(addDays(weekStart, 7))}><ChevronRight className="h-4 w-4" /></Button>
-          <Button size="sm" variant="ghost" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Hoje</Button>
-          <Select value={teamFilter} onValueChange={setTeamFilter}>
-            <SelectTrigger className="w-full sm:w-56 h-8 text-xs"><SelectValue placeholder="Filtrar equipe" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as equipes</SelectItem>
-              {visibleTeams.map(t => <SelectItem key={t.id} value={t.id}>{teamNameFor(t)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </header>
+      {/* Kit compartilhado (`components/shared`): o <h1> sai do PageHeader e os
+          três estados abaixo são LoadingState/EmptyState — é de lá que vêm o
+          `role="status"` da espera e o tom de erro, que a versão manual desta
+          tela não tinha (quem usa leitor de tela não ouvia nada na carga). */}
+      <PageHeader
+        title="Checkpoint Semanal"
+        eyebrow="Gestão"
+        icon={Target}
+        description="Funil da semana por equipe, comparado com a meta de conversão de cada estágio."
+        actions={
+          // `flex-wrap`: os controles mais o Select de 224 px pedem bem mais que
+          // os 311 px úteis a 375 px, e sem quebra de linha eles transbordavam
+          // 137 px a página inteira (handoff-N §6.1).
+          //
+          // Sem botão "Imprimir": o app não tem NENHUMA regra `@media print`, e
+          // `window.print()` daqui sai com a sidebar, o header de 64 px e os
+          // cards sem fundo (o navegador omite `background` por padrão) — as
+          // barras de meta somem justamente na folha levada para a reunião.
+          // Exportar CSV é o caminho honesto até a folha existir.
+          <>
+            <Button size="sm" variant="outline" aria-label="Semana anterior" onClick={() => irPara(addDays(weekStart, -7))}><ChevronLeft className="h-4 w-4" /></Button>
+            <div className="px-3 py-1 rounded-md border border-primary/30 bg-primary/5 text-xs">
+              {format(weekStart, "dd MMM", { locale: ptBR })} — {format(weekEnd, "dd MMM yyyy", { locale: ptBR })}
+            </div>
+            <Button size="sm" variant="outline" aria-label="Próxima semana" onClick={() => irPara(addDays(weekStart, 7))}><ChevronRight className="h-4 w-4" /></Button>
+            <Button size="sm" variant="ghost" onClick={() => irPara(new Date())}>Hoje</Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Atualizar os números"
+              aria-busy={catalogo.isFetching || semana.isFetching}
+              onClick={atualizar}
+            >
+              <RefreshCw className={`h-4 w-4 ${catalogo.isFetching || semana.isFetching ? "animate-spin" : ""}`} /> Atualizar
+            </Button>
+            <Button size="sm" variant="outline" onClick={exportar} disabled={filteredTeams.length === 0}>
+              <Download className="h-4 w-4" /> Exportar CSV
+            </Button>
+            <Select value={teamFilter} onValueChange={filtrarEquipe}>
+              <SelectTrigger className="w-full sm:w-56 h-8 text-xs" aria-label="Filtrar equipe"><SelectValue placeholder="Filtrar equipe" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as equipes</SelectItem>
+                {quadro.map(t => <SelectItem key={t.id} value={t.id}>{teamNameFor(t)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
+
+      {/* Filtro que veio no link e não existe para quem abriu: sem isto o quadro
+          ficava vazio com cara de falta de permissão e o gatilho do Select, sem
+          item correspondente, voltava ao placeholder — filtro ativo e invisível. */}
+      {filtroIgnorado && (
+        <p className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          O link trouxe um filtro de equipe que não está neste quadro — pode ser equipe que você não
+          lidera, desativada ou sem lançamento nesta semana. Mostrando todas as suas equipes.
+          <Button size="sm" variant="outline" className="h-7" onClick={() => filtrarEquipe("all")}>
+            Limpar filtro
+          </Button>
+        </p>
+      )}
+
+      {/* Equipe desativada que o banco não entrega para este papel: o silêncio
+          fazia os lançamentos dela sumirem do total da semana sem explicação.
+          Quem lê tudo (`readsEveryReport`) nunca chega aqui — para esse papel a
+          equipe some do quadro por não ter lançado nada, e não por permissão. */}
+      {!loading && !loadError && foraPorRecorte.length > 0 && (
+        <p className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+          {foraPorRecorte.map(teamNameFor).join(", ")}
+          {foraPorRecorte.length > 1 ? " estão desativadas" : " está desativada"} e
+          {foraPorRecorte.length > 1 ? " ficam" : " fica"} fora deste quadro: nenhum lançamento delas
+          chegou nesta semana, e o banco libera o diário apenas de equipe ativa para quem a lidera —
+          pode não ter havido lançamento, ou ele pode existir e não vir para você. O que já foi
+          lançado continua gravado: reative a equipe em Equipes ou peça o número a um administrador.
+        </p>
+      )}
 
       {loading ? (
-        <div className="p-10 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Carregando…</div>
+        <LoadingState variant="table" rows={3} label="Carregando o checkpoint da semana…" />
       ) : loadError ? (
-        <Card className="p-8 text-center text-sm text-muted-foreground space-y-3">
-          <p>Não foi possível carregar o checkpoint: {loadError}</p>
-          <Button size="sm" variant="outline" onClick={load}>Tentar novamente</Button>
-        </Card>
+        <EmptyState
+          tone="danger"
+          icon={AlertTriangle}
+          title="Não foi possível carregar o checkpoint"
+          description={`${describeError(loadError, "Verifique a conexão e tente de novo.")} Nenhum número desta tela é confiável enquanto a leitura não voltar.`}
+          action={<Button variant="outline" onClick={atualizar}>Tentar novamente</Button>}
+        />
+      ) : teams.length === 0 ? (
+        // "Não há equipe cadastrada" e "há, mas nenhuma é sua" são problemas
+        // diferentes: o primeiro é cadastro faltando, o segundo é permissão.
+        <EmptyState
+          icon={Users}
+          title="Nenhuma equipe cadastrada"
+          description="O Checkpoint agrega o diário por equipe — cadastre uma equipe ativa para começar."
+          action={<Button asChild variant="outline"><Link to="/equipes">Ir para Equipes</Link></Button>}
+        />
       ) : filteredTeams.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-muted-foreground">Nenhuma equipe visível para você.</Card>
+        <EmptyState
+          icon={Users}
+          title="Nenhuma equipe neste quadro"
+          description={motivoDoQuadroVazio()}
+        />
       ) : (
-        <>
-          {role === "manager" ? (
-            <div className="grid grid-cols-1 gap-4">
-              {filteredTeams.map(t => <TeamCheckpointCard key={t.id} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />)}
-            </div>
-          ) : (
+        // Bloco de diretoria para o que a pessoa DIRIGE (ou tudo, para admin e
+        // sócio); card por equipe para o que ela apenas gerencia. Quem acumula
+        // os dois papéis vê as duas coisas — antes só o papel primário contava.
+        <div className="space-y-4">
+          {equipesDirigidas.length > 0 && (
             <DirectorFunnelSection
-              role={role}
-              myBroker={myBroker}
               brokers={brokers}
-              teams={visibleTeams}
+              teams={equipesDirigidas}
               aggregate={aggregate}
               targetsFor={targetsFor}
               teamNameFor={teamNameFor}
             />
           )}
-
-
-        </>
-      )}
-    </div>
-  );
-}
-
-
-export function TeamCheckpointCard({ aggr, targets, name }: {
-  aggr: { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
-  targets: Targets;
-  name: string;
-}) {
-  const pctEnviadas = aggr.leads ? (aggr.enviadas / aggr.leads) * 100 : 0;
-  const pctAprovadas = aggr.enviadas ? (aggr.aprovadas / aggr.enviadas) * 100 : 0;
-  const pctVendas = aggr.aprovadas ? (aggr.vendas / aggr.aprovadas) * 100 : 0;
-
-  const stages = [
-    { label: "Leads", value: aggr.leads, pct: 100, target: 100 },
-    { label: "Análise Enviada", value: aggr.enviadas, pct: pctEnviadas, target: targets.analise_enviada_pct },
-    { label: "Análise Aprovada", value: aggr.aprovadas, pct: pctAprovadas, target: targets.aprovada_pct },
-    { label: "Venda", value: aggr.vendas, pct: pctVendas, target: targets.venda_pct },
-  ];
-
-  const belowStages = stages.slice(1).filter(s => s.pct < s.target);
-  const anyBelow = belowStages.length > 0;
-  const worst = belowStages.sort((a, b) => (a.pct - a.target) - (b.pct - b.target))[0];
-
-  return (
-    <Card className="border-primary/20 bg-card/60 backdrop-blur-xl">
-      <CardHeader className="py-2 px-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <TrendingUp className="h-3.5 w-3.5 text-primary" /> {name}
-        </CardTitle>
-        {anyBelow ? (
-          <Badge variant="outline" size="sm" className="border-destructive/50 text-destructive">
-            <AlertTriangle className="h-2.5 w-2.5 mr-1" /> Gargalo: {worst.label}
-          </Badge>
-        ) : (
-          <Badge variant="outline" size="sm" className="border-success/50 text-success">No ritmo</Badge>
-        )}
-      </CardHeader>
-      <CardContent className="px-3 pb-3 pt-0 space-y-2">
-        <div className="grid grid-cols-4 gap-1.5">
-          {stages.map((s, i) => {
-            const below = i > 0 && s.pct < s.target;
-            const ok = i === 0 || s.pct >= s.target;
-            return (
-              <div key={s.label} className={cn(
-                "px-2 py-1.5 rounded-md border bg-secondary/20 flex flex-col gap-0.5",
-                below ? "border-destructive/50 bg-destructive/5" : "border-success/30",
-              )}>
-                <div className="flex items-baseline justify-between gap-1">
-                  <span className="text-eyebrow truncate">{s.label}</span>
-                  {i > 0 && <span className="text-eyebrow shrink-0">m{s.target}%</span>}
-                </div>
-                <div className="flex items-baseline justify-between gap-1">
-                  <span className={cn("text-lg font-black leading-none", ok ? "text-success" : "text-destructive")}>{s.value}</span>
-                  <span className={cn("text-xs font-semibold", ok ? "text-success" : "text-destructive")}>{s.pct.toFixed(0)}%</span>
-                </div>
-                <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
-                  <div className={cn("h-full", below ? "bg-destructive" : "bg-success")} style={{ width: `${Math.min(100, s.pct)}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="px-2 py-0.5 rounded border border-border/40 bg-secondary/20">
-            <span className="text-muted-foreground uppercase mr-1">Ligações</span>
-            <span className="font-bold text-info">{aggr.ligacoes}</span>
-          </span>
-          <span className="px-2 py-0.5 rounded border border-border/40 bg-secondary/20">
-            <span className="text-muted-foreground uppercase mr-1">Coleta docs</span>
-            <span className="font-bold text-info">{aggr.coleta_docs}</span>
-          </span>
-          {anyBelow && (
-            <span className="ml-auto text-destructive">
-              ⚠ {worst.label}: {worst.pct.toFixed(1)}% (faltam {(worst.target - worst.pct).toFixed(1)}pp para meta {worst.target}%)
-            </span>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-
-// ============ Director-level funnel ============
-
-type DirAggr = { leads: number; enviadas: number; aprovadas: number; vendas: number };
-
-function DirectorFunnelSection({
-  role, myBroker, brokers, teams, aggregate, targetsFor, teamNameFor,
-}: {
-  role: string | null;
-  myBroker: BrokerRow | null;
-  brokers: BrokerRow[];
-  teams: TeamRow[];
-  aggregate: (teamId: string) => { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
-  targetsFor: (teamId: string) => Targets;
-  teamNameFor: (t: TeamRow) => string;
-}) {
-  // Map manager broker id -> director broker id
-  const mgrToDir = useMemo(() => {
-    const m = new Map<string, string | null>();
-    brokers.forEach(b => m.set(b.id, b.director_id));
-    return m;
-  }, [brokers]);
-
-  // Group teams by director id
-  const directorGroups = useMemo(() => {
-    const groups = new Map<string, { director: BrokerRow | null; teams: TeamRow[] }>();
-    teams.forEach(t => {
-      const dirId = (t.manager_id && mgrToDir.get(t.manager_id)) || "__none__";
-      if (!groups.has(dirId)) {
-        const director = dirId === "__none__" ? null : brokers.find(b => b.id === dirId) || null;
-        groups.set(dirId, { director, teams: [] });
-      }
-      groups.get(dirId)!.teams.push(t);
-    });
-    let arr = Array.from(groups.entries()).map(([id, g]) => ({ id, ...g }));
-    // Directors only see themselves
-    if (role === "director" && myBroker) arr = arr.filter(g => g.id === myBroker.id);
-    // Managers don't need director-level view
-    if (role === "manager") return [];
-    return arr.sort((a, b) => (a.director?.name || "").localeCompare(b.director?.name || ""));
-  }, [teams, brokers, mgrToDir, role, myBroker]);
-
-  if (!directorGroups.length) return null;
-
-  return (
-    <div className="space-y-3">
-      {directorGroups.map(g => {
-        const acc: DirAggr = { leads: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
-        g.teams.forEach(t => {
-          const a = aggregate(t.id);
-          acc.leads += a.leads; acc.enviadas += a.enviadas; acc.aprovadas += a.aprovadas; acc.vendas += a.vendas;
-        });
-        const target = g.teams[0] ? targetsFor(g.teams[0].id) : DEFAULT_TARGETS;
-        return (
-          <DirectorFunnelCard
-            key={g.id}
-            title={g.director?.name || "Sem diretor"}
-            aggr={acc}
-            targets={target}
-            teams={g.teams}
-            aggregate={aggregate}
-            targetsFor={targetsFor}
-            teamNameFor={teamNameFor}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-export function DirectorFunnelCard({
-  title, aggr, targets, teams, aggregate, targetsFor, teamNameFor,
-}: {
-  title: string;
-  aggr: DirAggr;
-  targets: Targets;
-  teams: TeamRow[];
-  aggregate: (teamId: string) => { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
-  targetsFor: (teamId: string) => Targets;
-  teamNameFor: (t: TeamRow) => string;
-}) {
-  const pEnv = aggr.leads ? (aggr.enviadas / aggr.leads) * 100 : 0;
-  const pApr = aggr.enviadas ? (aggr.aprovadas / aggr.enviadas) * 100 : 0;
-  const pVen = aggr.aprovadas ? (aggr.vendas / aggr.aprovadas) * 100 : 0;
-  const rows = [
-    { key: "leads",  label: "Leads",       value: aggr.leads,     pct: 100, target: 100 },
-    { key: "env",    label: "Análises",    value: aggr.enviadas,  pct: pEnv, target: targets.analise_enviada_pct },
-    { key: "apr",    label: "Aprovações",  value: aggr.aprovadas, pct: pApr, target: targets.aprovada_pct },
-    { key: "ven",    label: "Vendas",      value: aggr.vendas,    pct: pVen, target: targets.venda_pct },
-  ];
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Card className="border-warning/30 bg-gradient-to-br from-warning/5 via-transparent to-primary/5">
-      <CardHeader className="py-2 px-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Target className="h-4 w-4 text-warning" /> Diretor: {title}
-        </CardTitle>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
-              <Users className="h-3 w-3" /> Ver gerentes ({teams.length})
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>Gerentes de {title}</DialogTitle></DialogHeader>
-            <div className="space-y-3">
-              {teams.map(t => (
-                <TeamCheckpointCard key={t.id} aggr={aggregate(t.id)} targets={targetsFor(t.id)} name={teamNameFor(t)} />
+          {equipesGerenciadas.length > 0 && (
+            <div className="grid grid-cols-1 gap-4">
+              {equipesGerenciadas.map(t => (
+                <TeamCheckpointCard
+                  key={t.id}
+                  aggr={aggregate(t.id)}
+                  targets={targetsFor(t.id)}
+                  name={teamNameFor(t)}
+                  inactive={!t.active}
+                />
               ))}
             </div>
-          </DialogContent>
-        </Dialog>
-      </CardHeader>
-      <CardContent className="px-3 pb-3 pt-0">
-        <div className="flex items-center gap-3">
-          {/* 3D funnel (Topo/Meio/Fundo -> 4 tigelas) */}
-          <svg viewBox="0 0 140 160" className="h-24 shrink-0" preserveAspectRatio="xMidYMid meet">
-            <defs>
-              <linearGradient id={`dir-funil-${title}`} x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="hsl(217 85% 30%)" />
-                <stop offset="50%" stopColor="hsl(217 91% 55%)" />
-                <stop offset="100%" stopColor="hsl(217 85% 28%)" />
-              </linearGradient>
-            </defs>
-            {[
-              { y: 2,   top: 130, bot: 100, h: 22 },
-              { y: 40,  top: 100, bot: 74,  h: 20 },
-              { y: 76,  top: 74,  bot: 48,  h: 18 },
-              { y: 110, top: 48,  bot: 26,  h: 16 },
-            ].map((s, i) => {
-              const cx = 70;
-              const topRx = s.top / 2, botRx = s.bot / 2;
-              const yTop = s.y, yBot = s.y + s.h;
-              const ellipseRy = topRx * 0.18;
-              const d = `M ${cx - topRx} ${yTop} L ${cx - botRx} ${yBot} A ${botRx} ${botRx * 0.22} 0 0 0 ${cx + botRx} ${yBot} L ${cx + topRx} ${yTop} A ${topRx} ${ellipseRy} 0 0 1 ${cx - topRx} ${yTop} Z`;
-              return (
-                <g key={i}>
-                  <path d={d} fill={`url(#dir-funil-${title})`} stroke="hsl(217 60% 20%)" strokeWidth="0.5" />
-                  <ellipse cx={cx} cy={yTop} rx={topRx} ry={ellipseRy} fill="hsl(217 85% 35%)" opacity="0.9" />
-                </g>
-              );
-            })}
-          </svg>
-
-          {/* Stage vs target */}
-          <div className="flex-1 grid grid-cols-4 gap-2">
-            {rows.map((r, i) => {
-              const below = i > 0 && r.pct < r.target;
-              const above = i > 0 && r.pct >= r.target;
-              return (
-                <div key={r.key} className={cn(
-                  "px-2 py-1.5 rounded-md border bg-secondary/20",
-                  below ? "border-destructive/50 bg-destructive/5" : above ? "border-success/40 bg-success/5" : "border-border/40",
-                )}>
-                  <div className="flex items-baseline justify-between gap-1">
-                    <span className="text-eyebrow truncate">{r.label}</span>
-                    {i > 0 && <span className="text-eyebrow">m{r.target}%</span>}
-                  </div>
-                  <div className="flex items-baseline justify-between gap-1">
-                    <span className={cn("text-lg font-black leading-none", below ? "text-destructive" : above ? "text-success" : "text-foreground")}>{r.value}</span>
-                    <span className={cn("text-xs font-semibold", below ? "text-destructive" : above ? "text-success" : "text-muted-foreground")}>{r.pct.toFixed(0)}%</span>
-                  </div>
-                  <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mt-1">
-                    <div className={cn("h-full", below ? "bg-destructive" : "bg-success")} style={{ width: `${Math.min(100, r.pct)}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }

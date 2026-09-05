@@ -191,6 +191,17 @@ export async function apagarArquivos(dealId: string): Promise<void> {
   }).catch(() => undefined);
 }
 
+/** Remove um objeto avulso de qualquer bucket, com service_role. Usado por
+ *  cenário que sobe arquivo sem linha em `deal_documents` — a limpeza por
+ *  `deal_id` não o alcança. */
+export async function apagarDoBucket(bucket: string, storagePath: string): Promise<void> {
+  const alvo = resolveTarget();
+  await fetch(`${alvo.supabaseUrl}/storage/v1/object/${bucket}/${storagePath}`, {
+    method: "DELETE",
+    headers: { apikey: alvo.serviceRoleKey, Authorization: `Bearer ${alvo.serviceRoleKey}` },
+  }).catch(() => undefined);
+}
+
 /** `deals` cascateia clientes, participantes, documentos, caso e envios; a
  *  construtora só cai depois, porque a FK do negócio é `on delete restrict`. */
 export async function limparCenario(cenario: Cenario): Promise<void> {
@@ -260,18 +271,52 @@ export const abaDoModal = (page: Page, nome: RegExp) =>
   page.getByRole("tab", { name: nome });
 
 /**
- * O `<input type="file">` de cada tipo é `hidden` e não tem nome acessível —
- * quem tem rótulo é o `<label>` irmão. Por isso o caminho pelo irmão em vez de
- * `getByLabel`: o input não está associado ao label por `for`/`id`.
- * (Registrado como achado de acessibilidade no relatório.)
+ * O `<input type="file">` de cada tipo, pelo nome acessível.
+ *
+ * Era um XPath pelo `<label>` irmão: o input não tinha `id`, o label não tinha
+ * `htmlFor` e os nove botões "Anexar" dividiam o mesmo nome acessível — quem usa
+ * leitor de tela ouvia nove botões idênticos. Cada tipo passou a ter
+ * `htmlFor`/`id` e `aria-label`, então o teste exercita a MESMA associação que
+ * o leitor de tela usa.
  */
 export const campoDeArquivo = (page: Page, rotulo: string) =>
-  page
-    .locator("label", { hasText: rotulo })
-    .locator("xpath=following-sibling::input[@type='file']");
+  page.getByLabel(rotulo, { exact: true });
+
+/** O botão que a pessoa realmente vê e clica (o input fica escondido atrás
+ *  dele). Nome acessível próprio por tipo, também da mesma correção. */
+export const botaoAnexar = (page: Page, rotulo: string) =>
+  page.getByRole("button", { name: `Anexar ${rotulo}`, exact: true });
 
 /** Base da API do Supabase do alvo — usado para conferir a URL assinada. */
 export const urlSupabase = () => resolveTarget().supabaseUrl;
+
+/**
+ * Cabeçalhos de um usuário REAL (JWT + chave publicável), para provar a
+ * NEGAÇÃO de acesso por fora do navegador.
+ *
+ * O `db` da suíte usa service_role, que ignora RLS de propósito: com ele um
+ * teste de "não deve ver" passaria sempre pelo motivo errado. Aqui a policy
+ * avaliada é exatamente a que a tela encontra.
+ */
+export async function cabecalhosDe(papel: RoleKey): Promise<Record<string, string>> {
+  const alvo = resolveTarget();
+  const sessao = await mintSession(userFor(papel).email);
+  return {
+    apikey: alvo.anonKey,
+    Authorization: `Bearer ${sessao.access_token}`,
+    "Content-Type": "application/json",
+  };
+}
+
+/** O objeto continua no bucket? Apagar a linha e deixar o arquivo seria uma
+ *  exclusão pela metade — e o bucket é de documento de cliente. */
+export async function existeNoBucket(storagePath: string): Promise<boolean> {
+  const alvo = resolveTarget();
+  const res = await fetch(`${alvo.supabaseUrl}/storage/v1/object/deal-documents/${storagePath}`, {
+    headers: { apikey: alvo.serviceRoleKey, Authorization: `Bearer ${alvo.serviceRoleKey}` },
+  });
+  return res.ok;
+}
 
 export const arquivo = (nome: string, conteudo: string) => ({
   name: nome,

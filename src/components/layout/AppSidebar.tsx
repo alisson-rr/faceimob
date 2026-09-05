@@ -87,7 +87,13 @@ export function AppSidebar() {
                     <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
                       <NavLink to={item.url} end activeClassName="glow-primary">
                         <item.icon className="h-4 w-4" />
-                        {!collapsed && <span>{item.title}</span>}
+                        {/* Recolhida, a barra esconde o rotulo — mas ele nao pode sair do
+                            DOM: o icone nao carrega texto, entao sem o <span> TODO link do
+                            menu fica sem nome acessivel. E nao e estado raro: o
+                            `handleMouseLeave` acima recolhe a barra sozinho 500 ms depois
+                            que o ponteiro sai dela. `sr-only` tira da vista sem tirar da
+                            arvore de acessibilidade — mesmo pixel, com nome. */}
+                        <span className={cn(collapsed && "sr-only")}>{item.title}</span>
                       </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

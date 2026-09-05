@@ -259,6 +259,11 @@ test.describe("roleta, check-in e fila", () => {
 
       await expect(page.getByText(`${grupoGeral.name}:`)).toBeVisible();
 
+      // A ordem sem o critério não explica nada: quem perde a vez precisa ler
+      // por quê. É a regra da 0014 (`last_turn_at`), confirmada em 30/07.
+      await expect(page.getByText(/deixar o prazo de atendimento vencer conta como vez usada/i))
+        .toBeVisible();
+
       // Sem check-in aberto o corretor sai da roleta — regra da ata de 14/07.
       await db.remove(`checkins?profile_id=eq.${brokerId}`);
       await page.goto("/checkin");

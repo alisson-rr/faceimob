@@ -80,23 +80,35 @@ export async function createDeveloperSubmission(input: CreateSubmissionInput): P
   return data as DeveloperSubmissionRecord;
 }
 
+/**
+ * O RLS de `developer_submissions_write` é `has_permission('cca.review')` e não
+ * ERRA ao recusar: filtra a linha e o PostgREST devolve 204 sem corpo. Sem
+ * `select("id")`, um `update` que não casou linha nenhuma é indistinguível de
+ * um que gravou — e a tela comemora uma ação que não aconteceu.
+ */
+const SEM_PERMISSAO = "Sem permissão para mexer na fila de envio (apenas quem revisa a esteira do CCA).";
+
 /** Recoloca na fila um envio que falhou, sem remontar assunto, corpo e anexos. */
 export async function requeueSubmission(id: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("developer_submissions")
     // attempts volta a zero: o worker ignora linhas acima do limite de
     // tentativas, e reenfileirar sem zerar era um botão que não fazia nada.
     .update({ status: "queued", last_error: null, attempts: 0 })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) throw dbError("reenfileirar envio", error);
+  if (!data?.length) throw new Error(SEM_PERMISSAO);
 }
 
 export async function cancelSubmission(id: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("developer_submissions")
     .update({ status: "cancelled" })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) throw dbError("cancelar envio", error);
+  if (!data?.length) throw new Error(SEM_PERMISSAO);
 }
 
 /** Split tolerante para o campo de cópias: aceita vírgula, ponto e vírgula ou
@@ -110,6 +122,17 @@ export function parseCcEmails(raw: string): string[] {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Formato de e-mail — o MESMO do check `developers_submission_email_format`
+ * (0063). Deliberadamente frouxo: a validação forte de e-mail é a entrega.
+ *
+ * Vale para o cadastro da construtora também: `submit_deal_for_analysis` copia
+ * `developers.submission_email` para `developer_submissions.to_email`, e é para
+ * esse endereço que a edge `submission-dispatch` manda o dossiê pelo Brevo. Um
+ * e-mail torto ali não dá erro em lugar nenhum — o dossiê só não chega.
+ */
+export const isEmail = (value: string): boolean => EMAIL_RE.test(value.trim());
+
 export function invalidEmails(list: string[]): string[] {
-  return list.filter((e) => !EMAIL_RE.test(e));
+  return list.filter((e) => !isEmail(e));
 }

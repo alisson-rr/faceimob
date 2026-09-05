@@ -45,7 +45,14 @@ export default function AppLayout() {
         <EngagementLayer>
         <AppSidebar />
         <SidebarInset>
-          <header className="glass sticky top-0 z-30 flex h-16 items-center gap-3 overflow-hidden border-b border-border px-4 sm:px-6">
+          {/* `overflow-visible`, nao `hidden`: o painel do sino e `absolute` dentro
+              deste header de 64 px, e o `hidden` deixava 9 px visiveis de 363 —
+              clicar no sino parecia nao fazer nada. Nada mais aqui depende do
+              corte: o titulo tem `min-w-0 truncate`, o BrandMotif tem
+              `overflow-hidden` proprio e a tira de ranking tambem. Trocar para
+              `position: fixed` no painel nao resolveria: o `backdrop-blur` da
+              `.glass` faz deste header um containing block. */}
+          <header className="glass sticky top-0 z-30 flex h-16 items-center gap-3 overflow-visible border-b border-border px-4 sm:px-6">
             <BrandMotif className="opacity-25" />
 
             <SidebarTrigger className="relative shrink-0 md:hidden" />

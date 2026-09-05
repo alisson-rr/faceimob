@@ -34,8 +34,19 @@ const badgeVariants = cva(
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, size, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant, size }), className)} {...props} />;
-}
+/**
+ * `forwardRef` porque o Radix passa uma ref pelo `asChild` — e o `Badge` é
+ * exatamente o que o RoleSwitcher pendura num `TooltipTrigger asChild`. Sem
+ * repassar, o React avisa "Function components cannot be given refs", o aviso
+ * reprova os testes que proíbem erro de console, e o tooltip perde a âncora de
+ * posicionamento (o Radix mede o nó pela ref). O resto dos primitivos de `ui/`
+ * já encaminha ref; este tinha ficado para trás.
+ */
+const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
+  ({ className, variant, size, ...props }, ref) => (
+    <div ref={ref} className={cn(badgeVariants({ variant, size }), className)} {...props} />
+  ),
+);
+Badge.displayName = "Badge";
 
 export { Badge, badgeVariants };

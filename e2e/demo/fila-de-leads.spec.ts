@@ -33,7 +33,13 @@ type ConfiguracaoOriginal = {
 
 const marca = runTag();
 const corretoresDaDemo: RoleKey[] = ["broker", "brokerRival", "brokerThird"];
-const hojeNoBanco = new Date().toISOString().slice(0, 10);
+/**
+ * O dia operacional é do banco (`current_work_date()`, em America/Sao_Paulo),
+ * não do relógio de quem grava. Com a data em UTC, uma gravação feita depois
+ * das 21:00 de Brasília nascia no dia seguinte e a presença ficava invisível
+ * para `distribution_queue` — a fila da demonstração aparecia vazia.
+ */
+let hojeNoBanco = "";
 
 let corretores: CorretorDemo[] = [];
 let grupo: { id: string; name: string } | null = null;
@@ -81,6 +87,7 @@ async function mostrarFila(page: Page, corretor: CorretorDemo, posicao: number) 
 }
 
 test.beforeAll(async () => {
+  hojeNoBanco = await db.rpc<string>("current_work_date");
   corretores = await Promise.all(corretoresDaDemo.map(async (key) => ({
     key,
     id: await db.profileIdOf(key),
@@ -240,7 +247,11 @@ test("três leads percorrem os três corretores da fila", async ({ page }) => {
   await page.goto("/leads");
   await aguardarCarregamento(page);
   await page.getByPlaceholder(/buscar por nome/i).fill(ultimoLead);
-  await expect(page.getByRole("heading", { name: ultimoLead })).toBeVisible();
-  await expect(page.getByText("Em atendimento").first()).toBeVisible();
+  // O nome do cliente é um BOTÃO que abre o histórico do lead, não um cabeçalho
+  // (achado X06: a linha inteira clicável não era alcançável por teclado). Como
+  // `heading`, este passo procurava um papel que a tabela não usa mais.
+  const linhaDoLead = page.getByRole("row").filter({ hasText: ultimoLead });
+  await expect(linhaDoLead.getByRole("button", { name: ultimoLead, exact: true })).toBeVisible();
+  await expect(linhaDoLead.getByText("Em atendimento").first()).toBeVisible();
   await respirar(page, 3000);
 });

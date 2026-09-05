@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, Clock, LogIn, LogOut, Rocket, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, ListChecks, LogIn, LogOut, Rocket, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,13 +12,24 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
-import { num } from "@/lib/format";
+import { dateTime, num } from "@/lib/format";
 import {
   getCheckinEligibility, getCurrentShiftId, getLeadCounts,
   listTodayCheckins, listWorkShifts,
 } from "@/integrations/supabase/checkin";
 
 const hhmm = (time: string) => time.slice(0, 5);
+
+/**
+ * Hora do que ACONTECEU, a partir do timestamp gravado.
+ *
+ * O horário configurado do turno não serve para descrever um fechamento: o cron
+ * roda a cada minuto (0013), então a saída é sempre depois do horário exibido —
+ * e o horário do turno é editável, o que faria uma presença antiga alegar um
+ * horário que nunca foi o dela. `dateTime` é o formatador único do projeto;
+ * daqui só interessa o "HH:MM" do fim.
+ */
+const horaDe = (value: string) => dateTime(value).slice(-5);
 
 /** O turno vira sozinho: sem releitura o botão fica travado até um F5. */
 const SHIFT_POLL_MS = 60_000;
@@ -32,6 +44,26 @@ const FUNCTION_ERRORS: Record<string, string> = {
   unknown: "Não foi possível concluir a ação. Tente de novo.",
 };
 const translateFunctionError = (message: string) => FUNCTION_ERRORS[message] ?? message;
+
+/**
+ * O que a conta de atraso considera — e o que ela NÃO considera.
+ *
+ * `overdue_lead_count` (0005) só soma lead com `next_action_at` preenchido e já
+ * vencido, nos status assigned/attending/in_progress. Lead parado, sem próxima
+ * ação marcada, nunca entra na conta e nunca bloqueia ninguém. Sem esta frase o
+ * corretor procura o atraso na lista inteira, não acha e conclui que a trava
+ * está errada.
+ */
+const COMO_CONTA_O_ATRASO =
+  "A conta é só de lead com próxima ação marcada e já vencida — lead parado, sem próxima ação, não entra nela.";
+
+/**
+ * Não há prazo de espera: `checkin_eligibility()` é avaliada a cada tentativa
+ * (e a tela reconsulta a cada minuto). O texto dizia quantos leads regularizar
+ * e deixava o corretor sem saber se ainda precisava esperar alguma coisa.
+ */
+const QUANDO_LIBERA =
+  "Não há tempo de espera: assim que a contagem cair abaixo do limite, o check-in libera na próxima tentativa.";
 
 const incentives = [
   "Boa! Agora é atacar cada lead como se fosse o próximo contrato assinado. 🚀",
@@ -55,7 +87,10 @@ export default function Checkin() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const queryClient = useQueryClient();
-  const [pending, setPending] = useState(false);
+  // QUAL ação está em voo, não "alguma". Com um booleano só, clicar em "Fazer
+  // check-in" desabilitava o "Check-out" junto — e vice-versa —, o que fazia o
+  // corretor achar que o outro botão tinha sumido no meio da gravação.
+  const [pendingAction, setPendingAction] = useState<"checkin" | "checkout" | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [incentive, setIncentive] = useState("");
 
@@ -107,15 +142,25 @@ export default function Checkin() {
     : undefined;
   const blocked = eligibility.data ? !eligibility.data.allowed : true;
 
-  const loadError = shifts.error ?? today.error ?? currentShift.error ?? eligibility.error ?? counts.error;
-  const isLoading = shifts.isPending || currentShift.isPending || eligibility.isPending;
+  // `counts` fica de FORA: é número informativo, tem o próprio estado no card
+  // "Leads recebidos" e é a consulta mais frágil da tela (4 idas ao banco).
+  // Incluí-la trocava o cartão do turno inteiro — botões de ponto e fila — por
+  // um estado de erro, e o corretor ficava sem conseguir bater ponto.
+  const loadError = shifts.error ?? today.error ?? currentShift.error ?? eligibility.error;
+  // `today` decide se o botão é "Fazer check-in" ou "Check-out" e faz DUAS idas
+  // ao banco (`current_work_date` e só então `checkins`), contra uma das outras.
+  // Sem ela na comporta, quem já bateu ponto via o botão de check-in habilitado
+  // e a fila dizendo "é preciso estar em check-in" até a segunda resposta chegar.
+  const isLoading =
+    shifts.isPending || currentShift.isPending || eligibility.isPending
+    || (Boolean(userId) && today.isPending);
 
   const action = async (act: "checkin" | "checkout") => {
     if (act === "checkin" && blocked) {
       toast.error(eligibility.data?.reason || "Check-in bloqueado.");
       return;
     }
-    setPending(true);
+    setPendingAction(act);
     try {
       const { data: session } = await supabase.auth.getSession();
       if (!session?.session) throw new Error("Você precisa estar logado. Faça login novamente.");
@@ -139,7 +184,7 @@ export default function Checkin() {
       // Tudo que chega aqui já é texto nosso em pt-BR (function ou RPC).
       toast.error(err instanceof Error ? err.message : "Não foi possível concluir a ação.");
     } finally {
-      setPending(false);
+      setPendingAction(null);
     }
   };
 
@@ -188,32 +233,68 @@ export default function Checkin() {
           </p>
 
           {eligibility.data && !eligibility.data.allowed && (
-            <p className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              <span>
-                {eligibility.data.reason}
-                {eligibility.data.overdue_count > 0 && (
-                  <> Você tem <b>{num(eligibility.data.overdue_count)}</b> lead(s) atrasado(s); o limite é {num(eligibility.data.threshold)}.</>
-                )}
-              </span>
-            </p>
+            <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>
+                  {eligibility.data.reason}
+                  {eligibility.data.overdue_count > 0 && (
+                    <> Você tem <b>{num(eligibility.data.overdue_count)}</b> lead(s) atrasado(s); o limite é {num(eligibility.data.threshold)}.</>
+                  )}
+                </span>
+              </p>
+              {/* Mostrar o bloqueio sem levar a lugar nenhum deixa o corretor
+                  parado: quem trava por atraso precisa do caminho para
+                  regularizar, não só do motivo. */}
+              {eligibility.data.overdue_count > 0 && (
+                <>
+                  <p className="mt-1 text-xs text-destructive/90">
+                    {COMO_CONTA_O_ATRASO} {QUANDO_LIBERA}
+                  </p>
+                  <Button asChild size="sm" variant="outline" className="mt-2">
+                    <Link to="/leads"><ListChecks className="h-4 w-4" /> Regularizar meus leads</Link>
+                  </Button>
+                  <p className="mt-1 text-xs text-destructive/90">
+                    O painel “Leads atrasados” abre no topo da tela de Leads, com o botão de reagendar em cada linha.
+                  </p>
+                </>
+              )}
+            </div>
           )}
 
           {eligibility.data?.allowed && eligibility.data.overdue_count > 0 && (
-            <p className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              <span>
-                Você tem <b>{num(eligibility.data.overdue_count)}</b> lead(s) atrasado(s).
-                O check-in trava em {num(eligibility.data.threshold)}.
-              </span>
-            </p>
+            <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+              <p className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>
+                  Você tem <b>{num(eligibility.data.overdue_count)}</b> lead(s) atrasado(s).
+                  O check-in trava em {num(eligibility.data.threshold)}.
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-warning/90">{COMO_CONTA_O_ATRASO}</p>
+              <Button asChild size="sm" variant="outline" className="mt-2">
+                <Link to="/leads"><ListChecks className="h-4 w-4" /> Regularizar meus leads</Link>
+              </Button>
+              <p className="mt-1 text-xs text-warning/90">
+                O painel “Leads atrasados” abre no topo da tela de Leads, com o botão de reagendar em cada linha.
+              </p>
+            </div>
           )}
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button disabled={pending || !activeShift || !!activeCheckin || blocked} onClick={() => action("checkin")}>
+            <Button
+              disabled={pendingAction === "checkin" || !activeShift || !!activeCheckin || blocked}
+              aria-busy={pendingAction === "checkin"}
+              onClick={() => action("checkin")}
+            >
               <LogIn className="h-4 w-4" /> Fazer check-in
             </Button>
-            <Button variant="outline" disabled={pending || !activeCheckin} onClick={() => action("checkout")}>
+            <Button
+              variant="outline"
+              disabled={pendingAction === "checkout" || !activeCheckin}
+              aria-busy={pendingAction === "checkout"}
+              onClick={() => action("checkout")}
+            >
               <LogOut className="h-4 w-4" /> Check-out
             </Button>
             {activeCheckin && (
@@ -224,51 +305,91 @@ export default function Checkin() {
           </div>
 
           <div className="border-t border-border pt-4">
-            <QueuePosition />
+            <QueuePosition
+              checkedIn={Boolean(activeCheckin)}
+              opensAt={activeShift ? hhmm(activeShift.distribution_start) : null}
+              blocked={blocked}
+            />
           </div>
         </SectionCard>
       )}
 
       <SectionCard title="Leads recebidos" description="Atribuições da roleta, incluindo as que já saíram da sua mão" icon={ShieldCheck}>
         <LeadCounter counts={counts.data ?? null} />
+        {/* O contador falha sozinho, sem derrubar o cartão do turno — mas
+            travessão sem explicação é o mesmo "não sei" mudo de antes. */}
+        {counts.error && (
+          <p className="mt-2 text-xs text-warning">
+            Não consegui atualizar o contador.{" "}
+            {describeError(counts.error, "O servidor não respondeu; tente de novo em instantes.")}{" "}
+            O check-in acima não depende deste número.
+          </p>
+        )}
       </SectionCard>
 
+      {/* Este cartão fica FORA da comporta de cima porque `shifts` é a única
+          consulta de que ele depende — mas por isso mesmo precisa dos três
+          estados aqui dentro: com `shiftList = shifts.data ?? []`, o primeiro
+          paint e a falha de `listWorkShifts` davam os dois a mesma frase
+          ("Nenhuma janela de trabalho cadastrada."), a segunda logo abaixo do
+          EmptyState de erro. Vazio por erro não pode ser contado como vazio de
+          verdade: o corretor conclui que o admin não cadastrou turno nenhum. */}
       <SectionCard title="Janelas de trabalho" icon={CalendarClock}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {shiftList.map((shift) => {
-            const record = (today.data ?? []).find((item) => item.shift_id === shift.id);
-            const activeNow = shift.id === currentShift.data;
-            return (
-              <div
-                key={shift.id}
-                className={`rounded-xl border p-4 ${activeNow ? "border-primary bg-primary/5" : "border-border"}`}
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="font-semibold">{shift.label}</span>
+        {shifts.isPending ? (
+          <LoadingState variant="list" rows={3} label="Carregando as janelas de trabalho…" />
+        ) : shifts.error ? (
+          <p className="text-sm text-warning">
+            Não consegui carregar as janelas de trabalho.{" "}
+            {describeError(shifts.error, "O servidor não respondeu; tente de novo em instantes.")}{" "}
+            A lista está vazia por falha de leitura, não porque não há turno cadastrado.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {shiftList.map((shift) => {
+              const record = (today.data ?? []).find((item) => item.shift_id === shift.id);
+              const activeNow = shift.id === currentShift.data;
+              return (
+                <div
+                  key={shift.id}
+                  className={`rounded-xl border p-4 ${activeNow ? "border-primary bg-primary/5" : "border-border"}`}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="font-semibold">{shift.label}</span>
+                    {record && (
+                      <StatusBadge tone={record.checked_out_at ? "neutral" : "success"}>
+                        {/* `auto_checkout` distingue quem encerrou: o corretor ou o
+                            cron do fim do turno. Sem isso a presença fechada pelo
+                            job parecia um check-out que ele não fez. */}
+                        {record.checked_out_at
+                          ? (record.auto_checkout ? "Encerrado pelo sistema" : "Encerrado")
+                          : "Ativo"}
+                      </StatusBadge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {hhmm(shift.checkin_start)} → {hhmm(shift.checkout_time)}<br />
+                    Distribui a partir de {hhmm(shift.distribution_start)}
+                  </p>
+                  {record?.checked_out_at && record.auto_checkout && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Fechado automaticamente às {horaDe(record.checked_out_at)}, no fim da janela.
+                    </p>
+                  )}
+                  {/* `checkins.leads_received` só conta o que a roleta entregou neste
+                      turno; o total do corretor está no card "Leads recebidos". */}
                   {record && (
-                    <StatusBadge tone={record.checked_out_at ? "neutral" : "success"}>
-                      {record.checked_out_at ? "Encerrado" : "Ativo"}
-                    </StatusBadge>
+                    <p className="mt-2 text-xs">
+                      Pela roleta neste turno: <b className="tabular-nums">{num(record.leads_received)}</b>
+                    </p>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {hhmm(shift.checkin_start)} → {hhmm(shift.checkout_time)}<br />
-                  Distribui a partir de {hhmm(shift.distribution_start)}
-                </p>
-                {/* `checkins.leads_received` só conta o que a roleta entregou neste
-                    turno; o total do corretor está no card "Leads recebidos". */}
-                {record && (
-                  <p className="mt-2 text-xs">
-                    Pela roleta neste turno: <b className="tabular-nums">{num(record.leads_received)}</b>
-                  </p>
-                )}
-              </div>
-            );
-          })}
-          {shiftList.length === 0 && (
-            <p className="text-sm text-muted-foreground">Nenhuma janela de trabalho cadastrada.</p>
-          )}
-        </div>
+              );
+            })}
+            {shiftList.length === 0 && (
+              <p className="text-sm text-muted-foreground">Nenhuma janela de trabalho cadastrada.</p>
+            )}
+          </div>
+        )}
       </SectionCard>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

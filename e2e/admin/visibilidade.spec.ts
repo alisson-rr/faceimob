@@ -36,6 +36,15 @@ test("admin vê negócio de todas as equipes", async ({ page }) => {
   await expect(linhaDoCliente(page, deFora.cliente)).toBeVisible();
 });
 
+// `is_admin()` concede tudo, então a primeira tela do menu é o dashboard —
+// a mesma regra que leva cca/sdr/marketing para outra tela.
+test('"/" leva o admin ao dashboard', async ({ page }) => {
+  await page.goto("/");
+  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+  await aguardarCarregamento(page);
+  await expect(page.getByText(/acesso não liberado/i)).toHaveCount(0);
+});
+
 test("admin tem o grupo de administração no menu", async ({ page }) => {
   await page.goto("/pipeline");
   await aguardarCarregamento(page);

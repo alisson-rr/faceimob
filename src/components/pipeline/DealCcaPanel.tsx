@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useEffect, useId } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { LoadingState } from "@/components/shared";
+import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
-import type { CcaAnalysis } from "./ccaData";
+import { ccaKeys, loadCcaCase, type CcaAnalysis } from "./ccaData";
 
 const CCA_FIELDS: { key: string; label: string; options?: string[] }[] = [
   { key: "tabela", label: "Tabela", options: ["Escolher", "Tabela 1", "Tabela 2"] },
@@ -29,35 +32,47 @@ const CCA_FIELDS: { key: string; label: string; options?: string[] }[] = [
 /**
  * Aba CCA do negócio — a análise de crédito guardada em `cca_cases.analysis`.
  *
- * `canEdit` sai de `isAdmin || roles.includes('cca')`: papel é N:N em
- * `user_roles`, e o `role === "cca"` que existia aqui negava a edição a quem é
- * CCA **e** gerente — exatamente o caso que o schema foi feito para permitir.
+ * `canEdit` sai de `can("cca.review")`, que é a MESMA expressão da policy
+ * `cca_cases_write` (`has_permission('cca.review')`) — e não de
+ * `roles.includes('cca')`. Papel e permissão são coisas diferentes: bastava o
+ * admin desmarcar `cca.review` na tela de Permissões para o analista continuar
+ * com o painel habilitado e a gravação ser descartada pela RLS.
  */
 export function DealCcaPanel({ dealId, value, onChange }: {
   dealId: string;
   value: CcaAnalysis;
-  onChange: (next: CcaAnalysis) => void;
+  /** O mesmo `setState` do pai — a semeadura precisa do updater funcional. */
+  onChange: React.Dispatch<React.SetStateAction<CcaAnalysis>>;
 }) {
-  const { isAdmin, roles } = useAuth();
+  const { can } = useAuth();
   const id = useId();
-  const [caseId, setCaseId] = useState<string | null>(null);
 
-  const canEdit = isAdmin || roles.includes("cca");
+  // `useQuery` no lugar do `useState` + `useEffect` com `if (!error && data)`:
+  // aquele `if` engolia a falha do SELECT e a aba afirmava "ainda não entrou na
+  // esteira" — uma frase sobre o sistema que podia ser simplesmente falsa. E,
+  // sem estado de carregamento, a mesma frase piscava na abertura de TODO
+  // negócio, inclusive dos que têm caso.
+  const query = useQuery({
+    queryKey: ccaKeys.case(dealId),
+    queryFn: () => loadCcaCase(dealId),
+  });
+  const caseId = query.data?.id ?? null;
+
+  const canEdit = can("cca.review");
   const disabled = !canEdit || !caseId;
 
-  const load = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("cca_cases").select("id,analysis").eq("deal_id", dealId).maybeSingle();
-    if (!error && data) {
-      setCaseId(data.id);
-      onChange((data.analysis as CcaAnalysis) || {});
-    }
+  useEffect(() => {
+    const analysis = query.data?.analysis;
+    if (!analysis) return;
+    // Só semeia com o banco quando o pai ainda não tem nada digitado. A aba é
+    // desmontada ao trocar para "Detalhes" e remontada na volta; a semeadura
+    // incondicional jogava fora a análise inteira que o analista tinha acabado
+    // de preencher — e o "Confirmar alterações" gravava o vazio.
+    onChange((current) => (Object.keys(current).length ? current : analysis));
     // `onChange` fica fora das dependências de propósito: é a função de estado
-    // do pai e mudaria a cada render, refazendo a consulta em laço.
+    // do pai e mudaria a cada render, resemeando a cada volta do React.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dealId]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [query.data]);
 
   const set = (key: string, next: string) => canEdit && onChange({ ...value, [key]: next });
 
@@ -66,11 +81,25 @@ export function DealCcaPanel({ dealId, value, onChange }: {
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-primary">Aprovação CCA</h3>
         {!canEdit && (
-          <Badge variant="outline" className="border-warning/50 text-xs text-warning">Somente o CCA edita</Badge>
+          <Badge variant="outline" className="border-warning/50 text-xs text-warning">
+            Somente leitura — falta a permissão de análise do CCA
+          </Badge>
         )}
       </div>
 
-      {!caseId && (
+      {query.isPending && <LoadingState variant="kpi" rows={2} label="Carregando a análise…" />}
+
+      {query.isError && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive"
+        >
+          <p>{describeError(query.error, "Não consegui carregar a análise do CCA.")}</p>
+          <Button size="sm" variant="outline" onClick={() => void query.refetch()}>Tentar de novo</Button>
+        </div>
+      )}
+
+      {query.isSuccess && !caseId && (
         <p className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
           Este negócio ainda não entrou na esteira do CCA. Os campos abrem quando ele for enviado
           para análise.

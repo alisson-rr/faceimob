@@ -26,6 +26,15 @@
 delete from public.notifications where id::text like '8e000000-%';
 delete from public.notifications where link like '/leads/83000000-%';
 
+-- As da conferência documental (BLOCO 5b, RPCs da 0028) também têm id
+-- aleatório e link '/pipeline'; o título carrega o código do negócio, que
+-- ainda existe neste ponto — por isso este bloco vem antes do item 5. Cobre
+-- também a aprovação feita ao vivo na demonstração.
+delete from public.notifications n
+ where n.kind in ('document_review_requested', 'document_review_returned', 'document_review_approved')
+   and exists (select 1 from public.deals d
+                where d.id::text like '85000000-%' and n.title like '%' || d.code);
+
 -- -----------------------------------------------------------------------------
 -- 2. Agenda
 -- -----------------------------------------------------------------------------
@@ -96,6 +105,10 @@ end $$;
 -- A cascata de `deals` leva clientes, participantes, documentos, histórico,
 -- casos do CCA, envios à construtora e visitas do negócio. A de `leads` leva
 -- atribuições, eventos, comentários e visitas do lead.
+--
+-- A conferência documental do BLOCO 5b (os três documentos de cada um dos dois
+-- negócios, o `pending`/`returned` e o histórico) vai junto: as colunas moram
+-- em `deals` e os anexos `88000000-…-00003x/4x` caem pela cascata.
 -- -----------------------------------------------------------------------------
 delete from public.deals where id::text like '85000000-%';
 delete from public.leads where id::text like '83000000-%';

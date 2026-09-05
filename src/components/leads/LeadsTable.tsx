@@ -1,4 +1,7 @@
-import { ArrowRightCircle, HandMetal, Mail, MessageCircle, Pencil, Timer, UserPlus } from "lucide-react";
+import {
+  ArrowRightCircle, HandMetal, Mail, MessageCircle, Pencil, RefreshCcw, Timer, Trash2, UserPlus,
+  XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared";
@@ -6,7 +9,7 @@ import { dateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   attendSecondsLeft, canClaim, formatCountdown, funnelStageLabel, funnelStageTone,
-  isLeadOverdue, leadStatusLabel, leadStatusTone, leadSourceTone,
+  isLeadOverdue, isLeadUnattended, leadStatusLabel, leadStatusTone, leadSourceTone,
   type LeadRecord,
 } from "@/integrations/supabase/leads";
 
@@ -18,6 +21,24 @@ export type LeadRowActions = {
   onConvert: (lead: LeadRecord) => void;
   onWhatsApp: (lead: LeadRecord) => void;
   onEmail: (lead: LeadRecord) => void;
+  /** Encerrar como perdido/descartado com motivo — a saída da conta de atrasados. */
+  onCloseLead: (lead: LeadRecord) => void;
+  onDelete: (lead: LeadRecord) => void;
+};
+
+/**
+ * O que ESTE usuário pode fazer com cada lead.
+ *
+ * Era uma lista fixa de papéis (`GESTOR_ROLES`) e nenhuma checagem nas outras
+ * ações: o sócio recebia Editar e Converter em 62 leads que não são dele e o
+ * banco recusava com 42501 depois do clique. `canWrite` espelha
+ * `can_write_lead()`; `canReassign` e `canDelete` são os códigos que o banco
+ * lê (`leads.reassign`, `leads.delete`), então pré-visualizar papel muda a tela.
+ */
+export type LeadPermissions = {
+  canWrite: (lead: LeadRecord) => boolean;
+  canReassign: boolean;
+  canDelete: boolean;
 };
 
 /**
@@ -29,13 +50,15 @@ export type LeadRowActions = {
  * responde a Enter (X06), e a linha ainda carrega outros botões.
  */
 export function LeadsTable({
-  leads, now, profileId, isGestor, actions,
+  leads, now, profileId, permissions, actions, maxRounds = 5,
 }: {
   leads: LeadRecord[];
   now: number;
   profileId: string | null;
-  isGestor: boolean;
+  permissions: LeadPermissions;
   actions: LeadRowActions;
+  /** `automation_settings.roulette_max_rounds` — o teto de voltas da roleta. */
+  maxRounds?: number;
 }) {
   return (
     <Table>
@@ -57,7 +80,9 @@ export function LeadsTable({
             now={now}
             claimable={canClaim(lead, profileId)}
             overdue={isLeadOverdue(lead, now)}
-            isGestor={isGestor}
+            writable={permissions.canWrite(lead)}
+            unattended={isLeadUnattended(lead, maxRounds)}
+            permissions={permissions}
             actions={actions}
           />
         ))}
@@ -67,17 +92,22 @@ export function LeadsTable({
 }
 
 function LeadRow({
-  lead, now, claimable, overdue, isGestor, actions,
+  lead, now, claimable, overdue, writable, unattended, permissions, actions,
 }: {
   lead: LeadRecord;
   now: number;
   claimable: boolean;
   overdue: boolean;
-  isGestor: boolean;
+  writable: boolean;
+  /** Saiu da roleta por falta de atendimento: espera na bandeja do gestor. */
+  unattended: boolean;
+  permissions: LeadPermissions;
   actions: LeadRowActions;
 }) {
   const secondsLeft = attendSecondsLeft(lead, now);
   const convertible = lead.status !== "converted" && !lead.converted_deal_id;
+  const encerravel = !["converted", "lost", "discarded"].includes(lead.status)
+    && !lead.converted_deal_id;
 
   return (
     <TableRow className={cn(claimable && "bg-primary/5", overdue && "bg-destructive/5")}>
@@ -103,6 +133,16 @@ function LeadRow({
             </StatusBadge>
           )}
           {overdue && <StatusBadge tone="danger">Atrasado</StatusBadge>}
+          {/* Um lead na 19ª volta era indistinguível de um lead novo: as duas
+              linhas diziam só "Na fila". A volta é o que separa "acabou de
+              chegar" de "ninguém atendeu cinco vezes". */}
+          {lead.roulette_misses > 0 && (
+            <StatusBadge tone={unattended ? "danger" : "warning"} icon={RefreshCcw}>
+              {unattended
+                ? `Sem atendimento · ${lead.roulette_misses} voltas`
+                : `${lead.roulette_misses}ª volta na roleta`}
+            </StatusBadge>
+          )}
         </div>
         <p className="mt-1 text-xs text-muted-foreground lg:hidden">
           {lead.source || "Sem origem"} · {lead.broker_name || "sem corretor"} · {dateTime(lead.created_at)}
@@ -149,20 +189,38 @@ function LeadRow({
               <HandMetal className="h-3.5 w-3.5" /> Atender
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Editar ${lead.name}`} onClick={() => actions.onEdit(lead)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          {isGestor && (
+          {writable && (
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Editar ${lead.name}`} onClick={() => actions.onEdit(lead)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {permissions.canReassign && (
             <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Realocar ${lead.name}`} onClick={() => actions.onReassign(lead)}>
               <UserPlus className="h-4 w-4" />
             </Button>
           )}
-          {convertible && (
+          {convertible && writable && (
             <Button
               variant="ghost" size="icon" className="h-8 w-8 text-success hover:text-success"
               aria-label={`Converter ${lead.name} em negócio`} onClick={() => actions.onConvert(lead)}
             >
               <ArrowRightCircle className="h-4 w-4" />
+            </Button>
+          )}
+          {encerravel && writable && (
+            <Button
+              variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              aria-label={`Encerrar ${lead.name} como perdido`} onClick={() => actions.onCloseLead(lead)}
+            >
+              <XCircle className="h-4 w-4" />
+            </Button>
+          )}
+          {permissions.canDelete && (
+            <Button
+              variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"
+              aria-label={`Excluir ${lead.name}`} onClick={() => actions.onDelete(lead)}
+            >
+              <Trash2 className="h-4 w-4" />
             </Button>
           )}
         </div>

@@ -225,6 +225,131 @@ select pg_temp.assert_eq(
   0, 'Corretor não lê allowed_ips');
 
 -- -----------------------------------------------------------------------------
+-- Lead da fila (0041): quem o enxerga por `leads_select` também edita, lê o
+-- histórico, comenta e anexa. Antes o UPDATE casava 0 linhas em silêncio e o
+-- histórico vinha vazio para gerente e marketing.
+-- -----------------------------------------------------------------------------
+\echo '== lead da fila para o gestor =='
+
+do $$
+declare v_lead uuid;
+begin
+  reset role;
+  select id into v_lead from public.leads where full_name = 'Lead na fila';
+  -- A roleta atribuiu e devolveu: é o histórico que o gerente precisa ver.
+  insert into public.lead_events (lead_id, kind, detail)
+  values (v_lead, 'released', '{"reason":"timeout"}');
+  set role authenticated;
+end
+$$;
+
+-- Marco (gerente) enxerga o histórico, move de etapa, comenta e anexa.
+select pg_temp.become('00000000-0000-0000-0000-0000000000e1');
+select pg_temp.assert_eq(
+  (select count(*)::int from public.lead_events e
+    join public.leads l on l.id = e.lead_id
+   where l.full_name = 'Lead na fila' and e.kind = 'released'),
+  1, 'Marco vê o evento da roleta no lead da fila');
+
+do $$
+declare
+  marco  uuid := '00000000-0000-0000-0000-0000000000e1';
+  v_lead uuid;
+  v_rows int;
+begin
+  select id into v_lead from public.leads where full_name = 'Lead na fila';
+
+  update public.leads set funnel_stage = 'warm' where id = v_lead;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'FALHOU: gerente não conseguiu mover lead da fila de etapa (% linhas)', v_rows;
+  end if;
+  raise notice '  ok  Marco move o lead da fila de etapa (UPDATE casa 1 linha)';
+
+  insert into public.lead_comments (lead_id, author_id, body)
+  values (v_lead, marco, 'ligar amanhã');
+  raise notice '  ok  Marco comenta no lead da fila';
+
+  insert into public.lead_attachments (lead_id, storage_path, original_name, stored_name, uploaded_by)
+  values (v_lead, v_lead || '/fila.pdf', 'fila.pdf', 'fila.pdf', marco);
+  raise notice '  ok  Marco anexa no lead da fila';
+end
+$$;
+
+select pg_temp.assert_eq(
+  (select count(*)::int from public.lead_attachments a
+    join public.leads l on l.id = a.lead_id where l.full_name = 'Lead na fila'),
+  1, 'o anexo que Marco enviou aparece para ele (insert e select com o mesmo predicado)');
+
+-- Fonte única da fila: `leads_select` e o ramo de fila da `leads_update` usam o
+-- mesmo `has_permission('leads.view_queue')`. Revogar em Admin · Permissões tem
+-- de tirar leitura E escrita juntas — se só a leitura sumir, a tela esconde o
+-- lead e a policy de update fica com um ramo morto; se só a escrita sumir, o
+-- gestor vê o lápis e o banco recusa com 42501.
+do $$
+declare
+  v_sees  int;
+  v_rows  int;
+begin
+  reset role;
+  update public.role_permissions set allowed = false
+   where role = 'manager' and permission = 'leads.view_queue';
+  set role authenticated;
+
+  select count(*)::int into v_sees from public.leads where status = 'queued';
+  update public.leads set funnel_stage = 'no_response' where status = 'queued';
+  get diagnostics v_rows = row_count;
+
+  reset role;
+  update public.role_permissions set allowed = true
+   where role = 'manager' and permission = 'leads.view_queue';
+  set role authenticated;
+
+  if v_sees <> 0 or v_rows <> 0 then
+    raise exception 'FALHOU: sem leads.view_queue o gerente ainda vê % / edita % lead(s) da fila', v_sees, v_rows;
+  end if;
+  raise notice '  ok  revogar leads.view_queue tira leitura e escrita da fila do gerente';
+end
+$$;
+
+-- Bruno (corretor) não vê a fila: nem o lead, nem o histórico, nem edita.
+select pg_temp.become('00000000-0000-0000-0000-0000000000b1');
+select pg_temp.assert_eq(
+  (select count(*)::int from public.lead_events e
+    join public.leads l on l.id = e.lead_id where l.status = 'queued'),
+  0, 'Bruno NÃO vê histórico de lead da fila');
+
+do $$
+declare v_rows int;
+begin
+  update public.leads set funnel_stage = 'hot' where status = 'queued';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'FALHOU: corretor editou lead da fila (% linhas)', v_rows;
+  end if;
+  raise notice '  ok  Bruno não edita lead da fila';
+end
+$$;
+
+-- Pedro (sócio) enxerga todo lead atribuído por auth_visible_profiles, mas ver
+-- não é editar: a leads_update não virou cópia da leads_select.
+select pg_temp.become('00000000-0000-0000-0000-0000000000f1');
+select pg_temp.assert_eq(
+  (select count(*)::int from public.leads where full_name = 'Cliente do Bruno'),
+  1, 'Pedro (sócio) vê o lead do Bruno');
+do $$
+declare v_rows int;
+begin
+  update public.leads set funnel_stage = 'hot' where full_name = 'Cliente do Bruno';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'FALHOU: sócio editou lead que só deveria ler (% linhas)', v_rows;
+  end if;
+  raise notice '  ok  Pedro (sócio) não edita lead (leitura ampla, escrita nenhuma)';
+end
+$$;
+
+-- -----------------------------------------------------------------------------
 -- Matriz das superfícies novas (Sprints 3-5)
 --
 -- Estas tabelas ganharam tela agora. É o risco recorrente do projeto: RLS

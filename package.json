@@ -19,6 +19,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:seed:remote": "powershell -ExecutionPolicy Bypass -File scripts/seed-database.ps1",
+    "db:seed:documents": "node scripts/seed-documents-storage.mjs",
+    "functions:deploy": "supabase functions deploy",
     "user:create": "powershell -ExecutionPolicy Bypass -File scripts/create-user.ps1",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "demo": "node scripts/e2e.mjs --demo",

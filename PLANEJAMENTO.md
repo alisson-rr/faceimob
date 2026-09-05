@@ -77,7 +77,7 @@ Legenda: ✅ pronto · 🟡 banco pronto, falta UI/ligação · ❌ não começa
 | 8 | Criar templates no Meta | 🔒 Douglas |
 | 9 | Cadastrar templates no sistema | 🟡 `whatsapp_templates` pronto |
 | 10 | Avisar lead perdido por prazo via WhatsApp | 🟡 `notify_lead_timeout` existe, **disparo não** |
-| 11 | Atividades com vencimento | 🟡 `tasks` + `tasks_sync_lead_deadline`, **sem UI** |
+| 11 | Atividades com vencimento | 🟡 *(01/09)* `TaskPanel.tsx` **existe e está montado** nos modais de lead e de negócio (9 tarefas, 7 abertas na homologação). Falta a **tela/agenda própria** |
 | 12 | Hierarquia de equipes + indicadores | ✅ |
 | 13 | King Host: criar e-mail no cadastro | ❌ 🔒 depende de API deles |
 | 14-17 | Pix · análise · Hostinger · acessos | ✅ |
@@ -108,8 +108,8 @@ Legenda: ✅ pronto · 🟡 banco pronto, falta UI/ligação · ❌ não começa
 
 | # | Requisito | Estado |
 |---|---|---|
-| 1 | Campo por tipo de documento + renomeação automática | 🟡 9 tipos com `naming_pattern` no seed; **upload não aplica o padrão** |
-| 2 | Botão de download por documento | 🟡 *(26/08)* `signedAttachmentUrl` existe; os anexos do cenário são registros sem arquivo, então o download não abre nada |
+| 1 | Campo por tipo de documento + renomeação automática | ✅ *(01/09 — o 🟡 estava errado)* `resolveStoredName` aplica o padrão no upload (`documents.ts:158`), preserva extensão e tem 3 testes. O nome amigável vai em `stored_name` |
+| 2 | Botão de download por documento | 🟡 *(01/09)* **o código está pronto** — `signedDocumentUrl` assina com `{ download: stored_name }` e o botão existe. O problema é dado: **69 registros em `deal_documents` apontam para arquivo, e o Storage tem 1 objeto** — 68 botões baixam nada |
 | 3 | Múltiplos anexos em "Outros" | ✅ `allows_multiple = true` para `outros`, `comprovante_renda`, `simulacao` |
 | 4 | Permissões do Rafael (só corretor) | ✅ resolvido na raiz: papel virou N:N (`user_roles`) |
 | 5 | Trava do lead ao clicar em atender | ✅ `claim_lead` |

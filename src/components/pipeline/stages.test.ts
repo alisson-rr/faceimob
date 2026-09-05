@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEAL_STAGES } from "@/types/crm";
+import { SYSTEM_STATUSES } from "@/lib/dealStatus";
 import { LOST_STAGE_CODE, funnelStages, stageLabelOf, stageSurface, stageTone } from "./stages";
 import { FACEIMOB_STATUSES, faceimobStatusTone, statusChoices } from "./statuses";
 import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
@@ -86,13 +87,15 @@ describe("catálogo de Status 2", () => {
   });
 
   it("o valor gravado sempre aparece nas opções, mesmo fora do catálogo", () => {
+    // Os dois rótulos do sistema (`SYSTEM_STATUSES`) não são opção — a conta
+    // do Select é o catálogo menos eles; `statuses.test.ts` trava os números.
     const desconhecido = "STATUS VINDO DE IMPORTAÇÃO";
     const opcoes = statusChoices(desconhecido).map((status) => status.label);
     expect(opcoes[0]).toBe(desconhecido);
-    expect(opcoes).toHaveLength(FACEIMOB_STATUSES.length + 1);
+    expect(opcoes).toHaveLength(FACEIMOB_STATUSES.length - SYSTEM_STATUSES.length + 1);
 
     // Já um valor conhecido não pode ser duplicado no topo.
-    expect(statusChoices("PROPOSTA")).toHaveLength(FACEIMOB_STATUSES.length);
+    expect(statusChoices("PROPOSTA")).toHaveLength(FACEIMOB_STATUSES.length - SYSTEM_STATUSES.length);
   });
 
   it("status desconhecido tem tom neutro em vez de quebrar", () => {

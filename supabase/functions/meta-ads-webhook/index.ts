@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getSecret } from '../_shared/secrets.ts'
+import { requireServiceRole } from '../_shared/auth.ts'
 import { checkMetaSignature, normalizePhone, sendWhatsAppTemplate } from '../_shared/meta.ts'
 
 type SupabaseClient = ReturnType<typeof createClient>
@@ -129,24 +130,53 @@ Deno.serve(async (req) => {
     if (req.method === 'POST') {
       const raw = await req.text()
 
-      // Assinatura X-Hub-Signature-256. Com META_APP_SECRET cadastrado, POST
-      // sem assinatura válida é recusado; sem o segredo (homologação ainda sem
-      // credencial), aceita e avisa no log.
-      const sig = await checkMetaSignature(raw, req.headers.get('x-hub-signature-256'))
-      if (sig === 'invalid') {
-        console.error('meta-ads-webhook: assinatura inválida — POST recusado')
-        return new Response('Invalid signature', { status: 401, headers: corsHeaders })
-      }
-      if (sig === 'unconfigured') {
-        console.warn('meta-ads-webhook: META_APP_SECRET não cadastrado — aceitando POST sem verificação de origem')
-      }
-
       let body: MetaPayload = {}
       try {
         const parsed: unknown = JSON.parse(raw)
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body = parsed as MetaPayload
       } catch {
         console.warn('meta-ads-webhook: payload JSON inválido')
+      }
+
+      // ---------------------------------------------------------------------
+      // Duas entradas, duas provas de origem — e nenhuma delas é "nenhuma".
+      //
+      // 1. Payload da Meta (`entry[].changes[]`): a prova é a assinatura
+      //    X-Hub-Signature-256. Sem `META_APP_SECRET` cadastrado NÃO existe o
+      //    que conferir, e a versão anterior aceitava assim mesmo — mesmo
+      //    buraco que o `whatsapp-inbound-webhook` fechou nesta sprint. Agora
+      //    recusa nos dois casos (inválida e sem segredo): sem o app secret o
+      //    webhook nem chega a ser registrado no painel da Meta, então nada
+      //    legítimo se perde.
+      //
+      // 2. POST direto (Zapier/Make/N8N): não existe assinatura da Meta para
+      //    conferir, e a checagem acima recusaria o integrador no instante em
+      //    que o app secret fosse cadastrado. Por isso o contrato é separado:
+      //    o lead continua sendo aceito — é uma entrada pública, como um
+      //    formulário do site — mas SEM prova de origem ele não aciona a IA.
+      //    `maybeStartSdr` manda template de WhatsApp para o número que veio
+      //    no CORPO da requisição e abre conversa que gasta crédito da OpenAI
+      //    a cada resposta: com a URL pública, isso é amplificação. Sem prova,
+      //    o lead é gravado e vai para a roleta, onde um humano o atende.
+      // ---------------------------------------------------------------------
+      let origemProvada = false
+      if (Array.isArray(body.entry)) {
+        const sig = await checkMetaSignature(raw, req.headers.get('x-hub-signature-256'))
+        if (sig !== 'valid') {
+          console.error(`meta-ads-webhook: payload da Meta sem assinatura válida (${sig}) — POST recusado`)
+          return new Response(JSON.stringify({
+            error: sig === 'unconfigured' ? 'Webhook não configurado.' : 'Assinatura inválida.',
+            detail: sig === 'unconfigured'
+              ? 'Cadastre meta/app_secret em Admin → Integrações para validar a assinatura da Meta.'
+              : 'O corpo não confere com o X-Hub-Signature-256 deste app.',
+          }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+        origemProvada = true
+      } else {
+        // A chave de serviço é a prova que as NOSSAS integrações (e a suíte
+        // E2E) têm; ela nunca vai para integrador de terceiro. A `Response` de
+        // recusa é descartada de propósito: aqui ela só responde "provou?".
+        origemProvada = (await requireServiceRole(req, corsHeaders)) === null
       }
 
       // ⏸️ Pausa global: se ativado no admin, ignora todos os leads recebidos.
@@ -243,7 +273,12 @@ Deno.serve(async (req) => {
           funnel_stage: 'new',
           utm_source: textValue(body.source) || 'meta',
           raw_payload: body,
-          notes: textValue(body.notes),
+          // O corretor que receber este lead precisa saber por que a IA não
+          // falou com ele antes.
+          notes: [
+            textValue(body.notes),
+            origemProvada ? '' : '[origem não verificada: POST sem assinatura da Meta nem chave de serviço]',
+          ].filter(Boolean).join(' '),
         })
       }
 
@@ -269,8 +304,10 @@ Deno.serve(async (req) => {
 
           // Ata 14/07 (00:32-00:33): origem com agente SDR NÃO cai na roleta —
           // a IA qualifica primeiro e o sdr_handoff devolve à fila depois.
-          const sdr = await maybeStartSdr(supabase, row)
+          const sdr = await maybeStartSdr(supabase, row, origemProvada)
           if (!sdr) {
+            // Falha aqui não perde o lead: ele fica 'queued' e o cron
+            // `assign_queued_leads` (0013) tenta de novo na próxima varredura.
             const { error: assignErr } = await supabase.rpc('assign_lead', { p_lead_id: row.id })
             if (assignErr) console.error('Lead assignment error:', assignErr.message)
           }
@@ -284,6 +321,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         leads_processed: insertedRows.length,
+        // Diz ao integrador por que a IA não entrou, em vez de sumir em silêncio.
+        origem_verificada: origemProvada,
         errors: errors.length ? errors : undefined,
       }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -301,27 +340,93 @@ Deno.serve(async (req) => {
 })
 
 /**
- * Se a origem do lead (por form_id) tem agente SDR configurado, abre a conversa
- * e dispara o template de boas-vindas. Devolve true quando o lead entrou no SDR
- * (e portanto não deve ir para a roleta agora).
+ * Apelidos aceitos para cada placeholder do template — mesma tabela de
+ * `sdr-whatsapp-broadcast` e de `src/components/sdr/templateVars.ts`. É
+ * `whatsapp_templates.variables` que decide QUANTOS parâmetros vão no envio:
+ * as boas-vindas mandavam sempre 1 e o broadcast sempre 2, então o mesmo
+ * template quebrava num dos dois caminhos. Mudou aqui, muda lá.
+ */
+const VAR_ALIASES: Record<string, string[]> = {
+  nome: ['nome', 'name', 'cliente', 'contato', '1'],
+  campanha: ['campanha', 'campaign', 'origem', '2'],
+}
+
+function templateParams(variables: string[] | null | undefined, values: Record<string, string>): string[] {
+  return (variables ?? []).map((raw) => {
+    const key = String(raw).trim().toLowerCase()
+    for (const [canonical, aliases] of Object.entries(VAR_ALIASES)) {
+      if (aliases.includes(key)) return values[canonical]?.trim() || '-'
+    }
+    return values[key]?.trim() || '-'
+  })
+}
+
+/**
+ * Se a origem do lead tem agente SDR configurado, abre a conversa e dispara o
+ * template de boas-vindas. Devolve true quando o lead entrou no SDR (e portanto
+ * não deve ir para a roleta agora).
+ *
+ * A origem casa por `form_id` (Meta Lead Ads) ou, sem form_id, pelo `code` da
+ * origem igual ao `utm_source` do lead — é o `source` que o Zapier/POST manual
+ * manda. Sem a segunda regra o campo de código da aba Origens não filtrava nada.
+ *
+ * **Só entra na IA quem provou a origem** (`origemProvada`). O `code` é um slug
+ * legível que a própria aba Origens gera, então um POST anônimo com
+ * `{name, phone, source}` faria a WABA do cliente mandar template para um número
+ * escolhido por quem chamou e abriria conversa que gasta crédito da OpenAI. Sem
+ * prova, o lead fica ligado à origem (relatório por canal) e vai para a roleta.
+ *
+ * **Lead sem telefone volta para a roleta.** A versão anterior abria a conversa
+ * e devolvia true mesmo sem número: nada era enviado, o `whatsapp-inbound-webhook`
+ * casa a resposta POR TELEFONE, e o lead ficava sem robô e fora da fila de todo
+ * corretor. Buraco silencioso — melhor um humano atendendo.
  */
 async function maybeStartSdr(
   supabase: SupabaseClient,
-  lead: { id: string; form_id: string | null; phone?: string | null; phone_raw?: string | null; full_name?: string | null },
+  lead: {
+    id: string; form_id: string | null; utm_source?: string | null;
+    phone?: string | null; phone_raw?: string | null; full_name?: string | null;
+  },
+  origemProvada: boolean,
 ): Promise<boolean> {
-  if (!lead.form_id) return false
+  const utmSource = (lead.utm_source || '').trim().toLowerCase()
+  if (!lead.form_id && !utmSource) return false
 
-  const { data: source } = await supabase
+  const bySource = supabase
     .from('lead_sources')
-    .select('id, sdr_agent_id, welcome_template_id')
-    .eq('form_id', lead.form_id)
+    .select('id, label, sdr_agent_id, welcome_template_id')
     .eq('active', true)
     .not('sdr_agent_id', 'is', null)
-    .maybeSingle()
+  // `code` é slug minúsculo e único; igualdade exata evita uma origem roubar
+  // lead de outra por substring ('portal' vs 'portal_zap').
+  const { data: source, error: sourceErr } = await (lead.form_id
+    ? bySource.eq('form_id', lead.form_id)
+    : bySource.eq('code', utmSource)
+  ).maybeSingle()
+  // Falha de leitura (rede, RLS, duas origens no mesmo código) não pode ser
+  // indistinguível de "não há origem": o lead segue para a roleta — melhor um
+  // humano do que ninguém —, mas com rastro de POR QUE não entrou na IA.
+  if (sourceErr) {
+    console.error('SDR intake: falha ao consultar lead_sources para o lead', lead.id, '—', sourceErr.message)
+    return false
+  }
   if (!source) return false
 
-  // Liga o lead à origem (relatórios por origem) e abre a conversa.
-  await supabase.from('leads').update({ source_id: source.id }).eq('id', lead.id)
+  // Liga o lead à origem — é daqui que sai o relatório por canal, e vale mesmo
+  // quando o lead acaba indo para a roleta.
+  const { error: linkErr } = await supabase.from('leads').update({ source_id: source.id }).eq('id', lead.id)
+  if (linkErr) console.error('SDR intake: falha ao vincular o lead', lead.id, 'à origem —', linkErr.message)
+
+  if (!origemProvada) {
+    console.warn('SDR intake: lead', lead.id, 'casou com origem de IA, mas o POST não provou origem — segue para a roleta')
+    return false
+  }
+
+  const to = normalizePhone(lead.phone_raw || lead.phone)
+  if (!to) {
+    console.log('SDR intake: lead', lead.id, 'sem telefone — segue para a roleta')
+    return false
+  }
 
   const { data: conv, error: convErr } = await supabase
     .from('sdr_conversations')
@@ -338,18 +443,35 @@ async function maybeStartSdr(
   if (source.welcome_template_id) {
     const { data: tpl } = await supabase
       .from('whatsapp_templates')
-      .select('id, name, language, body, approved, active')
+      .select('id, name, language, body, approved, active, variables')
       .eq('id', source.welcome_template_id)
       .maybeSingle()
-    const to = normalizePhone(lead.phone_raw || lead.phone)
-    if (tpl?.active && to) {
+    if (tpl?.active) {
+      // Template não aprovado na Meta é recusado pela Graph API fora da janela
+      // de 24 h. O broadcast já conferia; aqui não — e o operador só descobria
+      // pelo silêncio. Agora fica registrado o motivo na própria conversa.
       let delivered = false
-      try {
-        const res = await sendWhatsAppTemplate(to, tpl.name, tpl.language || 'pt_BR', [lead.full_name || 'Cliente'])
-        delivered = res.ok
-        if (!res.ok) console.error('SDR intake: envio do template falhou para conversa', conv.id)
-      } catch (e) {
-        console.error('SDR intake: WhatsApp indisponível —', e instanceof Error ? e.message : String(e))
+      let motivo = ''
+      if (!tpl.approved) {
+        motivo = 'não está marcado como aprovado na Meta'
+      } else {
+        try {
+          const res = await sendWhatsAppTemplate(
+            to, tpl.name, tpl.language || 'pt_BR',
+            templateParams(tpl.variables as string[] | null, {
+              nome: lead.full_name || 'Cliente',
+              campanha: source.label || '',
+            }),
+          )
+          delivered = res.ok
+          if (!res.ok) {
+            motivo = 'a Meta recusou o envio'
+            console.error('SDR intake: envio do template falhou para conversa', conv.id)
+          }
+        } catch (e) {
+          motivo = 'falta credencial do WhatsApp no cofre'
+          console.error('SDR intake: WhatsApp indisponível —', e instanceof Error ? e.message : String(e))
+        }
       }
       const { error: msgErr } = await supabase.from('sdr_messages').insert({
         conversation_id: conv.id,
@@ -357,7 +479,7 @@ async function maybeStartSdr(
         template_id: tpl.id,
         body: delivered
           ? `[template ${tpl.name} enviado] ${tpl.body}`
-          : `[template ${tpl.name} pendente de envio] ${tpl.body}`,
+          : `[template ${tpl.name} NÃO enviado: ${motivo}] ${tpl.body}`,
       })
       if (msgErr) console.error('SDR intake: falha ao registrar boas-vindas —', msgErr.message)
     }

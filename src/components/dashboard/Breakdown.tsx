@@ -28,21 +28,33 @@ function CountGrid({ items }: { items: CountItem[] }) {
 
 /**
  * Situação dos processos na esteira de crédito. O rotulo ja vem traduzido de
- * `loadDashboardPayload`; aqui so entra a cor semantica de cada situacao.
+ * `loadDashboardPayload`, que hoje usa o mesmo `ccaStatusLabel` da tela do CCA —
+ * as chaves aqui seguem esse vocabulario. Antes divergiam ("Análise de
+ * Viabilidade", "Assinatura no Banco") e a cor semantica caia no `seriesToken`.
  */
 const CCA_TOKEN: Record<string, string> = {
-  "Aprovado Total": "success",
-  "Aprovado Condicionado": "chart-2",
-  "Análise de Viabilidade": "chart-4",
-  "Análise Externa": "chart-4",
-  "Enviado à Agência": "chart-1",
-  "Assinatura no Banco": "chart-1",
-  "Pendente de Viabilidade": "warning",
-  Pendente: "warning",
+  "Aguardando documentos": "warning",
+  "Em análise": "chart-4",
+  "Enviado à construtora": "chart-4",
+  "Enviado à agência": "chart-1",
+  Aprovado: "success",
   Reprovado: "destructive",
+  Cancelado: "muted-foreground",
 };
 
-export function CcaStatusCard({ counts }: { counts: Record<string, number> }) {
+/**
+ * `toda` = quem le a esteira inteira (`cca_cases_select` libera tudo para admin
+ * e cca; para os demais vale `can_see_deal`). Sem essa distincao o corretor lia
+ * "Nenhum processo no CCA" sob o titulo da empresa e entendia que a operacao
+ * inteira estava parada, quando a contagem era so o recorte dele.
+ */
+export function CcaStatusCard({
+  counts,
+  toda,
+}: {
+  counts: Record<string, number>;
+  toda: boolean;
+}) {
   const items = Object.entries(counts).map(([label, value], index) => ({
     label,
     value,
@@ -50,12 +62,20 @@ export function CcaStatusCard({ counts }: { counts: Record<string, number> }) {
   }));
 
   return (
-    <SectionCard title="Esteira de crédito" description="Processos do CCA por situação" icon={Layers}>
+    <SectionCard
+      title="Esteira de crédito"
+      description={toda ? "Processos do CCA por situação" : "Processos do CCA nos seus negócios"}
+      icon={Layers}
+    >
       {items.length === 0 ? (
         <EmptyState
           icon={Layers}
-          title="Nenhum processo no CCA"
-          description="Assim que um negócio entrar na esteira de crédito, a situação dele aparece aqui."
+          title={toda ? "Nenhum processo no CCA" : "Nenhum processo do CCA nos seus negócios"}
+          description={
+            toda
+              ? "Assim que um negócio entrar na esteira de crédito, a situação dele aparece aqui."
+              : "Assim que um dos seus negócios entrar na esteira de crédito, a situação dele aparece aqui."
+          }
         />
       ) : (
         <CountGrid items={items} />

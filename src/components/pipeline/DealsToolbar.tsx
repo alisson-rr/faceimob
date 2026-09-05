@@ -14,13 +14,18 @@ interface Props {
   listedCount: number;
   pendingReviews: number;
   onFilterPendingReviews: () => void;
+  /** Consulta ainda em voo ou falhada: os contadores viram travessão. Com `0`
+   *  a régua AFIRMA "0 ativos · 0 aguardando gerente" antes de ler o banco —
+   *  o mesmo achado que o `DealsBoard` corrigiu um nível abaixo. */
+  countsUnknown?: boolean;
 }
 
 /** Busca, alternância de visão e a régua de contadores do Pipeline. */
 export function DealsToolbar({
   search, onSearch, view, onView, analyticsOpen, onToggleAnalytics,
-  activeCount, listedCount, pendingReviews, onFilterPendingReviews,
+  activeCount, listedCount, pendingReviews, onFilterPendingReviews, countsUnknown,
 }: Props) {
+  const conta = (value: number) => (countsUnknown ? "—" : value);
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -62,16 +67,19 @@ export function DealsToolbar({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span><strong className="tabular-nums text-primary">{activeCount}</strong> ativos</span>
+        <span><strong className="tabular-nums text-primary">{conta(activeCount)}</strong> ativos</span>
         <span aria-hidden>·</span>
-        <span><strong className="tabular-nums text-foreground">{listedCount}</strong> na listagem</span>
+        <span><strong className="tabular-nums text-foreground">{conta(listedCount)}</strong> na listagem</span>
+        {/* Filtrar por "aguardando gerente" sem saber quantos são levaria a uma
+            listagem vazia sem explicação: o botão espera a resposta. */}
         <button
           type="button"
           onClick={onFilterPendingReviews}
-          className="inline-flex items-center gap-1 rounded transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          disabled={countsUnknown}
+          className="inline-flex items-center gap-1 rounded transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
         >
           <FileCheck2 className="h-3 w-3" aria-hidden />
-          <strong className="tabular-nums text-warning">{pendingReviews}</strong> aguardando gerente
+          <strong className="tabular-nums text-warning">{conta(pendingReviews)}</strong> aguardando gerente
         </button>
       </div>
     </div>

@@ -50,9 +50,15 @@ values
   ('63000000-0000-0000-0000-000000000002', 'daily_team', '20000000-0000-0000-0000-000000000002', null,
    'seed-daily-sul', extensions.crypt('123456', extensions.gen_salt('bf')), true,
    now() + interval '90 days', null, '10000000-0000-0000-0000-000000000004'),
+  -- PIN como os dois de cima, e não `null`. A decisão de 26/08/2026 (migration
+  -- 0033) diz que link público nasce com PIN **nos dois tipos**: o slug era, na
+  -- prática, a senha, e o de diretoria nascia adivinhável a partir do nome.
+  -- Deixar `null` aqui fazia todo `db:reset` recriar exatamente o buraco que a
+  -- decisão mandou fechar — a homologação foi corrigida à mão em 27/08 e o seed
+  -- ficou divergindo dela em silêncio.
   ('63000000-0000-0000-0000-000000000003', 'director_checkpoint', null, '10000000-0000-0000-0000-000000000002',
-   'seed-diretoria-daniela', null, true, now() + interval '90 days',
-   now() - interval '3 hours', '10000000-0000-0000-0000-000000000002')
+   'seed-diretoria-daniela', extensions.crypt('123456', extensions.gen_salt('bf')), true,
+   now() + interval '90 days', now() - interval '3 hours', '10000000-0000-0000-0000-000000000002')
 on conflict do nothing;
 
 insert into public.closed_months (period, closed_at, closed_by, notes)

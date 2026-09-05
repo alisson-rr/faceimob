@@ -113,12 +113,26 @@ export function DealFilters({
         <div>
           <Label htmlFor={field("manager")}>Gerente</Label>
           <Select value={filters.managerId} onValueChange={(v) => onChange({ managerId: v })}>
-            <SelectTrigger id={field("manager")} className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectTrigger
+              id={field("manager")} className="mt-1"
+              aria-describedby={managers.length ? undefined : field("manager-hint")}
+            >
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent className="max-h-80">
               <SelectItem value={ALL}>Todos os gerentes</SelectItem>
               {managers.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
             </SelectContent>
           </Select>
+          {/* `auth_visible_profiles()` só entrega gestor a quem lidera equipe:
+              para 21 dos 34 perfis (medido em 02/09/2026) esta lista abre com
+              "Todos os gerentes" e mais nada. Sem a frase, o vazio parecia
+              defeito de carga — e o operador ficava tentando recarregar. */}
+          {!managers.length && (
+            <p id={field("manager-hint")} className="mt-1 text-xs text-muted-foreground">
+              Só aparece aqui quem você lidera. Seu perfil não lidera equipe, então a lista fica vazia.
+            </p>
+          )}
         </div>
 
         <div>

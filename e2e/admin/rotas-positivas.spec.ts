@@ -3,6 +3,7 @@ import { test, expect, aguardarCarregamento } from "../support/fixtures";
 const rotas = [
   ["/pipeline", /^Pipeline$/i],
   ["/leads", /^Leads$/i],
+  ["/atividades", /^Atividades$/i],
   ["/checkin", /Check-in de Corretor/i],
   ["/cca", /Esteira CCA/i],
   ["/equipes", /^Equipes$/i],

@@ -158,6 +158,22 @@ describe("describeLeadEvent", () => {
       .toBe("Atribuído pela roleta: João Lima");
   });
 
+  it("o encerramento diz o motivo, que é o que só ele registra", () => {
+    // `close_lead` não regrava o `status_changed` (o gatilho `leads_log_changes`
+    // já faz isso, e dois eventos iguais duplicavam a linha do histórico e a
+    // conta de "quantos perdemos por preço"). Ele grava um evento próprio, e o
+    // que esse evento carrega de novo é o motivo escolhido.
+    expect(describeLeadEvent({
+      kind: "closed", from_value: "in_progress", to_value: "lost",
+      detail: { reason: "Preço — acima do orçamento" },
+    })).toBe("Lead encerrado como Perdido: Preço — acima do orçamento");
+  });
+
+  it("o lead que saiu da roleta diz quantas voltas deu", () => {
+    expect(describeLeadEvent({ kind: "unattended", detail: { misses: 5 } }))
+      .toBe("Saiu da roleta sem atendimento (5 voltas)");
+  });
+
   it("evento desconhecido aparece cru em vez de virar linha vazia", () => {
     expect(describeLeadEvent({ kind: "algo_novo" })).toBe("algo_novo");
   });

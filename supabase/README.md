@@ -22,6 +22,10 @@ tipos de documento, turnos, fila geral, regras de pontuação, permissões):
 psql "$DATABASE_URL" -f supabase/seed.sql
 ```
 
+Os seeds registram os documentos de negócio só no banco; o arquivo em si sobe com
+`npm run db:seed:documents` (`-- --remote` para a homologação, que exige
+`SUPABASE_SERVICE_ROLE_KEY` no ambiente). Rode depois do `showcase`, que cria as linhas.
+
 > `supabase/config.toml` já aponta para o projeto novo (`mcmqgxvtwegtptfseqvw`).
 > Nada a trocar antes do `db push`.
 

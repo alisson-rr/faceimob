@@ -7,12 +7,12 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
 import { LOSS_REASONS, isLossStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { updateDeal, useCanExitStage } from "./data";
 import { LOST_STAGE_CODE, type PipelineStage } from "./stages";
 
 interface Props {
@@ -42,6 +42,7 @@ interface Props {
  */
 export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirmed }: Props) {
   const { canEnterStage } = useAuth();
+  const canExitStage = useCanExitStage();
   const id = useId();
   const lostStage = stages.find((stage) => stage.code === LOST_STAGE_CODE);
   const [status, setStatus] = useState(
@@ -50,7 +51,12 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const allowed = Boolean(lostStage) && canEnterStage(lostStage?.id ?? "");
+  // As DUAS metades da matriz: `deals_guard_stage` cobra `can_exit_stage` da
+  // etapa atual antes de olhar a de destino, e só o "entrar" era espelhado aqui
+  // — hoje corretor e gerente não saem de "Aprovado", e o diálogo abria o
+  // confirmar assim mesmo, para levar 42501.
+  const canLeave = canExitStage(deal.stage_id);
+  const allowed = Boolean(lostStage) && canEnterStage(lostStage?.id ?? "") && canLeave;
   // Um preset sem prefixo ("QUEDA", vindo de importação) é motivo válido e não
   // está na lista literal: sem ele nas opções o Select abriria em branco.
   const choices = !status || LOSS_REASONS.includes(status) ? LOSS_REASONS : [status, ...LOSS_REASONS];
@@ -60,11 +66,12 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
     setSaving(true);
     try {
       const reason = notes.trim() ? `${status} — ${notes.trim()}` : status;
-      const { error } = await supabase
-        .from("deals")
-        .update({ stage_id: lostStage.id, status_detail: status, lost_reason: reason })
-        .eq("id", deal.id);
-      if (error) throw error;
+      // `updateDeal` e não o `update` cru: sem `.select()`, uma linha filtrada
+      // pela RLS devolve 204 sem erro e a tela dizia "Negócio encerrado" com o
+      // negócio intacto no banco.
+      await updateDeal(deal.id, {
+        stage_id: lostStage.id, status_detail: status, lost_reason: reason,
+      });
       toast({ title: "Negócio encerrado", description: `${deal.client} — ${status}.` });
       await onConfirmed();
       onClose();
@@ -89,7 +96,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
           </AlertDialogTitle>
           <AlertDialogDescription>
             O negócio sai do funil, deixa de contar no VGV e no ranking do game.
-            Reabrir depois exige um gestor — não há atalho nesta tela.
+            Só o administrador reabre, pelo botão de reabrir na linha do negócio.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -115,7 +122,9 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
           </div>
           {!allowed && (
             <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-              Seu perfil não pode mover negócios para a etapa de perda. Peça a um gestor.
+              {canLeave
+                ? "Seu perfil não pode mover negócios para a etapa de perda. Peça a um gestor."
+                : `Seu perfil não pode tirar um negócio de "${deal.stage_label}". Peça a um gestor.`}
             </p>
           )}
         </div>

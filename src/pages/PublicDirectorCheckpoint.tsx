@@ -9,6 +9,13 @@ import { AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Loader2, Lock, 
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CompactFunnel } from "@/components/ComparativeFunnel";
+import { IDEAL_STAGES } from "@/lib/metrics";
+import { num } from "@/lib/format";
+import { tone } from "@/lib/tone";
+import { describeError } from "@/lib/supabaseError";
+// O rótulo do escopo é o mesmo do Diário: duas listas divergiriam na primeira
+// meta nova.
+import { TARGET_SCOPE_LABEL as SCOPE_LABEL } from "@/lib/dailyFunnel";
 import logoWhite from "@/assets/logo-faceimob-white.png";
 
 const MONTH_FIELDS = [
@@ -22,40 +29,93 @@ const MONTH_FIELDS = [
   { key: "vendas", label: "Venda", color: "text-warning" },
 ] as const;
 
+type MonthKey = typeof MONTH_FIELDS[number]["key"];
+
+/** Meta já resolvida, com o escopo de onde veio (equipe > diretor > global). */
+type TargetSet = {
+  scope: string;
+  analise_enviada_pct: number;
+  aprovada_pct: number;
+  venda_pct: number;
+};
+
 type TeamOut = {
   id: string;
   name: string;
-  slug: string;
+  /** Slug do link do Diário; null quando a equipe ainda não tem link ativo. */
+  slug: string | null;
   manager_name: string | null;
   aggr: { leads: number; ligacoes: number; coleta_docs: number; enviadas: number; aprovadas: number; vendas: number };
-  targets: { analise_enviada_pct: number; aprovada_pct: number; venda_pct: number };
+  targets: TargetSet;
 };
 
+
+
 type MissingDay = { date: string; teams: { id: string; name: string; manager_name: string | null }[] };
+
+/** Bloco de meta como a RPC o devolve (0039, com `scope` na 0062). */
+type RpcTargets = {
+  scope?: string | null;
+  lead_to_analysis_pct?: number | null;
+  analysis_to_approval_pct?: number | null;
+  approval_to_sale_pct?: number | null;
+};
+
+/** As 8 métricas como a RPC as nomeia (colunas de `daily_entries`). */
+type RpcTotals = {
+  leads?: number;
+  calls?: number;
+  doc_collections?: number;
+  visits_scheduled?: number;
+  visits_done?: number;
+  analyses_sent?: number;
+  analyses_approved?: number;
+  sales?: number;
+};
 
 type DirectorPayload = {
   pin_required?: boolean;
   director?: string;
-  targets?: {
-    lead_to_analysis_pct?: number;
-    analysis_to_approval_pct?: number;
-    approval_to_sale_pct?: number;
+  /**
+   * Quando o link para de abrir (0080).
+   *
+   * O Diário da equipe avisa desde a 0062 e este lado não avisava nada: link
+   * vencido cai na MESMA recusa NULL de PIN errado, então o diretor redigitava
+   * um PIN válido sem entender. Null = link anterior à 0062, sem prazo.
+   */
+  expires_at?: string | null;
+  /** Meta do diretor (ou global) — a régua do acumulado do mês. */
+  targets?: RpcTargets | null;
+  /** Acumulado do mês da semana navegada, do dia 1 até hoje (migration 0039). */
+  month?: {
+    start?: string;
+    end?: string;
+    totals?: RpcTotals;
+    /** Equipes já desativadas que ainda produziram no mês (0062). */
+    inactive_teams?: number;
   };
   teams?: Array<{
     team_id?: string;
     team_name?: string;
+    manager_name?: string | null;
     daily_slug?: string | null;
-    totals?: {
-      leads?: number;
-      calls?: number;
-      doc_collections?: number;
-      analyses_sent?: number;
-      analyses_approved?: number;
-      sales?: number;
-    };
+    /** Meta DA EQUIPE quando existir em `funnel_targets` (0062). */
+    targets?: RpcTargets | null;
+    totals?: RpcTotals;
     missing_days?: string[];
   }>;
 };
+
+const monthTotalsFrom = (t: RpcTotals | undefined): Record<MonthKey, number> => ({
+  leads: Number(t?.leads) || 0,
+  ligacoes: Number(t?.calls) || 0,
+  coleta_docs: Number(t?.doc_collections) || 0,
+  visitas_agendadas: Number(t?.visits_scheduled) || 0,
+  visitas_realizadas: Number(t?.visits_done) || 0,
+  analises: Number(t?.analyses_sent) || 0,
+  aprovados: Number(t?.analyses_approved) || 0,
+  vendas: Number(t?.sales) || 0,
+});
 
 const slugify = (value: string) =>
   value
@@ -65,10 +125,17 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const safeTargets = (value: Partial<TeamOut["targets"]> | null | undefined) => ({
-  analise_enviada_pct: Number(value?.analise_enviada_pct) || 10,
-  aprovada_pct: Number(value?.aprovada_pct) || 40,
-  venda_pct: Number(value?.venda_pct) || 50,
+/** Meta de referência do produto, de `@/lib/metrics` — não de números soltos. */
+const idealPct = (key: string) => IDEAL_STAGES.find((stage) => stage.key === key)?.stagePct ?? 0;
+
+// `funnel_targets` manda quando existe; o fallback é o funil ideal do produto.
+// Um lugar só: o card, o funil do mês e o resumo textual leem daqui, senão a
+// mesma etapa aparecia com meta 15% no card e 10% no resumo.
+const safeTargets = (value: RpcTargets | null | undefined): TargetSet => ({
+  scope: value?.scope ?? "ideal",
+  analise_enviada_pct: Number(value?.lead_to_analysis_pct) || idealPct("analises"),
+  aprovada_pct: Number(value?.analysis_to_approval_pct) || idealPct("aprovados"),
+  venda_pct: Number(value?.approval_to_sale_pct) || idealPct("vendas"),
 });
 
 const emptyAggr = { leads: 0, ligacoes: 0, coleta_docs: 0, enviadas: 0, aprovadas: 0, vendas: 0 };
@@ -83,10 +150,10 @@ function DirectorSummaryCard({
 }: {
   title: string;
   aggr: typeof emptyAggr;
-  targets: TeamOut["targets"];
+  targets: TargetSet;
   teams: TeamOut[];
   aggregate: (teamId: string) => typeof emptyAggr;
-  targetsFor: (teamId: string) => TeamOut["targets"];
+  targetsFor: (teamId: string) => TargetSet;
 }) {
   const pEnv = aggr.leads ? (aggr.enviadas / aggr.leads) * 100 : 0;
   const pApr = aggr.enviadas ? (aggr.aprovadas / aggr.enviadas) * 100 : 0;
@@ -104,6 +171,11 @@ function DirectorSummaryCard({
         <CardTitle className="text-sm flex items-center gap-2">
           <Target className="h-4 w-4 text-warning" /> Diretor: {title}
         </CardTitle>
+        {/* Sem dizer de onde a meta veio, o diretor não sabe se o "m10%" do
+            cartão é da empresa ou dele. */}
+        <p className="text-xs text-muted-foreground">
+          Consolidado por {SCOPE_LABEL[targets.scope] ?? "meta cadastrada"} · cada equipe usa a meta dela quando existe.
+        </p>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -117,7 +189,7 @@ function DirectorSummaryCard({
                   {i > 0 && <span className="text-eyebrow">m{r.target}%</span>}
                 </div>
                 <div className="flex items-baseline justify-between gap-1">
-                  <span className={`text-lg font-black leading-none ${below ? "text-destructive" : above ? "text-success" : "text-foreground"}`}>{r.value}</span>
+                  <span className={`text-lg font-black leading-none ${below ? "text-destructive" : above ? "text-success" : "text-foreground"}`}>{num(r.value)}</span>
                   <span className={`text-xs font-semibold ${below ? "text-destructive" : above ? "text-success" : "text-muted-foreground"}`}>{r.pct.toFixed(0)}%</span>
                 </div>
                 <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mt-1">
@@ -136,11 +208,14 @@ function DirectorSummaryCard({
               <div key={team.id} className="rounded-md border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs">
                 <div className="font-semibold truncate">{team.name}</div>
                 <div className="mt-1 grid grid-cols-4 gap-1 text-xs text-muted-foreground">
-                  <span>Leads <b className="text-info">{a.leads}</b></span>
-                  <span>An. <b className={anPct >= tg.analise_enviada_pct ? "text-success" : "text-destructive"}>{a.enviadas}</b></span>
-                  <span>Aprov. <b className="text-success">{a.aprovadas}</b></span>
-                  <span>Venda <b className="text-warning">{a.vendas}</b></span>
+                  <span>Leads <b className="text-info">{num(a.leads)}</b></span>
+                  <span>An. <b className={anPct >= tg.analise_enviada_pct ? "text-success" : "text-destructive"}>{num(a.enviadas)}</b></span>
+                  <span>Aprov. <b className="text-success">{num(a.aprovadas)}</b></span>
+                  <span>Venda <b className="text-warning">{num(a.vendas)}</b></span>
                 </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {SCOPE_LABEL[tg.scope] ?? "meta cadastrada"}: {num(tg.analise_enviada_pct)}% → {num(tg.aprovada_pct)}% → {num(tg.venda_pct)}%
+                </p>
               </div>
             );
           })}
@@ -157,10 +232,19 @@ export default function PublicDirectorCheckpoint() {
   const [loading, setLoading] = useState(true);
   const [director, setDirector] = useState<{ name: string } | null>(null);
   const [teams, setTeams] = useState<TeamOut[]>([]);
-  const [month, setMonth] = useState<{ totals: Record<string, number>; missing_days: MissingDay[] } | null>(null);
+  // Antes da 0039 a RPC não devolvia `month`: sem ele os cards do mês não
+  // aparecem, em vez de mostrar a semana com rótulo de mês.
+  const [month, setMonth] = useState<{ start: Date; end: Date; totals: Record<MonthKey, number>; inactiveTeams: number } | null>(null);
+  // Meta do diretor (ou global): é a régua do acumulado do mês. Era lida da
+  // primeira equipe da lista, que agora traz a meta DELA.
+  const [directorTargets, setDirectorTargets] = useState<TargetSet>(() => safeTargets(null));
+  // Pendências são da SEMANA navegada — é a cobrança da reunião de segunda.
+  const [missingDays, setMissingDays] = useState<MissingDay[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [missingOpen, setMissingOpen] = useState(false);
   const [needsPin, setNeedsPin] = useState(false);
+  /** Validade do link (0080). Sem ela o vencimento chega como "PIN incorreto". */
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [submittedPin, setSubmittedPin] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -173,21 +257,34 @@ export default function PublicDirectorCheckpoint() {
         p_week_start: format(weekStart, "yyyy-MM-dd"),
         p_pin: submittedPin,
       });
+      const clear = () => {
+        setTeams([]); setDirector(null); setMonth(null); setMissingDays([]);
+        setDirectorTargets(safeTargets(null)); setExpiresAt(null);
+      };
       if (error) {
-        setError("Erro de conexão — tente novamente");
-        setTeams([]); setDirector(null); setMonth(null);
+        // O erro não pode virar sempre "rede": 42501 e PGRST202 (assinatura
+        // antiga da RPC) mandavam o diretor tentar de novo para sempre.
+        console.error("checkpoint diretoria: falha na RPC", error);
+        setError(describeError(error, "Erro de conexão — tente novamente"));
+        clear();
       } else {
         const payload = data as DirectorPayload | null;
         if (payload?.pin_required) {
           setNeedsPin(true);
-          setTeams([]); setDirector(null); setMonth(null);
+          clear();
           setLoading(false);
           return;
         }
         if (!payload) {
-          setNeedsPin(Boolean(submittedPin));
-          setError(submittedPin ? "PIN incorreto" : "Link inválido ou inativo");
-          setTeams([]); setDirector(null); setMonth(null);
+          // Uma recusa só (0033/0062): PIN errado, link vencido, link travado e
+          // slug inexistente devolvem o mesmo NULL de propósito. A tela dizia
+          // apenas "PIN incorreto" e o diretor redigitava um PIN válido durante
+          // os 15 minutos da trava sem saber por quê.
+          setNeedsPin(true);
+          setError(
+            "Não abriu. Confira o PIN — depois de 5 tentativas erradas o link fica bloqueado por 15 minutos. Se o link venceu ou foi desativado, peça um novo à administração.",
+          );
+          clear();
           setLoading(false);
           return;
         }
@@ -197,8 +294,11 @@ export default function PublicDirectorCheckpoint() {
         const safeTeams = rawTeams.map((t) => ({
           id: String(t.team_id || ""),
           name: String(t.team_name || "Equipe"),
-          slug: String(t.daily_slug || slugify(String(t.team_name || "equipe"))),
-          manager_name: null,
+          // Sem link ativo não há URL: o slug é sorteado no banco (0033), não
+          // dá para derivá-lo do nome — a tela fazia isso e mandava o diretor
+          // para uma tela de PIN que nunca abre.
+          slug: t.daily_slug ? String(t.daily_slug) : null,
+          manager_name: t.manager_name ?? null,
           aggr: {
             leads: Number(t.totals?.leads) || 0,
             ligacoes: Number(t.totals?.calls) || 0,
@@ -207,30 +307,37 @@ export default function PublicDirectorCheckpoint() {
             aprovadas: Number(t.totals?.analyses_approved) || 0,
             vendas: Number(t.totals?.sales) || 0,
           },
-          targets: safeTargets({
-            analise_enviada_pct: payload.targets?.lead_to_analysis_pct,
-            aprovada_pct: payload.targets?.analysis_to_approval_pct,
-            venda_pct: payload.targets?.approval_to_sale_pct,
-          }),
+          // `funnel_targets.team_id` está no banco e populado desde o seed, e a
+          // tela media todas as equipes do diretor com a mesma régua. A meta da
+          // equipe manda quando existe; senão vale a do diretor.
+          targets: safeTargets(t.targets ?? payload.targets),
         })).filter((t) => t.id);
         setDirector(payload.director ? { name: payload.director } : null);
         setTeams(safeTeams);
-        const totals = safeTeams.reduce((acc: Record<string, number>, team: TeamOut) => {
-          acc.leads += team.aggr.leads;
-          acc.ligacoes += team.aggr.ligacoes;
-          acc.coleta_docs += team.aggr.coleta_docs;
-          acc.analises += team.aggr.enviadas;
-          acc.aprovados += team.aggr.aprovadas;
-          acc.vendas += team.aggr.vendas;
-          return acc;
-        }, { leads: 0, ligacoes: 0, coleta_docs: 0, analises: 0, aprovados: 0, vendas: 0 });
+        setDirectorTargets(safeTargets(payload.targets));
+        // Sem a 0080 aplicada a RPC não devolve `expires_at`: o aviso some, em
+        // vez de afirmar que o link é eterno.
+        setExpiresAt(payload.expires_at ?? null);
+        const m = payload.month;
+        setMonth(m?.start && m.end
+          ? {
+              start: parseISO(m.start),
+              end: parseISO(m.end),
+              totals: monthTotalsFrom(m.totals),
+              inactiveTeams: Number(m.inactive_teams) || 0,
+            }
+          : null);
         const missingByDate = new Map<string, MissingDay>();
         rawTeams.forEach((team) => (team.missing_days || []).forEach((date) => {
           const row = missingByDate.get(date) || { date, teams: [] };
-          row.teams.push({ id: String(team.team_id || ""), name: String(team.team_name || "Equipe"), manager_name: null });
+          row.teams.push({
+            id: String(team.team_id || ""),
+            name: String(team.team_name || "Equipe"),
+            manager_name: team.manager_name ?? null,
+          });
           missingByDate.set(date, row);
         }));
-        setMonth({ totals, missing_days: Array.from(missingByDate.values()) });
+        setMissingDays(Array.from(missingByDate.values()));
       }
       setLoading(false);
     })();
@@ -249,36 +356,60 @@ export default function PublicDirectorCheckpoint() {
     return acc;
   }, [teams]);
 
-  const targets = safeTargets(teams[0]?.targets);
+  const targets = directorTargets;
+
+  // Validade: link vencido cai na mesma recusa NULL de PIN errado (0033/0062),
+  // de propósito. O aviso é a única chance de o diretor pedir a renovação antes
+  // de o link simplesmente parar de abrir. Mesma faixa de 15 dias do Diário.
+  const expiresInDays = expiresAt
+    ? Math.floor((new Date(expiresAt).getTime() - Date.now()) / 86_400_000)
+    : null;
+
+  // "Mês" não quer dizer a mesma coisa nas duas telas: aqui acompanha a semana
+  // navegada, no Diário público é sempre o corrente. Navegar para agosto e
+  // clicar em "Abrir Diário" mostrava setembro sem uma palavra.
+  //
+  // O aviso sai de `month.start` (o recorte que a RPC devolveu e que os cartões
+  // abaixo somam), não de `weekStart`: na semana que atravessa a virada do mês
+  // os dois divergem — em 02/09, semana de 31/08, a RPC ancora em 01/09 e o
+  // texto acusava divergência que não existia, na visão padrão, sem ninguém ter
+  // navegado.
+  const hojeRef = new Date();
+  const outroMes = !!month
+    && (month.start.getMonth() !== hojeRef.getMonth()
+      || month.start.getFullYear() !== hojeRef.getFullYear());
 
   const aggregate = (teamId: string) => {
     const t = teams.find(x => x.id === teamId);
     return t ? { ...emptyAggr, ...t.aggr } : emptyAggr;
   };
-  const targetsFor = (teamId: string) => safeTargets(teams.find(x => x.id === teamId)?.targets ?? targets);
+  const targetsFor = (teamId: string): TargetSet => teams.find(x => x.id === teamId)?.targets ?? targets;
 
+  // As metas saem de `targets` — as mesmas do card acima. Antes eram literais
+  // aqui e no resumo, e um diretor com meta própria via "m15%" em vermelho no
+  // card e "meta 10%" em verde logo abaixo, sobre o mesmo número.
   const monthFunnelSteps = useMemo(() => {
-    const t = month?.totals || {};
+    const t = month?.totals;
     return [
-      { key: "leads", label: "Leads", value: t.leads || 0, targetPct: 100 },
-      { key: "analises", label: "Análises", value: t.analises || 0, targetPct: 10 },
-      { key: "aprovados", label: "Aprovações", value: t.aprovados || 0, targetPct: 40 },
-      { key: "vendas", label: "Vendas", value: t.vendas || 0, targetPct: 50 },
+      { key: "leads", label: "Leads", value: t?.leads || 0, targetPct: 100 },
+      { key: "analises", label: "Análises", value: t?.analises || 0, targetPct: targets.analise_enviada_pct },
+      { key: "aprovados", label: "Aprovações", value: t?.aprovados || 0, targetPct: targets.aprovada_pct },
+      { key: "vendas", label: "Vendas", value: t?.vendas || 0, targetPct: targets.venda_pct },
     ];
-  }, [month]);
+  }, [month, targets]);
 
   const funnelSummary = useMemo(() => {
-    const t: Record<string, number> = month?.totals || {};
-    const leads = t.leads || 0, an = t.analises || 0, ap = t.aprovados || 0, vd = t.vendas || 0;
+    const t = month?.totals;
+    const leads = t?.leads || 0, an = t?.analises || 0, ap = t?.aprovados || 0, vd = t?.vendas || 0;
     const pAn = leads ? (an / leads) * 100 : 0;
     const pAp = an ? (ap / an) * 100 : 0;
     const pVd = ap ? (vd / ap) * 100 : 0;
     const issues: string[] = [];
-    if (leads && pAn < 10) issues.push(`Conversão de análises baixa (${pAn.toFixed(1)}% / meta 10%)`);
-    if (an && pAp < 40) issues.push(`Aprovação abaixo da meta (${pAp.toFixed(1)}% / meta 40%)`);
-    if (ap && pVd < 50) issues.push(`Fechamento abaixo da meta (${pVd.toFixed(1)}% / meta 50%)`);
+    if (leads && pAn < targets.analise_enviada_pct) issues.push(`Conversão de análises baixa (${pAn.toFixed(1)}% / meta ${targets.analise_enviada_pct}%)`);
+    if (an && pAp < targets.aprovada_pct) issues.push(`Aprovação abaixo da meta (${pAp.toFixed(1)}% / meta ${targets.aprovada_pct}%)`);
+    if (ap && pVd < targets.venda_pct) issues.push(`Fechamento abaixo da meta (${pVd.toFixed(1)}% / meta ${targets.venda_pct}%)`);
     return { pAn, pAp, pVd, issues };
-  }, [month]);
+  }, [month, targets]);
 
   return (
     <div className="gradient-premium min-h-screen bg-background text-foreground">
@@ -313,16 +444,20 @@ export default function PublicDirectorCheckpoint() {
                 className="space-y-3"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (pin.length < 4) return;
+                  // Piso igual ao do servidor (0062: `^[0-9]{6,10}$`). Abaixo
+                  // de 6 o PIN não pode existir, e a tentativa impossível ainda
+                  // contava para o bloqueio de 15 minutos da 0033.
+                  if (pin.length < 6) return;
                   setSubmittedPin(pin);
                   setAttempt((value) => value + 1);
                 }}
               >
-                <p className="text-xs text-muted-foreground">Digite o PIN entregue pela administração.</p>
+                <p className="text-xs text-muted-foreground">Digite o PIN entregue pela administração — de 6 a 10 dígitos.</p>
                 <Input
                   type="password"
                   inputMode="numeric"
                   maxLength={10}
+                  aria-label="PIN da diretoria"
                   value={pin}
                   onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))}
                   placeholder="••••••"
@@ -330,7 +465,7 @@ export default function PublicDirectorCheckpoint() {
                   autoFocus
                 />
                 {error && <p className="text-sm text-destructive text-center">{error}</p>}
-                <Button type="submit" className="w-full" disabled={pin.length < 4}>Entrar</Button>
+                <Button type="submit" className="w-full" disabled={pin.length < 6}>Entrar</Button>
               </form>
             </CardContent>
           </Card>
@@ -342,22 +477,55 @@ export default function PublicDirectorCheckpoint() {
           <Card className="p-8 text-center text-sm text-muted-foreground">Nenhuma equipe vinculada a este diretor.</Card>
         ) : (
           <div className="space-y-4">
+            {expiresInDays !== null && expiresInDays <= 15 && (
+              <div role="alert" className="rounded-md border border-warning/40 bg-warning/10 p-2 flex items-start gap-2 text-xs">
+                <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-warning">
+                    {expiresInDays < 0
+                      ? "Este link já venceu"
+                      : `Este link vence em ${expiresInDays} dia${expiresInDays === 1 ? "" : "s"}`}
+                  </p>
+                  <p className="text-muted-foreground mt-0.5">
+                    Depois disso ele para de abrir e a tela vai dizer só “PIN incorreto”.
+                    Peça a renovação à administração antes da data.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Preencher daily — links das equipes do diretor */}
             <Card className="border-primary/30 bg-card/60 backdrop-blur-xl">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <ExternalLink className="h-4 w-4 text-primary" /> Preencher meu daily
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">Acesse o daily de cada equipe para preenchimento.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Acesse o daily de cada equipe para preenchimento.
+                  {outroMes && (
+                    <> <b className="text-warning">O Diário abre sempre no mês corrente</b>, não no mês da semana que você está vendo aqui.</>
+                  )}
+                </p>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">
-                {teams.map(t => (
-                  <a key={t.id} href={`/daily/${t.slug}?director=${encodeURIComponent(slug)}`} target="_blank" rel="noreferrer">
-                    <Button size="sm" variant="outline" className="gap-1.5">
-                      <ExternalLink className="h-3 w-3" />
+                {/* `asChild`: um `<button>` dentro de um `<a>` é conteúdo
+                    interativo aninhado — HTML inválido e duas paradas de
+                    tabulação, sendo que só a primeira faz algo. Mesmo padrão
+                    de `AdminDailyTeams`. */}
+                {teams.map(t => t.slug ? (
+                  <Button key={t.id} asChild size="sm" variant="outline">
+                    <a href={`/daily/${t.slug}`} target="_blank" rel="noreferrer">
+                      <ExternalLink />
                       {t.name}
-                    </Button>
-                  </a>
+                    </a>
+                  </Button>
+                ) : (
+                  // Mesmo tratamento de `AdminDailyTeams`: sem link, sem clique.
+                  <Button key={t.id} size="sm" variant="outline" disabled title="Sem link público — peça à administração">
+                    <ExternalLink />
+                    {t.name}
+                    <span className="sr-only">— sem link público, peça à administração</span>
+                  </Button>
                 ))}
               </CardContent>
             </Card>
@@ -371,13 +539,31 @@ export default function PublicDirectorCheckpoint() {
               targetsFor={targetsFor}
             />
 
+            {missingDays.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setMissingOpen(true)}
+                className="w-full rounded-md border border-destructive/40 bg-destructive/5 p-2 flex items-start gap-2 text-left hover:bg-destructive/10 transition"
+              >
+                <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                <div className="text-xs flex-1">
+                  <p className="font-bold text-destructive">
+                    Checkpoints não efetuados na semana ({missingDays.length} {missingDays.length === 1 ? "dia" : "dias"}) — clique para ver quem não preencheu
+                  </p>
+                  <p className="text-muted-foreground mt-0.5">
+                    {missingDays.map(d => format(parseISO(d.date), "dd/MM", { locale: ptBR })).join(" • ")}
+                  </p>
+                </div>
+              </button>
+            )}
+
             {/* Funil acumulado do mês — mesmo card do Daily */}
             {month && (
               <CompactFunnel
-                title={`Funil acumulado — mês de ${format(new Date(), "MMMM", { locale: ptBR })}`}
-                subtitle={`metas 100 / 10 / 40 / 50 — soma de todas as equipes`}
+                title={`Funil acumulado — mês de ${format(month.start, "MMMM", { locale: ptBR })}`}
+                subtitle={`metas 100 / ${num(targets.analise_enviada_pct)} / ${num(targets.aprovada_pct)} / ${num(targets.venda_pct)} — ${SCOPE_LABEL[targets.scope] ?? "meta cadastrada"}, soma de todas as equipes`}
                 steps={monthFunnelSteps}
-                accent="hsl(280 90% 65%)"
+                accent={tone("chart-5")}
               />
             )}
 
@@ -390,9 +576,9 @@ export default function PublicDirectorCheckpoint() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-xs space-y-1">
-                  <p>Leads → Análises: <span className={funnelSummary.pAn >= 10 ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pAn.toFixed(1)}%</span> (meta 10%)</p>
-                  <p>Análises → Aprovações: <span className={funnelSummary.pAp >= 40 ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pAp.toFixed(1)}%</span> (meta 40%)</p>
-                  <p>Aprovações → Vendas: <span className={funnelSummary.pVd >= 50 ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pVd.toFixed(1)}%</span> (meta 50%)</p>
+                  <p>Leads → Análises: <span className={funnelSummary.pAn >= targets.analise_enviada_pct ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pAn.toFixed(1)}%</span> (meta {targets.analise_enviada_pct}%)</p>
+                  <p>Análises → Aprovações: <span className={funnelSummary.pAp >= targets.aprovada_pct ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pAp.toFixed(1)}%</span> (meta {targets.aprovada_pct}%)</p>
+                  <p>Aprovações → Vendas: <span className={funnelSummary.pVd >= targets.venda_pct ? "text-success font-bold" : "text-destructive font-bold"}>{funnelSummary.pVd.toFixed(1)}%</span> (meta {targets.venda_pct}%)</p>
                   {funnelSummary.issues.length === 0 ? (
                     <p className="text-success mt-2">Funil dentro das metas em todas as etapas.</p>
                   ) : (
@@ -408,36 +594,26 @@ export default function PublicDirectorCheckpoint() {
               <Card className="border-info/30 bg-card/60 backdrop-blur-xl">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-info" /> Resumo do mês ({format(new Date(), "MMMM", { locale: ptBR })}) — Diretoria
+                    <TrendingUp className="h-4 w-4 text-info" /> Resumo do mês ({format(month.start, "MMMM", { locale: ptBR })}) — Diretoria
                   </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Somatório de todas as equipes do diretor</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Somatório de todas as equipes do diretor, de {format(month.start, "dd/MM")} a {format(month.end, "dd/MM")}
+                    {/* O mês é histórico: desativar uma equipe não pode apagar
+                        retroativamente o que ela produziu (0062). */}
+                    {month.inactiveTeams > 0 && (
+                      <> · inclui {month.inactiveTeams} equipe{month.inactiveTeams === 1 ? "" : "s"} já desativada{month.inactiveTeams === 1 ? "" : "s"}</>
+                    )}
+                  </p>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent>
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2 justify-items-center max-w-3xl mx-auto">
                     {MONTH_FIELDS.map(f => (
                       <div key={f.key} className="px-2 py-1.5 rounded-md border border-border/40 bg-secondary/20 text-center">
                         <p className="text-eyebrow">{f.label}</p>
-                        <p className={`text-lg font-black ${f.color}`}>{month.totals?.[f.key] ?? 0}</p>
+                        <p className={`text-lg font-black ${f.color}`}>{num(month.totals[f.key])}</p>
                       </div>
                     ))}
                   </div>
-                  {month.missing_days?.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setMissingOpen(true)}
-                      className="w-full rounded-md border border-destructive/40 bg-destructive/5 p-2 flex items-start gap-2 text-left hover:bg-destructive/10 transition"
-                    >
-                      <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                      <div className="text-xs flex-1">
-                        <p className="font-bold text-destructive">
-                          Checkpoints não efetuados ({month.missing_days.length} {month.missing_days.length === 1 ? "dia" : "dias"}) — clique para ver quem não preencheu
-                        </p>
-                        <p className="text-muted-foreground mt-0.5">
-                          {month.missing_days.map(d => format(parseISO(d.date), "dd/MM", { locale: ptBR })).join(" • ")}
-                        </p>
-                      </div>
-                    </button>
-                  )}
                 </CardContent>
               </Card>
             )}
@@ -448,11 +624,11 @@ export default function PublicDirectorCheckpoint() {
           <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="h-4 w-4" /> Pendências do mês
+                <AlertTriangle className="h-4 w-4" /> Pendências da semana
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              {month?.missing_days?.map(md => (
+              {missingDays.map(md => (
                 <div key={md.date} className="rounded-md border border-border/50 p-3">
                   <p className="text-sm font-bold mb-1.5">{format(parseISO(md.date), "dd/MM (EEEE)", { locale: ptBR })}</p>
                   <ul className="text-xs space-y-1">
@@ -468,7 +644,7 @@ export default function PublicDirectorCheckpoint() {
                   </ul>
                 </div>
               ))}
-              {(!month?.missing_days || month.missing_days.length === 0) && (
+              {missingDays.length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-4">Sem pendências.</p>
               )}
             </div>

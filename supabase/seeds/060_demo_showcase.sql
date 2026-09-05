@@ -470,8 +470,9 @@ on conflict do nothing;
 -- o passo "fechar uma venda" do roteiro.
 --
 -- ⚠️ São registros sem arquivo no Storage: o download não funciona. Os negócios
--- em "Incompleto" e "Lead" ficam de fora de propósito, para o cliente ver a
--- recusa acontecer quando tentar pular a conferência.
+-- em "Incompleto" ficam de fora de propósito, para o cliente ver a recusa
+-- acontecer quando tentar pular a conferência. Os dois em "Lead" ganham os
+-- documentos no BLOCO 5b, que os põe na conferência do gerente.
 -- =============================================================================
 
 insert into public.deal_documents (id, deal_id, document_type_id, storage_path,
@@ -497,11 +498,118 @@ cross join (
 on conflict do nothing;
 
 -- =============================================================================
+-- BLOCO 5b — Conferência documental em andamento
+--
+-- Na tela (Pipeline, aba Anexos do modal): um negócio "Aguardando gerente",
+-- com o botão "Aprovar e enviar ao CCA" para o cliente clicar ao vivo, e um
+-- "Devolvido" com o motivo escrito, para mostrar o outro lado. Sem eles o
+-- contador de pendências mostra zero e o passo que o cliente pediu parece não
+-- existir.
+--
+-- O estado é alcançado pelas próprias RPCs do fluxo (0028), com `auth.uid()`
+-- simulado por `request.jwt.claims` — o mesmo truque do 069. Assim histórico
+-- e notificações nascem iguais aos do uso real, e o cenário só existe se o
+-- fluxo funcionar. As RPCs exigem documento obrigatório (entram abaixo) e
+-- gerente vinculado (veio do `deal_participants_autofill`).
+--
+-- O guard `deals_guard_document_review` deixa passar porque a semente roda
+-- como postgres (`supabase db query` no remoto, psql no contêiner no local) e
+-- as RPCs são security definer de qualquer forma. A trava do rótulo de
+-- esteira (0037) tem a mesma exceção.
+--
+-- Idempotente: cada negócio só é enviado se ainda estiver em `draft`; repetir
+-- a semente não reenvia, não devolve de novo e não duplica notificação.
+-- =============================================================================
+
+insert into public.deal_documents (id, deal_id, document_type_id, storage_path,
+                                   original_name, stored_name, mime_type, size_bytes,
+                                   uploaded_by, created_at)
+select
+  ('88000000-0000-0000-0000-' || lpad((v.i * 10 + t.ord)::text, 12, '0'))::uuid,
+  dl.id,
+  t.id,
+  'demo-showcase/' || lpad(v.i::text, 2, '0') || '/' || t.code || '.pdf',
+  t.label || '.pdf',
+  t.code || '-demo-' || lpad(v.i::text, 2, '0') || '.pdf',
+  'application/pdf',
+  180000 + v.i * 1000,
+  dl.created_by,   -- a própria corretora anexou, como no fluxo real
+  now() - interval '2 days'
+from (values (3), (4)) as v(i)
+join public.deals dl on dl.id = ('85000000-0000-0000-0000-' || lpad(v.i::text, 12, '0'))::uuid
+cross join (
+  select id, code, label, sort_order as ord
+  from public.document_types
+  where code in ('rg_cpf', 'comprovante_renda', 'comprovante_resid')
+) t
+on conflict do nothing;
+
+do $$
+declare
+  v_pendente  uuid := '85000000-0000-0000-0000-000000000003';  -- Helena · Torre B - 902
+  v_devolvido uuid := '85000000-0000-0000-0000-000000000004';  -- Tatiane · Bloco 1 - 33
+  v_demo      uuid;
+  v_corretor  uuid;
+  v_gerente   uuid;
+begin
+  -- O usuário da demonstração entra como Corretor 2 do negócio pendente: é o
+  -- que faz a notificação "Documentos aprovados" cair no sino da PRÓPRIA conta
+  -- do cliente quando ele aprovar ao vivo — as contas figurantes não fazem
+  -- login. Só se ele tiver o papel — todo usuário do Auth nasce corretor
+  -- (`handle_new_auth_user`), e o BLOCO 13 reafirma. Este bloco roda ANTES do
+  -- 13, então o autofill não encontra a equipe dele e nenhum gerente extra
+  -- entra no rateio: quem aprova como gerente é o da equipe da Corretora 1.
+  select p.id into v_demo from public.profiles p
+  where exists (select 1 from public.user_roles r where r.profile_id = p.id and r.role = 'admin')
+  order by
+    (p.id::text not like '10000000-%' and p.email <> 'dev.alisson.rosa@gmail.com') desc,
+    (p.email = 'dev.alisson.rosa@gmail.com') desc,
+    p.created_at desc
+  limit 1;
+
+  if exists (select 1 from public.user_roles where profile_id = v_demo and role = 'broker') then
+    insert into public.deal_participants (id, deal_id, profile_id, role, ordinal)
+    values ('87000000-0000-0000-0000-000000000103', v_pendente, v_demo, 'broker', 2)
+    on conflict do nothing;
+  end if;
+
+  -- Pendente: a corretora envia o dossiê e o gerente ainda não decidiu.
+  if (select document_review_status from public.deals where id = v_pendente) = 'draft' then
+    select created_by into v_corretor from public.deals where id = v_pendente;
+    perform set_config('request.jwt.claims',
+      json_build_object('sub', v_corretor::text, 'role', 'authenticated')::text, true);
+    perform public.submit_deal_for_manager_review(v_pendente);
+  end if;
+
+  -- Devolvido: enviado e devolvido pelo gerente, com o motivo que o corretor lê.
+  if (select document_review_status from public.deals where id = v_devolvido) = 'draft' then
+    select created_by into v_corretor from public.deals where id = v_devolvido;
+    select profile_id into v_gerente from public.deal_participants
+     where deal_id = v_devolvido and role = 'manager'
+     order by auto_added, ordinal nulls last limit 1;
+
+    perform set_config('request.jwt.claims',
+      json_build_object('sub', v_corretor::text, 'role', 'authenticated')::text, true);
+    perform public.submit_deal_for_manager_review(v_devolvido);
+
+    perform set_config('request.jwt.claims',
+      json_build_object('sub', v_gerente::text, 'role', 'authenticated')::text, true);
+    perform public.review_deal_documents(v_devolvido, false,
+      'Comprovante de renda ilegível — reenviar a página 2.');
+  end if;
+
+  -- Não deixa a identidade simulada vazar para o resto do arquivo.
+  perform set_config('request.jwt.claims', '', true);
+end $$;
+
+-- =============================================================================
 -- BLOCO 6 — Esteira de crédito (CCA)
 --
 -- Na tela (/cca): a esteira abre com casos em análise e aprovados em vez da
 -- lista vazia. `cca_award_points` é `after update`, então INSERT direto não
--- pontua — os pontos entram no BLOCO 7, controlados.
+-- pontua — os pontos entram no BLOCO 7, controlados. O rótulo
+-- "13. ESTEIRA AGIL" dos casos em análise, sim, nasce daqui: o trigger da
+-- 0037 escreve em `deals.status_detail` no INSERT com `under_review`.
 -- =============================================================================
 
 insert into public.cca_cases (id, deal_id, status, analyst_id, submitted_at, decided_at, decision_notes)
@@ -579,16 +687,36 @@ end $$;
 -- `game_seasons_one_open`, e com `on conflict do nothing` o erro passaria
 -- despercebido, deixando tudo o que vem abaixo apontando para uma temporada
 -- inexistente.
+-- O id fixo só serve enquanto está livre. Rodando o seed num mês POSTERIOR ao
+-- da temporada aberta, o bloco acima encerra `89000000-…-0001` e esta inserção
+-- tentava recriá-la com a MESMA chave: o `on conflict do nothing` engolia a
+-- colisão e o arquivo seguia sem temporada aberta nenhuma, com
+-- `current_game_season()` nulo derrubando os eventos do jogo lá embaixo
+-- (medido em 02/09/2026, com a temporada de agosto ainda aberta). É o risco
+-- que o comentário acima já previa; a chave fixa é que o realizava.
+--
+-- Sem `on conflict do nothing`: se algum dia isto colidir de novo, tem que
+-- gritar. Silêncio aqui é o que custou a depuração.
 insert into public.game_seasons (id, label, period_start)
 select
-  '89000000-0000-0000-0000-000000000001',
-  (array['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-         'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'])
-    [extract(month from current_date)::int]
-    || ' ' || extract(year from current_date)::text,
+  case
+    when exists (select 1 from public.game_seasons where id = '89000000-0000-0000-0000-000000000001')
+      then gen_random_uuid()
+    else '89000000-0000-0000-0000-000000000001'::uuid
+  end,
+  public.season_label_ptbr(current_date),
   public.month_start(current_date)
-where not exists (select 1 from public.game_seasons where closed_at is null)
-on conflict do nothing;
+where not exists (select 1 from public.game_seasons where closed_at is null);
+
+-- Trava de sanidade: tudo abaixo depende de haver exatamente uma temporada
+-- aberta. Falhar aqui, com a causa escrita, é melhor que a violação de
+-- not-null em `game_events` a 150 linhas de distância.
+do $$
+begin
+  if public.current_game_season() is null then
+    raise exception 'Nenhuma temporada aberta após o BLOCO 7 — o restante do seed não tem onde pontuar.';
+  end if;
+end $$;
 
 -- -----------------------------------------------------------------------------
 -- Pontos que nascem do funil: venda e aprovação de crédito.
@@ -697,18 +825,33 @@ end $$;
 -- `goals` com scope 'global' e metric 'sales', e não existe UI para cadastrar.
 -- =============================================================================
 
+-- O id carrega o PERÍODO da meta, não um número fixo — mesma correção do
+-- diário e do aporte, e aqui o efeito era o mais visível: `period` já era
+-- `month_start(current_date)`, mas com id fixo a meta do mês anterior ocupava a
+-- chave e o `on conflict do nothing` engolia a colisão. Rodando o seed no mês
+-- seguinte, o mês corrente ficava SEM meta nenhuma e o cartão do Dashboard
+-- voltava a mostrar "—" — exatamente a pendência que este bloco existe para
+-- fechar (medido em 02/09/2026: 9 metas, todas em 2026-08-01).
+-- Formato `8b000000-0000-0000-AAAA-MM000000000N`, preservando o prefixo
+-- `8b000000-` de que o rollback 069 depende.
 insert into public.goals (id, scope, team_id, profile_id, period_type, period, metric, target, created_by)
-values
-  ('8b000000-0000-0000-0000-000000000001', 'global', null, null, 'month', public.month_start(current_date), 'sales',  14,      '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000002', 'global', null, null, 'month', public.month_start(current_date), 'vgv',    6500000, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000003', 'global', null, null, 'year',  date_trunc('year', current_date)::date, 'sales', 150, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000004', 'team', '20000000-0000-0000-0000-000000000001', null, 'month', public.month_start(current_date), 'sales', 6, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000005', 'team', '20000000-0000-0000-0000-000000000002', null, 'month', public.month_start(current_date), 'sales', 5, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000006', 'team', '82000000-0000-0000-0000-000000000001', null, 'month', public.month_start(current_date), 'sales', 3, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000007', 'profile', null, '10000000-0000-0000-0000-000000000005', 'month', public.month_start(current_date), 'sales', 3, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000008', 'profile', null, '10000000-0000-0000-0000-000000000008', 'month', public.month_start(current_date), 'sales', 3, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000009', 'profile', null, '80000000-0000-0000-0000-000000000001', 'month', public.month_start(current_date), 'sales', 2, '10000000-0000-0000-0000-000000000001'),
-  ('8b000000-0000-0000-0000-000000000010', 'profile', null, '80000000-0000-0000-0000-000000000004', 'month', public.month_start(current_date), 'visits', 14, '10000000-0000-0000-0000-000000000001')
+select
+  ('8b000000-0000-0000-' || to_char(v.periodo, 'YYYY') || '-' || to_char(v.periodo, 'MM')
+     || lpad(v.n::text, 10, '0'))::uuid,
+  v.scope, v.team_id, v.profile_id, v.period_type, v.periodo, v.metric, v.target,
+  '10000000-0000-0000-0000-000000000001'
+from (values
+  ( 1, 'global',  null::uuid, null::uuid, 'month', public.month_start(current_date), 'sales',    14),
+  ( 2, 'global',  null, null, 'month', public.month_start(current_date), 'vgv',   6500000),
+  ( 3, 'global',  null, null, 'year',  date_trunc('year', current_date)::date, 'sales', 150),
+  ( 4, 'team', '20000000-0000-0000-0000-000000000001'::uuid, null, 'month', public.month_start(current_date), 'sales', 6),
+  ( 5, 'team', '20000000-0000-0000-0000-000000000002'::uuid, null, 'month', public.month_start(current_date), 'sales', 5),
+  ( 6, 'team', '82000000-0000-0000-0000-000000000001'::uuid, null, 'month', public.month_start(current_date), 'sales', 3),
+  ( 7, 'profile', null, '10000000-0000-0000-0000-000000000005'::uuid, 'month', public.month_start(current_date), 'sales', 3),
+  ( 8, 'profile', null, '10000000-0000-0000-0000-000000000008'::uuid, 'month', public.month_start(current_date), 'sales', 3),
+  ( 9, 'profile', null, '80000000-0000-0000-0000-000000000001'::uuid, 'month', public.month_start(current_date), 'sales', 2),
+  (10, 'profile', null, '80000000-0000-0000-0000-000000000004'::uuid, 'month', public.month_start(current_date), 'visits', 14)
+) as v(n, scope, team_id, profile_id, period_type, periodo, metric, target)
 on conflict do nothing;
 
 -- =============================================================================
@@ -831,14 +974,23 @@ end $$;
 -- Na tela (/resultados): a linha do mês corrente aparece no consolidado.
 -- =============================================================================
 
+-- O id carrega o MÊS, como o do diário e pelo mesmo motivo: `period` já era
+-- `month_start(current_date)`, mas o id era fixo. Rodando o seed no mês
+-- seguinte, a linha do mês anterior ocupava a chave, o `on conflict do nothing`
+-- engolia a colisão e o aporte do mês corrente nunca nascia — a tela de
+-- Marketing abria com resumo zerado (medido em 02/09/2026: último aporte em
+-- 2026-08-01). Formato `8f000000-0000-0000-AAAA-MM000000000N`, preservando o
+-- prefixo `8f000000-` de que o rollback 069 depende.
 insert into public.marketing_investments (id, developer_id, period, amount, notes, created_by)
-values
-  ('8f000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001',
-   public.month_start(current_date), 21500, 'Aporte do mês — Horizonte Urbanismo.',
-   '10000000-0000-0000-0000-000000000001'),
-  ('8f000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000002',
-   public.month_start(current_date), 16400, 'Aporte do mês — Viva Lar Incorporadora.',
-   '10000000-0000-0000-0000-000000000001')
+select
+  ('8f000000-0000-0000-' || to_char(public.month_start(current_date), 'YYYY') || '-'
+     || to_char(public.month_start(current_date), 'MM') || lpad(v.n::text, 10, '0'))::uuid,
+  v.developer_id, public.month_start(current_date), v.amount, v.notes,
+  '10000000-0000-0000-0000-000000000001'
+from (values
+  (1, '30000000-0000-0000-0000-000000000001'::uuid, 21500, 'Aporte do mês — Horizonte Urbanismo.'),
+  (2, '30000000-0000-0000-0000-000000000002'::uuid, 16400, 'Aporte do mês — Viva Lar Incorporadora.')
+) as v(n, developer_id, amount, notes)
 on conflict do nothing;
 
 insert into public.ad_campaigns (id, external_id, platform, name, developer_id, status,
@@ -878,21 +1030,35 @@ on conflict do nothing;
 -- já existe — por isso as entradas resolvem o relatório por equipe+data, e não
 -- pelo UUID fixo. O rollback apaga as entradas pelo id próprio delas, o que
 -- limpa também as que caíram num relatório de outra fase.
+-- O id carrega a DATA, não um número fixo. Com id fixo, rodar o seed num dia
+-- diferente do anterior mudava `report_date` mas não a chave primária: o
+-- `on conflict (team_id, report_date)` não cobre `daily_reports_pkey` e o
+-- INSERT estourava (medido em 02/09/2026, com o relatório de 25/08 no banco).
+-- Formato `8f000000-0000-0000-AAAA-MMDD0000000N`: mantém o prefixo `8f000000-`
+-- de que o rollback 069 depende e dá um id próprio a cada dia.
 insert into public.daily_reports (id, team_id, report_date, submitted_by, notes)
-values
-  ('8f000000-0000-0000-0000-000000000031', '20000000-0000-0000-0000-000000000001',
-   current_date, '10000000-0000-0000-0000-000000000003', 'Fechamento do dia — Paulista.'),
-  ('8f000000-0000-0000-0000-000000000032', '20000000-0000-0000-0000-000000000002',
-   current_date, '10000000-0000-0000-0000-000000000004', 'Fechamento do dia — Sul.'),
-  ('8f000000-0000-0000-0000-000000000033', '82000000-0000-0000-0000-000000000001',
-   current_date - 1, '80000000-0000-0000-0000-000000000011', 'Fechamento de ontem — Centro.')
+select
+  ('8f000000-0000-0000-' || to_char(v.data, 'YYYY') || '-' || to_char(v.data, 'MMDD')
+     || lpad(v.n::text, 8, '0'))::uuid,
+  v.team_id, v.data, v.submitted_by, v.notes
+from (values
+  (31, '20000000-0000-0000-0000-000000000001'::uuid, current_date,
+       '10000000-0000-0000-0000-000000000003'::uuid, 'Fechamento do dia — Paulista.'),
+  (32, '20000000-0000-0000-0000-000000000002'::uuid, current_date,
+       '10000000-0000-0000-0000-000000000004'::uuid, 'Fechamento do dia — Sul.'),
+  (33, '82000000-0000-0000-0000-000000000001'::uuid, current_date - 1,
+       '80000000-0000-0000-0000-000000000011'::uuid, 'Fechamento de ontem — Centro.')
+) as v(n, team_id, data, submitted_by, notes)
 on conflict (team_id, report_date) do nothing;
 
 insert into public.daily_entries (id, report_id, profile_id, leads, calls, doc_collections,
                                   visits_scheduled, visits_done, analyses_sent,
                                   analyses_approved, sales)
+-- Mesma razão do relatório acima: o id da entrada carrega a data do relatório
+-- em que ela cai, senão a linha de ontem impede a de hoje de nascer.
 select
-  ('8f000000-0000-0000-0000-' || lpad((400 + v.n)::text, 12, '0'))::uuid,
+  ('8f000000-0000-0000-' || to_char(r.report_date, 'YYYY') || '-'
+     || to_char(r.report_date, 'MMDD') || lpad((400 + v.n)::text, 8, '0'))::uuid,
   r.id, v.profile_id,
   v.leads, v.calls, v.docs, v.vis_ag, v.vis_fe, v.env, v.apr, v.vendas
 from (values

@@ -3,6 +3,9 @@
 Reescrito em **26/08/2026, 19h30 (Brasília)**, depois das Tarefas G (Leads e
 Check-in), H (Pipeline e CCA) e K (envio do diário). Todos os números abaixo
 saíram de consulta ao banco de homologação nesse horário — nenhum é estimativa.
+**Atualizado em 01/09/2026** (Tarefa U): a conta do cliente e os PINs dos
+links públicos já existem, e o passo 5 ganhou a conferência documental — o
+passo que o cliente pediu — com dois negócios preparados na semente.
 
 - **URL:** https://faceimob.vercel.app — último build publicado em 26/08/2026,
   20h (deployment `faceimob-9vmd4uhxa`, bundle `assets/index-DWf46mx_.js`, hash
@@ -16,39 +19,38 @@ saíram de consulta ao banco de homologação nesse horário — nenhum é estim
 
 ## ⚠️ Três coisas antes de chamar o Douglas
 
-Nenhuma delas é código. Sem as duas primeiras a demonstração não acontece.
+Nenhuma delas é código. Duas já estão feitas (conferido no banco em
+01/09/2026); a do meio continua valendo a cada demonstração.
 
-### 1. A conta do cliente ainda não existe
+### 1. ✅ A conta do cliente existe
 
-Conferido no banco às 19h20 de 26/08: existem **23 perfis**, e a única conta com
-e-mail real é a sua. Não há usuário do Douglas. **Sem criá-lo, o passo 1 deste
-roteiro não tem como acontecer.**
+`controle@faceimob.com.br`, nome **Controle FACEIMOB**, com os papéis **admin,
+broker, director e manager** — papel é N:N no banco, e é isso que deixa a mesma
+conta aprovar a conferência do passo 5, receber a notificação como corretora e
+bater o check-in do passo 3. A senha foi combinada fora do repositório; **não
+está em arquivo nenhum**, e este roteiro não a escreve.
 
-A ordem importa — notificações, tarefas e presença são gravadas para a conta que
-existir **no momento em que o cenário roda**:
+Se precisar recriar o cenário, a conta já existe e a ordem é só esta —
+notificações, tarefas e presença são gravadas para a conta que existir **no
+momento em que o cenário roda**:
 
 ```bash
 node scripts/demo.mjs showcase:limpar --remote
 ```
 
 ```bash
-npm run user:create -- -Email douglas@dominio-do-cliente.com.br -FullName "Douglas" -Role admin -Password
-```
-
-```bash
 node scripts/demo.mjs showcase --remote
 ```
 
-A senha é pedida na hora, oculta — não vai para o histórico do PowerShell. Se o
-usuário já existir e só faltar a senha:
+Se um dia faltar a senha (nunca o usuário):
 
 ```bash
-npm run user:create -- -Email douglas@dominio-do-cliente.com.br -SetPassword
+npm run user:create -- -Email controle@faceimob.com.br -SetPassword
 ```
 
-O `showcase` vincula esse mesmo usuário como **corretor da Equipe Paulista** e o
-coloca na fila geral, além de admin — papel é N:N no banco. É o que dá sentido
-ao passo 7 e o que permite o check-in do passo 3.
+O `showcase` vincula esse mesmo usuário como **corretor da Equipe Paulista**, o
+coloca na fila geral e o inscreve como **Corretor 2 do negócio pendente** do
+passo 5.
 
 ### 2. Rode o cenário **dentro da janela de um turno**, pouco antes da demo
 
@@ -71,15 +73,14 @@ nothing`. Uma vez criados, **rodar `showcase` de novo não os recria** — é pr
 disso o botão de check-in fica desabilitado e a fila aparece vazia — não é
 defeito, é a regra de turno.
 
-### 3. Dois links públicos de diretoria estão **sem PIN**
+### 3. ✅ Os quatro links públicos têm PIN
 
-Conferido às 19h20: `seed-diretoria-daniela` e `diretor-ricardo-sampaio` têm
-`pin_hash` nulo e estão ativos. Quem tiver o endereço lê a diretoria inteira —
-e o slug é derivado do nome, ou seja, adivinhável. O bloqueio por tentativas
-(migration 0034) **não protege link sem PIN**: não há segredo a adivinhar.
-
-Abra **Admin · Diário** e clique em *Gerar PIN* nos dois antes de divulgar a URL.
-Enquanto isso não for feito, evite mostrar a tela de links na frente de terceiros.
+Conferido em 01/09: **4 links ativos, 0 sem PIN** — os dois de diretoria
+(`seed-diretoria-daniela` e `diretor-ricardo-sampaio`) que estavam abertos em
+26/08 foram fechados. Os PINs foram combinados fora do repositório e **não
+estão escritos aqui**; quem for demonstrar o diário público (ver "Extras")
+precisa tê-los à mão. O bloqueio por tentativas (migration 0034) passa a
+proteger todos eles, porque agora há segredo a adivinhar.
 
 > Ainda pendente no painel do Supabase: **Authentication → Sign In / Providers →
 > "Allow new users to sign up"** precisa ser desligado. O `config.toml` só vale
@@ -210,11 +211,13 @@ O kanban abre **sem filtro de mês**, com as nove colunas do catálogo
 | Perdido | 2 |
 
 Total **31 negócios** (25 do cenário + 6 do seed base). A régua acima da lista
-mostra "ativos", "na listagem" e "aguardando gerente".
+mostra "ativos", "na listagem" e "aguardando gerente" — este último com **1**,
+que é o negócio da conferência logo abaixo.
 
 **Abra um cartão:** o modal traz cliente, comprador em conjunta, construtora,
 unidade, corretor, gerente e diretor. O rateio de VGV fecha sempre em 100% —
-**3 negócios têm dois corretores** e mostram 50/50.
+**4 negócios têm dois corretores** e mostram 50/50 (o quarto é Torre B - 902,
+em que a sua conta é Corretora 2).
 
 **Mova um negócio:** arraste um cartão de **Proposta** para **Visita Agendada**.
 Funciona pelo mouse **e pelo teclado**: com o cartão focado, `Shift + ←/→` move
@@ -230,6 +233,49 @@ dispara pelo evento que o banco registra em `game_events`, não pela tela.
 Camargo, Torre A - 104; ou Bianca Ferrão, Bloco 2 - 51) direto para **Em
 Análise**. O sistema recusa: a documentação precisa ser aprovada pelo gerente
 antes de entrar no CCA.
+
+**Confira a documentação — o passo que o cliente pediu:** clique no **1
+aguardando gerente** da régua (ou filtre por *Aguardando gerente*). É **Torre
+B - 902**, cliente Caio Rezende, corretora Helena Vasques, R$ 415.000,00, na
+coluna **Lead**: ela anexou RG/CPF, comprovante de renda e comprovante de
+residência e enviou o dossiê. Abra o cartão → aba **Anexos**.
+
+O que o gerente vê: o selo **"Aguardando gerente"**, "Obrigatórios completos"
+na lista de anexos, uma caixa de motivo e dois botões — **Devolver**, que só
+habilita com motivo escrito, e **Aprovar e enviar ao CCA**. A sua conta aprova
+por ser admin; Paula Marchesi, gerente da Centro (a equipe da Helena), aprovaria
+como gerente do rateio — é ela que o banco vinculou ao negócio.
+
+Clique em **Aprovar e enviar ao CCA**. Tudo na mesma transação: o selo vira
+**"Conferido"**, o cartão pula de Lead para **Em Análise** (Lead fica com 1, Em
+Análise com 5), nasce o caso no **Esteira CCA** (de 12 para 13) e o Status 2
+da linha passa a **"13. ESTEIRA AGIL"** — escrito pelo sistema; esse rótulo não
+está mais no Select.
+
+> **Sem pontos nem confete neste clique, e não é defeito da conferência:** o
+> gatilho que pontua "Envio Esteira Ágil" (`cca_award_points`, migration 0010)
+> só dispara em *atualização* do caso, e a aprovação *cria* o caso já em
+> análise. Está registrado como decisão pendente (pontuar também na criação
+> mexe no placar do cenário). Se perguntarem, a resposta é essa; a comemoração
+> da demo é o fechamento da venda, logo acima.
+
+O que o corretor recebe: a notificação **"Documentos aprovados: NEG-000103"**,
+com o texto *"A conferência foi aprovada e o negócio seguiu para análise."*
+A sua conta é Corretora 2 desse negócio de propósito: abra o **sino** e ela
+está lá, na sua própria conta — as contas figurantes não fazem login.
+
+O outro lado já está pronto em **Bloco 1 - 33** (Débora Sanches, corretora
+Tatiane Prado, também em Lead): o gerente devolveu com o motivo *"Comprovante
+de renda ilegível — reenviar a página 2."*. Abra a aba Anexos: o selo é
+**"Devolvido"**, o motivo aparece em vermelho e o botão **Enviar ao gerente**
+reenvia depois da correção. A corretora recebeu "Documentos devolvidos:
+NEG-000104" com esse mesmo texto.
+
+> **"13. ESTEIRA AGIL" e "RET. ESTEIRA AGIL" saíram do Select de Status 2 em
+> 01/09.** O banco grava o primeiro quando o caso entra no CCA e o segundo
+> quando o CCA devolve o caso para "Aguardando documentos"; escolher à mão é
+> recusado. Antes, qualquer pessoa marcava "esteira" em verde num negócio que
+> nunca foi conferido.
 
 **Perca um negócio:** o botão de perder abre uma confirmação com **motivo
 obrigatório** (DISTRATO, QUEDA, REPROVADO, OFF). Antes era um interruptor que
@@ -266,9 +312,10 @@ regras de pontuação sejam alteradas depois. É o "congelar o período" pedido 
 ata.
 
 > Detalhe de acabamento: a temporada de julho ficou gravada com o rótulo
-> **"July 2026"**, em inglês — nome herdado do fechamento automático. É só o
-> rótulo; o período e o placar estão certos. Se incomodar, dá para renomear pelo
-> banco antes da reunião.
+> **"July 2026"**, em inglês — nome herdado do fechamento automático. A
+> migration 0035 (01/09) traduz os rótulos já gravados e corrige a origem;
+> depois do `db push`, confira que o seletor mostra **"Julho 2026"**. Se ainda
+> aparecer em inglês, a migration não foi aplicada.
 
 ### 7. Ver como corretor
 
@@ -291,7 +338,7 @@ voltar, escolha "Administrador (você)".
 - **Sino do cabeçalho** — a conta do cenário tem notificações não lidas (venda
   registrada, lead novo, atividade vencida, crédito aprovado, meta em 50%).
   Clicar leva à tela do assunto e marca como lida.
-- **CCA Pipeline** — 12 casos: **7 aprovados**, 3 em análise, 1 aguardando
+- **Esteira CCA** — 12 casos: **7 aprovados**, 3 em análise, 1 aguardando
   documento, 1 enviado à construtora. O seletor **"Mover para…"** de cada cartão
   fica sempre visível (não depende de passar o mouse) — entrega da Tarefa H, e é
   o que faz a tela funcionar no toque.
@@ -302,9 +349,9 @@ voltar, escolha "Administrador (você)".
   (Fernanda Gerente / Daniela Diretora), Centro 4 (Paula Marchesi / Ricardo
   Sampaio). Duas diretorias.
 - **Checkpoint da diretoria** — https://faceimob.vercel.app/diretor/seed-diretoria-daniela
-  abre sem sessão e mostra a semana de 24 a 30/08: 32 leads, 9 análises,
-  5 aprovações, 2 vendas, quebrado por equipe. **É justamente o link sem PIN do
-  aviso lá em cima** — mostre e feche.
+  abre sem sessão, pede o PIN da diretoria (item 3 do topo) e mostra a semana
+  de 24 a 30/08: 32 leads, 9 análises, 5 aprovações, 2 vendas, quebrado por
+  equipe.
 - **Diário público** — `/daily/<slug>` pede o PIN da equipe. PIN certo abre a
   escala e grava o checkpoint ("🎯 Checkpoint concluído! +XP"); PIN errado ou
   link bloqueado responde **"Envio recusado"**. *(Os dois caminhos foram
@@ -317,7 +364,15 @@ voltar, escolha "Administrador (você)".
 
 Dito antes para não virar surpresa na frente do cliente.
 
-- **A conta do cliente não existe** enquanto o item 1 do topo não for feito.
+- **As migrations de 01/09 (entre elas a 0035, rótulo da temporada, e a 0037,
+  rótulo de esteira) e o cenário da conferência** precisam estar aplicados na
+  homologação antes da demo: `supabase db push` e depois
+  `node scripts/demo.mjs showcase --remote`. Sem a 0037, aprovar a conferência
+  não escreve "13. ESTEIRA AGIL"; sem o cenário, a régua mostra "0 aguardando
+  gerente".
+- **Aprovar a conferência não pontua "Envio Esteira Ágil"** (ver o passo 5):
+  o gatilho de pontos só reage a atualização do caso no CCA, não à criação.
+  Decisão pendente — não prometa os pontos nesse clique.
 - **Aviso "Nova versão disponível!"** aparece em telas que estão atualizadas.
   É um falso positivo do detector de deploy — ele compara os arquivos carregados
   na aba (que incluem os pedaços carregados sob demanda) com os listados no
@@ -356,8 +411,9 @@ Dito antes para não virar surpresa na frente do cliente.
 | Meses fechados | 05/2026 e 06/2026 |
 | Meta global de vendas em 08/2026 | 14 |
 | Metas cadastradas | 16 |
-| Documentos anexados | 68 |
+| Documentos anexados | 68 (+6 da conferência, depois do `showcase`) |
 | Casos no CCA | 12 |
+| Negócios aguardando gerente · devolvidos | 1 · 1 (depois do `showcase`) |
 | Temporada aberta | Agosto 2026 (desde 01/08) |
 | Colocados no ranking da temporada | 13 |
 | Aporte de marketing em 08/2026 | R$ 37.900,00 |

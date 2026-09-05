@@ -66,8 +66,15 @@ test("lado diretor: o menu traz o que corretor puro não tem", async ({ page }) 
   await page.goto("/pipeline");
   await aguardarCarregamento(page);
 
+  // `exact: true`: sem ele o nome casa por SUBSTRING, e quem tem `menu.cca`
+  // enxerga DOIS itens contendo "Pipeline" — "Pipeline" (/pipeline) e
+  // "CCA Pipeline" (/cca). Sao dois itens legitimos e distintos, nao um menu
+  // duplicado: o corretor, que nao tem `menu.cca`, passa neste mesmo assert.
+  // O que o teste afirma e "existe o item Pipeline", nao "algum item cita
+  // Pipeline". Os `toHaveCount(0)` abaixo ficam por substring de proposito:
+  // para negar, o casamento mais largo e o mais rigoroso.
   for (const item of ["Pipeline", "Checkpoint", "Resultados", "Marketing"]) {
-    await expect(page.getByRole("link", { name: item })).toBeVisible();
+    await expect(page.getByRole("link", { name: item, exact: true })).toBeVisible();
   }
   await expect(page.getByRole("link", { name: "Permissões" })).toHaveCount(0);
 });

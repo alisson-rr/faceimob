@@ -1,8 +1,11 @@
 import type { LeadSource, WhatsappTemplate } from "@/integrations/supabase/leads";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
+import { CloseLeadDialog } from "./CloseLeadDialog";
 import { ConvertLeadDialog } from "./ConvertLeadDialog";
+import { DeleteLeadDialog } from "./DeleteLeadDialog";
 import { LeadFormDialog } from "./LeadFormDialog";
 import { LeadImportDialog } from "./LeadImportDialog";
+import { NextActionDialog } from "./NextActionDialog";
 import { EmailDialog, WhatsAppDialog } from "./OutreachDialogs";
 import { ReassignLeadDialog } from "./ReassignLeadDialog";
 import type { LeadDialogState } from "./model";
@@ -15,13 +18,15 @@ import type { LeadDialogState } from "./model";
  * precisa de efeito para se ressincronizar quando o alvo muda.
  */
 export function LeadDialogs({
-  state, onClose, sources, brokers, templates,
+  state, onClose, sources, brokers, templates, actorName,
 }: {
   state: LeadDialogState;
   onClose: (patch: Partial<LeadDialogState>) => void;
   sources: LeadSource[];
   brokers: PersonRecord[];
   templates: WhatsappTemplate[];
+  /** Quem está logado — vira o corretor do negócio ao converter lead sem dono. */
+  actorName?: string;
 }) {
   return (
     <>
@@ -43,7 +48,23 @@ export function LeadDialogs({
       )}
 
       {state.convert && (
-        <ConvertLeadDialog lead={state.convert} onClose={() => onClose({ convert: null })} />
+        <ConvertLeadDialog
+          lead={state.convert}
+          actorName={actorName}
+          onClose={() => onClose({ convert: null })}
+        />
+      )}
+
+      {state.nextAction && (
+        <NextActionDialog lead={state.nextAction} onClose={() => onClose({ nextAction: null })} />
+      )}
+
+      {state.close && (
+        <CloseLeadDialog lead={state.close} onClose={() => onClose({ close: null })} />
+      )}
+
+      {state.remove && (
+        <DeleteLeadDialog lead={state.remove} onClose={() => onClose({ remove: null })} />
       )}
 
       {state.whatsapp && (

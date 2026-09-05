@@ -124,8 +124,11 @@ where not exists (select 1 from public.funnel_targets where scope = 'global');
 -- Os valores espelham a configuração que o time já usa hoje; são editáveis na
 -- tela de gamificação sem migration.
 -- -----------------------------------------------------------------------------
+-- `season_label_ptbr` (0035) e não `to_char(..., 'TMMonth')`: o lc_time do
+-- projeto é en_US e o container não tem pt_BR — era daqui e do fechamento
+-- automático que saía "August 2026" numa tela em pt-BR.
 insert into public.game_seasons (label, period_start)
-select to_char(current_date, 'TMMonth YYYY'), public.month_start(current_date)
+select public.season_label_ptbr(current_date), public.month_start(current_date)
 where not exists (select 1 from public.game_seasons where closed_at is null);
 
 insert into public.game_scoring_rules (season_id, event_code, label, points)

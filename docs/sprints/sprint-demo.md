@@ -33,9 +33,11 @@ contexto limpo e lista de arquivos-dono; validação mínima: `npm run typecheck
 | N | Piso tipográfico (X07) e cabeçalho a 375 px | `D6-N-tipografia-cabecalho.md` | ✅ entregue 27/08 — ver `handoff-N.md`. Piso decidido: **12 px com uma exceção escrita** (11 px só em rótulo curto CAIXA ALTA com `tracking >= 0.1em` = `.text-eyebrow`); **142 literais saíram de 24 arquivos**; `Badge` ganhou `size="sm"` no lugar de 11 remendos; `src/lib/type-scale.test.ts` cobra a regra e **foi provado que reprova**. Cabeçalho a 375 px: causa raiz era `shrink-0` anulando o `truncate` no título do `AppLayout`, não o `w-[150px]` — **sino cortado 8/16 → 0/16, avatar 16/16 → 0/16**; o aviso de pré-visualização encurtou em vez de sumir. 18 capturas `smoke-n-*` · ⚠️ **§7: apagou e restaurou o `src/index.css`** por `git checkout --` (reconciliado com 4 fontes, `theme-contrast.test.ts` verde) |
 | O | Dependências: `react-router` com 4 avisos *high*, resto do `npm audit`, rótulo da temporada | `D6-O-dependencias.md` | ✅ entregue 27/08 — ver `handoff-O.md`. `npm audit --omit=dev` de **10 achados (9 high) → 2 moderate**; `react-router-dom` 6.30.1→6.30.6 sem uma linha de `src/` (conferiu a correção **no código** do `@remix-run/router`, não no rótulo do audit); as 2 que sobram não alcançam este app. **Achado que muda a leitura: 6 dos 7 restantes eram build disfarçado de produção** — entram por `tailwindcss-animate` estar em `dependencies` e puxar o Tailwind pelo peer; o único real era `lodash` (via `recharts`), fechado. Rótulo `July 2026` → `Julho 2026` na homologação; a origem é `to_char(..., 'TMMonth')` numa migration (sem dono). **Publicou** `index-oQLdfviq.js`, hash conferido no ar |
 | P | Rede de segurança E2E: perder negócio, teclado, faxina do `e2e:remote` | `D6-P-rede-e2e.md` | ✅ entregue 27/08 — ver `handoff-P.md`. **136 → 147 testes, 142 passam**; as 5 falhas são todas a Gamificação fora do kit (Tarefa Q), e as 2 flaky da J passaram. **Corrigiu a premissa do meu enunciado com medição**: `trava-atendimento` não perdia o lead por causa do cron — perdia a *página*, porque o modal do `NewLeadNotifier` deixa 14 nós `aria-hidden`. `deprovisionE2EUsers()` entregue e provado (14/2/14 antes e depois); **descobriu que o teardown do Playwright NÃO roda no Ctrl+C** e fechou o buraco onde dói: `fechamento-mes` não roda no alvo remoto. Arrastar com mouse ficou coberto (15/15 com `--repeat-each=3`) · 4 defeitos de produto achados e **nenhum corrigido**, como pedido |
-| Q | 🔴 Restaurar a tela de Gamificação (perdida por `git checkout --`) e republicar | `D7-Q-restaurar-gamificacao.md` | ⏳ pronta — **primeira da fila**, roda em paralelo com R e S |
-| R | Perda de negócio: "19. REPROVADO" escapa da confirmação e o motivo vem pré-escolhido | `D7-R-perda-negocio.md` | ⏳ pronta — roda em paralelo com Q e S |
-| S | Terminar a varredura: restos do `NotificationBell`, transbordo de 137 px no Checkpoint | `D7-S-restos-varredura.md` | ⏳ pronta — roda em paralelo com Q e R |
+| Q | 🔴 Restaurar a tela de Gamificação (perdida por `git checkout --`) e republicar | `D7-Q-restaurar-gamificacao.md` | ✅ entregue 27/08 — ver `handoff-Q.md`. A tela voltou: o arquivo da B **compilou sem um único ajuste** contra a árvore de hoje. **E achou o que eu tinha pedido:** a Tarefa L (26/08) também tinha editado este arquivo e perdeu junto — recuperou as 4 substituições de `describeError` do transcript da L e aplicou. Os 5 testes da P ficaram verdes; suíte completa **147/147**. Varreu o repo por 5 ângulos com controle negativo e provou que **só este arquivo** se perdeu. Publicou `index-B7h7QudJ.js` |
+| R | Perda de negócio: "19. REPROVADO" escapa da confirmação e o motivo vem pré-escolhido | `D7-R-perda-negocio.md` | ✅ entregue 27/08 — ver `handoff-R.md`. **Refutou a opção que eu recomendava**, chamador por chamador: pôr `REPROVADO` em `Status1` não consertaria nada (o `if` lista constantes soltas) e só armaria o `isPerda`, que é código morto — "mudança de número que a diretoria vê sem aviso, só que diferida". Criou `LOSS_REASONS` + `isLossStatus` em `dealStatus.ts`, uma lista onde havia quatro. Achou um **segundo buraco no mesmo rótulo** (o preset do diálogo trocava o motivo escolhido pelo mais forte). Corrigiu também dois números meus: o catálogo tem 32 rótulos, não 19, e 3 viram `Status1`, não 5. +7 unitários, +1 E2E |
+| S | Terminar a varredura: restos do `NotificationBell`, transbordo de 137 px no Checkpoint | `D7-S-restos-varredura.md` | ✅ entregue 27/08 — ver `handoff-S.md`. `PENDENTE_DE_OUTRA_TAREFA` **vazia**, `grep` de literal volta vazio; `resolveLink` mudou para `src/lib/notificationLink.ts`; Checkpoint de **137 px → 0** nos dois temas — e corrigiu a N: era **uma** causa, o `BrandMotif` era falso positivo (estava clipado); `bg-black/40` → `bg-muted` com o par **entrando** no teste de contraste · 🔴 **achou o popover do sino invisível** (cortado pelo `overflow-hidden` do `<header>`), diagnosticou, mediu a correção em 18 combinações e **não consertou** porque o arquivo não era dela (Tarefa T) |
+| T | O popover do sino não aparece; o pódio escreve número sem formatar | `D8-T-sino-e-podio.md` | 🟡 **item 1 (sino) feito pelo copiloto em 27/08 e publicado** (`index-D14OuzYD.js`) — sobra só o item 2, o `num()` do pódio |
+| U | Esteira Ágil: o rótulo permite pular a conferência; a demo não mostra o passo; `August 2026` | `D8-U-esteira-agil.md` | ⏳ pronta — roda em paralelo com T |
 
 ## Tarefas do usuário (só você tem credencial)
 
@@ -44,8 +46,8 @@ contexto limpo e lista de arquivos-dono; validação mínima: `npm run typecheck
 - [x] ~~Decidir a Tarefa E~~ — aprovada em 25/08: mês-base segue o ciclo aberto
 - [x] ~~**Publicar o build pendente**~~ — resolvido: as Tarefas G/H/K publicaram; o hash servido pela Vercel bate com o do `dist/` local (conferido 26/08)
 - [ ] 🔴 **Desligar o auto-cadastro no painel do remoto** (Authentication → Sign In / Providers → "Allow new users to sign up"). O `config.toml` só vale para o stack local — é o item mais urgente com a URL pública (handoff-I §5)
-- [ ] 🔴 **Gerar PIN nos 2 links de diretor sem PIN** (`seed-diretoria-daniela`, `diretor-ricardo-sampaio`) em Admin · Diário — **reconferido em 26/08 às 19h20: `pin_hash` continua nulo nos dois**, e a Tarefa J abriu `https://faceimob.vercel.app/diretor/seed-diretoria-daniela` sem sessão e sem PIN, lendo a diretoria inteira. A `0034` **não protege link sem PIN** (não há segredo a adivinhar nem contador a incrementar)
-- [ ] 🔴 **Criar o usuário do cliente e testar o login real** (senha e código). A ordem importa: `showcase:limpar` → `user:create -Password` → `showcase` (handoff-C §4, e o topo de `docs/demo/roteiro-cliente.md`). **Conferido em 26/08 às 19h20: a conta não existe** — dos 23 perfis, o único com e-mail real é o seu. Sem ela não há como percorrer o caminho da demonstração logado
+- [x] ~~🔴 **Gerar PIN nos 2 links de diretor sem PIN**~~ — **feito pelo copiloto em 27/08.** Os **4** links agora têm PIN (`links_sem_pin = 0`, reconferido 01/09): `seed-daily-paulista` 112233 · `seed-daily-sul` 445566 · `seed-diretoria-daniela` 246810 · `diretor-ricardo-sampaio` 135790. Os três principais foram provados por HTTP (200 com dado real)
+- [x] ~~🔴 **Criar o usuário do cliente e testar o login real**~~ — **feito pelo copiloto em 27/08.** `controle@faceimob.com.br` existe com os 4 papéis (`admin, broker, director, manager`) e o login por senha foi exercitado de verdade (a medição do sino entrou logada com ela)
 - [ ] 🔴 **Rodar o cenário dentro da janela de um turno, pouco antes da demo.** Às 19h20 havia **0 presenças abertas** — o Check-in abre com a fila vazia. E `showcase` sozinho **não recria** a presença: os check-ins têm UUID fixo com `on conflict do nothing`, então precisa de `showcase:limpar` antes (handoff-J §3.5)
 - [ ] Pedir `logo-faceimob-dark.png` à marca (hoje o logo claro é a arte branca sobre placa azul)
 - [ ] Ouvir os 6 sons uma vez (nenhuma máquina do harness tem áudio; handoff-B §9.1) e apertar "Fechar Gameficação" numa temporada de teste na homologação antes da demo (handoff-B §9.3)
@@ -179,6 +181,299 @@ os 4 literais do `NotificationBell` e a linha `PENDENTE_DE_OUTRA_TAREFA` do `typ
 · `bg-black/40` em `MetaAdsSetup.tsx:117` — **todos na Tarefa S**. O `to_char(..., 'TMMonth')`
 do `close_game_season` e a correção histórica do diário (handoff-M §6) são **migration**, e
 migration segue sem dono nesta rodada.
+
+## Validação do copiloto — 27/08, depois de Q, R e S
+
+**As três entregaram.** `npm run typecheck` limpo, `npm run lint` 0 erros / 7 avisos
+pré-existentes, **199 testes em 15 arquivos** (190 → +7 da R, +2 líquidos da S), `npm run build`
+verde. **Tudo já está no ar:** reconstruí a árvore atual e o hash saiu `index-B7h7QudJ.js`,
+idêntico ao que a Vercel serve — ou seja, o build da Q levou R e S junto.
+
+**🟢 O repositório foi commitado** (`5943b45`, 27/08 14:08, já em `origin/nova`): 158 arquivos
+soltos viraram zero. A causa raiz dos dois acidentes de ontem está fechada — `git checkout --`
+voltou a significar "desfazer".
+
+**As três fizeram a coisa que mais importa: não acreditaram no enunciado.**
+
+- A **R** refutou a opção que eu recomendava, conferindo chamador por chamador, e mostrou que ela
+  não consertava o defeito e ainda armava uma bomba no `isPerda`. Corrigiu dois números meus de
+  passagem.
+- A **S** corrigiu a N: o transbordo do Checkpoint tinha **uma** causa, não duas — o `BrandMotif`
+  aparecia na medição por estar clipado, e consertar só a causa 1 dá **0**, não 123.
+- A **Q** respondeu a pergunta que eu tinha posto como "pode ser o item mais valioso do handoff":
+  **sim, havia mais trabalho apagado.** A Tarefa L também tinha editado o `Gamification.tsx` em
+  26/08 (`describeError`), e o `git checkout --` levou as duas camadas. Recuperou as 4 substituições
+  do transcript da L e aplicou.
+
+### O método que a Q deixou, e que vale guardar
+
+Procurar trabalho apagado varrendo transcript por `tool_use` com `file_path` **é cego**: não alcança
+subagente (fica em `<sessao>/subagents/workflows/wf_*/`) e não vê edição aplicada por `Bash`, que
+não tem `file_path`. A Q quase concluiu "a L super-declarou" com evidence que parecia forte — e
+salvou-se rodando um **controle**: aplicou a mesma busca a um arquivo que sabidamente tinha a
+alteração, e deu zero também. **O ângulo que funciona é outro: cruzar o que cada handoff declara
+ter feito contra o que o arquivo tem hoje.** Foi assim que ela achou.
+
+### 🔴 O que sobrou desta rodada
+
+- **O popover do sino é invisível.** Está no ar. O painel existe, tem 363 px, e o
+  `overflow-hidden` do `<header>` (64 px) deixa **9 px visíveis**. Clicar no sino parece não fazer
+  nada. A S mediu a correção (`overflow: visible` no header) em 18 combinações: `transbordo=0`,
+  `erros=0`. E descartou o caminho óbvio: `position: fixed` **não** resolve, porque o
+  `backdrop-blur` da `.glass` faz do header um *containing block*. Vai na **Tarefa T**.
+- **O pódio escreve `2440` e a tabela `2.440`, na mesma tela.** É o primeiro elemento visual da
+  Gamificação. Vai na **Tarefa T**.
+- **`August 2026` no cabeçalho da Gamificação.** A O corrigiu o dado; a origem é o
+  `to_char(..., 'TMMonth')` do fechamento automático. Vai na **Tarefa U**.
+
+## Validação do copiloto — 01/09, estado de partida da próxima rodada
+
+Reconferido **no banco e no repositório**, não nos handoffs:
+
+| O que | Estado hoje |
+|---|---|
+| Conta do cliente | ✅ `controle@faceimob.com.br`, papéis `admin, broker, director, manager` |
+| Links públicos | ✅ **4 de 4 com PIN** (`pin_hash` não nulo) |
+| Sino (popover invisível) | ✅ corrigido e **no ar** (`index-D14OuzYD.js`, hash conferido) — item 1 da Tarefa T |
+| IPs de check-in | 5 ativos + **1 desativado** (a regra `0.0.0.0/0` que eu tinha aberto; desligada a pedido, um clique religa) |
+| Auto-cadastro no painel | 🔴 **continua ligado** — só você consegue desligar |
+| Temporada do game | `Agosto 2026` aberta (`period_end` nulo), que é o modelo correto |
+| Cofre de credenciais | 4 entradas, **todas internas** (`brevo.api_key`, `brevo.sender_email`, `supabase.functions_url`, `supabase.service_role_key`). **Nenhuma chave de terceiro do Douglas**: sem OpenAI e sem Meta, o SDR por IA e o WhatsApp não têm como rodar |
+| Conferência documental | **0 `pending`**, 7 `draft`, 25 `approved` — o passo continua invisível na demo (Tarefa U) |
+| Presenças abertas | **0** — o Check-in abre com a fila vazia até rodar o cenário dentro da janela do turno |
+| Fila de notificações | **151** represadas (eram 77 em 26/08) — não despausar o cron sem limpar |
+
+**Suíte:** 199 testes em 15 arquivos, `typecheck` limpo, `lint` 0 erros / 7 avisos
+pré-existentes, `build` verde. Árvore commitada em `5943b45`; o que está solto
+hoje é o conserto do sino, as 4 capturas e os dois prompts D8.
+
+## Rodadas 9 e 10 — 01/09, "o app todo funcional"
+
+**A linha de chegada mudou** (decisão registrada em `decisoes.md` 01/09): não é mais a demonstração,
+é o aplicativo funcional em todas as telas, funções, fluxos e perfis. Para saber o que falta de
+verdade, rodei uma **auditoria funcional das 24 telas** com 12 agentes em modo somente leitura e um
+cético adversarial em cima de cada achado (104 agentes, 25 min): **92 achados brutos → 86 confirmados,
+6 refutados.** O JSON completo, com evidência e conserto por achado, está no scratchpad desta sessão
+(`auditoria.json`); a lista por tela vai para os handoffs das frentes.
+
+| Grupo | Confirmados | quebrado | vazio | perfil |
+|---|---|---|---|---|
+| `admin_operacao` | 8 | 6 | 0 | 2 |
+| `admin_seguranca` | 4 | 2 | 0 | 2 |
+| `cca` | 5 | 3 | 1 | 1 |
+| `checkin` | 5 | 2 | 2 | 1 |
+| `dashboard` | 7 | 4 | 2 | 1 |
+| `diario` | 11 | 11 | 0 | 0 |
+| `game` | 4 | 2 | 0 | 2 |
+| `leads` | 6 | 5 | 1 | 0 |
+| `marketing` | 9 | 9 | 0 | 0 |
+| `pipeline` | 7 | 6 | 0 | 1 |
+| `sdr` | 12 | 9 | 1 | 2 |
+| `sistema` | 8 | 4 | 1 | 3 |
+
+**Refutados pelo cético (não são defeito):** Gerente 1 vazio para corretor no formulário do negócio;
+gerente arrastando para "Em análise"; Realocar para marketing; permissão do aporte por papel de maior
+precedência; `window.prompt` na Automação; colunas do formato Leadfy.
+
+### Como está sendo feito
+
+Eu implemento direto, por workflows, com **arquivos-dono disjuntos** entre agentes e revisão
+adversarial (duas lentes: correção+segurança, UX+kit+a11y) seguida de correção, por frente. Banco
+remoto, Storage, deploy de functions e Vercel ficam comigo — nenhum agente vê segredo.
+
+| Rodada | Frentes | Estado |
+|---|---|---|
+| **9** — escopo fechado | `atividades` (tela + `menu.atividades`, 0036) · `meta-global` (Equipes) · `esteira-agil` (0037: rótulo escrito pelo sistema; seed `pending`/`returned`; roteiro) · `meta-ads` (tela lê o cofre; sem token hardcoded) · `gamificacao` (pódio `num()`; 0035 rótulo pt-BR) · `documentos-storage` (script sobe 69 PDFs) | ⏳ rodando |
+| **10-A** — auditoria, telas livres | `diario` (11; 0038, 0039) · `sdr` (12; 0040) · `leads` (7; 0041, 0042) · `admin-operacao` (6; 0043) · `admin-seguranca` (4; 0044) · `checkin-checkpoint` (5) · `marketing-dados` (13; 0045) · `game-resultados` (4) · `broker-modal` (2; 0046) · `cca` (2; 0047) | ⏳ rodando |
+| **10-B** — auditoria, telas que a 9 está editando | `dashboard` (6) · `pipeline` (7, inclui `CcaMoveDialog`) · `equipes` (3) · `App.tsx` (login de CCA/SDR/Marketing cai em "Acesso não liberado") | ⏸ espera a 9 terminar |
+
+**Numeração de migrations já atribuída:** 0035 rótulo pt-BR · 0036 menu.atividades · 0037 guarda do
+rótulo Esteira Ágil · 0038–0039 diário · 0040 SDR · 0041–0042 leads · 0043 automação · 0044 permissões ·
+0045 menu marketing/dados · 0046 campos do perfil · 0047 storage CCA + envio sem construtora.
+
+**Depois das rodadas, comigo:** `db push` → regenerar `types.ts` → `showcase --remote` → subir os
+PDFs → deploy das functions alteradas → typecheck/lint/vitest/build → E2E no remoto → publicar.
+
+## Fechamento — 02/09, publicado
+
+**No ar:** https://faceimob.vercel.app · bundle `index-OpDEuXsg.js`, hash conferido
+contra o `dist/` local · HTTP 200.
+
+| Validação | Resultado |
+|---|---|
+| `npm run typecheck` | limpo nos 3 projects |
+| `npm run lint` | 0 erros, 7 avisos pré-existentes |
+| `npx vitest run` | **296 testes em 30 arquivos** (começou em 199/15) |
+| `npm run build` | verde, 8,5 s |
+| **E2E contra a homologação** | **223 passando, 0 falhando**, 8 pulados |
+| Migrations aplicadas | **51** (as de numeração 0035–0053 desta sprint; 0042 e 0049 nunca chegaram a existir) |
+
+### O caminho do E2E: 19 → 10 → 1 → 0
+
+Quatro passadas, e cada rodada de falhas revelou um defeito de produto — nenhum
+foi "ajustar o teste até passar":
+
+1. **19 falhas → a 0051.** Oito testes com "o modal do negócio não fecha" eram
+   um defeito só: a 0037 revogou `deal_status_bare` de `authenticated`, e o
+   gatilho `deals_guard_esteira_label` (SECURITY INVOKER) a chama em **todo**
+   write de `deals` → 403 em criar, editar, perder, mover etapa. A correção
+   "óbvia" (tornar o gatilho DEFINER) teria deixado a suíte verde **desligando a
+   proteção**, porque o escape do guard é `current_user not in ('postgres',
+   'service_role')`.
+2. **10 falhas → a 0052.** O corretor podia arrastar negócio para "Aprovado" e o
+   gerente não — o inverso da regra de crédito. Duas travas para o mesmo fato
+   discordavam: `deals_guard_stage()` recusava, a matriz permitia.
+3. **1 falha → a 0053.** O SDR podia cadastrar negócio manual e levar 100% do
+   rateio de VGV, porque `handle_new_auth_user` dá `broker` a todo perfil novo.
+   A 0048 afirmava por escrito que isso era impossível; o teste provou 201 onde
+   deveria haver 403.
+4. **6 falhas de SDR → nenhuma.** `TypeError: fetch failed`: instabilidade de
+   rede. Reexecutado o projeto isolado: **20/20**. Não virou correção de código.
+
+### Defeitos que só a aplicação revelou
+
+Nenhum agente os viu, porque agente valida com typecheck/lint/vitest e não
+aplica seed nem abre sessão autenticada contra o banco:
+
+- **O mesmo erro de semente, quatro vezes:** id fixo com dado que depende do mês
+  (temporada, diário, aportes, metas). O `on conflict do nothing` transformava
+  "não consegui" em "não fiz nada", em silêncio. Nas metas, o cartão do Dashboard
+  voltava a mostrar "—".
+- **A 0037 travou o rótulo de esteira e não retroalimentou** quem já estava no
+  CCA: a tela deixou de permitir marcar à mão *e* não mostrava quem tinha ido.
+  Fechado pela 0050.
+- **O seed recriava o link de diretoria sem PIN**, divergindo em silêncio da
+  homologação corrigida à mão em 27/08.
+
+### Continua só com você
+
+1. **Desligar o auto-cadastro** no painel do Supabase (Authentication → Sign In /
+   Providers → "Allow new users to sign up").
+2. **Cadastrar as chaves de OpenAI e Meta** em Admin → Integrações. O cofre tem 4
+   entradas, todas internas — sem elas o SDR por IA e o WhatsApp não rodam.
+3. **Rodar o cenário dentro da janela de um turno** antes de mostrar o Check-in:
+   `node scripts/demo.mjs showcase:limpar --remote` e depois `showcase --remote`.
+
+## Aplicado na homologação — 02/09
+
+**14 migrations no banco** (`0035`–`0048` + a corretiva `0050`), tipos regenerados,
+cenário semeado, Storage preenchido, functions no ar. Conferido por consulta, não por handoff:
+
+| O que | Antes | Depois |
+|---|---|---|
+| Migrations aplicadas | 34 | **48** |
+| Permissões de menu | 20 | **21** (`menu.atividades`) |
+| `daily_entries.sales` | `integer` | **`numeric`** — meio ponto passa a ser aceito |
+| `daily_reports.filled_by_name` | não existia | **existe** |
+| `profiles.cpf` (e demais campos do modal) | não existia | **existe** |
+| `season_label_ptbr('2026-08-15')` | — | **"Agosto 2026"** |
+| Temporada aberta | "Agosto 2026" | **"Setembro 2026"** — em pt-BR, pela função |
+| Negócios aguardando conferência | 0 | **1 `pending` + 1 `returned`** |
+| Negócios rotulados "ESTEIRA AGIL" | 0 | **3**, escritos pelo banco |
+| Documentos com arquivo no Storage | **0 de 75** | **75 de 75**, 0 órfãos |
+| Edge functions | — | `sdr-agent-chat`, `sdr-whatsapp-broadcast`, `meta-ads-webhook` |
+
+**Trava de JWT provada depois do deploy** — as duas do SDR respondem **401** sem
+credencial e o webhook da Meta responde **403** com token errado. Deployei sem
+`--no-verify-jwt` de propósito: as duas do SDR não estão na lista de
+`verify_jwt = false` do `config.toml`, e a flag as republicaria como superfície
+anônima, desfazendo o endurecimento da Tarefa I.
+
+### Dois defeitos que só apareceram ao aplicar
+
+Nenhum agente os viu, porque nenhum agente aplica seed. Apareceram na primeira
+execução real **depois da virada do mês**, e os dois eram silêncio:
+
+1. **O seed ficava sem temporada aberta.** O id fixo da temporada colidia com a
+   que o próprio bloco acabara de encerrar; o `on conflict do nothing` engolia a
+   colisão e o erro só aparecia 150 linhas adiante, como violação de not-null em
+   `game_events`.
+2. **O diário só era idempotente dentro do mesmo dia.** `on conflict (team_id,
+   report_date)` não cobre a chave primária, e o id era fixo.
+
+Detalhe e correção em `decisoes.md` (02/09). O terceiro foi a **0050**: a 0037
+travou o rótulo de esteira mas não retroalimentou quem já estava no CCA — a tela
+deixou de permitir marcar à mão *e* não mostrava quem tinha ido.
+
+## Estado em 02/09 — o que as rodadas entregaram
+
+**Árvore:** `npm run typecheck` limpo · `npm run lint` 0 erros / 7 avisos pré-existentes ·
+**258 testes vitest em 24 arquivos** (eram 199) · 133 arquivos alterados ou novos.
+Cópia de segurança fora do git em `_recuperacao-faceimob/2026-09-02-rodadas-9-10/`.
+
+**13 migrations novas, escritas mas ainda NÃO aplicadas** (`0035`–`0047`):
+
+| # | O que faz |
+|---|---|
+| 0035 | rótulo da temporada em pt-BR (`season_label_ptbr`); mata o "August 2026" na origem |
+| 0036 | `menu.atividades` + concessões |
+| 0037 | "ESTEIRA AGIL" vira rótulo escrito pelo banco; escrita manual recusada |
+| 0038 | diário: `filled_by_name`, meio ponto (`numeric(6,1)`), `public_daily_submit` com notas, `public_daily_team` com mês |
+| 0039 | checkpoint da diretoria: gerente por equipe e bloco do mês |
+| 0040 | SDR: modelo da OpenAI corrigido nos agentes + handoff |
+| 0041 | leads da fila: `update`/`insert`/`select` com o mesmo predicado |
+| 0043 | automação de leads: tempo máx. por etapa e a rotina que lê "sem resposta" |
+| 0044 | permissões de funcionalidade passam a ser aplicadas de verdade |
+| 0045 | menu: gerente ganha Marketing; Dados sai de corretor/CCA/SDR |
+| 0046 | campos do perfil (CPF, CRECI, endereço…) que o modal fingia gravar |
+| 0047 | policy do Storage para o papel CCA + envio ao gerente exige construtora |
+| 0048–0049 | rateio do criador do negócio · cadastro de colaborador *(rodada 11, em curso)* |
+
+**Auditoria:** 86 defeitos confirmados por 12 auditores + cético adversarial.
+Endereçados até aqui: **68**. Em curso na rodada 11: os 16 restantes (Pipeline 8,
+Dashboard 6, Equipes 3, login 1) mais a primeira revisão de 4 frentes e 8 achados
+de revisão que ficaram sem aplicar quando o limite de uso cortou as rodadas.
+
+### O que falta depois que a rodada 11 fechar — tudo comigo
+
+1. `npm run typecheck` · `lint` · `vitest` · `build` na árvore final
+2. `supabase db push` das 15 migrations
+3. `supabase gen types` — `types.ts` é gerado; há casts locais esperando por ele
+4. `showcase --remote` (cenário `pending`/`returned` da conferência documental)
+5. `db:seed:documents` — sobe os 69 PDFs que faltam no bucket `deal-documents`
+6. deploy de `sdr-agent-chat`, `sdr-whatsapp-broadcast`, `meta-ads-webhook`
+   — **sem `--no-verify-jwt`**: as duas do SDR exigem JWT desde a Tarefa I, e a
+   flag as republicaria como superfície anônima. Provar 401 depois.
+7. E2E contra a homologação · publicar na Vercel
+
+**Continua só com você:** desligar o auto-cadastro no painel (Authentication →
+Sign In / Providers) e cadastrar as chaves de OpenAI e Meta em Admin → Integrações
+— sem elas o SDR por IA e o WhatsApp não têm como rodar.
+
+## Esteira Ágil — o passo pedido pelo cliente **já existe**; falta o rótulo e a demo
+
+Pedido: *"uma etapa entre o corretor e o gerente, no envio para Esteira Ágil, para revisão; quem
+valida é o gerente do corretor."*
+
+**A migration `0028_document_review` implementa exatamente isso**, e o cabeçalho dela diz o mesmo:
+*"Conferência documental entre corretor e gerente"*. Corretor envia por
+`submit_deal_for_manager_review` (recusa sem documento obrigatório, recusa sem gerente vinculado,
+notifica os gerentes); o gerente decide por `review_deal_documents` (devolução **exige motivo** e
+notifica os corretores; aprovação chama `submit_deal_for_analysis` **na mesma transação**).
+`deals_guard_stage()` recusa pular para o CCA sem aprovação, e `deals_guard_document_review()`
+recusa `update` direto nas 6 colunas. Tem tela (aba **Anexos**: "Aprovar e enviar ao CCA" /
+"Devolver"), filtro "Aguardando gerente", contador clicável no Pipeline e **dois specs E2E**.
+
+**E "Esteira Ágil" é esse mesmo evento:** o gatilho de gamificação pontua `'esteira'` quando
+`cca_cases.status` vira `'under_review'`, e o rótulo desse evento na tela é literalmente
+**"Envio Esteira Ágil"**.
+
+**Três lacunas, e só elas:**
+
+1. 🟠 **O rótulo permite dizer que foi sem ter ido.** `deals.status_detail` é texto livre, sem
+   trigger e sem constraint, e o catálogo oferece `"13. ESTEIRA AGIL"` e `"RET. ESTEIRA AGIL"` no
+   Select da tabela. Marcar não cria caso no CCA nem pontua — a tela fica verde escrito "ESTEIRA
+   AGIL" para um negócio que nunca foi revisado. **Mesma classe do "19. REPROVADO" que a R fechou.**
+   Hoje há **0** negócios nesse estado: é buraco estrutural, não incêndio.
+2. 🔴 **A demonstração não consegue mostrar o passo.** Medido: **25 `approved`, 6 `draft`, 0
+   `pending`, 0 `returned`**. O contador mostra zero, o filtro não devolve nada e o botão de aprovar
+   não aparece em lugar nenhum. **Quem abrisse o sistema hoje concluiria que o passo não existe —
+   que é provavelmente o que aconteceu.**
+3. ❓ **O aprovador é "gerente participante do negócio" (rateio), não "gerente da equipe do
+   corretor".** Medido: dos **34** pares corretor×negócio, em **34** o gerente da equipe do corretor
+   está entre os gerentes do negócio — **zero divergência hoje**. Mas isso é propriedade dos dados,
+   não regra: o formulário deixa nomear qualquer gerente no rateio. **Decisão do Alisson**; a
+   Tarefa U mede as situações de divergência e **não mexe na autorização**.
 
 ## Pendências abertas ao fim da sprint — com dono
 

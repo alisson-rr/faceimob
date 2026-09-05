@@ -17,8 +17,46 @@ import { cn } from "@/lib/utils";
 export { IDEAL_STAGES };
 export type { FunnelStep };
 
+/**
+ * A meta de conversão de cada etapa, em % da etapa anterior. É o conteúdo de
+ * `funnel_targets` (por diretoria, por equipe ou global); sem ela vale o funil
+ * ideal do produto (`IDEAL_STAGES`, 10 / 40 / 50).
+ */
+export type StageTargets = { analises: number; aprovados: number; vendas: number };
+
 const asSteps = (input: FunnelStep[] | FunnelCounts): FunnelStep[] =>
   Array.isArray(input) ? input : toFunnelSteps(input);
+
+/** Troca a meta chumbada de cada degrau pela régua cadastrada. */
+const comMeta = (steps: FunnelStep[], targets?: StageTargets): FunnelStep[] =>
+  targets
+    ? steps.map((step) => ({
+        ...step,
+        targetPct: targets[step.key as keyof StageTargets] ?? step.targetPct,
+      }))
+    : steps;
+
+/**
+ * O funil de REFERÊNCIA a partir de um topo, seguindo a régua cadastrada.
+ *
+ * `idealFunnelSteps` desenha sempre 100 / 10 / 4 / 2 — os `absPct` do funil
+ * ideal. Com meta própria (a diretoria da homologação cobra 11,5 / 43 / 53) a
+ * coluna "Ideal" mostrava um alvo que não é o dela, ao lado de uma lista de
+ * aderência que passou a cobrar o alvo certo: duas réguas na mesma tela.
+ */
+const referenceSteps = (topo: number, targets?: StageTargets): FunnelStep[] => {
+  if (!targets) return idealFunnelSteps(topo);
+  const analises = (topo * targets.analises) / 100;
+  const aprovados = (analises * targets.aprovados) / 100;
+  const vendas = (aprovados * targets.vendas) / 100;
+  const valor: Record<string, number> = { leads: topo, analises, aprovados, vendas };
+  return IDEAL_STAGES.map((stage) => ({
+    key: stage.key,
+    label: stage.label,
+    value: Math.round(valor[stage.key] ?? 0),
+    targetPct: targets[stage.key as keyof StageTargets] ?? stage.stagePct,
+  }));
+};
 
 /** Acima, no alvo (>=80% da meta) ou abaixo. O rotulo escrito acompanha a cor. */
 function reading(actualPct: number, targetPct: number) {
@@ -183,28 +221,48 @@ export function StageComparisonList({ steps }: { steps: FunnelStep[] }) {
   );
 }
 
+/**
+ * Aderencia do declarado ao medido, em %. `null` quando nao ha dado de nenhum
+ * lado: "0 vs 0" nao e 100% de aderencia, e ausencia de dado — e o painel
+ * pintava os quatro cartoes de verde a partir do nada. Fica local (nao
+ * exportada) para o arquivo continuar so com componentes no fast-refresh; o
+ * teste cobra o render.
+ */
+const aderencia = (declarado: number, medido: number): number | null => {
+  if (declarado === 0 && medido === 0) return null;
+  if (medido === 0) return 0;
+  return Math.min(100, (declarado / medido) * 100);
+};
+
 /** Comparativo do diario declarado com o pipeline medido, contra o funil ideal. */
 export default function ComparativeFunnel({
   daily,
   pipeline,
+  targets,
+  targetsLabel,
 }: {
   daily: FunnelStep[] | FunnelCounts;
   pipeline: FunnelStep[] | FunnelCounts;
+  /** Régua de `funnel_targets`. Sem ela vale o funil ideal do produto. */
+  targets?: StageTargets;
+  /** De onde a régua veio ("meta da sua diretoria"), para quem lê saber. */
+  targetsLabel?: string;
 }) {
-  const dSteps = asSteps(daily);
-  const pSteps = asSteps(pipeline);
+  const dSteps = comMeta(asSteps(daily), targets);
+  const pSteps = comMeta(asSteps(pipeline), targets);
   const topo = Math.max(dSteps[0]?.value ?? 0, pSteps[0]?.value ?? 0, 100);
-  const aderencia = (declarado: number, medido: number) =>
-    declarado === 0 && medido === 0 ? 100 : medido === 0 ? 0 : Math.min(100, (declarado / medido) * 100);
+  const regua = targets
+    ? `${targets.analises} / ${targets.aprovados} / ${targets.vendas}%`
+    : IDEAL_STAGES.map((stage) => stage.absPct).join(" / ");
 
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <VisualFunnel
           title="Ideal"
-          subtitle={IDEAL_STAGES.map((stage) => stage.absPct).join(" / ")}
+          subtitle={targetsLabel ? `${regua} · ${targetsLabel}` : regua}
           accent={tone("chart-3")}
-          steps={idealFunnelSteps(topo)}
+          steps={referenceSteps(topo, targets)}
         />
         <VisualFunnel
           title="Diário (declarado)"
@@ -220,7 +278,11 @@ export default function ComparativeFunnel({
         />
       </div>
 
-      <SectionCard title="Aderência etapa a etapa" description="Conversão realizada × meta" icon={Target}>
+      <SectionCard
+        title="Aderência etapa a etapa"
+        description={`Conversão realizada × ${targetsLabel ?? "funil ideal"}`}
+        icon={Target}
+      >
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div>
             <p className="text-eyebrow mb-2">Diário</p>
@@ -235,7 +297,7 @@ export default function ComparativeFunnel({
 
       <SectionCard
         title="Declarado × medido"
-        description="O que o diário informou comparado ao que o CRM registrou"
+        description="O que o diário informou no mês, ao lado dos negócios que alcançaram cada etapa no mesmo mês"
         icon={Target}
       >
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -250,16 +312,18 @@ export default function ComparativeFunnel({
                   {num(medido)}
                 </p>
                 <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted">
-                  <span
-                    className={cn(
-                      "block h-full rounded-full",
-                      pct >= 90 ? "bg-success" : pct >= 60 ? "bg-warning" : "bg-destructive",
-                    )}
-                    style={{ width: `${pct}%` }}
-                  />
+                  {pct !== null && (
+                    <span
+                      className={cn(
+                        "block h-full rounded-full",
+                        pct >= 90 ? "bg-success" : pct >= 60 ? "bg-warning" : "bg-destructive",
+                      )}
+                      style={{ width: `${pct}%` }}
+                    />
+                  )}
                 </span>
                 <p className="mt-1 text-right text-xs tabular-nums text-muted-foreground">
-                  {pct.toFixed(0)}% de aderência
+                  {pct === null ? "sem dados no período" : `${pct.toFixed(0)}% de aderência`}
                 </p>
               </li>
             );

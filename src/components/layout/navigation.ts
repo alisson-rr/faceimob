@@ -1,5 +1,5 @@
 import {
-  Bot, Building2, CreditCard, Database, GitBranch, Globe, KeyRound, LayoutDashboard,
+  Bot, Building2, CalendarClock, CreditCard, Database, GitBranch, Globe, KeyRound, LayoutDashboard,
   Link2, LogIn, Megaphone, Settings, Shield, Target, TrendingUp, Trophy, UserSearch, Users, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -29,7 +29,8 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, group: "principal" },
   { title: "Pipeline", url: "/pipeline", icon: GitBranch, group: "principal" },
   { title: "Leads", url: "/leads", icon: UserSearch, group: "principal" },
-  { title: "CCA Pipeline", url: "/cca", icon: CreditCard, group: "principal" },
+  { title: "Atividades", url: "/atividades", icon: CalendarClock, group: "principal" },
+  { title: "Esteira CCA", url: "/cca", icon: CreditCard, group: "principal" },
   { title: "Marketing", url: "/marketing", icon: Megaphone, group: "principal" },
   { title: "Equipes", url: "/equipes", icon: Users, group: "principal" },
   { title: "Links", url: "/links", icon: Link2, group: "principal" },
@@ -45,7 +46,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound, group: "admin" },
   { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe, group: "admin" },
   { title: "Automação Leads", url: "/admin/lead-automation", icon: Zap, group: "admin" },
-  { title: "Meta Ads", url: "/admin/meta-ads", icon: Megaphone, group: "admin", hidden: true },
+  { title: "Meta Ads", url: "/admin/meta-ads", icon: Megaphone, group: "admin" },
 
   { title: "Dados", url: "/data", icon: Database, group: "sistema" },
   { title: "Configurações", url: "/settings", icon: Settings, group: "sistema" },

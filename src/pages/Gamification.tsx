@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -11,106 +13,43 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, Crown, Lock, Medal, PauseCircle, Play, Star, Target, Trophy, TrendingUp, Users } from 'lucide-react';
+import { AlertTriangle, Crown, Lock, Medal, PauseCircle, Play, Plus, Sliders, Star, Target, Trophy, TrendingUp, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from '@/components/shared';
-import { Podium, type PodiumEntry } from '@/components/engagement';
+import { Podium, SoundPreview, buildFrozenScores, buildScores, type BrokerScore, type PodiumEntry } from '@/components/engagement';
 import { useCurrentSeasonId, useSeasonRanking } from '@/hooks/useGameRanking';
+import { useClosedMonths } from '@/components/pipeline/data';
 import { brl, date, num } from '@/lib/format';
 import { describeError } from '@/lib/supabaseError';
 import {
+  closeGameSeason,
   closeMonthAndSeason,
+  describeGameError,
   gameKeys,
+  isMonthClosed,
   listEffectiveScoringRules,
+  listScoringRules,
   listSeasonResults,
   listSeasons,
   monthStart,
   openGameSeason,
   setDefaultScoringPoints,
+  setScoringRuleActive,
+  setSeasonScoringPoints,
   type GameSeason,
-  type RankingRow,
-  type SeasonResultRow,
+  type ScoringRule,
 } from '@/integrations/supabase/game';
 
-// Os pesos vivem em `game_scoring_rules`; estes rótulos só traduzem o código do
-// banco para a tela. Os códigos são os de `game_events.event_code` — o front
-// usava um vocabulário próprio que nunca casaria com o que o banco pontua.
-const EVENT_LABELS: Record<string, string> = {
-  incompleto_com_doc: 'Incompleto (c/ doc)',
-  esteira: 'Envio Esteira Ágil',
-  aprovado: 'Aprovado',
-  venda: 'Venda',
-  distrato: 'Distrato/Queda',
-};
-
-interface BrokerScore {
-  brokerId: string;
-  brokerName: string;
-  team: string;
-  managerId?: string;
-  managerName?: string;
-  directorshipId?: string;
-  directorship?: string;
-  vendas: number;
-  vgv: number;
-  points: number;
-  avatarUrl: string | null;
-}
-
 /**
- * Monta as linhas da tela a partir do ranking do servidor.
+ * O rótulo do evento sai da COLUNA `label` da própria regra.
  *
- * Os pontos vêm de `visible_game_ranking` (agregação de `game_events`), não de um
- * cálculo sobre `deals`: o cálculo no cliente dependia de pesos em `useState`,
- * então cada usuário podia ver um ranking diferente e nada era auditável.
+ * Havia um dicionário aqui (`EVENT_LABELS`) que escrevia "Incompleto (c/ doc)"
+ * onde o banco diz "Incompleto com documento": duas fontes para o mesmo nome, e
+ * o E2E teve que usar a do banco para achar o campo. Regra criada pela tela de
+ * administração não teria tradução nenhuma.
  */
-function buildScores(ranking: RankingRow[]): BrokerScore[] {
-  return ranking
-    .filter((row) => row.active)
-    .map((row) => ({
-      brokerId: row.profile_id,
-      brokerName: row.full_name,
-      team: row.team_name || 'Sem equipe',
-      managerId: row.manager_id ?? undefined,
-      managerName: row.manager_name ?? undefined,
-      directorshipId: row.director_id ?? undefined,
-      directorship: row.director_name ?? undefined,
-      vendas: row.sales,
-      vgv: Number(row.vgv),
-      points: row.points,
-      avatarUrl: row.avatar_url,
-    }))
-    .sort((a, b) => b.points - a.points);
-}
-
-/**
- * Temporada fechada: o número é o congelado em `game_season_results` e só a
- * identificação (nome, equipe, diretoria) é resolvida no ranking de hoje. Quem
- * saiu do escopo do usuário some da lista — é o mesmo recorte do RLS.
- */
-function buildFrozenScores(results: SeasonResultRow[], people: Map<string, RankingRow>): BrokerScore[] {
-  return results
-    .filter((row) => people.has(row.profile_id))
-    .map((row) => {
-      const person = people.get(row.profile_id) as RankingRow;
-      return {
-        brokerId: row.profile_id,
-        brokerName: person.full_name,
-        team: person.team_name || 'Sem equipe',
-        managerId: person.manager_id ?? undefined,
-        managerName: person.manager_name ?? undefined,
-        directorshipId: person.director_id ?? undefined,
-        directorship: person.director_name ?? undefined,
-        vendas: row.sales,
-        vgv: Number(row.vgv),
-        points: row.points,
-        avatarUrl: person.avatar_url,
-      };
-    })
-    .sort((a, b) => a.points === b.points ? 0 : b.points - a.points);
-}
 
 /**
  * O ciclo do jogo não é mês de calendário (decisão de 21/08): começa quando o
@@ -139,54 +78,373 @@ const MedalIcon = ({ position }: { position: number }) => {
   return <span className="font-mono text-sm tabular-nums text-muted-foreground">{position + 1}</span>;
 };
 
-function RankingTable({ scores, secondColumn }: { scores: BrokerScore[]; secondColumn: 'team' | 'manager' }) {
+/**
+ * `usarRankGravado` só na tabela geral de temporada FECHADA.
+ *
+ * O congelado guarda a colocação da casa inteira e o recorte de visibilidade
+ * pode tirar linhas do meio: numerar pelo índice do array punha a coroa de 1º
+ * em quem o fechamento registrou em 7º. Os agrupamentos por diretoria e
+ * gerência continuam com a posição da própria lista — ali a colocação é local,
+ * e o rank global deixaria o cartão inteiro sem medalha.
+ */
+function RankingTable({ scores, secondColumn, usarRankGravado }: {
+  scores: BrokerScore[];
+  secondColumn: 'team' | 'manager';
+  usarRankGravado?: boolean;
+}) {
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-12">#</TableHead>
-          <TableHead>Corretor</TableHead>
-          <TableHead>{secondColumn === 'team' ? 'Equipe' : 'Gerente'}</TableHead>
-          <TableHead className="text-center">Vendas</TableHead>
-          <TableHead className="text-right">VGV</TableHead>
-          <TableHead className="text-right">Pontos</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {scores.map((s, i) => (
-          <TableRow key={s.brokerId} className={i < 3 ? 'bg-highlight/5' : undefined}>
-            <TableCell><MedalIcon position={i} /><span className="sr-only">{i + 1}º</span></TableCell>
-            <TableCell className="font-medium">{s.brokerName}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {secondColumn === 'team' ? s.team : s.managerName || '—'}
-            </TableCell>
-            <TableCell className="text-center tabular-nums">{num(s.vendas)}</TableCell>
-            <TableCell className="text-right tabular-nums">{brl(s.vgv)}</TableCell>
-            <TableCell className="text-right font-bold tabular-nums text-primary">{num(s.points)}</TableCell>
+    <div className="overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-12">#</TableHead>
+            <TableHead>Corretor</TableHead>
+            <TableHead>{secondColumn === 'team' ? 'Equipe' : 'Gerente'}</TableHead>
+            <TableHead className="text-center">Vendas</TableHead>
+            <TableHead className="text-right">VGV</TableHead>
+            <TableHead className="text-right">Pontos</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {scores.map((s, i) => {
+            const posicao = (usarRankGravado && s.rank ? s.rank : i + 1) - 1;
+            return (
+            <TableRow key={s.brokerId} className={posicao < 3 ? 'bg-highlight/5' : undefined}>
+              <TableCell><MedalIcon position={posicao} /><span className="sr-only">{posicao + 1}º</span></TableCell>
+              <TableCell className={s.unknownPerson ? 'italic text-muted-foreground' : 'font-medium'}>
+                {s.brokerName}
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {secondColumn === 'team' ? s.team : s.managerName || '—'}
+              </TableCell>
+              <TableCell className="text-center tabular-nums">{num(s.vendas)}</TableCell>
+              <TableCell className="text-right tabular-nums">{brl(s.vgv)}</TableCell>
+              <TableCell className="text-right font-bold tabular-nums text-primary">{num(s.points)}</TableCell>
+            </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+/**
+ * Administração das regras de pontuação.
+ *
+ * Antes o ÚNICO caminho para mexer num peso era o diálogo "Fechar gameficação":
+ * para corrigir "Venda: 600 → 700" no meio da temporada o admin era obrigado a
+ * encerrar o jogo. Aqui ele edita, cria, desativa e — o que a tabela sempre
+ * suportou e a tela nunca alcançou — grava a regra presa a UMA temporada.
+ *
+ * O aviso na tela diz a verdade sobre quando o peso passa a valer: `scoring_points`
+ * lê a regra no momento de cada evento, então o peso novo vale do próximo
+ * movimento em diante. O que já foi pontuado guarda o peso da hora em que
+ * aconteceu e não é reescrito.
+ */
+function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; seasons: GameSeason[] }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [novo, setNovo] = useState({ code: '', label: '', points: '' });
+
+  const rulesQuery = useQuery({ queryKey: gameKeys.rulesAll, queryFn: listScoringRules, staleTime: 30_000 });
+  const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
+
+  const seasonLabel = seasons.find((s) => s.id === seasonId)?.label ?? null;
+  /**
+   * `listScoringRules()` traz TODAS as regras, inclusive as presas a temporadas
+   * já encerradas — o selo dizia "Só nesta temporada" para todas elas. O admin
+   * lia isso numa regra que não afeta o jogo em andamento e, ao editá-la,
+   * gravava na temporada ANTIGA achando que tinha mudado o peso vigente.
+   */
+  const nomeDaTemporada = (id: string) =>
+    seasons.find((s) => s.id === id)?.label ?? 'temporada removida';
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: gameKeys.all });
+
+  const fail = (error: unknown, title: string) =>
+    toast({ title, description: describeGameError(error, title), variant: 'destructive' });
+
+  const saveMutation = useMutation({
+    mutationFn: async (input: { rule: ScoringRule; points: number }) =>
+      input.rule.season_id
+        ? setSeasonScoringPoints(input.rule.season_id, input.rule.event_code, input.rule.label, input.points)
+        : setDefaultScoringPoints(input.rule.event_code, input.rule.label, input.points),
+    onSuccess: async (_data, input) => {
+      await refresh();
+      setDrafts((p) => { const next = { ...p }; delete next[input.rule.id]; return next; });
+      toast({ title: `${input.rule.label}: ${input.points} pts`, description: 'Vale do próximo movimento em diante.' });
+    },
+    onError: (error) => fail(error, 'Não foi possível salvar a regra'),
+  });
+
+  const activeMutation = useMutation({
+    mutationFn: (input: { rule: ScoringRule; active: boolean }) => setScoringRuleActive(input.rule.id, input.active),
+    onSuccess: async (_data, input) => {
+      await refresh();
+      toast({ title: input.active ? `${input.rule.label} ativada` : `${input.rule.label} desativada` });
+    },
+    onError: (error) => fail(error, 'Não foi possível mudar a regra'),
+  });
+
+  const pinMutation = useMutation({
+    mutationFn: (rule: ScoringRule) => {
+      if (!seasonId) throw new Error('Nenhuma temporada aberta para fixar a regra.');
+      return setSeasonScoringPoints(seasonId, rule.event_code, rule.label, rule.points);
+    },
+    onSuccess: async (_data, rule) => {
+      await refresh();
+      toast({
+        title: `${rule.label} fixada em ${rule.points} pts nesta temporada`,
+        description: 'Agora dá para mudar o peso padrão sem mexer no placar em andamento.',
+      });
+    },
+    onError: (error) => fail(error, 'Não foi possível fixar a regra na temporada'),
+  });
+
+  /**
+   * `setDefaultScoringPoints` faz UPDATE-primeiro filtrando por `event_code`:
+   * digitar um código que já existe REESCREVIA a regra existente (label e
+   * pontos) e a tela toastava "Regra criada". A tabela já está carregada aqui —
+   * a colisão é detectável antes do clique, e o botão sai do ar com o motivo ao
+   * lado do campo.
+   */
+  const codigoNovo = novo.code.trim();
+  const codigoJaExiste = codigoNovo !== '' && rules.some((r) => r.season_id === null && r.event_code === codigoNovo);
+
+  const createMutation = useMutation({
+    mutationFn: () => {
+      const code = novo.code.trim();
+      const label = novo.label.trim();
+      if (!/^[a-z0-9_]+$/.test(code)) {
+        throw new Error('O código do evento aceita só letras minúsculas, números e "_" — é ele que o banco grava em game_events.event_code.');
+      }
+      if (rules.some((r) => r.season_id === null && r.event_code === code)) {
+        throw new Error(`Já existe uma regra padrão para "${code}" — edite a linha dela na tabela acima.`);
+      }
+      if (!label) throw new Error('Dê um nome à regra: é o que aparece na tela do corretor.');
+      // Campo em branco: `Number('')` é 0 e passa por `Number.isInteger`, então
+      // "Criar" sem digitar pontuação nascia com regra de 0 ponto.
+      if (novo.points.trim() === '') throw new Error('Informe a pontuação da regra.');
+      const points = Number(novo.points);
+      if (!Number.isInteger(points)) throw new Error('A pontuação precisa ser um número inteiro.');
+      return setDefaultScoringPoints(code, label, points);
+    },
+    onSuccess: async () => {
+      await refresh();
+      setNovo({ code: '', label: '', points: '' });
+      toast({
+        title: 'Regra criada',
+        description: 'Ela só pontua quando algo no banco emitir esse código de evento.',
+      });
+    },
+    onError: (error) => fail(error, 'Não foi possível criar a regra'),
+  });
+
+  const rowValue = (rule: ScoringRule) => drafts[rule.id] ?? String(rule.points);
+
+  return (
+    <SectionCard
+      title="Regras de pontuação"
+      icon={Sliders}
+      description="Pesos de game_scoring_rules. O peso novo vale do próximo movimento; o que já pontuou não muda."
+    >
+      {rulesQuery.isPending ? (
+        <LoadingState variant="list" rows={4} label="Carregando as regras…" />
+      ) : rulesQuery.error ? (
+        <EmptyState
+          icon={AlertTriangle}
+          tone="danger"
+          title="Não consegui carregar as regras"
+          description={describeError(rulesQuery.error, 'Não foi possível carregar as regras de pontuação.')}
+          action={<Button variant="outline" onClick={() => void refresh()}>Tentar de novo</Button>}
+        />
+      ) : (
+        <div className="space-y-4">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Regra</TableHead>
+                  <TableHead>Escopo</TableHead>
+                  <TableHead className="w-32">Pontos</TableHead>
+                  <TableHead className="w-24 text-center">Ativa</TableHead>
+                  <TableHead className="w-40 text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rules.map((rule) => {
+                  const changed = rowValue(rule) !== String(rule.points);
+                  const parsed = Number(rowValue(rule));
+                  // Campo apagado: `Number('')` é 0 e `Number.isInteger(0)` é
+                  // true, então "Salvar" gravava 0 pt com toast de sucesso e a
+                  // venda parava de pontuar sem ninguém ser avisado. É a mesma
+                  // guarda que o diálogo de fechamento já fazia.
+                  const invalid = changed && (rowValue(rule).trim() === '' || !Number.isInteger(parsed));
+                  return (
+                    <TableRow key={rule.id} className={rule.active ? undefined : 'opacity-60'}>
+                      <TableCell>
+                        <span className="font-medium">{rule.label}</span>
+                        <span className="block font-mono text-xs text-muted-foreground">{rule.event_code}</span>
+                      </TableCell>
+                      <TableCell>
+                        {!rule.season_id
+                          ? <StatusBadge tone="neutral">Padrão</StatusBadge>
+                          : rule.season_id === seasonId
+                            ? <StatusBadge tone="warning">Só em {nomeDaTemporada(rule.season_id)}</StatusBadge>
+                            : <StatusBadge tone="neutral">De {nomeDaTemporada(rule.season_id)} (encerrada)</StatusBadge>}
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step={1}
+                          className="h-9 w-28"
+                          aria-label={`Pontos de ${rule.label}`}
+                          aria-invalid={invalid || undefined}
+                          value={rowValue(rule)}
+                          onChange={(e) => setDrafts((p) => ({ ...p, [rule.id]: e.target.value }))}
+                        />
+                        {invalid && (
+                          <span className="text-xs text-destructive">Informe um número inteiro.</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={rule.active}
+                          aria-label={`${rule.active ? 'Desativar' : 'Ativar'} ${rule.label}`}
+                          disabled={activeMutation.isPending}
+                          onCheckedChange={(active) => activeMutation.mutate({ rule, active })}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          {/* Regra DESLIGADA não se fixa: `writeScoringRule`
+                              não acha regra da temporada, cai no INSERT e ele
+                              grava `active: true` — a regra que o admin
+                              desativou de propósito voltaria a pontuar, em
+                              silêncio, com o toast dizendo só "fixada em N
+                              pts". A guarda contra religar existia no UPDATE,
+                              e "Fixar" é o único caminho que só passa pelo
+                              INSERT. Para fixar, ligue a regra antes. */}
+                          {!rule.season_id && seasonId && rule.active && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={pinMutation.isPending}
+                              title={`Congela ${rule.points} pts em ${seasonLabel ?? 'nesta temporada'}`}
+                              onClick={() => pinMutation.mutate(rule)}
+                            >
+                              Fixar na temporada
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            disabled={!changed || invalid || saveMutation.isPending}
+                            onClick={() => saveMutation.mutate({ rule, points: parsed })}
+                          >
+                            Salvar
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {rules.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma regra cadastrada. Sem regra ativa, <code>award_game_points</code> descarta o evento.
+            </p>
+          )}
+
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-eyebrow mb-3">Nova regra</p>
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_7rem_auto] sm:items-end">
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="nova-regra-codigo">Código do evento</Label>
+                <Input
+                  id="nova-regra-codigo"
+                  className="h-9 font-mono"
+                  placeholder="visita_realizada"
+                  aria-invalid={codigoJaExiste || undefined}
+                  aria-describedby={codigoJaExiste ? 'nova-regra-codigo-erro' : undefined}
+                  value={novo.code}
+                  onChange={(e) => setNovo((p) => ({ ...p, code: e.target.value }))}
+                />
+                {codigoJaExiste && (
+                  <span id="nova-regra-codigo-erro" className="block text-xs text-destructive">
+                    Já existe uma regra padrão com esse código — edite a linha dela na tabela acima.
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="nova-regra-rotulo">Nome na tela</Label>
+                <Input
+                  id="nova-regra-rotulo"
+                  className="h-9"
+                  placeholder="Visita realizada"
+                  value={novo.label}
+                  onChange={(e) => setNovo((p) => ({ ...p, label: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="nova-regra-pontos">Pontos</Label>
+                <Input
+                  id="nova-regra-pontos"
+                  className="h-9"
+                  type="number"
+                  step={1}
+                  placeholder="50"
+                  value={novo.points}
+                  onChange={(e) => setNovo((p) => ({ ...p, points: e.target.value }))}
+                />
+              </div>
+              <Button
+                className="h-9"
+                disabled={createMutation.isPending || codigoJaExiste}
+                onClick={() => createMutation.mutate()}
+              >
+                <Plus className="h-4 w-4" /> Criar
+              </Button>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              A regra por si só não pontua: alguém no banco precisa chamar{' '}
+              <code>award_game_points</code> com esse código. Os que já disparam sozinhos são{' '}
+              <code>venda</code>, <code>distrato</code>, <code>esteira</code>, <code>aprovado</code> e{' '}
+              <code>incompleto_com_doc</code>.
+            </p>
+          </div>
+        </div>
+      )}
+    </SectionCard>
   );
 }
 
 export default function Gamification() {
-  const { role } = useAuth();
+  // `isAdmin` do contexto acompanha a pré-visualização de papel; `role` é
+  // sempre o papel REAL e deixava a aba Admin e o botão de fechar na prévia.
+  const { isAdmin, roles, previewRole } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isAdmin = role === 'admin';
 
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-  const [pendingScoring, setPendingScoring] = useState<Record<string, number>>({});
+  const [pendingScoring, setPendingScoring] = useState<Record<string, string>>({});
+
+  // O corretor vê o placar da EQUIPE dele (decisão de 10/08, RPC
+  // `visible_game_ranking`); admin, diretor e sócio veem a casa. A tela dizia
+  // "Campeões gerais" para os dois — quem lê "geral" e vê cinco nomes não tem
+  // como saber que o recorte é da equipe.
+  const effectiveRoles = previewRole ? [previewRole] : roles;
+  const veTudo = isAdmin || effectiveRoles.some((r) => r === 'director' || r === 'partner');
 
   const { data: currentSeasonId, isPending: seasonPending } = useCurrentSeasonId();
 
   const seasonsQuery = useQuery({ queryKey: gameKeys.seasons, queryFn: listSeasons, staleTime: 60_000 });
   const seasons = useMemo(() => seasonsQuery.data ?? [], [seasonsQuery.data]);
-
-  const rankingQuery = useSeasonRanking(currentSeasonId);
-  const currentRanking = useMemo(() => rankingQuery.data ?? [], [rankingQuery.data]);
 
   const rulesQuery = useQuery({
     queryKey: gameKeys.rules(currentSeasonId ?? null),
@@ -206,6 +464,26 @@ export default function Gamification() {
   const isCurrent = Boolean(selected && selected.id === currentSeasonId);
   const isClosed = Boolean(selected?.closed_at);
 
+  // Mês-base do ciclo, como o Pipeline escreve ("08/2026"). Com ciclo livre,
+  // duas temporadas cabem no mesmo mês: a segunda encontra o mês já travado, e
+  // o diálogo precisa dizer isso antes do clique.
+  const closedMonths = useClosedMonths();
+  const seasonMonth = selected ? monthLabel(monthStart(selected.period_start)) : null;
+  const monthAlreadyClosed = Boolean(seasonMonth && (closedMonths.data ?? []).includes(seasonMonth));
+
+  /**
+   * Ranking da temporada EXIBIDA, não da corrente.
+   *
+   * Era `useSeasonRanking(currentSeasonId)`: com o jogo parado a consulta ficava
+   * desabilitada, o mapa de identidades nascia vazio e a tela dizia "Ninguém
+   * pontuou nesta temporada" para uma temporada fechada com 13 colocados no
+   * banco. `visible_game_ranking` aceita qualquer temporada e já devolve todo
+   * corretor visível, com ou sem ponto — é a identidade de que o congelado
+   * precisa, no mesmo recorte de RLS.
+   */
+  const rankingQuery = useSeasonRanking(selected?.id ?? null);
+  const seasonRanking = useMemo(() => rankingQuery.data ?? [], [rankingQuery.data]);
+
   const resultsQuery = useQuery({
     queryKey: gameKeys.results(selected?.id ?? null),
     queryFn: () => listSeasonResults(selected?.id as string),
@@ -214,27 +492,59 @@ export default function Gamification() {
   });
 
   const peopleById = useMemo(
-    () => new Map(currentRanking.map((row) => [row.profile_id, row])),
-    [currentRanking],
+    () => new Map(seasonRanking.map((row) => [row.profile_id, row])),
+    [seasonRanking],
   );
 
+  /**
+   * `keepUnknown` acompanha o `can_read_all()` do banco (admin, diretor,
+   * sócio). Para eles o congelado fica inteiro, com a linha anônima de quem
+   * saiu da casa; para corretor e gerente a linha que o escopo de hoje não
+   * identifica sai — é o mesmo recorte da policy `game_season_results_select`
+   * (0060), e enquanto ela não estiver aplicada o SELECT ainda é `using (true)`:
+   * sem este filtro, abrir uma temporada fechada no seletor entregaria a um
+   * corretor os pontos e o VGV congelados da casa inteira.
+   */
   const scores = useMemo(
     () => (isClosed
-      ? buildFrozenScores(resultsQuery.data ?? [], peopleById)
-      : buildScores(currentRanking)),
-    [isClosed, resultsQuery.data, peopleById, currentRanking],
+      ? buildFrozenScores(resultsQuery.data ?? [], peopleById, { keepUnknown: veTudo })
+      : buildScores(seasonRanking)),
+    [isClosed, resultsQuery.data, peopleById, seasonRanking, veTudo],
   );
 
-  const loading = seasonPending || seasonsQuery.isPending
-    || (isClosed ? resultsQuery.isPending : rankingQuery.isPending && Boolean(currentSeasonId));
-  const loadError = seasonsQuery.error ?? rankingQuery.error ?? resultsQuery.error ?? rulesQuery.error;
+  /**
+   * Vazio por FILTRO, não por falta de fechamento.
+   *
+   * `buildFrozenScores(..., { keepUnknown: false })` descarta a linha que o
+   * escopo de hoje não identifica: uma temporada com 13 colocados de outras
+   * equipes chega vazia à tela do corretor, e o texto "o fechamento não
+   * congelou nenhuma linha" seria uma afirmação sobre o banco que esta tela não
+   * tem como fazer. O que ela sabe é quantas linhas o SELECT devolveu.
+   */
+  const congeladoForaDoEscopo = isClosed && scores.length === 0 && (resultsQuery.data ?? []).length > 0;
 
+  const loading = seasonPending || seasonsQuery.isPending
+    || (Boolean(selected) && rankingQuery.isPending)
+    || (isClosed && resultsQuery.isPending);
+  const loadError = seasonsQuery.error ?? rankingQuery.error ?? resultsQuery.error;
+
+  /**
+   * O degrau escreve a colocação CONGELADA, não a posição na lista.
+   *
+   * `scores.slice(0, 3)` é "os três primeiros que eu vejo". Numa temporada
+   * fechada, corretor e gerente recebem o congelado filtrado pelo escopo
+   * (`keepUnknown: false`), então o primeiro visível pode ser o 5º colocado da
+   * casa — e a tabela logo abaixo já mostrava "#5" para a MESMA pessoa que o
+   * cartão coroava como 1º. É a mesma correção que entrou na tabela e ficou
+   * faltando no pódio.
+   */
   const podium: PodiumEntry[] = scores.slice(0, 3).map((s) => ({
     id: s.brokerId,
     name: s.brokerName,
     points: s.points,
     avatarUrl: s.avatarUrl,
     detail: s.team,
+    place: isClosed ? s.rank : undefined,
   }));
 
   // Diretorias reais: agrupa o placar pelos director_id das equipes.
@@ -267,35 +577,61 @@ export default function Gamification() {
    * passava então a recusar qualquer insert/update de não-admin em negócio
    * daquele mês-base pelo resto do mês. Agora é a mesma RPC do Pipeline, e o
    * mês travado é o do início da temporada, não o do relógio de quem clicou.
+   *
+   * Exceção: a temporada que nasce dentro de um mês JÁ travado (segundo
+   * fechamento no mesmo mês de calendário — ciclo livre, decisão de 21/08).
+   * `close_month_and_season` recusa com "já está fechado" e a temporada ficaria
+   * aberta para sempre pela tela; aí só a temporada encerra, via
+   * `close_game_season`, que congela o ranking e abre a próxima sem tocar em
+   * `closed_months` nem mover proposta.
    */
   const closeMutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error('Nenhuma temporada aberta.');
-      const changed = rules.filter((rule) => {
-        const next = pendingScoring[rule.event_code];
-        return Number.isFinite(next) && next !== rule.points;
-      });
-      // Os pesos novos são gravados ANTES do fechamento para valerem já na
-      // temporada que abre na mesma transação.
-      for (const rule of changed) {
-        await setDefaultScoringPoints(rule.event_code, rule.label, pendingScoring[rule.event_code]);
+      // Campo apagado virava `NaN` e o filtro `Number.isFinite` o descartava em
+      // silêncio: o operador saía convencido de ter mudado um peso que ficou
+      // como estava. Agora o diálogo recusa antes de fechar nada.
+      const changed: { rule: (typeof rules)[number]; points: number }[] = [];
+      for (const rule of rules) {
+        const raw = pendingScoring[rule.event_code];
+        if (raw === undefined || raw === String(rule.points)) continue;
+        const points = Number(raw);
+        if (raw.trim() === '' || !Number.isInteger(points)) {
+          throw new Error(`A pontuação de "${rule.label}" precisa ser um número inteiro.`);
+        }
+        changed.push({ rule, points });
       }
-      return closeMonthAndSeason(monthStart(selected.period_start));
+      // Os pesos novos são gravados ANTES do fechamento para valerem já na
+      // temporada que abre na mesma transação. Se o `close` falhar depois, eles
+      // ficam gravados — está escrito no aviso do diálogo.
+      for (const { rule, points } of changed) {
+        await setDefaultScoringPoints(rule.event_code, rule.label, points);
+      }
+      const period = monthStart(selected.period_start);
+      // Leitura fresca, não o cache: o Pipeline pode ter fechado o mês em outra aba.
+      if (await isMonthClosed(period)) {
+        const nextSeasonId = await closeGameSeason();
+        return { period, moved_deals: 0, next_season_id: nextSeasonId, monthWasClosed: true };
+      }
+      return { ...(await closeMonthAndSeason(period)), monthWasClosed: false };
     },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: gameKeys.all });
       await queryClient.invalidateQueries({ queryKey: ['closed_months'] });
       setSelectedSeasonId(null);
       setCloseConfirmOpen(false);
+      const month = monthLabel(String(result.period).slice(0, 10));
       toast({
         title: 'Temporada encerrada',
-        description: `Ranking congelado, mês ${monthLabel(String(result.period).slice(0, 10))} travado e ${num(result.moved_deals)} proposta(s) movida(s) para o mês seguinte.`,
+        description: result.monthWasClosed
+          ? `Ranking congelado e nova temporada aberta. O mês ${month} já estava travado.`
+          : `Ranking congelado, mês ${month} travado e ${num(result.moved_deals)} proposta(s) movida(s) para o mês seguinte.`,
       });
     },
     onError: (error: unknown) => {
       toast({
         title: 'Não foi possível encerrar a temporada',
-        description: describeError(error, 'Não foi possível encerrar a temporada.'),
+        description: describeGameError(error, 'Não foi possível encerrar a temporada.'),
         variant: 'destructive',
       });
     },
@@ -309,11 +645,18 @@ export default function Gamification() {
       toast({ title: 'Temporada aberta', description: 'O jogo voltou a pontuar.' });
     },
     onError: (error: unknown) => {
+      // `game_seasons_one_open` é índice único: dois admins abrindo ao mesmo
+      // tempo levariam o 23505 cru do Postgres ("duplicate key value violates
+      // unique constraint"), que não diz nada a quem clicou.
+      const code = (error as { db?: { code?: string } } | null)?.db?.code;
       toast({
         title: 'Não foi possível abrir a temporada',
-        description: describeError(error, 'Não foi possível abrir a temporada.'),
+        description: code === '23505'
+          ? 'Alguém acabou de abrir uma temporada. Recarregue a tela para ver o jogo já rodando.'
+          : describeGameError(error, 'Não foi possível abrir a temporada.'),
         variant: 'destructive',
       });
+      void queryClient.invalidateQueries({ queryKey: gameKeys.all });
     },
   });
 
@@ -332,7 +675,7 @@ export default function Gamification() {
           <div className="flex flex-wrap items-center gap-2">
             {seasons.length > 0 && (
               <Select value={selected?.id ?? ''} onValueChange={setSelectedSeasonId}>
-                <SelectTrigger className="w-[300px]" aria-label="Temporada exibida">
+                <SelectTrigger className="w-full sm:w-[300px]" aria-label="Temporada exibida">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -350,7 +693,7 @@ export default function Gamification() {
               <Button
                 variant="destructive"
                 onClick={() => {
-                  setPendingScoring(Object.fromEntries(rules.map((r) => [r.event_code, r.points])));
+                  setPendingScoring(Object.fromEntries(rules.map((r) => [r.event_code, String(r.points)])));
                   setCloseConfirmOpen(true);
                 }}
               >
@@ -381,22 +724,34 @@ export default function Gamification() {
           </SectionCard>
         )}
 
+        {/* Cartão com estado próprio: ficava ACIMA da guarda de carregamento e
+            afirmava "Nenhuma regra de pontuação ativa" enquanto a consulta
+            corria — e também quando ela falhava. */}
         <SectionCard title="Pontuação por movimento" icon={Star} description="Pesos vigentes em game_scoring_rules.">
-          <div className="flex flex-wrap gap-2">
-            {rules.map((rule) => (
-              <Badge key={rule.event_code} variant="secondary" className="gap-1">
-                {EVENT_LABELS[rule.event_code] ?? rule.label}:{' '}
-                <span className={rule.points < 0 ? 'font-bold text-destructive' : 'font-bold text-primary'}>
-                  {rule.points} pts
-                </span>
-              </Badge>
-            ))}
-            {rules.length === 0 && (
-              <span className="text-xs text-muted-foreground">
-                Nenhuma regra de pontuação ativa em <code>game_scoring_rules</code>.
-              </span>
-            )}
-          </div>
+          {rulesQuery.isPending ? (
+            <div className="flex flex-wrap gap-2" aria-hidden>
+              {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-6 w-32 rounded-full" />)}
+            </div>
+          ) : rulesQuery.error ? (
+            <p className="text-sm text-destructive">
+              {describeError(rulesQuery.error, 'Não foi possível carregar as regras de pontuação.')}
+            </p>
+          ) : rules.length === 0 ? (
+            <span className="text-xs text-muted-foreground">
+              Nenhuma regra de pontuação ativa em <code>game_scoring_rules</code>.
+            </span>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {rules.map((rule) => (
+                <Badge key={rule.event_code} variant="secondary" className="gap-1">
+                  {rule.label}:{' '}
+                  <span className={rule.points < 0 ? 'font-bold text-destructive' : 'font-bold text-primary'}>
+                    {rule.points} pts
+                  </span>
+                </Badge>
+              ))}
+            </div>
+          )}
         </SectionCard>
 
         <GamificationBanners />
@@ -424,18 +779,40 @@ export default function Gamification() {
             <TabsContent value="geral" className="space-y-6">
               {scores.length === 0 ? (
                 <EmptyState
-                  icon={Trophy}
-                  title="Ninguém pontuou nesta temporada"
-                  description="Assim que uma esteira, aprovação ou venda for registrada, o placar aparece aqui."
+                  icon={isClosed ? Lock : Trophy}
+                  title={congeladoForaDoEscopo
+                    ? 'Ninguém do seu escopo pontuou nesta temporada'
+                    : isClosed ? 'Esta temporada fechou sem ninguém no placar' : 'Ninguém pontuou nesta temporada'}
+                  description={congeladoForaDoEscopo
+                    ? 'O fechamento congelou linhas, mas todas são de corretores que você não enxerga. O ranking da casa inteira é da diretoria.'
+                    : isClosed
+                      ? 'O fechamento não congelou nenhuma linha: não houve venda, esteira nem aprovação enquanto ela esteve aberta.'
+                      : 'Assim que uma esteira, aprovação ou venda for registrada, o placar aparece aqui.'}
                 />
               ) : (
                 <>
-                  <SectionCard title="Campeões gerais" icon={Trophy} description={selected ? seasonPeriod(selected) : undefined}>
+                  <SectionCard
+                    title={veTudo ? 'Campeões gerais' : 'Campeões da sua equipe'}
+                    icon={Trophy}
+                    description={selected ? seasonPeriod(selected) : undefined}
+                  >
                     <Podium entries={podium} />
+                    {!veTudo && (
+                      <p className="mt-4 text-center text-xs text-muted-foreground">
+                        Você vê os corretores das suas equipes. O ranking da casa inteira é da diretoria.
+                      </p>
+                    )}
                   </SectionCard>
 
-                  <SectionCard title="Ranking completo" icon={TrendingUp} flush>
-                    <RankingTable scores={scores} secondColumn="team" />
+                  <SectionCard
+                    title="Ranking completo"
+                    icon={TrendingUp}
+                    description={isClosed && !veTudo
+                      ? 'Colocação congelada no fechamento. Você vê as linhas dos corretores que enxerga hoje, então a numeração pode pular.'
+                      : undefined}
+                    flush
+                  >
+                    <RankingTable scores={scores} secondColumn="team" usarRankGravado={isClosed} />
                   </SectionCard>
                 </>
               )}
@@ -473,6 +850,8 @@ export default function Gamification() {
 
             {isAdmin && (
               <TabsContent value="admin" className="space-y-4">
+                <ScoringRulesPanel seasonId={currentSeasonId ?? null} seasons={seasons} />
+                <SoundPreview />
                 <GamificationAdmin />
               </TabsContent>
             )}
@@ -482,43 +861,61 @@ export default function Gamification() {
 
       {/* ── FECHAMENTO: um único ponto, o mesmo do Pipeline ─────────────── */}
       <AlertDialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
-        <AlertDialogContent className="max-w-lg">
+        <AlertDialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <Target className="h-5 w-5 text-destructive" /> Fechar a gameficação
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Encerra a temporada <strong className="text-foreground">{selected?.label}</strong>, congela o ranking,
-              trava o mês-base <strong className="text-foreground">{selected ? monthLabel(monthStart(selected.period_start)) : '—'}</strong>{' '}
-              e move as propostas abertas para o mês seguinte. Uma nova temporada abre na mesma transação.
+              {monthAlreadyClosed ? (
+                <>
+                  Encerra a temporada <strong className="text-foreground">{selected?.label}</strong>, congela o ranking
+                  e abre a próxima. O mês-base <strong className="text-foreground">{seasonMonth}</strong> já está travado
+                  por um fechamento anterior: nenhuma proposta é movida.
+                </>
+              ) : (
+                <>
+                  Encerra a temporada <strong className="text-foreground">{selected?.label}</strong>, congela o ranking,
+                  trava o mês-base <strong className="text-foreground">{seasonMonth ?? '—'}</strong>{' '}
+                  e move as propostas abertas para o mês seguinte. Uma nova temporada abre na mesma transação.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <div className="space-y-4">
             <div>
               <p className="text-eyebrow mb-2">Pontuação da próxima temporada</p>
-              <div className="grid grid-cols-2 gap-3">
+              {/* Rola aqui dentro. `AlertDialogContent` é `fixed` e centralizado,
+                  sem `max-h` nem `overflow`: com as regras que o painel novo
+                  deixa criar, o diálogo passava da viewport e "Cancelar" /
+                  "Encerrar e travar o mês" — ação irreversível — saíam da tela
+                  sem rolagem possível. Mesmo remédio de Resultados.tsx. */}
+              <div className="grid max-h-64 grid-cols-2 gap-3 overflow-y-auto pr-1">
                 {rules.map((rule) => (
                   <div key={rule.event_code} className="space-y-1">
-                    <Label className="text-xs" htmlFor={`peso-${rule.event_code}`}>
-                      {EVENT_LABELS[rule.event_code] ?? rule.label}
-                    </Label>
+                    <Label className="text-xs" htmlFor={`peso-${rule.event_code}`}>{rule.label}</Label>
                     <Input
                       id={`peso-${rule.event_code}`}
                       type="number"
-                      value={pendingScoring[rule.event_code] ?? rule.points}
-                      onChange={(e) => setPendingScoring((p) => ({ ...p, [rule.event_code]: Number(e.target.value) }))}
+                      step={1}
+                      value={pendingScoring[rule.event_code] ?? String(rule.points)}
+                      onChange={(e) => setPendingScoring((p) => ({ ...p, [rule.event_code]: e.target.value }))}
                       className="h-9"
                     />
                   </div>
                 ))}
               </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Para ajustar um peso sem encerrar o jogo, use <strong>Regras de pontuação</strong> na aba Admin.
+              </p>
             </div>
 
             <div className="flex items-start gap-2 rounded-xl border border-warning/25 bg-warning/10 p-3">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
               <p className="text-xs text-muted-foreground">
-                Não dá para desfazer. As novas pontuações valem a partir da temporada que abrir agora.
+                Não dá para desfazer. As pontuações são gravadas antes do fechamento: se o encerramento
+                falhar, elas continuam valendo e o jogo segue aberto.
               </p>
             </div>
           </div>
@@ -529,7 +926,9 @@ export default function Gamification() {
               onClick={(e) => { e.preventDefault(); closeMutation.mutate(); }}
               disabled={closeMutation.isPending}
             >
-              {closeMutation.isPending ? 'Encerrando…' : 'Encerrar e travar o mês'}
+              {closeMutation.isPending
+                ? 'Encerrando…'
+                : monthAlreadyClosed ? 'Encerrar temporada' : 'Encerrar e travar o mês'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
