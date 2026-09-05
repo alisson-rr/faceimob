@@ -15,7 +15,7 @@ import { ConversationsTab } from "@/components/sdr/ConversationsTab";
 import { RemarketingTab } from "@/components/sdr/RemarketingTab";
 import { WhatsAppTab } from "@/components/sdr/WhatsAppTab";
 import {
-  canEditTemplates, canManageSdr,
+  canEditTemplates, canManageSdr, IA_SEM_CREDENCIAL,
   type Agent, type Group, type ListStats, type Rlist, type Source, type WhatsAppTemplate,
 } from "@/components/sdr/types";
 
@@ -38,6 +38,13 @@ export default function SdrModule() {
   // erro, a tela dizia ao mesmo tempo "não consegui carregar" e "não existe
   // nada". Enquanto não há dado confirmado, nenhuma frase definitiva aparece.
   const [carregando, setCarregando] = useState(true);
+  /**
+   * A chave da OpenAI está no cofre? `null` enquanto não se sabe — e enquanto
+   * não se sabe, nenhuma aba afirma nada, pela mesma disciplina do
+   * `carregando`: dizer "não configurada" porque a consulta falhou seria trocar
+   * uma mentira por outra.
+   */
+  const [iaConfigurada, setIaConfigurada] = useState<boolean | null>(null);
 
   async function loadAll() {
     try {
@@ -89,6 +96,14 @@ export default function SdrModule() {
     }));
     setLists(withStats);
     if (statsFailed) toast.error("Falha ao carregar estatísticas de uma ou mais listas de remarketing");
+
+    // Só o veredito booleano; a function nunca devolve o valor da chave. Falha
+    // aqui não vira erro de tela: o módulo inteiro funciona sem esta resposta,
+    // e o que se perde é apenas o aviso antecipado.
+    const { data: cred, error: credErr } = await supabase.functions.invoke("sdr-agent-chat", {
+      body: { action: "status" },
+    });
+    setIaConfigurada(credErr || typeof cred?.configured !== "boolean" ? null : cred.configured);
   }
   // `loadAll` é recriada a cada render (função do corpo do componente), então
   // entrar com ela na lista de dependências faria a carga rodar em laço. A
@@ -111,6 +126,19 @@ export default function SdrModule() {
         <Card className="p-4 border-destructive/40 flex items-center justify-between gap-2 text-sm">
           <span>Não foi possível carregar os dados do SDR: {loadError}</span>
           <Button size="sm" variant="outline" onClick={loadAll}>Tentar novamente</Button>
+        </Card>
+      )}
+
+      {/* Honestidade antes do primeiro clique: sem a chave, nenhum agente
+          responde — e o operador só descobria isso depois de digitar. */}
+      {iaConfigurada === false && (
+        <Card role="status" className="p-4 border-warning/50 text-sm space-y-1">
+          <p>{IA_SEM_CREDENCIAL}</p>
+          <p className="text-muted-foreground">
+            Até lá nenhum agente responde: o lead que entra por uma origem com SDR fica esperando na conversa, e o SDR
+            é avisado no sino a cada mensagem sem resposta. Cadastro de agentes, origens, listas e templates continua
+            valendo — só a resposta da IA depende da chave.
+          </p>
         </Card>
       )}
 
@@ -137,9 +165,9 @@ export default function SdrModule() {
           <>
             {/* `sources` e `lists` entram só para o aviso de exclusão dizer o
                 que se solta (FKs ON DELETE SET NULL) — a aba não os edita. */}
-            <TabsContent value="agents"><AgentsTab agents={agents} groups={groups} sources={sources} lists={lists} canWrite={canWrite} reload={loadAll} /></TabsContent>
+            <TabsContent value="agents"><AgentsTab agents={agents} groups={groups} sources={sources} lists={lists} canWrite={canWrite} iaConfigurada={iaConfigurada} reload={loadAll} /></TabsContent>
             <TabsContent value="sources"><SourcesTab sources={sources} agents={agents} templates={templates} canWrite={canWrite} reload={loadAll} /></TabsContent>
-            <TabsContent value="playground"><PlaygroundTab agents={agents} canWrite={canWrite} /></TabsContent>
+            <TabsContent value="playground"><PlaygroundTab agents={agents} canWrite={canWrite} iaConfigurada={iaConfigurada} /></TabsContent>
             <TabsContent value="conversations"><ConversationsTab agents={agents} canWrite={canWrite} /></TabsContent>
             <TabsContent value="remarketing"><RemarketingTab lists={lists} agents={agents} groups={groups} templates={templates} canWrite={canWrite} reload={loadAll} /></TabsContent>
             {/* `sources` e `lists` também aqui, e pelo mesmo motivo da aba

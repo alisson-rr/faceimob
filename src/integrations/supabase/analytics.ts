@@ -231,13 +231,9 @@ export async function createAdCampaign(input: AdCampaignInput): Promise<void> {
  * investimento para sempre. Aqui o erro de digitação tem conserto.
  */
 export async function updateAdCampaign(id: string, patch: AdCampaignInput): Promise<void> {
-  if (patch.totalSpend !== undefined && (!Number.isFinite(patch.totalSpend) || patch.totalSpend < 0)) {
-    throw new Error("O investimento não pode ser negativo.");
-  }
-  if (patch.dailyBudget != null && (!Number.isFinite(patch.dailyBudget) || patch.dailyBudget < 0)) {
-    throw new Error("O orçamento diário não pode ser negativo.");
-  }
-  const { data, error } = await supabase
+  const problema = problemaNaCampanha(patch);
+  if (problema) throw new Error(problema);
+  const { data, error } = await untyped
     .from("ad_campaigns")
     .update({
       external_id: patch.externalId,
@@ -245,15 +241,44 @@ export async function updateAdCampaign(id: string, patch: AdCampaignInput): Prom
       name: patch.name,
       developer_id: patch.developerId ?? null,
       status: patch.status ?? null,
-      // `dailyBudget` só entra quando o chamador o informou: omitir preserva o
-      // orçamento que a plataforma gravou, e `null` explícito é "sem orçamento".
+      lead_source_id: patch.leadSourceId ?? null,
+      starts_on: patch.startsOn ?? null,
+      ends_on: patch.endsOn ?? null,
+      // Verba só entra quando o chamador a informou: omitir preserva o valor
+      // já lançado, e `null` explícito é "sem verba".
       ...(patch.dailyBudget !== undefined ? { daily_budget: patch.dailyBudget } : {}),
+      ...(patch.lifetimeBudget !== undefined ? { lifetime_budget: patch.lifetimeBudget } : {}),
       ...(patch.totalSpend !== undefined ? { total_spend: patch.totalSpend } : {}),
     })
     .eq("id", id)
     .select("id");
   if (error?.code === "23505") throw new Error(ID_EXTERNO_REPETIDO);
   if (error) throw dbError("salvar campanha", error);
+  if (!data?.length) throw new Error("Sem permissão para alterar campanhas (apenas admin e marketing).");
+}
+
+/**
+ * Pausar/reativar como GESTO — sem passar pelo formulário inteiro.
+ *
+ * Escreve só `status`: reenviar o resto do cadastro para trocar um estado é o
+ * caminho que erra, porque qualquer campo que a tela tenha carregado torto vai
+ * junto. `select("id")` pelo mesmo motivo de `deleteAdCampaign`: o RLS não erra
+ * ao recusar, filtra a linha e devolve 204 — sem conferir o retorno a tela
+ * diria "pausada" com a campanha ativa no banco.
+ *
+ * O efeito é LOCAL: nada aqui fala com a Meta, e quem chama precisa dizer isso
+ * na tela — senão pausar no CRM passa por ter pausado o gasto.
+ */
+export async function setAdCampaignStatus(id: string, status: AdStatus): Promise<void> {
+  if (!(AD_STATUSES as readonly string[]).includes(status)) {
+    throw new Error("Status inválido: use ACTIVE (Ativa) ou PAUSED (Pausada).");
+  }
+  const { data, error } = await supabase
+    .from("ad_campaigns")
+    .update({ status })
+    .eq("id", id)
+    .select("id");
+  if (error) throw dbError("alterar status da campanha", error);
   if (!data?.length) throw new Error("Sem permissão para alterar campanhas (apenas admin e marketing).");
 }
 

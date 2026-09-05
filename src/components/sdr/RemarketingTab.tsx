@@ -39,6 +39,11 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
   // ignora o tema e — em disparo em massa para número de cliente real — não dá
   // espaço para dizer quantos contatos vão receber a mensagem.
   const [confirmando, setConfirmando] = useState<{ tipo: "disparo" | "exclusao"; lista: Rlist } | null>(null);
+  // Credencial da Meta que faltou no último disparo. Fica na tela, e não só no
+  // toast: "a Meta recusou" o operador resolve tentando de novo, "não há chave
+  // cadastrada" não muda até alguém abrir Admin · Integrações — e o toast some
+  // em segundos levando junto a única explicação de por que nada saiu.
+  const [semCredencial, setSemCredencial] = useState<string | null>(null);
 
   const ativos = groups.filter(g => g.active);
 
