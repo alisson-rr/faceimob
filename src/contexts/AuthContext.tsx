@@ -21,10 +21,27 @@ interface AuthContextType {
   profile: { name: string; email: string | null; phone: string | null; avatar_url: string | null } | null;
   /** Relê o perfil do banco — a tela de Configurações edita nome, telefone e foto. */
   refreshProfile: () => Promise<void>;
-  /** Papel de maior precedência — só para rótulo. Autorização usa `can`. */
+  /**
+   * Papel de maior precedência ENTRE OS EFETIVOS — rótulo e recortes de tela.
+   * Autorização de verdade usa `can`.
+   */
   role: AppRole;
-  /** Todos os papéis do usuário: papel é N:N (`user_roles`). */
+  /**
+   * Papéis EFETIVOS: os reais, ou só o pré-visualizado enquanto um admin está
+   * conferindo outro perfil. Papel é N:N (`user_roles`), daí a lista.
+   *
+   * Eram os REAIS até 05/09/2026, e essa era a razão de "trocar de perfil não
+   * funciona": `isAdmin` e `can()` já respeitavam a prévia, `roles` não. Metade
+   * das telas remendava na mão (`previewRole ? [previewRole] : roles`) e a
+   * outra metade esquecia — Pipeline, Checkpoint, Atividades e o editor de
+   * negócio continuavam mostrando a tela de administrador durante a prévia.
+   * Uma fonte só: quem precisa da verdade pede `realRole`/`realRoles`.
+   */
   roles: AppRole[];
+  /** Papel de maior precedência REAL, ignorando a prévia. */
+  realRole: AppRole;
+  /** Papéis REAIS, ignorando a prévia. Quem mostra QUEM VOCÊ É usa estes. */
+  realRoles: AppRole[];
   /**
    * `true` quando a leitura do perfil/matriz falhou. Distingue "esta conta não
    * tem papel nenhum" de "não conseguimos ler os papéis" — `roles` fica vazio
@@ -46,7 +63,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null, session: null, profile: null,
-  role: 'broker', roles: [], perfilFalhou: false, isAdmin: false, loading: true,
+  role: 'broker', roles: [], realRole: 'broker', realRoles: [],
+  perfilFalhou: false, isAdmin: false, loading: true,
   refreshProfile: async () => {},
   previewRole: null, setPreviewRole: () => {},
   can: () => false, canEnterStage: () => false,
@@ -220,6 +238,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => (previewRoleState ? [previewRoleState] : roles),
     [previewRoleState, roles],
   );
+  // O rótulo acompanha o recorte: durante a prévia o cabeçalho tem de dizer o
+  // papel que a tela está mostrando, não o de quem está logado.
+  const effectiveRole = previewRoleState ?? role;
   const isAdmin = effectiveRoles.includes('admin');
 
   const allowedCodes = useMemo(() => {
@@ -285,7 +306,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, session, profile, role, roles, perfilFalhou, isAdmin, loading, refreshProfile,
+      user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
+      role: effectiveRole, roles: effectiveRoles, realRole: role, realRoles: roles,
       previewRole: previewRoleState, setPreviewRole,
       can, canEnterStage, signOut,
     }}>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  canonicalVar, nameIssue, parseVariables, placeholderCount, renderPreview, templateIssues,
+  canonicalVar, nameIssue, parseVariables, placeholderCount, renderPreview, templateBlockers, templateIssues,
 } from "./templateVars";
 
 describe("placeholderCount", () => {
@@ -35,6 +35,27 @@ describe("templateIssues", () => {
   it("avisa quando o nome da variável não casa com nenhum dado do contato", () => {
     const problemas = templateIssues("Olá {{1}}", ["renda"]);
     expect(problemas.some((p) => /"renda"/.test(p))).toBe(true);
+  });
+});
+
+describe("templateBlockers", () => {
+  // A Meta conta parâmetro: contagem errada é recusa em qualquer caminho.
+  it("é só a contagem de parâmetros", () => {
+    expect(templateBlockers("Olá {{1}}, sobre {{2}}", ["nome"])).toHaveLength(1);
+    expect(templateBlockers("Olá {{1}}", ["nome", "campanha"])).toHaveLength(1);
+    expect(templateBlockers("Olá {{1}}, sobre {{2}}", ["nome", "campanha"])).toEqual([]);
+  });
+
+  /**
+   * Nome fora do catálogo NÃO bloqueia: `OutreachDialogs` monta a mensagem pelo
+   * `wa.me` com `{ nome, cliente, corretor }` e o `fillWhatsappTemplate` deixa
+   * a posição desconhecida visível para o corretor completar. Bloquear aqui
+   * derrubaria template legítimo — e "arquive-o" o tiraria justamente do
+   * caminho que o suporta (`listWhatsappTemplates` filtra `active = true`).
+   */
+  it("não bloqueia nome de variável fora do catálogo — isso é aviso", () => {
+    expect(templateBlockers("Olá {{1}}", ["corretor"])).toEqual([]);
+    expect(templateIssues("Olá {{1}}", ["corretor"])).toHaveLength(1);
   });
 });
 

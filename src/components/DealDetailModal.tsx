@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { X } from "lucide-react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { describeError } from "@/lib/supabaseError";
@@ -112,6 +112,12 @@ export default function DealDetailModal({
     setForm((previous) => ({ ...previous, ...next }));
 
   const handleSave = async () => {
+    // Liga antes da primeira recusa, e não depois delas: o formulário nasce sem
+    // corretor E sem construtora, então cobrar um campo por clique fazia o
+    // operador descobrir a segunda pendência só na tentativa seguinte. Ligado
+    // aqui, as duas aparecem juntas — e um formulário recém-aberto continua sem
+    // nada pintado de vermelho, porque ninguém clicou em salvar ainda.
+    setTentouSalvar(true);
     if (!form.client.trim()) {
       toast({ variant: "destructive", title: "O nome do cliente é obrigatório" });
       return;
@@ -130,11 +136,19 @@ export default function DealDetailModal({
     // aparece uma vez, presa ao Select que a causou (`aria-invalid` +
     // `aria-describedby`), e o mesmo `dealRequiredError` continua guardando a
     // gravação em `Pipeline.onSave` para qualquer caminho que não passe aqui.
-    setTentouSalvar(true);
     // A frase fica na aba "Detalhes", e é onde o operador está: `dealRequiredError`
     // só cobra na CRIAÇÃO, e no negócio novo as outras quatro abas estão
     // desabilitadas até existir um `id`.
-    if (dealRequiredError(form)) return;
+    if (dealRequiredError(form)) {
+      // Sem levar o foco, o clique não muda nada VISÍVEL: o rodapé rola junto
+      // com o conteúdo do diálogo, então quem clica em "Criar negócio" está no
+      // fim, e a frase nasce ~13 campos acima, fora da área visível — a tela
+      // pareceria travada. Focar o gatilho rola até ele, dá ao teclado o ponto
+      // de partida certo e faz o leitor de tela reler o campo com a frase
+      // ligada por `aria-describedby` a cada nova tentativa.
+      document.getElementById(field("developer"))?.focus();
+      return;
+    }
     setSaving(true);
     try {
       await onSave(form);
@@ -165,6 +179,14 @@ export default function DealDetailModal({
         <DialogTitle className="sr-only">
           {isNew ? "Novo negócio" : `Negócio de ${form.client || "cliente sem nome"}`}
         </DialogTitle>
+        {/* Sem ela o Radix avisa no console e, pior, o leitor de tela abre um
+            diálogo de ~40 campos anunciando só o título. Diz também por que as
+            outras abas nascem cinzas — o que só o `title` do botão explicava. */}
+        <DialogDescription className="sr-only">
+          {isNew
+            ? "Cadastro do negócio em cinco abas; anexos, agenda, histórico e CCA abrem depois de salvar."
+            : "Negócio em cinco abas: detalhes, anexos, agenda, histórico e CCA."}
+        </DialogDescription>
 
         <div className="flex items-center justify-between border-b border-border px-4 pb-0 pt-4">
           <div className="flex gap-4 overflow-x-auto" role="tablist" aria-label="Seções do negócio">

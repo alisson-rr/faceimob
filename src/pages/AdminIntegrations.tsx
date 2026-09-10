@@ -169,8 +169,10 @@ export default function AdminIntegrations() {
   const [testando, setTestando] = useState<string | null>(null);
   // `remetentes` só o Brevo preenche: é a lista que a conta aceita, e sem ela a
   // recusa "remetente inválido" não tem caminho de saída na tela.
+  // `gravadoNaLista` separa os dois motivos de recusa que a lista sozinha não
+  // distingue: o endereço gravado está lá e falta verificar × não está lá.
   const [testes, setTestes] = useState<
-    Record<string, { ok: boolean; texto: string; remetentes: RemetenteBrevo[] }>
+    Record<string, { ok: boolean; texto: string; remetentes: RemetenteBrevo[]; gravadoNaLista: boolean }>
   >({});
   // Credencial em vias de ser revogada. Revogar apaga o valor: precisa de
   // confirmação com o efeito escrito, não de um clique solto ao lado do campo.
@@ -259,6 +261,18 @@ export default function AdminIntegrations() {
       await setIntegrationSecret(provider, label, secret);
       // Limpa o campo: o valor não volta do servidor e não deve ficar na tela.
       setDrafts((prev) => ({ ...prev, [k]: "" }));
+      // Veredito velho não sobrevive à troca do valor que ele julgava: o admin
+      // lia "o valor gravado não é nenhum deles", copiava um endereço da lista,
+      // salvava — e continuava lendo a mesma recusa em vermelho logo abaixo do
+      // toast de sucesso. A leitura natural disso é "a gravação não pegou".
+      // Os dois cartões do Brevo compartilham a MESMA sonda, então a limpeza é
+      // por function: julgar o par de novo exige testar o par de novo.
+      const sonda = PROBES[k]?.fn;
+      if (sonda) {
+        setTestes((prev) =>
+          Object.fromEntries(Object.entries(prev).filter(([key]) => PROBES[key]?.fn !== sonda)),
+        );
+      }
       await load();
       toast({
         title: "Credencial salva no cofre",
@@ -337,14 +351,24 @@ export default function AdminIntegrations() {
         ? `Credencial aceita${detalhe}.`
         : corpo?.error?.trim()
           ? corpo.error
-          : await functionErrorMessage(error, "Não foi possível testar esta credencial.");
+          : error
+            ? await functionErrorMessage(error, "Não foi possível testar esta credencial.")
+            : "O provedor recusou a credencial.";
       setTestes((prev) => ({
         ...prev,
-        [k]: { ok: corpo?.ok === true, texto, remetentes: lerRemetentesDaSonda(corpo) },
+        [k]: {
+          ok: corpo?.ok === true,
+          texto,
+          remetentes: lerRemetentesDaSonda(corpo),
+          // A sonda só devolve `remetente` depois de reconhecer o valor gravado
+          // como e-mail E encontrá-lo na conta — é o que separa "falta
+          // verificar" de "não está lá".
+          gravadoNaLista: typeof corpo?.remetente === "string" && corpo.remetente.trim() !== "",
+        },
       }));
     } catch (e) {
       const texto = await functionErrorMessage(e, "Não foi possível testar esta credencial.");
-      setTestes((prev) => ({ ...prev, [k]: { ok: false, texto, remetentes: [] } }));
+      setTestes((prev) => ({ ...prev, [k]: { ok: false, texto, remetentes: [], gravadoNaLista: false } }));
     } finally {
       setTestando(null);
     }
@@ -451,6 +475,7 @@ export default function AdminIntegrations() {
             const k = slotKey(slot.provider, slot.label);
             const current = storedByKey.get(k);
             const configured = !!current?.has_secret;
+            const teste = testes[k];
             return (
               // Onze blocos com os mesmos controles: sem nome, o leitor de tela
               // anuncia "Salvar" onze vezes sem dizer de qual credencial.
@@ -544,22 +569,43 @@ export default function AdminIntegrations() {
                       <b>Sem teste automático.</b> {SEM_TESTE[k]}
                     </p>
                   )}
-                  {testes[k] && (
-                    <p role="status" className={`text-xs ${testes[k].ok ? "text-success" : "text-destructive"}`}>
-                      {testes[k].texto}
-                    </p>
-                  )}
+                  {/* A região viva fica SEMPRE no DOM (padrão de `DealsKanban`
+                      e `Links`): inserida junto com o texto, ela não é anunciada
+                      de forma confiável — o admin com leitor de tela clicava em
+                      "Testar conexão", o botão voltava do "Testando…" e nada era
+                      dito. O resumo `sr-only` traz a lista de remetentes para
+                      dentro do anúncio: ela é a saída do beco e estava fora de
+                      qualquer live region. */}
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className={`text-xs ${teste ? (teste.ok ? "text-success" : "text-destructive") : ""}`}
+                  >
+                    {teste?.texto ?? ""}
+                    {teste && teste.remetentes.length > 0 && (
+                      <span className="sr-only">
+                        {` A Brevo devolveu ${teste.remetentes.length} remetente(s) cadastrados, listados abaixo.`}
+                        {/* Redação diferente da frase visível de propósito: a
+                            mesma string em dois nós faria qualquer busca por
+                            texto (a do teste, a do Ctrl+F) casar duas vezes. */}
+                        {!teste.ok && !teste.gravadoNaLista ? " O valor gravado não está entre eles." : ""}
+                      </span>
+                    )}
+                  </p>
                   {/* Sem esta lista, "remetente inválido" é um beco: a Brevo só
                       aceita endereço verificado na conta dela e o admin não
                       tinha por onde descobrir qual. A sonda traz `/v3/senders`
                       junto do veredito — este bloco é o que faz a meia
                       credencial deixar de ser invisível. */}
-                  {testes[k]?.remetentes.length > 0 && (
+                  {teste && teste.remetentes.length > 0 && (
                     <div className="rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-xs">
                       <p className="text-muted-foreground">A Brevo aceita estes remetentes:</p>
                       <ul className="mt-1 space-y-0.5">
-                        {testes[k].remetentes.map((r) => (
-                          <li key={r.email} className="font-mono">
+                        {teste.remetentes.map((r) => (
+                          // `break-all`: o endereço vem da conta da Brevo, é
+                          // `font-mono` e não tem espaço onde quebrar — um
+                          // domínio longo transbordava o cartão no celular.
+                          <li key={r.email} className="font-mono break-all">
                             {r.email}
                             {!r.ativo && (
                               <span className="ml-1 font-sans text-warning">
@@ -569,7 +615,7 @@ export default function AdminIntegrations() {
                           </li>
                         ))}
                       </ul>
-                      {!testes[k].ok && (
+                      {!teste.ok && !teste.gravadoNaLista && (
                         <p className="mt-1 text-destructive">
                           O valor gravado em <code>brevo/sender_email</code> não é nenhum deles. Grave um destes
                           endereços no campo <b>Brevo — remetente</b> para os disparos saírem.

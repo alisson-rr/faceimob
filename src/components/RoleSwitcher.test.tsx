@@ -16,10 +16,16 @@ import { TooltipProvider } from "@/components/ui/tooltip";
  * tudo que está fora do popover (inclusive no gatilho), e quem cobra esse lado
  * é o e2e — `e2e/admin/configuracoes.spec.ts`.
  */
+/**
+ * O seletor lê `realRole`/`realRoles` — os papéis de quem está logado, não os
+ * efetivos. É o que o mantém na tela durante a prévia: com os efetivos,
+ * `roles.includes('admin')` viraria falso ao pré-visualizar corretor, o
+ * controle sumiria e o admin ficaria sem caminho de volta.
+ */
 const auth = vi.hoisted(() => ({
   estado: {
-    role: "admin",
-    roles: ["admin"] as string[],
+    realRole: "admin",
+    realRoles: ["admin"] as string[],
     isAdmin: true,
     previewRole: null as string | null,
     setPreviewRole: () => {},
@@ -46,7 +52,7 @@ async function render(ui: ReactNode) {
 }
 
 beforeEach(() => {
-  auth.estado = { role: "admin", roles: ["admin"], isAdmin: true, previewRole: null, setPreviewRole: () => {} };
+  auth.estado = { realRole: "admin", realRoles: ["admin"], isAdmin: true, previewRole: null, setPreviewRole: () => {} };
 });
 
 describe("RoleSwitcher", () => {
@@ -75,7 +81,7 @@ describe("RoleSwitcher", () => {
   it("quem não é admin não recebe o controle — só o rótulo do próprio papel", async () => {
     // A trava real está no AuthContext; aqui se cobra que a tela não ofereça um
     // menu que o banco não sustenta.
-    auth.estado = { role: "broker", roles: ["broker"], isAdmin: false, previewRole: null, setPreviewRole: () => {} };
+    auth.estado = { realRole: "broker", realRoles: ["broker"], isAdmin: false, previewRole: null, setPreviewRole: () => {} };
 
     const { container, unmount } = await render(<RoleSwitcher />);
     expect(container.querySelector('[role="combobox"]')).toBeNull();
@@ -86,7 +92,7 @@ describe("RoleSwitcher", () => {
   it("em prévia, o gatilho mantém o nome e o papel previsto aparece", async () => {
     // `isAdmin` é o EFETIVO (o AuthContext troca os papéis efetivos na prévia),
     // então este é o estado em que a etiqueta "prévia" e o tooltip entram.
-    auth.estado = { role: "admin", roles: ["admin"], isAdmin: false, previewRole: "cca", setPreviewRole: () => {} };
+    auth.estado = { realRole: "admin", realRoles: ["admin"], isAdmin: false, previewRole: "cca", setPreviewRole: () => {} };
 
     const { container, unmount } = await render(<RoleSwitcher />);
     const gatilho = container.querySelector('[role="combobox"]');

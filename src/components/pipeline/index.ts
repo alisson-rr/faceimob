@@ -7,7 +7,6 @@
  */
 
 // ── Pipeline ────────────────────────────────────────────────────────────────
-export { CheckinQueueBar } from "./CheckinQueueBar";
 export { CloseMonthDialog } from "./CloseMonthDialog";
 export { DealCard } from "./DealCard";
 export { DealCcaPanel } from "./DealCcaPanel";
@@ -48,7 +47,7 @@ export {
   blockedMoveReason, dealLock, dealRangeError, dealRequiredError, exitableStages,
   findDuplicateDeal, projectPlaceholder, type DealLock,
 } from "./guards";
-export { dealsCsv, downloadDealsCsv } from "./csv";
+export { baixarPlanilhaDeNegocios, linhasDeNegocios, shareValue } from "./exportacao";
 export {
   ALL, EMPTY_FILTERS, applyDealFilters, dealMonth, hasActiveFilter,
   inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy,

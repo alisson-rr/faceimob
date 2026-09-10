@@ -98,6 +98,20 @@ begin
   -- Regressão da 0023: banco novo tem que abrir. Antes dela, as 58 tabelas
   -- nasciam sem DML para os papéis do PostgREST e o app subia morto — o que
   -- passou despercebido porque o harness simula os grants nos stubs.
+  -- EXCEÇÃO DECLARADA, e ela é de segurança, não de conveniência.
+  --
+  -- `whatsapp_inbound_messages` guarda a mensagem que o CLIENTE mandou, e quem
+  -- escreve ali é só o webhook (`whatsapp-inbound-webhook`, com service_role).
+  -- A 0083 revoga o INSERT de `authenticated` de propósito: com ele, qualquer
+  -- pessoa logada forjaria uma conversa de cliente — inventando o que ele
+  -- "disse" e de que número. A tela só marca como tratada, e o `grant update`
+  -- lá é por COLUNA (`handled_at`, `handled_by`) pelo mesmo motivo.
+  --
+  -- Conceder INSERT aqui só para o assert ficar verde seria enfraquecer uma
+  -- proteção real para agradar um teste. O que muda é o teste: ele continua
+  -- exigindo LEITURA de toda tabela (é o que fazia o app subir morto antes da
+  -- 0023) e passa a aceitar que a ESCRITA seja recortada, desde que a tabela
+  -- esteja nesta lista, com o motivo escrito.
   select string_agg(c.relname, ', ' order by c.relname)
     into sem_grant
   from pg_class c
@@ -106,7 +120,10 @@ begin
     and c.relkind = 'r'
     and not (
       has_table_privilege('authenticated', c.oid, 'SELECT')
-      and has_table_privilege('authenticated', c.oid, 'INSERT')
+      and (
+        has_table_privilege('authenticated', c.oid, 'INSERT')
+        or c.relname in ('whatsapp_inbound_messages')
+      )
       and has_table_privilege('service_role', c.oid, 'SELECT')
     );
 

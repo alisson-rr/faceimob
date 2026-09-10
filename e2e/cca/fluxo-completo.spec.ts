@@ -1,4 +1,5 @@
 import { test, expect, db, aguardarCarregamento } from "../support/fixtures";
+import { subirArquivo } from "../helpers/negocio";
 import { resolveTarget } from "../support/target";
 import {
   abaDoModal,
@@ -14,27 +15,6 @@ import {
   type DocumentoDoNegocio,
 } from "./esteira";
 
-/**
- * Sobe o binário com service_role. `semearDocumento` grava só a linha de
- * `deal_documents`; o download precisa do objeto de verdade no bucket, e a
- * limpeza (`apagarArquivos`) já remove pelo mesmo `storage_path`.
- */
-async function subirArquivo(storagePath: string, conteudo: string): Promise<void> {
-  const alvo = resolveTarget();
-  const res = await fetch(`${alvo.supabaseUrl}/storage/v1/object/deal-documents/${storagePath}`, {
-    method: "POST",
-    headers: {
-      apikey: alvo.serviceRoleKey,
-      Authorization: `Bearer ${alvo.serviceRoleKey}`,
-      "Content-Type": "application/pdf",
-      "x-upsert": "true",
-    },
-    body: conteudo,
-  });
-  if (!res.ok) {
-    throw new Error(`upload ${storagePath} → ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  }
-}
 
 test.describe.serial("CCA · análise, decisão e envio", () => {
   let cenario: Cenario;

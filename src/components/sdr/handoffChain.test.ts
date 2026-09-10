@@ -34,6 +34,24 @@ describe("handoffOptions", () => {
     expect(ids).toEqual(["e"]);
   });
 
+  /**
+   * O trigger `sdr_agents_no_handoff_cycle` (0064) não olha `active`: um ciclo
+   * gravado continua ciclo mesmo com um elo desligado, e desligar o elo do meio
+   * é a manobra óbvia de quem quer "só testar outro encadeamento". Se a tela
+   * parasse de andar pela cadeia ao topar num inativo, ela ofereceria
+   * exatamente a opção que o banco recusa — o operador salvaria e receberia o
+   * erro do trigger sem entender a causa.
+   */
+  it("elo inativo no meio da cadeia não esconde o ciclo do banco", () => {
+    const agents = [
+      agente("a", "b"),           // a → b
+      agente("b", "self", false), // inativo, mas ainda aponta para o alvo
+      agente("self"),
+    ];
+    expect(chainReaches(agents, "a", "self")).toBe(true);
+    expect(handoffOptions(agents, "self").map((x) => x.id)).toEqual([]);
+  });
+
   it("agente ainda não gravado enxerga todos os ativos", () => {
     const agents = [agente("a"), agente("b", null, false)];
     expect(handoffOptions(agents, undefined).map((x) => x.id)).toEqual(["a"]);

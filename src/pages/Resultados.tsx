@@ -53,7 +53,7 @@ function validate(draft: Draft): string | null {
  */
 export default function Resultados() {
   const { toast } = useToast();
-  const { isAdmin, roles, previewRole } = useAuth();
+  const { isAdmin, roles } = useAuth();
   const [rows, setRows] = useState<AnnualResultRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
@@ -64,9 +64,8 @@ export default function Resultados() {
   // Espelha a policy `annual_results_write` (`has_any_role('admin','director')`).
   // `reports.view_finance` também vale para marketing e sócio, que só leem —
   // oferecer campo a eles era prometer o que o banco recusa.
-  // `previewRole` entra como em `DashboardSwitcher`, para a prévia valer aqui.
-  const effectiveRoles = previewRole ? [previewRole] : roles;
-  const canEdit = isAdmin || effectiveRoles.includes("director");
+  // `roles` já vem efetivo do AuthContext, então a prévia vale aqui sem remendo.
+  const canEdit = isAdmin || roles.includes("director");
 
   /**
    * Recalcular é SÓ do admin, e a razão não é permissão de escrita — é o

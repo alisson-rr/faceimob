@@ -360,3 +360,54 @@ test("a fila de notificações represada aparece ao lado da credencial que a tra
   await expect(tabela).toContainText("312");
   await expect(tabela).toContainText("No app (sino)");
 });
+
+/**
+ * "Remetente inválido" sem alternativa é um beco.
+ *
+ * A Brevo só aceita remetente verificado na conta dela, e essa lista existe só
+ * lá. Enquanto a sonda devolvia apenas o veredito, o admin lia "não é um
+ * e-mail" e não tinha NENHUM caminho para descobrir qual endereço serve — foi
+ * assim que `brevo/sender_email` ficou meses guardando a chave de API sem que
+ * nada na tela contradissesse o "no cofre".
+ *
+ * A resposta é interceptada porque o que se cobra aqui é a tela: o caminho real
+ * (sonda → `/v3/senders` → veredito) é cobrado em `crons.spec.ts`, contra a
+ * conta de verdade.
+ */
+test.describe(() => {
+  test.use({ errosEsperados: [/status of 5\d\d/i] });
+
+  test("a sonda do Brevo mostra quais remetentes a conta aceita", async ({ page }) => {
+    const chaveDeApi = `xkeysib-${"a".repeat(81)}`;
+    await page.route("**/functions/v1/submission-dispatch", (route) =>
+      route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: false,
+          error: "brevo/sender_email não é um e-mail. Grave o endereço verificado no painel do Brevo (ex.: dossie@suaempresa.com.br), não a chave de API.",
+          remetentes: [
+            { email: "controle@faceimob.com.br", ativo: true },
+            { email: "pendente@faceimob.com.br", ativo: false },
+            // Não é e-mail: não pode chegar à tela como se fosse endereço.
+            { email: chaveDeApi, ativo: true },
+          ],
+        }),
+      }));
+
+    await page.goto("/admin/integrations");
+    await aguardarCarregamento(page);
+
+    const cartao = page.getByRole("group", { name: "Brevo — remetente", exact: true });
+    await cartao.getByRole("button", { name: /testar conexão/i }).click();
+
+    await expect(cartao.getByRole("status")).toContainText(/não é um e-mail/i);
+    await expect(cartao.getByText(/a brevo aceita estes remetentes/i)).toBeVisible();
+    await expect(cartao.getByText("controle@faceimob.com.br", { exact: true })).toBeVisible();
+    // Cadastrado mas não verificado é opção pela metade: enviar por ele falha.
+    await expect(cartao.getByText(/pendente@faceimob\.com\.br/)).toContainText(/ainda não verificado/i);
+    // Sem esta frase o admin vê a lista e não sabe que o valor gravado é outro.
+    await expect(cartao.getByText(/não é nenhum deles/i)).toBeVisible();
+    await expect(page.getByText(chaveDeApi), "credencial vazando para a tela").toHaveCount(0);
+  });
+});

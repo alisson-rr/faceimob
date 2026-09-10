@@ -72,12 +72,12 @@ Legenda: ✅ pronto · 🟡 banco pronto, falta UI/ligação · ❌ não começa
 | 3 | Reuniões semanais | ✅ processo |
 | 4 | Fechamento mensal zerando jogo + sistema | ✅ `close_game_season`, `closed_months`, tela migrada |
 | 5 | Tela de gestão de tokens de API | ✅ *(26/08)* `AdminIntegrations.tsx` grava pelo cofre e as functions leem por `_shared/secrets.ts` |
-| 6 | SDR de qualificação por IA antes da distribuição | 🟡 *(26/08)* `SdrModule.tsx` migrado e a function `sdr-agent-chat` autenticada; falta credencial da OpenAI em produção |
-| 7 | Módulo de remarketing | 🟡 `remarketing_lists/contacts` prontos, UI parcial |
+| 6 | SDR de qualificação por IA antes da distribuição | 🟡 *(05/09)* Tudo que não depende da chave está pronto e a tela passou a DIZER que está sem credencial (`action: 'status'` na function; aviso no Playground e no ativar agente) em vez de fingir que o agente trabalha. 🔒 falta a chave da OpenAI |
+| 7 | Módulo de remarketing | ✅ *(05/09)* Fluxo fecha: lista, importação com dedupe por telefone normalizado, template, disparo com trava de 10 min (retomável), ritmo da própria lista (`throttle_per_minute`, era um sleep fixo de 250 ms = ~240/min) e acompanhamento de enviados/falhados com motivo. 🔒 o envio real depende da credencial da Meta — sem ela a fila fica parada com o motivo escrito, sem falso "enviado" |
 | 8 | Criar templates no Meta | 🔒 Douglas |
-| 9 | Cadastrar templates no sistema | 🟡 `whatsapp_templates` pronto |
-| 10 | Avisar lead perdido por prazo via WhatsApp | 🟡 `notify_lead_timeout` existe, **disparo não** |
-| 11 | Atividades com vencimento | 🟡 *(01/09)* `TaskPanel.tsx` **existe e está montado** nos modais de lead e de negócio (9 tarefas, 7 abertas na homologação). Falta a **tela/agenda própria** |
+| 9 | Cadastrar templates no sistema | ✅ *(05/09)* Criar/editar/arquivar com categoria (marketing × utility muda o que sai fora da janela de 24 h), prévia com valores de exemplo e recusa de variável fora do catálogo — um `{{3}}` inventado virava mensagem quebrada no cliente. A tela diz que o nome precisa bater com o template APROVADO na Meta |
+| 10 | Avisar lead perdido por prazo via WhatsApp | 🟡 *(05/09)* **Dentro do app funciona**: o estouro de prazo gera aviso e ele chega ao sino do corretor, um por estouro (migration 0088 pôs `when` no gatilho — antes qualquer UPDATE do lead reenfileirava). 🔒 o WhatsApp depende da credencial da Meta e do template de aviso; sem elas o item espera na fila com o motivo escrito |
+| 11 | Atividades com vencimento | ✅ *(03/09)* `TaskPanel.tsx` nos modais de lead e de negócio **mais** a agenda própria em `/atividades`, agrupada por vencimento (atrasadas, vencem hoje, próximos 7 dias, depois, sem prazo) |
 | 12 | Hierarquia de equipes + indicadores | ✅ |
 | 13 | King Host: criar e-mail no cadastro | ❌ 🔒 depende de API deles |
 | 14-17 | Pix · análise · Hostinger · acessos | ✅ |
@@ -101,15 +101,15 @@ Legenda: ✅ pronto · 🟡 banco pronto, falta UI/ligação · ❌ não começa
 | Ranking com animações para o top 3 | ✅ *(26/08)* pódio animado com anéis ouro/prata/bronze (Tarefa B) |
 | White mode | ✅ *(26/08)* tema claro por `useTheme` + classe `.light`, escuro por padrão (Tarefa A) |
 | Som a cada venda | ✅ *(26/08)* `EngagementLayer` dispara som e confete por realtime de `game_events`, uma vez por venda |
-| Brevo para e-mails | 🟡 *(26/08)* `functions/_shared/brevo.ts` existe; falta o SMTP configurado no painel |
-| Gestão granular de campanhas Meta (budget, pausar, copiar) | ❌ só o webhook de leads existe |
+| Brevo para e-mails | 🟡 *(05/09)* A chave foi confirmada válida pela própria Brevo e o remetente do cofre passou a ser `controle@faceimob.com.br`, que está entre os 11 verificados da conta — a sonda de "Testar conexão" agora LISTA os remetentes aceitos e avisa quando o gravado não está entre eles. 🔒 falta o SMTP em Authentication → Emails para o e-mail de acesso sair |
+| Gestão granular de campanhas Meta (budget, pausar, copiar) | 🟡 *(05/09)* Migration 0089 deu à campanha verba contratada, período e vínculo com origem de lead; a tela faz CRUD, pausar/reativar num gesto e copiar como rascunho, com recusa legível para verba negativa, período invertido, status fora do CHECK e `external_id` repetido. A tela diz que os números são DIGITADOS. 🔒 sincronizar com a Meta exige token de sistema com `ads_management` e revisão do app |
 
 ### Ata 23/07 — próximas etapas
 
 | # | Requisito | Estado |
 |---|---|---|
 | 1 | Campo por tipo de documento + renomeação automática | ✅ *(01/09 — o 🟡 estava errado)* `resolveStoredName` aplica o padrão no upload (`documents.ts:158`), preserva extensão e tem 3 testes. O nome amigável vai em `stored_name` |
-| 2 | Botão de download por documento | 🟡 *(01/09)* **o código está pronto** — `signedDocumentUrl` assina com `{ download: stored_name }` e o botão existe. O problema é dado: **69 registros em `deal_documents` apontam para arquivo, e o Storage tem 1 objeto** — 68 botões baixam nada |
+| 2 | Botão de download por documento | ✅ *(05/09)* O dado foi fechado (o seed subiu os arquivos que faltavam) e, mais importante, a TELA parou de mentir: documento sem arquivo no Storage não oferece mais botão de "Baixar" — a linha fica marcada como arquivo ausente, com a ação de reenviar, e deixa de contar como obrigatório cumprido. Sem isso o buraco de dado voltaria na próxima importação |
 | 3 | Múltiplos anexos em "Outros" | ✅ `allows_multiple = true` para `outros`, `comprovante_renda`, `simulacao` |
 | 4 | Permissões do Rafael (só corretor) | ✅ resolvido na raiz: papel virou N:N (`user_roles`) |
 | 5 | Trava do lead ao clicar em atender | ✅ `claim_lead` |

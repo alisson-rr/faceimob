@@ -39,11 +39,10 @@ export function SectionCard({
     <section className={cn("overflow-hidden rounded-2xl border border-border bg-card text-card-foreground", className)}>
       <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
-          {Icon && (
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-              <Icon className="h-4 w-4" />
-            </span>
-          )}
+          {/* Ícone sem o quadrado colorido atrás (05/09/2026): numa tela com
+              seis seções eram seis manchas azuis disputando atenção com os
+              números. O ícone continua identificando a seção; a cor saiu. */}
+          {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
           <div className="min-w-0">
             <h2 className="font-display text-base font-bold leading-tight tracking-tight">{title}</h2>
             {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}

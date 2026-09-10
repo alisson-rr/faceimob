@@ -319,14 +319,13 @@ export function pickSalesGoal(
  * alcanca.
  */
 export function useGoal(metric: GoalMetric, activeMonth: string) {
-  const { user, roles, previewRole } = useAuth();
-  const effectiveRoles = previewRole ? [previewRole] : roles;
+  const { user, roles } = useAuth();
   const profileId = user?.id ?? null;
 
   return useQuery({
     // O usuario entra na chave: dois papeis diferentes no mesmo navegador
     // (troca de sessao, previsualizacao de papel) leem metas diferentes.
-    queryKey: ["dashboard", "sales-goal", metric, activeMonth, profileId, effectiveRoles.join(",")],
+    queryKey: ["dashboard", "sales-goal", metric, activeMonth, profileId, roles.join(",")],
     enabled: activeMonth !== ALL_MONTHS && !!profileId,
     queryFn: async (): Promise<SalesGoal> => {
       const { rows, ledTeamIds } = await loadMonthlyGoals(
@@ -334,7 +333,7 @@ export function useGoal(metric: GoalMetric, activeMonth: string) {
         displayMonthToIso(activeMonth),
         profileId as string,
       );
-      return pickSalesGoal(rows, { profileId, ledTeamIds, roles: effectiveRoles });
+      return pickSalesGoal(rows, { profileId, ledTeamIds, roles: roles });
     },
   });
 }

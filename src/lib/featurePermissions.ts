@@ -100,6 +100,10 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
     where: "Admin · Integrações: ver e gravar credenciais (RPCs list_integrations e set_integration_secret)",
     enforcedBy: "banco",
   },
+  "pipeline.export": {
+    where: "Pipeline: botão \"Extrair planilha\". O arquivo sai com VGV, percentual de rateio e VGV POR CORRETOR do recorte inteiro — a folha de comissão da operação. A trava é de TELA: a planilha é montada no navegador a partir dos negócios que o RLS já entregou, então desligar aqui remove o caminho de um clique, não o acesso ao dado",
+    enforcedBy: "tela",
+  },
 
   // Os três sem leitor. A frase tem de dizer QUEM decide, senão o admin fica
   // sem saber onde mexer para conseguir o efeito que procurava no switch.

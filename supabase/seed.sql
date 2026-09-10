@@ -26,7 +26,23 @@ on conflict do nothing;
 insert into public.stage_permissions (stage_id, role, can_enter, can_exit)
 select s.id, r.role, true, true
 from public.pipeline_stages s
-cross join (values ('admin'::app_role), ('director'), ('manager')) as r(role)
+cross join (values ('admin'::app_role), ('director')) as r(role)
+on conflict do nothing;
+
+-- GERENTE NÃO ENTRA EM "APROVADO". Aprovar crédito é do CCA e da diretoria; o
+-- gerente pede, não arrasta (decisão da 0061 §7, e a 0052 já tinha tirado o
+-- corretor).
+--
+-- Por que a correção mora AQUI e não numa migration: `pipeline_stages` é criada
+-- por este seed, que roda DEPOIS de todas as migrations. Qualquer insert ou
+-- update em `stage_permissions` dentro de uma migration encontra a tabela de
+-- etapas vazia e vira no-op — foi o que aconteceu com a 0052 e com a 0061 §7.
+-- Em homologação elas funcionaram porque as etapas já existiam; num banco novo
+-- (`db:reset`, branch de preview, self-hosted, restauração) o gerente nascia
+-- podendo mover negócio para Aprovado, que é número que a diretoria olha.
+insert into public.stage_permissions (stage_id, role, can_enter, can_exit)
+select s.id, 'manager'::app_role, s.code <> 'approved', true
+from public.pipeline_stages s
 on conflict do nothing;
 
 insert into public.stage_permissions (stage_id, role, can_enter, can_exit)
@@ -155,7 +171,8 @@ insert into public.permissions (code, label, category, description) values
   ('teams.manage',          'Gerenciar equipes',           'equipes',  'Incluir e desligar integrantes'),
   ('users.manage_roles',    'Gerenciar papéis',            'usuarios', null),
   ('settings.integrations', 'Gerenciar integrações',       'config',   'Tokens de API'),
-  ('game.close_season',     'Encerrar temporada',          'jogo',     null)
+  ('game.close_season',     'Encerrar temporada',          'jogo',     null),
+  ('pipeline.export',       'Extrair planilha do Pipeline','negocios', 'Baixar o recorte filtrado em .xlsx, com VGV, percentual de rateio e VGV por corretor. É a folha de comissão da operação.')
 on conflict do nothing;
 
 insert into public.role_permissions (role, permission, allowed) values
@@ -177,5 +194,7 @@ insert into public.role_permissions (role, permission, allowed) values
   ('marketing','reports.view_finance', true),
 
   ('partner',  'deals.view_all',       true),
-  ('partner',  'reports.view_finance', true)
+  ('partner',  'reports.view_finance', true),
+  ('partner',  'pipeline.export',      true),
+  ('admin',    'pipeline.export',      true)
 on conflict do nothing;

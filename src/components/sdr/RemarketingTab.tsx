@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,12 +15,18 @@ import { toast } from "sonner";
 import { AlertTriangle, Send, Settings2, Trash2, Upload } from "lucide-react";
 import { ImportError, parseSheet, rowsToRecords } from "@/components/leads/importSheet";
 import { describeError } from "@/lib/supabaseError";
+import { INTEGRATION_SLOTS } from "@/lib/integrationCatalog";
+import { useAuth } from "@/contexts/AuthContext";
 import { ListContacts, ToggleContatos } from "./ListContacts";
 import { disparoEmAndamento, falhaDoDisparo, lerContatos } from "./remarketing";
 import {
   resumoDisparo, SEM_PERMISSAO, SEM_SELECAO, situacaoLista,
   type Agent, type Group, type Rlist, type WhatsAppTemplate,
 } from "./types";
+
+/** Teto do ritmo aceito pelo formulário. A Cloud API tolera bem mais, mas
+ *  acima disso o campo já não é ritmo de campanha — é erro de digitação. */
+const RITMO_MAXIMO = 600;
 
 export function RemarketingTab({ lists, agents, groups, templates, canWrite, reload }: {
   lists: Rlist[]; agents: Agent[]; groups: Group[]; templates: WhatsAppTemplate[]; canWrite: boolean; reload: () => void;
@@ -32,6 +39,14 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
   const [editando, setEditando] = useState<Rlist | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const [ocupado, setOcupado] = useState(false);
+  // Quais listas estão disparando AGORA. Booleano global congelava os botões de
+  // todas as listas por até um minuto sem mudar nada na tela — o operador lia
+  // travamento, não trabalho em andamento. Lista (e não um id só) porque dois
+  // disparos simultâneos são legítimos: a trava do banco é POR lista.
+  const [disparando, setDisparando] = useState<string[]>([]);
+  // Muda a cada disparo/teste para a tabela de contatos aberta recarregar: o
+  // toast prometia o motivo gravado e a tabela abaixo continuava congelada.
+  const [versaoDados, setVersaoDados] = useState(0);
   // Painel de contatos aberto (um por vez): é onde o `last_error` de cada
   // contato aparece — o toast do disparo prometia o motivo e não havia onde ler.
   const [contatosDe, setContatosDe] = useState<string | null>(null);
@@ -45,7 +60,36 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
   // em segundos levando junto a única explicação de por que nada saiu.
   const [semCredencial, setSemCredencial] = useState<string | null>(null);
 
+  const { can } = useAuth();
+  const avisoRef = useRef<HTMLParagraphElement>(null);
+
   const ativos = groups.filter(g => g.active);
+  // O nome que o admin vê no catálogo de integrações. Imprimir
+  // `META_WHATSAPP_ACCESS_TOKEN` mandava procurar na tela uma string que a tela
+  // não tem — o card lá se chama "WhatsApp Cloud API — token".
+  const slotFaltante = INTEGRATION_SLOTS.find(s => s.envName === semCredencial);
+
+  // Honestidade antes do primeiro clique, como o banner da IA em SdrModule: sem
+  // a chave nenhuma mensagem sai, e o operador só descobria isso DEPOIS de
+  // confirmar um disparo anunciado como "não volta atrás". Falha aqui não vira
+  // erro de tela — o que se perde é apenas o aviso antecipado.
+  useEffect(() => {
+    if (!canWrite) return;
+    let cancelado = false;
+    void supabase.functions
+      .invoke("sdr-whatsapp-broadcast", { body: { action: "status" } })
+      .then(({ data, error }) => {
+        if (cancelado || error || typeof data?.configured !== "boolean") return;
+        setSemCredencial(data.configured ? null : String(data.credential || "META_WHATSAPP_ACCESS_TOKEN"));
+      });
+    return () => { cancelado = true; };
+  }, [canWrite]);
+
+  // O AlertDialog devolve o foco ao botão que o abriu, e nesse instante ele já
+  // está desabilitado: o foco cai no <body> logo no começo de uma espera de até
+  // um minuto. Levar para o aviso mantém a posição e anuncia o que começou.
+  const ultimoDisparo = disparando.at(-1) ?? null;
+  useEffect(() => { if (ultimoDisparo) avisoRef.current?.focus(); }, [ultimoDisparo]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -60,22 +104,19 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
       // tamanho e de linhas, que este upload não tinha, e é ele que passou a
       // ser o único ponto do app que abre planilha de terceiro.
       const rows = rowsToRecords(await parseSheet(f));
-      // Aceita colunas: nome/name, fone/telefone/phone, campanha/campaign
-      const parsed = rows.map(keys => ({
-        name: keys.nome || keys.name || keys.cliente || "",
-        phone: keys.fone || keys.telefone || keys.phone || keys.celular || "",
-        campaign: keys.campanha || keys.campaign || keys.origem || "",
-        extra: keys,
-      })).filter(r => r.phone);
+      // O público da lista é exatamente o que veio no arquivo: linhas com
+      // telefone, sem repetição. O dedupe é obrigatório — `unique (list_id,
+      // phone)` levanta 23505, a importação é atômica (0031) e o mesmo número
+      // com duas máscaras diferentes derrubava a planilha inteira.
+      const { contatos, repetidos } = lerContatos(rows);
 
-      if (parsed.length === 0) return toast.error("Nenhum contato válido (verifique colunas nome/fone/campanha)");
+      if (contatos.length === 0) return toast.error("Nenhum contato válido (verifique colunas nome/fone/campanha)");
 
-      const contacts = parsed.map(p => ({ full_name: p.name, phone: p.phone, extra: { campaign: p.campaign, ...p.extra } }));
       const { data: listId, error: importError } = await supabase.rpc("import_remarketing_list", {
         p_name: newName.trim(),
         p_template_id: templateId || null,
         p_agent_id: agentId || null,
-        p_contacts: contacts,
+        p_contacts: contatos,
       });
       if (importError) throw importError;
       // A RPC não recebe o grupo de handoff, e é ele que o
@@ -86,8 +127,12 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
           .from("remarketing_lists").update({ handoff_group_id: groupId }).eq("id", listId as string).select("id");
         if (groupError) toast.error(describeError(groupError, "Lista criada, mas sem a roleta de destino."));
       }
-      toast.success(`Lista "${newName.trim()}" criada com ${parsed.length} contatos`);
-      setNewName(""); setTemplateId(""); setGroupId("");
+      toast.success(`Lista "${newName.trim()}" criada com ${contatos.length} contatos`, {
+        description: repetidos > 0
+          ? `${repetidos} linha(s) repetiam um telefone já lido na planilha e ficaram de fora.`
+          : undefined,
+      });
+      setNewName(""); setTemplateId(""); setGroupId(""); setAgentId("");
       reload();
     } catch (err: unknown) {
       // A planilha recusada já explica o motivo em pt-BR; o resto é erro do
@@ -98,10 +143,21 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
 
   async function broadcast(listId: string) {
     setConfirmando(null);
-    setOcupado(true);
+    setDisparando(d => [...d, listId]);
     const { data, error } = await supabase.functions.invoke("sdr-whatsapp-broadcast", { body: { list_id: listId } });
-    setOcupado(false);
-    if (error) return toast.error(await functionErrorMessage(error, "Falha no disparo"));
+    setDisparando(d => d.filter(id => id !== listId));
+    setVersaoDados(v => v + 1);
+    if (error) {
+      const falha = await falhaDoDisparo(error, "Falha no disparo");
+      setSemCredencial(falha.credencialAusente);
+      // Sem credencial a function aborta ANTES da trava: os contatos continuam
+      // 'pending' e a lista em 'draft'. Dizer isso evita o operador achar que
+      // perdeu a fila e reimportar a planilha em cima.
+      // Sem credencial o painel acima carrega a explicação inteira e fica na
+      // tela; repeti-la no toast faria o leitor de tela ouvir tudo duas vezes.
+      return toast.error(falha.credencialAusente ? "Nada foi enviado." : falha.mensagem);
+    }
+    setSemCredencial(null);
     // Verde SÓ quando saiu alguma coisa: a function conta falha por contato e
     // devolve 200 mesmo com `sent: 0, failed: 500`. O lote é de 500 por
     // chamada, então a fila que sobrou também precisa ser dita.
@@ -121,19 +177,32 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
       body: { list_id: listId, test_phone: fone },
     });
     setOcupado(false);
-    if (error) return toast.error(await functionErrorMessage(error, "Falha no envio de teste"));
+    setVersaoDados(v => v + 1);
+    if (error) {
+      const falha = await falhaDoDisparo(error, "Falha no envio de teste");
+      setSemCredencial(falha.credencialAusente);
+      return toast.error(falha.mensagem);
+    }
+    setSemCredencial(null);
     toast.success("Teste enviado para o número informado.");
   }
 
   async function salvarEdicao() {
     if (!editando) return;
     if (!editando.name.trim()) return toast.error("A lista precisa de um nome");
+    // `check (throttle_per_minute > 0)` (0008) devolveria 23514 cru; validar
+    // aqui deixa o motivo em pt-BR e no campo certo.
+    const ritmo = Math.trunc(Number(editando.throttle_per_minute));
+    if (!Number.isFinite(ritmo) || ritmo < 1 || ritmo > RITMO_MAXIMO) {
+      return toast.error(`O ritmo precisa ser um número inteiro entre 1 e ${RITMO_MAXIMO} mensagens por minuto.`);
+    }
     setOcupado(true);
     const { data, error } = await supabase.from("remarketing_lists").update({
       name: editando.name.trim(),
       template_id: editando.template_id,
       agent_id: editando.agent_id,
       handoff_group_id: editando.handoff_group_id,
+      throttle_per_minute: ritmo,
     }).eq("id", editando.id).select("id");
     setOcupado(false);
     if (error) return toast.error(describeError(error, "Não foi possível salvar a lista."));
@@ -156,6 +225,32 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
 
   return (
     <div className="space-y-4">
+      {/* `status`, não `alert`: é aviso de configuração que fica na tela, igual
+          ao banner da IA — `alert` interrompe o leitor de tela e duplicava o
+          toast do mesmo assunto. */}
+      {semCredencial && (
+        <Card role="status" className="p-4 border-warning/50 flex items-start gap-2 text-sm">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+          <div className="space-y-1 min-w-0">
+            <p className="font-medium">O disparo por WhatsApp ainda não está configurado.</p>
+            <p className="text-muted-foreground break-words">
+              Falta a credencial <b>{slotFaltante?.title || semCredencial}</b> no cofre.{" "}
+              {/* `/admin/integrations` exige `menu.admin_integrations`, que nenhum papel
+                  recebe além do admin: mandar marketing/sdr para lá entrega "Acesso não
+                  liberado", e aviso que promete uma tela e nega o acesso é pior que aviso
+                  nenhum. Para quem não pode, a próxima ação é falar com o administrador. */}
+              {can("menu.admin_integrations") ? (
+                <>Cadastre em <Link to="/admin/integrations" className="underline underline-offset-2">Admin · Integrações</Link>; as functions passam a usar o valor sem redeploy.</>
+              ) : (
+                <>Peça a um administrador para cadastrá-la em Admin · Integrações; as functions passam a usar o valor sem redeploy.</>
+              )}{" "}
+              Até lá <b>nenhuma mensagem sai</b> e os contatos continuam na fila, prontos
+              para o disparo.
+            </p>
+          </div>
+        </Card>
+      )}
+
       {canWrite && (
         <Card className="p-4 space-y-3">
           <h3 className="text-sm font-semibold flex items-center gap-2"><Upload className="h-4 w-4" />Nova lista (Excel)</h3>
@@ -198,17 +293,27 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
             // O selo sai dos CONTATOS, não da coluna `status`: o broadcast
             // grava 'draft' sempre que sobra fila (lista com 500 enviados
             // voltava a dizer "rascunho") e 'failed' com uma única falha.
-            const situacao = situacaoLista(l.status, l.stats);
+            // Trava vencida não é "Disparando…": a function morreu no meio e
+            // ninguém está enviando nada. Sem o 'running', o selo volta a sair
+            // dos contatos — "Envio parcial · N na fila" é o que de fato houve.
+            const situacao = situacaoLista(
+              l.status === "running" && !disparoEmAndamento(l) ? null : l.status,
+              l.stats,
+            );
             return (
             <div key={l.id} className="border rounded p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              {/* Empilha no mobile: com o grupo de botões `shrink-0`, o
+                  `flex-wrap` dele nunca era acionado (contêiner que não encolhe
+                  não quebra linha), a coluna do nome era espremida a zero e o
+                  cartão transbordava a 375 px. */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-sm font-medium flex flex-wrap items-center gap-2">{l.name} <StatusBadge tone={situacao.tone}>{situacao.label}</StatusBadge></div>
                   <div className="text-xs text-muted-foreground">
                     Template: {l.template_name || "—"} · {l.stats.total} contatos ({l.stats.pending} pendentes · {l.stats.sent} enviados · {l.stats.replied} respondidos{l.stats.failed > 0 ? ` · ${l.stats.failed} falhas` : ""}) · Agente: {agents.find(a => a.id === l.agent_id)?.name || "—"} · Roleta: {groups.find(g => g.id === l.handoff_group_id)?.name || "fila geral"}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
+                <div className="flex flex-wrap gap-2">
                   {canWrite && (
                     <>
                       {/* Gateado pelo MESMO papel da policy `remarketing_contacts_all`
@@ -220,7 +325,24 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
                         nome={l.name}
                         onToggle={() => setContatosDe(contatosDe === l.id ? null : l.id)}
                       />
-                      <Button size="sm" onClick={() => setConfirmando({ tipo: "disparo", lista: l })} disabled={ocupado || l.status === "running"}><Send className="h-3.5 w-3.5 mr-1" />Disparar</Button>
+                      {/* A trava tem prazo: o runtime mata a function no teto
+                          de tempo ANTES do catch que solta a lista, e comparar
+                          só `status === 'running'` deixava o botão desabilitado
+                          para sempre, sem saída pela tela. */}
+                      {/* Sem template ou sem fila o disparo é recusado pelo servidor:
+                          oferecer o clique fazia a tela pedir confirmação de uma ação
+                          irreversível por um caminho que ela já sabia que ia falhar. */}
+                      <Button
+                        size="sm"
+                        onClick={() => setConfirmando({ tipo: "disparo", lista: l })}
+                        disabled={disparando.includes(l.id) || disparoEmAndamento(l) || !l.template_id || l.stats.pending === 0}
+                      >
+                        <Send className="h-3.5 w-3.5 mr-1" />
+                        {disparando.includes(l.id) ? "Disparando…" : "Disparar"}
+                        {/* Nome acessível único: com N listas, "Disparar" sozinho não diz
+                            de qual — e a diferença é uma mensagem para cliente real. */}
+                        <span className="sr-only"> da lista {l.name}</span>
+                      </Button>
                       <Button size="icon" variant="ghost" aria-label={`Configurar lista ${l.name}`} onClick={() => { setEditando(editando?.id === l.id ? null : l); setTestPhone(""); }}>
                         <Settings2 className="h-3.5 w-3.5" />
                       </Button>
@@ -230,9 +352,23 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
                 </div>
               </div>
 
+              {canWrite && disparando.includes(l.id) && (
+                <p ref={ultimoDisparo === l.id ? avisoRef : null} tabIndex={-1} role="status" className="text-xs text-muted-foreground">
+                  Enviando o template para os contatos pendentes desta lista — isso pode levar cerca de um minuto.
+                </p>
+              )}
+
+              {canWrite && !disparando.includes(l.id) && !disparoEmAndamento(l) && (!l.template_id || l.stats.pending === 0) && (
+                <p className="text-xs text-muted-foreground">
+                  {!l.template_id
+                    ? "Sem template configurado: abra a engrenagem e escolha um template aprovado antes de disparar."
+                    : "Nenhum contato na fila — não há para quem disparar."}
+                </p>
+              )}
+
               {canWrite && contatosDe === l.id && (
                 <div className="border-t pt-2">
-                  <ListContacts listId={l.id} total={l.stats.total} />
+                  <ListContacts listId={l.id} total={l.stats.total} versao={versaoDados} />
                 </div>
               )}
 
@@ -273,7 +409,26 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
                         </SelectContent>
                       </Select>
                     </div>
+                    {/* O disparo passou a respeitar `throttle_per_minute`, que
+                        até então existia só no schema. Sem campo, o padrão de 20
+                        viraria um teto sem saída pela tela. */}
+                    <div>
+                      <Label className="text-xs" htmlFor={`rl-ritmo-${l.id}`}>Ritmo (mensagens por minuto)</Label>
+                      <Input
+                        id={`rl-ritmo-${l.id}`}
+                        type="number"
+                        min={1}
+                        max={RITMO_MAXIMO}
+                        value={editando.throttle_per_minute}
+                        onChange={e => setEditando({ ...editando, throttle_per_minute: Number(e.target.value) })}
+                      />
+                    </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    O ritmo é quantas mensagens por minuto saem no disparo. Número novo na Meta queima com volume alto
+                    logo de cara; cada clique em Disparar envia por cerca de um minuto, então quanto menor o ritmo,
+                    mais cliques para percorrer a lista.
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     A roleta de destino é para onde vai o lead criado quando um contato desta lista responde. Sem ela,
                     o lead nasce sem grupo e cai na fila geral.
@@ -310,9 +465,11 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
                 <AlertDialogTitle>Disparar para {confirmando.lista.stats.pending} contato(s)?</AlertDialogTitle>
                 <AlertDialogDescription>
                   A lista “{confirmando.lista.name}” envia o template{" "}
-                  <b>{confirmando.lista.template_name || "— (nenhum configurado)"}</b> por WhatsApp para números de
-                  clientes reais. O lote é de até 500 por clique; o que sobrar exige clicar de novo. Mensagem enviada
-                  não volta atrás.
+                  <b>{confirmando.lista.template_name || "vinculado à lista"}</b> por WhatsApp para números de
+                  clientes reais.
+                  Cada clique envia por cerca de um minuto, no ritmo de {confirmando.lista.throttle_per_minute} por
+                  minuto configurado na lista; o que sobrar volta no próximo clique e a tela diz quantos ficaram.
+                  Mensagem enviada não volta atrás.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

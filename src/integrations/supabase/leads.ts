@@ -339,31 +339,70 @@ export type ListLeadsOptions = {
 };
 
 /**
+ * Os dígitos do termo quando há um telefone no que foi digitado; `null` quando
+ * é só texto. Fonte única da regra: `leadSearchFilter` a usa para a consulta
+ * e `matchesFilters` para peneirar a mesma lista na tela — as duas discordando,
+ * o banco devolve o lead e a tela o esconde (ou o contrário).
+ *
+ * O corretor digita o número de todo jeito: com máscara, com DDI, ou só os 8/9
+ * dígitos finais, que é como ele se lembra do número. Todos viram a mesma
+ * cadeia de dígitos, porque `normalize_phone` grava "5511988770001" e procurar
+ * "(11) 98877-0001" cru não acha nada.
+ *
+ * TEXTO em volta eleva a exigência em vez de desqualificar o número. Aceitar
+ * qualquer três dígitos soltos fazia "joao8101@gmail.com" disparar
+ * `phone.ilike.*8101*` e trazer 12 leads de estranhos numa base de 74 (medido
+ * em homologação); exigir o termo INTEIRO numérico jogava fora o outro lado —
+ * "Tel: (11) 98877-0001", colado de uma conversa, deixava de achar o lead. Por
+ * isso o corte é no maior bloco de dígitos: sozinho no campo bastam 3 (o
+ * corretor busca pelo final do número), no meio de texto exige um número
+ * inteiro (8+), que "8101" não é.
+ */
+export const searchPhoneDigits = (term: string): string | null => {
+  const typed = term.trim();
+  const digits = (typed.match(/[\d\s()+.-]+/g) ?? [])
+    .map((bloco) => bloco.replace(/\D/g, ""))
+    .reduce((maior, atual) => (atual.length > maior.length ? atual : maior), "");
+  const minimo = /^[\d\s()+.-]+$/.test(typed) ? 3 : 8;
+  return digits.length >= minimo ? digits : null;
+};
+
+/**
+ * Termo sem os caracteres que o PostgREST lê como sintaxe, pronto para as DUAS
+ * camadas da busca.
+ *
+ * `,` separa condições, `(`/`)` delimitam o `or=(…)`, `*` é curinga e `%`, `"`,
+ * `'` e `\` entram no valor do `ilike`: um deles no que o corretor digitou vira
+ * 400 ("failed to parse logic tree") em vez de busca. O PONTO fica — o
+ * PostgREST usa só os dois primeiros pontos de `coluna.operador.valor` como
+ * separadores, e tirá-lo transformava "maria@gmail.com" em `*maria@gmail com*`,
+ * que não casa com e-mail nenhum.
+ *
+ * O filtro da tela usa o MESMO termo: comparando com o texto cru, digitar
+ * "Ana (Paula)" fazia o banco devolver a linha de "Ana Paula" e a tela
+ * escondê-la com "Nenhum lead com esses filtros".
+ */
+export const searchTerm = (term: string): string =>
+  term.trim().replace(/[,*()\\%"']/g, " ").replace(/\s+/g, " ").trim();
+
+/**
  * Termo pronto para o `or` do PostgREST.
  *
- * `,` separa condições e `(`/`)` delimitam o `or=(…)`: um desses caracteres no
- * que o corretor digitou vira erro de sintaxe (400) em vez de busca. O PONTO
- * fica — o PostgREST usa só os dois primeiros pontos de `coluna.operador.valor`
- * como separadores, e tirá-lo transformava "maria@gmail.com" em
- * `*maria@gmail com*`, que não casa com e-mail nenhum: buscar pelo e-mail
- * inteiro, que é o jeito natural de usar um campo anunciado como buscável por
- * e-mail, não achava nada.
- *
- * Telefone entra só com dígitos porque o banco grava normalizado com DDI —
- * procurar "(11) 98888-7777" não acharia nada. Campanha entra porque o
- * placeholder do campo a promete: sem ela, o lead que só casava por campanha
- * aparecia com 2 letras (filtro do cliente) e sumia na 3ª (consulta ao banco).
+ * Telefone entra só com dígitos (`searchPhoneDigits`) porque o banco grava
+ * normalizado com DDI. Campanha entra porque o placeholder do campo a promete:
+ * sem ela, o lead que só casava por campanha aparecia com 2 letras (filtro do
+ * cliente) e sumia na 3ª (consulta ao banco).
  */
 export const leadSearchFilter = (term: string): string | null => {
-  const clean = term.trim().replace(/[,*()\\%"']/g, " ").replace(/\s+/g, " ").trim();
+  const clean = searchTerm(term);
   if (clean.length < 3) return null;
-  const digits = term.replace(/\D/g, "");
   const parts = [
     `full_name.ilike.*${clean}*`,
     `email.ilike.*${clean}*`,
     `campaign_name.ilike.*${clean}*`,
   ];
-  if (digits.length >= 3) parts.push(`phone.ilike.*${digits}*`);
+  const digits = searchPhoneDigits(term);
+  if (digits) parts.push(`phone.ilike.*${digits}*`);
   return parts.join(",");
 };
 

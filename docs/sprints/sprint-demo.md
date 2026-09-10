@@ -578,3 +578,52 @@ linha diz onde está e por que ficou de fora.
 - `canvas-confetti` é a única dependência nova; som segue por síntese WebAudio.
 
 > Atualize a coluna Status ao fim de cada tarefa; quem entrega marca ✅ e aponta o handoff.
+
+---
+
+## Estado em 06/09/2026 — depois da rodada 17
+
+> Este arquivo é o histórico da sprint de 21–26/08. O que vem abaixo é só o
+> placar atual, para quem abrir daqui a um mês não achar que parou ali.
+
+| | |
+|---|---|
+| Migrations | **0094** (a numeração tem lacunas — 0042, 0049, 0055 nunca existiram; conte arquivo, não número) |
+| Testes unitários | **898**, em 71 arquivos |
+| Specs E2E | 67 arquivos · **525 passando, 0 falhando**, 9 puladas (dependem de credencial de terceiro) |
+| Edge functions | 9, todas implantadas; só os 3 webhooks com `verify_jwt = false` |
+| Typecheck · lint | limpos (8 avisos de fast-refresh, pré-existentes) |
+
+**A rodada 17** foram 10 zonas de arquivos disjuntos, 40 agentes, cada zona
+revisada por duas lentes adversariais (correção/segurança e UX/a11y, ambas
+instruídas a REFUTAR) e refinada com os achados que se sustentaram: 95 achados,
+**zero de afrouxamento de proteção**, 87 aplicados, 29 recusados com evidência.
+
+### O que a rodada fechou
+
+- **Requisito 7 (remarketing)** e **9 (templates de WhatsApp)** saíram de 🟡 para ✅.
+- **Requisito 10 (aviso de lead perdido)** funciona dentro do app; o WhatsApp
+  espera credencial, com o item parado na fila e o motivo escrito — nunca um
+  falso "enviado".
+- **Gestão de campanhas Meta** ganhou verba, período, vínculo com origem,
+  pausar num gesto e copiar como rascunho (migration `0089`).
+- **Documento sem arquivo no Storage** parou de oferecer um botão de download
+  que baixa nada, e parou de contar como obrigatório cumprido.
+- **Brevo destravado**: chave confirmada válida pela própria Brevo e remetente
+  gravado (`controle@faceimob.com.br`, um dos 11 verificados na conta).
+- **Sócio = administrador** (migration `0093`), por decisão do dono: em vez de
+  acrescentar `'partner'` nas 124 checagens de `'admin'` espalhadas pelas
+  policies, quem é sócio passou a ter também o papel `admin`. O nome "Sócio"
+  fica no front.
+
+### Armadilhas de ambiente que custaram tempo (e agora têm conserto no repo)
+
+1. **Código implantado ≠ código local.** Um 500 que parecia defeito era a
+   `provision-broker-user` do servidor mais velha que o arquivo. Entrou
+   `npm run functions:deploy`.
+2. **Duas execuções de E2E ao mesmo tempo se destroem** — os dez usuários são
+   fixos e a faxina de uma apaga os da outra. `scripts/e2e-lock.mjs`.
+3. **Servidor de desenvolvimento órfão na porta da suíte** derruba a execução
+   inteira com "is already used". `scripts/e2e-porta.mjs` limpa depois de a
+   trava estar na mão.
+4. **O binário do Playwright some numa atualização** — `npx playwright install`.

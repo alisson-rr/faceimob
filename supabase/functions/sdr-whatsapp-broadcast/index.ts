@@ -7,16 +7,55 @@
 // publicável do bundle de fazer a WABA da empresa mandar mensagem.
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSecret } from '../_shared/secrets.ts';
+import { descreverFalhaMeta } from '../_shared/metaErros.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-/** Quantos contatos um clique em "Disparar" processa. Acima disso a edge
- *  function encosta no teto de tempo; o que sobra volta no próximo clique e a
- *  resposta diz quantos ficaram (`remaining`). */
+/** Quantos contatos um clique em "Disparar" busca. O que sobra volta no próximo
+ *  clique e a resposta diz quantos ficaram (`remaining`). */
 const BATCH = 500;
+
+/**
+ * Orçamento de tempo do lote — quem manda de verdade em quantos contatos saem.
+ *
+ * Só o `sleep` do ritmo da lista (`throttle_per_minute`, 20/min por padrão)
+ * põe 500 envios em muitos minutos, mais a latência da Graph API: acima do teto de tempo de uma edge
+ * function. E o teto não é uma exceção capturável — o runtime MATA o processo,
+ * então o `catch` que solta a trava nunca roda e a lista fica em 'running' para
+ * sempre. Parar pelo relógio devolve o controle: o que não coube volta em
+ * `remaining`, que a tela já sabe exibir e pedir outro clique.
+ */
+const PRAZO_LOTE_MS = 60_000;
+
+/**
+ * Por quanto tempo a trava de 'running' vale. Passado o prazo ela é assumida
+ * por uma chamada nova — é o que destrava a lista quando o runtime matou a
+ * execução anterior no meio.
+ *
+ * Mudou aqui, muda em `src/components/sdr/remarketing.ts` (`MINUTOS_DE_TRAVA`),
+ * que é quem libera o botão na tela: se os dois discordarem, o operador clica e
+ * ouve 409, ou o botão fica travado depois de a function já aceitar.
+ *
+ * RESTRIÇÃO: precisa ser MAIOR que o teto de wall clock da plataforma (≤ 400 s
+ * no plano pago). Abaixo disso a retomada preemptaria uma execução VIVA e dois
+ * lotes rodariam sobre a mesma lista, mandando o template duas vezes ao mesmo
+ * cliente — exatamente o que a trava existe para impedir.
+ */
+const MINUTOS_DE_TRAVA = 10;
+
+/**
+ * Teto de espera por resposta da Graph API.
+ *
+ * O `fetch` do Deno não tem timeout: uma conexão aceita e nunca respondida
+ * prende o laço, o `PRAZO_LOTE_MS` (só avaliado ENTRE iterações) nunca é lido e
+ * o runtime mata o processo — com o POST já enviado e o contato ainda
+ * 'pending', que o próximo clique reenviaria ao MESMO cliente. Abortar devolve
+ * o controle ao laço e o contato fica 'failed' com o motivo escrito.
+ */
+const TIMEOUT_META_MS = 15_000;
 
 /** Teto da resposta digitada pelo operador. A Cloud API corta em 4096; recusar
  *  aqui evita mandar um texto que chega truncado ao cliente. */
@@ -100,7 +139,15 @@ async function humanReply(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
-  });
+    signal: AbortSignal.timeout(TIMEOUT_META_MS),
+  }).catch(() => null);
+  // Sem timeout, a resposta do operador ficava pendurada até o runtime matar a
+  // function — sem toast, sem gravação e sem saber se o cliente recebeu.
+  if (!res) {
+    return json({
+      error: 'A Meta não respondeu a tempo. A mensagem PODE ter saído — confira no aparelho antes de reenviar.',
+    }, 504);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detalhe = String(data?.error?.message ?? '').slice(0, 240);
@@ -198,8 +245,15 @@ async function sendTemplate(phoneNumberId: string, token: string, to: string, te
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
-  });
-  const data = await r.json();
+    signal: AbortSignal.timeout(TIMEOUT_META_MS),
+  }).catch(() => null);
+  if (!r) {
+    return {
+      ok: false,
+      data: { error: { message: 'A Meta não respondeu em 15s. A mensagem pode ter saído — confira este número antes de reenviar.' } },
+    };
+  }
+  const data = await r.json().catch(() => ({}));
   return { ok: r.ok, data };
 }
 
@@ -260,6 +314,22 @@ Deno.serve(async (req) => {
       }, 502);
     }
 
+    // Honestidade antes do primeiro clique: só o veredito, nunca o valor da
+    // chave. A tela precisa avisar que NADA vai sair antes de o operador
+    // confirmar um disparo para números de clientes reais — descobrir isso no
+    // erro, depois do "não volta atrás", é tarde. Espelha o `action: 'status'`
+    // do `sdr-agent-chat` e não toca na Graph API (isso é o `probe`).
+    if (action === 'status') {
+      const statusToken = await getSecret('META_WHATSAPP_ACCESS_TOKEN');
+      const statusPhoneId = await getSecret('META_WHATSAPP_PHONE_NUMBER_ID');
+      return json({
+        configured: !!(statusToken && statusPhoneId),
+        credential: !statusToken
+          ? 'META_WHATSAPP_ACCESS_TOKEN'
+          : !statusPhoneId ? 'META_WHATSAPP_PHONE_NUMBER_ID' : null,
+      });
+    }
+
     // Resposta do operador que assumiu a conversa, escrita de dentro do CRM.
     // O histórico e a janela de 24 h da Meta já vivem aqui; obrigar a falar
     // "pelo aparelho" deixava metade do atendimento fora do sistema.
@@ -306,14 +376,14 @@ Deno.serve(async (req) => {
 
     const { data: list, error: lErr } = await supabase
       .from('remarketing_lists').select('*').eq('id', list_id).single();
-    if (lErr) throw lErr;
+    if (lErr) throw new Error(`remarketing_lists: ${lErr.message}`);
 
     // Validações que lançam vêm ANTES da trava: gravar 'running' e só depois
     // recusar o template deixava a lista presa nesse status para sempre.
     if (!list.template_id) throw new Error('Configure um template aprovado na lista');
     const { data: templateRow, error: templateErr } = await supabase
       .from('whatsapp_templates').select('name,language,approved,active,variables').eq('id', list.template_id).single();
-    if (templateErr) throw templateErr;
+    if (templateErr) throw new Error(`whatsapp_templates: ${templateErr.message}`);
     if (!templateRow.approved) throw new Error('O template ainda não está marcado como aprovado');
     if (!templateRow.active) throw new Error('O template está inativo — reative-o na aba WhatsApp antes de disparar');
     const template = templateRow.name;
@@ -333,33 +403,57 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Trava de concorrência: dois cliques em "Disparar" não podem rodar o
-    // mesmo lote duas vezes. O update condicional só passa para UMA chamada.
-    if (list.status === 'running') {
-      return new Response(JSON.stringify({ error: 'Disparo já em andamento para esta lista' }), {
-        status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Trava de concorrência: dois cliques em "Disparar" não podem rodar o mesmo
+    // lote duas vezes. O update condicional só passa para UMA chamada — e é a
+    // única regra da trava, por isso não há checagem de `list.status` antes: ler
+    // e depois gravar deixa a janela entre as duas aberta para o segundo clique.
     const { data: lock, error: lockErr } = await supabase
       .from('remarketing_lists')
       .update({ status: 'running' })
       .eq('id', list_id)
       .neq('status', 'running')
       .select('id');
-    if (lockErr) throw lockErr;
+    // PostgrestError não é `Error`: jogado cru, o catch externo devolvia
+    // {"error":"Erro desconhecido"} e o operador não sabia o que tentar.
+    if (lockErr) throw new Error(`remarketing_lists (trava): ${lockErr.message}`);
     if (!lock || lock.length === 0) {
-      return new Response(JSON.stringify({ error: 'Disparo já em andamento para esta lista' }), {
-        status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Trava vencida é assumida. `updated_at` é mantido pelo trigger
+      // `remarketing_lists_set_updated_at`, então a idade da linha é a idade da
+      // trava — e o mesmo update condicional garante que só UMA chamada assume.
+      const limite = new Date(Date.now() - MINUTOS_DE_TRAVA * 60_000).toISOString();
+      const { data: retomada, error: retomadaErr } = await supabase
+        .from('remarketing_lists')
+        .update({ status: 'running' })
+        .eq('id', list_id)
+        .eq('status', 'running')
+        .lt('updated_at', limite)
+        .select('id');
+      if (retomadaErr) throw new Error(`remarketing_lists (retomada): ${retomadaErr.message}`);
+      if (!retomada || retomada.length === 0) {
+        return new Response(JSON.stringify({ error: 'Disparo já em andamento para esta lista' }), {
+          status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      console.warn('sdr-whatsapp-broadcast: trava vencida assumida para a lista', list_id);
     }
 
     try {
-      const { data: contacts } = await supabase
+      // Sem checar o erro, uma falha aqui virava "0 contatos pendentes" e a
+      // lista era marcada como concluída sem ninguém ter recebido nada.
+      const { data: contacts, error: contactsErr } = await supabase
         .from('remarketing_contacts').select('*')
         .eq('list_id', list_id).eq('status', 'pending').limit(BATCH);
+      if (contactsErr) throw new Error(`remarketing_contacts: ${contactsErr.message}`);
 
+      const inicio = Date.now();
+      // Ritmo da própria lista (`throttle_per_minute`, 0008: "para não queimar o
+      // número no WhatsApp"). O sleep fixo de 250 ms mandava ~240/min e deixava
+      // a coluna existindo só no schema, prometendo um limite que ninguém lia.
+      const porMinuto = Math.max(1, Number(list.throttle_per_minute) || 20);
+      const ritmoMs = Math.round(60_000 / porMinuto);
       let sent = 0, failed = 0;
       for (const c of (contacts || [])) {
+        if (Date.now() - inicio > PRAZO_LOTE_MS) break;
         const phone = (c.phone || '').replace(/\D/g, '');
         if (!phone) { failed++; continue; }
         const to = phone.startsWith('55') ? phone : '55' + phone;
@@ -376,10 +470,14 @@ Deno.serve(async (req) => {
         } else {
           failed++;
           await supabase.from('remarketing_contacts').update({
-            status: 'failed', last_error: JSON.stringify(data).slice(0, 500),
+            // O JSON cru da Meta dizia `{"error":{"message":"(#131047) Re-engagement
+            // message",...}}` e quem opera lia "deu erro". `descreverFalhaMeta`
+            // devolve o que aconteceu e o que fazer — e, para código que não
+            // conhecemos, a mensagem crua da Meta, que é feia mas verdadeira.
+            status: 'failed', last_error: descreverFalhaMeta(data),
           }).eq('id', c.id);
         }
-        await new Promise(r => setTimeout(r, 250)); // rate limit
+        await new Promise(r => setTimeout(r, ritmoMs));
       }
 
       // O que sobrou. Lote de 500 por chamada: marcar 'done' com fila pendente
@@ -393,8 +491,10 @@ Deno.serve(async (req) => {
         .update({ status: failed ? 'failed' : pending > 0 ? 'draft' : 'done' })
         .eq('id', list_id);
 
+      // `total` é o que ESTE lote processou, não o que foi buscado: com o
+      // prazo, o laço pode parar antes de percorrer os 500 lidos.
       return new Response(JSON.stringify({
-        sent, failed, total: contacts?.length || 0, remaining: pending,
+        sent, failed, total: sent + failed, remaining: pending,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

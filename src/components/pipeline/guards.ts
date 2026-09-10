@@ -174,7 +174,7 @@ export function dealRequiredError(
  * em vez de anunciar um bloqueio.
  *
  * O primeiro ramo também descreve, e por isso deixou de mandar: "Escolha a
- * construtora antes" abria com as mesmas quatro palavras da recusa de
+ * construtora antes" abria com as mesmas três palavras da recusa de
  * `dealRequiredError` e as duas frases ficam na tela AO MESMO TEMPO no negócio
  * novo sem construtora (o Select de empreendimento nasce desabilitado). Quem
  * lê com os olhos vê a ordem duas vezes com finais diferentes e não sabe se são

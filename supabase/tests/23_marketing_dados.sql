@@ -93,8 +93,14 @@ begin
   delete from public.closed_months where period = date '2026-01-01';
   select id into v_stage from public.pipeline_stages where code = 'proposal';
 
-  insert into public.deals (stage_id, created_by, developer_id, month_base, outcome, vgv_gross, vgv_net)
-  values (v_stage, cor, devA, '2026-01-01', 'won', 200000, 200000)
+  -- `vgv_net` é gerada desde a 0006 (bruto menos desconto) e não aceita valor
+  -- na mão; com `discount_pct` no default 0 ela sai igual ao bruto, que é o
+  -- que este cenário precisa.
+  -- `closed_at` é obrigatório para `outcome <> 'open'` desde a 0006
+  -- (`deals_closed_consistency`): negócio ganho sem data de fechamento nem
+  -- entra. Data dentro do próprio mês-base.
+  insert into public.deals (stage_id, created_by, developer_id, month_base, outcome, closed_at, vgv_gross)
+  values (v_stage, cor, devA, '2026-01-01', 'won', '2026-01-31', 200000)
   returning id into v_deal;
 
   insert into public.leads (full_name, phone, campaign_id, converted_deal_id)

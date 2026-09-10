@@ -89,7 +89,7 @@ export function KpiRow({
   const vgvPct = vgvGoal && vgvGoal > 0 ? Math.round((stats.vgv / vgvGoal) * 100) : null;
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <KpiCard
         label="Leads"
         // O traco marca "ainda carregando", nao "zero": afirmar zero antes da

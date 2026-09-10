@@ -103,10 +103,14 @@ export type Database = {
           created_at: string
           daily_budget: number | null
           developer_id: string | null
+          ends_on: string | null
           external_id: string
           id: string
+          lead_source_id: string | null
+          lifetime_budget: number | null
           name: string
           platform: string
+          starts_on: string | null
           status: string | null
           synced_at: string | null
           total_spend: number
@@ -116,10 +120,14 @@ export type Database = {
           created_at?: string
           daily_budget?: number | null
           developer_id?: string | null
+          ends_on?: string | null
           external_id: string
           id?: string
+          lead_source_id?: string | null
+          lifetime_budget?: number | null
           name: string
           platform?: string
+          starts_on?: string | null
           status?: string | null
           synced_at?: string | null
           total_spend?: number
@@ -129,10 +137,14 @@ export type Database = {
           created_at?: string
           daily_budget?: number | null
           developer_id?: string | null
+          ends_on?: string | null
           external_id?: string
           id?: string
+          lead_source_id?: string | null
+          lifetime_budget?: number | null
           name?: string
           platform?: string
+          starts_on?: string | null
           status?: string | null
           synced_at?: string | null
           total_spend?: number
@@ -144,6 +156,13 @@ export type Database = {
             columns: ["developer_id"]
             isOneToOne: false
             referencedRelation: "developers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_campaigns_lead_source_id_fkey"
+            columns: ["lead_source_id"]
+            isOneToOne: false
+            referencedRelation: "lead_sources"
             referencedColumns: ["id"]
           },
         ]

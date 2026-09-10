@@ -90,6 +90,15 @@ const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map(s =
 /** As quatro colunas do organograma. Quem não cai em nenhuma vai para "Outros". */
 const COLUNAS = new Set(["director", "manager", "broker", "cca"]);
 
+/**
+ * Como a pessoa se chama, e não o papel de maior poder dela: um sócio com
+ * poderes de administrador carrega {admin, partner} e `primaryRole` devolve
+ * "admin" — o que é certo para decidir o que ela PODE e errado para escrever
+ * quem ela É.
+ */
+const rotuloDaPessoa = (roles: readonly string[], principal: string) =>
+  roles.includes("partner") ? ROTULO_PAPEL.partner : (ROTULO_PAPEL[principal] ?? principal);
+
 const ROTULO_PAPEL: Record<string, string> = {
   admin: "Administrador",
   partner: "Sócio",
@@ -215,9 +224,8 @@ function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }
 export default function Equipes() {
   // `role` é o papel REAL; quem manda na tela são os papéis EFETIVOS, senão a
   // prévia do RoleSwitcher mostra ao admin botão que o papel previsto não tem.
-  const { roles, previewRole, isAdmin, user, can } = useAuth();
-  const effectiveRoles = previewRole ? [previewRole] : roles;
-  const canEdit = isAdmin || effectiveRoles.includes("director");
+  const { roles, isAdmin, user, can } = useAuth();
+  const canEdit = isAdmin || roles.includes("director");
   /**
    * Quem pode mexer em `team_members`.
    *
@@ -231,7 +239,7 @@ export default function Equipes() {
    * `teams` é admin/diretor).
    */
   const canManageMembers = isAdmin
-    || ((effectiveRoles.includes("director") || effectiveRoles.includes("manager")) && can("teams.manage"));
+    || ((roles.includes("director") || roles.includes("manager")) && can("teams.manage"));
 
   const [rows, setRows] = useState<BrokerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -468,7 +476,7 @@ export default function Equipes() {
    * mora em `people.ts` para ter teste — aqui era JSX sem verificação nenhuma.
    */
   const gestorDoAlvo = (person: { id: string; manager_id?: string | null; director_id?: string | null }) =>
-    leadsProfile(myBrokerId, effectiveRoles, person);
+    leadsProfile(myBrokerId, roles, person);
 
   const podeEditarFicha = (person: BrokerRow) =>
     canEdit || gestorDoAlvo(person);
@@ -483,13 +491,13 @@ export default function Equipes() {
   };
 
   /** Diretor que cria equipe entra como diretor dela — `teams_admin_write` (0061) exige. */
-  const meuPerfilId = effectiveRoles.includes("director") && !isAdmin ? myBroker?.id ?? null : null;
+  const meuPerfilId = roles.includes("director") && !isAdmin ? myBroker?.id ?? null : null;
 
   // Director "scope": diretor vê só a própria subárvore. Admin não é recortado;
   // sob prévia de "diretor" ele passa a ser, que é o efeito que a prévia existe
   // para mostrar. Booleano, e não o array, para o useMemo abaixo ter dependência
   // estável entre renders.
-  const scopedToOwnSubtree = !isAdmin && effectiveRoles.includes("director");
+  const scopedToOwnSubtree = !isAdmin && roles.includes("director");
   const myScopeDirectorId = useMemo(
     () => (scopedToOwnSubtree ? myBroker?.id ?? null : null),
     [scopedToOwnSubtree, myBroker],
@@ -792,7 +800,7 @@ export default function Equipes() {
               </div>
               <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div><span className="text-muted-foreground">Nome</span><p className="font-medium">{myBroker.name}</p></div>
-                <div><span className="text-muted-foreground">Função</span><p className="font-medium">{ROTULO_PAPEL[myBroker.role] ?? myBroker.role}</p></div>
+                <div><span className="text-muted-foreground">Função</span><p className="font-medium">{rotuloDaPessoa(myBroker.roles ?? [], myBroker.role)}</p></div>
                 <div><span className="text-muted-foreground">Gerente</span><p className="font-medium">{nomeDe(myBroker.manager_id) ?? "—"}</p></div>
                 <div><span className="text-muted-foreground">Diretor</span><p className="font-medium">{nomeDe(myBroker.director_id) ?? "—"}</p></div>
               </div>

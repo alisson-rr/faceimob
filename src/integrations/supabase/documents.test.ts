@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { from, remove } = vi.hoisted(() => ({ from: vi.fn(), remove: vi.fn() }));
+const { from, remove, createSignedUrls } = vi.hoisted(() => ({
+  from: vi.fn(), remove: vi.fn(), createSignedUrls: vi.fn(),
+}));
 vi.mock("./client", () => ({
-  supabase: { from, storage: { from: () => ({ remove }) } },
+  supabase: { from, storage: { from: () => ({ remove, createSignedUrls }) } },
 }));
 
 import {
@@ -10,6 +12,7 @@ import {
   canAttachNow,
   deleteDealDocument,
   missingRequiredTypes,
+  missingStoragePaths,
   resolveStoredName,
   submitBlockReason,
   updateDocumentType,
@@ -324,5 +327,53 @@ describe("recusa do banco chega em pt-BR na tela", () => {
       .then(() => null, (e: unknown) => e);
 
     expect(describeError(erro, "O catálogo continua como estava.")).toContain("cca.review");
+  });
+});
+
+/**
+ * A conferência que separa "documento em falta" de "botão quebrado".
+ *
+ * O registro em `deal_documents` e o objeto no Storage são duas gravações
+ * independentes: seed que só registra, rollback de upload que falhou, objeto
+ * apagado por fora. Sem perguntar ao bucket, a tela lista o documento, oferece
+ * "Baixar" e a assinatura recusa depois do clique — e as duas telas que baixam
+ * (dossiê e envio à construtora) erravam do mesmo jeito.
+ */
+describe("missingStoragePaths", () => {
+  beforeEach(() => createSignedUrls.mockReset());
+
+  it("devolve só os caminhos que o Storage recusou", async () => {
+    createSignedUrls.mockResolvedValue({
+      data: [
+        { path: "deal-1/a.pdf", signedUrl: "https://x/a", error: null },
+        { path: "deal-1/b.pdf", signedUrl: null, error: "Either the object does not exist or you do not have access to it" },
+      ],
+      error: null,
+    });
+
+    const ausentes = await missingStoragePaths(["deal-1/a.pdf", "deal-1/b.pdf"]);
+
+    expect([...ausentes]).toEqual(["deal-1/b.pdf"]);
+  });
+
+  it("não pergunta nada com a lista vazia", async () => {
+    expect([...(await missingStoragePaths([]))]).toEqual([]);
+    expect(createSignedUrls).not.toHaveBeenCalled();
+  });
+
+  it("manda cada caminho uma vez só", async () => {
+    createSignedUrls.mockResolvedValue({ data: [], error: null });
+
+    await missingStoragePaths(["deal-1/a.pdf", "deal-1/a.pdf"]);
+
+    expect(createSignedUrls).toHaveBeenCalledWith(["deal-1/a.pdf"], 60);
+  });
+
+  /** Falha da conferência inteira não pode virar "todos ausentes": quem chama
+   *  precisa distinguir "não conferido" de "não existe". */
+  it("lança quando o Storage recusa a chamada inteira", async () => {
+    createSignedUrls.mockResolvedValue({ data: null, error: { message: "Bucket not found" } });
+
+    await expect(missingStoragePaths(["deal-1/a.pdf"])).rejects.toThrow(/Bucket not found/);
   });
 });

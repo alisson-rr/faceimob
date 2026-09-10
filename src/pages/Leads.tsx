@@ -113,6 +113,25 @@ export default function Leads() {
   ].filter((item): item is string => Boolean(item));
 
   const filtered = useMemo(() => leads.filter((lead) => matchesFilters(lead, filters)), [leads, filters]);
+
+  // A busca no banco chega depois do atraso da digitação, e `placeholderData`
+  // segura a lista do termo ANTERIOR nesse meio tempo: sem esta espera a tela
+  // dizia "0 de 74 leads · Nenhum lead com esses filtros" — um veredito sobre
+  // uma consulta que ainda não respondeu — e oferecia "Limpar filtros" como
+  // saída, justo no caso em que a busca no banco existe para servir (o lead
+  // fora das linhas já carregadas).
+  const buscaEmVoo = Boolean(filters.search.trim())
+    && (filters.search.trim() !== buscaNoBanco.trim() || leadsQuery.isFetching);
+  // Região viva no lugar de toast: o resultado da busca só existia como número
+  // no cabeçalho e como tabela trocada, nada disso anunciado. Frase vazia sem
+  // busca ativa, para o tique de 1s e o realtime não virarem tagarelice.
+  const anuncioBusca = !filters.search.trim() || buscaEmVoo
+    ? ""
+    : filtered.length === 0
+      ? "Nenhum lead encontrado para esta busca"
+      : filtered.length === 1
+        ? "1 lead encontrado"
+        : `${num(filtered.length)} leads encontrados`;
   const metrics = useMemo(() => leadMetrics(base, now, profileId), [base, now, profileId]);
   const overdueLeads = useMemo(() => base.filter((lead) => isLeadOverdue(lead, now)), [base, now]);
   const queuedLeads = useMemo(() => base.filter((lead) => lead.status === "queued"), [base]);
@@ -288,6 +307,7 @@ export default function Leads() {
 
   return (
     <div className="space-y-5">
+      <p aria-live="polite" className="sr-only">{anuncioBusca}</p>
       <PageHeader
         title="Leads"
         eyebrow="Operação"
@@ -295,7 +315,9 @@ export default function Leads() {
         description={
           leadsQuery.isPending
             ? "A roleta distribui os leads entre quem está com check-in aberto."
-            : `${num(filtered.length)} de ${num(metrics.total)} leads · a roleta distribui entre quem está com check-in aberto.`
+            : buscaEmVoo
+              ? "Procurando no banco…"
+              : `${num(filtered.length)} de ${num(metrics.total)} leads · a roleta distribui entre quem está com check-in aberto.`
               + (canViewQueue && semAtendimento > 0
                 ? ` ${num(semAtendimento)} sem atendimento depois de ${num(maxRounds)} voltas.`
                 : "")
@@ -393,7 +415,11 @@ export default function Leads() {
                 groups={canViewQueue ? groupsQuery.data ?? [] : []}
               />
             </div>
-            {filtered.length === 0 ? (
+            {filtered.length === 0 && buscaEmVoo ? (
+              <div className="p-4">
+                <LoadingState variant="table" rows={3} label="Procurando no banco…" />
+              </div>
+            ) : filtered.length === 0 ? (
               <EmptyState
                 icon={Inbox}
                 title={hasActiveFilter(filters) ? "Nenhum lead com esses filtros" : "Nenhum lead ainda"}

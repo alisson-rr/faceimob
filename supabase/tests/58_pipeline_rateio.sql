@@ -6,9 +6,11 @@
 --    com o percentual que tivesse — a única linha com share num negócio sem
 --    corretor nenhum.
 --
--- 2. Corretor em DUAS equipes ativas precisa creditar sempre o mesmo gerente e
---    o mesmo diretor. O `limit 1` sem `order by` deixava a escolha para o
---    planejador do Postgres; passa a valer a filiação mais recente.
+-- 2. Corretor com mais de uma filiação em `team_members` precisa creditar
+--    sempre o mesmo gerente e o mesmo diretor. O `limit 1` sem `order by`
+--    deixava a escolha para o planejador do Postgres; passa a valer a filiação
+--    mais recente. (Duas filiações VIGENTES o banco não permite — a 0002 tem
+--    índice único para isso; a forma real do caso é uma encerrada e uma nova.)
 --
 -- Os contratos que já existiam continuam cobrados aqui (100/n entre corretores,
 -- arredondamento fechando em 100, gestor sempre em 0): quem mexer no rateio
@@ -49,6 +51,7 @@ declare
   v_soma  numeric;
   v_count int;
   v_manager uuid;
+  v_recusou boolean;
 begin
   insert into auth.users (id, email, raw_user_meta_data) values
     (ger_a, 'ger.a@rateio.test', '{"full_name":"Gerente Alfa"}'),
@@ -104,17 +107,36 @@ begin
     'sem corretor, o gerente é zerado — e não fica com a única fatia do negócio');
 
   -- ---------------------------------------------------------------------------
-  -- 3. Corretor em duas equipes ativas: o autofill escolhe sempre a mesma —
-  --    a filiação mais recente.
+  -- 3. Corretor que TROCOU de equipe: o autofill credita a filiação vigente,
+  --    nunca a antiga.
+  --
+  --    O cenário original punha o corretor em DUAS equipes ativas ao mesmo
+  --    tempo — estado que o banco recusa desde a 0002 pelo índice parcial
+  --    `team_members_one_active` ("um corretor pertence a no máximo uma equipe
+  --    por vez"), e a fixture nem chegava a gravar. O `order by` da 0058
+  --    continua valendo e continua cobrado: o que muda é a forma real de ter
+  --    duas filiações, que é ter uma encerrada e uma vigente.
   -- ---------------------------------------------------------------------------
   insert into public.teams (name, slug, manager_id, director_id, active) values
     ('Rateio Alfa', 'rateio-alfa-58', ger_a, dir_a, true) returning id into v_team_a;
   insert into public.teams (name, slug, manager_id, director_id, active) values
     ('Rateio Beta', 'rateio-beta-58', ger_b, dir_b, true) returning id into v_team_b;
 
+  insert into public.team_members (team_id, profile_id, joined_at, left_at) values
+    (v_team_a, cor_1, current_date - 60, current_date - 5);
   insert into public.team_members (team_id, profile_id, joined_at) values
-    (v_team_a, cor_1, current_date - 60),
     (v_team_b, cor_1, current_date - 5);
+
+  -- A trava que torna o cenário antigo impossível, cobrada aqui de propósito:
+  -- se ela cair, o autofill volta a ter duas equipes vigentes para escolher.
+  v_recusou := false;
+  begin
+    insert into public.team_members (team_id, profile_id, joined_at) values
+      (v_team_a, cor_1, current_date - 1);
+  exception when unique_violation then v_recusou := true;
+  end;
+  perform pg_temp.check58(v_recusou,
+    'o banco recusa uma segunda filiação ativa para o mesmo corretor');
 
   insert into public.deals (stage_id, vgv_gross) values (v_stage, 300000)
   returning id into v_deal;
@@ -124,7 +146,7 @@ begin
   select count(*) into v_count
     from public.team_members tm join public.teams t on t.id = tm.team_id
    where tm.profile_id = cor_1 and tm.left_at is null;
-  perform pg_temp.check58(v_count = 2, 'cenário tem o corretor em duas equipes ativas');
+  perform pg_temp.check58(v_count = 1, 'cenário tem o corretor em uma equipe vigente');
 
   select profile_id into v_manager
     from public.deal_participants where deal_id = v_deal and role = 'manager';

@@ -16,7 +16,7 @@ import { resolveTarget } from "../support/target";
  * está cadastrado.
  */
 test.describe("login", () => {
-  test("oferece senha por padrão e código como alternativa", async ({ page }) => {
+  test("oferece senha por padrão e link no e-mail como alternativa", async ({ page }) => {
     await page.goto("/login");
     await aguardarCarregamento(page);
 
@@ -25,14 +25,17 @@ test.describe("login", () => {
     await expect(page.getByPlaceholder("Sua senha")).toBeVisible();
     await expect(page.getByRole("button", { name: /^entrar$/i })).toBeVisible();
 
-    // Alternativa: código de seis dígitos por e-mail.
-    await page.getByRole("button", { name: /receber código por e-mail/i }).click();
-    await expect(page.getByRole("button", { name: /enviar código/i })).toBeVisible();
+    // Alternativa: link de acesso por e-mail. É LINK, e não seis dígitos:
+    // o template `magic_link.html` não está publicado no projeto remoto, então
+    // o GoTrue manda o modelo padrão. A tela pedia código e prometia código —
+    // quem abria o e-mail achava que o envio tinha falhado.
+    await page.getByRole("button", { name: /receber link de acesso por e-mail/i }).click();
+    await expect(page.getByRole("button", { name: /enviar link de acesso/i })).toBeVisible();
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     // A tela diz o que vai acontecer, não o que já aconteceu: antes o texto
     // afirmava "Enviamos um código de acesso para o seu e-mail" antes de
     // qualquer envio.
-    await expect(page.getByText(/Informe o e-mail cadastrado para receber o acesso/i)).toBeVisible();
+    await expect(page.getByText(/Informe o e-mail cadastrado para receber o link de acesso/i)).toBeVisible();
 
     // E dá para voltar — quem não tem SMTP não fica preso no caminho do código.
     await page.getByRole("button", { name: /entrar com senha/i }).click();
@@ -92,10 +95,10 @@ test.describe("login", () => {
     test("código para e-mail desconhecido não revela se a conta existe", async ({ page }) => {
       await page.goto("/login");
       await aguardarCarregamento(page);
-      await page.getByRole("button", { name: /receber código por e-mail/i }).click();
+      await page.getByRole("button", { name: /receber link de acesso por e-mail/i }).click();
 
       await page.getByPlaceholder("seu@email.com").fill("nao.existe@faceimob.test");
-      await page.getByRole("button", { name: /enviar código/i }).click();
+      await page.getByRole("button", { name: /enviar link de acesso/i }).click();
 
       // A alternância antiga (`/…|código/i`) casava o próprio botão "Enviar
       // código" e passava sem toast nenhum. Hoje sucesso e recusa escrevem a
@@ -129,8 +132,8 @@ test.describe("login", () => {
 
     // Dizer o caminho não basta se ele continuar a três cliques de distância:
     // o botão leva direto ao único jeito de entrar sem saber a senha.
-    await page.getByRole("button", { name: /entrar por código no e-mail/i }).click();
-    await expect(page.getByRole("button", { name: /enviar código/i })).toBeVisible();
+    await page.getByRole("button", { name: /entrar por link no e-mail/i }).click();
+    await expect(page.getByRole("button", { name: /enviar link de acesso/i })).toBeVisible();
   });
 });
 
@@ -256,19 +259,24 @@ test.describe.serial("login por senha (conta descartável)", () => {
 
     await page.goto("/login");
     await aguardarCarregamento(page);
-    await page.getByRole("button", { name: /receber código por e-mail/i }).click();
+    await page.getByRole("button", { name: /receber link de acesso por e-mail/i }).click();
     await page.getByPlaceholder("seu@email.com").fill(email);
-    await page.getByRole("button", { name: /enviar código/i }).click();
+    await page.getByRole("button", { name: /enviar link de acesso/i }).click();
 
-    const campo = page.getByLabel("Código de acesso");
-    await expect(campo).toBeVisible({ timeout: 20_000 });
+    // O caminho ANUNCIADO é o que existe: sem o template `magic_link.html`
+    // publicado, o GoTrue manda um LINK, não seis dígitos. A tela pedia código
+    // e prometia código — quem abria o e-mail achava que o envio falhou.
+    await expect(page.getByText(/o link já autentica/i)).toBeVisible({ timeout: 20_000 });
 
-    // O passo do código é o único lugar onde os DOIS limites reais do envio
-    // cabem escritos, e a tela citava só um deles (o template). O SMTP é o mais
-    // duro: sem ele o remetente embutido recusa endereço fora da equipe do
-    // projeto, e para o corretor não chega nada.
+    // O limite real do envio continua escrito: sem SMTP próprio o remetente
+    // embutido recusa endereço fora da equipe do projeto, e não chega nada.
     await expect(page.getByText(/SMTP Settings/i)).toBeVisible();
-    await expect(page.getByText(/Magic Link/i)).toBeVisible();
+
+    // O campo de seis dígitos não sumiu — ficou atrás de um botão, para o dia
+    // em que o template for publicado.
+    await page.getByRole("button", { name: /recebi um código de 6 dígitos/i }).click();
+    const campo = page.getByLabel("Código de acesso");
+    await expect(campo).toBeVisible();
 
     const link = await adminApi("/auth/v1/admin/generate_link", {
       method: "POST",

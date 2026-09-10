@@ -105,6 +105,13 @@ Diário é escrita; checkpoint é leitura. O mesmo número aparece nos dois.
 Papel é **acumulável**: a mesma pessoa pode ser diretor, gerente e corretor ao
 mesmo tempo, e isso é o caso normal, não a exceção.
 
+**Papel efetivo** — com os papéis acumulados, quem decide uma autorização é
+**um só**: o de maior precedência que a pessoa tem. Isso não é detalhe. Toda
+conta nova ganha *corretor* de brinde e nunca o perde, então quase todo mundo é
+corretor **mais alguma coisa** — e perguntar "ela tem o papel de corretor?"
+responde "sim" para quase todo o cadastro, liberando o que não devia. A pergunta
+que autoriza é "qual é o papel dela, afinal?".
+
 - **Corretor** — atende lead, toca negócio, pontua no jogo.
 - **Gerente** — tudo do corretor, mais a equipe: confere documento, lança
   diário, enxerga os números de quem está abaixo.
@@ -114,3 +121,21 @@ mesmo tempo, e isso é o caso normal, não a exceção.
 
 **Quem enxerga quem** sai de um lugar só. Se a hierarquia mudar, muda ali —
 nunca tela por tela.
+
+---
+
+## Cofre de credenciais
+
+**Cofre** — onde ficam as chaves das integrações de fora (WhatsApp, Meta,
+e-mail, IA de voz). Vive no banco, num lugar que a API pública não expõe, e
+**nunca devolve o valor gravado**: dá para escrever e para saber se o campo está
+preenchido, nunca para ler de volta.
+
+A consequência é a parte que já mordeu: colada a chave errada, ninguém mais vê o
+valor para comparar. O que existe no lugar da leitura é o **teste de conexão** da
+tela de integrações, que pergunta ao próprio provedor se a chave gravada funciona
+— e, onde esse teste não é possível, a tela diz qual é o motivo. Sem apertá-lo, o
+erro só aparece semanas depois, num log do provedor.
+
+> "Configurado" no cofre quer dizer *tem alguma coisa aqui*, e não *tem a coisa
+> certa aqui*.

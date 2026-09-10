@@ -75,12 +75,14 @@ begin
   delete from public.closed_months where period = date '2026-01-01';
   select id into v_stage from public.pipeline_stages where code = 'proposal';
 
-  insert into public.deals (stage_id, created_by, month_base, outcome, closed_at, vgv_gross, vgv_net)
-  values (v_stage, cor, '2026-01-01', 'won', now(), 300000, 300000)
+  -- `vgv_net` é gerada desde a 0006 (bruto menos desconto) e não aceita valor
+  -- na mão; com `discount_pct` no default 0 ela sai igual ao bruto.
+  insert into public.deals (stage_id, created_by, month_base, outcome, closed_at, vgv_gross)
+  values (v_stage, cor, '2026-01-01', 'won', now(), 300000)
   returning id into v_won;
 
-  insert into public.deals (stage_id, created_by, month_base, outcome, closed_at, vgv_gross, vgv_net)
-  values (v_stage, cor, '2026-01-01', 'lost', now(), 100000, 100000)
+  insert into public.deals (stage_id, created_by, month_base, outcome, closed_at, vgv_gross)
+  values (v_stage, cor, '2026-01-01', 'lost', now(), 100000)
   returning id into v_lost;
 
   -- A ordem de `created_at` é o desempate da atribuição: o mais antigo ganha.

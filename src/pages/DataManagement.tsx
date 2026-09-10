@@ -131,12 +131,11 @@ export function rowsToAportes(rows: string[][], devs: Developer[]): SheetParse {
  * com prévia e validação antes de gravar.
  */
 export default function DataManagement() {
-  const { isAdmin, roles, previewRole } = useAuth();
+  const { isAdmin, roles } = useAuth();
   // Espelha as policies: aporte escreve admin/marketing; lead insere gestor e SDR.
   // `roles` (N:N) e não `role`: diretor que também é marketing tem `role = director`.
-  const effectiveRoles = previewRole ? [previewRole] : roles;
-  const canEditAporte = isAdmin || effectiveRoles.includes("marketing");
-  const canImportLeads = isAdmin || effectiveRoles.some((r) => LEAD_IMPORT_ROLES.includes(r));
+  const canEditAporte = isAdmin || roles.includes("marketing");
+  const canImportLeads = isAdmin || roles.some((r) => LEAD_IMPORT_ROLES.includes(r));
 
   const sourcesQuery = useLeadSources();
   const [importOpen, setImportOpen] = useState(false);

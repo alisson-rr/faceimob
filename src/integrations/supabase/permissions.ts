@@ -1,6 +1,6 @@
 import { supabase } from "./client";
 import { dbError } from "@/lib/supabaseError";
-import type { NewAppRole } from "./newSchema";
+import { primaryRole, type NewAppRole } from "./newSchema";
 
 /**
  * Adaptador da matriz de permissões.
@@ -57,6 +57,44 @@ export const EDITABLE_ROLES: { value: NewAppRole; label: string; color: string }
   { value: "sdr", label: "SDR", color: "text-chart-5" },
   { value: "marketing", label: "Marketing", color: "text-chart-3" },
 ];
+
+/**
+ * Nome de cada papel na tela. Fonte única — havia três cópias deste mapa
+ * (`RoleSwitcher`, `Equipes`, e o `EDITABLE_ROLES` acima), e elas já divergiam.
+ */
+export const ROLE_LABEL: Record<NewAppRole, string> = {
+  admin: "Administrador",
+  partner: "Sócio",
+  director: "Diretor",
+  manager: "Gerente",
+  cca: "CCA",
+  sdr: "SDR",
+  marketing: "Marketing",
+  broker: "Corretor",
+};
+
+/**
+ * Como CHAMAR quem tem estes papéis.
+ *
+ * O dono pediu que sócio se chamasse "Sócio" tendo os mesmos poderes do
+ * administrador. Quem tem os dois papéis ({admin, partner}) apareceria como
+ * "Administrador" sem esta regra, porque `admin` tem precedência em
+ * `primaryRole` — e precisa ter, é `primaryRole` que espelha
+ * `auth_effective_role()` do banco nas travas de escrita.
+ *
+ * `partner` sozinho continua sendo o observador de leitura ampla e escrita
+ * nenhuma que 15 asserções do harness SQL cobram (a 0093 o promovia
+ * automaticamente a admin e a 0094 desfez isso). Os dois casos leem "Sócio" na
+ * tela; o que muda é o que cada um pode.
+ *
+ * Ou seja: `primaryRole` responde "o que esta pessoa PODE"; esta função
+ * responde "como esta pessoa se chama". Misturar as duas foi o que fez o papel
+ * de sócio sumir da tela.
+ */
+export const roleLabelFor = (roles: NewAppRole[]): string => {
+  if (roles.includes("partner")) return ROLE_LABEL.partner;
+  return ROLE_LABEL[primaryRole(roles)];
+};
 
 export async function listPermissionCatalog(): Promise<PermissionRecord[]> {
   const { data, error } = await supabase

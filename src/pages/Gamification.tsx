@@ -426,7 +426,7 @@ function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; sea
 export default function Gamification() {
   // `isAdmin` do contexto acompanha a pré-visualização de papel; `role` é
   // sempre o papel REAL e deixava a aba Admin e o botão de fechar na prévia.
-  const { isAdmin, roles, previewRole } = useAuth();
+  const { isAdmin, roles } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -438,8 +438,7 @@ export default function Gamification() {
   // `visible_game_ranking`); admin, diretor e sócio veem a casa. A tela dizia
   // "Campeões gerais" para os dois — quem lê "geral" e vê cinco nomes não tem
   // como saber que o recorte é da equipe.
-  const effectiveRoles = previewRole ? [previewRole] : roles;
-  const veTudo = isAdmin || effectiveRoles.some((r) => r === 'director' || r === 'partner');
+  const veTudo = isAdmin || roles.some((r) => r === 'director' || r === 'partner');
 
   const { data: currentSeasonId, isPending: seasonPending } = useCurrentSeasonId();
 

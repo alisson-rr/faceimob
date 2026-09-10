@@ -177,12 +177,12 @@ export const useStagePermissions = () =>
   });
 
 export function useCanExitStage() {
-  const { roles, previewRole, isAdmin } = useAuth();
+  const { roles, isAdmin } = useAuth();
   const { data } = useStagePermissions();
 
   const exitable = useMemo(
-    () => exitableStages(data ?? [], previewRole ? [previewRole] : roles),
-    [data, previewRole, roles],
+    () => exitableStages(data ?? [], roles),
+    [data, roles],
   );
 
   return useCallback(

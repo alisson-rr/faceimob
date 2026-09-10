@@ -113,6 +113,22 @@ describe("MetaAdsSetup", () => {
     expect(el.textContent).not.toContain("faceimob_meta_verify");
   });
 
+  /**
+   * A gestão de campanha passou a existir — em /marketing, e LOCAL. A tela do
+   * webhook dizia "não está nesta entrega", o que virou informação errada; o
+   * que ela não pode é trocar isso por promessa de controle na Meta, que
+   * continua exigindo `ads_management` e revisão do app.
+   */
+  it("aponta a gestão de campanha para /marketing sem prometer controle na Meta", async () => {
+    const el = await montar([]);
+
+    expect(el.querySelector('a[href="/marketing"]')).not.toBeNull();
+    expect(el.textContent).toContain("registro local");
+    expect(el.textContent).toContain("ads_management");
+    // A frase antiga negava a entrega inteira; a nova só nega o lado da Meta.
+    expect(el.textContent).not.toContain("não está nesta entrega");
+  });
+
   it("token da página + verify token no cofre: webhook pronto e data do token", async () => {
     const el = await montar([registro("page_access_token"), registro("webhook_verify_token")]);
 

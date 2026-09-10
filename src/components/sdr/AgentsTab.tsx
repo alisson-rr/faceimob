@@ -15,18 +15,23 @@ import {
 import { toast } from "sonner";
 import { Bot, Plus, Trash2 } from "lucide-react";
 import { describeError } from "@/lib/supabaseError";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
 import { handoffOptions } from "./handoffChain";
-import { efeitosDaExclusao, PAPEL_AGENTE, SEM_PERMISSAO, SEM_SELECAO, type Agent, type Group, type Rlist, type Source } from "./types";
+import { efeitosDaExclusao, IA_SEM_CREDENCIAL, ondeCadastrarIa, PAPEL_AGENTE, SEM_PERMISSAO, SEM_SELECAO, type Agent, type Group, type Rlist, type Source } from "./types";
 
 /** Mesmo default da function (`DEFAULT_OPENAI_MODEL`) e da coluna (0040). */
 const MODELO_PADRAO = "gpt-4o-mini";
 /** Mesmo default da coluna `sdr_agents.max_turns` (0008). */
 const TURNOS_PADRAO = 12;
 
-export function AgentsTab({ agents, groups, sources, lists, canWrite, reload }: {
-  agents: Agent[]; groups: Group[]; sources: Source[]; lists: Rlist[]; canWrite: boolean; reload: () => void;
+export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigurada, reload }: {
+  agents: Agent[]; groups: Group[]; sources: Source[]; lists: Rlist[]; canWrite: boolean;
+  /** Chave da OpenAI no cofre. `null` = ainda não se sabe; nada é afirmado. */
+  iaConfigurada: boolean | null;
+  reload: () => void;
 }) {
+  const { can } = useAuth();
   const [editing, setEditing] = useState<Partial<Agent> | null>(null);
   // Confirmação de exclusão pelo AlertDialog do app, não pelo `confirm()` do
   // navegador: o nativo não é estilizado, não respeita o tema e — o que pesa
@@ -206,6 +211,16 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, reload }: 
                 <Label htmlFor="ag-active">Ativo</Label>
               </div>
             </div>
+            {/* "Ativo" é o controle que mais parece dizer "está trabalhando":
+                sem a chave no cofre ele liga um agente que não responde. */}
+            {iaConfigurada === false && (
+              /* Sem `role="status"`: é contexto estático do formulário, e quem
+                 anuncia a falta é o banner do módulo, uma vez por tela. */
+              <p className="text-xs text-warning">
+                Marcar “Ativo” não faz este agente responder. {IA_SEM_CREDENCIAL}{" "}
+                {ondeCadastrarIa(can("menu.admin_integrations"))}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               Atingido o máximo de respostas, o agente para de escrever e o lead volta para a roleta — sem ser marcado
               como qualificado. É o que impede uma conversa que nunca conclui de rodar sem fim.
@@ -279,7 +294,8 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, reload }: 
                 ? <>Perdem o vínculo com ele: <b>{efeitos.join(" · ")}</b>. Os leads dessas origens deixam de passar
                   pela IA e caem direto na roleta.</>
                 : <>Nenhuma origem, lista ou agente aponta para ele hoje — a exclusão não solta nenhum vínculo.</>}
-              {" "}Para tirá-lo do fluxo sem perder o histórico das conversas, desmarque “Ativo” e salve.
+              {" "}Para tirá-lo do fluxo sem perder o histórico das conversas, desmarque “Ativo” e salve: ele para de
+              responder também nas conversas já abertas, que passam a esperar por gente (o SDR é avisado no sino).
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

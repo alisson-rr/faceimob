@@ -42,6 +42,16 @@ const planilha = (linhas: Record<string, string>[]) => {
 const XLSX_FIXTURE = () => readFileSync(resolve("src/components/leads/__fixtures__/leads-teste.xlsx"));
 
 
+/** Um template aprovado E ativo: o botão "Disparar" só é oferecido para lista
+ *  que tem um, porque sem template a function recusa de qualquer jeito. */
+const templateAprovado = async () => {
+  const [t] = await db.select<{ id: string; name: string }>(
+    "whatsapp_templates?approved=eq.true&active=eq.true&select=id,name&order=created_at&limit=1",
+  );
+  expect(t, "a homologação precisa de ao menos um template aprovado e ativo").toBeTruthy();
+  return t;
+};
+
 const listaChamada = (nome: string) =>
   db.select<ListaRow>(
     `remarketing_lists?name=eq.${encodeURIComponent(nome)}&select=id,name,status,template_id,agent_id`,
@@ -146,6 +156,42 @@ test.describe("SDR · importação de lista", () => {
       "5511988770003",
     ]);
     expect(contatos.find((c) => c.phone === "5511988770001")?.full_name).toBe("Ana Paula Ribeiro");
+  });
+
+  /**
+   * Telefone repetido não pode derrubar a planilha inteira.
+   *
+   * `unique (list_id, phone)` (0008) + importação atômica (0031): duas linhas
+   * com o MESMO número em máscaras diferentes viravam 23505 e o operador lia
+   * "Já existe um registro com esses dados." — sem saber qual linha, e com a
+   * lista inteira perdida. Export de base antiga repete número por construção.
+   */
+  test("telefone repetido na planilha entra uma vez e a tela diz quantas linhas saíram", async ({ page }) => {
+    const nome = `Lista repetida ${tag}`;
+
+    const painel = await abrirRemarketing(page);
+    await painel.getByPlaceholder("Nome da lista").fill(nome);
+    await seletorDeArquivo(page).setInputFiles({
+      name: "repetida.csv",
+      mimeType: "text/csv",
+      buffer: planilha([
+        { nome: "Ana Teste", fone: "(11) 98888-2001", campanha: "Retomada" },
+        { nome: "Ana repetida", fone: "11988882001", campanha: "Retomada" },
+        { nome: "Bruno Teste", fone: "+55 11 97777-2002", campanha: "Retomada" },
+      ]),
+    });
+
+    await expect(page.getByText(/criada com 2 contatos/i)).toBeVisible({ timeout: 20_000 });
+    await expect(
+      page.getByText(/1 linha\(s\) repetiam um telefone/i),
+      "descartar linha em silêncio esconde do operador que a lista é menor que a planilha",
+    ).toBeVisible();
+
+    const [lista] = await listaChamada(nome);
+    const contatos = await contatosDa(lista.id);
+    expect(contatos.map((c) => c.phone)).toEqual(["5511977772002", "5511988882001"]);
+    // Fica a PRIMEIRA ocorrência: é a ordem da planilha, não um sorteio.
+    expect(contatos.find((c) => c.phone === "5511988882001")?.full_name).toBe("Ana Teste");
   });
 
   // O 400 do trigger é o que se quer provocar; o teste cobra o aviso na tela.
@@ -258,18 +304,31 @@ test.describe("SDR · estatísticas e disparo", () => {
   test.describe(() => {
     test.use({ errosEsperados: [/status of 5\d\d/i] });
 
-  test("disparo sem credencial avisa e não marca a lista como enviada", async ({ page }) => {
+  test("disparo sem credencial avisa antes do clique e não marca a lista como enviada", async ({ page }) => {
     const nome = `Lista disparo ${tag}`;
-    const [lista] = await db.insert<ListaRow>("remarketing_lists", { name: nome });
+    const template = await templateAprovado();
+    const [lista] = await db.insert<ListaRow>("remarketing_lists", { name: nome, template_id: template.id });
     await db.insert("remarketing_contacts", [
       { list_id: lista.id, full_name: "Alvo", phone: "11930000001" },
     ]);
 
     const painel = await abrirRemarketing(page);
+
+    // Honestidade ANTES do primeiro clique: a aba pergunta o veredito à
+    // function (`action: "status"`) na abertura. Descobrir que não há chave
+    // nenhuma só depois de confirmar um disparo anunciado como "não volta
+    // atrás" é tarde — e o aviso precisa existir sem nenhuma tentativa.
+    const aviso = page.getByRole("status").filter({ hasText: /ainda não está configurado/i });
+    await expect(aviso).toBeVisible({ timeout: 20_000 });
+    // O nome do catálogo de integrações, não o da variável de ambiente: o card
+    // em Admin · Integrações se chama assim, e é o que o admin vai procurar.
+    await expect(aviso).toContainText("WhatsApp Cloud API — token");
+    await expect(aviso, "a fila precisa ser dita intacta, senão o operador reimporta a planilha").toContainText(/continuam na fila/i);
+
     await painel
       .locator("div.border.rounded")
       .filter({ hasText: nome })
-      .getByRole("button", { name: /^disparar$/i })
+      .getByRole("button", { name: /^disparar da lista/i })
       .click();
 
     // A confirmação virou AlertDialog do app: o `confirm()` nativo não dizia
@@ -282,6 +341,8 @@ test.describe("SDR · estatísticas e disparo", () => {
     await expect(page.locator("[data-sonner-toast]")).toBeVisible({ timeout: 25_000 });
     // Nada de "Enviados: 0 | Falhas: 0" fingindo disparo: a function abortou.
     await expect(page.getByText(/^Enviados:/)).toHaveCount(0);
+    // O toast some em segundos; o aviso que não muda sozinho continua na tela.
+    await expect(aviso).toBeVisible();
 
     const [depois] = await listaChamada(nome);
     expect(depois.status).toBe("draft");
@@ -325,6 +386,103 @@ test.describe("SDR · estatísticas e disparo", () => {
     await page.getByRole("option", { name: "Falhou" }).click();
     await expect(cartao.getByText("Contato na fila")).toHaveCount(0);
     await expect(cartao.getByText("Contato que falhou")).toBeVisible();
+  });
+
+  /**
+   * A trava de disparo tem prazo.
+   *
+   * `remarketing_lists.status = 'running'` é a trava de concorrência, e o
+   * runtime MATA a edge function ao estourar o teto de tempo — antes do `catch`
+   * que solta a lista. Comparando só `status === 'running'`, a tela deixava a
+   * lista presa em "Disparando…" com o botão desabilitado para sempre, sem
+   * nenhuma saída pela interface.
+   */
+  test("a tela reabre o disparo de uma trava esquecida; a recente continua bloqueando", async ({ page }) => {
+    const travada = `Lista travada ${tag}`;
+    const disparando = `Lista disparando ${tag}`;
+    const template = await templateAprovado();
+    // Template e fila pendente porque as duas listas precisam ser disparáveis
+    // por todo o resto: assim o que separa uma da outra é SÓ a idade da trava.
+    const [t1, t2] = await db.insert<ListaRow>("remarketing_lists", [
+      { name: travada, status: "running", template_id: template.id, updated_at: new Date(Date.now() - 20 * 60_000).toISOString() },
+      { name: disparando, status: "running", template_id: template.id, updated_at: new Date().toISOString() },
+    ]);
+    await db.insert("remarketing_contacts", [
+      { list_id: t1.id, full_name: "Alvo travado", phone: "11930000021" },
+      { list_id: t2.id, full_name: "Alvo ativo", phone: "11930000022" },
+    ]);
+
+    const painel = await abrirRemarketing(page);
+    const cartaoTravado = painel.locator("div.border.rounded").filter({ hasText: travada });
+    await expect(cartaoTravado).not.toContainText("Disparando…");
+    await expect(cartaoTravado.getByRole("button", { name: /^disparar da lista/i })).toBeEnabled();
+
+    const cartaoAtivo = painel.locator("div.border.rounded").filter({ hasText: disparando });
+    await expect(cartaoAtivo).toContainText("Disparando…");
+    await expect(cartaoAtivo.getByRole("button", { name: /^disparar da lista/i })).toBeDisabled();
+  });
+
+  /**
+   * O outro lado da mesma trava: `disparoEmAndamento` não pode ser a única
+   * regra do botão. Sem template ou sem fila, o servidor recusa de qualquer
+   * jeito — e a tela pedia confirmação de uma ação irreversível ("Mensagem
+   * enviada não volta atrás") por um caminho que ela já sabia que ia falhar.
+   */
+  test("lista sem template e lista sem fila não oferecem o disparo, e dizem por quê", async ({ page }) => {
+    const semTemplate = `Lista sem template ${tag}`;
+    const semFila = `Lista sem fila ${tag}`;
+    const template = await templateAprovado();
+    const [a, b] = await db.insert<ListaRow>("remarketing_lists", [
+      { name: semTemplate, template_id: null },
+      { name: semFila, template_id: template.id },
+    ]);
+    await db.insert("remarketing_contacts", [
+      { list_id: a.id, full_name: "Na fila", phone: "11930000031", status: "pending" },
+      { list_id: b.id, full_name: "Já enviado", phone: "11930000032", status: "sent" },
+    ]);
+
+    const painel = await abrirRemarketing(page);
+
+    const cartaoSemTemplate = painel.locator("div.border.rounded").filter({ hasText: semTemplate });
+    await expect(cartaoSemTemplate.getByRole("button", { name: /^disparar da lista/i })).toBeDisabled();
+    await expect(cartaoSemTemplate, "botão desabilitado sem motivo escrito é beco sem saída").toContainText(/sem template configurado/i);
+
+    const cartaoSemFila = painel.locator("div.border.rounded").filter({ hasText: semFila });
+    await expect(cartaoSemFila.getByRole("button", { name: /^disparar da lista/i })).toBeDisabled();
+    await expect(cartaoSemFila).toContainText(/nenhum contato na fila/i);
+  });
+
+  /**
+   * `throttle_per_minute` (0008, "para não queimar o número no WhatsApp") passou
+   * a ser o ritmo real do disparo — antes o laço usava 250 ms fixos e a coluna
+   * só existia no schema. Honrar a coluna sem campo na tela trocaria a promessa
+   * quebrada por um teto de 20/min sem saída pela interface.
+   */
+  test("o ritmo de envio da lista é editável, validado e chega ao banco", async ({ page }) => {
+    const nome = `Lista ritmo ${tag}`;
+    const [lista] = await db.insert<ListaRow>("remarketing_lists", { name: nome });
+
+    const painel = await abrirRemarketing(page);
+    const cartao = painel.locator("div.border.rounded").filter({ hasText: nome });
+    await cartao.getByRole("button", { name: `Configurar lista ${nome}` }).click();
+
+    const campo = cartao.getByLabel(/ritmo \(mensagens por minuto\)/i);
+    await expect(campo, "o padrão da 0008 é 20/min").toHaveValue("20");
+
+    // `check (throttle_per_minute > 0)` recusaria com 23514 cru; a tela precisa
+    // dizer o motivo antes de o banco reclamar.
+    await campo.fill("0");
+    await cartao.getByRole("button", { name: /^salvar$/i }).click();
+    await expect(page.getByText(/entre 1 e 600/i)).toBeVisible();
+
+    await campo.fill("45");
+    await cartao.getByRole("button", { name: /^salvar$/i }).click();
+    await expect(page.getByText(/lista atualizada/i)).toBeVisible({ timeout: 20_000 });
+
+    const [depois] = await db.select<{ throttle_per_minute: number }>(
+      `remarketing_lists?id=eq.${lista.id}&select=throttle_per_minute`,
+    );
+    expect(depois.throttle_per_minute).toBe(45);
   });
 
   // Regressão de segurança: autenticação e papel são validados antes de tocar

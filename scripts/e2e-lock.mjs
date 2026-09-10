@@ -10,9 +10,10 @@
  * causa é ambiente.
  *
  * COMO. `mkdir` é atômico em NTFS e em POSIX: quem consegue criar o diretório
- * é o dono da trava. Dentro dele fica o PID, para uma execução morta (Ctrl+C,
- * `taskkill`, terminal fechado no X — os mesmos casos em que o teardown também
- * não roda) não deixar a trava presa para sempre.
+ * é o dono da trava. Dentro dele fica um BATIMENTO reescrito a cada 30 s — é
+ * ele que separa "execução longa e legítima" de "execução morta" (Ctrl+C,
+ * `taskkill`, terminal fechado no X, agente encerrado — os mesmos casos em que
+ * o teardown também não roda), para a trava não ficar presa para sempre.
  *
  * A trava vive em `os.tmpdir()` e é derivada do caminho do repositório: dois
  * clones diferentes não disputam a mesma trava, e nada suja a árvore de trabalho.
@@ -20,13 +21,13 @@
  * ponytail: espera em laço com intervalo fixo, sem notificação entre processos;
  * evoluir se a fila passar de uns poucos participantes.
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 const INTERVALO_MS = 5_000;
-/** Teto do tempo de espera. A suíte inteira leva ~10 min; três na frente ainda cabem. */
+/** Teto do tempo de espera. A suíte inteira leva ~40 min; uma na frente ainda cabe. */
 const ESPERA_MAX_MS = 60 * 60_000;
 /** Sem sinal de vida por mais que isto, a trava é considerada abandonada. */
 const BATIMENTO_MAX_MS = 3 * 60_000;
@@ -47,6 +48,15 @@ const vivo = (pid) => {
   } catch (e) {
     // EPERM = existe e é de outro usuário; ESRCH = não existe.
     return e?.code === "EPERM";
+  }
+};
+
+/** Há quanto tempo a pasta da trava existe. `Infinity` se ela sumiu. */
+const idadeDaPasta = (pasta) => {
+  try {
+    return Date.now() - statSync(pasta).mtimeMs;
+  } catch {
+    return Infinity;
   }
 };
 
@@ -76,8 +86,31 @@ export async function travar({ silencioso = false } = {}) {
     } catch (e) {
       if (e?.code !== "EEXIST") throw e;
 
+      /**
+       * QUEM MANDA É O BATIMENTO, não o PID.
+       *
+       * A primeira versão exigia as DUAS coisas (`!vivo(pid) && batimento
+       * velho`) e se enforcou com isso em 05/09/2026: o dono morreu junto com a
+       * rodada de agentes, o número do PID foi reusado por um dos 43 processos
+       * node da máquina, `process.kill(pid, 0)` respondeu "vivo" para sempre e
+       * a execução seguinte esperou os 60 minutos inteiros sem nada rodar.
+       *
+       * Uma execução VIVA reescreve o batimento a cada 30 s. Batimento parado
+       * há mais de `BATIMENTO_MAX_MS` só acontece se o dono morreu — o PID não
+       * acrescenta nada a isso, e ainda mente quando é reciclado. Ele fica só
+       * como atalho: PID que não existe mais dispensa esperar o batimento
+       * vencer.
+       */
       const dono = leDono(pasta);
-      const parado = !dono || (!vivo(dono.pid) && Date.now() - (dono.batimento ?? 0) > BATIMENTO_MAX_MS);
+      // `dono.json` ausente pode ser trava RECÉM-CRIADA: entre o `mkdir` e a
+      // primeira escrita há uma janela de milissegundos. Tomá-la nesse instante
+      // colocaria duas execuções rodando juntas — exatamente o que a trava
+      // existe para impedir. A idade da PASTA é o desempate.
+      const nascimento = idadeDaPasta(pasta);
+      const semBatimento = dono
+        ? Date.now() - (dono.batimento ?? 0) > BATIMENTO_MAX_MS
+        : nascimento > BATIMENTO_MAX_MS;
+      const parado = semBatimento || (!!dono && !vivo(dono.pid));
       if (parado) {
         if (!silencioso) {
           console.log(`[e2e] trava abandonada por ${dono?.pid ?? "processo desconhecido"} — assumindo.`);

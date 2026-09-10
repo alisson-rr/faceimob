@@ -59,7 +59,18 @@ test.describe("corretor · menu e rotas administrativas", () => {
     }
     // Checkpoint é de diretor/gerente — é o item que separa corretor de "dual".
     await expect(page.getByRole("link", { name: "Checkpoint" })).toHaveCount(0);
-    await expect(page.getByText("Administração")).toHaveCount(0);
+
+    // O grupo "Configurações" EXISTE para o corretor — ele tem /settings, que é
+    // a própria conta. Cobrar a ausência do grupo (como se cobrava do antigo
+    // "Administração") passaria a ser falso pelo motivo errado. O que separa um
+    // papel do outro são os ITENS, conferidos acima; aqui fica a prova de que o
+    // grupo, quando aparece, aparece SÓ com o que o corretor pode abrir.
+    const configuracoes = page.getByRole("group", { name: "Configurações" });
+    await expect(configuracoes.getByRole("link", { name: "Configurações" })).toBeVisible();
+    await expect(
+      configuracoes.getByRole("link"),
+      "corretor não abre nenhuma tela de configuração além da própria conta",
+    ).toHaveCount(1);
   });
 
   // A entrada do sistema ("/" e o pós-login) manda para a primeira tela que o
@@ -88,4 +99,26 @@ test.describe("corretor · menu e rotas administrativas", () => {
 
     await expect(page.getByText(/acesso não liberado/i)).toBeVisible();
   });
+});
+
+/**
+ * A planilha do Pipeline é a folha de comissão da operação: sai com VGV,
+ * percentual de rateio e VGV POR CORRETOR de todo o recorte filtrado, num
+ * arquivo que anda por WhatsApp. Até 05/09/2026 o botão era de quem abrisse o
+ * Pipeline — e corretor, SDR e marketing abrem.
+ *
+ * A trava é `pipeline.export` (migration 0092), concedida a admin e sócio.
+ *
+ * O que este teste NÃO promete: que o dado esteja fechado. O RLS já entregou os
+ * negócios à tela; o que a permissão remove é o caminho de um clique. Fechar de
+ * verdade exigiria gerar a planilha no servidor.
+ */
+test("o corretor não tem o botão que extrai a planilha de comissão", async ({ page }) => {
+  await page.goto("/pipeline");
+  await aguardarCarregamento(page);
+
+  // Âncora: a tela carregou de verdade. Sem ela, um Pipeline que não renderizou
+  // passaria como "sem botão de extrair".
+  await expect(page.getByRole("heading", { name: /pipeline/i }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /extrair planilha/i })).toHaveCount(0);
 });

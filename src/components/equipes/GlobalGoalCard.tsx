@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertTriangle, Target } from "lucide-react";
@@ -43,9 +44,37 @@ const loadGlobalGoals = async (periodIso: string) => {
  * Quem monta decide quem vê: a RLS `goals_write` aceita admin e diretor, e a
  * tela de Equipes já tem essa regra em `canEdit`.
  */
-export function GlobalGoalCard() {
+/** `2026-01` do `?mes=` da URL — e só isso; qualquer outra coisa é ignorada. */
+const mesDaUrl = (raw: string | null): string | null =>
+  raw && /^\d{4}-(0[1-9]|1[0-2])$/.test(raw) ? raw : null;
+
+export interface GlobalGoalCardProps {
+  /**
+   * Mês em `yyyy-MM` para abrir o formulário. Quem monta este card fora de
+   * /equipes (o Dashboard) já tem um mês escolhido na tela e não passa por URL.
+   */
+  mesInicial?: string;
+}
+
+export function GlobalGoalCard({ mesInicial }: GlobalGoalCardProps = {}) {
   const queryClient = useQueryClient();
-  const [month, setMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [searchParams] = useSearchParams();
+  /**
+   * O mês vem do `?mes=` quando o link o traz.
+   *
+   * O card do Dashboard manda `/equipes?mes=YYYY-MM` desde que existe, e este
+   * lado ignorava o parâmetro: quem estava olhando janeiro, clicava em
+   * "Cadastrar em Equipes" e caía no formulário do mês do RELÓGIO — gravando a
+   * meta no mês errado sem nenhum sinal. O aviso ficava numa frase do outro
+   * lado da navegação, o que é pedir para a pessoa lembrar.
+   *
+   * Estado inicial, não sincronizado: trocar o mês no campo depois disso é
+   * escolha de quem está ali, e um efeito que reimpusesse a URL desfaria a
+   * escolha a cada render.
+   */
+  const [month, setMonth] = useState(
+    () => mesDaUrl(mesInicial ?? null) ?? mesDaUrl(searchParams.get("mes")) ?? format(new Date(), "yyyy-MM"),
+  );
   // Só o que foi digitado; o resto é derivado do valor carregado. Assim trocar
   // de mês ou salvar zera o rascunho sem precisar sincronizar estado com efeito.
   const [edits, setEdits] = useState<Partial<Record<Metric, string>>>({});

@@ -181,16 +181,7 @@ export async function runSdrAgentTurn(
   if (conv.status !== "active") throw new ConversationClosedError(conv.status);
 
   // Agente: explícito → o da conversa → orquestrador → qualquer ativo.
-  // O explícito precisa estar ATIVO: o seletor do playground mandava id de
-  // agente desligado e o switch "Ativo" da aba Agentes não valia nada aqui.
-  let chosenAgentId: string | null = null;
-  if (input.agentId) {
-    const { data: picked } = await supabase
-      .from("sdr_agents").select("id").eq("id", input.agentId).eq("active", true).maybeSingle();
-    if (!picked) throw new Error("Agente escolhido não existe ou está inativo.");
-    chosenAgentId = picked.id;
-  }
-  chosenAgentId ??= conv.agent_id;
+  let chosenAgentId: string | null = input.agentId ?? conv.agent_id;
   if (!chosenAgentId) {
     const { data: orch } = await supabase
       .from("sdr_agents").select("id")
@@ -204,9 +195,27 @@ export async function runSdrAgentTurn(
   }
   if (!chosenAgentId) throw new Error("Nenhum agente SDR configurado");
 
+  // A checagem de `active` fica AQUI, num ponto só, porque é por aqui que os
+  // quatro caminhos de escolha passam. Antes ela estava em três deles — o id
+  // explícito, o orquestrador e o "qualquer ativo" — e faltava justo no quarto,
+  // `conv.agent_id`: numa conversa JÁ aberta o robô seguia respondendo com um
+  // agente desligado. Isso desmentia o que a aba Agentes promete ("para tirá-lo
+  // do fluxo sem perder o histórico, desmarque Ativo") e o que o Playground diz.
+  //
+  // E não se troca de agente em silêncio: o operador desligou este agente, não
+  // pediu para outro assumir a conversa dele. Quem assume é gente — o
+  // `whatsapp-inbound-webhook` registra a mensagem do lead como `agent_error`,
+  // o gatilho da 0083 avisa SDR e admin no sino e a aba Conversas tem "Assumir
+  // conversa".
   const { data: agent, error: agentErr } = await supabase
-    .from("sdr_agents").select("*").eq("id", chosenAgentId).single();
+    .from("sdr_agents").select("*").eq("id", chosenAgentId).maybeSingle();
   if (agentErr) throw new Error(`sdr_agents: ${agentErr.message}`);
+  // Na prática só o id explícito cai aqui — a FK de `sdr_conversations.agent_id`
+  // é ON DELETE SET NULL, então o agente excluído deixa a conversa sem agente e
+  // ela desce para o orquestrador. O `.maybeSingle()` existe para isto: com
+  // `.single()` o id inválido virava o PGRST116 cru na bolha do Playground.
+  if (!agent) throw new Error("O agente indicado para esta conversa não existe mais.");
+  if (!agent.active) throw new InactiveAgentError(agent.name);
 
   const { data: history, error: histErr } = await supabase
     .from("sdr_messages").select("author, body")
@@ -360,6 +369,24 @@ export class DuplicateMessageError extends Error {
   constructor() {
     super("mensagem já processada");
     this.name = "DuplicateMessageError";
+  }
+}
+
+/**
+ * O agente que responderia está desmarcado como "Ativo".
+ *
+ * Erro próprio, e não um `Error` genérico, porque os dois chamadores precisam
+ * distinguir: o Playground diz ao operador qual agente ele desligou, e o
+ * `whatsapp-inbound-webhook` grava o motivo em `agent_error` — é o que faz o
+ * sino avisar SDR e admin de que existe conversa esperando gente.
+ */
+export class InactiveAgentError extends Error {
+  constructor(public readonly agentName: string) {
+    super(
+      `O agente "${agentName}" está inativo e não responde mais nesta conversa. ` +
+        "Reative-o na aba Agentes ou assuma a conversa na aba Conversas.",
+    );
+    this.name = "InactiveAgentError";
   }
 }
 

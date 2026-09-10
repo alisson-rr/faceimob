@@ -348,10 +348,13 @@ export default function DealDocumentUpload({
   // analista não conseguiria abrir. Com a conferência ainda pendente (`null`) a
   // lista inteira vale, como sempre valeu — desconfiar do que não foi
   // verificado travaria o envio a cada oscilação de rede.
-  const missing = missingRequiredTypes(
-    types,
-    semArquivo ? docs.filter((d) => !semArquivo.has(d.storage_path)) : docs,
-  );
+  const comArquivo = semArquivo ? docs.filter((d) => !semArquivo.has(d.storage_path)) : docs;
+  // Só os VIGENTES: versão substituída sem arquivo não trava nada, e contá-la
+  // faria o aviso acusar um problema que ninguém precisa consertar.
+  const ausentesVigentes = semArquivo
+    ? docs.filter((d) => !d.superseded_at && semArquivo.has(d.storage_path))
+    : [];
+  const missing = missingRequiredTypes(types, comArquivo);
   const status = review?.document_review_status ?? "draft";
   const canSubmit = isAdmin || myRoles.includes("broker");
   const canReview = isAdmin || myRoles.includes("manager");
@@ -379,7 +382,7 @@ export default function DealDocumentUpload({
   // Motivo e trava saem da MESMA função (coberta em `documents.test.ts`): o
   // botão só habilita quando não há o que dizer.
   const submitHint = submitBlockReason({
-    types, documents: docs, hasDeveloper, managerCount, closedMonth, unconfirmedMonth,
+    types, documents: comArquivo, hasDeveloper, managerCount, closedMonth, unconfirmedMonth,
   });
   const canSend = submitHint === null;
   // São TRÊS gravações em `deals` nesta aba — enviar, devolver e aprovar — e o
@@ -532,6 +535,25 @@ export default function DealDocumentUpload({
         </Button>
       </div>
 
+      {/* A marca por linha explica UM documento; sem esta frase o corretor lê
+          "Faltam 3 obrigatórios" olhando para um tipo que visivelmente tem anexo
+          e conclui que a tela conta errado. Pior no gerente: a mesma frase de
+          "anexe" chega a quem tem `canAttach = false` e não tem o que fazer com
+          ela — a saída dele é devolver ao corretor, e isso precisa estar dito. */}
+      {ausentesVigentes.length > 0 && (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+          {ausentesVigentes.length === 1
+            ? "1 documento está no dossiê, mas o arquivo não está no armazenamento"
+            : `${ausentesVigentes.length} documentos estão no dossiê, mas o arquivo não está no armazenamento`}
+          {" — por isso continuam contando como obrigatório faltante. "}
+          {canAttach
+            ? "Use «Reenviar» na linha marcada em vermelho."
+            : canReview && status === "pending"
+              ? "Anexar está travado enquanto o dossiê está em conferência: devolva ao corretor com este motivo."
+              : "Quem edita o negócio precisa anexar o arquivo de novo."}
+        </p>
+      )}
+
       {/* Botão que some precisa dizer por quê: sem esta frase o corretor abre a
           aba depois de enviar ao gerente e procura o "Anexar" que sumiu. */}
       {canUpload && !canAttach && (
@@ -617,12 +639,21 @@ export default function DealDocumentUpload({
               {visible.length > 0 ? (
                 <div className="space-y-1">
                   {visible.map((d) => {
-                  // O registro existe e o arquivo não: oferecer "Baixar" aqui é
-                  // prometer o que a assinatura vai recusar. A linha diz o que
-                  // aconteceu e passa a oferecer o reenvio, que é o único
-                  // conserto — o arquivo não volta sozinho.
-                  const ausente = semArquivo?.has(d.storage_path) === true;
-                  return (
+                    // Em tipo que não versiona, `stored_name` sai só de
+                    // {tipo}-{cliente}-{data}: duas versões do MESMO dia têm nome
+                    // idêntico e, com o histórico aberto, os botões ficavam com o
+                    // mesmo nome acessível. A versão entra no rótulo apenas onde
+                    // há ambiguidade de fato — renomear o caso comum trocaria o
+                    // nome que o operador já conhece.
+                    const nome = visible.filter((o) => o.stored_name === d.stored_name).length > 1
+                      ? `${d.stored_name} versão ${d.version}`
+                      : d.stored_name;
+                    // O registro existe e o arquivo não: oferecer "Baixar" aqui
+                    // é prometer o que a assinatura vai recusar. A linha diz o
+                    // que aconteceu e passa a oferecer o reenvio, que é o único
+                    // conserto — o arquivo não volta sozinho.
+                    const ausente = semArquivo?.has(d.storage_path) === true;
+                    return (
                     <div
                       key={d.id}
                       // `flex-wrap` + `min-w-0`: a 375 px o nome do arquivo, a
@@ -649,17 +680,25 @@ export default function DealDocumentUpload({
                             <button
                               type="button"
                               onClick={() => inputRefs.current[type.id]?.click()}
-                              aria-label={`Reenviar ${d.stored_name}`}
-                              className="text-primary hover:text-primary/80 flex items-center gap-1"
+                              // Mesma trava do "Anexar" irmão: sem ela um segundo
+                              // clique durante o envio dispara outro `handleFiles`
+                              // sobre o mesmo tipo — e o retorno visual fica no
+                              // topo do cartão, longe da linha clicada.
+                              disabled={busy === type.id}
+                              aria-label={`Reenviar ${nome}`}
+                              className="text-primary hover:text-primary/80 flex items-center gap-1 disabled:opacity-50"
                             >
-                              <Upload className="h-3 w-3" /> Reenviar
+                              {busy === type.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Upload className="h-3 w-3" />}
+                              Reenviar
                             </button>
                           )
                         ) : (
                           <button
                             type="button"
                             onClick={() => download(d)}
-                            aria-label={`Baixar ${d.stored_name}`}
+                            aria-label={`Baixar ${nome}`}
                             className="text-primary hover:text-primary/80 flex items-center gap-1"
                           >
                             <Download className="h-3 w-3" /> Baixar
@@ -670,7 +709,7 @@ export default function DealDocumentUpload({
                             type="button"
                             onClick={() => remove(d)}
                             disabled={busy === d.id}
-                            aria-label={`Excluir ${d.stored_name}`}
+                            aria-label={`Excluir ${nome}`}
                             className="text-destructive hover:text-destructive/80 flex items-center gap-1 disabled:opacity-50"
                           >
                             {busy === d.id
@@ -681,7 +720,7 @@ export default function DealDocumentUpload({
                         )}
                       </span>
                     </div>
-                  );
+                    );
                   })}
                 </div>
               ) : (

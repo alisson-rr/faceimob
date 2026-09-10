@@ -54,9 +54,17 @@ select pg_temp.assert_eq(
 
 do $$
 declare
+  adm uuid := '00000000-0000-0000-0000-00000000a801';
   ger uuid := '00000000-0000-0000-0000-00000000a802';
   v_recusou boolean := false;
 begin
+  -- A ficha é preenchida pelo modal de Equipes, que é tela de admin, e `hired_at`
+  -- é coluna administrativa desde a 0012 (`profiles_guard_admin_columns`). Sem
+  -- ator no JWT o teste escrevia como "ninguém" e o gatilho barrava a ficha
+  -- completa — o assert cobrava um comportamento que o produto nunca prometeu.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', adm::text, 'role', 'authenticated')::text, false);
+
   begin
     update public.profiles set cpf = '123' where id = ger;
   exception when check_violation then v_recusou := true;

@@ -1,10 +1,10 @@
 import {
   Bot, Building2, CalendarClock, CreditCard, Database, GitBranch, Globe, KeyRound, LayoutDashboard,
-  Link2, LogIn, Megaphone, Settings, Shield, Target, TrendingUp, Trophy, UserSearch, Users, Zap,
+  LogIn, Megaphone, Settings, Shield, Target, TrendingUp, Trophy, UserSearch, Users, Zap,
   type LucideIcon,
 } from "lucide-react";
 
-export type NavGroup = "principal" | "admin" | "sistema";
+export type NavGroup = "principal" | "configuracoes";
 
 export interface NavItem {
   title: string;
@@ -33,29 +33,39 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Esteira CCA", url: "/cca", icon: CreditCard, group: "principal" },
   { title: "Marketing", url: "/marketing", icon: Megaphone, group: "principal" },
   { title: "Equipes", url: "/equipes", icon: Users, group: "principal" },
-  { title: "Links", url: "/links", icon: Link2, group: "principal" },
   { title: "Gamificação", url: "/gamification", icon: Trophy, group: "principal" },
-  { title: "Resultados", url: "/resultados", icon: TrendingUp, group: "principal" },
   { title: "Checkpoint", url: "/checkpoint", icon: Target, group: "principal" },
   { title: "Check-in", url: "/checkin", icon: LogIn, group: "principal" },
   { title: "SDR IA", url: "/sdr", icon: Bot, group: "principal" },
 
-  { title: "Permissões", url: "/admin/permissions", icon: Shield, group: "admin" },
-  { title: "Integrações", url: "/admin/integrations", icon: KeyRound, group: "admin" },
-  { title: "Construtoras", url: "/admin/developers", icon: Building2, group: "admin" },
-  { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound, group: "admin" },
-  { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe, group: "admin" },
-  { title: "Automação Leads", url: "/admin/lead-automation", icon: Zap, group: "admin" },
-  { title: "Meta Ads", url: "/admin/meta-ads", icon: Megaphone, group: "admin" },
-
-  { title: "Dados", url: "/data", icon: Database, group: "sistema" },
-  { title: "Configurações", url: "/settings", icon: Settings, group: "sistema" },
+  { title: "Configurações", url: "/settings", icon: Settings, group: "configuracoes" },
+  { title: "Resultados", url: "/resultados", icon: TrendingUp, group: "configuracoes" },
+  { title: "Permissões", url: "/admin/permissions", icon: Shield, group: "configuracoes" },
+  { title: "Integrações", url: "/admin/integrations", icon: KeyRound, group: "configuracoes" },
+  { title: "Construtoras", url: "/admin/developers", icon: Building2, group: "configuracoes" },
+  { title: "Diário — Links", url: "/admin/daily-teams", icon: KeyRound, group: "configuracoes" },
+  { title: "IPs autorizados", url: "/admin/allowed-ips", icon: Globe, group: "configuracoes" },
+  { title: "Automação Leads", url: "/admin/lead-automation", icon: Zap, group: "configuracoes" },
+  { title: "Meta Ads", url: "/admin/meta-ads", icon: Megaphone, group: "configuracoes" },
+  { title: "Dados", url: "/data", icon: Database, group: "configuracoes" },
 ];
 
+/**
+ * Dois grupos, não quatro.
+ *
+ * O menu principal tinha treze itens, com Links e Resultados no meio do caminho
+ * de quem trabalha, e ainda existiam "Administração" e "Sistema" separados —
+ * sem critério que dissesse de qual dos dois era "Dados". Pedido do cliente em
+ * 05/09/2026: tudo que é configuração no MESMO menu. O que fica em "principal"
+ * é o que se usa para trabalhar; o resto é ajuste, e ajuste se procura num
+ * lugar só.
+ *
+ * Nenhuma rota mudou: link salvo continua chegando, e a visibilidade segue
+ * saindo de `ROUTE_PERMISSION`, item a item.
+ */
 export const NAV_GROUPS: { id: NavGroup; label: string }[] = [
   { id: "principal", label: "Menu principal" },
-  { id: "admin", label: "Administração" },
-  { id: "sistema", label: "Sistema" },
+  { id: "configuracoes", label: "Configurações" },
 ];
 
 /** Rotulo da barra do topo. Mesma normalizacao do guard de rota. */

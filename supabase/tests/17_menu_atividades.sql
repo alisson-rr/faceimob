@@ -38,6 +38,14 @@ begin
   insert into public.user_roles (profile_id, role) values
     (cor, 'broker'), (cca, 'cca')
   on conflict do nothing;
+
+  -- CCA "puro" não existe por acidente: `handle_new_auth_user` (0002) concede
+  -- `broker` a TODO perfil novo e nunca o retira. Sem esta linha o analista
+  -- deste cenário é {cca, broker} no banco, e `has_permission('menu.atividades')`
+  -- volta TRUE — pelo broker, não pelo cca. O assert abaixo continua sendo
+  -- sobre o papel CCA; o que muda é isolar a variável, em vez de cobrar do
+  -- produto um estado que ele não produz sozinho.
+  delete from public.user_roles where profile_id = cca and role = 'broker';
 end;
 $$;
 

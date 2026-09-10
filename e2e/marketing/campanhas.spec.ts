@@ -507,8 +507,137 @@ test.describe("Marketing · o que a coluna promete", () => {
     await page.getByLabel("Orçamento diário").fill("-10");
     await page.getByRole("button", { name: /salvar/i }).click();
 
-    await expect(page.getByText(/orçamento diário inválido/i)).toBeVisible();
+    // A recusa passou a vir de `problemaNaCampanha`, a MESMA regra que
+    // `createAdCampaign` aplica antes do round-trip — antes o formulário tinha
+    // uma cópia da checagem, com outra frase.
+    // `.first()`: a frase aparece duas vezes de propósito — no toast, que some,
+    // e ligada ao campo por `aria-describedby`, que fica.
+    await expect(page.getByText(/orçamento diário não pode ser negativo/i).first()).toBeVisible();
+    await expect(page.getByLabel("Orçamento diário")).toHaveAttribute("aria-invalid", "true");
     expect(await campanhaPorNome(`Campanha Negativa ${tag}`)).toHaveLength(0);
+  });
+
+  /**
+   * Período invertido: `ad_campaigns_periodo_coerente` (0089) recusa no banco,
+   * e a tela precisa recusar ANTES, com instrução — 23514 traduzido vira "um
+   * dos campos está fora do valor permitido", que não diz o que corrigir.
+   */
+  test("período invertido é recusado com instrução, não com erro do banco", async ({ page }) => {
+    const nome = `Campanha Invertida ${tag}`;
+
+    await page.goto("/marketing");
+    await aguardarCarregamento(page);
+
+    await page.getByLabel("ID externo da campanha").fill(`invertido-${tag}`);
+    await page.getByLabel("Nome da campanha").fill(nome);
+    await page.getByLabel("Início da veiculação").fill("2026-09-01");
+    await page.getByLabel("Fim da veiculação").fill("2026-08-01");
+    await page.getByRole("button", { name: /^salvar$/i }).click();
+
+    await expect(page.getByText(/fim da veiculação não pode ser antes do início/i).first()).toBeVisible();
+    // E aponta QUAL campo: o toast some, e num formulário de onze campos a
+    // frase sozinha deixava o operador caçando qual das duas datas é o fim.
+    const fim = page.getByLabel("Fim da veiculação");
+    await expect(fim).toHaveAttribute("aria-invalid", "true");
+    await expect(fim).toBeFocused();
+    expect(await campanhaPorNome(nome)).toHaveLength(0);
+  });
+
+  /**
+   * O ciclo que a ata pede, ponta a ponta: criar → PAUSAR num gesto → COPIAR
+   * como rascunho → editar a VERBA da cópia. Cada etapa é conferida no banco,
+   * porque o que a tela mostra depois de um `onReload` pode vir de cache.
+   */
+  test("cria, pausa num clique, copia como rascunho e corrige a verba da cópia", async ({ page }) => {
+    const externo = `ciclo-${tag}`;
+    const nome = `Ciclo ${tag}`;
+    const campos = "external_id,name,status,daily_budget,lifetime_budget,starts_on,ends_on,total_spend";
+
+    await page.goto("/marketing");
+    await aguardarCarregamento(page);
+
+    // 1) Criar, já com verba e período.
+    await page.getByLabel("ID externo da campanha").fill(externo);
+    await page.getByLabel("Nome da campanha").fill(nome);
+    await page.getByLabel("Total investido").fill("1000");
+    await page.getByLabel("Orçamento diário").fill("200");
+    await page.getByLabel("Verba total").fill("6000");
+    await page.getByLabel("Início da veiculação").fill("2026-09-01");
+    await page.getByLabel("Fim da veiculação").fill("2026-09-30");
+    await page.getByRole("button", { name: /^salvar$/i }).click();
+    await expect(page.getByText(/campanha registrada/i)).toBeVisible({ timeout: 15_000 });
+
+    const [criada] = await db.select<{
+      status: string | null; daily_budget: string; lifetime_budget: string; starts_on: string; ends_on: string;
+    }>(`ad_campaigns?external_id=eq.${externo}&select=${campos}`);
+    expect(criada.status).toBe("ACTIVE");
+    expect(Number(criada.lifetime_budget)).toBe(6000);
+    expect(criada.starts_on).toBe("2026-09-01");
+    expect(criada.ends_on).toBe("2026-09-30");
+
+    const linha = () => tabelaDePerformance(page).getByRole("row").filter({ hasText: nome });
+    await expect(linha()).toContainText("verba R$ 6.000");
+    await expect(linha()).toContainText("30/09/2026");
+
+    // 2) Pausar é UM gesto — sem abrir o formulário.
+    await linha().getByRole("button", { name: `Pausar ${nome} no CRM` }).click();
+    await expect(page.getByText(/campanha pausada no CRM/i)).toBeVisible({ timeout: 15_000 });
+    // E sem prometer o que não acontece: a Meta não é tocada.
+    await expect(page.getByText(/a Meta não é alterada por aqui/i)).toBeVisible();
+    await expect(async () => {
+      const [depois] = await db.select<{ status: string }>(`ad_campaigns?external_id=eq.${externo}&select=status`);
+      expect(depois.status, "o clique não gravou PAUSED").toBe("PAUSED");
+    }).toPass({ timeout: 10_000 });
+
+    // O botão vira "Ativar" — e nada mais da campanha foi alterado no caminho.
+    await expect(linha().getByRole("button", { name: `Ativar ${nome} no CRM` })).toBeVisible();
+    const [intacta] = await db.select<{ lifetime_budget: string; total_spend: string }>(
+      `ad_campaigns?external_id=eq.${externo}&select=${campos}`,
+    );
+    expect(Number(intacta.lifetime_budget), "pausar mexeu na verba").toBe(6000);
+    expect(Number(intacta.total_spend), "pausar mexeu no investido").toBe(1000);
+
+    // 3) Copiar: nome novo, id externo novo, rascunho pausado, verba herdada.
+    await linha().getByRole("button", { name: `Copiar ${nome}` }).click();
+    await expect(page.getByLabel("Nome da campanha")).toHaveValue(`${nome} (cópia)`);
+    await expect(page.getByLabel("Verba total")).toHaveValue("6000");
+    await expect(page.getByLabel("Fim da veiculação")).toHaveValue("2026-09-30");
+    // Gasto NÃO se herda: seria inventar gasto que a cópia não teve.
+    await expect(page.getByLabel("Total investido")).toHaveValue("0");
+    const idDaCopia = await page.getByLabel("ID externo da campanha").inputValue();
+    expect(idDaCopia, "a cópia repetiu o id externo do original").not.toBe(externo);
+
+    const nomeCopia = `Copia ${tag}`;
+    const externoCopia = `copia-${tag}`;
+    await page.getByLabel("Nome da campanha").fill(nomeCopia);
+    await page.getByLabel("ID externo da campanha").fill(externoCopia);
+    await page.getByRole("button", { name: /^salvar$/i }).click();
+    await expect(page.getByText(/cópia registrada/i)).toBeVisible({ timeout: 15_000 });
+
+    const [copia] = await db.select<{
+      status: string; lifetime_budget: string; total_spend: string; ends_on: string;
+    }>(`ad_campaigns?external_id=eq.${externoCopia}&select=${campos}`);
+    expect(copia.status, "a cópia tem de nascer pausada").toBe("PAUSED");
+    expect(Number(copia.lifetime_budget)).toBe(6000);
+    expect(Number(copia.total_spend), "a cópia herdou o gasto do original").toBe(0);
+    expect(copia.ends_on).toBe("2026-09-30");
+    // E o original continua lá: copiar não é mover.
+    expect(await db.select(`ad_campaigns?external_id=eq.${externo}&select=id`)).toHaveLength(1);
+
+    // 4) Editar a verba da cópia.
+    const linhaCopia = () => tabelaDePerformance(page).getByRole("row").filter({ hasText: nomeCopia });
+    await linhaCopia().getByRole("button", { name: `Editar ${nomeCopia}` }).click();
+    await page.getByLabel("Verba total").fill("9500");
+    await page.getByRole("button", { name: /^salvar$/i }).click();
+    await expect(page.getByText(/campanha atualizada/i)).toBeVisible({ timeout: 15_000 });
+
+    await expect(async () => {
+      const [ajustada] = await db.select<{ lifetime_budget: string; status: string }>(
+        `ad_campaigns?external_id=eq.${externoCopia}&select=${campos}`,
+      );
+      expect(Number(ajustada.lifetime_budget)).toBe(9500);
+      expect(ajustada.status, "corrigir a verba mudou o status").toBe("PAUSED");
+    }).toPass({ timeout: 10_000 });
   });
 
   /**
@@ -528,6 +657,74 @@ test.describe("Marketing · o que a coluna promete", () => {
     // "Pausada" aqui passa por ter pausado a campanha na Meta — e o dinheiro
     // continua saindo.
     await expect(page.getByText(/não pausa nem altera nada na Meta/i)).toBeVisible();
+  });
+
+  /**
+   * A palavra "sincronizado" não pode aparecer em lugar nenhum de /marketing.
+   * Ela estava escrita em DOIS lugares: o painel dizia "digitado · atualizado
+   * 28/07/2026" e a tabela logo abaixo dizia "sincronizado 28/07/2026" para a
+   * MESMA campanha de semente — afirmando uma conversa com a Meta que nunca
+   * houve, justamente no número que divide o CPL e o ROAS. Hoje as duas saem de
+   * `origemDoGasto`; este caso é o que impede a divergência de voltar.
+   */
+  test("nenhuma tabela diz sincronizado — não há sincronização com a Meta", async ({ page }) => {
+    // Campanha com `synced_at` preenchido, que é o único caso capaz de imprimir
+    // a palavra: sem ela, as duas tabelas diriam só "digitado" e o caso passaria
+    // por acidente.
+    const nome = `Campanha Semeada ${tag}`;
+    await db.insert("ad_campaigns", {
+      external_id: `semeada-${tag}`,
+      platform: "meta",
+      name: nome,
+      status: "ACTIVE",
+      total_spend: 400,
+      synced_at: "2026-07-28T12:00:00Z",
+    });
+
+    await page.goto("/marketing");
+    await aguardarCarregamento(page);
+
+    await expect(page.getByText(nome, { exact: true }).first()).toBeVisible();
+    // A data continua visível — a idade do gasto importa. O que não pode é a
+    // origem dele mudar de uma tabela para a outra.
+    await expect(page.getByText("digitado · atualizado 28/07/2026").first()).toBeVisible();
+    await expect(page.getByText(/sincronizado/i)).toHaveCount(0);
+  });
+
+  /**
+   * Desistir da cópia. O botão Cancelar só aparecia com `editing` preenchido, e
+   * `startCopy` deixa `editing` nulo: quem clicasse em Copiar na linha errada
+   * ficava com onze campos preenchidos pela máquina e nenhuma saída — e a
+   * campanha seguinte nasceria com a verba e o período de outra.
+   */
+  test("cancelar a cópia limpa o rascunho e não grava nada", async ({ page }) => {
+    const externo = `desistir-${tag}`;
+    const nome = `Desistir ${tag}`;
+    await db.insert("ad_campaigns", {
+      external_id: externo,
+      platform: "meta",
+      name: nome,
+      status: "ACTIVE",
+      total_spend: 300,
+      lifetime_budget: 4200,
+    });
+
+    await page.goto("/marketing");
+    await aguardarCarregamento(page);
+
+    const linha = tabelaDePerformance(page).getByRole("row").filter({ hasText: nome });
+    await linha.getByRole("button", { name: `Copiar ${nome}` }).click();
+    await expect(page.getByText("Cópia de campanha (rascunho)")).toBeVisible();
+    await expect(page.getByLabel("Verba total")).toHaveValue("4200");
+
+    await page.getByRole("button", { name: /^cancelar$/i }).click();
+
+    // Volta a ser um cadastro em branco: seguir dali com os campos da outra
+    // campanha é como a verba errada entrava no lugar que decide pausar.
+    await expect(page.getByText("Cadastrar campanha")).toBeVisible();
+    await expect(page.getByLabel("ID externo da campanha")).toHaveValue("");
+    await expect(page.getByLabel("Verba total")).toHaveValue("");
+    expect(await db.select(`ad_campaigns?external_id=like.${externo}-copia*&select=id`)).toHaveLength(0);
   });
 });
 

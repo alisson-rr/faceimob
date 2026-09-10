@@ -47,27 +47,26 @@ import { describeError } from "@/lib/supabaseError";
 export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("geral");
-  const { roles, previewRole, can } = useAuth();
+  const { roles, can } = useAuth();
   const queryClient = useQueryClient();
   // Mesmo padrao do `can()`: o papel previsualizado vem na frente.
-  const effectiveRoles = previewRole ? [previewRole] : roles;
   // Todo o recorte por papel vive numa funcao pura testada (`dashboardScope`):
   // cada linha dela e o espelho de uma policy do banco, e espelho sem teste
   // racha calado. `leads.view_queue` entra porque a `leads_select` so libera
   // lead SEM DONO a quem tem a permissao — o socio enxerga todo perfil e ainda
   // assim ve uma base menor que a real.
   const recorte = useMemo(
-    () => dashboardScope(effectiveRoles, can("leads.view_queue")),
+    () => dashboardScope(roles, can("leads.view_queue")),
     // `can` muda de identidade a cada matriz carregada; o que importa e o papel.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [effectiveRoles.join(","), can],
+    [roles.join(","), can],
   );
   const { seesEveryone, leadsIsWholeBase, seesAllCca, isDirector, canManageGoal } = recorte;
   // O gerente ganha a MESMA aba, com a equipe dele: `auth_led_team_ids()` casa
   // `teams.manager_id`, entao a RLS de `daily_reports`/`daily_entries` ja
   // liberava o diario para ele — faltava a tela que o pusesse ao lado do
   // medido. Sem isto o comparativo so existia para o gerente em /checkpoint.
-  const isManager = effectiveRoles.includes("manager");
+  const isManager = roles.includes("manager");
   const temAbaDeLideranca = isDirector || isManager;
 
   const { query, deals, months, monthsWithDeals, closedMonths, defaultMonth, payload } =
@@ -220,7 +219,7 @@ export default function Dashboard() {
     <>
       {header}
 
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-8">
         <KpiRow
           stats={view.stats}
           leadsNoPeriodo={leadsNoPeriodo}

@@ -1,7 +1,8 @@
 -- =============================================================================
 -- Teste de RLS: a hierarquia enxerga o que deve e nada além.
 --
--- Roda no harness (scripts/validate-schema.sh --rls) depois das migrations.
+-- Roda no harness (scripts/validate-schema.sh --tests, ou --all) depois das
+-- migrations.
 -- Falha com exceção no primeiro assert quebrado, então ON_ERROR_STOP aborta.
 --
 -- Cenário montado:

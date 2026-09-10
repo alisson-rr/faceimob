@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { LoadingState, PageHeader } from "@/components/shared";
 import { toast } from "sonner";
-import { Bot, MessageSquare, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, Bot, MessageSquare, Send, Sparkles } from "lucide-react";
 import { describeError } from "@/lib/supabaseError";
 import { AgentsTab } from "@/components/sdr/AgentsTab";
 import { SourcesTab } from "@/components/sdr/SourcesTab";
@@ -15,12 +15,12 @@ import { ConversationsTab } from "@/components/sdr/ConversationsTab";
 import { RemarketingTab } from "@/components/sdr/RemarketingTab";
 import { WhatsAppTab } from "@/components/sdr/WhatsAppTab";
 import {
-  canEditTemplates, canManageSdr, IA_SEM_CREDENCIAL,
+  canEditTemplates, canManageSdr, IA_SEM_CREDENCIAL, ondeCadastrarIa,
   type Agent, type Group, type ListStats, type Rlist, type Source, type WhatsAppTemplate,
 } from "@/components/sdr/types";
 
 export default function SdrModule() {
-  const { roles } = useAuth();
+  const { roles, can } = useAuth();
   const canWrite = canManageSdr(roles);
   const canWriteTemplates = canEditTemplates(roles);
   const [tab, setTab] = useState("agents");
@@ -130,15 +130,21 @@ export default function SdrModule() {
       )}
 
       {/* Honestidade antes do primeiro clique: sem a chave, nenhum agente
-          responde — e o operador só descobria isso depois de digitar. */}
+          responde — e o operador só descobria isso depois de digitar. Mesma
+          anatomia do aviso de credencial do WhatsApp (`RemarketingTab`): os
+          dois aparecem juntos na mesma rolagem quando falta as duas chaves, e
+          duas gramáticas de "aviso amarelo" ensinam o operador a ignorar uma. */}
       {iaConfigurada === false && (
-        <Card role="status" className="p-4 border-warning/50 text-sm space-y-1">
-          <p>{IA_SEM_CREDENCIAL}</p>
-          <p className="text-muted-foreground">
-            Até lá nenhum agente responde: o lead que entra por uma origem com SDR fica esperando na conversa, e o SDR
-            é avisado no sino a cada mensagem sem resposta. Cadastro de agentes, origens, listas e templates continua
-            valendo — só a resposta da IA depende da chave.
-          </p>
+        <Card role="status" className="p-4 border-warning/50 flex items-start gap-2 text-sm">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+          <div className="space-y-1 min-w-0">
+            <p className="font-medium">{IA_SEM_CREDENCIAL}</p>
+            <p className="text-muted-foreground">
+              {ondeCadastrarIa(can("menu.admin_integrations"))} Até lá nenhum agente responde: o lead que entra por uma
+              origem com SDR fica esperando na conversa, e o SDR é avisado no sino a cada mensagem sem resposta.
+              Cadastro de agentes, origens, listas e templates continua valendo — só a resposta da IA depende da chave.
+            </p>
+          </div>
         </Card>
       )}
 
@@ -167,7 +173,10 @@ export default function SdrModule() {
                 que se solta (FKs ON DELETE SET NULL) — a aba não os edita. */}
             <TabsContent value="agents"><AgentsTab agents={agents} groups={groups} sources={sources} lists={lists} canWrite={canWrite} iaConfigurada={iaConfigurada} reload={loadAll} /></TabsContent>
             <TabsContent value="sources"><SourcesTab sources={sources} agents={agents} templates={templates} canWrite={canWrite} reload={loadAll} /></TabsContent>
-            <TabsContent value="playground"><PlaygroundTab agents={agents} canWrite={canWrite} iaConfigurada={iaConfigurada} /></TabsContent>
+            {/* Um turno que deu certo prova a chave melhor que a consulta de status:
+                sem avisar aqui, o Playground respondia e a tela seguia dizendo
+                que a IA não responde, até alguém dar F5. */}
+            <TabsContent value="playground"><PlaygroundTab agents={agents} canWrite={canWrite} iaConfigurada={iaConfigurada} onCredencialAceita={() => setIaConfigurada(true)} /></TabsContent>
             <TabsContent value="conversations"><ConversationsTab agents={agents} canWrite={canWrite} /></TabsContent>
             <TabsContent value="remarketing"><RemarketingTab lists={lists} agents={agents} groups={groups} templates={templates} canWrite={canWrite} reload={loadAll} /></TabsContent>
             {/* `sources` e `lists` também aqui, e pelo mesmo motivo da aba

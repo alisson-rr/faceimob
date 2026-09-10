@@ -13,6 +13,7 @@
  */
 import { spawn } from "node:child_process";
 import { travar } from "./e2e-lock.mjs";
+import { liberarPorta } from "./e2e-porta.mjs";
 import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -25,6 +26,11 @@ if (demo) resto.push("--project=demo");
 // Uma execução por vez contra o mesmo alvo: os dez usuários da suíte têm
 // identidade fixa e o `global-teardown` os apaga. Ver `scripts/e2e-lock.mjs`.
 const liberarTrava = await travar();
+
+// Com a trava na mão, quem estiver na porta da suíte é sobra de uma execução
+// interrompida — e o Playwright (com `reuseExistingServer: false`, que é o
+// certo) morreria com "is already used". Ver `scripts/e2e-porta.mjs`.
+await liberarPorta(Number(process.env.E2E_PORT || 5199));
 
 const filho = spawn("npx", ["playwright", "test", ...resto], {
   stdio: "inherit",

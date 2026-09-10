@@ -27,7 +27,13 @@ const LIMITE = 200;
 
 const TODOS = "__todos__";
 
-export function ListContacts({ listId, total }: { listId: string; total: number }) {
+/**
+ * `versao` é incrementado pela aba a cada disparo/teste. Sem ele o efeito só
+ * dependia de `[listId, situacao]`: com o painel aberto, o toast dizia "o
+ * motivo ficou gravado nele" e a tabela logo abaixo continuava mostrando os
+ * mesmos contatos "Na fila", com "Motivo da falha: —".
+ */
+export function ListContacts({ listId, total, versao = 0 }: { listId: string; total: number; versao?: number }) {
   const [rows, setRows] = useState<RemarketingContact[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [situacao, setSituacao] = useState<string>(TODOS);
@@ -51,7 +57,7 @@ export function ListContacts({ listId, total }: { listId: string; total: number 
         setRows((data ?? []) as RemarketingContact[]);
       });
     return () => { cancelado = true; };
-  }, [listId, situacao]);
+  }, [listId, situacao, versao]);
 
   return (
     <div className="space-y-2">

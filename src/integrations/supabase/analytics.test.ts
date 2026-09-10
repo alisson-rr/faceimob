@@ -12,9 +12,12 @@ import {
   deleteAdCampaign,
   developerSummary,
   monthOverMonth,
+  origemDoGasto,
   previousMonth,
+  problemaNaCampanha,
   roas,
   roasLabel,
+  setAdCampaignStatus,
   updateAdCampaign,
 } from "./analytics";
 
@@ -159,7 +162,34 @@ describe("createAdCampaign", () => {
       developer_id: "dev-1",
       status: "PAUSED",
       daily_budget: null,
+      lifetime_budget: null,
+      starts_on: null,
+      ends_on: null,
+      lead_source_id: null,
       total_spend: 900,
+    });
+  });
+
+  // Verba contratada, período e vínculo com a origem (0089): o que a gestão de
+  // campanha usa e que antes só existia em planilha.
+  it("grava verba total, período e origem de lead", async () => {
+    const { chamadas } = tabela({ data: null, error: null });
+
+    await createAdCampaign({
+      externalId: "ext-9",
+      platform: "meta",
+      name: "Com período",
+      lifetimeBudget: 9000,
+      startsOn: "2026-09-01",
+      endsOn: "2026-09-30",
+      leadSourceId: "src-1",
+    });
+
+    expect(chamadas.insert).toMatchObject({
+      lifetime_budget: 9000,
+      starts_on: "2026-09-01",
+      ends_on: "2026-09-30",
+      lead_source_id: "src-1",
     });
   });
 
@@ -241,6 +271,123 @@ describe("updateAdCampaign", () => {
     const { chamadas } = tabela({ data: [{ id: "c1" }], error: null });
     await updateAdCampaign("c1", { externalId: "e", platform: "meta", name: "N", dailyBudget: null });
     expect(chamadas.update).toMatchObject({ daily_budget: null });
+  });
+});
+
+/**
+ * A fronteira compartilhada por criar e corrigir. Antes cada função repetia as
+ * duas checagens de verba e nenhuma olhava nome, status ou período — o
+ * formulário conferia parte disso e qualquer outro chamador entrava direto.
+ */
+describe("problemaNaCampanha", () => {
+  const base = { externalId: "ext-1", platform: "meta" as const, name: "Campanha" };
+
+  it("aceita o cadastro mínimo", () => {
+    expect(problemaNaCampanha(base)).toBeNull();
+  });
+
+  it("exige o ID externo — é ele que liga o lead à campanha", () => {
+    expect(problemaNaCampanha({ ...base, externalId: "   " })?.frase).toMatch(/ID externo/i);
+  });
+
+  it("exige o nome", () => {
+    expect(problemaNaCampanha({ ...base, name: " " })?.frase).toMatch(/nome/i);
+  });
+
+  // "Sem status" (null) continua válido: campanha cadastrada à mão pode não ter
+  // estado conhecido, e inventar um seria pior.
+  //
+  // A regra é a do CHECK do banco (MAIÚSCULA, 0084) e não a dupla do
+  // formulário: o CHECK ficou aberto de propósito para o ARCHIVED que a Graph
+  // API devolve, e recusar aqui tudo fora de ACTIVE/PAUSED deixava a linha
+  // gravada como ARCHIVED INEDITÁVEL — o Salvar era recusado por um campo que
+  // o operador não tocou, sem caminho de conserto pela tela.
+  it("recusa status em minúscula, aceita a ausência e não trava o já gravado", () => {
+    expect(problemaNaCampanha({ ...base, status: "active" })?.frase).toMatch(/MAI\u00daSCULA/);
+    expect(problemaNaCampanha({ ...base, status: "  " })?.frase).toMatch(/Status inválido/i);
+    expect(problemaNaCampanha({ ...base, status: null })).toBeNull();
+    expect(problemaNaCampanha({ ...base, status: "PAUSED" })).toBeNull();
+    expect(problemaNaCampanha({ ...base, status: "ARCHIVED" })).toBeNull();
+  });
+
+  it("recusa verba negativa em qualquer um dos três campos de dinheiro", () => {
+    expect(problemaNaCampanha({ ...base, totalSpend: -1 })?.frase).toMatch(/investimento/i);
+    expect(problemaNaCampanha({ ...base, dailyBudget: -1 })?.frase).toMatch(/orçamento diário/i);
+    expect(problemaNaCampanha({ ...base, lifetimeBudget: -1 })?.frase).toMatch(/verba total/i);
+  });
+
+  // Comparação de string `YYYY-MM-DD`, e não de `Date`: virada de ano incluída.
+  it("recusa período invertido e aceita ponta faltando", () => {
+    expect(problemaNaCampanha({ ...base, startsOn: "2026-09-01", endsOn: "2026-08-31" })?.frase)
+      .toMatch(/antes do início/i);
+    expect(problemaNaCampanha({ ...base, startsOn: "2026-12-01", endsOn: "2027-01-15" })).toBeNull();
+    expect(problemaNaCampanha({ ...base, startsOn: "2026-09-01", endsOn: "2026-09-01" })).toBeNull();
+    expect(problemaNaCampanha({ ...base, startsOn: "2026-09-01" })).toBeNull();
+    expect(problemaNaCampanha({ ...base, endsOn: "2026-09-01" })).toBeNull();
+  });
+
+  // O CAMPO, e não só a frase: é por ele que a tela marca `aria-invalid` e leva
+  // o foco até o campo recusado. Com a frase sozinha, o toast anunciava o
+  // problema e sumia com o foco parado no botão Salvar.
+  it("diz QUAL campo recusou o salvamento", () => {
+    expect(problemaNaCampanha({ ...base, externalId: "" })?.campo).toBe("externalId");
+    expect(problemaNaCampanha({ ...base, name: "" })?.campo).toBe("name");
+    expect(problemaNaCampanha({ ...base, status: "paused" })?.campo).toBe("status");
+    expect(problemaNaCampanha({ ...base, totalSpend: -1 })?.campo).toBe("totalSpend");
+    expect(problemaNaCampanha({ ...base, dailyBudget: -1 })?.campo).toBe("dailyBudget");
+    expect(problemaNaCampanha({ ...base, lifetimeBudget: -1 })?.campo).toBe("lifetimeBudget");
+    expect(problemaNaCampanha({ ...base, startsOn: "2026-09-02", endsOn: "2026-09-01" })?.campo).toBe("endsOn");
+  });
+
+  it("é a MESMA recusa que create e update aplicam antes do round-trip", async () => {
+    await expect(
+      createAdCampaign({ ...base, endsOn: "2026-08-01", startsOn: "2026-09-01" }),
+    ).rejects.toThrow(/antes do início/i);
+    await expect(updateAdCampaign("c1", { ...base, status: "archived" })).rejects.toThrow(/Status inválido/i);
+    expect(from).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A frase de origem do gasto: escrita nos dois lugares que a mostram, ela
+ * divergiu — o painel dizia "digitado" e a tabela logo abaixo dizia
+ * "sincronizado", para a MESMA linha. NENHUM código escreve `synced_at`.
+ */
+describe("origemDoGasto", () => {
+  it("nunca diz sincronizado — a data é a do último toque, não de uma sincronia", () => {
+    expect(origemDoGasto(null)).toBe("digitado");
+    expect(origemDoGasto("2026-07-28T12:00:00Z")).toBe("digitado · atualizado 28/07/2026");
+    expect(origemDoGasto("2026-07-28T12:00:00Z")).not.toMatch(/sincroniz/i);
+  });
+});
+
+/**
+ * Pausar/reativar é gesto de um clique: escreve só `status`. Reenviar o
+ * cadastro inteiro para trocar um estado leva junto qualquer campo que a tela
+ * tenha carregado torto.
+ */
+describe("setAdCampaignStatus", () => {
+  it("grava só o status, pela chave id", async () => {
+    const { chamadas } = tabela({ data: [{ id: "c1" }], error: null });
+
+    await setAdCampaignStatus("c1", "PAUSED");
+
+    expect(chamadas.update).toEqual({ status: "PAUSED" });
+    expect(chamadas.filtros).toEqual([["id", "c1"]]);
+  });
+
+  // O RLS não erra ao recusar: filtra a linha e o PostgREST devolve 204 — sem
+  // conferir o retorno, a tela diria "pausada" com a campanha ativa no banco.
+  it("update que não casa linha é falta de permissão, não sucesso", async () => {
+    tabela({ data: [], error: null });
+    await expect(setAdCampaignStatus("c1", "ACTIVE")).rejects.toThrow(/permissão/i);
+  });
+
+  it("recusa status fora da dupla antes de bater no banco", async () => {
+    await expect(
+      setAdCampaignStatus("c1", "DELETED" as unknown as "ACTIVE"),
+    ).rejects.toThrow(/Status inválido/i);
+    expect(from).not.toHaveBeenCalled();
   });
 });
 

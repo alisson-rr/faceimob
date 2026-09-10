@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
+import { date } from "@/lib/format";
 import { dbError } from "@/lib/supabaseError";
 
 /**
@@ -102,7 +103,9 @@ export async function listAdCampaigns(): Promise<AdCampaignRow[]> {
     .select(CAMPOS_CAMPANHA)
     .order("name");
   if (error) throw dbError("listar campanhas", error);
-  return (data ?? []) as AdCampaignRow[];
+  // `as unknown` porque o cliente sem schema não sabe inferir a lista de
+  // colunas — o mesmo escape das RPCs, e ele morre no próximo `gen types`.
+  return (data ?? []) as unknown as AdCampaignRow[];
 }
 
 /** As plataformas que `ad_campaigns_platform_check` aceita. */
@@ -119,19 +122,34 @@ export const AD_PLATFORM_LABEL: Record<AdPlatform, string> = {
 /**
  * O banco só exige MAIÚSCULA (0084) — a Graph API também devolve ARCHIVED,
  * IN_PROCESS e WITH_ISSUES, e travar o CHECK nestes dois faria a primeira
- * sincronização real ser recusada pelo próprio banco. A operação usa só estes
- * dois (mais "sem status"), e é aqui, na fronteira, que a recusa vira frase.
+ * sincronização real ser recusada pelo próprio banco. Esta lista é o que a
+ * OPERAÇÃO usa: é dela que saem os itens do formulário e os dois destinos do
+ * botão de pausar/reativar. Um valor gravado fora dela continua legível e
+ * editável — quem manda na escrita é o CHECK, não este catálogo.
  */
 export const AD_STATUSES = ["ACTIVE", "PAUSED"] as const;
 export type AdStatus = (typeof AD_STATUSES)[number];
-
-export const AD_STATUS_LABEL: Record<AdStatus, string> = { ACTIVE: "Ativa", PAUSED: "Pausada" };
 
 /** Rótulo do status cru do banco — a MESMA tradução na tabela, no filtro e no
  *  painel. Estava escrita duas vezes; um valor fora da dupla aparece como veio,
  *  porque inventar um nome para ele esconderia o dado. */
 export const adStatusLabel = (status: string | null): string =>
   !status ? "—" : /^active$/i.test(status) ? "Ativa" : /^paused$/i.test(status) ? "Pausada" : status;
+
+/**
+ * De onde veio o gasto da campanha — a MESMA frase nas duas tabelas de
+ * `/marketing`.
+ *
+ * NENHUM código escreve `ad_campaigns.synced_at`: não há Marketing API neste
+ * sistema, e a coluna só tem valor de semente. Escrita em dois lugares, a frase
+ * divergiu — o painel dizia "digitado · atualizado 28/07/2026" e a tabela logo
+ * abaixo dizia "sincronizado 28/07/2026" para a MESMA linha, afirmando uma
+ * conversa com a Meta que nunca houve. A data continua visível porque a idade
+ * do gasto importa (ele divide o CPL e o ROAS); o que não pode variar é de onde
+ * ela veio.
+ */
+export const origemDoGasto = (syncedAt: string | null): string =>
+  syncedAt ? `digitado · atualizado ${date(syncedAt)}` : "digitado";
 
 export type AdCampaignInput = {
   externalId: string;
@@ -149,6 +167,19 @@ export type AdCampaignInput = {
   totalSpend?: number;
 };
 
+/** Qual campo impediu o salvamento — a tela usa isto para focar o campo, e não
+ *  só para pedir que o operador procure qual dos onze é o culpado. */
+export type CampoDaCampanha =
+  | "externalId"
+  | "name"
+  | "status"
+  | "totalSpend"
+  | "dailyBudget"
+  | "lifetimeBudget"
+  | "endsOn";
+
+export type ProblemaNaCampanha = { campo: CampoDaCampanha; frase: string };
+
 /**
  * A recusa de campanha inválida, num lugar só.
  *
@@ -159,30 +190,41 @@ export type AdCampaignInput = {
  * como instrução em vez de 23514 traduzido para "um dos campos está fora do
  * valor permitido".
  *
- * Devolve a frase do problema, ou `null` quando não há nenhum.
+ * Devolve o campo e a frase do problema, ou `null` quando não há nenhum.
  */
-export function problemaNaCampanha(input: AdCampaignInput): string | null {
+export function problemaNaCampanha(input: AdCampaignInput): ProblemaNaCampanha | null {
   if (!input.externalId.trim()) {
-    return "Informe o ID externo da campanha — é ele que liga o lead à campanha.";
+    return { campo: "externalId", frase: "Informe o ID externo da campanha — é ele que liga o lead à campanha." };
   }
-  if (!input.name.trim()) return "Informe o nome da campanha.";
-  if (input.status != null && !(AD_STATUSES as readonly string[]).includes(input.status)) {
-    return "Status inválido: use ACTIVE (Ativa) ou PAUSED (Pausada).";
+  if (!input.name.trim()) return { campo: "name", frase: "Informe o nome da campanha." };
+  // A regra é a do CHECK do banco (`ad_campaigns_status_maiusculo`, 0084), e
+  // não a dupla que o formulário oferece: o CHECK ficou aberto de propósito
+  // para ARCHIVED/IN_PROCESS, que é o que a Graph API devolve. Recusar aqui
+  // tudo fora de ACTIVE/PAUSED deixava uma linha gravada como ARCHIVED
+  // INEDITÁVEL pela tela — o operador abria só para corrigir a verba e o
+  // Salvar era recusado por um campo que ele não tocou, sem caminho de
+  // conserto. Digitar minúscula continua recusado, que é o erro real: o banco
+  // devolveria 23514.
+  if (input.status != null && (!input.status.trim() || input.status !== input.status.toUpperCase())) {
+    return {
+      campo: "status",
+      frase: "Status inválido: o registro guarda o valor em MAIÚSCULA — use ACTIVE (Ativa) ou PAUSED (Pausada).",
+    };
   }
   if (input.totalSpend !== undefined && (!Number.isFinite(input.totalSpend) || input.totalSpend < 0)) {
-    return "O investimento não pode ser negativo.";
+    return { campo: "totalSpend", frase: "O investimento não pode ser negativo." };
   }
   if (input.dailyBudget != null && (!Number.isFinite(input.dailyBudget) || input.dailyBudget < 0)) {
-    return "O orçamento diário não pode ser negativo.";
+    return { campo: "dailyBudget", frase: "O orçamento diário não pode ser negativo." };
   }
   if (input.lifetimeBudget != null && (!Number.isFinite(input.lifetimeBudget) || input.lifetimeBudget < 0)) {
-    return "A verba total não pode ser negativa.";
+    return { campo: "lifetimeBudget", frase: "A verba total não pode ser negativa." };
   }
   // Comparação de string, e não de `Date`: `YYYY-MM-DD` já ordena
   // cronologicamente e `new Date("2026-09-01")` é meia-noite UTC — a mesma
   // armadilha de fuso que `previousMonth` documenta mais abaixo.
   if (input.startsOn && input.endsOn && input.endsOn < input.startsOn) {
-    return "O fim da veiculação não pode ser antes do início.";
+    return { campo: "endsOn", frase: "O fim da veiculação não pode ser antes do início." };
   }
   return null;
 }
@@ -204,7 +246,7 @@ export async function createAdCampaign(input: AdCampaignInput): Promise<void> {
   // Os checks do banco (0063, 0089) recusam de qualquer jeito; parar aqui evita
   // gastar um round-trip para dizer a mesma coisa em erro genérico.
   const problema = problemaNaCampanha(input);
-  if (problema) throw new Error(problema);
+  if (problema) throw new Error(problema.frase);
   const { error } = await untyped.from("ad_campaigns").insert({
     external_id: input.externalId,
     platform: input.platform,
@@ -232,7 +274,7 @@ export async function createAdCampaign(input: AdCampaignInput): Promise<void> {
  */
 export async function updateAdCampaign(id: string, patch: AdCampaignInput): Promise<void> {
   const problema = problemaNaCampanha(patch);
-  if (problema) throw new Error(problema);
+  if (problema) throw new Error(problema.frase);
   const { data, error } = await untyped
     .from("ad_campaigns")
     .update({

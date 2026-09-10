@@ -14,6 +14,7 @@
  * "Construtora *" e "Corretor 1 *".
  */
 import { expect, type Locator, type Page } from "@playwright/test";
+import { resolveTarget } from "../support/target";
 import { aguardarCarregamento, db } from "../support/fixtures";
 
 export async function abrirPipeline(page: Page) {
@@ -189,4 +190,37 @@ export async function limparNegocios(marca: string) {
   );
   const ids = [...new Set(clientes.map((c) => c.deal_id))];
   if (ids.length) await db.remove(`deals?id=in.(${ids.join(",")})`);
+}
+
+/**
+ * Sobe BYTES de verdade para o bucket `deal-documents`.
+ *
+ * Deixou de ser opcional em 06/09/2026. A tela passou a conferir, no
+ * armazenamento, quais documentos do dossiê têm arquivo legível — pedido do
+ * cliente, porque 68 botões de "Baixar" não baixavam nada — e documento sem
+ * arquivo deixou de contar como obrigatório cumprido. Fixture que insere só a
+ * LINHA em `deal_documents` monta um estado que a operação não produz: no
+ * produto, quem grava a linha acabou de subir o arquivo.
+ *
+ * Sem isto, "Enviar ao gerente" e "Enfileirar envio" ficam desabilitados — e
+ * ficam certos.
+ *
+ * Service role porque o teste escreve no bucket sem passar por sessão de
+ * navegador; `x-upsert` porque a mesma execução reaproveita caminho.
+ */
+export async function subirArquivo(storagePath: string, conteudo: string): Promise<void> {
+  const alvo = resolveTarget();
+  const res = await fetch(`${alvo.supabaseUrl}/storage/v1/object/deal-documents/${storagePath}`, {
+    method: "POST",
+    headers: {
+      apikey: alvo.serviceRoleKey,
+      Authorization: `Bearer ${alvo.serviceRoleKey}`,
+      "Content-Type": "application/pdf",
+      "x-upsert": "true",
+    },
+    body: conteudo,
+  });
+  if (!res.ok) {
+    throw new Error(`upload ${storagePath} → ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
 }

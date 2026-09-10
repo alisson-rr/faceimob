@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { describeError } from "@/lib/supabaseError";
-import { nameIssue, parseVariables, renderPreview, templateIssues } from "./templateVars";
+import { nameIssue, parseVariables, renderPreview, templateBlockers, templateIssues, VAR_ALIASES } from "./templateVars";
 import { efeitosDaExclusaoTemplate, SEM_PERMISSAO, type Rlist, type Source, type WhatsAppTemplate } from "./types";
 
 type Draft = Partial<WhatsAppTemplate>;
@@ -36,6 +36,15 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
   // nativo não é estilizado, ignora o tema, não é alcançável por teste de tela
   // e corta o texto que enumera o que perde o vínculo.
   const [excluindo, setExcluindo] = useState<WhatsAppTemplate | null>(null);
+  // Sem isto, dois cliques em rede lenta viravam dois INSERT: `c.id` só é
+  // preenchido depois do await, e o segundo esbarrava no unique(name).
+  const [salvando, setSalvando] = useState(false);
+  // Cancelar e Excluir desmontam o próprio botão: sem um alvo estável, o foco
+  // cai no <body> e quem navega por teclado recomeça a página.
+  const novoRef = useRef<HTMLButtonElement>(null);
+  const focarNovoAoFechar = useRef(false);
+  /** Assinatura do último Salvar aceito, para a marca de rascunho sujo. */
+  const salvoAgora = useRef<string | null>(null);
   const c = draft ?? templates[0] ?? NOVO;
   const set = (patch: Draft) => setDraft({ ...c, ...patch });
 
@@ -43,28 +52,51 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
    *  rascunho for um template novo — que não tem o que excluir. */
   const gravado = templates.find(t => t.id === c.id) ?? null;
   const variaveis = c.variables ?? [];
+  const bloqueios = templateBlockers(c.body || "", variaveis);
   const problemas = templateIssues(c.body || "", variaveis);
   const problemaNome = nameIssue(c.name || "");
   const idiomas = IDIOMAS.includes(c.language || "") ? IDIOMAS : [...IDIOMAS, c.language || "pt_BR"];
+  /** O que iria para o banco — comparar por aqui evita listar campo a campo. */
+  const gravavel = (t: Draft) => JSON.stringify([
+    t.name ?? "", t.language ?? "pt_BR", t.category ?? "MARKETING", t.body ?? "",
+    (t.variables ?? []).join(","), t.provider_template_id ?? "", !!t.approved, !!t.active,
+  ]);
+  // Trocar de template na lista descarta o rascunho. Sem marca, quem digitou e
+  // clicou em outro item para "conferir uma coisa" perdia tudo em silêncio.
+  // Compara com o último Salvar aceito TAMBÉM porque `reload()` é assíncrono:
+  // entre o toast e a linha nova, só a versão antiga está em `templates`.
+  const atual = gravavel(c);
+  const sujo = !!draft && atual !== salvoAgora.current && atual !== gravavel(gravado ?? NOVO);
 
   async function save() {
-    if (!c.name?.trim() || !c.body?.trim()) return toast.error("Informe nome e mensagem do template");
+    // Um toast por campo: "informe nome e mensagem" não dizia qual faltou.
+    if (!c.name?.trim()) return toast.error("Informe o nome do template — é por ele que a Meta casa o disparo.");
+    if (!c.body?.trim()) return toast.error("Informe a mensagem do template.");
     if (problemaNome) return toast.error(problemaNome);
-    // A trava vale para o template que vai SAIR. Até aqui `problemas` era só
-    // aviso na tela: dava para salvar um corpo com {{2}} e uma variável só, ou
-    // uma variável que não existe no catálogo — e a conta era paga pelo
-    // cliente, em recusa da Graph API ou em "-" no meio da mensagem.
+    // A trava vale para o template que vai SAIR, e só para o que a Meta recusa
+    // em qualquer caminho: contagem de parâmetros. Até aqui era só aviso na
+    // tela, e um corpo com {{2}} e uma variável só era gravado — a conta ficava
+    // com o cliente, em recusa da Graph API.
     // Template inativo continua gravável de propósito: desmarcar "ativo" é a
     // saída que o próprio diálogo de exclusão sugere para tirar de circulação
     // um template quebrado, e os dois envios já ignoram `active = false`.
-    if (c.active && problemas.length > 0) {
-      return toast.error(`${problemas[0]} Corrija antes de salvar ou desmarque “Template ativo” para arquivá-lo.`);
+    if (c.active && bloqueios.length > 0) {
+      return toast.error(`${bloqueios[0]} Corrija antes de salvar ou desmarque “Template ativo” para arquivá-lo.`);
     }
+    setSalvando(true);
+    try {
+      await gravar(c.name.trim(), c.body);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function gravar(name: string, body: string) {
     const payload = {
-      name: c.name.trim(),
+      name,
       language: c.language || "pt_BR",
       category: c.category || "MARKETING",
-      body: c.body,
+      body,
       variables: variaveis,
       provider_template_id: c.provider_template_id?.trim() || null,
       approved: !!c.approved,
@@ -93,6 +125,7 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
     // duas vias (tela sem Salvar e UPDATE do diretor casando 0 linhas).
     if (!data?.length) return toast.error(SEM_PERMISSAO);
     toast.success(c.id ? "Template atualizado" : "Template cadastrado");
+    salvoAgora.current = gravavel({ ...c, ...payload });
     // Mantém o template recém-gravado selecionado; sem o id, um segundo Salvar
     // tentaria inserir de novo e esbarraria no unique(name).
     setDraft({ ...c, ...payload, id: data[0].id });
@@ -108,7 +141,10 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
     if (!data?.length) return toast.error(SEM_PERMISSAO);
     setExcluindo(null);
     toast.success("Template excluído");
-    setDraft(null);
+    // Formulário limpo, e não `null`: cair em `templates[0]` repovoava o painel
+    // com OUTRO template em silêncio, e a leitura natural era "não excluiu".
+    setDraft({ ...NOVO });
+    focarNovoAoFechar.current = true;
     reload();
   }
 
@@ -120,7 +156,7 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Templates ({templates.length})</h3>
           {canWrite && (
-            <Button size="sm" variant="outline" onClick={() => setDraft({ ...NOVO })}>
+            <Button ref={novoRef} size="sm" variant="outline" onClick={() => setDraft({ ...NOVO })}>
               <Plus className="h-4 w-4 mr-1" />Novo
             </Button>
           )}
@@ -154,7 +190,12 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
           {!canWrite && " Seu papel só consulta: editar template é de admin, marketing ou SDR (policy whatsapp_templates_write, migration 0069)."}
         </p>
         <fieldset disabled={!canWrite} className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
-          <legend className="sr-only">{c.id ? "Editar template" : "Novo template"}</legend>
+          {/* Visível, e não `sr-only`: a 375px a lista fica acima e fora da
+              tela, e o painel não dizia QUAL registro estava aberto. */}
+          <legend className="sm:col-span-2 text-sm font-semibold">
+            {gravado ? `Editando: ${gravado.name}` : "Novo template"}
+            {sujo && <span className="ml-2 font-normal text-xs text-warning">alterações não salvas</span>}
+          </legend>
           <div>
             <Label htmlFor="wa-name">Nome do template</Label>
             <Input
@@ -196,9 +237,35 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
           </div>
           <div>
             <Label htmlFor="wa-vars">Variáveis, na ordem ({"{{1}}, {{2}}"})</Label>
-            <Input id="wa-vars" placeholder="nome, campanha" value={variaveis.join(", ")} onChange={e => set({ variables: parseVariables(e.target.value) })} />
+            <Input
+              id="wa-vars"
+              placeholder="nome, campanha"
+              value={variaveis.join(", ")}
+              onChange={e => set({ variables: parseVariables(e.target.value) })}
+              aria-invalid={bloqueios.length > 0}
+              aria-describedby={problemas.length > 0 ? "wa-vars-hint wa-issues" : "wa-vars-hint"}
+            />
+            {/* O catálogo é o que o disparo automático sabe preencher. Sem ele
+                à vista, o operador só descobria o nome aceito errando. */}
+            <p id="wa-vars-hint" className="mt-1 text-xs text-muted-foreground">
+              O disparo automático (boas-vindas e remarketing) só preenche <b>{Object.keys(VAR_ALIASES).join(", ")}</b>;
+              outro nome sai como “-” ali. A <b>quantidade</b>, essa sim, é obrigatória: uma variável a mais (ou a
+              menos) do que o corpo usa faz a Meta recusar a mensagem.
+            </p>
           </div>
-          <div className="sm:col-span-2"><Label htmlFor="wa-body">Mensagem</Label><Textarea id="wa-body" value={c.body || ""} onChange={e => set({ body: e.target.value })} placeholder="Olá {{1}}, tudo bem? Vi seu interesse em {{2}}." /></div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="wa-body">Mensagem</Label>
+            {/* O motivo do bloqueio precisa chegar a quem tabula até o campo,
+                não só a quem enxerga a caixa amarela. */}
+            <Textarea
+              id="wa-body"
+              value={c.body || ""}
+              onChange={e => set({ body: e.target.value })}
+              placeholder="Olá {{1}}, tudo bem? Vi seu interesse em {{2}}."
+              aria-invalid={bloqueios.length > 0}
+              aria-describedby={problemas.length > 0 ? "wa-issues" : undefined}
+            />
+          </div>
           <div className="sm:col-span-2">
             <Label htmlFor="wa-provider-id">ID do template na Meta (opcional)</Label>
             <Input id="wa-provider-id" value={c.provider_template_id || ""} onChange={e => set({ provider_template_id: e.target.value })} placeholder="Só para conferência: o disparo casa pelo nome." />
@@ -209,7 +276,7 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
           </div>
           <div className="flex items-center gap-2">
             <Switch id="wa-active" checked={!!c.active} onCheckedChange={v => set({ active: v })} />
-            <Label htmlFor="wa-active">Template ativo</Label>
+            <Label htmlFor="wa-active">Template ativo (desmarcado = arquivado)</Label>
           </div>
         </fieldset>
 
@@ -218,17 +285,21 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
           boas-vindas) serem recusados na hora do envio.
         </p>
 
+        {/* Sem `role="status"`: a caixa é recalculada a cada tecla e o leitor
+            de tela lia a frase inteira no meio da digitação — e de novo no
+            toast do Salvar. Os campos apontam para cá por `aria-describedby`. */}
         {problemas.length > 0 && (
-          <div role="status" className="rounded-md border border-warning/40 bg-warning/10 p-2 space-y-1">
+          <div id="wa-issues" className="rounded-md border border-warning/40 bg-warning/10 p-2 space-y-1">
             {problemas.map((p) => (
               <p key={p} className="flex items-start gap-1.5 text-xs text-warning">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />{p}
               </p>
             ))}
-            {c.active && (
+            {c.active && bloqueios.length > 0 && (
               <p className="text-xs text-warning/90">
-                Salvar fica bloqueado enquanto o template estiver ativo: corrija acima, ou desmarque “Template ativo”
-                para arquivá-lo sem perder o cadastro.
+                A contagem de parâmetros é o que a Meta recusa em qualquer envio: Salvar fica bloqueado enquanto o
+                template estiver ativo. Corrija acima, ou desmarque “Template ativo” para arquivá-lo sem perder o
+                cadastro.
               </p>
             )}
           </div>
@@ -243,7 +314,7 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
 
         {canWrite && (
           <div className="flex gap-2">
-            <Button onClick={save}>Salvar</Button>
+            <Button onClick={save} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
             {/* A linha completa vem da lista, e não do rascunho: `c` pode ser um
                 `Partial` com o que o usuário digitou, e é o id gravado que a
                 exclusão precisa. */}
@@ -252,13 +323,28 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
                 <Trash2 className="h-3.5 w-3.5 mr-1" />Excluir
               </Button>
             )}
-            {draft && <Button variant="outline" onClick={() => setDraft(null)}>Cancelar</Button>}
+            {/* O botão some no próprio clique: sem devolver o foco a "Novo",
+                ele cairia no <body>. */}
+            {draft && (
+              <Button variant="outline" onClick={() => { setDraft(null); novoRef.current?.focus(); }}>
+                Cancelar
+              </Button>
+            )}
           </div>
         )}
       </Card>
 
       <AlertDialog open={!!excluindo} onOpenChange={(aberto) => { if (!aberto) setExcluindo(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onCloseAutoFocus={(evento) => {
+            // Depois de excluir, o alvo natural do Radix (o botão "Excluir")
+            // já não existe e o foco iria para o <body>.
+            if (!focarNovoAoFechar.current) return;
+            focarNovoAoFechar.current = false;
+            evento.preventDefault();
+            novoRef.current?.focus();
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir o template “{excluindo?.name}”?</AlertDialogTitle>
             <AlertDialogDescription>

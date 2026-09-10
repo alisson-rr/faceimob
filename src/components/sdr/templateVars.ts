@@ -47,28 +47,46 @@ export const parseVariables = (input: string): string[] =>
   input.split(",").map((v) => v.trim()).filter(Boolean);
 
 /**
- * O que impede este template de sair, em ordem de gravidade. Lista vazia =
- * corpo e variáveis combinam.
+ * O que a Meta recusa em QUALQUER caminho de envio: a quantidade de parâmetros
+ * tem de bater com a do template aprovado. Lista vazia = pode sair.
+ *
+ * Separado de `templateIssues` porque só isto vale bloquear o cadastro. Nome de
+ * variável fora do catálogo é AVISO: `src/components/leads/OutreachDialogs.tsx`
+ * monta a mensagem pelo `wa.me` com `{ nome, cliente, corretor }` e o
+ * `fillWhatsappTemplate` deixa a posição desconhecida visível como `{{n}}` para
+ * o corretor completar — bloquear ali derrubaria template legítimo, e a saída
+ * sugerida ("arquive") o tiraria do único caminho que o suporta
+ * (`listWhatsappTemplates` filtra `active = true`).
+ */
+export function templateBlockers(body: string, variables: string[]): string[] {
+  const usados = placeholderCount(body);
+  if (usados > variables.length) {
+    return [
+      `O corpo usa {{${usados}}} mas só ${variables.length} variável(is) está(ão) declarada(s): a Meta recusa o envio.`,
+    ];
+  }
+  if (variables.length > usados) {
+    return [
+      `${variables.length} variável(is) declarada(s) e o corpo usa ${usados}: a Meta recusa parâmetro sobrando.`,
+    ];
+  }
+  return [];
+}
+
+/**
+ * Tudo que o operador precisa ver antes de salvar, em ordem de gravidade: o que
+ * bloqueia primeiro, depois o que só degrada a mensagem.
  */
 export function templateIssues(body: string, variables: string[]): string[] {
-  const usados = placeholderCount(body);
-  const problemas: string[] = [];
-
-  if (usados > variables.length) {
-    problemas.push(
-      `O corpo usa {{${usados}}} mas só ${variables.length} variável(is) está(ão) declarada(s): a Meta recusa o envio.`,
-    );
-  } else if (variables.length > usados) {
-    problemas.push(
-      `${variables.length} variável(is) declarada(s) e o corpo usa ${usados}: a Meta recusa parâmetro sobrando.`,
-    );
-  }
+  const problemas = templateBlockers(body, variables);
 
   const desconhecidas = variables.filter((v) => !canonicalVar(v));
   if (desconhecidas.length > 0) {
     problemas.push(
-      `Sem dado do contato para ${desconhecidas.map((v) => `"${v}"`).join(", ")} — vai como "-" no envio. `
-      + `Nomes reconhecidos: ${Object.keys(VAR_ALIASES).join(", ")}.`,
+      `Sem dado do contato para ${desconhecidas.map((v) => `"${v}"`).join(", ")}: o disparo automático `
+      + `(boas-vindas e remarketing) manda "-" nessa posição — ele só preenche `
+      + `${Object.keys(VAR_ALIASES).join(", ")}. No envio manual pelo card do lead dá para completar à mão, `
+      + `por isso isto é aviso e não bloqueio.`,
     );
   }
 

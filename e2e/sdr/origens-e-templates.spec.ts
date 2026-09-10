@@ -309,6 +309,113 @@ test.describe("SDR · template de WhatsApp", () => {
   });
 
   /**
+   * O cadastro inteiro, do jeito que o operador usa: criar o template, ser
+   * BARRADO por um `{{3}}` que nenhuma variável declara e, depois de
+   * corrigido, reusá-lo como boas-vindas de uma origem.
+   *
+   * A trava é o que faltava. `templateIssues` só pintava um aviso amarelo e o
+   * Salvar gravava assim mesmo — a Meta conta os parâmetros contra o template
+   * aprovado e recusa a mensagem, e quem cadastrou nunca ficava sabendo: o erro
+   * morria em `remarketing_contacts.last_error` ou no silêncio das boas-vindas.
+   */
+  test("cadastra template, recusa placeholder sem variável e reusa na origem", async ({ page }) => {
+    type TemplateCompleto = TemplateRow & { category: string; variables: string[]; approved: boolean };
+    const nome = `tpl_novo_${slug}`;
+    const rotulo = `Origem ${tag} template novo`;
+    const colunas = "id,name,body,category,variables,approved";
+
+    await page.goto("/sdr");
+    await aguardarCarregamento(page);
+    await page.getByRole("tab", { name: /whatsapp/i }).click();
+
+    const painel = page.getByRole("tabpanel");
+    await painel.getByRole("button", { name: /^novo$/i }).click();
+    await painel.getByLabel(/nome do template/i).fill(nome);
+    // A categoria não é decorativa: fora da janela de 24h a Meta trata
+    // MARKETING e UTILITY com limites diferentes.
+    await painel.getByLabel("Categoria na Meta").click();
+    await page.getByRole("option", { name: /UTILITY/ }).click();
+    await painel.getByLabel(/variáveis/i).fill("nome, campanha");
+    await painel.getByLabel(/^mensagem$/i).fill("Olá {{1}}, tudo bem? Vi seu interesse em {{2}} — {{3}}.");
+    await painel.getByRole("switch", { name: /aprovado na meta/i }).click();
+
+    await painel.getByRole("button", { name: /^salvar$/i }).click();
+    // A barreira é o toast: o INSERT nem chega a ser montado. A checagem do
+    // banco vem depois dele, e é a confirmação de que nada vazou.
+    await expect(page.getByText(/corrija antes de salvar/i)).toBeVisible();
+    expect(
+      await db.select<TemplateCompleto>(`whatsapp_templates?name=eq.${nome}&select=${colunas}`),
+      "template com placeholder sem variável não podia ter sido gravado",
+    ).toHaveLength(0);
+
+    // Corrigido: a pré-visualização mostra o texto que o cliente receberia,
+    // ANTES de salvar — é a conferência que o cadastro não oferecia.
+    await painel.getByLabel(/^mensagem$/i).fill("Olá {{1}}, tudo bem? Vi seu interesse em {{2}}.");
+    await expect(
+      painel.getByText("Olá Maria Souza, tudo bem? Vi seu interesse em Lançamento Parque."),
+    ).toBeVisible();
+    await painel.getByRole("button", { name: /^salvar$/i }).click();
+    await expect(page.getByText(/template cadastrado/i)).toBeVisible();
+
+    await expect(async () => {
+      const [gravado] = await db.select<TemplateCompleto>(
+        `whatsapp_templates?name=eq.${nome}&select=${colunas}`,
+      );
+      expect(gravado, "tela disse que cadastrou; o banco tem de concordar").toBeTruthy();
+      expect(gravado.category, "a categoria escolhida na tela tem de chegar ao banco").toBe("UTILITY");
+      expect(gravado.variables).toEqual(["nome", "campanha"]);
+      expect(gravado.approved).toBe(true);
+    }).toPass({ timeout: 10_000 });
+    const [criado] = await db.select<TemplateCompleto>(
+      `whatsapp_templates?name=eq.${nome}&select=${colunas}`,
+    );
+
+    // Reuso: o template recém-criado tem de aparecer na aba Origens sem
+    // recarregar a página, e o vínculo tem de persistir.
+    await page.getByRole("tab", { name: /origens/i }).click();
+    const origens = page.getByRole("tabpanel");
+    await origens.getByPlaceholder("Rótulo").fill(rotulo);
+    await origens.getByRole("combobox").filter({ hasText: /template/i }).click();
+    await page.getByRole("option", { name: nome }).click();
+    await origens.getByRole("button", { name: /adicionar/i }).click();
+
+    await expect(async () => {
+      const [gravada] = await origensComRotulo(rotulo);
+      expect(gravada, "origem não chegou em lead_sources").toBeTruthy();
+      expect(gravada.welcome_template_id, "o template criado agora tem de estar vinculado").toBe(criado.id);
+    }).toPass({ timeout: 10_000 });
+  });
+
+  /**
+   * `whatsapp_templates.name` é a chave do disparo
+   * (`sendWhatsAppTemplate(to, tpl.name, …)`), e a Meta só registra nome em
+   * minúsculas, dígitos e `_`. "Boas Vindas" era aceito aqui e recusado lá: a
+   * falha aparecia em `remarketing_contacts.last_error`, longe do cadastro.
+   */
+  test("nome fora do formato da Meta não chega ao banco", async ({ page }) => {
+    const invalido = `Boas Vindas ${slug}`;
+
+    await page.goto("/sdr");
+    await aguardarCarregamento(page);
+    await page.getByRole("tab", { name: /whatsapp/i }).click();
+
+    const painel = page.getByRole("tabpanel");
+    await painel.getByRole("button", { name: /^novo$/i }).click();
+    await painel.getByLabel(/nome do template/i).fill(invalido);
+    await painel.getByLabel(/^mensagem$/i).fill("Mensagem sem variável nenhuma.");
+    // O motivo aparece junto do campo, não só no toast do clique.
+    await expect(painel.getByText(/só aceita letras minúsculas/i)).toBeVisible();
+
+    await painel.getByRole("button", { name: /^salvar$/i }).click();
+    expect(
+      await db.select<TemplateRow>(
+        `whatsapp_templates?name=eq.${encodeURIComponent(invalido)}&select=id,name,body`,
+      ),
+      "nome que a Meta não registra não podia ter sido gravado",
+    ).toHaveLength(0);
+  });
+
+  /**
    * Excluir template era um `confirm()` do navegador com um texto genérico
    * ("as origens e listas que o usam"): sem o número, quem lia não tinha como
    * saber se a exclusão derrubava uma origem ou vinte. E `confirm()` não é

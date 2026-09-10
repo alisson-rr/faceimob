@@ -74,19 +74,38 @@ const optionLabel = (r: AppRole, isMine: boolean) =>
  * usuário, então uma tela pré-visualizada como "corretor" ainda traz os dados
  * do admin. Serve para validar menu e botões, não para auditar dados.
  *
- * `role` é sempre o papel REAL (o `previewRole` só troca `effectiveRoles` no
- * AuthContext), por isso o item "(você)" continua certo durante a prévia.
+ * O seletor lê `realRole`/`realRoles`, não `role`/`roles`: desde 05/09/2026 os
+ * segundos são os EFETIVOS, e com eles o item "(você)" passaria a apontar para o
+ * papel pré-visualizado — o admin em prévia de corretor veria "Corretor (você)"
+ * e perderia o caminho de volta. Pior: `roles.includes('admin')` ficaria falso
+ * durante a prévia e o seletor sumiria da tela, trancando o admin na prévia.
  */
 export function RoleSwitcher() {
-  const { role, roles, isAdmin, previewRole, setPreviewRole } = useAuth();
+  const { realRole: role, realRoles: roles, isAdmin, previewRole, setPreviewRole } = useAuth();
+
+  /**
+   * Como a PESSOA se chama — que não é o mesmo que o papel de maior poder dela.
+   *
+   * Quem é sócio COM poder de administrador carrega {admin, partner}, e `admin`
+   * tem precedência em `primaryRole` — precisa ter, porque `primaryRole`
+   * espelha `auth_effective_role()` do banco nas travas de escrita. Sem esta
+   * linha ele lia "Administrador (você)" no cabeçalho e o papel dele sumia da
+   * tela.
+   *
+   * A mesma regra, para listas de gente, vive em `roleLabelFor`
+   * (`integrations/supabase/permissions.ts`). Aqui ela é repetida em uma linha
+   * de propósito: importar aquele módulo traria o cliente do Supabase para
+   * dentro de um componente de cabeçalho e do teste dele.
+   */
+  const meuPapel: AppRole = roles.includes('partner') ? 'partner' : role;
 
   // Quem não é admin não troca de papel: veria um menu que não corresponde ao
   // que pode fazer. A trava real está no AuthContext; isto é a UI.
   if (!roles.includes('admin')) {
     return (
       <div className="flex items-center gap-2">
-        <Shield className={cn("h-3.5 w-3.5 shrink-0", roleColors[role])} />
-        <span className="text-xs text-muted-foreground">{roleLabels[role]}</span>
+        <Shield className={cn("h-3.5 w-3.5 shrink-0", roleColors[meuPapel])} />
+        <span className="text-xs text-muted-foreground">{roleLabels[meuPapel]}</span>
       </div>
     );
   }
@@ -95,7 +114,7 @@ export function RoleSwitcher() {
     <div className="flex items-center gap-1.5">
       {previewRole
         ? <Eye className="h-3.5 w-3.5 shrink-0 text-warning" />
-        : <Shield className={cn("h-3.5 w-3.5 shrink-0", roleColors[role])} />}
+        : <Shield className={cn("h-3.5 w-3.5 shrink-0", roleColors[meuPapel])} />}
       <Select
         value={previewRole ?? PREVIEW_OFF}
         onValueChange={(v) => setPreviewRole(v === PREVIEW_OFF ? null : (v as AppRole))}
@@ -110,8 +129,8 @@ export function RoleSwitcher() {
           aria-describedby={AVISO_ID}
         >
           <SelectValue>
-            <span className={cn("hidden sm:inline", previewRole ? "text-warning" : roleColors[role])}>
-              {previewRole ? optionLabel(previewRole, false) : optionLabel(role, true)}
+            <span className={cn("hidden sm:inline", previewRole ? "text-warning" : roleColors[meuPapel])}>
+              {previewRole ? optionLabel(previewRole, false) : optionLabel(meuPapel, true)}
             </span>
           </SelectValue>
         </SelectTrigger>
@@ -120,9 +139,9 @@ export function RoleSwitcher() {
             {AVISO_PREVIA}
           </p>
           <SelectItem value={PREVIEW_OFF} className="text-xs">
-            <span className={roleColors[role]}>{optionLabel(role, true)}</span>
+            <span className={roleColors[meuPapel]}>{optionLabel(meuPapel, true)}</span>
           </SelectItem>
-          {(Object.keys(roleLabels) as AppRole[]).filter(r => r !== 'admin').map(r => (
+          {(Object.keys(roleLabels) as AppRole[]).filter(r => r !== 'admin' && r !== meuPapel).map(r => (
             <SelectItem key={r} value={r} className="text-xs">
               <span className={roleColors[r]}>{optionLabel(r, false)}</span>
             </SelectItem>

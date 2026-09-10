@@ -126,6 +126,29 @@ test.describe(() => {
   });
 });
 
+/**
+ * A fronteira entre o que o CRM faz e o que só a Meta faz.
+ *
+ * Esta tela dizia que gerenciar campanha "não está nesta entrega" — virou
+ * informação errada quando /marketing passou a cadastrar, pausar, copiar e
+ * lançar verba. O que ela não pode fazer é trocar isso por promessa de
+ * controle na Meta: o que muda aqui é registro local, e pausar o gasto de
+ * verdade continua exigindo `ads_management` no Gerenciador de Anúncios.
+ */
+test("a tela aponta a gestão de campanha para Marketing, sem prometer controle na Meta", async ({ page }) => {
+  await page.goto("/admin/meta-ads");
+  await aguardarCarregamento(page);
+
+  // `section` e não `section, div`: o `SectionCard` põe o título num <div> do
+  // cabeçalho e o corpo em outro, então `.last()` de "section, div" caía no
+  // cabeçalho — o texto do título, sem o parágrafo nem o link.
+  const card = page.locator("section").filter({ hasText: "Até onde esta integração vai" });
+  await expect(card.getByRole("link", { name: /Marketing/i })).toHaveAttribute("href", "/marketing");
+  await expect(card).toContainText(/registro local/i);
+  await expect(card).toContainText(/ads_management/);
+  await expect(page.getByText(/não está nesta entrega/i)).toHaveCount(0);
+});
+
 // O SDR só responde ao lead se o webhook de mensagens também estiver assinado,
 // no mesmo app da Meta. A tela precisa entregar essa URL.
 test("a tela entrega também a URL do webhook de mensagens do WhatsApp", async ({ page }) => {

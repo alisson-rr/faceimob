@@ -24,7 +24,7 @@
  * número errado; o texto deixou de citar contagem (02/09/2026), que é a única
  * correção que não envelhece a cada job novo.
  */
-import { test, expect, aguardarCarregamento } from "../support/fixtures";
+import { test, expect, db, runTag, aguardarCarregamento } from "../support/fixtures";
 import { resolveTarget } from "../support/target";
 import { mintSession } from "../support/session";
 import { E2E_USERS } from "../support/users";
@@ -191,6 +191,34 @@ async function filaComoAdmin(): Promise<FilaDoCanal[]> {
   return res.json();
 }
 
+/**
+ * A credencial da WhatsApp Cloud API já está no cofre?
+ *
+ * `list_integrations()` devolve `has_secret` — o estado, nunca o valor — e exige
+ * a mesma `settings.integrations` da leitura da fila acima. Os dois slots são os
+ * que o `notify-dispatch` exige antes de tentar qualquer envio.
+ */
+async function metaCadastradaNoCofre(): Promise<boolean> {
+  const t = resolveTarget();
+  const { access_token } = await mintSession(E2E_USERS.find((u) => u.key === "admin")!.email);
+  const res = await fetch(`${t.supabaseUrl}/rest/v1/rpc/list_integrations`, {
+    method: "POST",
+    headers: { apikey: t.anonKey, Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) throw new Error(`list_integrations → ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const slots = (await res.json()) as { provider: string; label: string; has_secret: boolean }[];
+  // Qualquer um dos dois presente já muda o comportamento do worker de "recusa
+  // por configuração" para "tenta falar com a Meta" — e é a tentativa que não
+  // pode acontecer por causa de um teste.
+  return slots.some(
+    (s) =>
+      s.provider === "meta" &&
+      ["whatsapp_access_token", "whatsapp_phone_number_id"].includes(s.label) &&
+      s.has_secret,
+  );
+}
+
 test("os jobs sem os quais a operação para estão ATIVOS, não só agendados", async () => {
   const jobs = await saudeComoAdmin();
 
@@ -250,6 +278,100 @@ test("a fila de saída de WhatsApp não guarda aviso vencido", async () => {
     whatsapp.max_tentativas,
     `há mensagem com ${whatsapp.max_tentativas} tentativas; o teto do worker é 5`,
   ).toBeLessThanOrEqual(5);
+});
+
+/**
+ * Sem credencial da Meta, o aviso ESPERA — não vira "enviado".
+ *
+ * É o modo de falha mais caro do requisito 10: o worker roda, o cron fica
+ * verde, e uma marcação de `sent_at` sem envio faria o sistema afirmar que o
+ * corretor foi avisado por um canal que não entregou nada. A auditoria de 03/09
+ * pegou o inverso do mesmo defeito — 312 mensagens paradas e só 53 com motivo
+ * escrito, porque a marcação ia por lote em vez de por filtro.
+ *
+ * O teste NÃO fixa a ausência de credencial: num ambiente com a chave
+ * cadastrada ele se retira, porque aí a pergunta é outra (o que a Meta
+ * responde). O que ele fixa é o comportamento na ausência — que é o estado da
+ * homologação e o estado em que o cliente vai ver a demonstração.
+ *
+ * A porta é a mesma do pg_cron (chave de serviço): entrar por outra seria
+ * testar um caminho que ninguém percorre. E é por isso que a saída acontece
+ * ANTES de tocar em qualquer coisa — ver `metaCadastradaNoCofre`.
+ */
+test("sem credencial da Meta, o aviso de prazo espera na fila com motivo escrito", async () => {
+  /**
+   * Primeira linha do teste, e não a última.
+   *
+   * `e2e/sdr/notify-dispatch.spec.ts` documenta por que a function nunca é
+   * chamada COM a chave de serviço: no dia em que o token da Cloud API entrar no
+   * cofre, a chamada drena o lote inteiro (50 linhas) e manda WhatsApp de
+   * verdade para os corretores da homologação, a cada execução da suíte. Perguntar
+   * ao cofre custa uma RPC; perguntar ao `res.status` depois do `fetch` custaria
+   * as mensagens já enviadas — e o teste ainda seria reportado como "skipped",
+   * sem rastro nenhum do disparo.
+   */
+  test.skip(
+    await metaCadastradaNoCofre(),
+    "a credencial da Cloud API está cadastrada neste ambiente — este teste cobre a ausência dela",
+  );
+
+  const t = resolveTarget();
+  const brokerId = await db.profileIdOf("broker");
+  const tag = runTag();
+
+  const [linha] = await db.insert<{ id: string }>("notifications", {
+    profile_id: brokerId,
+    kind: "lead_lost_timeout",
+    title: `Fila de saída ${tag}`,
+    body: "Prova de que a mensagem sem credencial não é marcada como enviada.",
+    channel: "whatsapp",
+  });
+
+  try {
+    const res = await fetch(`${t.supabaseUrl}/functions/v1/notify-dispatch`, {
+      method: "POST",
+      headers: {
+        apikey: t.anonKey,
+        Authorization: `Bearer ${t.serviceRoleKey}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    const corpo = await res.json().catch(() => ({})) as { error?: string; detail?: string };
+
+    // 401 aqui significa que o valor de `supabase/service_role_key` no cofre
+    // divergiu da chave real: o pg_cron não entra no worker e a fila para de
+    // ser drenada em silêncio — exatamente o mês que a 0065 veio consertar.
+    expect(
+      res.status,
+      "o worker recusou a chave de serviço: confira supabase/service_role_key no cofre",
+    ).not.toBe(401);
+
+    expect(res.status, "falta de configuração precisa ser 503, não 500").toBe(503);
+    // Recusa sem motivo em pt-BR é recusa que ninguém conserta.
+    expect(corpo.error ?? "", "o 503 não disse o que falta").toMatch(/credencial/i);
+    expect(corpo.detail ?? "", "o 503 não disse onde cadastrar").toMatch(/Integrações/i);
+
+    const [depois] = await db.select<{
+      sent_at: string | null;
+      attempts: number;
+      last_error: string | null;
+    }>(`notifications?id=eq.${linha.id}&select=sent_at,attempts,last_error`);
+
+    expect(
+      depois.sent_at,
+      "mensagem marcada como enviada sem ter saído — o sistema passa a afirmar um aviso que não aconteceu",
+    ).toBeNull();
+    // Ausência de credencial não é falha de envio: a mensagem nem foi tentada,
+    // e gastar tentativa aqui queimaria o teto de 5 antes de a chave chegar.
+    expect(depois.attempts, "a ausência de credencial gastou uma tentativa").toBe(0);
+    expect(
+      depois.last_error ?? "",
+      "mensagem parada sem motivo escrito é mensagem que ninguém diagnostica",
+    ).toMatch(/credencial/i);
+  } finally {
+    await db.remove(`notifications?id=eq.${linha.id}`);
+  }
 });
 
 /**

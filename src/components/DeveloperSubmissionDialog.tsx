@@ -112,10 +112,12 @@ export default function DeveloperSubmissionDialog({
       setToEmail((atual) => atual || deal?.developers?.submission_email || "");
       setSubject(`Dossiê — ${clientName}`);
 
-      // O worker lê cada documento do bucket na hora do disparo: registro sem
-      // arquivo vira dossiê incompleto na caixa da construtora, e ninguém deste
-      // lado descobre. A conferência é aqui, não depois. Falha da conferência
-      // não pode esvaziar a seleção — `null` mantém o comportamento anterior.
+      // `submission-dispatch` assina CADA documento antes de montar o e-mail e
+      // faz `throw signError` no primeiro que não existe: um registro sem
+      // arquivo derruba o envio INTEIRO, gasta uma das 5 tentativas e deixa o
+      // caso em "Falhou" com a mensagem crua do Storage. A conferência é aqui,
+      // antes de enfileirar. Falha da própria conferência não pode esvaziar a
+      // seleção — `null` mantém o comportamento anterior.
       let ausentes: Set<string> | null = null;
       try {
         ausentes = await missingStoragePaths(current.map((d) => d.storage_path));
@@ -142,6 +144,10 @@ export default function DeveloperSubmissionDialog({
   const cc = useMemo(() => parseCcEmails(ccRaw), [ccRaw]);
   const badCc = useMemo(() => invalidEmails(cc), [cc]);
   const badTo = useMemo(() => invalidEmails(toEmail.trim() ? [toEmail.trim()] : []), [toEmail]);
+  const ausentes = useMemo(
+    () => (semArquivo ? docs.filter((d) => semArquivo.has(d.storage_path)).length : 0),
+    [docs, semArquivo],
+  );
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -162,11 +168,55 @@ export default function DeveloperSubmissionDialog({
       return toast({ title: "Cópia inválida", description: badCc.join(", "), variant: "destructive" });
     }
     if (selected.size === 0) {
-      return toast({ title: "Selecione ao menos um documento", variant: "destructive" });
+      // Nenhuma caixa marcada tem duas causas, e mandar "selecione um documento"
+      // para quem não TEM caixa clicável é uma ordem impossível de cumprir.
+      return toast({
+        title: docs.length > 0 && ausentes === docs.length
+          ? "Nenhum documento tem arquivo"
+          : "Selecione ao menos um documento",
+        description: docs.length > 0 && ausentes === docs.length
+          ? "Nenhum documento deste dossiê tem arquivo no armazenamento. Anexe de novo na aba Anexos do negócio antes de enviar."
+          : undefined,
+        variant: "destructive",
+      });
     }
 
     setSending(true);
     try {
+      // A caixa desabilitada é a primeira barreira, mas `semArquivo` é o retrato
+      // tirado ao ABRIR o diálogo: o arquivo pode sumir enquanto o analista
+      // redige a mensagem. `submission-dispatch` faz `throw` no primeiro anexo
+      // que não existe — o envio inteiro falha e gasta uma das 5 tentativas —,
+      // então a conferência é refeita aqui, sobre o que foi de fato marcado.
+      const escolhidos = docs.filter((d) => selected.has(d.id));
+      let ausentesAgora: Set<string> | null = null;
+      try {
+        ausentesAgora = await missingStoragePaths(escolhidos.map((d) => d.storage_path));
+      } catch (falha) {
+        // Falha da própria conferência não pode barrar: trocaria um envio que
+        // talvez funcione por um bloqueio garantido.
+        console.warn("[envio] não deu para reconferir os arquivos no bucket:", falha);
+      }
+      const conferido = ausentesAgora;
+      const perdidos = conferido
+        ? escolhidos.filter((d) => conferido.has(d.storage_path))
+        : [];
+      if (perdidos.length > 0) {
+        // A tela passa a mostrar o que a reconferência descobriu, senão o
+        // analista clicaria de novo no mesmo botão com a mesma seleção.
+        setSemArquivo((prev) => new Set([...(prev ?? []), ...perdidos.map((d) => d.storage_path)]));
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const d of perdidos) next.delete(d.id);
+          return next;
+        });
+        return toast({
+          title: "Documento sem arquivo",
+          description: `${perdidos.map((d) => d.stored_name).join(", ")} não está no armazenamento. Anexe de novo na aba Anexos do negócio antes de enviar.`,
+          variant: "destructive",
+        });
+      }
+
       await createDeveloperSubmission({
         dealId,
         developerId,
@@ -323,14 +373,14 @@ export default function DeveloperSubmissionDialog({
               {ausentes > 0 && (
                 <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
                   {ausentes === 1
-                    ? "1 documento está registrado no dossiê mas o arquivo não está no armazenamento"
-                    : `${ausentes} documentos estão registrados no dossiê mas os arquivos não estão no armazenamento`}
-                  : não dá para enviar o que não existe. Anexe de novo na aba Anexos do negócio.
+                    ? "1 documento está no dossiê, mas o arquivo não está no armazenamento: "
+                    : `${ausentes} documentos estão no dossiê, mas o arquivo não está no armazenamento: `}
+                  não dá para enviar o que não existe. Anexe de novo na aba Anexos do negócio.
                 </p>
               )}
               {docs.length === 0 ? (
                 <p className="text-xs text-muted-foreground italic">
-                  Nenhum documento vigente neste negócio. Anexe na aba de documentos antes de enviar.
+                  Nenhum documento vigente neste negócio. Anexe na aba Anexos do negócio antes de enviar.
                 </p>
               ) : (
                 <div
@@ -338,7 +388,9 @@ export default function DeveloperSubmissionDialog({
                   aria-labelledby={`${campo}-docs`}
                   className="space-y-1 rounded-md border border-border/50 p-2"
                 >
-                  {docs.map((d) => (
+                  {docs.map((d) => {
+                    const ausente = semArquivo?.has(d.storage_path) === true;
+                    return (
                     // O Checkbox do Radix é um `<button role="checkbox">` sem
                     // texto próprio: envolvê-lo num `<label>` NÃO lhe dá nome
                     // acessível. Sem `id`/`htmlFor` o leitor de tela anunciava
@@ -347,17 +399,24 @@ export default function DeveloperSubmissionDialog({
                       <Checkbox
                         id={`${campo}-doc-${d.id}`}
                         checked={selected.has(d.id)}
+                        // Marcar o que não existe só transformaria a falta num
+                        // envio "Falhou" com o motivo cru do Storage.
+                        disabled={ausente}
                         onCheckedChange={() => toggle(d.id)}
                       />
                       <Label
                         htmlFor={`${campo}-doc-${d.id}`}
-                        className="flex min-w-0 items-center gap-2 text-xs font-normal cursor-pointer"
+                        className={`flex min-w-0 items-center gap-2 text-xs font-normal ${
+                          ausente ? "text-destructive" : "cursor-pointer"
+                        }`}
                       >
                         <span className="truncate">{d.stored_name}</span>
-                        <span className="text-muted-foreground">v{d.version}</span>
+                        <span className={ausente ? "" : "text-muted-foreground"}>v{d.version}</span>
+                        {ausente && <span className="shrink-0 font-semibold">· arquivo ausente</span>}
                       </Label>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -382,7 +441,14 @@ export default function DeveloperSubmissionDialog({
                           {SUBMISSION_STATUS_LABEL[h.status]}
                         </Badge>
                         {h.to_email} · {h.document_ids.length} doc(s) · {formatDate(h.created_at)}
-                        {h.last_error && <span className="text-destructive"> · {h.last_error}</span>}
+                        {/* Texto do provedor (Brevo, Storage): em inglês e com
+                            vocabulário de API. Sem o rótulo, o analista lia a
+                            string crua sem saber de quem era. */}
+                        {h.last_error && (
+                          <span className="text-destructive" title={h.last_error}>
+                            {" "}· Motivo do provedor: {h.last_error.slice(0, 140)}
+                          </span>
+                        )}
                       </span>
                       <span className="flex items-center gap-1 shrink-0">
                         {h.status === "failed" && (
@@ -409,7 +475,14 @@ export default function DeveloperSubmissionDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Fechar</Button>
-          <Button onClick={submit} disabled={loading || sending || docs.length === 0} className="gap-2">
+          {/* Dossiê em que TODO documento perdeu o arquivo não tem uma caixa
+              sequer clicável: o botão habilitado só levaria a um toast pedindo
+              o que a tela não oferece. */}
+          <Button
+            onClick={submit}
+            disabled={loading || sending || docs.length === 0 || ausentes === docs.length}
+            className="gap-2"
+          >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Enfileirar envio
           </Button>

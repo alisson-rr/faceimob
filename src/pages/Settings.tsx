@@ -90,7 +90,9 @@ type MeuAcesso = {
  */
 export default function Settings() {
   const { toast } = useToast();
-  const { user, profile, roles, perfilFalhou, refreshProfile } = useAuth();
+  // `realRoles`: esta tela mostra QUEM VOCÊ É. Com os papéis efetivos, um admin
+  // em prévia leria o próprio cadastro dizendo que ele é corretor.
+  const { user, profile, realRoles: roles, perfilFalhou, refreshProfile } = useAuth();
 
   // ── perfil ────────────────────────────────────────────────────────────────
   const [name, setName] = useState('');

@@ -57,7 +57,11 @@ const AVISO_ENVIO =
  * nao recebia nada ficava esperando uma mensagem que nunca sairia.
  */
 const AVISO_TEMPLATE =
-  "O envio de e-mail deste projeto ainda não está configurado (Authentication → Emails → SMTP Settings) e o modelo de código não foi publicado (Authentication → Emails → Magic Link). Enquanto isso, a mensagem pode não chegar; se chegar, vem como link de acesso em vez de código — clicar no link também entra.";
+  "O envio de e-mail deste projeto ainda não está configurado (Authentication → Emails → SMTP Settings): a mensagem pode demorar ou não chegar para quem está fora da equipe do projeto. Se não chegar em alguns minutos, confira o spam ou entre com a senha.";
+
+/** O que a pessoa realmente recebe hoje: um link, não seis dígitos. */
+const AVISO_LINK =
+  "Abra a mensagem e clique no botão de entrar — o link já autentica e vale por 1 hora. Só use o campo de código se a sua mensagem trouxer seis dígitos.";
 
 /**
  * Falha de rede não é recusa de credencial.
@@ -73,12 +77,26 @@ const AVISO_RATE = "Muitas tentativas seguidas. Espere um minuto e tente de novo
 
 type Mode = "password" | "otp";
 
+/**
+ * POR QUE O CÓDIGO SAIU DA FRENTE.
+ *
+ * `signInWithOtp` manda o que o TEMPLATE do projeto disser. Sem o template
+ * `supabase/templates/magic_link.html` publicado — e ele não está —, o GoTrue
+ * envia o modelo padrão: um LINK. A tela pedia seis dígitos e prometia seis
+ * dígitos, então quem abria o e-mail achava que o envio tinha falhado.
+ *
+ * Agora o caminho principal é o que existe de verdade (clicar no link) e o
+ * campo de código continua ali, atrás de um botão, para o dia em que o template
+ * for publicado — apagá-lo trocaria um defeito por outro.
+ */
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme } = useTheme();
   const isLight = theme === "light";
   const [mode, setMode] = useState<Mode>("password");
+  const [mostrarCodigo, setMostrarCodigo] = useState(false);
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -156,7 +174,7 @@ export default function Login() {
     setFormError(null);
     const target = email.trim().toLowerCase();
     if (!target) {
-      return toast({ title: "Informe seu e-mail", description: "Digite o e-mail cadastrado para receber o código.", variant: "destructive" });
+      return toast({ title: "Informe seu e-mail", description: "Digite o e-mail cadastrado para receber o link de acesso.", variant: "destructive" });
     }
 
     setLoading(true);
@@ -240,12 +258,17 @@ export default function Login() {
   const backToEmail = () => {
     setStep("email");
     setCode("");
+    // Sem isto, quem revelou o campo de código, voltou e pediu outro envio
+    // reencontrava a tela pedindo seis dígitos — a mesma promessa que o e-mail
+    // não cumpre.
+    setMostrarCodigo(false);
   };
 
   const switchTo = (next: Mode) => {
     setMode(next);
     setStep("email");
     setCode("");
+    setMostrarCodigo(false);
     setPassword("");
     setFormError(null);
     setShowHelp(false);
@@ -303,7 +326,7 @@ export default function Login() {
                 {mode === "password"
                   ? "Use o e-mail e a senha cadastrados."
                   : step === "email"
-                    ? "Informe o e-mail cadastrado para receber o acesso."
+                    ? "Informe o e-mail cadastrado para receber o link de acesso."
                     : `Confira a mensagem que enviamos para ${email}`}
               </CardDescription>
             </CardHeader>
@@ -374,7 +397,7 @@ export default function Login() {
                         className="w-full"
                         onClick={() => switchTo("otp")}
                       >
-                        <KeyRound className="h-4 w-4" aria-hidden /> Entrar por código no e-mail
+                        <Mail className="h-4 w-4" aria-hidden /> Entrar por link no e-mail
                       </Button>
                     </div>
                   )}
@@ -396,37 +419,53 @@ export default function Login() {
                     />
                   </div>
                   <Button type="submit" size="lg" className="w-full" disabled={loading}>
-                    {loading ? "Enviando…" : "Enviar código"}
+                    {loading ? "Enviando…" : "Enviar link de acesso"}
                   </Button>
                 </form>
               )}
 
               {mode === "otp" && step === "code" && (
                 <form onSubmit={verifyCode} className="space-y-3" noValidate>
-                  <div className="relative">
-                    <KeyRound className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" aria-hidden />
-                    <Input
-                      ref={codeInputRef}
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={CODE_LENGTH}
-                      placeholder="000000"
-                      aria-label="Código de acesso"
-                      className="pl-10 text-center text-lg tracking-[0.4em]"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                    />
-                  </div>
-                  {/* O limite real do envio, escrito onde a pessoa espera o
-                      código — sem isto a tela pede seis dígitos que o servidor
-                      ainda não manda. */}
+                  {/* O que a pessoa vai encontrar no e-mail, primeiro. */}
+                  <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm leading-relaxed">
+                    {AVISO_LINK}
+                  </p>
                   <p className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
                     {AVISO_TEMPLATE}
                   </p>
-                  <Button type="submit" size="lg" className="w-full" disabled={loading || code.length !== CODE_LENGTH}>
-                    {loading ? "Verificando…" : "Entrar"}
-                  </Button>
+
+                  {mostrarCodigo ? (
+                    <>
+                      <div className="relative">
+                        <KeyRound className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" aria-hidden />
+                        <Input
+                          ref={codeInputRef}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          maxLength={CODE_LENGTH}
+                          placeholder="000000"
+                          aria-label="Código de acesso"
+                          className="pl-10 text-center text-lg tracking-[0.4em]"
+                          value={code}
+                          onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                        />
+                      </div>
+                      <Button type="submit" size="lg" className="w-full" disabled={loading || code.length !== CODE_LENGTH}>
+                        {loading ? "Verificando…" : "Entrar"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      className="w-full"
+                      onClick={() => setMostrarCodigo(true)}
+                    >
+                      <KeyRound className="h-4 w-4" aria-hidden /> Recebi um código de 6 dígitos
+                    </Button>
+                  )}
                   <div className="flex items-center justify-between text-sm">
                     <button
                       type="button"
@@ -441,7 +480,7 @@ export default function Login() {
                       disabled={cooldown > 0 || loading}
                       className="rounded-full px-1 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                     >
-                      {cooldown > 0 ? `Reenviar em ${cooldown}s` : "Reenviar código"}
+                      {cooldown > 0 ? `Reenviar em ${cooldown}s` : "Reenviar"}
                     </button>
                   </div>
                 </form>
@@ -463,7 +502,7 @@ export default function Login() {
               >
                 {mode === "password" ? (
                   <>
-                    <KeyRound className="h-4 w-4" aria-hidden /> Receber código por e-mail
+                    <Mail className="h-4 w-4" aria-hidden /> Receber link de acesso por e-mail
                   </>
                 ) : (
                   <>

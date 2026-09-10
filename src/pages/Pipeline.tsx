@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
 import { dbError } from "@/lib/supabaseError";
+import { toast } from "@/hooks/use-toast";
 import { closableMonths, compareMonth, currentMonthBase } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader, StatusBadge } from "@/components/shared";
@@ -15,11 +16,11 @@ import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
 import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
-  CheckinQueueBar, CloseMonthDialog, DealFilters, DealsBoard, DealsToolbar,
+  CloseMonthDialog, DealFilters, DealsBoard, DealsToolbar,
   EMPTY_FILTERS, LoseDealDialog, PipelineAnalytics, ReopenDealDialog, ReopenMonthDialog,
   ScheduleVisitDialog,
   applyDealFilters, canWriteDeals, dealMonth, dealRangeError, dealRequiredError,
-  downloadDealsCsv, findDuplicateDeal, hasActiveFilter, sortDeals,
+  baixarPlanilhaDeNegocios, findDuplicateDeal, hasActiveFilter, sortDeals,
   useClosedMonths, useDeals, useDevelopers, useInvalidateDeals, usePipelineRealtime,
   useOpenSeason, usePeople, usePipelineStages, useStagePermissions,
   type DealFilterState,
@@ -46,7 +47,7 @@ type EditorState = { deal: LegacyDealRecord | null } | null;
  * quebraria o agrupamento.
  */
 export default function Pipeline() {
-  const { user, isAdmin, roles } = useAuth();
+  const { user, isAdmin, roles, can } = useAuth();
 
   // Espelha o `with check` de `deals_insert`. O sócio (e, desde a 0053, o SDR e
   // o marketing) tem `menu.pipeline` e enxerga os negócios, mas o banco recusa a
@@ -56,7 +57,20 @@ export default function Pipeline() {
   // perfil carrega 'broker' desde o cadastro — daí o papel EFETIVO.
   const canWrite = isAdmin || canWriteDeals(roles);
 
+  /**
+   * Extrair a planilha é ato de quem responde pelo número, não de quem trabalha
+   * nele: ela sai com VGV, percentual e VGV POR CORRETOR do recorte inteiro —
+   * a folha de comissão da operação num arquivo que anda por WhatsApp. Pedido
+   * do cliente em 05/09/2026: só administrador e sócio.
+   *
+   * A trava é a matriz (`pipeline.export`, migration 0092), e não uma lista de
+   * papéis no código: quem administra permissões já tem onde mudar isso, e
+   * `can()` curto-circuita em admin igual ao `has_permission()` do banco.
+   */
+  const podeExtrair = can("pipeline.export");
+
   const [tab, setTab] = useState<"deals" | "leads">("deals");
+  const [extraindo, setExtraindo] = useState(false);
   const [filters, setFilters] = useState<DealFilterState>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
@@ -116,6 +130,28 @@ export default function Pipeline() {
 
   const visible = useMemo(() => sortDeals(applyDealFilters(deals, filters)), [deals, filters]);
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
+
+  /**
+   * O download é assíncrono (a biblioteca do `.xlsx` só é buscada no clique) e
+   * pode falhar — rede caída no meio do `import()`, memória em recorte grande.
+   * Sem este `catch` o clique simplesmente não fazia nada e o erro morria no
+   * console: quem exporta ficaria esperando um arquivo que nunca vem.
+   */
+  const extrair = useCallback(async () => {
+    setExtraindo(true);
+    try {
+      await baixarPlanilhaDeNegocios(visible);
+    } catch (erro) {
+      toast({
+        variant: "destructive",
+        title: "Não consegui gerar a planilha",
+        description: erro instanceof Error ? erro.message : "Tente de novo em instantes.",
+      });
+    } finally {
+      setExtraindo(false);
+    }
+  }, [visible]);
+
   const pendingReviews = deals.filter((deal) => deal.document_review_status === "pending").length;
   // `visible`, e não `deals`: a contagem ao lado, na mesma frase, é filtrada —
   // ler "3 negócio(s) ativo(s) · R$ 12 mi em VGV" com o VGV da base inteira
@@ -147,7 +183,7 @@ export default function Pipeline() {
     setFilters((previous) => ({ ...previous, ...patch }));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PipelineTopRanking deals={deals} />
 
       <PageHeader
@@ -174,9 +210,16 @@ export default function Pipeline() {
               ) : (
                 <StatusBadge tone="neutral">Somente leitura</StatusBadge>
               )}
-              <Button variant="outline" size="sm" disabled={visible.length === 0} onClick={() => downloadDealsCsv(visible)}>
-                <Download className="mr-1 h-4 w-4" /> Extrair CSV
-              </Button>
+              {podeExtrair && (
+                <Button
+                  variant="outline" size="sm"
+                  disabled={visible.length === 0 || extraindo}
+                  onClick={() => void extrair()}
+                >
+                  <Download className="mr-1 h-4 w-4" />
+                  {extraindo ? "Gerando…" : "Extrair planilha"}
+                </Button>
+              )}
               {isAdmin && (
                 <Button
                   variant="highlight" size="sm"
@@ -234,7 +277,6 @@ export default function Pipeline() {
         ))}
       </div>
 
-      <CheckinQueueBar />
 
       {tab === "deals" ? (
         <div className="flex flex-col gap-4 lg:flex-row">

@@ -15,19 +15,21 @@ import { cn } from "@/lib/utils";
 import CampaignPerformancePanel from "@/components/CampaignPerformancePanel";
 import {
   AD_PLATFORM_LABEL,
+  adStatusLabel,
   campaignStats,
   costPerLead,
   cplTone,
   developerSummary,
   listAdCampaigns,
   monthOverMonth,
+  origemDoGasto,
   previousMonth,
   roas,
   roasLabel,
   type AdPlatform,
   type DeveloperSummaryRow,
 } from "@/integrations/supabase/analytics";
-import { brl, date, monthStart, num } from "@/lib/format";
+import { brl, monthStart, num } from "@/lib/format";
 import { permissionForPath } from "@/lib/routePermissions";
 import { dbError, describeError } from "@/lib/supabaseError";
 
@@ -52,6 +54,10 @@ type CampaignRow = {
   developer: string;
   spend: number;
   dailyBudget: number | null;
+  lifetimeBudget: number | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  leadSourceId: string | null;
   syncedAt: string | null;
   leads: number;
   conversions: number;
@@ -60,11 +66,9 @@ type CampaignRow = {
 };
 
 type DeveloperOption = { id: string; name: string; active: boolean };
+type LeadSourceOption = { id: string; label: string; active: boolean };
 
 const channelIcon = (c: string) => (c === "Meta" ? Facebook : c === "Google" ? Globe : Megaphone);
-
-const statusLabel = (s: string | null) =>
-  !s ? "—" : /^active$/i.test(s) ? "Ativa" : /^paused$/i.test(s) ? "Pausada" : s;
 
 const statusColor: Record<string, string> = {
   Ativa: "bg-success/20 text-success border-success/30",
@@ -103,17 +107,23 @@ const monthLabel = (period: string) => `${MESES[Number(period.slice(5, 7)) - 1]}
 async function loadCampaigns(): Promise<{
   rows: CampaignRow[];
   developers: DeveloperOption[];
+  leadSources: LeadSourceOption[];
   orphanLeads: number;
   orphanIds: string[];
 }> {
-  const [campaigns, devsRes, stats] = await Promise.all([
+  const [campaigns, devsRes, sourcesRes, stats] = await Promise.all([
     listAdCampaigns(),
     supabase.from("developers").select("id,name,active").order("name"),
+    // Ativas E inativas, como as construtoras: o vínculo antigo com origem
+    // desativada precisa continuar aparecendo no gatilho do formulário.
+    supabase.from("lead_sources").select("id,label,active").order("label"),
     campaignStats(),
   ]);
   if (devsRes.error) throw dbError("developers", devsRes.error);
+  if (sourcesRes.error) throw dbError("lead_sources", sourcesRes.error);
 
   const developers = (devsRes.data ?? []) as DeveloperOption[];
+  const leadSources = (sourcesRes.data ?? []) as LeadSourceOption[];
   const devName = new Map(developers.map((d) => [d.id, d.name]));
   const byCampaign = new Map(stats.map((row) => [row.campaign_id, row]));
 
@@ -126,12 +136,16 @@ async function loadCampaigns(): Promise<{
       name: c.name,
       platform,
       channel: AD_PLATFORM_LABEL[platform] ?? c.platform,
-      status: statusLabel(c.status),
+      status: adStatusLabel(c.status),
       rawStatus: c.status,
       developerId: c.developer_id,
       developer: c.developer_id ? devName.get(c.developer_id) ?? "—" : "—",
       spend: Number(c.total_spend ?? 0),
       dailyBudget: c.daily_budget === null || c.daily_budget === undefined ? null : Number(c.daily_budget),
+      lifetimeBudget: c.lifetime_budget === null || c.lifetime_budget === undefined ? null : Number(c.lifetime_budget),
+      startsOn: c.starts_on ?? null,
+      endsOn: c.ends_on ?? null,
+      leadSourceId: c.lead_source_id ?? null,
       syncedAt: c.synced_at,
       leads: s?.leads ?? 0,
       conversions: s?.conversions ?? 0,
@@ -145,6 +159,7 @@ async function loadCampaigns(): Promise<{
   return {
     rows,
     developers,
+    leadSources,
     orphanLeads: orfas.reduce((total, s) => total + s.leads, 0),
     orphanIds: orfas.map((s) => s.campaign_id),
   };
@@ -171,6 +186,7 @@ export default function Marketing() {
   });
   const campaigns = useMemo(() => data?.rows ?? [], [data]);
   const developers = useMemo(() => data?.developers ?? [], [data]);
+  const leadSources = useMemo(() => data?.leadSources ?? [], [data]);
   const orphanLeads = data?.orphanLeads ?? 0;
   const orphanIds = data?.orphanIds ?? [];
 
@@ -284,6 +300,7 @@ export default function Marketing() {
             rows={filtered}
             total={campaigns.length}
             developers={developers}
+            leadSources={leadSources}
             loading={isLoading}
             error={isError ? describeError(error, TENTE_DE_NOVO) : null}
             onReload={() => void refetch()}
@@ -444,10 +461,13 @@ export default function Marketing() {
                               <td className="p-3">{c.developer}</td>
                               <td className="p-3 text-center">
                                 <Badge variant="outline" className={statusColor[c.status] || "text-muted-foreground"}>{c.status}</Badge>
-                                {/* Mesma marca do painel para o gasto: sem ela a
-                                    etiqueta passava por estado real da campanha. */}
+                                {/* A MESMA frase do painel acima, de `origemDoGasto`:
+                                    escrita nos dois lugares ela divergiu, e esta
+                                    dizia "sincronizado 28/07/2026" para a linha que
+                                    o painel dava como digitada — sincronia que este
+                                    sistema não tem, no número que divide o CPL. */}
                                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                                  {c.syncedAt ? `sincronizado ${date(c.syncedAt)}` : "digitado"}
+                                  {origemDoGasto(c.syncedAt)}
                                 </span>
                               </td>
                               <td className="p-3 text-right font-semibold">{brl(c.spend)}</td>

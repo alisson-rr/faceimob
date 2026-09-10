@@ -243,18 +243,84 @@ test.describe("corretor · documentos do negócio", () => {
     const esperado = `comprovante-resid-docs-${negocio.tag}.pdf`;
     await expect(baixarBotoes(page)).toHaveCount(1);
 
-    const [assinatura] = await Promise.all([
-      page.waitForResponse((r) => r.url().includes("/storage/v1/object/sign/deal-documents/")),
+    // A URL que a ABA abre, não a que o teste sabe montar. A resposta do
+    // `POST /object/sign` traz só o token: o `?download=` que dá o nome ao
+    // arquivo salvo é acrescentado pelo `createSignedUrl({ download })` do
+    // cliente, e a versão anterior deste teste remontava o endereço à mão —
+    // conferia o próprio palpite, e teria passado com a opção `download`
+    // apagada do código.
+    // No contexto, não na aba: a aba nasce em branco no clique e só recebe o
+    // endereço quando a assinatura volta — esperar por ela primeiro deixaria uma
+    // janela para a navegação escapar. `GET` distingue a navegação do POST que
+    // assina, que casa o mesmo prefixo de URL.
+    const [alvo] = await Promise.all([
+      page.context().waitForEvent("request", (r) =>
+        r.method() === "GET" && r.url().includes("/storage/v1/object/sign/deal-documents/"),
+      ),
       page.getByRole("button", { name: `Baixar ${esperado}` }).click(),
     ]);
-    expect(assinatura.ok()).toBe(true);
+    expect(alvo.url()).toContain(`download=${encodeURIComponent(esperado)}`);
 
     // Assinar sem servir seria um botão que só parece funcionar: o link tem de
-    // devolver o mesmo byte que subiu.
-    const { signedURL } = (await assinatura.json()) as { signedURL: string };
-    const baixado = await page.request.get(`${urlSupabase()}/storage/v1${signedURL}`);
+    // devolver o mesmo byte que subiu — e com o nome que a tela mostrou. O byte
+    // certo com o nome errado ainda é um download quebrado: quem recebe salva
+    // `conta-de-luz.pdf`, ou pior, o UUID do caminho.
+    const baixado = await page.request.get(alvo.url());
     expect(baixado.ok()).toBe(true);
     expect(await baixado.text()).toBe(conteudo);
+    expect(baixado.headers()["content-disposition"]).toContain(`filename=${esperado}`);
+    expect(baixado.headers()["content-type"]).toBe("application/pdf");
+  });
+
+  /**
+   * Registro sem arquivo — o buraco que o inventário achou na homologação (75
+   * linhas de `deal_documents` apontando para objeto que nunca subiu).
+   *
+   * Consertar o dado não fecha o caso: o objeto pode sumir de novo (exclusão por
+   * fora, rollback de upload que falhou, seed novo). O que não pode voltar é o
+   * botão "Baixar" prometendo um arquivo que a assinatura vai recusar depois do
+   * clique — a tela precisa dizer o estado e oferecer o reenvio.
+   */
+  test("documento sem arquivo no bucket mostra a falta e oferece reenviar", async ({ page }) => {
+    await abrirAnexos(page);
+
+    await campoDeArquivo(page, "RG / CPF").setInputFiles(arquivo("rg.pdf", "documento"));
+    await expect(baixarBotoes(page)).toHaveCount(1);
+    const [doc] = await documentosDoNegocio(negocio.dealId);
+
+    // O arquivo some por fora; a linha continua. É o estado exato da homologação.
+    await apagarDoBucket("deal-documents", doc.storage_path);
+    expect(await existeNoBucket(doc.storage_path)).toBe(false);
+
+    await abrirAnexos(page);
+
+    // `toHaveCount(1)` e não `.first()`: o cenário tem UM documento, e `.first()`
+    // desligaria o modo estrito justamente na asserção central — a linha
+    // renderizada em duplicata passaria despercebida.
+    await expect(page.getByText("· arquivo ausente")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: `Baixar ${doc.stored_name}` })).toHaveCount(0);
+    // A ação certa é reenviar, não tentar de novo o download que não funciona.
+    const reenviar = page.getByRole("button", { name: `Reenviar ${doc.stored_name}` });
+    await expect(reenviar).toBeVisible();
+
+    // E o obrigatório volta a contar como faltante: um dossiê com registro vazio
+    // não pode dizer "Obrigatórios completos" nem liberar o envio ao gerente —
+    // o analista baixaria o nada do outro lado da esteira.
+    await expect(page.getByText(/faltam 3 obrigatórios/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /enviar ao gerente/i })).toBeDisabled();
+
+    // Reenviar abre o MESMO seletor do tipo, e o arquivo novo cura a linha.
+    const [seletor] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      reenviar.click(),
+    ]);
+    await seletor.setFiles(arquivo("rg-de-novo.pdf", "documento de novo"));
+
+    await expect(baixarBotoes(page)).toHaveCount(1);
+    await expect(page.getByText("· arquivo ausente")).toHaveCount(0);
+    const vigentes = (await documentosDoNegocio(negocio.dealId)).filter((d) => !d.superseded_at);
+    expect(vigentes).toHaveLength(1);
+    expect(await existeNoBucket(vigentes[0].storage_path)).toBe(true);
   });
 
   // O placeholder precisa usar o identificador humano exibido pela operação;

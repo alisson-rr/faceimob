@@ -7,12 +7,22 @@ import {
   enforcementOf,
 } from "./featurePermissions";
 
-/** Os 12 códigos fora de `menu.*` do catálogo (0044, reafirmados pelo seed). */
+/**
+ * Os códigos fora de `menu.*` do catálogo (0044, reafirmados pelo seed), mais
+ * os que migrations posteriores acrescentaram.
+ *
+ * Lista fixa de propósito: é ela que obriga quem cria uma permissão nova a
+ * passar por aqui e dizer QUEM lê o código. Foi assim que `pipeline.export`
+ * (migration 0092) foi pega — ela nasceu, apareceu na tela de Permissões com o
+ * selo "Ainda sem efeito", e o `e2e/admin/permissoes.spec.ts` contou 4 códigos
+ * inertes onde deviam existir 3.
+ */
 const CATALOGO = [
   "leads.view_queue", "leads.reassign", "leads.delete",
   "deals.view_all", "deals.edit_value", "deals.delete",
   "cca.review", "reports.view_finance", "teams.manage",
   "users.manage_roles", "settings.integrations", "game.close_season",
+  "pipeline.export",
 ];
 
 /** Os 3 sem leitor: continuam no catálogo, mas a tela não pode prometer efeito. */

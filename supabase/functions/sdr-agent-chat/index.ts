@@ -2,7 +2,7 @@
 // A lógica do turno (histórico, OpenAI, persistência, tag de qualificação) é a
 // mesma do webhook de WhatsApp: vive em ../_shared/sdrAgent.ts.
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { ConversationClosedError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
+import { ConversationClosedError, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
 import { requireUserPermission, serviceClient } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
 
@@ -132,11 +132,21 @@ Deno.serve(async (req) => {
     const apiKey = await getSecret('OPENAI_API_KEY');
     // Sem a chave da OpenAI nada responde. 503 com `code` distinto para a tela
     // dizer o que falta em vez de mostrar um erro genérico de servidor.
+    //
+    // O texto é renderizado LITERALMENTE na bolha de erro do Playground, então
+    // fala a língua da tela: o rótulo é o do card em Admin · Integrações
+    // (`src/lib/integrationCatalog.ts`), não `provider · label` do cofre, e o
+    // secret da function — caminho de deploy, que nenhum usuário do CRM
+    // alcança — fica no rastro de servidor, não no corpo da resposta.
     if (!apiKey) {
+      console.error(
+        'sdr-agent-chat: OPENAI_API_KEY ausente — cadastre em private.integration_credentials '
+          + "(provider 'openai', label 'api_key') ou no secret OPENAI_API_KEY da function.",
+      );
       return json({
         code: 'missing_credential',
-        error: 'A IA ainda não está configurada: falta a chave da OpenAI. '
-          + 'Cadastre em Admin · Integrações (OpenAI · api_key) ou no secret OPENAI_API_KEY da function.',
+        error: 'A IA de SDR ainda não está configurada: falta a chave da OpenAI no cofre. '
+          + 'Cadastre em Admin · Integrações, no card “OpenAI — chave de API”.',
       }, 503);
     }
 
@@ -176,6 +186,11 @@ Deno.serve(async (req) => {
   } catch (e) {
     if (e instanceof ConversationClosedError) {
       return json({ code: 'conversation_closed', error: e.message }, 409);
+    }
+    // Agente desligado no meio da conversa: recusa esperada, não falha do
+    // servidor — o operador é quem desmarcou "Ativo".
+    if (e instanceof InactiveAgentError) {
+      return json({ code: 'agent_inactive', error: e.message }, 409);
     }
     console.error('sdr-agent-chat error:', e instanceof Error ? e.message : e);
     return json({ error: e instanceof Error ? e.message : 'unknown' }, 500);

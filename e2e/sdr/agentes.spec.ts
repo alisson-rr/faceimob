@@ -413,6 +413,105 @@ test.describe("SDR · playground", () => {
 });
 
 /**
+ * Honestidade de tela quando o cofre não tem a chave da OpenAI.
+ *
+ * Medido em 05/09/2026: `private.integration_credentials` não tem linha do
+ * provider `openai`, então TODO turno do agente termina em 503 — e a tela só
+ * revelava isso DEPOIS de o operador digitar e enviar no Playground, enquanto o
+ * switch "Ativo" da aba Agentes seguia sugerindo que o agente estava
+ * trabalhando. O sinal antecipado vem de `sdr-agent-chat` com
+ * `action: "status"`, que devolve só o booleano — nunca o valor da chave.
+ *
+ * O aviso é testado com a resposta FORÇADA a `configured: false`: o que se
+ * prova aqui é a tela, e ela precisa dizer a verdade independentemente de
+ * alguém cadastrar a credencial na homologação amanhã. O lado do servidor é
+ * cobrado logo abaixo, contra a function de verdade.
+ */
+test.describe("SDR · sem a chave da OpenAI", () => {
+  const semCredencial = (page: import("@playwright/test").Page) =>
+    page.route("**/functions/v1/sdr-agent-chat", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ configured: false }),
+      }));
+
+  test("o módulo avisa o que falta, onde cadastrar e o efeito na operação", async ({ page }) => {
+    await semCredencial(page);
+    await page.goto("/sdr");
+    await aguardarCarregamento(page);
+
+    await expect(page.getByText(/falta a chave da OpenAI no cofre/i)).toBeVisible();
+    // O caminho do conserto tem de ser executável POR QUEM LÊ. `sdr` não tem
+    // `menu.admin_integrations` (nenhum papel tem: só admin, pelo `is_admin()`),
+    // então mandá-lo "cadastrar em Admin · Integrações" seria um aviso que
+    // termina em "Acesso não liberado" — instrução que só o administrador pode
+    // executar é endereçada ao administrador.
+    await expect(page.getByText(/Peça a um administrador para cadastrar a chave da OpenAI/i)).toBeVisible();
+    await expect(page.getByText(/Cadastre em Admin · Integrações/i)).toHaveCount(0);
+    // E a consequência: o lead não some, ele fica esperando.
+    await expect(page.getByText(/fica esperando na conversa/i)).toBeVisible();
+  });
+
+  test("o switch “Ativo” não promete um agente que não responde", async ({ page }) => {
+    const nome = `Sem chave ${tag}`;
+    await db.insert("sdr_agents", { name: nome, role: "qualifier", active: true });
+
+    await semCredencial(page);
+    await page.goto("/sdr");
+    await aguardarCarregamento(page);
+
+    const painel = page.getByRole("tabpanel");
+    await painel.getByText(nome, { exact: true }).click();
+    // O aviso mora ao lado do controle que mente, não numa aba distante.
+    await expect(painel.getByText(/não faz este agente responder/i)).toBeVisible();
+    // Cadastrar agente continua valendo sem a chave: nada é bloqueado.
+    await expect(painel.getByRole("button", { name: /^salvar$/i })).toBeEnabled();
+  });
+
+  test("o Playground avisa antes de o operador digitar", async ({ page }) => {
+    await semCredencial(page);
+    await page.goto("/sdr");
+    await aguardarCarregamento(page);
+    await page.getByRole("tab", { name: /playground/i }).click();
+
+    const painel = page.getByRole("tabpanel");
+    await expect(painel.getByText(/a simulação vai falhar/i)).toBeVisible();
+    // Mesmo conserto, mesmo endereço do banner: nada manda o SDR para uma tela
+    // que vai negar o acesso.
+    await expect(painel.getByText(/Peça a um administrador/i)).toBeVisible();
+    // O campo segue aberto de propósito: a chave pode ter sido cadastrada há um
+    // instante noutra aba. O que não pode é simular sem saber.
+    await expect(painel.getByPlaceholder(/Simule o lead/)).toBeEnabled();
+  });
+
+  /**
+   * A porta do servidor, sem navegador: `action: "status"` responde a quem tem
+   * `menu.sdr` — inclusive ao papel que SÓ consulta, que também precisa saber
+   * que a IA está parada — e devolve APENAS o veredito, nunca a credencial.
+   */
+  test("action=status devolve só o booleano, e para quem só consulta também", async () => {
+    for (const papel of ["sdr", "director"] as const) {
+      const sessao = await mintSession(userFor(papel).email);
+      const res = await fetch(`${alvoE2E.supabaseUrl}/functions/v1/sdr-agent-chat`, {
+        method: "POST",
+        headers: {
+          apikey: alvoE2E.anonKey,
+          Authorization: `Bearer ${sessao.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "status" }),
+      });
+      expect(res.status, `papel ${papel} precisa saber se a IA responde`).toBe(200);
+      const corpo = await res.json();
+      expect(typeof corpo.configured, `papel ${papel}`).toBe("boolean");
+      // Nenhum campo além do veredito: a chave não sai do cofre nem em pedaço.
+      expect(Object.keys(corpo)).toEqual(["configured"]);
+    }
+  });
+});
+
+/**
  * Estado de carregamento e de erro do módulo.
  *
  * As cinco consultas do SdrModule alimentam quatro abas cujo vazio é uma frase

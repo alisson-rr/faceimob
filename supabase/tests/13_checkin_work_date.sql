@@ -64,7 +64,26 @@ begin
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
         and p.proname = alvo
-        and pg_get_functiondef(p.oid) like '%current_date%'
+        -- `prokind = 'f'`: so funcao normal. `pg_get_functiondef` ESTOURA em
+        -- agregado ("array_agg is an aggregate function"), e o planejador e
+        -- livre para avaliar a expressao antes do filtro de nome — foi o que
+        -- aconteceu quando a expressao ficou mais cara que o `like` anterior.
+        and p.prokind = 'f'
+        -- COMENTARIO NAO E CODIGO. A 0066 documenta a propria correcao com a
+        -- frase "nunca current_date" DENTRO do corpo da funcao, e o `like` cru
+        -- casava esse comentario: o assert reprovava a funcao justamente por
+        -- ela explicar que faz a coisa certa. Tirar os comentarios de linha
+        -- antes de procurar mantem a protecao inteira — uma redefinicao que
+        -- reintroduza current_date DE VERDADE continua sendo pega — e remove o
+        -- falso positivo.
+        --
+        -- `chr(10)` em vez de escrever a quebra de linha na expressao: dentro
+        -- de uma classe de caracteres ela funciona, mas fica invisivel para
+        -- quem le. Dolar-quoting no segundo padrao para `\m`/`\M` (bordas de
+        -- palavra do Postgres) chegarem crus ao motor.
+        and regexp_replace(
+              pg_get_functiondef(p.oid), '--[^' || chr(10) || ']*', '', 'g'
+            ) ~ $re$\mcurrent_date\M$re$
     ) then
       reincidentes := reincidentes || alvo;
     end if;

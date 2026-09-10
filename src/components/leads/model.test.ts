@@ -395,6 +395,76 @@ describe("leadSearchFilter", () => {
 });
 
 /**
+ * As duas camadas da busca sobre o MESMO lead.
+ *
+ * `leadSearchFilter` monta a consulta e `matchesFilters` peneira o que voltou:
+ * um lead só aparece quando as duas concordam. Cobrir uma sem a outra deixa
+ * passar exatamente o defeito que o E2E `importar-planilha` pega — o banco
+ * devolve a linha e a tela diz "Nenhum lead com esses filtros".
+ *
+ * O lead é o do teste de ponta a ponta: telefone de 11 dígitos que o banco
+ * grava com DDI (`normalize_phone` → "5511123456789") e e-mail com pontos e
+ * subdomínio, que é o formato de e-mail corporativo brasileiro.
+ */
+describe("busca por telefone e e-mail, nas duas camadas", () => {
+  const criado = lead({
+    id: "e2e",
+    full_name: "Lead manual e2e",
+    name: "Lead manual e2e",
+    phone: "5511123456789",
+    email: "manual.e2e-abc123@exemplo.com.br",
+  });
+  const busca = (search: string) => matchesFilters(criado, { ...emptyLeadFilters, search });
+
+  it("telefone com máscara, com DDD e só os dígitos finais chegam ao banco e passam na tela", () => {
+    // Máscara: o formato que o corretor tem na mão. Sem DDD e só os 8 finais:
+    // como a pessoa se lembra do número quando não olha a agenda. O par
+    // termo→dígitos é fixado: só "tem uma cláusula de telefone" passaria mesmo
+    // se a regra comesse o DDD, porque o `includes` casa por substring.
+    const casos = {
+      "(11) 12345-6789": "11123456789",
+      "11 12345-6789": "11123456789",
+      "123456789": "123456789",
+      "23456789": "23456789",
+      // Telefone colado de uma conversa: o número está lá, com texto em volta.
+      "Tel: (11) 12345-6789": "11123456789",
+    };
+    for (const [termo, digitos] of Object.entries(casos)) {
+      expect(leadSearchFilter(termo), termo).toContain(`phone.ilike.*${digitos}*`);
+      expect(busca(termo), termo).toBe(true);
+    }
+    // Contraprova: outro número não pode casar.
+    expect(busca("(11) 90000-0000")).toBe(false);
+  });
+
+  it("e-mail inteiro, com pontos e subdomínio, acha o lead", () => {
+    const termo = "manual.e2e-abc123@exemplo.com.br";
+    expect(leadSearchFilter(termo)).toContain(`email.ilike.*${termo}*`);
+    expect(busca(termo)).toBe(true);
+  });
+
+  it("caractere de sintaxe no termo é limpo nas duas camadas", () => {
+    // A tela comparava o texto CRU e a consulta o texto limpo: o banco devolvia
+    // "Lead manual e2e" para "manual (e2e)" e a tela escondia a linha.
+    for (const termo of ["manual, e2e", "manual (e2e)", "manual  e2e"]) {
+      expect(leadSearchFilter(termo), termo).toContain("full_name.ilike.*manual e2e*");
+      expect(busca(termo), termo).toBe(true);
+    }
+  });
+
+  it("texto com dígitos não vira busca por telefone", () => {
+    // `phone.ilike.*8101*` sobre um e-mail trazia 12 leads de estranhos numa
+    // base de 74 (medido em homologação) e o filtro da tela os mantinha: quem
+    // procurava um cliente pelo e-mail recebia uma parede de gente sem relação.
+    const outro = lead({ id: "x", full_name: "Outro", name: "Outro", phone: "5511981012222" });
+    for (const termo of ["joao8101@gmail.com", "Turma 8101"]) {
+      expect(leadSearchFilter(termo), termo).not.toContain("phone.ilike");
+      expect(matchesFilters(outro, { ...emptyLeadFilters, search: termo }), termo).toBe(false);
+    }
+  });
+});
+
+/**
  * Bandeja "sem atendimento": o lead bateu o teto de voltas e a roleta parou de
  * oferecê-lo. Sem esta separação ele ficava em `queued`, misturado com os que
  * acabaram de chegar, e ninguém sabia que estava parado.

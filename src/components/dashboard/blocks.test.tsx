@@ -408,7 +408,7 @@ describe("DeveloperOverview e DeveloperRanking", () => {
     const { container, cleanup } = await render(
       <DeveloperOverview rows={[dev({ dev: "MRV", vendas: 2, propostas: 3, negocios: 5 })]} />,
     );
-    const tabela = container.querySelector("table.sr-only");
+    const tabela = container.querySelector(".sr-only table");
     expect(tabela?.querySelector("caption")?.textContent).toContain("por construtora");
     expect(tabela?.textContent).toContain("MRV");
     // O grafico em si nao e anunciado duas vezes.
@@ -428,7 +428,7 @@ describe("MonthlyTrend", () => {
         series={{ rows: [{ mes: "08", "2026": 7 }, { mes: "09", "2026": 0 }], years: ["2026"] }}
       />,
     );
-    const tabela = container.querySelector("table.sr-only");
+    const tabela = container.querySelector(".sr-only table");
     expect(tabela?.textContent).toContain("2026");
     expect(tabela?.textContent).toContain("ago");
     await cleanup();
@@ -564,7 +564,7 @@ describe("LeadsPanel", () => {
     );
     // A tabela `sr-only` é a série: uma linha por dia coberto, e o mês corrente
     // para HOJE — não segue até o dia 30 com zeros.
-    const linhas = container.querySelectorAll("table.sr-only tbody tr");
+    const linhas = container.querySelectorAll(".sr-only table tbody tr");
     expect(linhas.length).toBe(hoje.getDate());
     await cleanup();
 
@@ -577,7 +577,7 @@ describe("LeadsPanel", () => {
       <LeadsPanel month="all" />,
       semearLeads([lead("hoje", doDia(hoje.getDate())), lead("ano-passado", mesmoDiaAnoPassado)]),
     );
-    const ultima = Array.from(todos.container.querySelectorAll("table.sr-only tbody tr")).at(-1);
+    const ultima = Array.from(todos.container.querySelectorAll(".sr-only table tbody tr")).at(-1);
     expect(ultima?.querySelector("td")?.textContent).toBe("1");
     await todos.cleanup();
   });

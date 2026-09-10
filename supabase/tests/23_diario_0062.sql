@@ -76,8 +76,13 @@ begin
     ('60620000-0000-0000-0000-000000000001', cor)
   on conflict do nothing;
 
-  insert into public.team_members (team_id, profile_id, left_at) values
-    ('60620000-0000-0000-0000-000000000001', ex, now() - interval '3 days')
+  -- `joined_at` é obrigatório aqui: o default é `current_date` e a 0002 exige
+  -- `left_at >= joined_at`, então um egresso que saiu há 3 dias sem data de
+  -- entrada explícita significaria "saiu antes de entrar" e a fixture nem
+  -- gravava. Quem sai já estava na equipe antes.
+  insert into public.team_members (team_id, profile_id, joined_at, left_at) values
+    ('60620000-0000-0000-0000-000000000001', ex,
+     current_date - 60, current_date - 3)
   on conflict do nothing;
 
   -- Meta DA EQUIPE A: é ela que a tela do Diário tem que passar a cobrar, em
@@ -261,8 +266,13 @@ begin
 
   -- E o que a tela faz de verdade continua passando: "Renovar validade" é um
   -- PATCH em expires_at/locked_until/failed_attempts, e "Desativar" em active.
+  -- 120 e não 90: now() é o timestamp da TRANSAÇÃO, e este bloco inteiro é uma
+  -- transação só. Renovar para "now() + 90 dias" grava exatamente o mesmo
+  -- instante que create_public_link acabou de gravar, e o assert comparava um
+  -- valor com ele mesmo — nunca podia ser maior. Na tela cada clique é uma
+  -- transação nova, então lá o prazo anda; aqui é preciso pedir prazo maior.
   update public.public_links
-     set expires_at = now() + interval '90 days', locked_until = null, failed_attempts = 0
+     set expires_at = now() + interval '120 days', locked_until = null, failed_attempts = 0
    where id = v_id;
   perform pg_temp.check62(
     (select expires_at > v_ate from public.public_links where id = v_id),

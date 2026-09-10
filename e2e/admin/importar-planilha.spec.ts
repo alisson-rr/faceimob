@@ -450,7 +450,18 @@ test.describe("leads · cadastro manual do gestor", () => {
       await linhaNova.getByRole("button", { name: `Realocar ${renomeado}` }).click();
       const realocacao = page.getByRole("dialog").filter({ hasText: /realocar lead/i });
       await realocacao.getByLabel(/^corretor$/i).click();
-      await page.getByRole("option", { name: new RegExp(`^${corretor.full_name}`) }).click();
+      // O nome acessível da opção é "E2E Corretor — Equipe E2E Alfa": nome,
+      // travessão e equipe. Então nem `^nome` (casava "E2E Corretor Rival" e
+      // "E2E Corretor 3" também) nem `exact` (não casa nada, por causa do
+      // sufixo da equipe) servem — o que separa é exigir o FIM do nome: ou a
+      // opção acaba ali, ou vem o travessão da equipe.
+      //
+      // Apertar o seletor, e não relaxar para `.first()`: pegar o primeiro
+      // escolheria um corretor qualquer e o assert seguinte ("o lead vai para o
+      // corretor escolhido") passaria por acaso.
+      await page
+        .getByRole("option", { name: new RegExp(`^${corretor.full_name}( — |$)`) })
+        .click();
       await realocacao.getByRole("button", { name: /^realocar$/i }).click();
       await expect(page.getByText(/lead realocado/i)).toBeVisible();
 

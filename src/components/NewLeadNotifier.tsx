@@ -84,19 +84,50 @@ export default function NewLeadNotifier() {
   // Grupos de distribuição em que a equipe visível do gestor está inscrita.
   const meusGrupos = useRef<Set<string> | null>(null);
 
+  /**
+   * DIÁLOGO SÓ PARA O QUE TEM PRAZO.
+   *
+   * Os dois avisos tinham o mesmo peso: qualquer um abria um `Dialog` modal.
+   * Só que eles não são a mesma coisa.
+   *
+   *  · `assigned` — a roleta travou o lead com ESTE corretor e há um cronômetro
+   *    correndo até ele voltar para a fila. Interromper é o certo: há uma ação
+   *    ("Atender agora") que perde a validade sozinha.
+   *  · `queued` — entrou lead na fila. O diálogo oferecia "Depois" e "Abrir
+   *    leads", ou seja, nada que não coubesse num aviso.
+   *
+   * O custo do modal para o caso informativo é alto e foi medido: enquanto ele
+   * está aberto o Radix marca TODO o resto da página com `aria-hidden`, então
+   * quem usa leitor de tela perde a tela inteira por causa de um comunicado —
+   * e o Playwright, pelo mesmo motivo, para de achar qualquer papel ARIA. Foi
+   * assim que o teste de cadastro de lead quebrava de forma intermitente.
+   *
+   * Havia ainda o absurdo do dia a dia: o admin que acabava de digitar um lead
+   * pela tela recebia um modal anunciando a chegada do lead que ele mesmo
+   * cadastrou. `leads` não tem coluna de autor, então não dá para reconhecê-lo
+   * pela linha — mas com o aviso em toast o problema deixa de existir.
+   */
   const announce = useCallback((row: IncomingLead, nextKind: "assigned" | "queued") => {
     const key = `${nextKind}:${row.id}:${row.assigned_at || row.created_at || ""}`;
     if (notified.current.has(key)) return;
     notified.current.add(key);
 
-    setLead(row);
-    setKind(nextKind);
+    if (nextKind === "assigned") {
+      setLead(row);
+      setKind(nextKind);
+    }
     celebrate("lead_new");
     toast({
       title: nextKind === "assigned" ? "🔔 Lead atribuído a você!" : "🔔 Novo lead na fila",
       description: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
+      // O destino que o diálogo oferecia, sem o diálogo. Só quando a pessoa
+      // pode mesmo abrir a tela: `menu.leads` não é dado ao marketing, e o
+      // botão levava direto ao "Acesso não liberado" do guard de rota.
+      action: nextKind === "queued" && podeAbrirLeads
+        ? { label: "Abrir leads", onClick: () => navigate("/leads") }
+        : undefined,
     });
-  }, [celebrate]);
+  }, [celebrate, navigate, podeAbrirLeads]);
 
   /**
    * Carrega os grupos do gestor uma vez. `profiles` já é filtrada pelo RLS

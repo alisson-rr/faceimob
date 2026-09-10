@@ -166,3 +166,67 @@ describe("perfilFalhou", () => {
     await desmontar();
   });
 });
+
+/**
+ * A prévia de papel só valia para `isAdmin` e `can()`. `roles` continuava
+ * devolvendo os papéis REAIS, e como metade das telas recorta por `roles`
+ * (Pipeline, Checkpoint, Atividades, o editor de negócio), "Ver como Corretor"
+ * trocava quase nada — o cliente relatou como "troca de perfil não funciona".
+ *
+ * A regra agora é uma só: `roles`/`role` são os EFETIVOS; quem precisa saber
+ * QUEM VOCÊ É pede `realRoles`/`realRole`. Estes dois testes seguram os dois
+ * lados — sem o segundo, o próprio seletor sumiria da tela durante a prévia
+ * (ele se esconde de quem não é admin) e o admin ficaria trancado nela.
+ */
+describe("prévia de papel", () => {
+  beforeEach(() => {
+    mocks.getCurrentProfile.mockResolvedValue({
+      profile: { full_name: "Chefe", email: "admin@faceimob.test", phone: null, avatar_url: null },
+      role: "admin",
+      roles: ["admin", "broker"],
+    });
+  });
+
+  it("troca os papéis EFETIVOS, que é o que as telas recortam", async () => {
+    const desmontar = await montar();
+    expect(ctx!.roles).toEqual(["admin", "broker"]);
+    expect(ctx!.isAdmin).toBe(true);
+
+    await act(async () => { ctx!.setPreviewRole("broker"); });
+
+    expect(ctx!.roles, "a tela precisa enxergar SÓ o papel pré-visualizado").toEqual(["broker"]);
+    expect(ctx!.role).toBe("broker");
+    expect(ctx!.isAdmin, "em prévia de corretor o menu de admin não pode aparecer").toBe(false);
+    await desmontar();
+  });
+
+  it("mantém os papéis REAIS acessíveis, senão o admin fica trancado na prévia", async () => {
+    const desmontar = await montar();
+    await act(async () => { ctx!.setPreviewRole("broker"); });
+
+    expect(ctx!.realRoles, "é por aqui que o seletor sabe que quem está logado é admin")
+      .toEqual(["admin", "broker"]);
+    expect(ctx!.realRole).toBe("admin");
+
+    await act(async () => { ctx!.setPreviewRole(null); });
+    expect(ctx!.roles).toEqual(["admin", "broker"]);
+    expect(ctx!.isAdmin).toBe(true);
+    await desmontar();
+  });
+
+  it("quem não é admin não consegue se promover pela prévia", async () => {
+    mocks.getCurrentProfile.mockResolvedValue({
+      profile: { full_name: "Corretor", email: "corretor@faceimob.test", phone: null, avatar_url: null },
+      role: "broker",
+      roles: ["broker"],
+    });
+    const desmontar = await montar();
+
+    await act(async () => { ctx!.setPreviewRole("admin"); });
+
+    expect(ctx!.previewRole, "a trava é do contexto, não do componente que desenha o seletor").toBeNull();
+    expect(ctx!.isAdmin).toBe(false);
+    expect(ctx!.roles).toEqual(["broker"]);
+    await desmontar();
+  });
+});

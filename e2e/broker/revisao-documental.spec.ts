@@ -1,5 +1,5 @@
 import { test, expect, db, runTag } from "../support/fixtures";
-import { abrirDetalhe, abrirPipeline, buscar, limparNegocios, semearNegocio } from "../helpers/negocio";
+import { abrirDetalhe, abrirPipeline, buscar, limparNegocios, semearNegocio, subirArquivo } from "../helpers/negocio";
 import { apagarArquivos, arquivo, campoDeArquivo } from "../cca/esteira";
 
 const tag = runTag();
@@ -24,6 +24,16 @@ async function anexarObrigatorios(id: string) {
     original_name: `${tipo.code}.pdf`,
     stored_name: `${tipo.code}-${tag}.pdf`,
   })));
+
+  // O ARQUIVO, não só a linha. Desde 06/09/2026 a tela confere no armazenamento
+  // quais documentos têm arquivo legível e documento sem arquivo não conta como
+  // obrigatório cumprido — foi o conserto de "68 botões de Baixar que não
+  // baixavam nada". Inserir só a linha monta um estado que a operação não
+  // produz (no produto, quem grava a linha acabou de subir o arquivo) e deixa
+  // "Enviar ao gerente" desabilitado, com razão.
+  for (const tipo of tipos) {
+    await subirArquivo(`${id}/e2e-${tipo.code}.pdf`, `dossie e2e ${tipo.code} ${tag}`);
+  }
 }
 
 test.beforeAll(async () => {

@@ -2,7 +2,8 @@ import { NAV_ITEMS } from "@/components/layout/navigation";
 
 /**
  * Rota → código de permissão. Fonte única para o menu (`AppSidebar`) e para o
- * guard de rota (`RequireAuth` em `App.tsx`).
+ * guard de permissão de rota (`RequirePermission` em `App.tsx` — o `RequireAuth`
+ * ali do lado só olha sessão e não consulta este mapa).
  *
  * Esconder o item de menu não protege nada: sem o guard, digitar a URL abre a
  * tela. E se cada um mantivesse sua própria lista, um item some do menu e a URL

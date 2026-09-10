@@ -1,5 +1,8 @@
 import { test, expect, db, aguardarCarregamento } from "../support/fixtures";
+import { subirArquivo } from "../helpers/negocio";
+import { resolveTarget } from "../support/target";
 import {
+  apagarDoBucket,
   comSessao,
   criarCenario,
   estagioCca,
@@ -7,7 +10,11 @@ import {
   semearCasoCca,
   semearDocumento,
   type Cenario,
+  type DocumentoDoNegocio,
 } from "./esteira";
+
+
+const escapar = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * A esteira vista por quem NÃO decide, e o envio à construtora de ponta a ponta.
@@ -32,6 +39,8 @@ import {
 test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
   let cenario: Cenario;
   let casoId = "";
+  let docComArquivo: DocumentoDoNegocio;
+  let docSemArquivo: DocumentoDoNegocio;
 
   test.beforeAll(async () => {
     cenario = await criarCenario({
@@ -44,7 +53,13 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
     const etapa = await estagioCca("under_review");
     const [caso] = await semearCasoCca(cenario, "under_review", etapa.id);
     casoId = caso.id;
-    await semearDocumento(cenario, "rg_cpf");
+    docComArquivo = await semearDocumento(cenario, "rg_cpf");
+    await subirArquivo(docComArquivo.storage_path, `dossie ${cenario.tag}`);
+    // Registro sem objeto no bucket: o estado que o inventário achou na
+    // homologação. `limparCenario` limpa os dois do mesmo jeito.
+    // Sem arquivo DE PROPÓSITO: é o documento que faz a tela dizer
+    // "Documento sem arquivo" e travar o envio.
+    docSemArquivo = await semearDocumento(cenario, "comprovante_renda", { comArquivo: false });
   });
 
   test.afterAll(async () => {
@@ -80,6 +95,49 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
     expect(transbordo, "a esteira faz a página inteira rolar na horizontal a 375 px").toBeLessThanOrEqual(1);
   });
 
+  /**
+   * A conferência da carga é um RETRATO: o arquivo pode sumir enquanto o
+   * analista redige a mensagem. Sem a reconferência no clique, a submission
+   * entrava na fila e `submission-dispatch` fazia `throw` no anexo inexistente —
+   * envio "Falhou", uma das 5 tentativas gasta e a mensagem crua do Storage no
+   * histórico. E com TODO documento sem arquivo o botão precisa travar: não há
+   * uma caixa sequer clicável para cumprir "selecione ao menos um documento".
+   */
+  test("arquivo apagado com o diálogo aberto é barrado no clique, e o dossiê vazio trava o botão", async ({ page }) => {
+    await comSessao(page, "cca");
+    await page.goto("/cca");
+    await aguardarCarregamento(page);
+
+    const card = page.getByRole("article").filter({ hasText: cenario.cliente });
+    await card.getByRole("button", { name: /enviar à construtora/i }).click();
+
+    const dialogo = page.getByRole("dialog");
+    await expect(dialogo.getByText("Documentos (1 de 2)", { exact: true })).toBeVisible();
+
+    // O arquivo do documento BOM some depois de a seleção já estar montada.
+    await apagarDoBucket("deal-documents", docComArquivo.storage_path);
+    try {
+      await page.getByRole("button", { name: /enfileirar envio/i }).click();
+
+      await expect(page.getByText("Documento sem arquivo", { exact: true })).toBeVisible();
+      // Nada foi enfileirado: é o que separa a recusa de um envio condenado.
+      expect(
+        await db.select(`developer_submissions?deal_id=eq.${cenario.dealId}&select=id`),
+      ).toHaveLength(0);
+
+      // A tela passa a mostrar o que a reconferência descobriu — senão o
+      // analista clicaria de novo na mesma seleção — e o botão trava, porque
+      // agora não há caixa clicável nenhuma.
+      await expect(dialogo.getByText("Documentos (0 de 2)", { exact: true })).toBeVisible();
+      await expect(
+        dialogo.getByRole("checkbox", { name: new RegExp(escapar(docComArquivo.stored_name)) }),
+      ).toBeDisabled();
+      await expect(page.getByRole("button", { name: /enfileirar envio/i })).toBeDisabled();
+    } finally {
+      await subirArquivo(docComArquivo.storage_path, `dossie ${cenario.tag}`);
+    }
+  });
+
   test("o envio à construtora nasce com o e-mail do cadastro e move o caso", async ({ page }) => {
     await comSessao(page, "cca");
     await page.goto("/cca");
@@ -97,14 +155,32 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
     await expect(page.getByText(/fluxo interno/i)).toHaveCount(0);
     await expect(page.getByText(/sem e-mail de envio cadastrado/i)).toHaveCount(0);
 
+    // `submission-dispatch` assina cada documento e faz `throw` no primeiro que
+    // não existe: um registro sem arquivo derruba o envio INTEIRO e gasta uma
+    // das 5 tentativas. O diálogo pré-selecionava TUDO, inclusive esse.
+    const dialogo = page.getByRole("dialog");
+    await expect(
+      dialogo.getByRole("checkbox", { name: new RegExp(escapar(docComArquivo.stored_name)) }),
+    ).toBeChecked();
+    const ausente = dialogo.getByRole("checkbox", {
+      name: new RegExp(`${escapar(docSemArquivo.stored_name)}.*arquivo ausente`),
+    });
+    await expect(ausente).not.toBeChecked();
+    // Desmarcado não basta: marcar de novo devolveria o mesmo envio "Falhou".
+    await expect(ausente).toBeDisabled();
+    await expect(dialogo.getByText(/o arquivo não está no armazenamento/i)).toBeVisible();
+    await expect(dialogo.getByText("Documentos (1 de 2)", { exact: true })).toBeVisible();
+
     await page.getByRole("button", { name: /enfileirar envio/i }).click();
     await expect(page.getByText("Envio na fila", { exact: true })).toBeVisible();
 
-    const [envio] = await db.select<{ to_email: string; status: string }>(
-      `developer_submissions?deal_id=eq.${cenario.dealId}&select=to_email,status`,
+    const [envio] = await db.select<{ to_email: string; status: string; document_ids: string[] }>(
+      `developer_submissions?deal_id=eq.${cenario.dealId}&select=to_email,status,document_ids`,
     );
     expect(envio.to_email).toBe(`dossie-${cenario.tag}@construtora.test`);
     expect(envio.status).toBe("queued");
+    // Só o documento que existe entrou no envio gravado.
+    expect(envio.document_ids).toEqual([docComArquivo.id]);
 
     // Enfileirar move o caso: sem o gatilho o analista precisava de um segundo
     // "Mover para… → Enviado à Construtora" e nada ligava um ao outro.

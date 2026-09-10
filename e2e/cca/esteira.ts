@@ -12,6 +12,7 @@
  * apagar sem levar nada de terceiros junto.
  */
 import type { Page } from "@playwright/test";
+import { subirArquivo } from "../helpers/negocio";
 import { db, aguardarCarregamento, expect, runTag } from "../support/fixtures";
 import { mintSession } from "../support/session";
 import { resolveTarget, storageKeyFor } from "../support/target";
@@ -141,11 +142,25 @@ export async function criarCenario(opts: {
   };
 }
 
-/** Documento já gravado, sem passar pela tela — para cenários que só precisam
- *  de "existe documento", como liberar uma etapa com `requires_document`. */
+/**
+ * Documento já gravado, sem passar pela tela — para cenários que só precisam
+ * de "existe documento", como liberar uma etapa com `requires_document`.
+ *
+ * Sobe a LINHA e, por padrão, o ARQUIVO. Desde 06/09/2026 a tela confere no
+ * armazenamento quais documentos têm arquivo legível, e documento sem arquivo
+ * não conta como obrigatório cumprido — foi o conserto dos botões de "Baixar"
+ * que não baixavam nada. Semear só a linha monta um estado que a operação não
+ * produz e deixa "Enfileirar envio" desabilitado, com razão.
+ *
+ * `comArquivo: false` existe para o caso contrário, que também é real e tem
+ * teste próprio: a linha existe e o objeto sumiu do bucket (apagado à mão,
+ * migração malfeita). Aí a tela PRECISA acusar "Documento sem arquivo" — então
+ * o cenário tem de ser montável de propósito.
+ */
 export async function semearDocumento(
   cenario: Cenario,
   code: string,
+  opts: { comArquivo?: boolean } = {},
 ): Promise<DocumentoDoNegocio> {
   const tipo = await tipoDocumento(code);
   const nome = `${tipo.code}-${cenario.tag}.pdf`;
@@ -158,6 +173,9 @@ export async function semearDocumento(
     mime_type: "application/pdf",
     size_bytes: 1024,
   });
+  if (opts.comArquivo !== false) {
+    await subirArquivo(linha.storage_path, `dossie semeado ${nome}`);
+  }
   return linha;
 }
 

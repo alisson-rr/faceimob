@@ -77,9 +77,15 @@ export function AppSidebar() {
         </div>
         <div className="mx-3 h-px bg-sidebar-border" />
 
+        {/* O rótulo do grupo era só pintura: `SidebarGroup` é uma `div` sem papel
+            nem nome, então quem usa leitor de tela ouvia uma lista corrida de
+            links, sem saber onde termina o menu de trabalho e começa o de
+            configuração. `role="group"` + `aria-labelledby` amarram os dois —
+            e é o que permite a um teste cobrar "o corretor vê o grupo
+            Configurações com um item só". */}
         {groups.map((group) => (
-          <SidebarGroup key={group.id}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup key={group.id} role="group" aria-labelledby={`nav-grupo-${group.id}`}>
+            <SidebarGroupLabel id={`nav-grupo-${group.id}`}>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (

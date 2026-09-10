@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { KeyRound, RefreshCw, Send, Trash2 } from "lucide-react";
 import { functionErrorMessage } from "@/lib/functionError";
 import { describeError } from "@/lib/supabaseError";
-import { SEM_PERMISSAO, SEM_SELECAO, type Agent } from "./types";
+import { useAuth } from "@/contexts/AuthContext";
+import { IA_SEM_CREDENCIAL, ondeCadastrarIa, SEM_PERMISSAO, SEM_SELECAO, type Agent } from "./types";
 
 type Bubble = { role: "user" | "assistant" | "error"; content: string; agent?: string };
 
@@ -16,7 +17,14 @@ type Bubble = { role: "user" | "assistant" | "error"; content: string; agent?: s
  *  escrever um texto longo para descobrir depois que ele não cabia. */
 const MAX_CHARS = 4000;
 
-export function PlaygroundTab({ agents, canWrite }: { agents: Agent[]; canWrite: boolean }) {
+export function PlaygroundTab({ agents, canWrite, iaConfigurada, onCredencialAceita }: {
+  agents: Agent[]; canWrite: boolean;
+  /** Chave da OpenAI no cofre. `null` = ainda não se sabe; nada é afirmado. */
+  iaConfigurada: boolean | null;
+  /** A OpenAI acabou de aceitar a chave — o módulo pode parar de avisar. */
+  onCredencialAceita: () => void;
+}) {
+  const { can } = useAuth();
   const [agentId, setAgentId] = useState<string>("");
   const [convId, setConvId] = useState<string>("");
   const [messages, setMessages] = useState<Bubble[]>([]);
@@ -28,8 +36,9 @@ export function PlaygroundTab({ agents, canWrite }: { agents: Agent[]; canWrite:
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // Agente inativo não roda: `runSdrAgentTurn` recusa o id explícito que não
-  // esteja ativo, então o switch "Ativo" da aba Agentes vale também aqui.
+  // Agente inativo não roda: `runSdrAgentTurn` recusa o agente inativo em
+  // QUALQUER caminho de escolha (o id explícito daqui e o da conversa já
+  // aberta), então o switch "Ativo" da aba Agentes vale também aqui.
   const ativos = agents.filter(a => a.active);
 
   async function send() {
@@ -49,15 +58,20 @@ export function PlaygroundTab({ agents, canWrite }: { agents: Agent[]; canWrite:
       });
       if (error) throw error;
       if (!convId) setConvId(data.conversation_id);
+      // Turno respondido é a prova mais forte de que a chave está no cofre e
+      // funciona: sem avisar o módulo, a tela seguia dizendo que a IA não
+      // responde enquanto a resposta dela estava na bolha ao lado.
+      onCredencialAceita();
       setMessages(m => [...m, { role: "assistant", content: data.reply, agent: data.agent?.name }]);
       if (data.handoff_to) toast.info(`Conversa transferida para: ${data.handoff_to.name}`);
       if (data.exhausted) toast.warning("Teto de respostas do agente atingido — numa conversa real o lead voltaria para a roleta.");
     } catch (e: unknown) {
-      // O erro fica no painel, não só num toast que some: sem a chave da OpenAI
-      // no cofre a function responde 503 dizendo onde cadastrar.
+      // O erro fica no painel, e SÓ no painel: um canal por mensagem. A bolha
+      // já entra num container `aria-live` e o toast do sonner tem região viva
+      // própria — juntos, o leitor de tela ouvia o mesmo texto duas vezes; e o
+      // toast some em segundos, enquanto o log é o registro que fica.
       const msg = await functionErrorMessage(e, "Falha no agente");
       setMessages(m => [...m, { role: "error", content: msg }]);
-      toast.error(msg);
     } finally { setLoading(false); }
   }
 
@@ -85,11 +99,11 @@ export function PlaygroundTab({ agents, canWrite }: { agents: Agent[]; canWrite:
     try {
       const { data, error } = await supabase.functions.invoke("sdr-agent-chat", { body: { action: "probe" } });
       if (error) throw error;
+      onCredencialAceita();
       toast.success(`Chave da OpenAI aceita (${data.models} modelos disponíveis).`);
     } catch (e: unknown) {
       const msg = await functionErrorMessage(e, "Não foi possível testar a chave da OpenAI");
       setMessages(m => [...m, { role: "error", content: msg }]);
-      toast.error(msg);
     } finally { setTestando(false); }
   }
 
@@ -117,6 +131,18 @@ export function PlaygroundTab({ agents, canWrite }: { agents: Agent[]; canWrite:
           </Button>
         )}
       </div>
+      {/* O campo continua aberto de propósito: a chave pode ter sido cadastrada
+          há um instante noutra aba, e "Testar chave da OpenAI" ao lado confirma
+          sem gastar um turno. O que não pode é o operador simular sem saber.
+          Só para quem simula: quem apenas consulta não vê o campo, e uma
+          instrução de conserto que ele não pode executar competiria com o
+          motivo real de o campo não estar ali. Sem `role="status"` — é
+          contexto estático, e o banner do módulo já anuncia o mesmo. */}
+      {canWrite && iaConfigurada === false && (
+        <p className="text-xs text-warning">
+          A simulação vai falhar: {IA_SEM_CREDENCIAL} {ondeCadastrarIa(can("menu.admin_integrations"))}
+        </p>
+      )}
       <div className="h-[420px] overflow-y-auto border rounded-md p-3 space-y-2 bg-muted/20" aria-live="polite">
         {messages.length === 0 && <p className="text-xs text-muted-foreground text-center py-8">Simule uma conversa de lead. As mensagens ficam salvas em Conversas, num lead de teste do Playground — um por usuário, fora da roleta.</p>}
         {messages.map((m, i) => (

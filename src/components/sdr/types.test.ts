@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  cadeiaDeAgentes, conversaParada, efeitosDaExclusao, efeitosDaExclusaoTemplate, resumoDisparo,
-  situacaoLista, type ListStats,
+  cadeiaDeAgentes, conversaParada, efeitosDaExclusao, efeitosDaExclusaoTemplate, ondeCadastrarIa,
+  resumoDisparo, situacaoLista, type ListStats,
 } from "./types";
 
 const stats = (p: Partial<ListStats>): ListStats =>
@@ -192,5 +192,27 @@ describe("cadeiaDeAgentes", () => {
 
   it("histórico anterior à 0082 (sem agent_id) não inventa cadeia", () => {
     expect(cadeiaDeAgentes([{ agent_id: null }, { agent_id: undefined }], nome)).toEqual([]);
+  });
+});
+
+/**
+ * O aviso da credencial não pode mandar o operador para uma porta trancada.
+ *
+ * Medido na homologação em 05/09/2026: `menu.sdr` — que abre este módulo e,
+ * com ele, o aviso — vai para director, manager, marketing, partner e sdr;
+ * `menu.admin_integrations` não tem uma linha sequer em `role_permissions`, ou
+ * seja, só o admin passa (pelo `is_admin()` de dentro de `has_permission`).
+ * Mandar todo mundo "cadastrar em Admin · Integrações" entregava "Acesso não
+ * liberado" a quem seguisse a instrução.
+ */
+describe("ondeCadastrarIa", () => {
+  it("quem pode abrir Integrações recebe a instrução direta", () => {
+    expect(ondeCadastrarIa(true)).toContain("Cadastre em Admin · Integrações");
+  });
+
+  it("quem não pode é mandado ao administrador, nunca à tela que nega acesso", () => {
+    const texto = ondeCadastrarIa(false);
+    expect(texto).toContain("Peça a um administrador");
+    expect(texto).not.toContain("Cadastre em");
   });
 });

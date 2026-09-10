@@ -387,23 +387,39 @@ select pg_temp.assert_eq(
 -- -----------------------------------------------------------------------------
 \echo '== 7. stage_permissions semeada =='
 -- -----------------------------------------------------------------------------
--- Sem a semente, `db:reset` em banco limpo deixa a matriz vazia e só o admin
--- move negócio. `>= 39` e não `= 39`: outro arquivo do harness pode ter
--- concedido etapa antes deste rodar, e o que importa é a semente ter entrado.
-select pg_temp.assert_eq(
-  (select count(*)::int from public.stage_permissions) >= 39,
-  true, 'db:reset em banco limpo já nasce com a matriz de etapas');
+-- O assert original contava `>= 39` linhas, esperando as 39 da 0061 §7. Duas
+-- coisas o invalidaram, as duas medidas no harness:
+--
+--  1. as 39 linhas da 0061 NÃO entram em banco limpo. `pipeline_stages` é
+--     criada só por `supabase/seed.sql`, que roda DEPOIS das migrations (é a
+--     ordem do `supabase db reset` e a do harness); no momento da 0061 o join
+--     com `pipeline_stages` não casa nada e o insert é um no-op. Quem entrega
+--     a matriz num `db:reset` é o seed — e entrega, com 38 linhas. O mesmo
+--     vale para a 0052, que corrige dado que ainda não existe;
+--  2. contar linha global é dependente de ordem: `07_core_fixes.sql` roda
+--     antes e APAGA as linhas de `visit_scheduled` para provar que "sem linha
+--     na matriz = negado". Qualquer número fixo aqui vira falso negativo.
+--
+-- O que importa não é a contagem, é o que a matriz DECIDE. Os três asserts
+-- abaixo cobram isso por `can_enter_stage()`, que é quem `deals_guard_stage()`
+-- consulta — e que trata "sem linha" e "linha com false" como o mesmo não.
 
 select pg_temp.assert_eq(
-  (select sp.can_enter from public.stage_permissions sp
-     join public.pipeline_stages s on s.id = sp.stage_id
-    where s.code = 'approved' and sp.role = 'broker'),
-  false, 'a semente respeita a 0052: corretor não entra em Aprovado');
+  (select count(*)::int from public.pipeline_stages s
+    where not exists (
+      select 1 from public.stage_permissions sp
+       where sp.stage_id = s.id and sp.can_enter)),
+  0, 'db:reset em banco limpo não deixa nenhuma etapa sem quem entre nela');
+
+select pg_temp.como('00000000-0000-0000-0000-00000000c113');
+select pg_temp.assert_eq(
+  public.can_enter_stage((select id from public.pipeline_stages where code = 'approved')),
+  false, 'a matriz respeita a 0052: corretor não entra em Aprovado');
 
 select pg_temp.assert_eq(
-  (select sp.can_enter from public.stage_permissions sp
-     join public.pipeline_stages s on s.id = sp.stage_id
-    where s.code = 'approved' and sp.role = 'cca'),
+  exists (select 1 from public.stage_permissions sp
+            join public.pipeline_stages s on s.id = sp.stage_id
+           where s.code = 'approved' and sp.role = 'cca' and sp.can_enter),
   true, 'e o CCA entra');
 
 -- -----------------------------------------------------------------------------

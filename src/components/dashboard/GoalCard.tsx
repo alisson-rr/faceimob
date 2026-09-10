@@ -1,9 +1,52 @@
-import { AlertTriangle, Target } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Pencil, Target } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import { EmptyState, LoadingState, SectionCard, StatusBadge } from "@/components/shared";
+import { GlobalGoalCard } from "@/components/equipes/GlobalGoalCard";
 import { num } from "@/lib/format";
 import { ALL_MONTHS, GOAL_SCOPE_LABEL, type GoalScope } from "./data";
+
+/**
+ * Editar a meta sem sair do Dashboard.
+ *
+ * Antes o único caminho era ler a frase do estado vazio, navegar até Equipes e
+ * acertar o mês na mão — e o card só oferecia isso quando a meta NÃO existia:
+ * corrigir uma meta já cadastrada não tinha caminho nenhum na tela. Pedido do
+ * cliente em 05/09/2026 ("colocar lugar para editar meta").
+ *
+ * O formulário é o MESMO de /equipes, montado aqui dentro. Um segundo
+ * formulário de meta global seria uma segunda regra de gravação para o mesmo
+ * `goals` — e a primeira já ensinou o que acontece quando período de escrita e
+ * de leitura divergem: a meta salva não volta.
+ */
+function EditarMetaGlobal({ mes }: { mes: string | null }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <Dialog open={aberto} onOpenChange={setAberto}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5">
+          <Pencil className="h-3.5 w-3.5" aria-hidden /> Editar meta
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Meta da empresa</DialogTitle>
+          <DialogDescription>
+            É a meta que este painel compara com o realizado. Confira o mês antes de salvar.
+          </DialogDescription>
+        </DialogHeader>
+        {/* `mesInicial`: o mês escolhido no filtro do Dashboard. Sem ele o
+            formulário abriria no mês do relógio e gravaria no mês errado quem
+            estivesse conferindo outro período. */}
+        <GlobalGoalCard mesInicial={mes ?? undefined} />
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export interface GoalCardProps {
   month: string;
@@ -187,6 +230,12 @@ export function GoalCard({ month, vendas, goal, scope, canManage, isLoading, err
           : `Vendas realizadas × ${escopo} cadastrada`
       }
       icon={Target}
+      // Só o escopo GLOBAL tem formulário. Oferecer "Editar meta" no card de
+      // perfil ou de equipe abriria um formulário que grava a meta da EMPRESA —
+      // o pior tipo de botão: o que funciona e faz outra coisa.
+      actions={canManage && scope === "global"
+        ? <EditarMetaGlobal mes={periodo ? mesParaCadastro(periodo) : null} />
+        : undefined}
     >
       {body()}
     </SectionCard>

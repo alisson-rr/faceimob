@@ -56,7 +56,7 @@ export const canEditTemplates = (roles: AppRole[]) => roles.some(r => TEMPLATE_W
 export const SEM_PERMISSAO = "Nada foi gravado. Verifique sua permissão.";
 
 /**
- * O que falta e onde consertar quando o cofre não tem a chave da OpenAI.
+ * O que falta quando o cofre não tem a chave da OpenAI.
  *
  * Sem ela TODO turno do agente morre em 503 (`code: missing_credential` no
  * `sdr-agent-chat`; `Credencial ausente` no `whatsapp-inbound-webhook`), e até
@@ -66,13 +66,29 @@ export const SEM_PERMISSAO = "Nada foi gravado. Verifique sua permissão.";
  * `sdr-agent-chat` com `action: "status"`, que devolve só o booleano.
  *
  * Texto único porque os três pontos que avisam (módulo, Agentes, Playground)
- * têm de apontar o MESMO conserto — o rótulo é o mesmo do catálogo de
- * integrações (`src/lib/integrationCatalog.ts`: provider `openai`, "OpenAI —
- * chave de API").
+ * têm de dizer a MESMA coisa.
  */
 export const IA_SEM_CREDENCIAL =
-  "A IA de SDR ainda não está configurada: falta a chave da OpenAI no cofre. "
-  + "Cadastre em Admin · Integrações (OpenAI — chave de API).";
+  "A IA de SDR ainda não está configurada: falta a chave da OpenAI no cofre.";
+
+/**
+ * O caminho do conserto, que depende de quem está lendo.
+ *
+ * `/admin/integrations` exige `menu.admin_integrations`, e a matriz não dá essa
+ * permissão a nenhum papel além do admin (`is_admin()` de dentro de
+ * `has_permission`) — enquanto `menu.sdr`, que abre este módulo e este aviso,
+ * vai para director, manager, marketing, partner e sdr. Mandar todos eles
+ * "cadastrar em Admin · Integrações" era um beco sem saída: o operador lê o
+ * problema, executa a instrução e recebe "Acesso não liberado". Mesma ramificação
+ * que o aviso do WhatsApp em `RemarketingTab` já faz.
+ *
+ * O rótulo entre aspas é o título do card no catálogo
+ * (`src/lib/integrationCatalog.ts`), que é o que o admin realmente vê lá.
+ */
+export const ondeCadastrarIa = (podeAbrirIntegracoes: boolean) =>
+  podeAbrirIntegracoes
+    ? "Cadastre em Admin · Integrações, no card “OpenAI — chave de API”."
+    : "Peça a um administrador para cadastrar a chave da OpenAI em Admin · Integrações.";
 
 /**
  * Status da conversa em português. `human` entrou na 0064: o

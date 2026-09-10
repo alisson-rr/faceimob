@@ -288,13 +288,17 @@ begin
      set released_at = now(), release_reason = 'timeout'
    where id = v_asg;
 
+  -- O destino é `/leads`, e não o lead: a 0088 mediu que o lead volta à roleta
+  -- sem dono e que `leads_select` não o mostra a quem foi avisado — o link
+  -- antigo (`/leads?lead=<id>`) prometia uma tela que dava "Lead indisponível"
+  -- para o corretor. QUAL lead continua sendo cobrado, pelo título.
   perform pg_temp.check65(
     exists (select 1 from public.notifications
              where profile_id = cor and kind = 'lead_lost_timeout'
                and channel = 'in_app'
-               and link = v_link
+               and link = '/leads'
                and title like '%Marta do Prazo%'),
-    'aviso in_app existe, diz qual lead e leva até ele');
+    'aviso in_app existe, diz qual lead e leva à lista que o corretor abre');
 
   -- Sem esta linha o item 10 da ata de 14/07 (avisar POR WHATSAPP quem perdeu
   -- o lead por prazo) fica sem produtor nenhum: o único texto a sair pelo canal
@@ -304,7 +308,7 @@ begin
     exists (select 1 from public.notifications
              where profile_id = cor and kind = 'lead_lost_timeout'
                and channel = 'whatsapp' and sent_at is null
-               and link = v_link
+               and link = '/leads'
                and title like '%Marta do Prazo%'),
     'a cópia de WhatsApp entra na fila do notify-dispatch');
 
@@ -327,9 +331,12 @@ begin
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
 
+  -- Recorte por evento e não por `link`: desde a 0088 o aviso de prazo aponta
+  -- para `/leads`, que não identifica o lead. O título identifica.
   select count(*) into v_no_sino
     from public.notifications
-   where kind in ('lead_assigned', 'lead_lost_timeout') and link = v_link;
+   where (kind = 'lead_assigned'    and link = v_link)
+      or (kind = 'lead_lost_timeout' and title like '%Marta do Prazo%');
 
   reset role;
   perform set_config('request.jwt.claims', '', false);

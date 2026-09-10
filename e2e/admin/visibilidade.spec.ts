@@ -45,12 +45,22 @@ test('"/" leva o admin ao dashboard', async ({ page }) => {
   await expect(page.getByText(/acesso não liberado/i)).toHaveCount(0);
 });
 
-test("admin tem o grupo de administração no menu", async ({ page }) => {
+test("admin tem o grupo de configurações no menu", async ({ page }) => {
   await page.goto("/pipeline");
   await aguardarCarregamento(page);
 
-  await expect(page.getByText("Administração")).toBeVisible();
+  // O grupo se chamava "Administração" até 05/09/2026, quando "Administração" e
+  // "Sistema" viraram um só — pedido do cliente: configuração num lugar só.
+  await expect(page.getByRole("group", { name: "Configurações" })).toBeVisible();
   for (const item of ["Permissões", "Integrações", "Construtoras", "IPs autorizados"]) {
     await expect(page.getByRole("link", { name: item })).toBeVisible();
   }
+});
+
+/** O outro lado da 0092: quem responde pelo número continua conseguindo extrair. */
+test("o admin tem o botão que extrai a planilha", async ({ page }) => {
+  await page.goto("/pipeline");
+  await aguardarCarregamento(page);
+
+  await expect(page.getByRole("button", { name: /extrair planilha/i })).toBeVisible();
 });

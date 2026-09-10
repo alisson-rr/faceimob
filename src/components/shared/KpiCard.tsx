@@ -42,6 +42,18 @@ const deltaIcon = { up: ArrowUpRight, down: ArrowDownRight, flat: ArrowRight };
  *
  * A direcao do delta e dita pela SETA, nao so pela cor — daltonismo e tela em
  * escala de cinza precisam ler a mesma coisa.
+ *
+ * ENXUGADO EM 05/09/2026 (pedido do cliente: "um pouco poluído"). O que saiu, e
+ * por quê — em todos os casos a informação ficou, o enfeite é que foi embora:
+ *
+ *  · o quadradinho colorido atrás do ícone. São sete cartões lado a lado na
+ *    régua do Dashboard: sete manchas azuis competindo entre si e com o número,
+ *    que é o que se veio ler. O ícone continua, em cinza;
+ *  · a sombra colorida no hover e o `-translate-y`. Passar o mouse pela régua
+ *    fazia sete cartões pularem, um a um. Hover agora é só a borda;
+ *  · a sombra permanente do `highlight`. Destaque virou UMA coisa — a borda —
+ *    em vez de borda + sombra + ícone âmbar ao mesmo tempo. Quando tudo se
+ *    destaca, nada se destaca.
  */
 export function KpiCard({ label, value, delta, icon: Icon, variant = "default", hint, className }: KpiCardProps) {
   const isHighlight = variant === "highlight";
@@ -51,24 +63,18 @@ export function KpiCard({ label, value, delta, icon: Icon, variant = "default", 
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border bg-card p-5 transition-[transform,box-shadow,border-color] duration-200 ease-premium hover:-translate-y-0.5",
-        isHighlight
-          ? "border-highlight/40 shadow-[0_6px_24px_-12px_hsl(var(--highlight)/0.5)] hover:shadow-[0_14px_36px_-14px_hsl(var(--highlight)/0.6)]"
-          : "border-border hover:border-primary/40 hover:shadow-[0_14px_36px_-16px_hsl(var(--primary)/0.5)]",
+        "group relative overflow-hidden rounded-2xl border bg-card p-5 transition-colors duration-200",
+        isHighlight ? "border-highlight/50" : "border-border hover:border-border/80",
         className,
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <p className="text-eyebrow">{label}</p>
         {Icon && (
-          <span
-            className={cn(
-              "grid h-8 w-8 shrink-0 place-items-center rounded-xl",
-              isHighlight ? "bg-highlight/20 text-warning" : "bg-primary/10 text-primary",
-            )}
-          >
-            <Icon className="h-4 w-4" />
-          </span>
+          <Icon
+            className={cn("h-4 w-4 shrink-0", isHighlight ? "text-warning" : "text-muted-foreground")}
+            aria-hidden
+          />
         )}
       </div>
 

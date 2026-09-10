@@ -6,7 +6,7 @@
  * quebra o fast refresh do Vite.
  */
 import { parseBrl } from "@/lib/format";
-import { isLeadOverdue, type LeadRecord } from "@/integrations/supabase/leads";
+import { isLeadOverdue, searchPhoneDigits, searchTerm, type LeadRecord } from "@/integrations/supabase/leads";
 
 export type LeadFilterState = {
   search: string;
@@ -40,14 +40,18 @@ export const hasActiveFilter = (filters: LeadFilterState) =>
  * normalizado por `normalize_phone` ("5511988770001") e digitar o número com
  * máscara — o caso que a busca no banco existe para resolver — fazia o banco
  * DEVOLVER o lead e a tela descartá-lo, com "Nenhum lead com esses filtros".
+ * Quem decide se o termo é telefone é `searchPhoneDigits`, e quem sanitiza o
+ * texto é `searchTerm` — as MESMAS regras que montam a consulta. Divergir de
+ * qualquer uma esconde na tela o que o banco entregou: com o texto cru,
+ * "Ana (Paula)" trazia "Ana Paula" do banco e a tela descartava a linha.
  */
 export const matchesFilters = (lead: LeadRecord, filters: LeadFilterState): boolean => {
-  const term = filters.search.trim().toLowerCase();
-  const digits = term.replace(/\D/g, "");
+  const term = searchTerm(filters.search).toLowerCase();
+  const digits = searchPhoneDigits(filters.search);
   const matchSearch = !term
     || lead.name.toLowerCase().includes(term)
     || (lead.email || "").toLowerCase().includes(term)
-    || (digits.length > 0 && (lead.phone || "").includes(digits))
+    || (digits !== null && (lead.phone || "").includes(digits))
     || (lead.campaign_name || "").toLowerCase().includes(term);
   const matchStatus = filters.status === "all" || lead.status === filters.status;
   const matchSource = filters.source === "all"

@@ -8,10 +8,10 @@
 - Arquitetura:
   - `src/pages/` uma tela por rota · `src/components/` compartilhados, com `ui/` = primitivos shadcn · `src/contexts/AuthContext.tsx` = sessão e papéis.
   - `src/integrations/supabase/`: `client.ts` (cliente), `types.ts` (**gerado** por `supabase gen types` — não editar à mão), `newSchema.ts` (ponte que traduz o schema novo para a forma legada que as telas esperam: `broker1/2/3`, `manager1/2/3`, `cotista2`), `leads.ts`.
-  - `supabase/migrations/` é a fonte de verdade do domínio: 18 migrations numeradas `0001`–`0018`, 58 tabelas, RLS em todas. `supabase/functions/` = 11 edge functions, mais `_shared/` (cofre de credenciais e Brevo). `supabase/tests/` = harness SQL de asserts. `supabase/seeds/` = catálogo em 4 fases, idempotente. `supabase/migrations_legacy/` é histórico, não é aplicado.
+  - `supabase/migrations/` é a fonte de verdade do domínio. A numeração tem lacunas (número reservado para uma frente e não usado) e várias frentes criam migration na mesma rodada: qualquer total escrito aqui apodrece em horas, então meça com `ls supabase/migrations | wc -l` e nunca deduza pelo último número. 62 tabelas, RLS nas 62. `supabase/functions/` = 9 edge functions, mais `_shared/` (`secrets.ts` = cofre de credenciais, `auth.ts`, `brevo.ts`, `meta.ts`, `sdrAgent.ts`). `supabase/tests/` = 47 arquivos de asserts SQL. `supabase/seeds/` = 4 fases de catálogo (`010`–`040`) mais cenário de teste (`050`) e de demonstração (`060`), cada um com seu rollback; tudo idempotente. `supabase/migrations_legacy/` = 70 arquivos de histórico, não são aplicados.
   - Invariantes do banco: papel é N:N em `user_roles` (um diretor pode ser gerente e corretor); toda visibilidade sai de `auth_visible_profiles()` — mudar hierarquia é mexer em um lugar só; a superfície anônima são exatamente três RPCs (`public_daily_team`, `public_daily_submit`, `public_director_checkpoint`).
 - Estado e prioridades: `PLANEJAMENTO.md` (placar por requisito e fases). O gap declarado é frontend e integrações, não banco.
-- Fonte de verdade das tarefas: `docs/sprints/` — `plano-entrega.md` (plano ativo) e `decisoes.md` (decisões tomadas e pendentes). `sprint-01.md`…`sprint-05.md` são histórico.
+- Fonte de verdade das tarefas: `docs/sprints/` — `sprint-demo.md` (plano ativo, tarefas por agente com status) e `decisoes.md` (decisões tomadas, pendências e o registro corrido — é o arquivo mais recente). `plano-entrega.md`, `plano-100-funcional.md` e `sprint-01.md`…`sprint-05.md` são histórico: foram planos ativos em 02/08 e 10/08 e não descrevem mais o trabalho em curso.
 - Instalar: `npm i`
 - Desenvolver: `npm run dev`. Supabase local: `npm run db:start` / `db:reset`. Seed remoto: `npm run db:seed:remote`.
 - Validar: `npm run lint` · `npm run typecheck` · `npx vitest run` · `./scripts/validate-schema.sh --all` para migrations, RLS e asserts SQL (precisa de Docker, não usa a CLI do Supabase).
@@ -29,6 +29,9 @@ Armadilha do ambiente: tudo com prefixo `VITE_` é substituído em build e vai p
 - Sempre falei de forma clara e objetiva. Quando conveniente use exemplos práticos.
 - Sempre que houver decisões comente "consequências" de seguir cada caminho.
 - Quando houver um erro ou problema de validação, sempre me traga alternativas de soluções.
+- **Resposta curta e em linguagem simples.** Nada de tabelão, lista de métricas ou despejo de detalhe técnico: isso é ruído e eu não consigo ler. Resultado primeiro, em uma ou duas frases; o resto só se mudar a minha decisão.
+- **Sem código quando não for necessário.** Trecho de código e SQL só quando eu pedi, ou quando eu preciso rodar aquilo.
+- Se o assunto for grande, dê o resumo e ofereça o detalhe. Não entregue o detalhe todo de uma vez.
 
 ## Forma de trabalhar
 
@@ -44,7 +47,7 @@ Pergunte somente quando faltar uma decisão que mudaria materialmente a soluçã
 
 ## Graphify: contexto antes de arquivos
 
-- Quando `graphify-out/graph.json` existir, comece perguntas sobre o codebase com `graphify query "<pergunta>"`.
+- **Use o grafo sempre que ele ajudar — não é opcional.** Quando `graphify-out/graph.json` existir, toda pergunta sobre o codebase começa com `graphify query "<pergunta>"`, antes de abrir arquivo ou fazer busca por texto.
 - Use `graphify path "<A>" "<B>"` para rastrear relações e `graphify explain "<conceito>"` para um nó específico.
 - Se existir `graphify-out/wiki/index.md`, use-o para navegação ampla. Leia `GRAPH_REPORT.md` apenas para revisões de arquitetura ou quando a consulta não bastar.
 - O grafo orienta a busca, mas o código-fonte confirma o comportamento antes de qualquer edição.

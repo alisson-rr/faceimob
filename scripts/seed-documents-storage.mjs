@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * Sobe um arquivo de verdade para cada linha de `deal_documents`.
+ * Sobe um arquivo de verdade para cada linha de `deal_documents` e de
+ * `lead_attachments`.
  *
- * Os seeds (030 e 060) registram os documentos só no banco: o bucket
- * `deal-documents` fica vazio e todo botão "Baixar" assina a URL de um objeto
- * que não existe. Este script gera um PDF mínimo por registro — o nome
- * amigável escrito na página, enchido até o `size_bytes` que a tela mostra ao
- * lado de "Baixar" — e envia no mesmo `storage_path`.
+ * Os seeds (030 e 060) registram os documentos só no banco: os buckets
+ * `deal-documents` e `lead-attachments` ficam vazios e todo botão "Baixar"
+ * assina a URL de um objeto que não existe. Este script gera um PDF mínimo por
+ * registro — o nome amigável escrito na página, enchido até o `size_bytes` que
+ * a tela mostra ao lado de "Baixar" — e envia no mesmo `storage_path`.
+ *
+ * As duas tabelas entram porque o buraco é o mesmo e ficou provado nas duas: o
+ * anexo do lead vira documento do negócio na conversão (`promoteLeadAttachments`
+ * copia o objeto), e copiar o que não existe falha a conversão inteira.
  *
  *   node scripts/seed-documents-storage.mjs             → Supabase LOCAL
  *   node scripts/seed-documents-storage.mjs --remote    → homologação: URL do .env,
@@ -25,7 +30,11 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const REMOTO = process.argv.includes("--remote");
 const AMOSTRA = process.argv.find((a) => a.startsWith("--amostra="))?.slice(10);
-const BUCKET = "deal-documents";
+/** Tabela → bucket. Mesma coluna `storage_path` nas duas. */
+const FRENTES = [
+  { tabela: "deal_documents", bucket: "deal-documents" },
+  { tabela: "lead_attachments", bucket: "lead-attachments" },
+];
 
 // ── alvo (mesma convenção de scripts/demo.mjs) ───────────────────────────────
 function statusLocal() {
@@ -144,41 +153,46 @@ async function main() {
   const cab = { apikey: service, Authorization: `Bearer ${service}` };
   console.log(`[documentos] alvo: ${REMOTO ? "HOMOLOGAÇÃO" : "local"} (${url})\n`);
 
-  const lista = await fetch(
-    `${url}/rest/v1/deal_documents?select=storage_path,stored_name,mime_type,size_bytes&order=created_at`,
-    { headers: cab },
-  );
-  if (!lista.ok) throw new Error(`deal_documents → HTTP ${lista.status}`);
-  const docs = await lista.json();
+  let falhasTotais = 0;
+  for (const { tabela, bucket } of FRENTES) {
+    const lista = await fetch(
+      `${url}/rest/v1/${tabela}?select=storage_path,stored_name,mime_type,size_bytes&order=created_at`,
+      { headers: cab },
+    );
+    if (!lista.ok) throw new Error(`${tabela} → HTTP ${lista.status}`);
+    const docs = await lista.json();
 
-  const r = { enviados: 0, existiam: 0, falhas: [] };
-  for (const doc of docs) {
-    const caminho = doc.storage_path.split("/").map(encodeURIComponent).join("/");
-    try {
-      const { bytes, tipo } = corpoDe(doc);
-      const info = await fetch(`${url}/storage/v1/object/info/${BUCKET}/${caminho}`, { headers: cab });
-      if (info.ok && (await info.json()).size === bytes.length) {
-        r.existiam++;
-        continue;
+    const r = { enviados: 0, existiam: 0, falhas: [] };
+    for (const doc of docs) {
+      const caminho = doc.storage_path.split("/").map(encodeURIComponent).join("/");
+      try {
+        const { bytes, tipo } = corpoDe(doc);
+        const info = await fetch(`${url}/storage/v1/object/info/${bucket}/${caminho}`, { headers: cab });
+        if (info.ok && (await info.json()).size === bytes.length) {
+          r.existiam++;
+          continue;
+        }
+        const res = await fetch(`${url}/storage/v1/object/${bucket}/${caminho}`, {
+          method: "POST",
+          headers: { ...cab, "Content-Type": tipo, "x-upsert": "true" },
+          body: bytes,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+        r.enviados++;
+      } catch (e) {
+        r.falhas.push(`${doc.storage_path} — ${e.message}`);
       }
-      const res = await fetch(`${url}/storage/v1/object/${BUCKET}/${caminho}`, {
-        method: "POST",
-        headers: { ...cab, "Content-Type": tipo, "x-upsert": "true" },
-        body: bytes,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
-      r.enviados++;
-    } catch (e) {
-      r.falhas.push(`${doc.storage_path} — ${e.message}`);
     }
-  }
 
-  console.log(`  registros ....... ${docs.length}
+    console.log(`${tabela} → ${bucket}
+  registros ....... ${docs.length}
   enviados ........ ${r.enviados}
   já existiam ..... ${r.existiam}
   falhas .......... ${r.falhas.length}`);
-  for (const f of r.falhas) console.log(`    ${f}`);
-  process.exit(r.falhas.length ? 1 : 0);
+    for (const f of r.falhas) console.log(`    ${f}`);
+    falhasTotais += r.falhas.length;
+  }
+  process.exit(falhasTotais ? 1 : 0);
 }
 
 /**

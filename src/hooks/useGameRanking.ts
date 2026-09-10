@@ -116,7 +116,31 @@ export function useGameRanking(dealsInput?: DealLite[]) {
   // O servidor já devolve exatamente a casa/diretoria/equipe permitida.
   const scoped = allScores;
 
+  /**
+   * A linha de quem está olhando, e a posição dela.
+   *
+   * O corretor não vê o pódio da equipe — vê a própria colocação (decisão do
+   * dono em 05/09/2026). A posição é o índice na lista que o SERVIDOR devolveu,
+   * já ordenada por pontos: contar aqui em cima de um recorte diferente daria
+   * um "4º lugar" que não bate com o ranking de ninguém.
+   *
+   * `null` quando a pessoa não está no ranking — conta sem venda na temporada,
+   * ou papel que não pontua. Quem mostra a diferença é a tela.
+   */
+  const minhaPosicao = useMemo(() => {
+    const indice = allScores.findIndex((score) => score.broker.user_id === user?.id);
+    return indice < 0 ? null : indice + 1;
+  }, [allScores, user?.id]);
+
+  const meuScore = useMemo(
+    () => allScores.find((score) => score.broker.user_id === user?.id) ?? null,
+    [allScores, user?.id],
+  );
+
   // `isLoading` e nao `isPending`: consulta desabilitada (sem temporada aberta)
   // fica `pending` para sempre e travaria qualquer esqueleto ligado nele.
-  return { role, myBroker, allScores, scoped, seasonId: seasonId ?? null, loading: isLoading };
+  return {
+    role, myBroker, allScores, scoped, meuScore, minhaPosicao,
+    seasonId: seasonId ?? null, loading: isLoading,
+  };
 }

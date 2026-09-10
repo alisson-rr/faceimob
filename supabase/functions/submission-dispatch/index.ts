@@ -106,23 +106,63 @@ async function probeBrevo(): Promise<Response> {
   // O valor gravado NÃO é ecoado aqui: quando ele não passa por
   // `senderEmailProblem` pode ser qualquer coisa — em 02/09/2026 era a própria
   // chave de API —, e devolvê-lo seria vazar credencial para a tela.
-  if (problema) return json({ ok: false, error: problema, remetentes }, 502);
+  if (problema) {
+    // A mesma sonda pinta o veredito nos DOIS cartões do par (a tela aponta
+    // `brevo::api_key` e `brevo::sender_email` para esta chamada). Sem dizer que
+    // a chave passou, quem clica em "Testar conexão" no cartão da chave lê a
+    // recusa em vermelho e rotaciona uma credencial que está funcionando.
+    //
+    // E quando a lista NÃO veio, o motivo vai junto: é neste ramo que ela é o
+    // caminho de saída, e uma lista vazia sem explicação devolve o admin ao
+    // mesmo beco de antes.
+    const veredito = lista.ok
+      ? `A chave de API foi aceita, mas o remetente não serve: ${problema}`
+      : `${problema} ${lista.error}`;
+    return json({ ok: false, error: veredito, remetentes }, 502);
+  }
 
   if (!lista.ok) return json({ ok: false, error: lista.error }, 502);
 
   // `senderEmailProblem` já garantiu que não é nulo nem vazio.
   const alvo = (senderEmail ?? "").trim().toLowerCase();
-  if (!remetentes.some((s) => s.email === alvo)) {
+  // Conta só os VERIFICADOS: a lista traz cadastrados que a Brevo ainda não
+  // liberou, e chamar todos de "verificados" faria o admin gravar justamente um
+  // dos que o bloco logo abaixo marca como pendente.
+  const verificados = remetentes.filter((s) => s.ativo).length;
+  const cadastrado = remetentes.find((s) => s.email === alvo);
+  if (!cadastrado) {
     return json({
       ok: false,
+      // Sem o ramo de zero, a frase saía como "os 0 remetentes verificados" e
+      // mandava "verificar o endereço" — quando o passo real é cadastrá-lo.
+      error: verificados === 0
+        ? "A chave funciona, mas a conta da Brevo não tem nenhum remetente verificado. " +
+          "Cadastre o endereço em Brevo → Remetentes e confirme pelo e-mail de verificação antes do primeiro envio."
+        : `A chave funciona, mas ${alvo} não está entre os ${verificados} remetentes verificados da conta. ` +
+          "Verifique o endereço no painel da Brevo antes do primeiro envio.",
+      remetentes,
+    }, 502);
+  }
+  // Cadastrado sem estar verificado é a mesma meia credencial de sempre: o
+  // endereço aparece na conta, a tela diria "utilizável" e o envio de verdade
+  // seria recusado pela Brevo. Estar na lista não é estar pronto.
+  //
+  // `remetente` vai junto porque é ele que diz à tela QUAL caso é este: com o
+  // endereço, o gravado está na lista (falta verificar); sem ele, o gravado não
+  // está na lista — e a frase a mostrar é outra. Só é ecoado depois de
+  // `senderEmailProblem`, então nunca carrega o que não é e-mail.
+  if (!cadastrado.ativo) {
+    return json({
+      ok: false,
+      remetente: alvo,
       error:
-        `A chave funciona, mas ${alvo} não está entre os ${remetentes.length} remetentes verificados da conta. ` +
-        "Verifique o endereço no painel da Brevo antes do primeiro envio.",
+        `${alvo} está cadastrado na Brevo mas ainda não foi verificado — o envio será recusado. ` +
+        "Confirme o endereço pelo e-mail que a Brevo mandou, ou grave outro remetente já verificado.",
       remetentes,
     }, 502);
   }
 
-  return json({ ok: true, remetente: alvo, verificados: remetentes.length, remetentes });
+  return json({ ok: true, remetente: alvo, verificados, remetentes });
 }
 
 Deno.serve(async (req) => {

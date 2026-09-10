@@ -22,6 +22,21 @@ tipos de documento, turnos, fila geral, regras de pontuação, permissões):
 psql "$DATABASE_URL" -f supabase/seed.sql
 ```
 
+A ordem completa não está no `seed.sql`, e sim em duas listas que precisam
+combinar: `[db.seed].sql_paths` do `supabase/config.toml` (banco local) e
+`$seedFiles` do `scripts/seed-database.ps1` (remoto). As duas começam pelo
+`seed.sql` e seguem por `supabase/seeds/`: quatro fases de catálogo e operação
+(`010`–`040`), o resolvedor do testador (`045`) e o cenário de teste (`050`). O
+cenário de demonstração (`060`) fica fora das duas e é aplicado à parte; `059` e
+`069` são os rollbacks de `050` e `060`, sempre manuais.
+
+**Hoje elas não combinam, e é por isso que o seed remoto quebra.** O `045` está
+só no `config.toml`; o `$seedFiles` do PowerShell pula direto de `040` para
+`050`. Como `045_tester_ref.sql` é quem cria `public.seed_tester_ref` e o `050`
+a referencia, `npm run db:seed:remote` aborta na fase 5 com *relation
+public.seed_tester_ref does not exist* — enquanto `db:reset` local passa.
+Conserto: inserir o `045` entre o `040` e o `050` em `$seedFiles`.
+
 Os seeds registram os documentos de negócio só no banco; o arquivo em si sobe com
 `npm run db:seed:documents` (`-- --remote` para a homologação, que exige
 `SUPABASE_SERVICE_ROLE_KEY` no ambiente). Rode depois do `showcase`, que cria as linhas.
@@ -85,10 +100,18 @@ um stub de `cron.*` no lugar do pg_cron.
 | `0033_public_link_hardening` | link público deixa de nascer adivinhável: slug sorteado (`gen_random_uuid()`), criação só por `create_public_link()` com PIN obrigatório, `INSERT` direto fora do contrato de `authenticated`, e lockout de 15 min após 5 PINs errados em `resolve_public_link` (`failed_attempts`/`locked_until`) |
 | `0034_submit_lockout` | `public_daily_submit` recusa com `NULL` em vez de `raise`: a exceção abortava a transação do PostgREST e descartava junto o contador do lockout gravado por `resolve_public_link`, então o caminho de escrita nunca travava — 10^6 PINs varridos por `POST /rpc/public_daily_submit`. Metade de banco de uma correção que também toca `DailyReport.tsx` |
 
-58 tabelas · 1 view · 124 policies · 89 funções · 13 enums · 253 asserts de teste.
-Os cinco primeiros números são os que `./scripts/validate-schema.sh --all` imprime no bloco
-`==> sanidade`; os asserts são as linhas `ok` que os 17 arquivos de `supabase/tests/` emitem
-na mesma execução.
+**A tabela acima cobre `0001`–`0034` e parou aí.** De `0035` em diante o que cada
+migration decidiu está em `docs/sprints/decisoes.md`, uma linha por decisão, com a
+migration na última coluna. Quantas são, meça: `ls supabase/migrations | wc -l`.
+Não deduza pelo último número — a numeração tem lacunas (número reservado para
+uma frente e não usado) e um total escrito aqui envelhece na próxima rodada, em
+que várias frentes criam migration ao mesmo tempo.
+
+62 tabelas · 2 views · 131 policies · 135 funções · 13 enums. Medido no schema
+`public` da homologação em 05/09/2026, que está na cabeça da série de migrations;
+é o mesmo bloco `==> sanidade` que `./scripts/validate-schema.sh --all` imprime.
+Os asserts são as linhas `ok` que os 47 arquivos de `supabase/tests/` emitem na
+mesma execução.
 
 ## Auditoria de CRUD
 
@@ -162,9 +185,10 @@ retroativamente — a queixa sobre discrepância nos anuais.
 
 ## O que já foi fechado
 
-1. **Edge functions** — as 8 foram reescritas contra o schema novo em `587aa7d`.
-   Nenhuma referencia mais tabela inexistente. `meta-ads-webhook` chama
-   `assign_lead`, então o lead do formulário entra na roleta.
+1. **Edge functions** — foram reescritas contra o schema novo em `587aa7d` (eram
+   8 na época; hoje são 9 em `supabase/functions/`, fora o `_shared/`). Nenhuma
+   referencia mais tabela inexistente. `meta-ads-webhook` chama `assign_lead`,
+   então o lead do formulário entra na roleta.
 2. **Cron da roleta** — `0013` agenda `release_expired_leads()` a cada 30s. Era
    o bug de maior impacto: sem agendamento a trava de 5 minutos nunca liberava o
    lead e a roleta parava na primeira atribuição.
@@ -194,8 +218,9 @@ Espera-se três linhas `faceimob-*` com `active = true`, `last_status =
 
 ## O que ainda falta
 
-*Revisado em 26/08/2026 (Tarefa J). Os três primeiros itens desta lista já não
-eram verdade e foram corrigidos; o que sobrou está abaixo.*
+*Revisado em 26/08/2026 (Tarefa J) e em 05/09/2026 (zona de documentação). Cada
+revisão derrubou itens que já não eram verdade — na segunda, os itens 2, 6 e 7,
+conferidos contra a homologação. O que sobrou está abaixo.*
 
 1. ~~**Frontend** — cerca de 15 telas consultando a forma antiga~~ — resolvido.
    Todas passam por `src/integrations/supabase/newSchema.ts`, e as cinco do
@@ -206,22 +231,41 @@ eram verdade e foram corrigidos; o que sobrou está abaixo.*
 2. ~~**Cofre de tokens** sem uso nas duas pontas~~ — resolvido.
    **Admin · Integrações** grava por `set_integration_secret()` e as edge
    functions leem por `functions/_shared/secrets.ts`, com `Deno.env` como
-   retaguarda. O que falta é **cadastrar as chaves reais**: o cofre da
-   homologação está vazio.
-3. ~~**Login por código no e-mail**~~ — entregue. `Login.tsx` usa
-   `signInWithOtp` (6 dígitos) e mantém `signInWithPassword` como alternativa,
-   por decisão de 25/08 — a demonstração não podia depender de SMTP. Nenhuma
-   senha é gravada em `public.profiles`; o hash vive no GoTrue.
+   retaguarda. O cofre **não está mais vazio**: em 05/09/2026 a homologação tem
+   4 credenciais, de `brevo` e `supabase`. O `brevo/sender_email` que guardava a
+   chave de API colada por engano (decisão de 04/09) **também já foi corrigido**:
+   medido em 05/09/2026, tem 24 caracteres e é um e-mail. O que falta são as
+   credenciais de WhatsApp/Meta e a da OpenAI. O cofre nunca devolve o valor
+   gravado, mas isso não deixa ninguém às cegas: quem responde "a chave gravada
+   funciona?" é **Configurações → Integrações → Testar conexão** (no cartão do
+   Brevo a sonda lê `/v3/senders`, sem mandar e-mail, e mostra o remetente em
+   uso). Onde o botão não aparece, a própria tela explica por quê.
+3. ~~**Login por código no e-mail**~~ — entregue, mas o padrão é o inverso:
+   `Login.tsx` abre em **senha** (`signInWithPassword`) e oferece o código de 6
+   dígitos (`signInWithOtp` + `verifyOtp`) como alternativa, por decisão de
+   21/08/2026 que reverteu a de 02/08 — a demonstração não podia depender de
+   SMTP. Nenhuma senha é gravada em `public.profiles`; o hash vive no GoTrue.
 4. **Brevo, King Host, gestão de campanhas Meta** — previstos nas atas, sem
    investigação de viabilidade. Ver `docs/sprints/`.
 5. **Ajustes que só o dono do projeto faz no painel do Supabase:** desligar o
    auto-cadastro (Authentication → Sign In / Providers) e configurar o SMTP.
    O `config.toml` só vale para o stack local.
-6. **Dois links públicos de diretoria sem PIN** (`seed-diretoria-daniela`,
-   `diretor-ricardo-sampaio`): a `0034` não protege link sem PIN, porque não há
-   segredo a adivinhar. Fechar em Admin · Diário → *Gerar PIN*.
-7. **`handle_new_auth_user` concede `broker` a toda conta nova** (`0002`).
-   Inofensivo com o auto-cadastro desligado; volta a ser buraco se religarem.
+6. ~~**Dois links públicos de diretoria sem PIN**~~ — resolvido. Medido em
+   05/09/2026: os 4 links da homologação têm `pin_hash`. Continua valendo a
+   regra que criou o item: a `0034` não protege link sem PIN, porque não há
+   segredo a adivinhar. Pela tela não nasce mais nenhum assim — `create_public_link`
+   (`0062`) recusa com *Link público exige PIN* e o `INSERT` direto está fora do
+   contrato de `authenticated`. O que ainda pode entrar sem PIN é link de seed ou
+   gravado por `service_role`; o conserto é **Configurações → Diário — Links →
+   Gerar PIN**.
+7. **`handle_new_auth_user` concede `broker` a toda conta nova** (`0002`) e
+   nunca o retira. **Não é inofensivo**, como esta lista já afirmou: em 02/09 a
+   `0053` fechou um caso em que um SDR — que é `{sdr, broker}` por causa deste
+   gatilho — passava pelo `with check` de `deals_insert`, virava CORRETOR do
+   negócio e levava 100% do rateio de VGV. A lição vale para toda autorização
+   nova: pergunte pelo **papel efetivo** (`auth_effective_role(uuid)`, o de maior
+   precedência), nunca "tem o papel X?" — a segunda pergunta responde "sim" para
+   quase todo o cadastro.
 
 ## Migrations antigas
 
