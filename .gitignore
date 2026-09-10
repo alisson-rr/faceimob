@@ -33,3 +33,21 @@ electron-release/
 .env
 .env.*
 !.env.example
+
+# E2E (Playwright)
+e2e/.auth/
+playwright-report/
+test-results/
+/demo/
+
+crm-faceimob-main --OLD
+
+# Supabase
+supabase/.temp/
+
+.vercel
+.env*
+
+# Export do Bubble: senha em texto claro, CPF, PIS e telefone de ~300 pessoas.
+# Fica no disco para a importacao, nunca em commit.
+DOCUMENTOS/DADOS_BUBBLE/

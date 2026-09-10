@@ -84,7 +84,8 @@ fi
 
 if [ "$WITH_TESTS" -eq 1 ]; then
   echo "==> testes"
-  for t in "$ROOT"/supabase/tests/[0-9][1-9]_*.sql; do
+  for t in "$ROOT"/supabase/tests/[0-9][0-9]_*.sql; do
+    [[ "$(basename "$t")" == 00_* ]] && continue
     [ -e "$t" ] || continue
     echo "  -- $(basename "$t")"
     run_sql "$t"

@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Cofre de credenciais e saúde dos jobs de cron.
@@ -31,7 +32,7 @@ export type CronJobHealth = {
 
 export async function listIntegrations(): Promise<IntegrationRecord[]> {
   const { data, error } = await supabase.rpc("list_integrations");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("listar integrações", error);
   return (data ?? []) as IntegrationRecord[];
 }
 
@@ -47,7 +48,7 @@ export async function setIntegrationSecret(
     p_secret: secret,
     p_config: config,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar credencial da integração", error);
   return data as string;
 }
 
@@ -58,6 +59,6 @@ export async function setIntegrationSecret(
  */
 export async function listCronJobsHealth(): Promise<CronJobHealth[]> {
   const { data, error } = await supabase.rpc("cron_jobs_health");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("saúde dos jobs de cron", error);
   return (data ?? []) as CronJobHealth[];
 }

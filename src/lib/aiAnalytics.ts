@@ -1,5 +1,4 @@
 import { PipelineDeal, DealStage, DEAL_STAGES } from "@/types/crm";
-import { mockBrokers } from "@/data/mockData";
 
 // ── Deal Probability Score ───────────────────────────────────
 const stageProbability: Record<DealStage, number> = {
@@ -16,9 +15,6 @@ export function calcDealProbability(deal: PipelineDeal): number {
   if (deal.visit_result === "completed") prob += 10;
   // High-value slight penalty (harder to close)
   if (deal.deal_value > 1000000) prob -= 5;
-  // Broker performance bonus
-  const broker = mockBrokers.find((b) => b.name === deal.broker1);
-  if (broker && broker.monthly_sales >= 6) prob += 8;
   return Math.max(5, Math.min(98, prob));
 }
 

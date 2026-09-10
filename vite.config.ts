@@ -9,7 +9,10 @@ export default defineConfig(({ mode }) => ({
 
   server: {
     host: "::",
-    port: 8080,
+    // 8080 continua sendo o padrão; PORT permite subir uma segunda instância
+    // sem brigar com a que já estiver rodando. `--port` na linha de comando
+    // (é o que a suíte E2E usa) continua vencendo os dois.
+    port: Number(process.env.PORT) || 8080,
     hmr: {
       overlay: false,
     },

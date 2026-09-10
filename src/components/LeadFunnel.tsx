@@ -1,22 +1,36 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card } from "@/components/ui/card";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EmptyState, LoadingState, StatusBadge } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, MessageCircle, Timer, Clock, HandMetal } from "lucide-react";
+import { AlertTriangle, Clock, HandMetal, MessageCircle, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { dateTime, num } from "@/lib/format";
+import { describeError } from "@/lib/supabaseError";
 import LeadDetailModal from "./LeadDetailModal";
 import {
-  listLeads, getAutomationSettings, listTimeoutReleasesToday, claimLead,
-  FUNNEL_STAGES, OPEN_LEAD_STATUSES, funnelStageLabel,
-  attendSecondsLeft, formatCountdown, canClaim, isLeadOverdue,
-  type LeadRecord, type AutomationSettings,
+  useAutomationSettings, useInvalidateLeads, useLeadsRealtime, useNowTicker,
+  useOpenLeads, useTimeoutReleasesToday, waNumber,
+} from "@/components/leads";
+import {
+  claimLead, FUNNEL_STAGES, funnelStageLabel, isLeadOverdue,
+  attendSecondsLeft, formatCountdown, canClaim, leadSourceTone,
+  type LeadRecord, type LeadTone,
 } from "@/integrations/supabase/leads";
+
+/** Contorno da coluna por tom da etapa. Só token — não há paleta literal aqui. */
+const columnBorder: Record<LeadTone, string> = {
+  info: "border-info/40",
+  warning: "border-warning/40",
+  danger: "border-destructive/40",
+  success: "border-success/40",
+  highlight: "border-highlight/50",
+  neutral: "border-border",
+};
 
 export default function LeadFunnel({
   actorName, onConvert,
@@ -24,55 +38,19 @@ export default function LeadFunnel({
   const { user } = useAuth();
   const profileId = user?.id || null;
 
-  const [leads, setLeads] = useState<LeadRecord[]>([]);
-  const [selected, setSelected] = useState<LeadRecord | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const [settings, setSettings] = useState<AutomationSettings | null>(null);
-  const [timeoutsToday, setTimeoutsToday] = useState(0);
+  const leadsQuery = useOpenLeads();
+  const settingsQuery = useAutomationSettings();
+  const releasesQuery = useTimeoutReleasesToday();
+  const invalidateLeads = useInvalidateLeads();
+  useLeadsRealtime("leads-funnel");
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overdueOpen, setOverdueOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      // Só o que ainda está em operação: convertido/perdido/descartado sai do funil.
-      const [rows, config, releases] = await Promise.all([
-        listLeads({ statuses: OPEN_LEAD_STATUSES, limit: 500 }),
-        getAutomationSettings(),
-        listTimeoutReleasesToday().catch(() => new Map<string, number>()),
-      ]);
-      setLeads(rows);
-      setSettings(config);
-      setTimeoutsToday(profileId ? releases.get(profileId) || 0 : 0);
-      // Mantém o lead aberto sincronizado com o que voltou do banco.
-      setSelected((current) => (current ? rows.find((row) => row.id === current.id) || null : null));
-    } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao carregar o funil",
-        description: err instanceof Error ? err.message : "tente recarregar a página",
-      });
-    }
-  }, [profileId]);
-
-  useEffect(() => {
-    void load();
-    // O popup/som de lead novo é global (NewLeadNotifier em AppLayout);
-    // aqui só recarregamos o funil quando o banco muda.
-    const channel = supabase.channel("leads-funnel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => { void load(); })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [load]);
-
+  const leads = useMemo(() => leadsQuery.data ?? [], [leadsQuery.data]);
   // Tique de 1s só enquanto existe trava correndo — o funil fica aberto o dia
   // inteiro e são até 500 cartões na tela.
-  const hasRunningDeadline = leads.some(
-    (lead) => lead.status === "assigned" && lead.attend_deadline,
-  );
-
-  useEffect(() => {
-    const ticker = setInterval(() => setNow(Date.now()), hasRunningDeadline ? 1_000 : 30_000);
-    return () => clearInterval(ticker);
-  }, [hasRunningDeadline]);
+  const now = useNowTicker(leads.some((lead) => lead.status === "assigned" && lead.attend_deadline));
 
   const grouped = useMemo(() => {
     const groups: Record<string, LeadRecord[]> = {};
@@ -95,9 +73,16 @@ export default function LeadFunnel({
     [leads, now, profileId],
   );
 
-  const threshold = settings?.overdue_block_threshold ?? 20;
-  const inactivityHours = settings?.inactivity_alert_hours ?? 48;
-  const attendTimeout = settings?.attend_timeout_seconds ?? 300;
+  // Deriva da consulta: sem isso o modal congela uma cópia e ignora o realtime.
+  const selected = useMemo(
+    () => leads.find((lead) => lead.id === selectedId) ?? null,
+    [leads, selectedId],
+  );
+
+  const threshold = settingsQuery.data?.overdue_block_threshold ?? 20;
+  const inactivityHours = settingsQuery.data?.inactivity_alert_hours ?? 48;
+  const attendTimeout = settingsQuery.data?.attend_timeout_seconds ?? 300;
+  const timeoutsToday = profileId ? releasesQuery.data?.get(profileId) ?? 0 : 0;
 
   const attend = async (lead: LeadRecord) => {
     try {
@@ -107,11 +92,25 @@ export default function LeadFunnel({
       toast({
         variant: "destructive",
         title: "Não foi possível atender",
-        description: err instanceof Error ? err.message : "tente novamente",
+        description: describeError(err, "outro corretor pode ter assumido antes"),
       });
     }
-    await load();
+    await invalidateLeads();
   };
+
+  if (leadsQuery.error) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        tone="danger"
+        title="Não consegui carregar o funil"
+        description={describeError(leadsQuery.error, "a lista de leads não respondeu; tente de novo")}
+        action={<Button onClick={() => void leadsQuery.refetch()}>Tentar de novo</Button>}
+      />
+    );
+  }
+
+  if (leadsQuery.isPending) return <LoadingState variant="list" rows={5} label="Carregando o funil de leads…" />;
 
   return (
     <>
@@ -120,23 +119,22 @@ export default function LeadFunnel({
           size="sm"
           variant={overdueLeads.length > 0 ? "destructive" : "outline"}
           onClick={() => setOverdueOpen(true)}
-          className="gap-1.5"
         >
           <AlertTriangle className="h-4 w-4" />
           Atrasados
-          <Badge variant="secondary" className="ml-1">{overdueLeads.length}</Badge>
+          <Badge variant="secondary" className="ml-1 tabular-nums">{num(overdueLeads.length)}</Badge>
         </Button>
         {overdueLeads.length >= threshold && (
-          <span className="text-xs text-destructive font-semibold">
-            ⚠ Check-in bloqueado: reduza para menos de {threshold} atrasos.
+          <span className="text-xs font-semibold text-destructive">
+            Check-in bloqueado: reduza para menos de {num(threshold)} atrasos.
           </span>
         )}
         {timeoutsToday > 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
-            <AlertTriangle className="h-4 w-4 text-destructive" />
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+            <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden />
             <span className="font-semibold">Leads que voltaram à fila hoje (prazo estourou):</span>
-            <Badge variant="destructive">{timeoutsToday}</Badge>
-            <Badge variant="outline" className="border-destructive/60 text-destructive">{actorName}</Badge>
+            <StatusBadge tone="danger">{num(timeoutsToday)}</StatusBadge>
+            <StatusBadge tone="neutral">{actorName}</StatusBadge>
           </div>
         )}
       </div>
@@ -144,13 +142,14 @@ export default function LeadFunnel({
       <div className="flex gap-3 overflow-x-auto pb-4">
         {FUNNEL_STAGES.map((stage) => {
           const items = grouped[stage.key] || [];
+          const accent = columnBorder[stage.tone];
           return (
-            <div key={stage.key} className="min-w-[260px] w-[260px] shrink-0">
-              <div className={cn("rounded-t-lg px-3 py-2 border-t border-x bg-secondary/40 flex items-center justify-between", stage.accent)}>
-                <span className="text-xs font-semibold uppercase tracking-wider">{stage.label}</span>
-                <Badge variant="outline" className="text-[10px]">{items.length}</Badge>
+            <div key={stage.key} className="w-[260px] min-w-[260px] shrink-0">
+              <div className={cn("flex items-center justify-between rounded-t-xl border-x border-t bg-muted/50 px-3 py-2", accent)}>
+                <span className="text-eyebrow">{stage.label}</span>
+                <Badge variant="outline" className="tabular-nums">{num(items.length)}</Badge>
               </div>
-              <div className={cn("border rounded-b-lg p-2 space-y-2 min-h-[400px] bg-background/30", stage.accent)}>
+              <div className={cn("min-h-[400px] space-y-2 rounded-b-xl border bg-card/40 p-2", accent)}>
                 {items.map((lead) => (
                   <LeadCardMini
                     key={lead.id}
@@ -160,12 +159,12 @@ export default function LeadFunnel({
                     attendTimeout={attendTimeout}
                     claimable={canClaim(lead, profileId)}
                     overdue={isLeadOverdue(lead, now)}
-                    onClick={() => setSelected(lead)}
+                    onOpen={() => setSelectedId(lead.id)}
                     onAttend={() => attend(lead)}
                   />
                 ))}
                 {items.length === 0 && (
-                  <p className="text-[11px] text-muted-foreground text-center py-6">—</p>
+                  <p className="py-6 text-center text-xs text-muted-foreground">Nenhum lead nesta etapa</p>
                 )}
               </div>
             </div>
@@ -176,49 +175,50 @@ export default function LeadFunnel({
       <LeadDetailModal
         lead={selected}
         open={!!selected}
-        onOpenChange={(v) => !v && setSelected(null)}
+        onOpenChange={(next) => { if (!next) setSelectedId(null); }}
         actorName={actorName}
-        onConvert={(l) => { setSelected(null); onConvert(l); }}
-        onStageChanged={load}
+        onConvert={(lead) => { setSelectedId(null); onConvert(lead); }}
+        onStageChanged={() => void invalidateLeads()}
       />
 
       {/* Lista de leads atrasados */}
       <Dialog open={overdueOpen} onOpenChange={setOverdueOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Leads atrasados ({overdueLeads.length})
+              <AlertTriangle className="h-5 w-5 text-destructive" aria-hidden />
+              Leads atrasados ({num(overdueLeads.length)})
             </DialogTitle>
             <DialogDescription>
               Próxima ação vencida. Trate cada lead para desbloquear novos check-ins
-              (limite: {threshold}).
+              (limite: {num(threshold)}).
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto space-y-2 pr-1">
+          <div className="space-y-2 overflow-y-auto pr-1">
             {overdueLeads.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">
+              <p className="py-8 text-center text-sm text-muted-foreground">
                 🎉 Nenhum lead atrasado. Bom trabalho!
               </p>
             )}
             {overdueLeads.map((lead) => (
               <button
                 key={lead.id}
-                onClick={() => { setOverdueOpen(false); setSelected(lead); }}
-                className="w-full text-left border border-destructive/40 bg-destructive/5 rounded-lg px-3 py-2 hover:bg-destructive/10 transition-colors"
+                type="button"
+                onClick={() => { setOverdueOpen(false); setSelectedId(lead.id); }}
+                className="w-full rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-left transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm truncate">{lead.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
+                    <p className="truncate text-sm font-semibold">{lead.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
                       {lead.source || "—"}{lead.form_name ? ` · ${lead.form_name}` : ""}
                     </p>
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <Badge variant="outline" className="text-[10px]">{funnelStageLabel(lead.funnel_stage)}</Badge>
-                    <span className="text-[10px] text-destructive font-semibold flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      venceu {lead.next_action_at ? format(new Date(lead.next_action_at), "dd/MM HH:mm") : "—"}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <StatusBadge tone="neutral">{funnelStageLabel(lead.funnel_stage)}</StatusBadge>
+                    <span className="flex items-center gap-1 text-xs font-semibold text-destructive">
+                      <Clock className="h-3.5 w-3.5" aria-hidden />
+                      venceu {dateTime(lead.next_action_at)}
                     </span>
                   </div>
                 </div>
@@ -234,21 +234,16 @@ export default function LeadFunnel({
   );
 }
 
-function sourceStyle(source?: string): { cls: string; label: string } {
-  const s = (source || "").toLowerCase();
-  if (s.includes("meta") || s.includes("facebook") || s.includes("instagram"))
-    return { cls: "bg-blue-600 text-white border-blue-500", label: source || "Meta" };
-  if (s.includes("whats"))
-    return { cls: "bg-green-600 text-white border-green-500", label: source || "WhatsApp" };
-  if (s.includes("google"))
-    return { cls: "bg-yellow-500 text-black border-yellow-400", label: source || "Google" };
-  if (s.includes("indica"))
-    return { cls: "bg-purple-600 text-white border-purple-500", label: source || "Indicação" };
-  return { cls: "bg-secondary text-foreground border-border", label: source || "Origem —" };
-}
-
+/**
+ * Cartão do funil.
+ *
+ * O cartão inteiro é um `<button>`: antes era `<Card onClick>`, que não recebe
+ * foco nem responde a Enter — o funil era intransitável no teclado (X06). Os
+ * botões de WhatsApp e "Atender" ficam FORA do botão do cartão, porque botão
+ * dentro de botão é HTML inválido e o navegador desmonta a árvore.
+ */
 function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, overdue, onClick, onAttend,
+  lead, now, inactivityHours, attendTimeout, claimable, overdue, onOpen, onAttend,
 }: {
   lead: LeadRecord;
   now: number;
@@ -256,105 +251,83 @@ function LeadCardMini({
   attendTimeout: number;
   claimable: boolean;
   overdue: boolean;
-  onClick: () => void;
+  onOpen: () => void;
   onAttend: () => void;
 }) {
-  const ageMs = now - new Date(lead.created_at).getTime();
-  const isBrandNew = ageMs < attendTimeout * 1000;
+  const isBrandNew = now - new Date(lead.created_at).getTime() < attendTimeout * 1000;
   // Cronômetro da trava vem de `attend_deadline`: o banco zera esse campo no
   // claim, então contar a partir de created_at mostrava prazo em lead já travado.
   const secondsLeft = attendSecondsLeft(lead, now);
   const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
   const inactive = (now - lastActivity) / 3_600_000 > inactivityHours;
-  const src = sourceStyle(lead.source);
-  const digits = (lead.phone || "").replace(/\D/g, "");
-  const waLink = digits
-    ? `https://wa.me/${digits.startsWith("55") ? digits : `55${digits}`}?text=${encodeURIComponent(`Olá ${lead.name}, tudo bem?`)}`
-    : "";
+  const number = waNumber(lead.phone);
 
   return (
-    <Card
-      onClick={onClick}
+    <div
       className={cn(
-        "px-3 py-2 cursor-pointer hover:bg-secondary/60 transition-colors border-border/50 relative",
-        claimable && "ring-2 ring-primary/70",
-        overdue && "ring-2 ring-destructive/70",
+        "rounded-xl border bg-card px-3 py-2 transition-colors",
+        claimable ? "border-primary/70 ring-1 ring-primary/40"
+          : overdue ? "border-destructive/70 ring-1 ring-destructive/40" : "border-border",
       )}
     >
-      <div className="flex items-start gap-2">
-        <span className={cn(
-          "mt-1.5 h-2 w-2 rounded-full shrink-0",
-          claimable ? "bg-primary animate-pulse"
-            : overdue ? "bg-destructive animate-pulse"
-              : isBrandNew ? "bg-red-500 animate-pulse" : "bg-muted-foreground/40",
-        )} />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold text-sm truncate">{lead.name}</p>
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
-              {formatDistanceToNow(new Date(lead.created_at), { locale: ptBR, addSuffix: false })}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground truncate">
-            {lead.campaign_name || lead.source || "—"}
-          </p>
-          <div className="flex items-center justify-between gap-2 mt-0.5">
-            <span className={cn(
-              "text-[10px] italic truncate",
-              overdue ? "text-destructive font-semibold" : "text-primary/80",
-            )}>
-              {lead.broker_name || "Sem corretor"}
-            </span>
-            <div className="flex items-center gap-1 shrink-0">
-              <Badge className={cn("text-[9px] px-1.5 py-0 border h-4", src.cls)}>{src.label}</Badge>
-              {secondsLeft !== null && (
-                <span className={cn(
-                  "text-[10px] font-medium flex items-center gap-0.5",
-                  secondsLeft <= 60 ? "text-destructive" : "text-primary",
-                )}>
-                  <Timer className="h-2.5 w-2.5" />{formatCountdown(secondsLeft)}
-                </span>
-              )}
-              {waLink && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); window.open(waLink, "_blank"); }}
-                  className="h-5 w-5 rounded-full bg-green-600 hover:bg-green-700 flex items-center justify-center"
-                  title="WhatsApp"
-                >
-                  <MessageCircle className="h-3 w-3 text-white" />
-                </button>
-              )}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <div className="flex items-start gap-2">
+          <span
+            className={cn(
+              "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+              claimable ? "bg-primary animate-pulse"
+                : overdue ? "bg-destructive animate-pulse"
+                  : isBrandNew ? "bg-info animate-pulse" : "bg-muted-foreground/40",
+            )}
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <p className="truncate text-sm font-semibold">{lead.name}</p>
+              <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(lead.created_at), { locale: ptBR, addSuffix: false })}
+              </span>
             </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {lead.campaign_name || lead.source || "—"}
+            </p>
+            <p className={cn("mt-0.5 truncate text-xs", overdue ? "font-semibold text-destructive" : "text-muted-foreground")}>
+              {lead.broker_name || "Sem corretor"}
+            </p>
           </div>
         </div>
+      </button>
+
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
+        {secondsLeft !== null && (
+          <StatusBadge tone={secondsLeft <= 60 ? "danger" : "warning"} icon={Timer}>
+            <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>
+          </StatusBadge>
+        )}
+        {overdue && <StatusBadge tone="danger" icon={AlertTriangle}>Atrasado</StatusBadge>}
+        {inactive && !overdue && <StatusBadge tone="warning" icon={AlertTriangle}>Inativo</StatusBadge>}
+        {number && (
+          <Button
+            variant="ghost" size="icon" className="ml-auto h-7 w-7 text-success hover:text-success"
+            aria-label={`Abrir WhatsApp de ${lead.name}`}
+            onClick={() => window.open(`https://wa.me/${number}`, "_blank", "noopener")}
+          >
+            <MessageCircle className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {claimable && (
-        <Button
-          size="sm"
-          className="w-full mt-2 h-7 text-[11px] gap-1"
-          onClick={(e) => { e.stopPropagation(); onAttend(); }}
-        >
-          <HandMetal className="h-3 w-3" /> Atender
-          {secondsLeft !== null && <span className="font-mono">{formatCountdown(secondsLeft)}</span>}
+        <Button size="sm" className="mt-2 h-8 w-full text-xs" onClick={onAttend}>
+          <HandMetal className="h-3.5 w-3.5" /> Atender
+          {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
         </Button>
       )}
-
-      {(overdue || inactive) && (
-        <div className="flex gap-1 mt-1.5">
-          {overdue && (
-            <Badge className="bg-destructive text-white text-[9px] px-1.5 py-0 h-4 gap-0.5">
-              <AlertTriangle className="h-2.5 w-2.5" /> Atrasado
-            </Badge>
-          )}
-          {inactive && !overdue && (
-            <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-destructive text-destructive gap-0.5">
-              <AlertTriangle className="h-2.5 w-2.5" /> Inativo
-            </Badge>
-          )}
-        </div>
-      )}
-    </Card>
+    </div>
   );
 }

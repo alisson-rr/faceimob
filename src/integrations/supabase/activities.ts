@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { dbError } from "@/lib/supabaseError";
 
 /**
  * Atividades (`tasks`) e visitas (`visits`).
@@ -38,7 +39,7 @@ export async function listTasksFor(refType: TaskRefType, refId: string): Promise
     .eq("ref_type", refType)
     .eq("ref_id", refId)
     .order("due_at", { ascending: true, nullsFirst: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("tasks", error);
   return (data ?? []) as TaskRecord[];
 }
 
@@ -50,7 +51,7 @@ export async function listMyOpenTasks(profileId: string): Promise<TaskRecord[]> 
     .eq("assigned_to", profileId)
     .eq("status", "open")
     .order("due_at", { ascending: true, nullsFirst: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("tasks", error);
   return (data ?? []) as TaskRecord[];
 }
 
@@ -80,7 +81,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskRecord> {
     })
     .select(TASK_COLUMNS)
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("criar atividade", error);
   return data as TaskRecord;
 }
 
@@ -93,11 +94,73 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<voi
     .from("tasks")
     .update({ status, completed_at: status === "done" ? new Date().toISOString() : null })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("atualizar atividade", error);
 }
 
 export const isTaskOverdue = (task: TaskRecord, now: Date = new Date()) =>
   task.status === "open" && task.due_at !== null && new Date(task.due_at) < now;
+
+export const TASK_PRIORITY_LABEL: Record<TaskPriority, string> = { low: "Baixa", normal: "Normal", high: "Alta" };
+export const TASK_REF_LABEL: Record<TaskRefType, string> = { lead: "Lead", deal: "Negócio", cca_case: "Caso CCA" };
+
+export type TaskWithAssignee = TaskRecord & { assignee_name: string | null };
+
+/**
+ * Atividades em aberto que o usuário enxerga. Quem recorta é o RLS de `tasks`
+ * (`assigned_to` em `auth_visible_profiles()` ou `created_by = auth.uid()`):
+ * o corretor recebe as dele, gerente e diretor recebem as da equipe. Nenhum
+ * filtro de papel aqui, para a hierarquia continuar mudando em um lugar só.
+ *
+ * `tasks` tem duas FKs para `profiles` (`assigned_to` e `created_by`); sem o
+ * nome da constraint o PostgREST recusa o embed por ambiguidade.
+ */
+export async function listOpenTasksVisible(): Promise<TaskWithAssignee[]> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(`${TASK_COLUMNS},assignee:profiles!tasks_assigned_to_fkey(full_name)`)
+    .eq("status", "open")
+    .order("due_at", { ascending: true, nullsFirst: false });
+  if (error) throw dbError("tasks", error);
+  const rows = (data ?? []) as unknown as (TaskRecord & { assignee: { full_name: string } | null })[];
+  return rows.map(({ assignee, ...task }) => ({ ...task, assignee_name: assignee?.full_name ?? null }));
+}
+
+export type DueBucket = "atrasadas" | "hoje" | "semana" | "depois" | "sem_prazo";
+
+/** Ordem em que a agenda mostra as faixas. */
+export const DUE_BUCKETS: { id: DueBucket; label: string }[] = [
+  { id: "atrasadas", label: "Atrasadas" },
+  { id: "hoje", label: "Vencem hoje" },
+  { id: "semana", label: "Próximos 7 dias" },
+  { id: "depois", label: "Depois" },
+  { id: "sem_prazo", label: "Sem prazo" },
+];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Faixa de prazo de uma atividade. "Hoje" vai até 23:59:59 no fuso do
+ * navegador — quem marca compromisso pensa em dia de calendário, não em 24 h
+ * contadas a partir de agora. Os 7 dias são inclusivos.
+ */
+export function dueBucket(dueAt: string | null, now: Date = new Date()): DueBucket {
+  if (!dueAt) return "sem_prazo";
+  const due = new Date(dueAt).getTime();
+  if (due < now.getTime()) return "atrasadas";
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - 1;
+  if (due <= endOfToday) return "hoje";
+  if (due <= now.getTime() + 7 * DAY_MS) return "semana";
+  return "depois";
+}
+
+export function groupTasksByDue<T extends { due_at: string | null }>(
+  tasks: T[],
+  now: Date = new Date(),
+): Record<DueBucket, T[]> {
+  const groups: Record<DueBucket, T[]> = { atrasadas: [], hoje: [], semana: [], depois: [], sem_prazo: [] };
+  for (const task of tasks) groups[dueBucket(task.due_at, now)].push(task);
+  return groups;
+}
 
 // -----------------------------------------------------------------------------
 // Visitas
@@ -131,7 +194,7 @@ export async function listVisitsFor(ref: { leadId?: string; dealId?: string }): 
   else if (ref.dealId) query = query.eq("deal_id", ref.dealId);
   else return [];
   const { data, error } = await query.order("scheduled_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("visits", error);
   return (data ?? []) as VisitRecord[];
 }
 
@@ -153,7 +216,7 @@ export async function scheduleVisit(input: {
     })
     .select(VISIT_COLUMNS)
     .single();
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("agendar visita", error);
   return data as VisitRecord;
 }
 
@@ -167,5 +230,5 @@ export async function setVisitResult(id: string, result: VisitResult, notes?: st
       ...(notes !== undefined ? { notes: notes || null } : {}),
     })
     .eq("id", id);
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("atualizar visita", error);
 }

@@ -1,4 +1,15 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
+import { date } from "@/lib/format";
+import { dbError } from "@/lib/supabaseError";
+
+/**
+ * `marketing_developer_summary` e a coluna `revenue` de `marketing_campaign_stats`
+ * chegaram na 0063 e ainda não estão em `types.ts` — o arquivo é gerado por
+ * `supabase gen types` e não se edita à mão. O cast local morre no próximo
+ * `gen types`; é o mesmo escape usado em `people.ts` para as colunas da 0046.
+ */
+const untyped = supabase as unknown as SupabaseClient;
 
 /**
  * Consolidado anual, campanhas e trilha de auditoria.
@@ -26,7 +37,7 @@ export async function listAnnualResults(year?: number): Promise<AnnualResultRow[
     .select("id,year,month,sales_count,vgv,notes,updated_at");
   if (year !== undefined) query = query.eq("year", year);
   const { data, error } = await query.order("year", { ascending: false }).order("month");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("listar resultados anuais", error);
   return (data ?? []) as AnnualResultRow[];
 }
 
@@ -52,7 +63,7 @@ export async function upsertAnnualResult(input: {
       },
       { onConflict: "year,month" },
     );
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar resultado anual", error);
 }
 
 // -----------------------------------------------------------------------------
@@ -66,88 +77,460 @@ export type AdCampaignRow = {
   name: string;
   developer_id: string | null;
   status: string | null;
+  /** Teto que a plataforma cobra por dia. */
   daily_budget: number | null;
+  /** Verba CONTRATADA da campanha (0089) — o que ainda pode ser gasto sai da
+   *  diferença para `total_spend`, que é o gasto REALIZADO. */
+  lifetime_budget: number | null;
+  /** Período de veiculação, `YYYY-MM-DD` (0089). */
+  starts_on: string | null;
+  ends_on: string | null;
+  /** Origem de lead que a campanha alimenta (0089). */
+  lead_source_id: string | null;
   total_spend: number;
   synced_at: string | null;
 };
 
+const CAMPOS_CAMPANHA =
+  "id,external_id,platform,name,developer_id,status,daily_budget,lifetime_budget,"
+  + "starts_on,ends_on,lead_source_id,total_spend,synced_at";
+
 export async function listAdCampaigns(): Promise<AdCampaignRow[]> {
-  const { data, error } = await supabase
+  // `untyped` pelo mesmo motivo das RPCs acima: as colunas da 0089 ainda não
+  // existem em `types.ts`, que é gerado por `supabase gen types`.
+  const { data, error } = await untyped
     .from("ad_campaigns")
-    .select("id,external_id,platform,name,developer_id,status,daily_budget,total_spend,synced_at")
+    .select(CAMPOS_CAMPANHA)
     .order("name");
-  if (error) throw new Error(error.message);
-  return (data ?? []) as AdCampaignRow[];
+  if (error) throw dbError("listar campanhas", error);
+  // `as unknown` porque o cliente sem schema não sabe inferir a lista de
+  // colunas — o mesmo escape das RPCs, e ele morre no próximo `gen types`.
+  return (data ?? []) as unknown as AdCampaignRow[];
 }
 
-export async function upsertAdCampaign(input: {
-  externalId: string;
-  platform: string;
-  name: string;
-  developerId?: string | null;
-  dailyBudget?: number | null;
-  totalSpend?: number;
-}): Promise<void> {
-  const { error } = await supabase
-    .from("ad_campaigns")
-    .upsert(
-      {
-        external_id: input.externalId,
-        platform: input.platform,
-        name: input.name,
-        developer_id: input.developerId ?? null,
-        daily_budget: input.dailyBudget ?? null,
-        ...(input.totalSpend !== undefined ? { total_spend: input.totalSpend } : {}),
-      },
-      { onConflict: "platform,external_id" },
-    );
-  if (error) throw new Error(error.message);
-}
+/** As plataformas que `ad_campaigns_platform_check` aceita. */
+export const AD_PLATFORMS = ["meta", "google", "tiktok", "other"] as const;
+export type AdPlatform = (typeof AD_PLATFORMS)[number];
 
-export type CampaignPerformance = {
-  campaignId: string;
-  campaignName: string;
-  totalSpend: number;
-  leads: number;
-  sales: number;
-  costPerLead: number | null;
-  costPerSale: number | null;
+export const AD_PLATFORM_LABEL: Record<AdPlatform, string> = {
+  meta: "Meta",
+  google: "Google",
+  tiktok: "TikTok",
+  other: "Outros",
 };
 
 /**
- * Custo por lead e por venda, por campanha.
- *
- * O cruzamento usa `leads.campaign_id`, que o `meta-ads-webhook` grava com o id
- * externo da campanha — o mesmo `external_id` de `ad_campaigns`. Sem esse
- * casamento o investimento fica solto do resultado, que é a pergunta que o
- * marketing faz.
+ * O banco só exige MAIÚSCULA (0084) — a Graph API também devolve ARCHIVED,
+ * IN_PROCESS e WITH_ISSUES, e travar o CHECK nestes dois faria a primeira
+ * sincronização real ser recusada pelo próprio banco. Esta lista é o que a
+ * OPERAÇÃO usa: é dela que saem os itens do formulário e os dois destinos do
+ * botão de pausar/reativar. Um valor gravado fora dela continua legível e
+ * editável — quem manda na escrita é o CHECK, não este catálogo.
  */
-export async function campaignPerformance(): Promise<CampaignPerformance[]> {
-  const [campaigns, leadRows] = await Promise.all([
-    listAdCampaigns(),
-    supabase.from("leads").select("campaign_id,converted_at"),
-  ]);
-  if (leadRows.error) throw new Error(leadRows.error.message);
+export const AD_STATUSES = ["ACTIVE", "PAUSED"] as const;
+export type AdStatus = (typeof AD_STATUSES)[number];
 
-  const leads = (leadRows.data ?? []) as { campaign_id: string | null; converted_at: string | null }[];
+/** Rótulo do status cru do banco — a MESMA tradução na tabela, no filtro e no
+ *  painel. Estava escrita duas vezes; um valor fora da dupla aparece como veio,
+ *  porque inventar um nome para ele esconderia o dado. */
+export const adStatusLabel = (status: string | null): string =>
+  !status ? "—" : /^active$/i.test(status) ? "Ativa" : /^paused$/i.test(status) ? "Pausada" : status;
 
-  return campaigns.map((c) => {
-    const mine = leads.filter((l) => l.campaign_id === c.external_id);
-    // Conversão do lead é `converted_at`; não existe FK para o negócio aqui.
-    const sales = mine.filter((l) => l.converted_at !== null).length;
-    const spend = Number(c.total_spend ?? 0);
+/**
+ * De onde veio o gasto da campanha — a MESMA frase nas duas tabelas de
+ * `/marketing`.
+ *
+ * NENHUM código escreve `ad_campaigns.synced_at`: não há Marketing API neste
+ * sistema, e a coluna só tem valor de semente. Escrita em dois lugares, a frase
+ * divergiu — o painel dizia "digitado · atualizado 28/07/2026" e a tabela logo
+ * abaixo dizia "sincronizado 28/07/2026" para a MESMA linha, afirmando uma
+ * conversa com a Meta que nunca houve. A data continua visível porque a idade
+ * do gasto importa (ele divide o CPL e o ROAS); o que não pode variar é de onde
+ * ela veio.
+ */
+export const origemDoGasto = (syncedAt: string | null): string =>
+  syncedAt ? `digitado · atualizado ${date(syncedAt)}` : "digitado";
+
+export type AdCampaignInput = {
+  externalId: string;
+  platform: AdPlatform;
+  name: string;
+  developerId?: string | null;
+  status?: string | null;
+  dailyBudget?: number | null;
+  /** Verba contratada. `null` = sem verba lançada; ausente = "não mexa". */
+  lifetimeBudget?: number | null;
+  /** `YYYY-MM-DD`. */
+  startsOn?: string | null;
+  endsOn?: string | null;
+  leadSourceId?: string | null;
+  totalSpend?: number;
+};
+
+/** Qual campo impediu o salvamento — a tela usa isto para focar o campo, e não
+ *  só para pedir que o operador procure qual dos onze é o culpado. */
+export type CampoDaCampanha =
+  | "externalId"
+  | "name"
+  | "status"
+  | "totalSpend"
+  | "dailyBudget"
+  | "lifetimeBudget"
+  | "endsOn";
+
+export type ProblemaNaCampanha = { campo: CampoDaCampanha; frase: string };
+
+/**
+ * A recusa de campanha inválida, num lugar só.
+ *
+ * Criar e corrigir repetiam as duas checagens de verba e não olhavam nem o
+ * nome, nem o status, nem o período — o formulário conferia parte disso e
+ * qualquer outro chamador entrava direto. Os CHECKs do banco (0063, 0084, 0089)
+ * continuam sendo a garantia final; o que muda é que a recusa esperada chega
+ * como instrução em vez de 23514 traduzido para "um dos campos está fora do
+ * valor permitido".
+ *
+ * Devolve o campo e a frase do problema, ou `null` quando não há nenhum.
+ */
+export function problemaNaCampanha(input: AdCampaignInput): ProblemaNaCampanha | null {
+  if (!input.externalId.trim()) {
+    return { campo: "externalId", frase: "Informe o ID externo da campanha — é ele que liga o lead à campanha." };
+  }
+  if (!input.name.trim()) return { campo: "name", frase: "Informe o nome da campanha." };
+  // A regra é a do CHECK do banco (`ad_campaigns_status_maiusculo`, 0084), e
+  // não a dupla que o formulário oferece: o CHECK ficou aberto de propósito
+  // para ARCHIVED/IN_PROCESS, que é o que a Graph API devolve. Recusar aqui
+  // tudo fora de ACTIVE/PAUSED deixava uma linha gravada como ARCHIVED
+  // INEDITÁVEL pela tela — o operador abria só para corrigir a verba e o
+  // Salvar era recusado por um campo que ele não tocou, sem caminho de
+  // conserto. Digitar minúscula continua recusado, que é o erro real: o banco
+  // devolveria 23514.
+  if (input.status != null && (!input.status.trim() || input.status !== input.status.toUpperCase())) {
     return {
-      campaignId: c.id,
-      campaignName: c.name,
-      totalSpend: spend,
-      leads: mine.length,
-      sales,
-      // Divisão por zero vira null: "R$ 0,00 por lead" mentiria sobre campanha
-      // sem lead nenhum.
-      costPerLead: mine.length > 0 ? spend / mine.length : null,
-      costPerSale: sales > 0 ? spend / sales : null,
+      campo: "status",
+      frase: "Status inválido: o registro guarda o valor em MAIÚSCULA — use ACTIVE (Ativa) ou PAUSED (Pausada).",
     };
+  }
+  if (input.totalSpend !== undefined && (!Number.isFinite(input.totalSpend) || input.totalSpend < 0)) {
+    return { campo: "totalSpend", frase: "O investimento não pode ser negativo." };
+  }
+  if (input.dailyBudget != null && (!Number.isFinite(input.dailyBudget) || input.dailyBudget < 0)) {
+    return { campo: "dailyBudget", frase: "O orçamento diário não pode ser negativo." };
+  }
+  if (input.lifetimeBudget != null && (!Number.isFinite(input.lifetimeBudget) || input.lifetimeBudget < 0)) {
+    return { campo: "lifetimeBudget", frase: "A verba total não pode ser negativa." };
+  }
+  // Comparação de string, e não de `Date`: `YYYY-MM-DD` já ordena
+  // cronologicamente e `new Date("2026-09-01")` é meia-noite UTC — a mesma
+  // armadilha de fuso que `previousMonth` documenta mais abaixo.
+  if (input.startsOn && input.endsOn && input.endsOn < input.startsOn) {
+    return { campo: "endsOn", frase: "O fim da veiculação não pode ser antes do início." };
+  }
+  return null;
+}
+
+/** Mensagem do id externo repetido — o unique é global (0067), não por plataforma. */
+export const ID_EXTERNO_REPETIDO =
+  "Já existe uma campanha com esse ID externo. Use Editar para corrigir a que existe.";
+
+/**
+ * Cadastra campanha NOVA — nunca sobrescreve a que já existe.
+ *
+ * Era um `upsert` com conflito em `(platform, external_id)`: digitar um id
+ * externo já cadastrado trocava nome, construtora, status e `total_spend` da
+ * campanha existente, zerava o `daily_budget` e o toast respondia "Campanha
+ * registrada". Perda de dado sem rastro, no campo que decide verba. Corrigir
+ * campanha é trabalho de `updateAdCampaign`, que grava pela chave `id`.
+ */
+export async function createAdCampaign(input: AdCampaignInput): Promise<void> {
+  // Os checks do banco (0063, 0089) recusam de qualquer jeito; parar aqui evita
+  // gastar um round-trip para dizer a mesma coisa em erro genérico.
+  const problema = problemaNaCampanha(input);
+  if (problema) throw new Error(problema.frase);
+  const { error } = await untyped.from("ad_campaigns").insert({
+    external_id: input.externalId,
+    platform: input.platform,
+    name: input.name,
+    developer_id: input.developerId ?? null,
+    status: input.status ?? null,
+    daily_budget: input.dailyBudget ?? null,
+    lifetime_budget: input.lifetimeBudget ?? null,
+    starts_on: input.startsOn ?? null,
+    ends_on: input.endsOn ?? null,
+    lead_source_id: input.leadSourceId ?? null,
+    ...(input.totalSpend !== undefined ? { total_spend: input.totalSpend } : {}),
   });
+  // 23505 genérico ("Já existe um registro com esses dados") não diz o que fazer.
+  if (error?.code === "23505") throw new Error(ID_EXTERNO_REPETIDO);
+  if (error) throw dbError("salvar campanha", error);
+}
+
+/**
+ * Corrige uma campanha já cadastrada — inclusive o `external_id`.
+ *
+ * A chave é o `id`, e não o par `(platform, external_id)`: por ele, trocar o id
+ * externo criaria uma segunda linha e deixaria a errada somando no KPI de
+ * investimento para sempre. Aqui o erro de digitação tem conserto.
+ */
+export async function updateAdCampaign(id: string, patch: AdCampaignInput): Promise<void> {
+  const problema = problemaNaCampanha(patch);
+  if (problema) throw new Error(problema.frase);
+  const { data, error } = await untyped
+    .from("ad_campaigns")
+    .update({
+      external_id: patch.externalId,
+      platform: patch.platform,
+      name: patch.name,
+      developer_id: patch.developerId ?? null,
+      status: patch.status ?? null,
+      lead_source_id: patch.leadSourceId ?? null,
+      starts_on: patch.startsOn ?? null,
+      ends_on: patch.endsOn ?? null,
+      // Verba só entra quando o chamador a informou: omitir preserva o valor
+      // já lançado, e `null` explícito é "sem verba".
+      ...(patch.dailyBudget !== undefined ? { daily_budget: patch.dailyBudget } : {}),
+      ...(patch.lifetimeBudget !== undefined ? { lifetime_budget: patch.lifetimeBudget } : {}),
+      ...(patch.totalSpend !== undefined ? { total_spend: patch.totalSpend } : {}),
+    })
+    .eq("id", id)
+    .select("id");
+  if (error?.code === "23505") throw new Error(ID_EXTERNO_REPETIDO);
+  if (error) throw dbError("salvar campanha", error);
+  if (!data?.length) throw new Error("Sem permissão para alterar campanhas (apenas admin e marketing).");
+}
+
+/**
+ * Pausar/reativar como GESTO — sem passar pelo formulário inteiro.
+ *
+ * Escreve só `status`: reenviar o resto do cadastro para trocar um estado é o
+ * caminho que erra, porque qualquer campo que a tela tenha carregado torto vai
+ * junto. `select("id")` pelo mesmo motivo de `deleteAdCampaign`: o RLS não erra
+ * ao recusar, filtra a linha e devolve 204 — sem conferir o retorno a tela
+ * diria "pausada" com a campanha ativa no banco.
+ *
+ * O efeito é LOCAL: nada aqui fala com a Meta, e quem chama precisa dizer isso
+ * na tela — senão pausar no CRM passa por ter pausado o gasto.
+ */
+export async function setAdCampaignStatus(id: string, status: AdStatus): Promise<void> {
+  if (!(AD_STATUSES as readonly string[]).includes(status)) {
+    throw new Error("Status inválido: use ACTIVE (Ativa) ou PAUSED (Pausada).");
+  }
+  const { data, error } = await supabase
+    .from("ad_campaigns")
+    .update({ status })
+    .eq("id", id)
+    .select("id");
+  if (error) throw dbError("alterar status da campanha", error);
+  if (!data?.length) throw new Error("Sem permissão para alterar campanhas (apenas admin e marketing).");
+}
+
+/**
+ * Remove a campanha. `select("id")` porque o RLS não erra ao recusar: filtra a
+ * linha e o PostgREST devolve 204 — sem conferir o retorno, a tela diria
+ * "excluída" e a campanha continuaria somando no KPI de investimento.
+ */
+export async function deleteAdCampaign(id: string): Promise<void> {
+  const { data, error } = await supabase.from("ad_campaigns").delete().eq("id", id).select("id");
+  if (error) throw dbError("excluir campanha", error);
+  if (!data?.length) throw new Error("Sem permissão para excluir campanhas (apenas admin e marketing).");
+}
+
+export type CampaignStatRow = {
+  campaign_id: string;
+  leads: number;
+  /** Lead com `converted_deal_id` — proposta em aberto e venda perdida entram. */
+  conversions: number;
+  /** Negócios GANHOS (`outcome = 'won'`) que vieram da campanha (0081). É o
+   *  denominador do custo por VENDA: `conversions` conta negócio, não venda. */
+  sales: number;
+  /** VGV dos negócios GANHOS que vieram dos leads da campanha (0063). */
+  revenue: number;
+};
+
+/**
+ * Leads, conversões e receita por campanha — agregado e `security definer`.
+ *
+ * Contar `leads` no navegador não serve: o RLS entrega ao marketing só a fila e
+ * o próprio perfil, então a mesma campanha aparecia com dois números na mesma
+ * dobra. A RPC conta a empresa inteira sem expor dado pessoal.
+ *
+ * Devolve TODO `campaign_id` visto em `leads`, inclusive o de campanha que
+ * ninguém cadastrou — é assim que a tela sabe avisar do lead que ficaria fora
+ * da conta.
+ */
+export async function campaignStats(): Promise<CampaignStatRow[]> {
+  const { data, error } = await untyped.rpc("marketing_campaign_stats");
+  if (error) throw dbError("marketing_campaign_stats", error);
+  return ((data ?? []) as CampaignStatRow[]).map((row) => ({
+    campaign_id: row.campaign_id,
+    leads: Number(row.leads ?? 0),
+    conversions: Number(row.conversions ?? 0),
+    sales: Number(row.sales ?? 0),
+    revenue: Number(row.revenue ?? 0),
+  }));
+}
+
+export type DeveloperSummaryRow = {
+  /** `null` é o balde "Sem construtora" — negócio sem construtora e lead de
+   *  campanha não cadastrada moram aqui em vez de sumir da conta. */
+  developer_id: string | null;
+  developer_name: string;
+  active: boolean;
+  /** Aporte do período escolhido (ou de todos os meses, quando `period` é nulo). */
+  investment: number;
+  /** Gasto das campanhas — ACUMULADO da vida da campanha, nunca mensal. */
+  campaign_spend: number;
+  campaigns: number;
+  leads: number;
+  deals: number;
+  sales: number;
+  vgv: number;
+};
+
+/**
+ * Aporte, gasto de campanha, leads, negócios e VGV por construtora.
+ *
+ * `period` nulo = tudo acumulado, que é o único recorte em que custo e retorno
+ * são comparáveis: o aporte é mensal e `ad_campaigns.total_spend` é acumulado.
+ * Com um mês escolhido, aporte/leads/negócios/VGV são do mês e
+ * `campaign_spend` continua acumulado — a tela diz isso e não soma os dois.
+ */
+export async function developerSummary(period: string | null): Promise<DeveloperSummaryRow[]> {
+  const { data, error } = await untyped.rpc("marketing_developer_summary", { p_period: period });
+  if (error) throw dbError("marketing_developer_summary", error);
+  return ((data ?? []) as DeveloperSummaryRow[]).map((row) => ({
+    developer_id: row.developer_id ?? null,
+    developer_name: row.developer_name,
+    active: Boolean(row.active),
+    investment: Number(row.investment ?? 0),
+    campaign_spend: Number(row.campaign_spend ?? 0),
+    campaigns: Number(row.campaigns ?? 0),
+    leads: Number(row.leads ?? 0),
+    deals: Number(row.deals ?? 0),
+    sales: Number(row.sales ?? 0),
+    vgv: Number(row.vgv ?? 0),
+  }));
+}
+
+// -----------------------------------------------------------------------------
+// Contas de marketing (puras — a verificação executável vive em analytics.test.ts)
+// -----------------------------------------------------------------------------
+
+/** Custo por lead. `null` quando não há lead: "R$ 0,00 por lead" mentiria. */
+export const costPerLead = (spend: number, leads: number): number | null =>
+  leads > 0 ? spend / leads : null;
+
+/**
+ * Retorno sobre o investimento em anúncio: VGV ganho ÷ gasto da campanha.
+ *
+ * O par vem do banco (`leads.campaign_id` liga o lead à campanha e
+ * `leads.converted_deal_id` liga o lead ao negócio), então não há rateio no
+ * chute. Sem gasto não há ROAS — dividir por zero devolveria "infinito", que na
+ * tela vira um número gigante sem significado.
+ */
+export const roas = (revenue: number, spend: number): number | null =>
+  spend > 0 ? revenue / spend : null;
+
+/** "62,1×" ou travessão. Uma casa decimal: ROAS é ordem de grandeza, não centavo. */
+export const roasLabel = (value: number | null): string =>
+  value === null ? "—" : `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}×`;
+
+/**
+ * Cor do CPL RELATIVA à média do recorte visível.
+ *
+ * A escala fixa (verde < 15, amarelo < 25) nunca disparava: o CPL real da
+ * operação é de centenas de reais, então 100% das linhas saíam vermelhas —
+ * sinal constante é ruído colorido. Barato em relação aos colegas é bom sinal;
+ * caro é o que merece atenção. Sem média (nenhum lead no recorte) não há
+ * comparação e a linha fica neutra.
+ */
+export type CplTone = "success" | "warning" | "danger" | "neutral";
+
+export const cplTone = (cpl: number | null, average: number | null): CplTone => {
+  if (cpl === null || average === null || average <= 0) return "neutral";
+  if (cpl <= average * 0.8) return "success";
+  if (cpl <= average * 1.2) return "warning";
+  return "danger";
+};
+
+/**
+ * `YYYY-MM-01` do mês anterior.
+ *
+ * Aritmética de string, e não de `Date`: `new Date("2026-01-01")` é meia-noite
+ * UTC e, no fuso do Brasil, já é 31/12 — o "mês anterior" de janeiro virava
+ * novembro. É o mesmo motivo que fez `monthStart` largar o `toISOString`.
+ */
+export const previousMonth = (period: string): string => {
+  const [ano, mes] = period.split("-").map(Number);
+  if (!Number.isFinite(ano) || !Number.isFinite(mes)) throw new Error(`período inválido: ${period}`);
+  return mes === 1 ? `${ano - 1}-12-01` : `${ano}-${String(mes - 1).padStart(2, "0")}-01`;
+};
+
+/** Variação contra o mês anterior, pronta para o `delta` do `KpiCard`. */
+export type Trend = { label: string; direction: "up" | "down" | "flat" };
+
+/**
+ * Comparação mês a mês — só onde as duas pontas cabem na mesma janela.
+ *
+ * Vale para aporte, leads, negócios, vendas e VGV, que a RPC já recorta por
+ * mês. NÃO vale para CPL nem para o ROAS de campanha: o denominador dos dois é
+ * `ad_campaigns.total_spend`, que é o gasto ACUMULADO da vida da campanha e não
+ * tem data — dividir um custo eterno por um resultado mensal e depois comparar
+ * dois desses seria inventar uma série temporal que o dado não sustenta.
+ *
+ * Mês anterior zerado não vira percentual: 0 → 10 não é "+1000%", é "não havia
+ * com o que comparar", e é isso que a etiqueta diz.
+ */
+export const monthOverMonth = (current: number, previous: number): Trend | null => {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) return null;
+  if (previous === 0) return current === 0 ? null : { label: "sem base no mês anterior", direction: "flat" };
+  const pct = ((current - previous) / previous) * 100;
+  // Abaixo de meio ponto o arredondamento imprimiria "+0%" com uma seta para
+  // cima — sinal de movimento onde não houve movimento.
+  if (Math.abs(pct) < 0.5) return { label: "estável", direction: "flat" };
+  return {
+    label: `${pct > 0 ? "+" : ""}${pct.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`,
+    direction: pct > 0 ? "up" : "down",
+  };
+};
+
+export type AportePayload = {
+  period: string;
+  developer_id: string;
+  amount: number;
+  /** Ausente = "não mexa na nota que já está gravada". */
+  notes?: string | null;
+};
+
+/**
+ * Payload de `marketing_investments` a partir de um formulário de aporte.
+ *
+ * A nota só entra quando há intenção explícita: campo preenchido, ou linha
+ * trazida para o formulário pelo botão Editar — aí o branco significa "apague
+ * a nota". Salvar de novo com o campo vazio, SEM ter editado, deixa `notes`
+ * fora do payload: o upsert só sobrescreve coluna enviada, então a nota já
+ * lançada sobrevive.
+ *
+ * É a mesma regra que a importação de planilha aplica ao omitir `notes` quando
+ * o arquivo não traz a coluna. Ela estava escrita em três lugares com dois
+ * comportamentos: os dois formulários (`/data` e o popup de `/marketing`)
+ * mandavam `notes: null` e apagavam a nota com toast de sucesso.
+ */
+export function aportePayload(input: {
+  period: string;
+  developer_id: string;
+  amount: number;
+  notes: string;
+  /** A linha veio do botão Editar: o branco agora quer dizer "apague". */
+  editing: boolean;
+}): AportePayload {
+  const notes = input.notes.trim();
+  return {
+    period: input.period,
+    developer_id: input.developer_id,
+    amount: input.amount,
+    ...(notes || input.editing ? { notes: notes || null } : {}),
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -160,6 +543,7 @@ export type HistoryEntry = {
   kind: string;
   from_value: string | null;
   to_value: string | null;
+  detail: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -167,19 +551,19 @@ export type HistoryEntry = {
 export async function listDealHistory(dealId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase
     .from("deal_history")
-    .select("id,actor_id,kind,from_value,to_value,created_at")
+    .select("id,actor_id,kind,from_value,to_value,detail,created_at")
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("histórico do negócio", error);
   return (data ?? []) as HistoryEntry[];
 }
 
 export async function listCcaCaseEvents(caseId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase
     .from("cca_case_events")
-    .select("id,actor_id,kind,from_value,to_value,created_at")
+    .select("id,actor_id,kind,from_value,to_value,detail,created_at")
     .eq("case_id", caseId)
     .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("eventos do caso CCA", error);
   return (data ?? []) as HistoryEntry[];
 }

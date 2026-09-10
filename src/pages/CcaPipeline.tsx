@@ -1,380 +1,346 @@
-import { useState, useMemo, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useId, useMemo, useState } from "react";
+import { AlertTriangle, FileCog, Inbox, Landmark, Loader2, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import { toast } from "@/hooks/use-toast";
-import { type DealStage } from "@/types/crm";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Building2, User, DollarSign, Plus, Settings, Pencil, Trash2, GripVertical, Send
-} from "lucide-react";
-import { getStageIdByCode, listLegacyDeals } from "@/integrations/supabase/newSchema";
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { describeError } from "@/lib/supabaseError";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
+import {
+  listDocumentTypesForAdmin, updateDocumentType, type DocumentTypeAdminRecord,
+} from "@/integrations/supabase/documents";
+import {
+  CcaBoard, CcaMoveDialog, CcaStageSettingsDialog,
+  useCcaBoard, useInvalidateCcaBoard, usePipelineStages,
+  type CcaDeal, type CcaStage,
+} from "@/components/pipeline";
 
-type CcaCaseStatus = "pending_documents" | "under_review" | "sent_to_developer" | "sent_to_agency" | "approved" | "rejected" | "cancelled";
+/** Normaliza para busca: sem acento e em minúscula, como o resto das telas. */
+const fold = (value: string) =>
+  value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-interface CcaStage {
-  id: string;
-  name: string;
-  color: string;
-  position: number;
-  status: string;
-}
-
-interface CcaDeal {
-  caseId: string;
-  dealId: string;
-  client: string;
-  developer: string;
-  project: string;
-  broker: string;
-  value: number;
-  stageId: string;
-  stageName: string;
-  notes: string;
-  status: string;
-}
-
-export default function CcaPipeline() {
-  const [deals, setDeals] = useState<CcaDeal[]>([]);
-  const [stages, setStages] = useState<CcaStage[]>([]);
+/**
+ * Catálogo de tipos de documento.
+ *
+ * Antes disto, "quais documentos são obrigatórios", "quais aceitam vários" e o
+ * `naming_pattern` só mudavam por SQL — `document_types` era lido em
+ * `documents.ts` e em lugar nenhum mais. Fica aqui, ao lado de "Gerenciar
+ * estágios", porque `document_types_write` é do mesmo público (admin e CCA).
+ *
+ * Não cria nem apaga tipo: `code` é referência do seed e de `naming_pattern`, e
+ * apagar tipo com documento anexado esbarraria na FK. Desligar (`active`) é a
+ * saída — some da tela do corretor e mantém o histórico de pé.
+ */
+function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
+  const { toast } = useToast();
+  const fieldId = useId();
+  const [rows, setRows] = useState<DocumentTypeAdminRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showStageSettings, setShowStageSettings] = useState(false);
-  const [editingStage, setEditingStage] = useState<CcaStage | null>(null);
-  const [newStageName, setNewStageName] = useState("");
-  const [newStageColor, setNewStageColor] = useState("text-primary");
-  const [submissionDeal, setSubmissionDeal] = useState<CcaDeal | null>(null);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [stagesResponse, casesResponse, dealRows] = await Promise.all([
-        supabase
-          .from("cca_stages")
-          .select("id,name,color,position,status,active")
-          .eq("active", true)
-          .order("position"),
-        supabase
-          .from("cca_cases")
-          .select("id,deal_id,status,stage_id,decision_notes,pending_items"),
-        listLegacyDeals(),
-      ]);
-
-      if (stagesResponse.error) throw stagesResponse.error;
-      if (casesResponse.error) throw casesResponse.error;
-
-      const stagesData = (stagesResponse.data || []) as CcaStage[];
-      const casesData = casesResponse.data || [];
-      setStages(stagesData);
-
-      const mapped: CcaDeal[] = casesData.map((cca: any) => {
-        const deal = dealRows.find((row) => row.id === cca.deal_id);
-        const stage =
-          stagesData.find((row) => row.id === cca.stage_id) ||
-          stagesData.find((row) => row.status === cca.status) ||
-          stagesData[0];
-
-        return {
-          caseId: cca.id,
-          dealId: cca.deal_id,
-          client: deal?.client || "Cliente não informado",
-          developer: deal?.developer || "",
-          project: deal?.project || "",
-          broker: deal?.broker1 || "",
-          value: deal?.deal_value || 0,
-          stageId: stage?.id || "",
-          stageName: stage?.name || cca.status,
-          notes: cca.decision_notes || deal?.notes || "",
-          status: cca.status,
-        };
-      });
-      setDeals(mapped);
-    } catch (err) {
-      console.error("Error fetching CCA data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    let vivo = true;
+    listDocumentTypesForAdmin()
+      .then((data) => { if (vivo) setRows(data); })
+      .catch((e) => toast({
+        title: "Falha ao carregar o catálogo",
+        description: describeError(e, "Não foi possível ler os tipos de documento."),
+        variant: "destructive",
+      }))
+      .finally(() => { if (vivo) setLoading(false); });
+    return () => { vivo = false; };
+  }, [toast]);
 
-  const [actionDeal, setActionDeal] = useState<CcaDeal | null>(null);
-  const [targetStage, setTargetStage] = useState<CcaStage | null>(null);
-  const [actionNotes, setActionNotes] = useState("");
-
-  const dealsByStage = useMemo(() => {
-    const map: Record<string, CcaDeal[]> = {};
-    stages.forEach(s => map[s.id] = []);
-    deals.forEach(d => {
-      if (map[d.stageId]) map[d.stageId].push(d);
-    });
-    return map;
-  }, [deals, stages]);
-
-  const handleAction = (deal: CcaDeal, stage: CcaStage) => {
-    setActionDeal(deal);
-    setTargetStage(stage);
-    setActionNotes(deal.notes || "");
-  };
-
-  const confirmAction = async () => {
-    if (!actionDeal || !targetStage) return;
-
+  const salvar = async (row: DocumentTypeAdminRecord, patch: Partial<DocumentTypeAdminRecord>) => {
+    setBusy(row.id);
+    const anterior = rows;
+    setRows((atual) => atual.map((r) => (r.id === row.id ? { ...r, ...patch } : r)));
     try {
-      const isDecision = ["approved", "rejected"].includes(targetStage.status);
-      const { error } = await supabase
-        .from("cca_cases")
-        .update({
-          stage_id: targetStage.id,
-          status: targetStage.status as CcaCaseStatus,
-          decision_notes: actionNotes || null,
-          decided_at: isDecision ? new Date().toISOString() : null,
-        })
-        .eq("id", actionDeal.caseId);
-
-      if (error) throw error;
-
-      let mainStageUpdate: DealStage | null = null;
-      if (targetStage.status === "approved") mainStageUpdate = "approved";
-      
-      if (mainStageUpdate) {
-        const stageId = await getStageIdByCode(mainStageUpdate);
-        await supabase
-          .from("deals")
-          .update({ stage_id: stageId })
-          .eq('id', actionDeal.dealId);
-        
-        toast({ title: "Status do Pipeline atualizado" });
-      }
-
-      setDeals(prev => prev.map(d =>
-        d.dealId === actionDeal.dealId ? { ...d, stageId: targetStage.id, stageName: targetStage.name, notes: actionNotes } : d
-      ));
-
-      toast({ title: "Status atualizado", description: `${actionDeal.client} movido para ${targetStage.name}` });
-      setActionDeal(null);
-      setTargetStage(null);
-    } catch (err) {
-      console.error("Error updating CCA stage:", err);
-      toast({ variant: "destructive", title: "Erro ao salvar", description: "Não foi possível atualizar o status." });
-    }
-  };
-
-  const handleSaveStage = async () => {
-    if (!newStageName) return;
-    try {
-      if (editingStage) {
-        const { error } = await supabase
-          .from('cca_stages')
-          .update({ name: newStageName, color: newStageColor })
-          .eq('id', editingStage.id);
-        if (error) throw error;
-        toast({ title: "Estágio atualizado" });
-      } else {
-        const { error } = await supabase
-          .from('cca_stages')
-          .insert({
-            name: newStageName,
-            color: newStageColor,
-            position: stages.length + 1,
-            status: "under_review",
-          } as any);
-        if (error) throw error;
-        toast({ title: "Estágio criado" });
-      }
-      setNewStageName("");
-      setEditingStage(null);
-      fetchData();
-    } catch (err) {
-      console.error("Error saving stage:", err);
-    }
-  };
-
-  const handleDeleteStage = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir este estágio?")) return;
-    try {
-      const { error } = await supabase.from('cca_stages').delete().eq('id', id);
-      if (error) throw error;
-      toast({ title: "Estágio excluído" });
-      fetchData();
-    } catch (err) {
-      console.error("Error deleting stage:", err);
+      await updateDocumentType(row.id, patch);
+      // Desligar um tipo OBRIGATÓRIO tem efeito colateral em outra tela: ele
+      // some da aba Anexos e `missingRequiredTypes` deixa de contá-lo, então o
+      // dossiê passa a poder ir ao gerente sem ele. Dizer isso na hora é mais
+      // barato que descobrir depois num negócio sem documento.
+      const desligouObrigatorio = patch.active === false && row.required_for_conversion;
+      toast({
+        title: "Catálogo atualizado",
+        description: desligouObrigatorio
+          ? `${row.label} era obrigatório: sai da aba Anexos e deixa de travar o envio ao gerente.`
+          : row.label,
+      });
+    } catch (e) {
+      setRows(anterior);
+      toast({
+        title: "Não foi possível salvar",
+        description: describeError(e, "O catálogo continua como estava."),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">Pipeline CCA</h1>
-          <p className="text-xs text-muted-foreground">Correspondente Bancário {loading && "• Carregando..."}</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setShowStageSettings(true)}>
-          <Settings className="h-4 w-4 mr-2" /> Gerenciar Estágios
-        </Button>
-      </div>
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Tipos de documento</DialogTitle>
+          <DialogDescription>
+            Define o que o corretor vê na aba Anexos: obrigatoriedade, múltiplos arquivos e o
+            padrão de nome. Placeholders aceitos: {"{tipo}"}, {"{cliente}"}, {"{data}"} e {"{negocio}"}.
+          </DialogDescription>
+        </DialogHeader>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {stages.map(s => (
-          <Card key={s.id} className="border-border/50 bg-card/70">
-            <CardContent className="p-3 text-center">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.name}</span>
-              <p className={cn("text-2xl font-bold", s.color)}>{dealsByStage[s.id]?.length || 0}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto">
-        <div className="flex gap-3 min-w-max pb-4">
-          {stages.map(stage => {
-            const stageDeals = dealsByStage[stage.id] || [];
-            return (
-              <div key={stage.id} className={cn("w-64 flex-shrink-0 rounded-xl border bg-muted/5 border-border/20")}>
-                <div className="p-3 flex items-center justify-between border-b border-border/10">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("h-2 w-2 rounded-full", stage.color.replace('text-', 'bg-'))} />
-                    <span className="text-xs font-semibold">{stage.name}</span>
-                  </div>
-                  <Badge variant="secondary" className="text-[10px] h-5">{stageDeals.length}</Badge>
+        {loading ? (
+          <LoadingState variant="list" rows={4} label="Carregando o catálogo…" />
+        ) : (
+          <div className="space-y-2">
+            {rows.map((row) => (
+              // Grupo nomeado: são três caixas e um campo por tipo, com os
+              // mesmos rótulos repetidos linha a linha — sem o nome do grupo
+              // não dá para saber de qual documento é o "Obrigatório" que se
+              // está marcando.
+              <div
+                key={row.id}
+                role="group"
+                aria-label={row.label}
+                className="rounded-lg border border-border/60 p-3 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    {row.label} <span className="text-xs font-normal text-muted-foreground">({row.code})</span>
+                  </p>
+                  {busy === row.id && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
                 </div>
-                <div className="p-2 space-y-2 min-h-[200px] max-h-[calc(100vh-350px)] overflow-y-auto">
-                  {stageDeals.map(deal => (
-                    <Card key={deal.dealId} className="border-border/40 bg-card hover:border-primary/30 transition-all group">
-                      <CardContent className="p-3 space-y-2">
-                        <div className="flex items-start justify-between">
-                          <p className="text-xs font-semibold">{deal.client}</p>
-                          <Badge variant="outline" className="text-[9px]">{deal.developer}</Badge>
-                        </div>
-                        <div className="space-y-1 text-[10px] text-muted-foreground">
-                          <div className="flex items-center gap-1"><Building2 className="h-3 w-3" />{deal.project}</div>
-                          <div className="flex items-center gap-1"><User className="h-3 w-3" />{deal.broker}</div>
-                          <div className="flex items-center gap-1"><DollarSign className="h-3 w-3" />R$ {deal.value.toLocaleString('pt-BR')}</div>
-                        </div>
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 w-full text-[10px] gap-1"
-                          onClick={() => setSubmissionDeal(deal)}
-                        >
-                          <Send className="h-3 w-3" /> Enviar à construtora
-                        </Button>
-                        
-                        <div className="flex gap-1 flex-wrap pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {stages.filter(s => s.id !== stage.id).map(nextStage => (
-                            <Button 
-                              key={nextStage.id} 
-                              size="sm" 
-                              variant="outline" 
-                              className="text-[8px] h-5 px-1" 
-                              onClick={() => handleAction(deal, nextStage)}
-                            >
-                              Mover p/ {nextStage.name}
-                            </Button>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {stageDeals.length === 0 && (
-                    <p className="text-[10px] text-muted-foreground text-center py-8">Nenhum deal</p>
-                  )}
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      id={`${fieldId}-${row.id}-req`}
+                      checked={row.required_for_conversion}
+                      disabled={busy === row.id}
+                      onCheckedChange={(v) => salvar(row, { required_for_conversion: v === true })}
+                    />
+                    <Label htmlFor={`${fieldId}-${row.id}-req`} className="text-xs">Obrigatório</Label>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      id={`${fieldId}-${row.id}-multi`}
+                      checked={row.allows_multiple}
+                      disabled={busy === row.id}
+                      onCheckedChange={(v) => salvar(row, { allows_multiple: v === true })}
+                    />
+                    <Label htmlFor={`${fieldId}-${row.id}-multi`} className="text-xs">Aceita vários</Label>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      id={`${fieldId}-${row.id}-ativo`}
+                      checked={row.active}
+                      disabled={busy === row.id}
+                      onCheckedChange={(v) => salvar(row, { active: v === true })}
+                    />
+                    <Label htmlFor={`${fieldId}-${row.id}-ativo`} className="text-xs">Ativo</Label>
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor={`${fieldId}-${row.id}-pattern`} className="text-xs">Padrão de nome</Label>
+                  {/* A `key` amarra o campo ao valor que está em `rows`: quando
+                      `salvar` reverte o estado por recusa do banco, o Input
+                      remonta com o padrão real. Sem isso a pessoa lia "Não foi
+                      possível salvar" com o texto novo ainda na caixa — tela e
+                      banco discordando sem sinal nenhum. */}
+                  <Input
+                    key={`${row.id}-${row.naming_pattern ?? ""}`}
+                    id={`${fieldId}-${row.id}-pattern`}
+                    className="h-8 text-xs"
+                    defaultValue={row.naming_pattern ?? ""}
+                    placeholder="{tipo}-{cliente}-{data}"
+                    disabled={busy === row.id}
+                    onBlur={(event) => {
+                      const valor = event.target.value.trim();
+                      // Normaliza o que ficou na tela: sem isto, digitar só
+                      // espaços em volta do mesmo padrão não salva (certo) e
+                      // deixa a caixa diferente do banco (errado).
+                      event.target.value = valor;
+                      if (valor === (row.naming_pattern ?? "")) return;
+                      void salvar(row, { naming_pattern: valor || null });
+                    }}
+                  />
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Esteira de crédito (CCA).
+ *
+ * - **Permissão espelhada** (achado P09). A tela usava papel (`roles.includes
+ *   ('cca')`) e o banco usa permissão: `cca_cases_write`, `developer_submissions
+ *   _write` e — desde a 0059 — `cca_stages_write` exigem
+ *   `has_permission('cca.review')`. Se um admin desligasse `cca.review` na tela
+ *   de Permissões, os botões continuavam aparecendo e o banco devolvia 42501.
+ *   `can()` já curto-circuita em admin, então o gate é um só.
+ * - **Estados de verdade** (A01): a carga vive num `useQuery`, com espera, erro
+ *   em pt-BR e "Tentar de novo".
+ * - **Mover é um Select visível** (X02) — ver `CcaBoard`.
+ * - **Busca** (0059): 12 casos cabem na tela, 200 viram rolagem. O filtro é do
+ *   lado do cliente porque a esteira inteira já vem numa consulta só.
+ */
+export default function CcaPipeline() {
+  const { can } = useAuth();
+  const board = useCcaBoard();
+  const refresh = useInvalidateCcaBoard();
+  const pipelineStages = usePipelineStages();
+  const buscaId = useId();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [typesOpen, setTypesOpen] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
+  const [submissionDeal, setSubmissionDeal] = useState<CcaDeal | null>(null);
+
+  const canAct = can("cca.review");
+  const stages = useMemo(() => board.data?.stages ?? [], [board.data]);
+  const deals = useMemo(() => board.data?.deals ?? [], [board.data]);
+
+  const visiveis = useMemo(() => {
+    const termo = fold(busca.trim());
+    if (!termo) return deals;
+    return deals.filter((deal) =>
+      fold(`${deal.client} ${deal.developer} ${deal.project} ${deal.broker}`).includes(termo),
+    );
+  }, [deals, busca]);
+
+  // O catálogo de etapas entra no gate porque `CcaMoveDialog` depende dele para
+  // levar o negócio junto ao aprovar: abrir a esteira antes de ele chegar
+  // deixava o diálogo confirmar com `approvedStageId` indefinido.
+  if (board.isPending || pipelineStages.isPending) {
+    return <LoadingState variant="kpi" rows={5} label="Carregando a esteira…" />;
+  }
+
+  if (board.isError) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        tone="danger"
+        title="Não consegui carregar a esteira CCA"
+        description={describeError(board.error, "Verifique a conexão e tente de novo.")}
+        action={<Button onClick={() => void board.refetch()}>Tentar de novo</Button>}
+      />
+    );
+  }
+
+  return (
+    // `min-w-0`: sem isso o quadro rolável estoura a largura da página inteira —
+    // o `main` do shell é item de flex e um filho de bloco cresce até o conteúdo.
+    <div className="min-w-0 space-y-4">
+      <PageHeader
+        title="Esteira CCA"
+        eyebrow="Crédito"
+        icon={Landmark}
+        description={`${deals.length} caso(s) em ${stages.length} estágio(s).`}
+        actions={
+          canAct ? (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setTypesOpen(true)}>
+                <FileCog className="mr-1 h-4 w-4" aria-hidden /> Tipos de documento
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+                <Settings className="mr-1 h-4 w-4" aria-hidden /> Gerenciar estágios
+              </Button>
+            </div>
+          ) : (
+            <StatusBadge tone="neutral">Somente leitura</StatusBadge>
+          )
+        }
+      />
+
+      <div className="relative max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+        <Label htmlFor={buscaId} className="sr-only">Buscar caso na esteira</Label>
+        <Input
+          id={buscaId}
+          value={busca}
+          onChange={(event) => setBusca(event.target.value)}
+          placeholder="Buscar cliente, construtora, empreendimento ou corretor"
+          className="h-9 pl-9 text-xs"
+        />
       </div>
 
-      <Dialog open={showStageSettings} onOpenChange={setShowStageSettings}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Gerenciar Estágios do CCA</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex gap-2">
-              <Input 
-                placeholder="Nome do novo estágio" 
-                value={newStageName} 
-                onChange={e => setNewStageName(e.target.value)} 
-                className="text-xs"
-              />
-              <Select value={newStageColor} onValueChange={setNewStageColor}>
-                <SelectTrigger className="w-[120px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text-amber-400">Amarelo</SelectItem>
-                  <SelectItem value="text-blue-400">Azul</SelectItem>
-                  <SelectItem value="text-emerald-400">Verde</SelectItem>
-                  <SelectItem value="text-red-400">Vermelho</SelectItem>
-                  <SelectItem value="text-purple-400">Roxo</SelectItem>
-                  <SelectItem value="text-primary">Padrao</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button size="sm" onClick={handleSaveStage}><Plus className="h-4 w-4" /></Button>
-            </div>
-            <div className="space-y-2">
-              {stages.map(s => (
-                <div key={s.id} className="flex items-center justify-between p-2 rounded-lg border border-border/50 bg-muted/20">
-                  <div className="flex items-center gap-2">
-                    <GripVertical className="h-3 w-3 text-muted-foreground" />
-                    <span className={cn("text-xs font-medium", s.color)}>{s.name}</span>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => { setEditingStage(s); setNewStageName(s.name); setNewStageColor(s.color); }}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => handleDeleteStage(s.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {stages.length === 0 ? (
+        <EmptyState
+          icon={Inbox}
+          title="Nenhum estágio configurado"
+          description="A esteira precisa de pelo menos um estágio para receber casos."
+          action={canAct ? <Button onClick={() => setSettingsOpen(true)}>Criar estágio</Button> : undefined}
+        />
+      ) : busca.trim() && visiveis.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="Nenhum caso para esta busca"
+          description={`"${busca.trim()}" não aparece em nenhum dos ${deals.length} caso(s) da esteira.`}
+          action={<Button variant="outline" onClick={() => setBusca("")}>Limpar busca</Button>}
+        />
+      ) : (
+        <CcaBoard
+          stages={stages}
+          deals={visiveis}
+          canAct={canAct}
+          onMove={(deal, stage) => setMoving({ deal, stage })}
+          onSubmitToDeveloper={setSubmissionDeal}
+        />
+      )}
 
-      <Dialog open={!!actionDeal} onOpenChange={() => { setActionDeal(null); setTargetStage(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-sm">Mover para {targetStage?.name}</DialogTitle>
-          </DialogHeader>
-          {actionDeal && (
-            <div className="space-y-3">
-              <Textarea
-                placeholder="Observações..."
-                value={actionNotes}
-                onChange={(e) => setActionNotes(e.target.value)}
-                className="text-xs"
-                rows={3}
-              />
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setActionDeal(null)}>Cancelar</Button>
-            <Button size="sm" onClick={confirmAction}>Confirmar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {settingsOpen && canAct && (
+        <CcaStageSettingsDialog
+          stages={stages}
+          onClose={() => setSettingsOpen(false)}
+          onChanged={refresh}
+        />
+      )}
+
+      {typesOpen && canAct && <DocumentTypesDialog onClose={() => setTypesOpen(false)} />}
+
+      {moving && (
+        <CcaMoveDialog
+          deal={moving.deal}
+          stage={moving.stage}
+          approvedStageId={pipelineStages.data?.find((stage) => stage.code === "approved")?.id}
+          onClose={() => setMoving(null)}
+          onMoved={refresh}
+        />
+      )}
+
       {submissionDeal && (
         <DeveloperSubmissionDialog
-          open={!!submissionDeal}
+          open
           onClose={() => setSubmissionDeal(null)}
           dealId={submissionDeal.dealId}
           clientName={submissionDeal.client}
           developerName={submissionDeal.developer}
+          // Enfileirar move o caso para "Enviado à Construtora" (gatilho
+          // `developer_submissions_advance_case`, 0077): sem recarregar, o
+          // cartão ficava na coluna antiga até alguém dar F5 — o mesmo cuidado
+          // que `CcaMoveDialog` e `CcaStageSettingsDialog` já tomavam.
+          onChanged={refresh}
         />
       )}
-
     </div>
   );
 }
-

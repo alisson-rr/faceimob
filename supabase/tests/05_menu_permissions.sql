@@ -26,20 +26,38 @@ end;
 $$;
 
 -- -----------------------------------------------------------------------------
--- Cenário: um admin e um corretor
+-- Cenário: um admin, um corretor, um gerente e um analista de CCA; uma
+-- construtora com um aporte e uma campanha (para a 0045).
 -- -----------------------------------------------------------------------------
 do $$
 declare
   adm uuid := '00000000-0000-0000-0000-00000000bb01';
   cor uuid := '00000000-0000-0000-0000-00000000bb02';
+  ger uuid := '00000000-0000-0000-0000-00000000bb03';
+  cca uuid := '00000000-0000-0000-0000-00000000bb04';
+  dev uuid := '00000000-0000-0000-0000-00000000bb10';
 begin
   insert into auth.users (id, email, raw_user_meta_data) values
     (adm, 'adm@menu.test', '{"full_name":"Admin Menu"}'),
-    (cor, 'cor@menu.test', '{"full_name":"Corretor Menu"}')
+    (cor, 'cor@menu.test', '{"full_name":"Corretor Menu"}'),
+    (ger, 'ger@menu.test', '{"full_name":"Gerente Menu"}'),
+    (cca, 'cca@menu.test', '{"full_name":"CCA Menu"}')
   on conflict do nothing;
 
   insert into public.user_roles (profile_id, role) values
-    (adm, 'admin'), (cor, 'broker')
+    (adm, 'admin'), (cor, 'broker'), (ger, 'manager'), (cca, 'cca')
+  on conflict do nothing;
+
+  insert into public.developers (id, name, slug) values
+    (dev, 'Construtora Menu', 'construtora-menu')
+  on conflict do nothing;
+
+  insert into public.marketing_investments (developer_id, period, amount, notes) values
+    (dev, public.month_start(current_date), 1500, 'aporte menu.test')
+  on conflict do nothing;
+
+  insert into public.ad_campaigns (external_id, platform, name, total_spend) values
+    ('menu-test-001', 'meta', 'Campanha Menu', 300)
   on conflict do nothing;
 end;
 $$;
@@ -55,7 +73,12 @@ declare n int;
 begin
   -- Tripwire de propósito: item de menu novo tem que vir com a decisão de quem
   -- o enxerga. Se este assert quebrar, atualize o número E revise as concessões.
+  -- 19 da 0015 + admin_integrations (0016) + atividades (0036).
   select count(*) into n from public.permissions where category = 'menu';
+  -- 20 e não 21: a 0072 aposentou `menu.settings`. Ele estava no catálogo,
+  -- tinha 7 concessões e NENHUMA policy o consultava — interruptor que a tela
+  -- de Permissões oferecia e que não mudava nada. `/settings` mexe só no
+  -- próprio perfil e na própria sessão, e quem autoriza é a RLS.
   perform pg_temp.check5(n = 20, format('catálogo tem os 20 códigos menu.* (tem %s)', n));
 
   perform pg_temp.check5(
@@ -176,6 +199,120 @@ begin
     json_build_object('sub', adm::text, 'role','authenticated')::text, false);
   delete from public.role_permissions
    where role = 'broker' and permission = 'menu.resultados';
+end;
+$$;
+
+\echo '== 0045: gerente enxerga marketing; Dados só para quem lê aporte =='
+
+do $$
+declare
+  adm uuid := '00000000-0000-0000-0000-00000000bb01';
+  ger uuid := '00000000-0000-0000-0000-00000000bb03';
+  cca uuid := '00000000-0000-0000-0000-00000000bb04';
+  n int;
+begin
+  -- A matriz: o gerente mantém o item, e ele agora abre de verdade.
+  perform pg_temp.check5(
+    exists (select 1 from public.role_permissions
+            where role = 'manager' and permission = 'menu.marketing' and allowed),
+    'gerente mantém menu.marketing');
+
+  -- Uma fonte de verdade: quem lê aporte e custo é quem tem o código da matriz.
+  -- Sem esta linha o gerente lia o número com o switch "Ver dados financeiros"
+  -- desligado na tela de permissões.
+  perform pg_temp.check5(
+    exists (select 1 from public.role_permissions
+            where role = 'manager' and permission = 'reports.view_finance' and allowed),
+    'gerente entra em reports.view_finance');
+
+  select count(*) into n from public.role_permissions
+   where permission = 'reports.view_finance' and allowed;
+  perform pg_temp.check5(n = 4,
+    format('financeiro fica com director, marketing, partner e manager (tem %s)', n));
+
+  perform pg_temp.check5(
+    not exists (select 1 from public.role_permissions
+                where permission = 'menu.data' and role in ('broker','cca','sdr') and allowed),
+    'corretor, CCA e SDR deixam de ver Dados');
+
+  select count(*) into n from public.role_permissions
+   where permission = 'menu.data' and allowed;
+  perform pg_temp.check5(n = 4,
+    format('Dados fica com partner, director, manager e marketing (tem %s)', n));
+
+  -- Gerente: menu + as duas leituras + a RPC. Antes da 0045 só o menu passava.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', ger::text, 'role','authenticated')::text, false);
+
+  perform pg_temp.check5(public.has_permission('menu.marketing'),
+    'gerente tem has_permission(menu.marketing)');
+
+  select count(*) into n from public.marketing_investments where notes = 'aporte menu.test';
+  perform pg_temp.check5(n = 1, 'gerente lê marketing_investments');
+
+  select count(*) into n from public.ad_campaigns where external_id = 'menu-test-001';
+  perform pg_temp.check5(n = 1, 'gerente lê ad_campaigns');
+
+  perform public.marketing_campaign_stats();
+  raise notice '  ok  gerente chama marketing_campaign_stats sem 42501';
+
+  -- Escrita continua com admin e marketing: o gerente só lê.
+  begin
+    insert into public.marketing_investments (developer_id, period, amount)
+    values ('00000000-0000-0000-0000-00000000bb10', public.month_start((current_date - interval '1 month')::date), 10);
+    raise exception 'FALHOU: gerente gravou aporte';
+  exception
+    when insufficient_privilege then
+      raise notice '  ok  gerente não grava aporte';
+  end;
+
+  -- Desligar o switch na tela de permissões tem de fechar a porta de verdade:
+  -- se a policy voltasse a decidir por papel cru, o admin desligaria e o gerente
+  -- continuaria lendo — que é o defeito que a 0045 fecha.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', adm::text, 'role','authenticated')::text, false);
+  update public.role_permissions set allowed = false
+   where role = 'manager' and permission = 'reports.view_finance';
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', ger::text, 'role','authenticated')::text, false);
+
+  select count(*) into n from public.marketing_investments;
+  perform pg_temp.check5(n = 0, 'switch desligado tira o aporte do gerente');
+
+  select count(*) into n from public.ad_campaigns;
+  perform pg_temp.check5(n = 0, 'switch desligado tira a campanha do gerente');
+
+  begin
+    perform public.marketing_campaign_stats();
+    raise exception 'FALHOU: gerente leu métricas com o switch desligado';
+  exception
+    when insufficient_privilege then
+      raise notice '  ok  switch desligado barra a RPC do gerente';
+  end;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', adm::text, 'role','authenticated')::text, false);
+  update public.role_permissions set allowed = true
+   where role = 'manager' and permission = 'reports.view_finance';
+
+  -- CCA: sem item, sem linha, sem RPC — é o que a tela "Acesso não liberado" reflete.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', cca::text, 'role','authenticated')::text, false);
+
+  perform pg_temp.check5(not public.has_permission('menu.data'),
+    'CCA não tem has_permission(menu.data)');
+
+  select count(*) into n from public.marketing_investments;
+  perform pg_temp.check5(n = 0, 'CCA não lê aporte nenhum');
+
+  begin
+    perform public.marketing_campaign_stats();
+    raise exception 'FALHOU: CCA leu métricas de marketing';
+  exception
+    when insufficient_privilege then
+      raise notice '  ok  CCA continua barrado na RPC';
+  end;
 end;
 $$;
 

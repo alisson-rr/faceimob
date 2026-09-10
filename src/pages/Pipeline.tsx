@@ -1,1267 +1,460 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCallback, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Download, Filter, GitBranch, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import DealDetailModal from "@/components/DealDetailModal";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Calendar } from "@/components/ui/calendar";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { mockDevelopers, mockProjects, mockSources } from "@/data/mockData";
-import { DEAL_STAGES, type PipelineDeal, type DealStage, type Lead, type Broker } from "@/types/crm";
-import { calcDealProbability } from "@/lib/aiAnalytics";
-import {
-  Plus, Download, Search, Filter, Calendar as CalendarIcon,
-  BarChart3, X, GripVertical, User,
-  CalendarCheck, StickyNote, AlertCircle, ChevronRight,
-  ChevronLeft, LayoutGrid, List, LogIn, Users,
-  ArrowRightCircle, Paperclip, UserPlus,
-  AlertTriangle, Target
-} from "lucide-react";
-import { format, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
+import { brl } from "@/lib/format";
+import { dbError } from "@/lib/supabaseError";
 import { toast } from "@/hooks/use-toast";
+import { closableMonths, compareMonth, currentMonthBase } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { normalizeStatus, nextMonthBase } from "@/lib/dealStatus";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageHeader, StatusBadge } from "@/components/shared";
+import DealDetailModal from "@/components/DealDetailModal";
 import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
-import { scheduleVisit as scheduleVisitRecord } from "@/integrations/supabase/activities";
+import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
+import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
-  displayMonthToIso,
-  getStageIdByCode,
-  listLegacyDeals,
-  listOpenCheckins,
-  listPeople,
-  toDisplayMonth,
-} from "@/integrations/supabase/newSchema";
+  CloseMonthDialog, DealFilters, DealsBoard, DealsToolbar,
+  EMPTY_FILTERS, LoseDealDialog, PipelineAnalytics, ReopenDealDialog, ReopenMonthDialog,
+  ScheduleVisitDialog,
+  applyDealFilters, canWriteDeals, dealMonth, dealRangeError, dealRequiredError,
+  baixarPlanilhaDeNegocios, findDuplicateDeal, hasActiveFilter, sortDeals,
+  useClosedMonths, useDeals, useDevelopers, useInvalidateDeals, usePipelineRealtime,
+  useOpenSeason, usePeople, usePipelineStages, useStagePermissions,
+  type DealFilterState,
+} from "@/components/pipeline";
+import { useDealActions } from "@/components/pipeline/useDealActions";
 
-// ── Developer color map (distinct colors per developer) ──
-const developerColors: Record<string, string> = {
-  Cyrela: "bg-teal-600",
-  MRV: "bg-amber-600",
-  Tenda: "bg-rose-600",
-  Eztec: "bg-violet-600",
-  Direcional: "bg-sky-600",
-  Even: "bg-lime-600",
-};
-const getDeveloperColor = (dev: string) => developerColors[dev] || "bg-muted";
+/** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
+type EditorState = { deal: LegacyDealRecord | null } | null;
 
-// ── Stage visual config ──
-const stageColors: Record<DealStage, { bg: string; border: string; header: string; dot: string; badge: string }> = {
-  incomplete:      { bg: "bg-destructive/5", border: "border-destructive/25", header: "bg-destructive/15", dot: "bg-destructive", badge: "bg-destructive/20 text-destructive" },
-  lead:            { bg: "bg-muted/20", border: "border-muted-foreground/20", header: "bg-muted/40", dot: "bg-muted-foreground", badge: "bg-muted text-muted-foreground" },
-  proposal:        { bg: "bg-primary/5", border: "border-primary/25", header: "bg-primary/15", dot: "bg-primary", badge: "bg-primary/20 text-primary" },
-  visit_scheduled: { bg: "bg-warning/5", border: "border-warning/25", header: "bg-warning/15", dot: "bg-warning", badge: "bg-warning/20 text-warning" },
-  under_analysis:  { bg: "bg-cyan-500/5", border: "border-cyan-500/25", header: "bg-cyan-500/15", dot: "bg-cyan-500", badge: "bg-cyan-500/20 text-cyan-400" },
-  approved:        { bg: "bg-success/5", border: "border-success/25", header: "bg-success/15", dot: "bg-success", badge: "bg-success/20 text-success" },
-  contract:        { bg: "bg-purple-500/5", border: "border-purple-500/25", header: "bg-purple-500/15", dot: "bg-purple-500", badge: "bg-purple-500/20 text-purple-400" },
-  closed:          { bg: "bg-emerald-600/5", border: "border-emerald-600/25", header: "bg-emerald-600/15", dot: "bg-emerald-600", badge: "bg-emerald-600/20 text-emerald-400" },
-};
-
-const tableStageLabels: Record<string, { label: string; color: string }> = {
-  incomplete: { label: "INCOMPLETO", color: "bg-destructive text-destructive-foreground" },
-  lead: { label: "01. LEAD", color: "bg-muted text-muted-foreground" },
-  proposal: { label: "PROPOSTA", color: "bg-primary text-primary-foreground" },
-  visit_scheduled: { label: "05. VISITA AGD", color: "bg-cyan-600 text-white" },
-  under_analysis: { label: "06. EM ANÁLISE", color: "bg-yellow-600 text-white" },
-  approved: { label: "09. APROV. TOTAL", color: "bg-blue-700 text-white" },
-  contract: { label: "10. APROV. COND.", color: "bg-red-600 text-white" },
-  closed: { label: "08. VIROU NEGOCIO", color: "bg-slate-700 text-white" },
-};
-
-// ── Faceimob status list (Status 2 column) ──
-const FACEIMOB_STATUSES: { label: string; color: string }[] = [
-  { label: "02. ASS. BANCO", color: "bg-blue-600 text-white" },
-  { label: "03. ASSINADO", color: "bg-emerald-600 text-white" },
-  { label: "04. EM CONTRATO", color: "bg-red-500 text-white" },
-  { label: "05. RP APROVADO", color: "bg-emerald-700 text-white" },
-  { label: "06. ENVIO DE RP", color: "bg-cyan-600 text-white" },
-  { label: "08. VIROU NEGÓCIO", color: "bg-slate-700 text-white" },
-  { label: "14. PENDENTE P/ VIRAR NEGÓCIO", color: "bg-yellow-600 text-white" },
-  { label: "15. ANÁLISE P/ VIRAR NEGÓCIO", color: "bg-amber-700 text-white" },
-  { label: "ANÁLISE P/ POTENCIAL", color: "bg-cyan-700 text-white" },
-  { label: "ANÁLISE EXTERNA", color: "bg-sky-700 text-white" },
-  { label: "MUDAR CONSTRUTORA P/ NEGÓCIO", color: "bg-violet-700 text-white" },
-  { label: "09. APROV. TOTAL", color: "bg-blue-700 text-white" },
-  { label: "10. APROV. COND.", color: "bg-red-600 text-white" },
-  { label: "07. APROV. AG. CONT.", color: "bg-amber-600 text-white" },
-  { label: "APROV. TOT. RESTRIÇÃO", color: "bg-rose-600 text-white" },
-  { label: "APROV. COND. RESTRIÇÃO", color: "bg-rose-500 text-white" },
-  { label: "APROVADO POTENCIAL", color: "bg-emerald-500 text-white" },
-  { label: "11. AG. RET. AGENCIA", color: "bg-orange-600 text-white" },
-  { label: "12. EM PROCESSAMENTO", color: "bg-purple-600 text-white" },
-  { label: "13. ESTEIRA AGIL", color: "bg-teal-600 text-white" },
-  { label: "RET. ESTEIRA AGIL", color: "bg-teal-700 text-white" },
-  { label: "15. INTERNALIZADO", color: "bg-indigo-600 text-white" },
-  { label: "PENDENTE C/ RESTRIÇÃO", color: "bg-amber-800 text-white" },
-  { label: "16. PENDENTE", color: "bg-yellow-700 text-white" },
-  { label: "17. DISTRATO", color: "bg-rose-700 text-white" },
-  { label: "18. QUEDA", color: "bg-red-700 text-white" },
-  { label: "19. REPROVADO", color: "bg-red-800 text-white" },
-  { label: "20. BACEN", color: "bg-fuchsia-700 text-white" },
-  { label: "21. RESTRIÇÃO", color: "bg-pink-700 text-white" },
-  { label: "INCOMPLETO", color: "bg-destructive text-destructive-foreground" },
-  { label: "COMPRA ASSISTIDA", color: "bg-emerald-800 text-white" },
-  { label: "PROPOSTA", color: "bg-primary text-primary-foreground" },
-];
-const faceimobStatusColor = (label: string) =>
-  FACEIMOB_STATUSES.find(s => s.label === label)?.color || "bg-muted text-muted-foreground";
-
-const emptyDeal: Omit<PipelineDeal, "id" | "days_in_pipeline"> = {
-  client: "", developer: "", project: "", unit: "", status: "Ativo", stage: "lead",
-  broker1: "", broker2: "", manager1: "", manager2: "", deal_value: 0,
-  active: true, created_at: new Date().toISOString().slice(0, 10), notes: "",
-  history: [],
-};
-
-interface QueueBroker {
-  id: string;
-  name: string;
-  checkedInAt: string;
-}
-
+/**
+ * Pipeline de negócios.
+ *
+ * Tinha 1375 linhas, 44 `useState` e 26 toasts, com dois editores gravando o
+ * mesmo registro (achado A02). Ficou a composição: os blocos vivem em
+ * `@/components/pipeline`, cada um dono do próprio estado; aqui sobra o que
+ * precisa ser compartilhado — o filtro (lido pela listagem e pelos indicadores)
+ * e qual negócio está aberto.
+ *
+ * O editor é um só: o `DealDetailModal`, usado também para criar.
+ *
+ * **Nenhuma comemoração é disparada aqui.** O `EngagementLayer` já ouve
+ * `game_events` e agrupa os INSERTs de uma venda rateada entre corretores;
+ * chamar `celebrate("sale")` também nesta tela tocaria o som duas vezes e
+ * quebraria o agrupamento.
+ */
 export default function Pipeline() {
-  const { role, user, canEnterStage } = useAuth();
-  // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<"deals" | "leads">("deals");
+  const { user, isAdmin, roles, can } = useAuth();
 
-  // ── Brokers state ──
-  const [brokers, setBrokers] = useState<Broker[]>([]);
-  const fetchBrokers = useCallback(async () => {
-    try {
-      const people = await listPeople();
-      const mappedBrokers: Broker[] = people
-        .filter((person) => person.roles.includes("broker"))
-        .map((person) => ({
-        id: person.id,
-        name: person.name,
-        active: person.active,
-        monthly_sales: 0,
-        monthly_vgv: 0,
-        team: person.team,
-      }));
-      
-      setBrokers(mappedBrokers);
-    } catch (error) {
-      console.error('Error fetching brokers:', error);
-    }
-  }, []);
-
-  // ── Deals state ──
-  const [deals, setDeals] = useState<PipelineDeal[]>([]);
-  const fetchDeals = useCallback(async () => {
-    try {
-      setDeals(await listLegacyDeals());
-    } catch (error) {
-      console.error('Error fetching deals:', error);
-      toast({ title: "Erro ao carregar negócios", variant: "destructive" });
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchBrokers();
-    fetchDeals();
-  }, [fetchBrokers, fetchDeals]);
-
-  const [search, setSearch] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-  const [developerFilter, setDeveloperFilter] = useState("all");
-  const [brokerFilter, setBrokerFilter] = useState("all");
-  const [stageFilter, setStageFilter] = useState("all");
-  const [status2Filter, setStatus2Filter] = useState("all");
-  const [managerFilter, setManagerFilter] = useState("all");
-  const [clientNameFilter, setClientNameFilter] = useState("");
-  const [clientName2Filter, setClientName2Filter] = useState("");
-  const [cpfFilter, setCpfFilter] = useState("");
-  const [cpf2Filter, setCpf2Filter] = useState("");
-  const [monthFilter, setMonthFilter] = useState("all");
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [viewMode, setViewMode] = useState<"kanban" | "table">("table");
-  const [page, setPage] = useState(1);
-  const perPage = 15;
-
-  // ── New Lead modal ──
-  const [newLeadOpen, setNewLeadOpen] = useState(false);
-  const [newLeadData, setNewLeadData] = useState({ name: "", phone: "", whatsapp: "", email: "", source: "", broker_name: "", notes: "" });
-
-  // ── Queue state ──
-  const [queue, setQueue] = useState<QueueBroker[]>([]);
-  const [checkingIn, setCheckingIn] = useState(false);
-  // ── Convert lead modal ──
-  const [convertOpen, setConvertOpen] = useState(false);
-  const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
-  const [convertDoc, setConvertDoc] = useState<File | null>(null);
-  const convertFileRef = useRef<HTMLInputElement>(null);
-
-  // ── Deal modals ──
-  const [dealFormOpen, setDealFormOpen] = useState(false);
-  const [editingDeal, setEditingDeal] = useState<PipelineDeal | null>(null);
-  const [detailDeal, setDetailDeal] = useState<PipelineDeal | null>(null);
-  const [visitDeal, setVisitDeal] = useState<PipelineDeal | null>(null);
-  const [visitDate, setVisitDate] = useState<Date | undefined>();
-  const [formData, setFormData] = useState(emptyDeal);
-
-  // Drag state
-  const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
-  const [dragOverStage, setDragOverStage] = useState<DealStage | null>(null);
-
-  // ── Close Month state ──
-  const [closeMonthOpen, setCloseMonthOpen] = useState(false);
-  const isAdmin = role === 'admin';
-  const queryClient = useQueryClient();
-
-  const { data: closedMonths = [] } = useQuery({
-    queryKey: ["closed_months"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("closed_months").select("period");
-      if (error) throw error;
-      return ((data as any[]) || [])
-        .map((row) => toDisplayMonth(row.period))
-        .filter(Boolean) as string[];
-    },
-    staleTime: 60_000,
-  });
-  const isMonthClosed = closedMonths.includes(monthFilter);
-
-  const handleCloseMonth = async () => {
-    const currentMonth = monthFilter;
-    const nextBase = nextMonthBase(currentMonth);
-    try {
-      // Migra apenas PROPOSTA para o próximo mês (VENDA/QUEDA/DISTRATO/OFF ficam)
-      const { data: toMigrate, error: selErr } = await supabase
-        .from("deals")
-        .select("id,outcome")
-        .eq("month_base", displayMonthToIso(currentMonth));
-      if (selErr) throw selErr;
-
-      const migrateIds = (toMigrate || [])
-        .filter((deal: any) => deal.outcome === "open")
-        .map((d: any) => d.id);
-
-      if (migrateIds.length > 0) {
-        const { error: updErr } = await supabase
-          .from("deals")
-          .update({ month_base: displayMonthToIso(nextBase) })
-          .in("id", migrateIds);
-        if (updErr) throw updErr;
-      }
-
-      // Marca o mês como fechado
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error: insErr } = await supabase
-        .from("closed_months")
-        .insert({ period: displayMonthToIso(currentMonth), closed_by: user?.id });
-      if (insErr && !String(insErr.message).includes("duplicate")) throw insErr;
-
-      // Reflete localmente
-      setDeals(prev => prev.map(deal => {
-        const dealMonth = deal.month_base || format(parseISO(deal.created_at), "MM/yyyy");
-        if (dealMonth !== currentMonth) return deal;
-        if (normalizeStatus(deal.status) === "PROPOSTA") {
-          return { ...deal, month_base: nextBase };
-        }
-        return deal;
-      }));
-
-      await queryClient.invalidateQueries({ queryKey: ["closed_months"] });
-      await queryClient.invalidateQueries({ queryKey: ["dashboard", "new-schema"] });
-      setMonthFilter(nextBase);
-      setCloseMonthOpen(false);
-      toast({
-        title: "✅ Mês fechado com sucesso!",
-        description: `${currentMonth} está congelado. ${migrateIds.length} proposta(s) movida(s) para ${nextBase}.`,
-      });
-    } catch (e: any) {
-      toast({
-        title: "Erro ao fechar mês",
-        description: e?.message || "Tente novamente.",
-        variant: "destructive",
-      });
-    }
-  };
-
-
-  // ── Check-in / Checkout (compartilhado com a página /checkin) ──
-  const [myBrokerId, setMyBrokerId] = useState<string | null>(null);
-  useEffect(() => {
-    setMyBrokerId(user?.id || null);
-  }, [user?.id]);
-  const isInQueue = !!myBrokerId && queue.some((q: any) => q.broker_id === myBrokerId);
-
-  const loadQueue = useCallback(async () => {
-    try {
-      setQueue(await listOpenCheckins());
-    } catch (error) {
-      console.error("Erro ao carregar fila de check-in:", error);
-      setQueue([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadQueue();
-    const ch = supabase
-      .channel("pipeline-checkins")
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, () => loadQueue())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [loadQueue]);
-
-  const invokeCheckin = useCallback(async (action: "checkin" | "checkout") => {
-    setCheckingIn(true);
-    try {
-      const { data: sess } = await supabase.auth.getSession();
-      if (!sess?.session) throw new Error("Você precisa estar logado.");
-      const { data, error } = await supabase.functions.invoke("broker-checkin", { body: { action } });
-      if (error) {
-        let msg = error.message;
-        try {
-          const ctx: any = (error as any).context;
-          if (ctx && typeof ctx.json === "function") {
-            const body = await ctx.json();
-            if (body?.error) msg = body.error;
-          }
-        } catch {}
-        throw new Error(msg);
-      }
-      if ((data as any)?.error) throw new Error((data as any).error);
-      toast({ title: action === "checkin" ? "✅ Check-in realizado!" : "👋 Check-out realizado!" });
-      await loadQueue();
-    } catch (e: any) {
-      toast({ title: "Erro", description: e.message || "Falha no check-in", variant: "destructive" });
-    } finally {
-      setCheckingIn(false);
-    }
-  }, [loadQueue]);
-
-  const handleCheckIn = useCallback(() => invokeCheckin("checkin"), [invokeCheckin]);
-  const handleCheckOut = useCallback(() => invokeCheckin("checkout"), [invokeCheckin]);
-
-  // ── Convert Lead to Deal ──
-  const openConvertLead = (lead: Lead) => {
-    setConvertingLead(lead);
-    setConvertDoc(null);
-    setConvertOpen(true);
-  };
-
-  const confirmConvert = () => {
-    if (!convertingLead) return;
-    if (!convertDoc) {
-      toast({ title: "📎 Documento obrigatório", description: "Anexe pelo menos 1 documento para converter o lead em negócio.", variant: "destructive" });
-      return;
-    }
-
-    // Create deal at "incomplete" stage
-    const newDeal: PipelineDeal = {
-      id: String(Date.now()),
-      client: convertingLead.name,
-      developer: "",
-      project: "",
-      unit: "",
-      status: "Ativo",
-      stage: "incomplete",
-      broker1: convertingLead.broker_name || "",
-      manager1: "",
-      deal_value: 0,
-      days_in_pipeline: 0,
-      active: true,
-      created_at: new Date().toISOString().slice(0, 10),
-      notes: `Convertido do lead. Doc: ${convertDoc.name}`,
-    };
-
-    setDeals(prev => [newDeal, ...prev]);
-    setConvertOpen(false);
-    setConvertingLead(null);
-    setConvertDoc(null);
-    setActiveTab("deals");
-    toast({ title: "🎉 Lead convertido em negócio!", description: `"${convertingLead.name}" inserido no pipeline como Incompleto.` });
-  };
-
-  // ── Deal filters ──
-  const filtered = useMemo(() => {
-    return deals.filter((d) => {
-      const s = search.toLowerCase();
-      const matchSearch = !s || d.client.toLowerCase().includes(s) || (d.project?.toLowerCase() || "").includes(s) || (d.broker1?.toLowerCase() || "").includes(s);
-      const matchDev = developerFilter === "all" || d.developer === developerFilter;
-      const matchBroker = brokerFilter === "all" || d.broker1 === brokerFilter;
-      const matchStage = stageFilter === "all" || d.stage === stageFilter;
-      const matchStatus2 = status2Filter === "all" || d.stage === status2Filter;
-      const matchManager = managerFilter === "all" || d.manager1 === managerFilter;
-      const matchClient = !clientNameFilter || d.client.toLowerCase().includes(clientNameFilter.toLowerCase());
-      const dealMonth = d.month_base || (d.created_at ? format(parseISO(d.created_at), "MM/yyyy") : "");
-      const matchMonth = monthFilter === "all" || dealMonth === monthFilter;
-      return matchSearch && matchDev && matchBroker && matchStage && matchStatus2 && matchManager && matchClient && matchMonth;
-    }).sort((a, b) => {
-      // Sort by Construtora first, then Status 2 in the FACEIMOB_STATUSES order
-      const devCmp = (a.developer || "").localeCompare(b.developer || "");
-      if (devCmp !== 0) return devCmp;
-      const statusOrder = FACEIMOB_STATUSES.map(s => s.label);
-      const aStatus = (a.status && a.status !== "Ativo" && a.status !== "OFF") ? a.status : (tableStageLabels[a.stage]?.label || "PROPOSTA");
-      const bStatus = (b.status && b.status !== "Ativo" && b.status !== "OFF") ? b.status : (tableStageLabels[b.stage]?.label || "PROPOSTA");
-      const aIdx = statusOrder.indexOf(aStatus); const bIdx = statusOrder.indexOf(bStatus);
-      return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
-    });
-  }, [deals, search, developerFilter, brokerFilter, stageFilter, status2Filter, managerFilter, clientNameFilter]);
-
-  const dealsByStage = useMemo(() => {
-    const map: Record<DealStage, PipelineDeal[]> = { incomplete: [], lead: [], proposal: [], visit_scheduled: [], under_analysis: [], approved: [], contract: [], closed: [] };
-    filtered.filter((d) => d.active).forEach((d) => map[d.stage]?.push(d));
-    return map;
-  }, [filtered]);
-
-  const totalPages = Math.ceil(filtered.length / perPage);
-  const paginated = filtered.slice((page - 1) * perPage, page * perPage);
-
-  // ── Deal metrics ──
-  const activeDeals = deals.filter((d) => d.active).length;
-  const totalVGV = deals.filter((d) => d.active).reduce((a, d) => a + (d.deal_value || 0), 0);
-
-  // Drag handlers
-  const onDragStart = useCallback((dealId: string) => setDraggedDeal(dealId), []);
-  const onDragEnd = useCallback(() => { setDraggedDeal(null); setDragOverStage(null); }, []);
-  const onDragOver = useCallback((e: React.DragEvent, stage: DealStage) => { e.preventDefault(); setDragOverStage(stage); }, []);
-  const onDrop = useCallback(async (stage: DealStage) => {
-    if (draggedDeal) {
-      const deal = deals.find(d => d.id === draggedDeal);
-      if (!deal) return;
-
-      const oldStage = deal.stage;
-      const stageLabel = DEAL_STAGES.find((s) => s.value === stage)?.label ?? stage;
-
-      try {
-        // Resolve a etapa ANTES de mexer na tela: `can_enter_stage()` trabalha
-        // com o id, e mover o card para depois desfazer pisca à toa.
-        const stageId = await getStageIdByCode(stage);
-
-        if (!canEnterStage(stageId)) {
-          toast({
-            variant: "destructive",
-            title: "Movimentação não permitida",
-            description: `Seu perfil não pode mover negócios para "${stageLabel}".`,
-          });
-          return;
-        }
-
-        setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage } : d));
-
-        const { error } = await supabase
-          .from('deals')
-          .update({ stage_id: stageId })
-          .eq('id', draggedDeal);
-
-        if (error) throw error;
-
-        if (stage === "under_analysis" && oldStage !== "under_analysis") {
-          const { error: ccaError } = await supabase.rpc(
-            "submit_deal_for_analysis",
-            { p_deal_id: draggedDeal },
-          );
-          if (ccaError) throw ccaError;
-          toast({ title: "Enviado para análise" });
-        }
-
-        toast({ title: `Deal movido para ${stageLabel}` });
-      } catch (err) {
-        // Sem este rollback o card ficava na coluna nova com o banco recusando a
-        // gravação: a tela mentia sobre o estado real até o próximo reload.
-        setDeals((prev) => prev.map((d) => d.id === draggedDeal ? { ...d, stage: oldStage } : d));
-        console.error("Error updating deal stage:", err);
-        toast({ variant: "destructive", title: "Erro ao salvar", description: "O status não foi atualizado no servidor." });
-      }
-    }
-    setDraggedDeal(null);
-    setDragOverStage(null);
-  }, [draggedDeal, deals, canEnterStage]);
-
-  const openNewDeal = () => { setEditingDeal(null); setFormData(emptyDeal); setDealFormOpen(true); };
-  const saveNewLead = async () => {
-    if (!newLeadData.name.trim()) { toast({ title: "Nome obrigatório", variant: "destructive" }); return; }
-    const { error } = await supabase.from("leads").insert({
-      full_name: newLeadData.name,
-      phone: newLeadData.phone,
-      phone_raw: newLeadData.whatsapp || newLeadData.phone,
-      email: newLeadData.email || null,
-      utm_source: newLeadData.source || "manual",
-      status: "queued",
-      funnel_stage: "new",
-      assigned_to: brokers.find(person => person.name === newLeadData.broker_name)?.id || null,
-      notes: newLeadData.notes || null,
-      raw_payload: { created_manually: true },
-    });
-    if (error) return toast({ title: "Erro ao criar lead", description: error.message, variant: "destructive" });
-    setNewLeadOpen(false);
-    setNewLeadData({ name: "", phone: "", whatsapp: "", email: "", source: "", broker_name: "", notes: "" });
-    toast({ title: "✅ Lead criado com sucesso!" });
-  };
-
-  const saveDeal = async () => {
-    if (!formData.client.trim()) return;
-    try {
-      const stageId = await getStageIdByCode(formData.stage);
-      const developer = formData.developer
-        ? await supabase.from("developers").select("id").ilike("name", formData.developer).maybeSingle()
-        : { data: null };
-      const project = formData.project && developer.data?.id
-        ? await supabase.from("developer_projects").select("id")
-            .eq("developer_id", developer.data.id).ilike("name", formData.project).maybeSingle()
-        : { data: null };
-      const dealPayload = {
-        developer_id: developer.data?.id || null,
-        project_id: project.data?.id || null,
-        unit: formData.unit || null,
-        stage_id: stageId,
-        month_base: displayMonthToIso(formData.month_base || monthFilter),
-        vgv_gross: Number(formData.vgv_bruto || formData.deal_value || 0),
-        discount_pct: Number(formData.perc_desconto || 0),
-        lead_origin: formData.lead_origin || null,
-        notes: formData.notes || null,
-      };
-
-      let dealId = editingDeal?.id;
-      if (dealId) {
-        const { error } = await supabase.from("deals").update(dealPayload).eq("id", dealId);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.from("deals").insert(dealPayload).select("id").single();
-        if (error) throw error;
-        dealId = data.id;
-      }
-
-      const { error: clientError } = await supabase.from("deal_clients").upsert({
-        deal_id: dealId,
-        ordinal: 1,
-        full_name: formData.client,
-      }, { onConflict: "deal_id,ordinal" });
-      if (clientError) throw clientError;
-
-      const selectedBrokerIds = [formData.broker1, formData.broker2]
-        .filter(Boolean)
-        .map(name => brokers.find(person => person.name === name)?.id)
-        .filter(Boolean);
-      await supabase.from("deal_participants").delete().eq("deal_id", dealId).eq("role", "broker");
-      if (selectedBrokerIds.length) {
-        const { error: participantsError } = await supabase.from("deal_participants").insert(
-          selectedBrokerIds.map(profileId => ({ deal_id: dealId, profile_id: profileId, role: "broker" })),
-        );
-        if (participantsError) throw participantsError;
-      }
-
-      setDeals(await listLegacyDeals());
-      setDealFormOpen(false);
-      toast({ title: editingDeal ? "Deal atualizado" : "Deal criado" });
-    } catch (error: any) {
-      toast({ title: "Erro ao salvar deal", description: error?.message, variant: "destructive" });
-    }
-  };
-
-  const toggleDealActive = async (dealId: string) => {
-    const deal = deals.find(row => row.id === dealId);
-    if (!deal) return;
-    if (!deal.active) return toast({ title: "Negócios encerrados não podem ser reabertos por este atalho" });
-    const stageId = await getStageIdByCode("lost");
-    const { error } = await supabase.from("deals")
-      .update({ stage_id: stageId, lost_reason: "Arquivado manualmente" })
-      .eq("id", dealId);
-    if (error) return toast({ title: "Erro ao arquivar", description: error.message, variant: "destructive" });
-    setDeals(await listLegacyDeals());
-  };
-
-  const updateDealStatus = async (dealId: string, newStatus: string) => {
-    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, status: newStatus } : d));
-    try {
-      const normalized = normalizeStatus(newStatus);
-      const stageCode =
-        normalized === "VENDA"
-          ? "closed"
-          : normalized === "QUEDA" || normalized === "DISTRATO" || normalized === "OFF"
-            ? "lost"
-            : "proposal";
-      const stageId = await getStageIdByCode(stageCode);
-      const { error } = await supabase
-        .from("deals")
-        .update({
-          stage_id: stageId,
-          lost_reason:
-            normalized === "DISTRATO"
-              ? "Distrato"
-              : normalized === "QUEDA" || normalized === "OFF"
-                ? newStatus
-                : null,
-        })
-        .eq("id", dealId);
-      if (error) throw error;
-    } catch (err) {
-      console.error("Error updating status:", err);
-      toast({ variant: "destructive", title: "Erro ao salvar status" });
-    }
-  };
+  // Espelha o `with check` de `deals_insert`. O sócio (e, desde a 0053, o SDR e
+  // o marketing) tem `menu.pipeline` e enxerga os negócios, mas o banco recusa a
+  // escrita: sem este gate ele abria o formulário inteiro de "Adicionar negócio"
+  // para levar 42501 no fim, sem nenhuma marca de que a tela é só de leitura
+  // para ele. O `some(includes)` que estava aqui liberava os três, porque todo
+  // perfil carrega 'broker' desde o cadastro — daí o papel EFETIVO.
+  const canWrite = isAdmin || canWriteDeals(roles);
 
   /**
-   * Agenda a visita.
+   * Extrair a planilha é ato de quem responde pelo número, não de quem trabalha
+   * nele: ela sai com VGV, percentual e VGV POR CORRETOR do recorte inteiro —
+   * a folha de comissão da operação num arquivo que anda por WhatsApp. Pedido
+   * do cliente em 05/09/2026: só administrador e sócio.
    *
-   * Antes isto só mudava a etapa do negócio e guardava a data em estado local:
-   * a visita sumia no reload e a tabela `visits` — que tem data marcada, data
-   * realizada e resultado — nunca recebia nada. Agora as duas coisas acontecem:
-   * o card anda no funil E o agendamento fica registrado.
+   * A trava é a matriz (`pipeline.export`, migration 0092), e não uma lista de
+   * papéis no código: quem administra permissões já tem onde mudar isso, e
+   * `can()` curto-circuita em admin igual ao `has_permission()` do banco.
    */
-  const scheduleVisit = async () => {
-    if (!visitDeal || !visitDate) return;
-    if (!user?.id) return toast({ title: "Sessão expirada", variant: "destructive" });
+  const podeExtrair = can("pipeline.export");
 
-    const stageId = await getStageIdByCode("visit_scheduled");
-    if (!canEnterStage(stageId)) {
-      return toast({
-        variant: "destructive",
-        title: "Movimentação não permitida",
-        description: 'Seu perfil não pode mover negócios para "Visita Agendada".',
-      });
-    }
+  const [tab, setTab] = useState<"deals" | "leads">("deals");
+  const [extraindo, setExtraindo] = useState(false);
+  const [filters, setFilters] = useState<DealFilterState>(EMPTY_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [view, setView] = useState<"table" | "kanban">("table");
+  const [editor, setEditor] = useState<EditorState>(null);
+  const [visitDeal, setVisitDeal] = useState<LegacyDealRecord | null>(null);
+  const [losing, setLosing] = useState<{ deal: LegacyDealRecord; preset?: string } | null>(null);
+  const [reopening, setReopening] = useState<LegacyDealRecord | null>(null);
+  const [closeMonthOpen, setCloseMonthOpen] = useState(false);
+  const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
+  const [convertingLead, setConvertingLead] = useState<LeadRecord | null>(null);
 
-    const { error } = await supabase.from("deals").update({ stage_id: stageId }).eq("id", visitDeal.id);
-    if (error) return toast({ title: "Erro ao agendar visita", description: error.message, variant: "destructive" });
+  const dealsQuery = useDeals();
+  const stagesQuery = usePipelineStages();
+  const peopleQuery = usePeople();
+  const developersQuery = useDevelopers();
+  const closedMonths = useClosedMonths();
+  // A matriz de etapas entra na espera da listagem de propósito: `can_exit` é
+  // lido pelo cartão e pelas ações, e enquanto ela não chega a trava é fechada.
+  // Sem isto o kanban aparecia por um instante sem alça nenhuma — e um arraste
+  // rápido levava "Movimentação não permitida" por corrida, não por regra.
+  const stagePerms = useStagePermissions();
+  const openSeason = useOpenSeason();
+  const invalidateDeals = useInvalidateDeals();
+  usePipelineRealtime();
 
+  const deals = useMemo(() => dealsQuery.data ?? [], [dealsQuery.data]);
+  const stages = useMemo(() => stagesQuery.data ?? [], [stagesQuery.data]);
+  const people = useMemo(() => peopleQuery.data ?? [], [peopleQuery.data]);
+  const developers = useMemo(() => developersQuery.data ?? [], [developersQuery.data]);
+
+  const requestLoss = useCallback(
+    (deal: LegacyDealRecord, preset: string) => setLosing({ deal, preset }),
+    [],
+  );
+  const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
+  const { moveDeal, changeStatus } = useDealActions({
+    stages, closedMonths: closed, onNeedsLossConfirmation: requestLoss,
+  });
+
+  const brokers = useMemo(
+    () => people.filter((person) => person.active && person.roles.includes("broker")),
+    [people],
+  );
+  const managers = useMemo(
+    () => people.filter((person) => person.active
+      && (person.roles.includes("manager") || person.roles.includes("director"))),
+    [people],
+  );
+  /** Meses presentes nos negócios — o filtro de mês era campo de texto livre. */
+  // `compareMonth` e não `sort()` de string: "12/2025" vem depois de "01/2026"
+  // na ordem alfabética, e a lista abriria com o mês errado no topo.
+  const months = useMemo(
+    () => [...new Set(deals.map(dealMonth).filter(Boolean))].sort((a, b) => compareMonth(b, a)),
+    [deals],
+  );
+
+  const visible = useMemo(() => sortDeals(applyDealFilters(deals, filters)), [deals, filters]);
+  const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
+
+  /**
+   * O download é assíncrono (a biblioteca do `.xlsx` só é buscada no clique) e
+   * pode falhar — rede caída no meio do `import()`, memória em recorte grande.
+   * Sem este `catch` o clique simplesmente não fazia nada e o erro morria no
+   * console: quem exporta ficaria esperando um arquivo que nunca vem.
+   */
+  const extrair = useCallback(async () => {
+    setExtraindo(true);
     try {
-      await scheduleVisitRecord({
-        dealId: visitDeal.id,
-        brokerId: user.id,
-        scheduledAt: visitDate.toISOString(),
-      });
-    } catch (e) {
-      // A etapa já mudou; avisar sem desfazer é melhor do que fingir sucesso.
+      await baixarPlanilhaDeNegocios(visible);
+    } catch (erro) {
       toast({
-        title: "Etapa atualizada, mas a visita não foi registrada",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
         variant: "destructive",
+        title: "Não consegui gerar a planilha",
+        description: erro instanceof Error ? erro.message : "Tente de novo em instantes.",
       });
+    } finally {
+      setExtraindo(false);
     }
+  }, [visible]);
 
-    setDeals((prev) => prev.map((d) => d.id === visitDeal.id ? { ...d, visit_date: format(visitDate, "yyyy-MM-dd"), visit_result: "pending", stage: "visit_scheduled" as DealStage } : d));
-    setVisitDeal(null); setVisitDate(undefined);
-    toast({ title: "Visita agendada" });
-  };
+  const pendingReviews = deals.filter((deal) => deal.document_review_status === "pending").length;
+  // `visible`, e não `deals`: a contagem ao lado, na mesma frase, é filtrada —
+  // ler "3 negócio(s) ativo(s) · R$ 12 mi em VGV" com o VGV da base inteira
+  // descrevia dois conjuntos diferentes na mesma linha.
+  const vgv = visible.filter((deal) => deal.active).reduce((total, deal) => total + (deal.deal_value || 0), 0);
 
-  const exportCSV = () => {
-    const headers = ["Cliente", "Incorporadora", "Empreendimento", "Unidade", "Etapa", "Valor", "Dias", "Corretor 1", "Gerente"];
-    const rows = filtered.map((d) => [d.client, d.developer, d.project, d.unit, d.stage, d.deal_value, d.days_in_pipeline, d.broker1, d.manager1]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `pipeline_${format(new Date(), "yyyy-MM-dd")}.csv`;
-    link.click();
-  };
+  // O mês do fechamento é o do ciclo aberto do game (migration 0032), não o do
+  // relógio nem o que estiver no filtro.
+  const seasonMonth = openSeason.data
+    ? `${openSeason.data.period_start.slice(5, 7)}/${openSeason.data.period_start.slice(0, 4)}`
+    : null;
+  // O botão só morre quando NÃO SOBRA mês para fechar. Enquanto ele desligava
+  // no "mês da temporada já fechado", 08/2026 — onde estão 26 dos 32 negócios —
+  // não tinha como ser congelado por tela nenhuma.
+  const fechaveis = useMemo(
+    () => closableMonths(months, closed, seasonMonth),
+    [months, closed, seasonMonth],
+  );
 
-  // Analytics data
-  const underAnalysis = deals.filter((d) => ["under_analysis", "visit_scheduled"].includes(d.stage) && d.active).length;
-  const approvedDeals = deals.filter((d) => d.stage === "approved" && d.active).length;
-  const approvedCond = deals.filter((d) => d.stage === "contract" && d.active).length;
-  const pendingDeals = deals.filter((d) => d.stage === "lead" && d.active).length;
-  const closedDeals = deals.filter((d) => d.stage === "closed").length;
-  const proposalsToday = deals.filter((d) => d.stage === "proposal" && d.created_at === format(new Date(), "yyyy-MM-dd")).length;
-  const proposalsPeriod = deals.filter((d) => d.stage === "proposal" && d.active).length;
-  const avgDealValue = activeDeals ? totalVGV / activeDeals : 0;
-  const avgDaysInPipeline = activeDeals ? deals.filter((d) => d.active).reduce((a, d) => a + d.days_in_pipeline, 0) / activeDeals : 0;
-  const brokerDeals = brokers.map((b) => ({
-    name: b.name,
-    count: deals.filter((d) => d.broker1 === b.name && d.active).length,
-  })).sort((a, b) => b.count - a.count);
+  // O cabeçalho e a régua de contadores afirmavam sobre o banco ANTES de ler o
+  // banco: com as consultas em voo, `visible` é `[]` e o `<h1>` dizia "0
+  // negócio(s) ativo(s) · R$ 0 em VGV", a régua "0 ativos" e o botão do admin
+  // "Todos os meses fechados" — o oposto do que o fechamento se propôs a
+  // consertar. É o mesmo achado A01 que o `DealsBoard` corrigiu, um nível acima.
+  const carregando = dealsQuery.isPending || closedMonths.isPending || openSeason.isPending;
+  const falhou = Boolean(dealsQuery.error ?? closedMonths.error);
+
+  const patchFilters = (patch: Partial<DealFilterState>) =>
+    setFilters((previous) => ({ ...previous, ...patch }));
+
   return (
-    <div className="space-y-4">
-      {/* ── TOP RANKING (game / broker funnel) ────────── */}
+    <div className="space-y-6">
       <PipelineTopRanking deals={deals} />
 
-      {/* ── HEADER with TABS ─────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-primary">Pipeline</h1>
-          <div className="flex border border-border rounded-full overflow-hidden">
-            <button
-              onClick={() => setActiveTab("deals")}
-              className={cn("px-4 py-1.5 text-sm font-medium transition-colors",
-                activeTab === "deals" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Negócios
-            </button>
-            <button
-              onClick={() => setActiveTab("leads")}
-              className={cn("px-4 py-1.5 text-sm font-medium transition-colors",
-                activeTab === "leads" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Leads
-            </button>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {activeTab === "deals" ? (
+      <PageHeader
+        title="Pipeline"
+        eyebrow="Comercial"
+        icon={GitBranch}
+        description={
+          carregando
+            ? "Carregando negócios…"
+            : falhou
+              ? "Não consegui ler os negócios."
+              : `${activeCount} negócio(s) ativo(s) · ${brl(vgv)} em VGV.`
+        }
+        actions={
+          tab === "deals" ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-                <Filter className="h-4 w-4 mr-1" /> Filtrar Negócio
+              <Button variant="outline" size="sm" onClick={() => setShowFilters((open) => !open)}>
+                <Filter className="mr-1 h-4 w-4" /> Filtrar
               </Button>
-              <Button size="sm" onClick={openNewDeal}>
-                <Plus className="h-4 w-4 mr-1" /> Adicionar Negócio
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportCSV}>
-                <Download className="h-4 w-4 mr-1" /> Extrair Negócio
-              </Button>
+              {canWrite ? (
+                <Button size="sm" onClick={() => setEditor({ deal: null })}>
+                  <Plus className="mr-1 h-4 w-4" /> Adicionar negócio
+                </Button>
+              ) : (
+                <StatusBadge tone="neutral">Somente leitura</StatusBadge>
+              )}
+              {podeExtrair && (
+                <Button
+                  variant="outline" size="sm"
+                  disabled={visible.length === 0 || extraindo}
+                  onClick={() => void extrair()}
+                >
+                  <Download className="mr-1 h-4 w-4" />
+                  {extraindo ? "Gerando…" : "Extrair planilha"}
+                </Button>
+              )}
               {isAdmin && (
-                <Button variant="destructive" size="sm" onClick={() => setCloseMonthOpen(true)} disabled={isMonthClosed}>
-                  <Target className="h-4 w-4 mr-1" /> {isMonthClosed ? `${monthFilter} fechado` : "Fechar Mês"}
+                <Button
+                  variant="highlight" size="sm"
+                  disabled={carregando || falhou || fechaveis.length === 0}
+                  onClick={() => setCloseMonthOpen(true)}
+                >
+                  <Target className="mr-1 h-4 w-4" />
+                  {/* "Todos os meses fechados" é uma AFIRMAÇÃO sobre o banco:
+                      só depois da resposta. Enquanto as consultas estão em voo
+                      o rótulo continua "Fechar mês", desabilitado. */}
+                  {!carregando && !falhou && fechaveis.length === 0
+                    ? "Todos os meses fechados"
+                    : "Fechar mês"}
+                </Button>
+              )}
+              {/* Reabrir só aparece quando há mês fechado — e só para o admin,
+                  que é quem a policy `closed_months_write` autoriza. Sem este
+                  botão, o "Fale com o administrador para reabrir" que a tela
+                  escreve em três lugares apontava para um caminho que só
+                  existia em SQL na mão. */}
+              {isAdmin && closed.length > 0 && (
+                <Button variant="outline" size="sm" onClick={() => setReopenMonthOpen(true)}>
+                  <Unlock className="mr-1 h-4 w-4" /> Reabrir mês
                 </Button>
               )}
             </>
           ) : (
-            <Button size="sm" onClick={() => setNewLeadOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" /> Novo Lead
+            // Criar lead é da tela de Leads (achado F02): o botão daqui inseria
+            // direto em `leads` com `status: 'queued'` e um `assigned_to` que a
+            // roleta sobrescreve — e a policy só aceita gestor, então o corretor
+            // levava erro de RLS num botão que a tela mostrava a ele.
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/leads"><Users className="mr-1 h-4 w-4" /> Abrir tela de Leads</Link>
             </Button>
-          )}
-        </div>
+          )
+        }
+      />
+
+      <div className="flex w-fit rounded-full border border-border p-0.5" role="tablist" aria-label="Seções do pipeline">
+        {([["deals", "Negócios"], ["leads", "Leads"]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tab === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* ── ATTENDANCE QUEUE (compact) ────────── */}
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Users className="h-3.5 w-3.5" />
-          <span>Fila: <span className="font-semibold text-foreground">{queue.length}</span></span>
-          {queue.length > 0 && (
-            <div className="flex -space-x-1.5 ml-1">
-              {queue.slice(0, 5).map((q) => (
-                <div key={q.id} className="w-5 h-5 rounded-full bg-primary/20 border border-background flex items-center justify-center text-[9px] font-bold text-primary" title={`${q.name} - ${q.checkedInAt}`}>
-                  {q.name.charAt(0)}
-                </div>
-              ))}
-              {queue.length > 5 && <div className="w-5 h-5 rounded-full bg-muted border border-background flex items-center justify-center text-[9px] text-muted-foreground">+{queue.length - 5}</div>}
-            </div>
+
+      {tab === "deals" ? (
+        <div className="flex flex-col gap-4 lg:flex-row">
+          {showFilters && (
+            <DealFilters
+              filters={filters}
+              onChange={patchFilters}
+              onClear={() => setFilters(EMPTY_FILTERS)}
+              onClose={() => setShowFilters(false)}
+              stages={stages}
+              developers={developers}
+              brokers={brokers}
+              managers={managers}
+              months={months}
+            />
           )}
+
+          <div className="min-w-0 flex-1 space-y-2">
+            <DealsToolbar
+              search={filters.search}
+              onSearch={(search) => patchFilters({ search })}
+              view={view}
+              onView={setView}
+              analyticsOpen={showAnalytics}
+              onToggleAnalytics={() => setShowAnalytics((open) => !open)}
+              activeCount={activeCount}
+              listedCount={visible.length}
+              pendingReviews={pendingReviews}
+              onFilterPendingReviews={() => patchFilters({ documentReview: "pending" })}
+              countsUnknown={carregando || falhou}
+            />
+
+            <DealsBoard
+              view={view}
+              deals={visible}
+              stages={stages}
+              // A trava do mês fechado e as listas de pessoas/construtoras
+              // entram na espera junto com a matriz de etapas, e pelo mesmo
+              // motivo: `closedMonths` falhando devolvia `[]`, e mês congelado
+              // virava mês editável na tabela, no cartão e no `blockedMoveReason`
+              // — a única trava da tela que falhava ABERTA. `usePeople`/
+              // `useDevelopers` eram engolidos por `?? []`: o filtro de corretor
+              // e os Selects do modal abriam vazios, sem erro e sem "Tentar de
+              // novo", com a mesma cara de uma base sem cadastro.
+              isPending={dealsQuery.isPending || stagesQuery.isPending || stagePerms.isPending
+                || closedMonths.isPending || peopleQuery.isPending || developersQuery.isPending}
+              error={dealsQuery.error ?? stagesQuery.error ?? stagePerms.error
+                ?? closedMonths.error ?? peopleQuery.error ?? developersQuery.error}
+              filtered={hasActiveFilter(filters)}
+              canWrite={canWrite}
+              onRetry={() => {
+                void dealsQuery.refetch();
+                void stagesQuery.refetch();
+                void stagePerms.refetch();
+                void closedMonths.refetch();
+                void peopleQuery.refetch();
+                void developersQuery.refetch();
+              }}
+              onClearFilters={() => setFilters(EMPTY_FILTERS)}
+              onNewDeal={() => setEditor({ deal: null })}
+              onOpen={(deal) => setEditor({ deal })}
+              onMove={moveDeal}
+              onStatusChange={changeStatus}
+              onScheduleVisit={setVisitDeal}
+              onLose={(deal) => setLosing({ deal })}
+              onReopen={setReopening}
+              closedMonths={closed}
+            />
+          </div>
+
+          {showAnalytics && <PipelineAnalytics deals={deals} stages={stages} />}
         </div>
-        {isInQueue ? (
-          <Button size="sm" variant="ghost" onClick={handleCheckOut} className="h-7 text-xs text-destructive hover:text-destructive">
-            <LogIn className="h-3.5 w-3.5 mr-1" /> Check-out
-          </Button>
-        ) : (
-          <Button size="sm" variant="ghost" onClick={handleCheckIn} disabled={checkingIn} className="h-7 text-xs text-emerald-500 hover:text-emerald-500">
-            <LogIn className="h-3.5 w-3.5 mr-1" /> {checkingIn ? "..." : "Check-in"}
-          </Button>
-        )}
-      </div>
-
-      {activeTab === "deals" ? (
-        <>
-          {/* ── FILTER PANEL + METRICS ────────────────────── */}
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Filter Panel */}
-            {showFilters && (
-              <Card className="glass border-primary/30 flex-shrink-0 lg:w-[520px]">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-semibold">Filtrar Negócio</span>
-                    <button onClick={() => setShowFilters(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Select value={stageFilter} onValueChange={setStageFilter}>
-                      <SelectTrigger><SelectValue placeholder="PROPOSTA" /></SelectTrigger>
-                      <SelectContent>{[{ value: "all", label: "Todos Status" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Select value={status2Filter} onValueChange={setStatus2Filter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher Status 2" /></SelectTrigger>
-                      <SelectContent>{[{ value: "all", label: "Todos Status 2" }, ...DEAL_STAGES].map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} placeholder="03/2026" />
-                    <Select value={developerFilter} onValueChange={setDeveloperFilter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher uma Construtora" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todas Construtoras</SelectItem>{mockDevelopers.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Select value={managerFilter} onValueChange={setManagerFilter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher Gerente 1" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Gerentes</SelectItem>{brokers.filter(m => m.active).map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Select value={brokerFilter} onValueChange={setBrokerFilter}>
-                      <SelectTrigger><SelectValue placeholder="Escolher Corretor 1" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Corretores</SelectItem>{brokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                    <Input placeholder="Filtrar por nome cliente" value={clientNameFilter} onChange={(e) => setClientNameFilter(e.target.value)} />
-                    <Input placeholder="Filtrar por nome 2º cliente" value={clientName2Filter} onChange={(e) => setClientName2Filter(e.target.value)} />
-                    <Input placeholder="Filtrar por CPF Cliente" value={cpfFilter} onChange={(e) => setCpfFilter(e.target.value)} />
-                    <Input placeholder="Filtrar por CPF 2º Cliente" value={cpf2Filter} onChange={(e) => setCpf2Filter(e.target.value)} />
-                  </div>
-                  <div className="flex justify-end mt-3">
-                    <Button variant="ghost" size="sm" onClick={() => { setStageFilter("all"); setStatus2Filter("all"); setDeveloperFilter("all"); setBrokerFilter("all"); setManagerFilter("all"); setClientNameFilter(""); setClientName2Filter(""); setCpfFilter(""); setCpf2Filter(""); setSearch(""); }}>
-                      <X className="h-3 w-3 mr-1" /> Limpar Filtros
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Right side: compact metrics + view toggle */}
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Buscar cliente, projeto, corretor..." className="pl-10 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
-                </div>
-                <div className="flex border border-border rounded-lg overflow-hidden">
-                  <button onClick={() => setViewMode("table")} className={cn("p-1.5 transition-colors", viewMode === "table" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <List className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setViewMode("kanban")} className={cn("p-1.5 transition-colors", viewMode === "kanban" ? "bg-primary text-primary-foreground" : "hover:bg-secondary")}>
-                    <LayoutGrid className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Compact inline metrics */}
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                <span><span className="text-primary font-semibold">{activeDeals}</span> ativos</span>
-                <span>•</span>
-                <span><span className="text-foreground font-medium">{approvedDeals}</span> aprov. total</span>
-                <span><span className="text-foreground font-medium">{approvedCond}</span> aprov. cond.</span>
-                <span><span className="text-foreground font-medium">{underAnalysis}</span> em análise</span>
-                <span><span className="text-warning font-semibold">{pendingDeals}</span> pendentes</span>
-                <span>•</span>
-                <span><span className="text-foreground font-medium">{proposalsToday}</span> hoje</span>
-                <span><span className="text-foreground font-medium">{proposalsPeriod}</span> no período</span>
-              </div>
-            </div>
-          </div>
-
-
-
-          {/* ── PIPELINE CONTENT ─────────────────────────── */}
-          <div className="flex gap-4">
-            <div className="flex-1 overflow-hidden">
-              {viewMode === "kanban" ? (
-                <div className="overflow-x-auto">
-                  <div className="flex gap-3 min-w-max pb-4">
-                    {DEAL_STAGES.map((stage) => {
-                      const sc = stageColors[stage.value];
-                      const stageDeals = dealsByStage[stage.value] || [];
-                      const isOver = dragOverStage === stage.value;
-                      return (
-                        <div
-                          key={stage.value}
-                          className={cn("w-60 flex-shrink-0 rounded-xl border transition-all", sc.border, isOver && "ring-2 ring-primary/50 scale-[1.01]")}
-                          onDragOver={(e) => onDragOver(e, stage.value)}
-                          onDragLeave={() => setDragOverStage(null)}
-                          onDrop={() => onDrop(stage.value)}
-                        >
-                          <div className={cn("p-3 rounded-t-xl flex items-center justify-between", sc.header)}>
-                            <div className="flex items-center gap-2">
-                              <span className={cn("w-2.5 h-2.5 rounded-full", sc.dot)} />
-                              <span className="text-xs font-semibold">{stage.label}</span>
-                            </div>
-                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{stageDeals.length}</Badge>
-                          </div>
-                          <div className={cn("p-2 space-y-2 min-h-[180px] max-h-[calc(100vh-420px)] overflow-y-auto", sc.bg)}>
-                            {stageDeals.map((deal) => (
-                              <div
-                                key={deal.id}
-                                draggable
-                                onDragStart={() => onDragStart(deal.id)}
-                                onDragEnd={onDragEnd}
-                                onClick={() => setDetailDeal(deal)}
-                                className={cn(
-                                  "p-3 rounded-lg border cursor-grab active:cursor-grabbing transition-all hover:scale-[1.02] hover:shadow-lg",
-                                  "bg-card border-border/40 hover:border-primary/30",
-                                  draggedDeal === deal.id && "opacity-40 scale-95"
-                                )}
-                              >
-                                <div className="flex items-start justify-between gap-2 mb-1.5">
-                                  <p className="font-medium text-xs leading-tight">{deal.client}</p>
-                                  <GripVertical className="h-3 w-3 text-muted-foreground/40 flex-shrink-0" />
-                                </div>
-                                <p className="text-[10px] text-muted-foreground mb-0.5">{deal.project} • {deal.unit}</p>
-                                <p className="text-[10px] text-muted-foreground/60 mb-2">{deal.developer}</p>
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[11px] font-semibold text-primary">
-                                    R$ {deal.deal_value >= 1000000 ? `${(deal.deal_value / 1000000).toFixed(1)}M` : `${(deal.deal_value / 1000).toFixed(0)}k`}
-                                  </span>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className={cn("text-[9px] font-bold px-1 py-0.5 rounded",
-                                      calcDealProbability(deal) >= 60 ? "bg-emerald-600/20 text-emerald-400" :
-                                      calcDealProbability(deal) >= 35 ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"
-                                    )}>{calcDealProbability(deal)}%</span>
-                                    <span className={cn("text-[10px] font-mono", deal.days_in_pipeline > 30 ? "text-destructive" : "text-muted-foreground")}>{deal.days_in_pipeline}d</span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2 mt-2 pt-1.5 border-t border-border/20">
-                                  <div className="flex items-center gap-1 flex-1">
-                                    <User className="h-3 w-3 text-muted-foreground/50" />
-                                    <span className="text-[10px] text-muted-foreground truncate">{deal.broker1}</span>
-                                  </div>
-                                  <div className="flex gap-1">
-                                    {deal.visit_date && <CalendarCheck className="h-3 w-3 text-warning" />}
-                                    {deal.notes && <StickyNote className="h-3 w-3 text-muted-foreground/40" />}
-                                    {deal.days_in_pipeline > 30 && <AlertCircle className="h-3 w-3 text-destructive/50" />}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {stageDeals.length === 0 && (
-                              <div className="flex items-center justify-center h-20 text-[10px] text-muted-foreground/40 border border-dashed border-border/30 rounded-lg">
-                                Arraste um deal aqui
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <Card className="border-2 border-primary/40 bg-card/60 overflow-hidden rounded-lg">
-                    {/* Header bar */}
-                    <div className="bg-primary/10 border-b-2 border-primary/40 text-center py-2">
-                      <h2 className="text-sm font-bold text-foreground tracking-wide">Pipeline Faceimob</h2>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-border/40 text-muted-foreground">
-                            <th className="p-2 font-medium">Info.</th>
-                            <th className="p-2 font-medium text-left">Status</th>
-                            <th className="p-2 font-medium text-left">Construtora</th>
-                            <th className="p-2 font-medium text-left">Empreendimento</th>
-                            <th className="p-2 font-medium">Unidade</th>
-                            <th className="p-2 font-medium">Dias</th>
-                            <th className="p-2 font-medium text-left">Status 2</th>
-                            <th className="p-2 font-medium">Visita</th>
-                            <th className="p-2 font-medium text-left">Cliente</th>
-                            <th className="p-2 font-medium text-left">Corretor 1</th>
-                            <th className="p-2 font-medium text-left">Corretor 2</th>
-                            <th className="p-2 font-medium text-left">Gerente 1</th>
-                            <th className="p-2 font-medium text-left">Gerente 2</th>
-                            <th className="p-2 font-medium">Off</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paginated.map((deal) => {
-                            const statusDate = deal.created_at ? format(parseISO(deal.created_at), "MM/yy") : "";
-                            const status2Label = (deal.status && deal.status !== "Ativo" && deal.status !== "OFF")
-                              ? deal.status
-                              : (tableStageLabels[deal.stage]?.label || "PROPOSTA");
-                            const status2Color = faceimobStatusColor(status2Label);
-                            const stripeColor =
-                              deal.days_in_pipeline > 60 ? "bg-red-600" :
-                              deal.days_in_pipeline > 30 ? "bg-orange-500" :
-                              deal.days_in_pipeline > 14 ? "bg-yellow-500" : "bg-emerald-500";
-                            return (
-                              <tr key={deal.id} className="border-b border-border/10 hover:bg-secondary/20 transition-colors cursor-pointer" onClick={() => setDetailDeal(deal)}>
-                                <td className="p-0 text-center relative w-3">
-                                  <div className={cn("absolute left-0 top-0 bottom-0 w-1.5", stripeColor)} />
-                                </td>
-                                <td className="p-2"><span className="text-[10px] font-semibold whitespace-nowrap">PROPOSTA {statusDate}</span></td>
-                                <td className="p-2"><span className={cn("px-2 py-0.5 rounded text-[10px] font-bold text-white", getDeveloperColor(deal.developer))}>{deal.developer.toUpperCase().slice(0, 10)}</span></td>
-                                <td className="p-2 whitespace-nowrap max-w-[120px] truncate">{deal.project.toUpperCase()}</td>
-                                <td className="p-2 text-center">{deal.unit}</td>
-                                <td className="p-2 text-center">
-                                  <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold",
-                                    deal.days_in_pipeline > 60 ? "bg-red-600 text-white" :
-                                    deal.days_in_pipeline > 30 ? "bg-red-500/70 text-white" :
-                                    deal.days_in_pipeline > 14 ? "bg-yellow-600/70 text-white" : "text-foreground"
-                                  )}>{deal.days_in_pipeline}</span>
-                                </td>
-                                <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                                  <Select value={status2Label} onValueChange={(v) => updateDealStatus(deal.id, v)}>
-                                    <SelectTrigger className={cn("h-6 px-2 py-0 text-[10px] font-bold border-0 rounded gap-1 whitespace-nowrap min-w-[140px]", status2Color)}>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent className="max-h-80">
-                                      {FACEIMOB_STATUSES.map(s => (
-                                        <SelectItem key={s.label} value={s.label} className="text-[11px]">
-                                          <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-bold", s.color)}>{s.label}</span>
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </td>
-                                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><button onClick={() => setVisitDeal(deal)} className={cn("hover:text-primary", deal.visit_date ? "text-destructive" : "text-muted-foreground")}><CalendarIcon className="h-3.5 w-3.5" /></button></td>
-                                <td className="p-2 whitespace-nowrap max-w-[130px] truncate font-medium">{deal.client.toUpperCase()}</td>
-                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker1?.toUpperCase() || "—"}</td>
-                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.broker2?.toUpperCase() || "—"}</td>
-                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">• {deal.manager1?.toUpperCase() || "—"}</td>
-                                <td className="p-2 whitespace-nowrap max-w-[100px] truncate">{deal.manager2?.toUpperCase() || ""}</td>
-                                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}><Switch checked={deal.active} onCheckedChange={() => toggleDealActive(deal.id)} className="scale-75" /></td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
-                  <div className="flex items-center justify-center gap-3 mt-3 text-xs text-muted-foreground">
-                    <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="hover:text-foreground disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-                    <span>{(page - 1) * perPage + 1} a {Math.min(page * perPage, filtered.length)}</span>
-                    <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="hover:text-foreground disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Analytics Panel */}
-            {showAnalytics && (
-              <div className="w-64 flex-shrink-0 space-y-3">
-                <Card className="bg-card/70 border-border/50">
-                  <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conversão por Etapa</CardTitle></CardHeader>
-                  <CardContent className="space-y-2">
-                    {DEAL_STAGES.slice(0, -1).map((stage, i) => {
-                      const current = dealsByStage[stage.value]?.length || 0;
-                      const next = dealsByStage[DEAL_STAGES[i + 1]?.value]?.length || 0;
-                      const rate = current > 0 ? Math.round((next / current) * 100) : 0;
-                      return (
-                        <div key={stage.value} className="flex items-center gap-2">
-                          <span className={cn("w-2 h-2 rounded-full", stageColors[stage.value].dot)} />
-                          <span className="text-[10px] flex-1">{stage.label}</span>
-                          <div className="flex items-center gap-1">
-                            <ChevronRight className="h-3 w-3 text-muted-foreground/40" />
-                            <span className="text-[10px] font-mono text-muted-foreground">{rate}%</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-                <Card className="bg-card/70 border-border/50">
-                  <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Deals por Corretor</CardTitle></CardHeader>
-                  <CardContent className="space-y-2">
-                    {brokerDeals.slice(0, 5).map((b) => (
-                      <div key={b.name} className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-primary text-[10px] font-bold">{b.name.charAt(0)}</div>
-                        <span className="text-[10px] flex-1 truncate">{b.name}</span>
-                        <span className="text-[10px] font-bold text-primary">{b.count}</span>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-                <Card className="bg-card/70 border-border/50">
-                  <CardHeader className="pb-2"><CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Indicadores</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <div><p className="text-[10px] text-muted-foreground">Ticket Médio</p><p className="text-sm font-bold">R$ {(avgDealValue / 1000).toFixed(0)}k</p></div>
-                    <div><p className="text-[10px] text-muted-foreground">Tempo Médio</p><p className="text-sm font-bold">{avgDaysInPipeline.toFixed(0)} dias</p></div>
-                    <div><p className="text-[10px] text-muted-foreground">Taxa de Fechamento</p><p className="text-sm font-bold">{activeDeals > 0 ? ((closedDeals / (activeDeals + closedDeals)) * 100).toFixed(1) : 0}%</p></div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
-
-          {/* Analytics toggle */}
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => setShowAnalytics(!showAnalytics)}>
-              <BarChart3 className="h-4 w-4 mr-1" /> Analytics
-            </Button>
-          </div>
-        </>
       ) : (
-        /* ═══ LEADS TAB (Funil) ═══ */
-        <LeadFunnel
-          actorName={user?.email || "Usuário"}
-          onConvert={(l) => openConvertLead(l as any)}
-        />
+        <LeadFunnel actorName={user?.email || "Usuário"} onConvert={setConvertingLead} />
       )}
 
-      {/* ── CONVERT LEAD MODAL ─────────────────────────────── */}
-      <Dialog open={convertOpen} onOpenChange={setConvertOpen}>
-        <DialogContent className="glass-strong max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ArrowRightCircle className="h-5 w-5 text-success" />
-              Converter Lead em Negócio
-            </DialogTitle>
-          </DialogHeader>
-          {convertingLead && (
-            <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-secondary/50">
-                <p className="text-sm font-medium">{convertingLead.name}</p>
-                <p className="text-xs text-muted-foreground">{convertingLead.email} • {convertingLead.phone}</p>
-                <p className="text-xs text-muted-foreground">Origem: {convertingLead.source} • Corretor: {convertingLead.broker_name}</p>
-              </div>
-
-              <div className="p-3 rounded-lg border border-warning/30 bg-warning/5">
-                <p className="text-xs text-warning font-medium flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  O negócio será inserido no status "Incompleto"
-                </p>
-                <p className="text-[10px] text-muted-foreground mt-1">É necessário anexar pelo menos 1 documento para converter.</p>
-              </div>
-
-              <div>
-                <label className="text-sm text-muted-foreground mb-2 block">Documento obrigatório *</label>
-                <input
-                  ref={convertFileRef}
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => setConvertDoc(e.target.files?.[0] || null)}
-                />
-                <div
-                  onClick={() => convertFileRef.current?.click()}
-                  className={cn(
-                    "border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors",
-                    convertDoc ? "border-success/50 bg-success/5" : "border-border hover:border-primary/50"
-                  )}
-                >
-                  {convertDoc ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <Paperclip className="h-4 w-4 text-success" />
-                      <span className="text-sm text-success font-medium">{convertDoc.name}</span>
-                      <button onClick={(e) => { e.stopPropagation(); setConvertDoc(null); }} className="text-muted-foreground hover:text-destructive">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <Paperclip className="h-6 w-6 text-muted-foreground mx-auto mb-1" />
-                      <p className="text-xs text-muted-foreground">Clique para anexar documento</p>
-                      <p className="text-[10px] text-muted-foreground">PDF, imagem, ou qualquer arquivo</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <DialogFooter>
-                <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-                <Button onClick={confirmConvert} disabled={!convertDoc} className="bg-success hover:bg-success/90 text-success-foreground">
-                  <ArrowRightCircle className="h-4 w-4 mr-1" /> Converter em Negócio
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── DEAL DETAIL MODAL ──────────────────────────────── */}
-      {detailDeal && (
+      {editor && (
         <DealDetailModal
-          deal={detailDeal}
-          open={!!detailDeal}
-          onClose={() => setDetailDeal(null)}
-          onSave={(updated) => {
-            setDeals(prev => prev.map(d => d.id === updated.id ? updated : d));
-            setDetailDeal(null);
+          key={editor.deal?.id ?? "novo"}
+          deal={editor.deal}
+          open
+          stages={stages}
+          people={people}
+          developers={developers}
+          defaultMonth={seasonMonth ?? undefined}
+          onClose={() => setEditor(null)}
+          onReviewChanged={invalidateDeals}
+          onSave={async (updated) => {
+            // VGV negativo e desconto fora de 0–100 chegavam ao banco e voltavam
+            // como 23514 ("Um dos campos está fora do valor permitido") — sem
+            // dizer qual, num formulário de ~40 campos. O `min`/`max` do input
+            // não trava: só vale em validação de formulário, e não há `<form>`.
+            const foraDeFaixa = dealRangeError(updated);
+            if (foraDeFaixa) throw dbError("deals", { code: "P0001", message: foraDeFaixa });
+
+            // "Construtora *" tinha o asterisco e nada o cobrava — o banco
+            // aceita `developer_id` nulo. O negócio salvava, o cartão passava a
+            // mostrar "Sem construtora" e a conferência documental, que escolhe
+            // os documentos pela construtora, ficava sem como pedir nada.
+            // Empreendimento fica de fora: sem digitação livre no Select e com
+            // construtora sem catálogo sendo caso real, cobrá-lo aqui recusava
+            // a criação por um campo que a tela não tem como preencher.
+            const semObrigatorio = dealRequiredError(updated);
+            if (semObrigatorio) throw dbError("deals", { code: "P0001", message: semObrigatorio });
+
+            // Cadastro repetido do mesmo cliente na mesma unidade entrava sem
+            // aviso: dois negócios, dois rateios e o VGV contado duas vezes.
+            // `P0001` porque a mensagem é nossa e em pt-BR — é o contrato que
+            // `describeError` usa para os `raise exception` das migrations.
+            const repetido = findDuplicateDeal(deals, updated);
+            if (repetido) {
+              throw dbError("deals", {
+                code: "P0001",
+                message: `Já existe um negócio ativo de ${repetido.client} em `
+                  + `${repetido.project || "sem empreendimento"} · unidade ${repetido.unit}. `
+                  + "Abra o negócio existente em vez de cadastrar outro.",
+              });
+            }
+            await saveLegacyDeal(updated);
+            await invalidateDeals();
+            setEditor(null);
           }}
         />
       )}
 
-      {/* ── DEAL FORM MODAL ────────────────────────────────── */}
-      <Dialog open={dealFormOpen} onOpenChange={setDealFormOpen}>
-        <DialogContent className="glass-strong max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingDeal ? "Editar Deal" : "Novo Deal"}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div><label className="text-sm text-muted-foreground mb-1 block">Cliente *</label><Input value={formData.client} onChange={(e) => setFormData((p) => ({ ...p, client: e.target.value }))} /></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Incorporadora</label>
-              <Select value={formData.developer} onValueChange={(v) => setFormData((p) => ({ ...p, developer: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{mockDevelopers.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Empreendimento</label>
-              <Select value={formData.project} onValueChange={(v) => setFormData((p) => ({ ...p, project: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{mockProjects.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Unidade</label><Input value={formData.unit} onChange={(e) => setFormData((p) => ({ ...p, unit: e.target.value }))} /></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Corretor 1</label>
-              <Select value={formData.broker1} onValueChange={(v) => setFormData((p) => ({ ...p, broker1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{brokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Corretor 2</label>
-              <Select value={formData.broker2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, broker2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{brokers.filter((b) => b.active).map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent></Select></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Gerente 1</label>
-              <Select value={formData.manager1} onValueChange={(v) => setFormData((p) => ({ ...p, manager1: v }))}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{brokers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Gerente 2</label>
-              <Select value={formData.manager2 || "none"} onValueChange={(v) => setFormData((p) => ({ ...p, manager2: v === "none" ? undefined : v }))}><SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger><SelectContent><SelectItem value="none">Nenhum</SelectItem>{brokers.filter((m) => m.active).map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent></Select></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Valor</label><Input type="number" value={formData.deal_value} onChange={(e) => setFormData((p) => ({ ...p, deal_value: Number(e.target.value) }))} /></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Etapa</label>
-              <Select value={formData.stage} onValueChange={(v) => setFormData((p) => ({ ...p, stage: v as DealStage }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent></Select></div>
-            <div className="sm:col-span-2"><label className="text-sm text-muted-foreground mb-1 block">Observações</label><Textarea value={formData.notes || ""} onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))} rows={3} /></div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-            <Button onClick={saveDeal} disabled={!formData.client}>{editingDeal ? "Salvar" : "Criar Deal"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {visitDeal && (
+        <ScheduleVisitDialog
+          deal={visitDeal}
+          stages={stages}
+          onClose={() => setVisitDeal(null)}
+          onScheduled={invalidateDeals}
+        />
+      )}
 
-      {/* ── VISIT MODAL ────────────────────────────────────── */}
-      <Dialog open={!!visitDeal} onOpenChange={(o) => { if (!o) { setVisitDeal(null); setVisitDate(undefined); } }}>
-        <DialogContent className="glass-strong max-w-sm">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><CalendarIcon className="h-5 w-5 text-warning" /> Agendar Visita</DialogTitle></DialogHeader>
-          {visitDeal && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Cliente: <span className="text-foreground font-medium">{visitDeal.client}</span></p>
-              <p className="text-sm text-muted-foreground">{visitDeal.project} — {visitDeal.unit}</p>
-              <Calendar mode="single" selected={visitDate} onSelect={setVisitDate} className="p-3 pointer-events-auto rounded-lg border border-border/50" />
-              <DialogFooter>
-                <DialogClose asChild><Button variant="outline" size="sm">Cancelar</Button></DialogClose>
-                <Button size="sm" onClick={scheduleVisit} disabled={!visitDate}>Agendar</Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {losing && (
+        <LoseDealDialog
+          deal={losing.deal}
+          presetStatus={losing.preset}
+          stages={stages}
+          onClose={() => setLosing(null)}
+          onConfirmed={invalidateDeals}
+        />
+      )}
 
-      {/* ── NEW LEAD MODAL ─────────────────────────────────── */}
-      <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
-        <DialogContent className="glass-strong max-w-lg">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><UserPlus className="h-5 w-5 text-primary" /> Novo Lead</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div><label className="text-sm text-muted-foreground mb-1 block">Nome *</label><Input value={newLeadData.name} onChange={(e) => setNewLeadData(p => ({ ...p, name: e.target.value }))} /></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Email</label><Input type="email" value={newLeadData.email} onChange={(e) => setNewLeadData(p => ({ ...p, email: e.target.value }))} /></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Telefone</label><Input value={newLeadData.phone} onChange={(e) => setNewLeadData(p => ({ ...p, phone: e.target.value }))} /></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">WhatsApp</label><Input value={newLeadData.whatsapp} onChange={(e) => setNewLeadData(p => ({ ...p, whatsapp: e.target.value }))} /></div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Fonte</label>
-              <Select value={newLeadData.source} onValueChange={(v) => setNewLeadData(p => ({ ...p, source: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione a fonte" /></SelectTrigger>
-                <SelectContent>{mockSources.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div><label className="text-sm text-muted-foreground mb-1 block">Corretor</label>
-              <Select value={newLeadData.broker_name} onValueChange={(v) => setNewLeadData(p => ({ ...p, broker_name: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{brokers.filter(b => b.active).map(b => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2"><label className="text-sm text-muted-foreground mb-1 block">Observações</label><Textarea value={newLeadData.notes} onChange={(e) => setNewLeadData(p => ({ ...p, notes: e.target.value }))} rows={2} /></div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-            <Button onClick={saveNewLead} disabled={!newLeadData.name.trim()}>Criar Lead</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {reopening && (
+        <ReopenDealDialog
+          deal={reopening}
+          stages={stages}
+          onClose={() => setReopening(null)}
+          onReopened={invalidateDeals}
+        />
+      )}
 
-      {/* ── CLOSE MONTH CONFIRMATION DIALOG ─── */}
-      <Dialog open={closeMonthOpen} onOpenChange={setCloseMonthOpen}>
-        <DialogContent className="glass-strong max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-destructive" />
-              Fechar Mês do Pipeline
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Ao fechar o mês, as <strong className="text-foreground">vendas, offs e distratos</strong> de{' '}
-              <strong className="text-foreground">{monthFilter}</strong>{' '}
-              ficarão congelados neste mês.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Todas as outras propostas (Status 1 — Proposta) serão movidas para o{' '}
-              <strong className="text-foreground">mês seguinte</strong> com data base no dia <strong className="text-foreground">05</strong>.
-            </p>
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-warning/10 border border-warning/20">
-              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-muted-foreground">
-                Esta ação não pode ser desfeita. Verifique se todos os negócios estão com o status correto antes de fechar.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancelar</Button>
-            </DialogClose>
-            <Button variant="destructive" onClick={handleCloseMonth}>
-              Confirmar Fechamento
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {closeMonthOpen && (
+        <CloseMonthDialog
+          season={openSeason.data ?? null}
+          fallbackMonth={seasonMonth ?? months[0] ?? currentMonthBase()}
+          deals={deals}
+          closedMonths={closed}
+          onClose={() => setCloseMonthOpen(false)}
+        />
+      )}
+
+      {reopenMonthOpen && (
+        <ReopenMonthDialog
+          closedMonths={closed}
+          deals={deals}
+          onClose={() => setReopenMonthOpen(false)}
+        />
+      )}
+
+      {convertingLead && (
+        <ConvertLeadDialog
+          lead={convertingLead}
+          onClose={() => setConvertingLead(null)}
+          onConverted={async () => { await invalidateDeals(); setTab("deals"); }}
+        />
+      )}
     </div>
   );
 }

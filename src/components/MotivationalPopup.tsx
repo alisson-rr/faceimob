@@ -13,11 +13,19 @@ const messages = [
   { icon: Trophy, title: "Campeão de Vendas! 🏆", text: "Lembre-se: disciplina supera talento. Você está no caminho certo!" },
 ];
 
+/**
+ * Boas-vindas de quem acabou de entrar. O gatilho (`faceimob-just-logged`, que o
+ * Login grava) mora aqui e nao mais no AppLayout: o popup e montado pelo
+ * `EngagementLayer` junto com os outros avisos globais, e a tela nao precisa
+ * saber que ele existe.
+ */
 export function MotivationalPopup() {
   const [open, setOpen] = useState(false);
   const [msg] = useState(() => messages[Math.floor(Math.random() * messages.length)]);
 
   useEffect(() => {
+    if (sessionStorage.getItem("faceimob-just-logged") !== "true") return;
+    sessionStorage.removeItem("faceimob-just-logged");
     const timer = setTimeout(() => setOpen(true), 800);
     return () => clearTimeout(timer);
   }, []);

@@ -1,13 +1,27 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  listGameRanking,
-  listPeople,
-  type PersonRecord,
-} from "@/integrations/supabase/newSchema";
+  gameKeys,
+  getCurrentSeasonId,
+  listRanking,
+  type RankingRow,
+} from "@/integrations/supabase/game";
 
-// Os pesos vivem em `game_scoring_rules`; nada de constante duplicada aqui.
-export type BrokerRow = PersonRecord;
+export type BrokerRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  full_name: string;
+  avatar_url: string | null;
+  active: boolean;
+  team_id: string | null;
+  team: string;
+  manager_id: string | null;
+  manager_name: string | null;
+  director_id: string | null;
+  director_name: string | null;
+};
 
 export type ScoreRow = {
   broker: BrokerRow;
@@ -21,89 +35,112 @@ export type ScoreRow = {
 type DealLite = {
   broker1_name?: string | null;
   broker2_name?: string | null;
+  broker1?: string | null;
+  broker2?: string | null;
   stage?: string | null;
-  status?: string | null;
   active?: boolean | null;
 };
 
+/**
+ * Temporada aberta. `null` quando o admin não abriu nenhuma — nesse estado o
+ * `award_game_points` devolve null em silêncio e o jogo está parado.
+ */
+export function useCurrentSeasonId() {
+  return useQuery({
+    queryKey: gameKeys.season,
+    queryFn: getCurrentSeasonId,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Ranking da temporada, já no escopo que o servidor permite ver.
+ *
+ * Era um `useEffect` com `useState` que buscava uma vez e nunca mais: uma venda
+ * fechada com a tela aberta não mexia o placar. Agora é cache do TanStack Query,
+ * e o `EngagementLayer` invalida a chave `["game"]` a cada INSERT em
+ * `game_events` — o placar acompanha o realtime sem cada tela assinar um canal.
+ */
+export function useSeasonRanking(seasonId: string | null | undefined) {
+  return useQuery({
+    queryKey: gameKeys.ranking(seasonId ?? null),
+    queryFn: () => listRanking(seasonId as string),
+    enabled: Boolean(seasonId),
+    staleTime: 30_000,
+  });
+}
+
 export function useGameRanking(dealsInput?: DealLite[]) {
   const { role, user } = useAuth();
-  const [brokers, setBrokers] = useState<BrokerRow[]>([]);
-  const [ranking, setRanking] = useState<any[]>([]);
+  const { data: seasonId } = useCurrentSeasonId();
+  const { data: ranking, isLoading } = useSeasonRanking(seasonId);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [people, rows] = await Promise.all([
-          listPeople(),
-          listGameRanking(),
-        ]);
-        setBrokers(
-          people.filter(
-            (person) => person.active && person.roles.includes("broker"),
-          ),
-        );
-        setRanking(rows);
-      } catch (error) {
-        console.error("Falha ao carregar ranking:", error);
-        setBrokers([]);
-        setRanking([]);
-      }
-    })();
-  }, []);
+  const rows: RankingRow[] = useMemo(() => ranking ?? [], [ranking]);
+
+  const allScores: ScoreRow[] = useMemo(() => rows.map((row) => {
+    const breakdown = row.breakdown || {};
+    const deals = dealsInput?.filter((deal) =>
+      deal.broker1_name === row.full_name ||
+      deal.broker2_name === row.full_name ||
+      deal.broker1 === row.full_name ||
+      deal.broker2 === row.full_name
+    ) || [];
+    return {
+      broker: {
+        id: row.profile_id,
+        user_id: row.profile_id,
+        name: row.full_name,
+        full_name: row.full_name,
+        avatar_url: row.avatar_url,
+        active: row.active,
+        team_id: row.team_id,
+        team: row.team_name || "",
+        manager_id: row.manager_id,
+        manager_name: row.manager_name,
+        director_id: row.director_id,
+        director_name: row.director_name,
+      },
+      leads: deals.filter((deal) => deal.stage === "lead").length,
+      analises: Number(breakdown.esteira || 0),
+      aprovados: Number(breakdown.aprovado || 0),
+      vendas: row.sales,
+      points: row.points,
+    };
+  }), [dealsInput, rows]);
 
   const myBroker = useMemo(
-    () => brokers.find((b) => b.user_id === user?.id) || null,
-    [brokers, user?.id]
+    () => allScores.find((score) => score.broker.user_id === user?.id)?.broker || null,
+    [allScores, user?.id],
   );
 
-  const allScores: ScoreRow[] = useMemo(() => {
-    return brokers
-      .map((b) => {
-        const serverRow = ranking.find((row) => row.profile_id === b.id);
-        const breakdown = serverRow?.breakdown || {};
-        const fallbackDeals = dealsInput?.filter(
-          (deal: any) =>
-            deal.broker1_name === b.name ||
-            deal.broker2_name === b.name ||
-            deal.broker1 === b.name ||
-            deal.broker2 === b.name,
-        ) || [];
-        const leads = fallbackDeals.filter((deal) => deal.stage === "lead").length;
-        const analises =
-          Number(breakdown.esteira || 0) ||
-          fallbackDeals.filter(
-            (deal) =>
-              deal.stage === "under_analysis" ||
-              deal.stage === "visit_scheduled",
-          ).length;
-        const aprovados =
-          Number(breakdown.aprovado || 0) ||
-          fallbackDeals.filter(
-            (deal) => deal.stage === "approved" || deal.stage === "contract",
-          ).length;
-        const vendas =
-          Number(serverRow?.sales || breakdown.venda || 0) ||
-          fallbackDeals.filter(
-            (deal) => deal.stage === "closed" && deal.active !== false,
-          ).length;
-        const points = Number(serverRow?.points || 0);
-        return { broker: b, leads, analises, aprovados, vendas, points };
-      })
-      .sort((a, b) => b.points - a.points);
-  }, [brokers, dealsInput, ranking]);
+  // O servidor já devolve exatamente a casa/diretoria/equipe permitida.
+  const scoped = allScores;
 
-  const scoped: ScoreRow[] = useMemo(() => {
-    if (role === "admin") return allScores;
-    if (role === "director" && myBroker) {
-      return allScores.filter((s) => s.broker.director_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (role === "manager" && myBroker) {
-      return allScores.filter((s) => s.broker.manager_id === myBroker.id || s.broker.id === myBroker.id);
-    }
-    if (myBroker) return allScores.filter((s) => s.broker.id === myBroker.id);
-    return [];
-  }, [allScores, role, myBroker]);
+  /**
+   * A linha de quem está olhando, e a posição dela.
+   *
+   * O corretor não vê o pódio da equipe — vê a própria colocação (decisão do
+   * dono em 05/09/2026). A posição é o índice na lista que o SERVIDOR devolveu,
+   * já ordenada por pontos: contar aqui em cima de um recorte diferente daria
+   * um "4º lugar" que não bate com o ranking de ninguém.
+   *
+   * `null` quando a pessoa não está no ranking — conta sem venda na temporada,
+   * ou papel que não pontua. Quem mostra a diferença é a tela.
+   */
+  const minhaPosicao = useMemo(() => {
+    const indice = allScores.findIndex((score) => score.broker.user_id === user?.id);
+    return indice < 0 ? null : indice + 1;
+  }, [allScores, user?.id]);
 
-  return { role, myBroker, allScores, scoped };
+  const meuScore = useMemo(
+    () => allScores.find((score) => score.broker.user_id === user?.id) ?? null,
+    [allScores, user?.id],
+  );
+
+  // `isLoading` e nao `isPending`: consulta desabilitada (sem temporada aberta)
+  // fica `pending` para sempre e travaria qualquer esqueleto ligado nele.
+  return {
+    role, myBroker, allScores, scoped, meuScore, minhaPosicao,
+    seasonId: seasonId ?? null, loading: isLoading,
+  };
 }

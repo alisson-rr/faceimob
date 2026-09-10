@@ -1,0 +1,34 @@
+# Tarefa D — Correções rápidas no caminho do corretor (Leads, Check-in, notificações)
+
+> Contexto do agente: **limpo**. Cabe em meia sessão (~horas). As Tarefas A (fundação), B (engajamento) e C (dados de demo + deploy) já foram entregues: leia `docs/design-system.md` (tokens/kit) e `docs/prompts/handoff-B.md` §1–2 (celebrações). Aqui é comportamento, não visual.
+>
+> **Não duplique celebração:** atender lead já dispara som+confete+toast sozinho, por realtime em `lead_events` dentro do `EngagementLayer` (handoff-B). NÃO adicione chamadas de `celebrate()` em `Leads.tsx`/`LeadDetailModal.tsx` — se quiser o nome do lead no toast, siga a instrução do handoff-B e avise no seu handoff para o gatilho de realtime ser removido junto (nunca os dois). São correções de 1–20 linhas cada, todas com evidência em `docs/auditoria-2026-08-21.md` (seção 3.3 e tabela da seção 4).
+
+## Contexto
+- Repo: `C:\Users\Alisson\CascadeProjects\FACEIMOB`, branch `nova`. Leia `.claude/CLAUDE.md`, `.claude/rules/code-style.md`, `.claude/rules/typescript.md` e as linhas F01, F03, F05, F07, F08, F13, F16, A04, A05 da tabela em `docs/auditoria-2026-08-21.md`.
+- **Outros agentes editam este diretório em paralelo.** Você SÓ pode editar: `src/lib/dealStatus.ts` (+ teste), `src/pages/Leads.tsx`, `src/pages/Checkin.tsx`, `src/components/LeadDetailModal.tsx`, `src/components/LeadFunnel.tsx`, `src/components/NotificationBell.tsx`, `src/components/LeadCounter.tsx`, `src/contexts/AuthContext.tsx`, `src/integrations/supabase/leads.ts`, `src/integrations/supabase/checkin.ts`, `src/pages/Settings.tsx`, e o arquivo **novo** `src/lib/supabaseError.ts` (+ teste). Não toque em `Pipeline.tsx`, `DealDetailModal.tsx`, `NewLeadNotifier.tsx`, `App.tsx`, `index.css`, `tailwind.config.ts`, `supabase/**`. Não crie migration. Não commite. Não redesenhe nada — visual fica para os agentes de tela no D3; aqui é comportamento.
+- Sem cor hex nova e sem paleta literal do Tailwind. Se precisar de cor semântica, use as variáveis (`hsl(var(--success))`).
+
+## Objetivo
+Os defeitos que o cliente esbarraria no caminho Login → Check-in → Leads deixam de existir antes do redesenho, para que os agentes do D3 trabalhem sobre fluxo correto.
+
+## Entregas (todas obrigatórias)
+1. **F05 — status "17. DISTRATO"/"18. QUEDA" não marcam perdido.** `src/lib/dealStatus.ts:13-20`: `normalizeStatus` compara com o prefixo numérico e devolve `null`; o modal usa o rótulo sem prefixo e funciona. Aplicar `s.replace(/^\d+\.\s*/, "")` antes de comparar (vale para tabela, modal e `saveLegacyDeal` de uma vez — verifique os chamadores com grep). Teste unitário em `src/lib/dealStatus.test.ts` cobrindo com e sem prefixo.
+2. **F01 — notificação leva a 404.** `notify_lead_assigned` grava `link='/leads/<id>'` (migration `0011:207`) e a rota `/leads/:id` não existe. Em `NotificationBell.tsx:64-67` (`openItem`), normalizar: `/leads/<uuid>` → navegar para `/leads` e abrir o lead (se `Leads.tsx` já suportar abrir por query/estado, use; senão aceite `?lead=<id>` em `Leads.tsx` e abra o `LeadDetailModal`). Registre em `docs/prompts/handoff-D.md` que a migration de 1 linha para corrigir o `link` na origem fica para depois da demo.
+3. **F03 — importação de CSV limitada a 10 leads.** `Leads.tsx:396,417,439`: `csvPreview = rows.slice(0, 11)` e `importCSV` usa `csvPreview.slice(1)`. Separar `csvRows` (todos) de `csvPreview` (amostra).
+4. **F07 — avisos de documento obrigatório que mentem.** `Leads.tsx:315,794` e `LeadDetailModal.tsx:383` dizem que documento é obrigatório na conversão; a decisão registrada (`decisoes.md`, 10/08) e a migration `0028` dizem que o negócio nasce sem anexo e os obrigatórios travam só o envio ao gerente. Apagar os avisos e alinhar o comentário de `convertLeadToDeal` em `leads.ts`.
+5. **F08 — flash de "Acesso não liberado" e sidebar vazia ao logar.** `AuthContext.tsx:68-81`: `loading` nunca volta a `true` em `applySession`; `can()` nega tudo até o `Promise.all` terminar. Chamar `setLoading(true)` antes do `Promise.all` quando há sessão.
+6. **F13 — contadores de check-in divergem.** `Checkin.tsx:176,188-189`, `checkin.ts:129-154`, `LeadCounter.tsx:19-26`: badge usa `leads_received` (só `assign_lead`), card conta `lead_assignments` com meia-noite local, `try/finally` sem `catch`. Unificar sobre `lead_assignments` + `getCurrentWorkDate()`/`current_work_date` (migration `0029`) e tratar erro.
+7. **Contraste no funil.** `LeadFunnel.tsx:347` usa `bg-destructive text-white` (3,6:1 no escuro): trocar por `bg-destructive text-destructive-foreground`.
+8. **F16 — 7 abas num grid de 6.** `LeadDetailModal.tsx:294-302`: `TabsList` com `grid-cols-6` para 7 `TabsTrigger` e `h-10` que corta. `grid-cols-7` (ou rolagem horizontal em telas estreitas) e altura automática.
+9. **A04/A05 — erro cru do Postgres na tela.** Criar `src/lib/supabaseError.ts` com `describeError(error, fallback): string` mapeando `code` (`23505` duplicado, `42501`/RLS sem permissão, `23503` referência, `22P02` formato, `P0001` mensagem da função) para pt-BR e nunca expondo nome de tabela/coluna. Usar nos toasts dos **seus** arquivos (`Leads.tsx`, `LeadDetailModal.tsx`, `Checkin.tsx`, `Settings.tsx`); os demais arquivos adotam depois. Teste unitário dos mapeamentos.
+10. **Senha de acesso (decisão do cliente em 21/08, reverte a de 02/08).** `src/pages/Settings.tsx`: card "Senha de acesso" com definir/alterar senha via `supabase.auth.updateUser({ password })` (mínimo 8 caracteres, campo de confirmação, mensagens em pt-BR). Se o projeto exigir reautenticação (erro contendo "reauthentication"), chamar `supabase.auth.reauthenticate()` e pedir o código enviado por e-mail (`updateUser({ password, nonce })`). Remover o texto "Não existe senha nesta conta" (`Settings.tsx:13,44`). O Login com senha é do agente A; aqui é só o usuário definir a própria senha.
+
+## Critérios de aceite
+- `npm run typecheck`, `npm run lint`, `npx vitest run` (com os 2 testes novos), `npm run build` verdes.
+- Clicar numa notificação de lead abre o lead, não 404. Importar CSV com 30 linhas cria 30 leads (teste com o Supabase local se disponível; senão, descreva o teste manual). "17. DISTRATO" na tabela do Pipeline marca o negócio como perdido (o arquivo é de outro agente — valide pela função, com o teste).
+- Nenhum toast com texto em inglês do Postgres nos seus arquivos.
+
+## Entrega
+Ao final, republique a URL do cliente com suas correções: `npm run build` e `npx vercel deploy --prod --yes` (a CLI desta máquina já está logada; comandos em `docs/prompts/handoff-C.md` §6). Se a CLI não estiver logada nesta sessão, apenas anote no handoff.
+Não commite. Escreva `docs/prompts/handoff-D.md`: o que mudou por item (F01…A05), arquivos tocados, o que ficou para o D3 (ex.: `?lead=<id>` se não implementou) e a migration pendente do F01. Atualize a linha da Tarefa D em `docs/sprints/sprint-demo.md`.

@@ -1,5 +1,6 @@
 import { supabase } from "./client";
-import type { NewAppRole } from "./newSchema";
+import { dbError } from "@/lib/supabaseError";
+import { primaryRole, type NewAppRole } from "./newSchema";
 
 /**
  * Adaptador da matriz de permissões.
@@ -46,14 +47,54 @@ export type StagePermissionRecord = {
  *  `can_enter_stage()` curto-circuitam em `is_admin()`, então conceder ou negar
  *  linha para admin não mudaria nada e daria a impressão errada de que muda. */
 export const EDITABLE_ROLES: { value: NewAppRole; label: string; color: string }[] = [
-  { value: "partner", label: "Sócio", color: "text-purple-400" },
-  { value: "director", label: "Diretor", color: "text-blue-400" },
-  { value: "manager", label: "Gerente", color: "text-cyan-400" },
-  { value: "broker", label: "Corretor", color: "text-emerald-400" },
-  { value: "cca", label: "CCA", color: "text-amber-400" },
-  { value: "sdr", label: "SDR", color: "text-pink-400" },
-  { value: "marketing", label: "Marketing", color: "text-orange-400" },
+  // Cor e apoio visual do chip; quem identifica o papel e o rotulo ao lado.
+  // A escala de grafico tem 5 tons, entao dois papeis repetem tom de proposito.
+  { value: "partner", label: "Sócio", color: "text-chart-5" },
+  { value: "director", label: "Diretor", color: "text-chart-1" },
+  { value: "manager", label: "Gerente", color: "text-chart-4" },
+  { value: "broker", label: "Corretor", color: "text-chart-2" },
+  { value: "cca", label: "CCA", color: "text-chart-3" },
+  { value: "sdr", label: "SDR", color: "text-chart-5" },
+  { value: "marketing", label: "Marketing", color: "text-chart-3" },
 ];
+
+/**
+ * Nome de cada papel na tela. Fonte única — havia três cópias deste mapa
+ * (`RoleSwitcher`, `Equipes`, e o `EDITABLE_ROLES` acima), e elas já divergiam.
+ */
+export const ROLE_LABEL: Record<NewAppRole, string> = {
+  admin: "Administrador",
+  partner: "Sócio",
+  director: "Diretor",
+  manager: "Gerente",
+  cca: "CCA",
+  sdr: "SDR",
+  marketing: "Marketing",
+  broker: "Corretor",
+};
+
+/**
+ * Como CHAMAR quem tem estes papéis.
+ *
+ * O dono pediu que sócio se chamasse "Sócio" tendo os mesmos poderes do
+ * administrador. Quem tem os dois papéis ({admin, partner}) apareceria como
+ * "Administrador" sem esta regra, porque `admin` tem precedência em
+ * `primaryRole` — e precisa ter, é `primaryRole` que espelha
+ * `auth_effective_role()` do banco nas travas de escrita.
+ *
+ * `partner` sozinho continua sendo o observador de leitura ampla e escrita
+ * nenhuma que 15 asserções do harness SQL cobram (a 0093 o promovia
+ * automaticamente a admin e a 0094 desfez isso). Os dois casos leem "Sócio" na
+ * tela; o que muda é o que cada um pode.
+ *
+ * Ou seja: `primaryRole` responde "o que esta pessoa PODE"; esta função
+ * responde "como esta pessoa se chama". Misturar as duas foi o que fez o papel
+ * de sócio sumir da tela.
+ */
+export const roleLabelFor = (roles: NewAppRole[]): string => {
+  if (roles.includes("partner")) return ROLE_LABEL.partner;
+  return ROLE_LABEL[primaryRole(roles)];
+};
 
 export async function listPermissionCatalog(): Promise<PermissionRecord[]> {
   const { data, error } = await supabase
@@ -61,7 +102,7 @@ export async function listPermissionCatalog(): Promise<PermissionRecord[]> {
     .select("code,label,category,description")
     .order("category")
     .order("code");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("catálogo de permissões", error);
   return (data ?? []) as PermissionRecord[];
 }
 
@@ -69,7 +110,7 @@ export async function listRolePermissions(): Promise<RolePermissionRecord[]> {
   const { data, error } = await supabase
     .from("role_permissions")
     .select("role,permission,allowed");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("permissões por papel", error);
   return (data ?? []) as RolePermissionRecord[];
 }
 
@@ -81,7 +122,7 @@ export async function setRolePermission(
   const { error } = await supabase
     .from("role_permissions")
     .upsert({ role, permission, allowed }, { onConflict: "role,permission" });
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar permissão do papel", error);
 }
 
 export async function listPipelineStages(): Promise<PipelineStageRecord[]> {
@@ -90,7 +131,7 @@ export async function listPipelineStages(): Promise<PipelineStageRecord[]> {
     .select("id,code,label,position")
     .eq("active", true)
     .order("position");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("etapas do pipeline", error);
   return (data ?? []) as PipelineStageRecord[];
 }
 
@@ -98,7 +139,7 @@ export async function listStagePermissions(): Promise<StagePermissionRecord[]> {
   const { data, error } = await supabase
     .from("stage_permissions")
     .select("stage_id,role,can_enter,can_exit");
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("permissões por etapa", error);
   return (data ?? []) as StagePermissionRecord[];
 }
 
@@ -116,7 +157,7 @@ export async function setStagePermission(
       { stage_id: stageId, role, can_enter: patch.can_enter ?? true, can_exit: patch.can_exit ?? true },
       { onConflict: "stage_id,role" },
     );
-  if (error) throw new Error(error.message);
+  if (error) throw dbError("salvar permissão da etapa", error);
 }
 
 /**

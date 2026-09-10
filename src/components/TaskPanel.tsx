@@ -15,6 +15,7 @@ import {
   type TaskRecord,
   type TaskRefType,
 } from "@/integrations/supabase/activities";
+import { describeError } from "@/lib/supabaseError";
 
 type Props = {
   refType: TaskRefType;
@@ -51,7 +52,7 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
     } catch (e) {
       toast({
         title: "Falha ao carregar atividades",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível carregar as atividades."),
         variant: "destructive",
       });
     } finally {
@@ -85,7 +86,7 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
     } catch (e) {
       toast({
         title: "Não foi possível criar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível criar a atividade."),
         variant: "destructive",
       });
     } finally {
@@ -101,7 +102,7 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
     } catch (e) {
       toast({
         title: "Não foi possível atualizar",
-        description: e instanceof Error ? e.message : "Erro desconhecido",
+        description: describeError(e, "Não foi possível mudar o status da atividade."),
         variant: "destructive",
       });
     } finally {
@@ -118,7 +119,7 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
         <CalendarClock className="h-4 w-4 text-primary" />
         <p className="text-sm font-bold">Atividades</p>
         {open.some((t) => isTaskOverdue(t)) && (
-          <Badge variant="destructive" className="text-[10px]">
+          <Badge variant="destructive">
             {open.filter((t) => isTaskOverdue(t)).length} vencida(s)
           </Badge>
         )}
@@ -159,14 +160,14 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
       ) : (
         <div className="space-y-1">
           {open.length === 0 && closed.length === 0 && (
-            <p className="text-[11px] text-muted-foreground italic">Nenhuma atividade registrada.</p>
+            <p className="text-xs text-muted-foreground italic">Nenhuma atividade registrada.</p>
           )}
           {[...open, ...closed].map((t) => {
             const overdue = isTaskOverdue(t);
             return (
               <div
                 key={t.id}
-                className={`flex items-center justify-between gap-2 rounded border px-2 py-1 text-[11px] ${
+                className={`flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs ${
                   t.status !== "open" ? "opacity-60 border-border/30" : overdue ? "border-destructive/50 bg-destructive/5" : "border-border/50"
                 }`}
               >
@@ -176,7 +177,7 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
                     {formatDue(t.due_at)}
                   </span>
                   {t.priority !== "normal" && (
-                    <Badge variant="outline" className="ml-1 text-[9px]">{PRIORITY_LABEL[t.priority]}</Badge>
+                    <Badge variant="outline" size="sm" className="ml-1">{PRIORITY_LABEL[t.priority]}</Badge>
                   )}
                 </span>
                 {t.status === "open" && (
@@ -186,7 +187,7 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
                       onClick={() => change(t, "done")}
                       disabled={busy === t.id}
                       aria-label={`Concluir ${t.title}`}
-                      className="text-emerald-500 hover:text-emerald-400"
+                      className="text-success hover:text-success"
                     >
                       <Check className="h-3.5 w-3.5" />
                     </button>

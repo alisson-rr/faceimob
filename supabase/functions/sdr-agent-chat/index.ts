@@ -1,129 +1,198 @@
-// SDR Agent Chat - roteia mensagem para agente (com orquestrador opcional) usando OpenAI
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { requireSecret } from '../_shared/secrets.ts';
+// SDR Agent Chat — playground interno de conversa com o agente.
+// A lógica do turno (histórico, OpenAI, persistência, tag de qualificação) é a
+// mesma do webhook de WhatsApp: vive em ../_shared/sdrAgent.ts.
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { ConversationClosedError, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
+import { requireUserPermission, serviceClient } from '../_shared/auth.ts';
+import { getSecret } from '../_shared/secrets.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-
-async function callOpenAI(apiKey: string, model: string, messages: any[], temperature = 0.7) {
-  const r = await fetch(OPENAI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, messages, temperature }),
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data?.error?.message || `OpenAI ${r.status}`);
-  return {
-    text: data.choices?.[0]?.message?.content ?? '',
-    usage: data.usage,
-  };
+
+/** Marca do lead de teste em `leads.utm_source`. A tela de leads pode filtrá-lo por aqui. */
+const PLAYGROUND_SOURCE = 'sdr_playground';
+
+/**
+ * Papéis que a RLS deixa escrever em `sdr_conversations`/`sdr_messages`
+ * (policies `sdr_conversations_write` da 0008). O playground GRAVA conversa:
+ * liberá-lo para todo mundo com `menu.sdr` fazia director/manager/partner
+ * escreverem pela function o que o banco recusa no acesso direto — e depois não
+ * conseguirem reler a própria simulação na aba Conversas. Além disso, cada
+ * turno gasta crédito da OpenAI.
+ */
+const WRITE_ROLES = ['admin', 'marketing', 'sdr'];
+
+/**
+ * O Playground não escolhe lead e `sdr_conversations.lead_id` é NOT NULL, então
+ * toda simulação pendura num lead de teste. Ele é POR USUÁRIO: com um lead
+ * compartilhado, duas pessoas simulando ao mesmo tempo escreviam no mesmo lead
+ * e uma via a conversa da outra. Nasce 'discarded': fora do
+ * `assign_queued_leads` (só varre 'queued') e das listas ativas — nunca cai na
+ * roleta de um corretor.
+ */
+async function playgroundLeadId(supabase: SupabaseClient, userId: string): Promise<string> {
+  const { data: found, error: findErr } = await supabase
+    .from('leads').select('id')
+    .eq('utm_source', PLAYGROUND_SOURCE)
+    .eq('raw_payload->>playground_user', userId)
+    .limit(1).maybeSingle();
+  if (findErr) throw new Error(`leads: ${findErr.message}`);
+  if (found) return found.id;
+
+  // ponytail: duas primeiras mensagens simultâneas do mesmo usuário podem criar
+  // dois leads de teste; é inofensivo, e o lookup acima passa a achar o primeiro.
+  const { data: created, error } = await supabase
+    .from('leads')
+    .insert({
+      full_name: 'Lead de teste do Playground SDR',
+      utm_source: PLAYGROUND_SOURCE,
+      status: 'discarded',
+      notes: 'Criado automaticamente pelo Playground do SDR IA. Não é um lead real.',
+      raw_payload: { playground_user: userId },
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(`leads: ${error.message}`);
+  return created.id;
+}
+
+/**
+ * "Testar chave da OpenAI": uma chamada barata a /v1/models só para saber se a
+ * credencial gravada no cofre é aceita. Sem isso, o primeiro sinal de chave
+ * errada era um turno de conversa falhando com erro de terceiro.
+ * Nunca devolve o valor da chave — só o veredito.
+ */
+async function probeOpenAI(apiKey: string) {
+  const res = await fetch('https://api.openai.com/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const models = Array.isArray(data?.data) ? data.data.length : 0;
+    return json({ ok: true, models });
+  }
+  const body = await res.json().catch(() => ({}));
+  return json({
+    ok: false,
+    status: res.status,
+    error: res.status === 401
+      ? 'A OpenAI recusou a chave gravada (401). Gere outra e substitua em Admin · Integrações.'
+      : `A OpenAI respondeu ${res.status}: ${String(body?.error?.message ?? '').slice(0, 200)}`,
+  }, 502);
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    // Cofre primeiro, secret da function como fallback (ver _shared/secrets.ts).
-    const apiKey = await requireSecret('OPENAI_API_KEY');
+    // Antes de qualquer coisa: quem está falando. A function roda com service
+    // role e gasta a chave da OpenAI a cada turno — sem esta porta, a chave
+    // publicável do bundle bastava para queimar crédito e ler conversa de lead
+    // (achado S01). `menu.sdr` é a mesma permissão que abre a tela do SDR.
+    const { denied, userId } = await requireUserPermission(req, 'menu.sdr', corsHeaders);
+    if (denied) return denied;
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    const supabase = serviceClient();
 
-    const body = await req.json();
-    const { conversation_id, lead_id, agent_id, message } = body;
-    if (!message) throw new Error('message obrigatório');
+    const body = await req.json().catch(() => ({}));
+    const { action, conversation_id, lead_id, agent_id, message } = body ?? {};
 
-    // Ensure conversation
-    let convId = conversation_id;
-    if (!convId && lead_id) {
-      const { data: created, error: cErr } = await supabase
-        .from('sdr_conversations')
-        .insert({ lead_id, agent_id })
-        .select('id, agent_id')
-        .single();
-      if (cErr) throw cErr;
-      convId = created.id;
+    // Existe credencial da OpenAI? Só o veredito booleano, nunca o valor — e
+    // ANTES da porta de papel, de propósito: director/manager/partner abrem o
+    // módulo e precisam saber que a IA não responde. Sem este sinal a tela só
+    // descobria a falta depois de o operador digitar e enviar, e até lá o
+    // switch "Ativo" da aba Agentes fazia parecer que o agente estava
+    // trabalhando. Não chama a OpenAI (isso é o `probe`), então é barato o
+    // bastante para rodar na abertura da tela.
+    if (action === 'status') {
+      return json({ configured: !!(await getSecret('OPENAI_API_KEY')) });
     }
 
-    // Load conversation + agent
-    const { data: conv } = convId
-      ? await supabase.from('sdr_conversations').select('*').eq('id', convId).single()
-      : { data: null };
-
-    // Pick agent: explicit → orchestrator → default active
-    let chosenAgentId = agent_id || conv?.agent_id;
-    if (!chosenAgentId) {
-      const { data: orch } = await supabase
-        .from('sdr_agents')
-        .select('id')
-        .eq('is_orchestrator', true).eq('active', true).limit(1).maybeSingle();
-      chosenAgentId = orch?.id;
+    // Segunda porta: gravar conversa é dos papéis que a RLS aceita.
+    const { data: roles, error: rolesErr } = await supabase
+      .from('user_roles').select('role').eq('profile_id', userId);
+    if (rolesErr) {
+      console.error('sdr-agent-chat: falha ao ler papéis —', rolesErr.message);
+      return json({ error: 'Não foi possível verificar seu papel.' }, 500);
     }
-    if (!chosenAgentId) {
-      const { data: any1 } = await supabase
-        .from('sdr_agents').select('id').eq('active', true).limit(1).maybeSingle();
-      chosenAgentId = any1?.id;
-    }
-    if (!chosenAgentId) throw new Error('Nenhum agente SDR configurado');
-
-    const { data: agent } = await supabase
-      .from('sdr_agents').select('*').eq('id', chosenAgentId).single();
-
-    // Save inbound
-    if (convId) {
-      await supabase.from('sdr_messages').insert({
-        conversation_id: convId, author: 'lead', body: message,
-      });
+    if (!(roles || []).some((r: { role: string }) => WRITE_ROLES.includes(r.role))) {
+      return json({
+        code: 'role_forbidden',
+        error: 'A simulação grava conversa no banco: só admin, marketing e SDR podem usar o Playground. '
+          + 'Seu papel consulta o módulo.',
+      }, 403);
     }
 
-    // Build history
-    const { data: history } = convId
-      ? await supabase.from('sdr_messages').select('author, body')
-          .eq('conversation_id', convId).order('created_at', { ascending: true })
-      : { data: [{ author: 'lead', body: message }] };
-
-    const messages: any[] = [
-      { role: 'system', content: agent.system_prompt || 'Você é um SDR especializado em qualificação de leads imobiliários. Faça perguntas objetivas sobre renda, urgência, tipo de imóvel desejado e localização. Seja cordial e breve.' },
-      ...(history || []).map((m: any) => ({
-        role: m.author === 'lead' ? 'user' : m.author === 'system' ? 'system' : 'assistant',
-        content: m.body,
-      })),
-    ];
-
-    const { text, usage } = await callOpenAI(apiKey, agent.model || 'gpt-4o-mini', messages, Number(agent.temperature ?? 0.7));
-
-    // If orchestrator, try to detect handoff target agent (naive: mentions "@AgentName")
-    let handoffAgent: any = null;
-    if (agent.is_orchestrator) {
-      const { data: agents } = await supabase.from('sdr_agents').select('id,name').eq('active', true).eq('is_orchestrator', false);
-      handoffAgent = (agents || []).find((a: any) => text.toLowerCase().includes('@' + a.name.toLowerCase()));
-      if (handoffAgent) {
-        await supabase.from('sdr_conversations').update({ agent_id: handoffAgent.id }).eq('id', convId);
-      }
+    const apiKey = await getSecret('OPENAI_API_KEY');
+    // Sem a chave da OpenAI nada responde. 503 com `code` distinto para a tela
+    // dizer o que falta em vez de mostrar um erro genérico de servidor.
+    //
+    // O texto é renderizado LITERALMENTE na bolha de erro do Playground, então
+    // fala a língua da tela: o rótulo é o do card em Admin · Integrações
+    // (`src/lib/integrationCatalog.ts`), não `provider · label` do cofre, e o
+    // secret da function — caminho de deploy, que nenhum usuário do CRM
+    // alcança — fica no rastro de servidor, não no corpo da resposta.
+    if (!apiKey) {
+      console.error(
+        'sdr-agent-chat: OPENAI_API_KEY ausente — cadastre em private.integration_credentials '
+          + "(provider 'openai', label 'api_key') ou no secret OPENAI_API_KEY da function.",
+      );
+      return json({
+        code: 'missing_credential',
+        error: 'A IA de SDR ainda não está configurada: falta a chave da OpenAI no cofre. '
+          + 'Cadastre em Admin · Integrações, no card “OpenAI — chave de API”.',
+      }, 503);
     }
 
-    if (convId) {
-      await supabase.from('sdr_messages').insert({
-        conversation_id: convId, author: 'agent', body: text,
-        tokens_in: usage?.prompt_tokens, tokens_out: usage?.completion_tokens,
-      });
-    }
+    if (action === 'probe') return await probeOpenAI(apiKey);
 
-    return new Response(JSON.stringify({
-      conversation_id: convId,
-      agent: { id: agent.id, name: agent.name, is_orchestrator: agent.is_orchestrator },
-      handoff_to: handoffAgent,
-      reply: text,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-  } catch (e: any) {
-    console.error('sdr-agent-chat error:', e);
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    if (typeof message !== 'string' || !message.trim()) {
+      return json({ error: 'message obrigatório' }, 400);
+    }
+    if (message.length > 4000) {
+      return json({ error: 'mensagem longa demais (máx. 4000)' }, 400);
+    }
+    const asId = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+    const conversationId = asId(conversation_id);
+    const leadId = conversationId ? null : (asId(lead_id) ?? await playgroundLeadId(supabase, userId));
+
+    const turn = await runSdrAgentTurn(supabase, {
+      conversationId,
+      leadId,
+      agentId: asId(agent_id),
+      message: message.trim(),
+      // Simulação não devolve lead à roleta: o lead de teste é 'discarded' e
+      // mandá-lo para a fila colocaria uma conversa de mentira na mão de um
+      // corretor de verdade.
+      handoffOnExhaust: false,
     });
+
+    return json({
+      conversation_id: turn.conversationId,
+      agent: turn.agent,
+      handoff_to: turn.handoffAgent,
+      qualified: turn.qualified,
+      exhausted: turn.exhausted,
+      score: turn.score,
+      reply: turn.reply,
+    });
+  } catch (e) {
+    if (e instanceof ConversationClosedError) {
+      return json({ code: 'conversation_closed', error: e.message }, 409);
+    }
+    // Agente desligado no meio da conversa: recusa esperada, não falha do
+    // servidor — o operador é quem desmarcou "Ativo".
+    if (e instanceof InactiveAgentError) {
+      return json({ code: 'agent_inactive', error: e.message }, 409);
+    }
+    console.error('sdr-agent-chat error:', e instanceof Error ? e.message : e);
+    return json({ error: e instanceof Error ? e.message : 'unknown' }, 500);
   }
 });
