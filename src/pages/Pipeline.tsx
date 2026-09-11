@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, Filter, GitBranch, LayoutDashboard, Plus, Target, Unlock, Users } from "lucide-react";
+import { Download, Filter, GitBranch, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
@@ -92,8 +92,8 @@ export default function Pipeline() {
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
   const [convertingLead, setConvertingLead] = useState<LeadRecord | null>(null);
 
-  // Abre sozinho só para o corretor, e só na primeira vez do dia; para todo o
-  // resto (e para ele, do segundo acesso em diante) existe o botão "Painel".
+  // Abre sozinho para o corretor toda vez que ele carrega o Pipeline; qualquer
+  // perfil reabre pelo card de game do topo ("Ver mais").
   const painel = usePainelDoCorretor();
 
   const dealsQuery = useDeals();
@@ -228,7 +228,7 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-6">
-      <PipelineTopRanking deals={deals} />
+      <PipelineTopRanking deals={deals} onAbrirPainel={painel.abrir} />
 
       <PageHeader
         title="Pipeline"
@@ -247,10 +247,6 @@ export default function Pipeline() {
         }
         actions={
           <>
-            {/* Fora do ternário das abas: o Painel é o mesmo quadro nas duas. */}
-            <Button variant="outline" size="sm" onClick={painel.abrir}>
-              <LayoutDashboard className="mr-1 h-4 w-4" /> Painel
-            </Button>
             {tab === "deals" ? (
               <>
                 <Button variant="outline" size="sm" onClick={() => setShowFilters((open) => !open)}>

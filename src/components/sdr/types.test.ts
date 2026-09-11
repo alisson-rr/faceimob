@@ -1,8 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  cadeiaDeAgentes, conversaParada, efeitosDaExclusao, efeitosDaExclusaoTemplate, ondeCadastrarIa,
-  resumoDisparo, situacaoLista, type ListStats,
+  acoesDaConversa, cadeiaDeAgentes, conversaParada, efeitosDaExclusao, efeitosDaExclusaoTemplate,
+  FILTRO_ABERTAS, FILTRO_TODAS, ondeCadastrarIa, OPCOES_DE_SITUACAO, recorteDaSituacao, resumoDisparo,
+  rotuloDoAutor, seloDeMidia, situacaoLista, type ListStats,
 } from "./types";
+import { UnmatchedThreads } from "./UnmatchedThreads";
+
+/** Fronteira mockada da seção "Sem lead": o cliente do Supabase e o toast. */
+const banco = vi.hoisted(() => ({ rpc: vi.fn() }));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: banco.rpc } }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 const stats = (p: Partial<ListStats>): ListStats =>
   ({ total: 0, pending: 0, sent: 0, replied: 0, failed: 0, ...p });
@@ -214,5 +224,147 @@ describe("ondeCadastrarIa", () => {
     const texto = ondeCadastrarIa(false);
     expect(texto).toContain("Peça a um administrador");
     expect(texto).not.toContain("Cadastre em");
+  });
+});
+
+/**
+ * Caixa de conversas (0120). O rótulo é o que separa, na mesma bolha cinza, a
+ * resposta do humano da do robô — e diz QUAL humano.
+ */
+describe("rotuloDoAutor", () => {
+  const agente = (id: string) => ({ q: "Qualificador" }[id] ?? "agente removido");
+  const operador = (id: string) => ({ u1: "Ana Souza" }[id] ?? null);
+
+  it("linha broker com sent_by vira 'Humano · {nome}'", () => {
+    expect(rotuloDoAutor({ author: "broker", agent_id: null, sent_by: "u1" }, agente, operador))
+      .toBe("Humano · Ana Souza");
+  });
+
+  it("sem sent_by (histórico anterior à 0120) ou sem nome resolvido fica 'Humano' — nunca um nome chutado", () => {
+    expect(rotuloDoAutor({ author: "broker", agent_id: null, sent_by: null }, agente, operador)).toBe("Humano");
+    expect(rotuloDoAutor({ author: "broker", agent_id: null, sent_by: "u9" }, agente, operador)).toBe("Humano");
+  });
+
+  it("lead, IA com o nome do agente e sistema", () => {
+    expect(rotuloDoAutor({ author: "lead", agent_id: null, sent_by: null }, agente, operador)).toBe("Lead");
+    expect(rotuloDoAutor({ author: "agent", agent_id: "q", sent_by: null }, agente, operador)).toBe("IA · Qualificador");
+    expect(rotuloDoAutor({ author: "system", agent_id: null, sent_by: null }, agente, operador)).toBe("Sistema");
+  });
+});
+
+describe("seloDeMidia", () => {
+  it("áudio com texto foi transcrito; com o marcador do webhook, não", () => {
+    expect(seloDeMidia({ media_type: "audio", body: "Quero visitar no sábado" }))
+      .toEqual({ rotulo: "áudio transcrito", falhou: false });
+    expect(seloDeMidia({ media_type: "audio", body: "[áudio não transcrito]" }))
+      .toEqual({ rotulo: "áudio não transcrito", falhou: true });
+    // Número sem lead: o webhook registra sem transcrever (sem custo de IA).
+    expect(seloDeMidia({ media_type: "audio", body: "[áudio]" })?.falhou).toBe(true);
+  });
+
+  it("imagem vira '[imagem]' e texto puro não ganha selo", () => {
+    expect(seloDeMidia({ media_type: "imagem", body: "[imagem]" })?.rotulo).toBe("[imagem]");
+    expect(seloDeMidia({ media_type: null, body: "oi" })).toBeNull();
+  });
+});
+
+describe("filtro de situação da caixa", () => {
+  it("'Resolvida' está no filtro e vai ao banco como igualdade", () => {
+    expect(OPCOES_DE_SITUACAO).toContainEqual({ valor: "resolved", rotulo: "Resolvida" });
+    expect(recorteDaSituacao("resolved")).toEqual({ op: "eq", status: "resolved" });
+  });
+
+  it("o padrão é 'em aberto' — a resolvida sai da caixa — e 'Todas' não recorta", () => {
+    expect(OPCOES_DE_SITUACAO[0].valor).toBe(FILTRO_ABERTAS);
+    expect(recorteDaSituacao(FILTRO_ABERTAS)).toEqual({ op: "neq", status: "resolved" });
+    expect(recorteDaSituacao(FILTRO_TODAS)).toBeNull();
+  });
+});
+
+describe("acoesDaConversa", () => {
+  const conversa = (status: string, assumed_by: string | null = null, handed_off_at: string | null = null) =>
+    ({ status, assumed_by, handed_off_at });
+
+  it("com o robô: assumir e resolver; responder só depois de assumir", () => {
+    expect(acoesDaConversa(conversa("active"), "eu", true))
+      .toEqual({ assumir: true, devolver: false, resolver: true, responder: false });
+  });
+
+  it("assumida por mim: devolver, resolver e responder", () => {
+    expect(acoesDaConversa(conversa("human", "eu"), "eu", true))
+      .toEqual({ assumir: false, devolver: true, resolver: true, responder: true });
+  });
+
+  it("humana sem dono ou de outro: assumir antes de responder", () => {
+    expect(acoesDaConversa(conversa("human", null), "eu", true).responder).toBe(false);
+    expect(acoesDaConversa(conversa("human", "outro"), "eu", true).assumir).toBe(true);
+  });
+
+  it("entregue a corretor: dá para assumir e responder ao lead, mas não devolver ao robô", () => {
+    expect(acoesDaConversa(conversa("handed_off", null, "2026-09-10T12:00:00Z"), "eu", true).assumir).toBe(true);
+    expect(acoesDaConversa(conversa("human", "eu", "2026-09-10T12:00:00Z"), "eu", true).devolver).toBe(false);
+  });
+
+  it("quem só lê (diretor, gerente) não vê botão nenhum — o banco também recusa", () => {
+    expect(Object.values(acoesDaConversa(conversa("human", null), "eu", false)).some(Boolean)).toBe(false);
+  });
+});
+
+/**
+ * A seção MONTADA, não só as funções: nesta base já passou teste verde com o
+ * dado criado e o JSX esquecido.
+ */
+describe("seção 'Sem lead'", () => {
+  let root: Root | null = null;
+  let container: HTMLDivElement | null = null;
+
+  afterEach(() => {
+    root?.unmount();
+    container?.remove();
+    root = null;
+    container = null;
+    banco.rpc.mockReset();
+  });
+
+  async function montar(canWrite: boolean) {
+    banco.rpc.mockImplementation(async (fn: string) =>
+      fn === "whatsapp_inbox_unmatched"
+        ? {
+          data: [{
+            from_phone: "5511988880120", ultima_mensagem: "[áudio]", ultima_em: "2026-09-11T12:00:00Z",
+            pendentes: 2, media_type: "audio",
+          }],
+          error: null,
+        }
+        : { data: 2, error: null });
+    container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    root.render(createElement(QueryClientProvider, { client }, createElement(UnmatchedThreads, { canWrite })));
+    const el = container;
+    await vi.waitFor(() => expect(el.textContent).toContain("5511988880120"));
+    return el;
+  }
+
+  const botaoResolver = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll("button")).find((b) => b.textContent?.includes("Marcar como resolvido"));
+
+  it("lista o telefone com a quantidade, o selo do áudio e o botão resolver", async () => {
+    const el = await montar(true);
+    expect(el.querySelector("h2")?.textContent).toBe("Sem lead");
+    expect(el.textContent).toContain("2 mensagens");
+    expect(el.textContent).toContain("áudio não transcrito");
+
+    const botao = botaoResolver(el);
+    expect(botao?.getAttribute("aria-label")).toBe("Marcar como resolvido: 5511988880120");
+    botao?.click();
+    await vi.waitFor(() =>
+      expect(banco.rpc).toHaveBeenCalledWith("whatsapp_inbound_resolve_phone", { p_phone: "5511988880120" }));
+  });
+
+  it("quem só lê vê a lista sem o botão, com o motivo escrito", async () => {
+    const el = await montar(false);
+    expect(botaoResolver(el)).toBeUndefined();
+    expect(el.textContent).toContain("administrador, marketing e SDR");
   });
 });

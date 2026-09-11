@@ -12,7 +12,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { MarketingInvestmentPopup } from "@/components/MarketingInvestmentPopup";
 import { cn } from "@/lib/utils";
-import CampaignPerformancePanel from "@/components/CampaignPerformancePanel";
+import CampaignPerformancePanel, { type CampaignResult } from "@/components/CampaignPerformancePanel";
+import { MetaActionsLog } from "@/components/marketing/MetaActionsLog";
+import { MetaAdScores } from "@/components/marketing/MetaAdScores";
+import { MetaAlertsPanel } from "@/components/marketing/MetaAlertsPanel";
+import { MetaCampaignPlanner } from "@/components/marketing/MetaCampaignPlanner";
+import { MetaTrafficManager } from "@/components/marketing/MetaTrafficManager";
 import {
   AD_PLATFORM_LABEL,
   adStatusLabel,
@@ -42,31 +47,10 @@ const META_ADS_PATH = "/admin/meta-ads";
 /** O mesmo código que o guard de rota cobra — sem isso o botão levava a "Acesso não liberado". */
 const META_ADS_PERMISSION = permissionForPath(META_ADS_PATH);
 
-type CampaignRow = {
-  id: string;
-  externalId: string;
-  name: string;
-  platform: AdPlatform;
-  channel: string;
-  status: string;
-  rawStatus: string | null;
-  developerId: string | null;
-  developer: string;
-  spend: number;
-  dailyBudget: number | null;
-  lifetimeBudget: number | null;
-  startsOn: string | null;
-  endsOn: string | null;
-  leadSourceId: string | null;
-  syncedAt: string | null;
-  /** Recorte do relatório da Meta que o gasto cobre (0113). Nulo = digitado. */
-  spendPeriodStart: string | null;
-  spendPeriodEnd: string | null;
-  leads: number;
-  conversions: number;
-  sales: number;
-  revenue: number;
-};
+/** A linha do painel mais os três rótulos que só a tabela de baixo usa. Uma
+ *  forma só: escrita em dois tipos, cada coluna nova da campanha tinha de ser
+ *  lembrada nos dois. */
+type CampaignRow = CampaignResult & { channel: string; status: string; developer: string };
 
 type DeveloperOption = { id: string; name: string; active: boolean };
 type LeadSourceOption = { id: string; label: string; active: boolean };
@@ -152,6 +136,12 @@ async function loadCampaigns(): Promise<{
       syncedAt: c.synced_at,
       spendPeriodStart: c.spend_period_start ?? null,
       spendPeriodEnd: c.spend_period_end ?? null,
+      metaAccountId: c.meta_account_id ?? null,
+      metaChannel: c.meta_channel ?? null,
+      metaBudgetLevel: c.meta_budget_level ?? null,
+      metaEffectiveStatus: c.meta_effective_status ?? null,
+      spendSource: c.spend_source ?? null,
+      developerSuggestedId: c.developer_suggested_id ?? null,
       leads: s?.leads ?? 0,
       conversions: s?.conversions ?? 0,
       sales: s?.sales ?? 0,
@@ -248,9 +238,12 @@ export default function Marketing() {
     };
   }, [filtered]);
 
-  /** Alguma linha do recorte visível tem gasto vindo de relatório: é o que
-   *  muda o que a legenda do KPI pode afirmar sobre o período. */
-  const temGastoImportado = useMemo(() => filtered.some((c) => c.spendPeriodStart !== null), [filtered]);
+  /** Alguma linha do recorte visível tem gasto vindo do livro (relatório ou
+   *  sincronização): é o que muda o que a legenda do KPI pode afirmar sobre o
+   *  período. */
+  const temGastoDoLivro = useMemo(() => filtered.some((c) => c.spendPeriodStart !== null), [filtered]);
+  /** Alguma linha do recorte é sincronizada: o status dela vem da Meta. */
+  const temSincronizada = useMemo(() => filtered.some((c) => c.metaAccountId !== null), [filtered]);
 
   const byChannel = useMemo(() => {
     const map = new Map<string, { spend: number; leads: number }>();
@@ -291,9 +284,17 @@ export default function Marketing() {
       />
 
       <Tabs value={aba} onValueChange={setAba} className="w-full">
-        <TabsList className="bg-transparent border-b border-border/40 rounded-none w-full justify-start gap-4 h-auto p-0">
-          {[["campanhas", "Campanhas"], ["construtoras", "Por construtora"]].map(([v, l]) => (
-            <TabsTrigger key={v} value={v} className="bg-transparent rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent pb-2 font-semibold">
+        {/* Cinco abas não cabem em 375 px: a lista rola dentro dela mesma, em
+            vez de empurrar a página inteira para o lado. */}
+        <TabsList className="bg-transparent border-b border-border/40 rounded-none w-full justify-start gap-4 h-auto p-0 overflow-x-auto">
+          {[
+            ["campanhas", "Campanhas"],
+            ["construtoras", "Por construtora"],
+            ["meta-ia", "Meta · IA"],
+            ["planejador", "Planejador"],
+            ["alertas", "Alertas"],
+          ].map(([v, l]) => (
+            <TabsTrigger key={v} value={v} className="shrink-0 bg-transparent rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent pb-2 font-semibold">
               {l}
             </TabsTrigger>
           ))}
@@ -347,13 +348,14 @@ export default function Marketing() {
                     <p className="text-2xl font-bold mt-1">{brl(totals.spend)}</p>
                     {/* Não é a mesma verba do aporte: aporte é o que a construtora
                         põe no mês; isto é o que as campanhas gastaram.
-                        Com relatório importado o gasto vale pelo RECORTE de cada
-                        relatório — dizer "acumulado" aí seria afirmar que a soma
+                        Com gasto vindo do livro (relatório importado ou
+                        sincronização da Meta) ele vale pelo RECORTE de cada
+                        campanha — dizer "acumulado" aí seria afirmar que a soma
                         cobre a vida inteira da campanha, e o CPL sairia menor do
                         que o real sem nenhum aviso. */}
                     <p className="text-xs text-muted-foreground mt-1">
-                      {temGastoImportado
-                        ? "inclui gasto importado da Meta, pelo período de cada relatório"
+                      {temGastoDoLivro
+                        ? "inclui gasto da Meta (relatório ou sincronização), pelo período de cada campanha"
                         : "acumulado, não é o aporte do mês"}
                     </p>
                   </CardContent>
@@ -375,12 +377,13 @@ export default function Marketing() {
                       <Target className="h-4 w-4 text-warning" />
                     </div>
                     <p className="text-2xl font-bold mt-1">{brl(totals.cpl)}</p>
-                    {/* Não existe "CPL de setembro": `total_spend` é o gasto da
-                        VIDA da campanha, digitado à mão. Comparar mês a mês só
-                        passa a ser possível quando o gasto vier da Meta com
-                        data — daí a série temporal não é uma tela que falta, é
-                        uma credencial que falta. */}
-                    <p className="text-xs text-muted-foreground mt-1">gasto acumulado ÷ leads; não há CPL por mês</p>
+                    {/* O CPL do CRM não muda de conta: `total_spend` (a soma do
+                        livro da campanha) ÷ leads do CRM, os dois sem recorte de
+                        mês. O custo do PERÍODO existe, mas é outro número — o
+                        custo por resultado segundo a Meta, rotulado assim no
+                        painel acima — e trocar um pelo outro aqui mudaria a
+                        definição de um KPI que a operação já lê. */}
+                    <p className="text-xs text-muted-foreground mt-1">gasto ÷ leads do CRM, acumulados; o custo por resultado do período, segundo a Meta, fica no painel acima</p>
                   </CardContent>
                 </Card>
                 <Card className="glass">
@@ -390,11 +393,16 @@ export default function Marketing() {
                       <Megaphone className="h-4 w-4 text-chart-5" />
                     </div>
                     <p className="text-2xl font-bold mt-1">{num(totals.active)}</p>
-                    {/* O painel acima já marca o DINHEIRO como digitado ou
-                        sincronizado; o status não tinha marca nenhuma e era
-                        lido como o estado real da campanha. Nada no sistema
-                        escreve `synced_at` de status: ele é sempre digitado. */}
-                    <p className="text-xs text-muted-foreground mt-1">de {num(filtered.length)} no filtro · status digitado; a Meta não é consultada</p>
+                    {/* O status tem duas origens, e a legenda diz qual vale no
+                        recorte: na campanha sincronizada ele vem da Meta (e só
+                        muda por lá, pelas ações do painel); na cadastrada à mão
+                        é digitado — e ler um digitado como o estado real da
+                        campanha é o engano que esta frase evita. */}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      de {num(filtered.length)} no filtro · {temSincronizada
+                        ? "status da Meta nas sincronizadas, digitado nas demais"
+                        : "status digitado; a Meta não é consultada"}
+                    </p>
                   </CardContent>
                 </Card>
               </div>
@@ -484,7 +492,7 @@ export default function Marketing() {
                                     o painel dava como digitada — sincronia que este
                                     sistema não tem, no número que divide o CPL. */}
                                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                                  {origemDoGasto(c.syncedAt, c.spendPeriodStart, c.spendPeriodEnd)}
+                                  {origemDoGasto(c.syncedAt, c.spendPeriodStart, c.spendPeriodEnd, c.spendSource)}
                                 </span>
                               </td>
                               <td className="p-3 text-right font-semibold">{brl(c.spend)}</td>
@@ -509,6 +517,10 @@ export default function Marketing() {
               </Card>
             </>
           )}
+
+          {/* Quem pausou, ativou ou mudou verba na Meta, pelo CRM ou pela fila do
+              gestor IA — o registro que as ações do painel acima deixam. */}
+          <MetaActionsLog />
         </TabsContent>
 
         <TabsContent value="construtoras" className="mt-5">
@@ -530,6 +542,23 @@ export default function Marketing() {
                 : null
             }
           />
+        </TabsContent>
+
+        {/* As abas da Meta montam os componentes das outras frentes pelo nome:
+            cada um lê o próprio dado e confere `marketing.meta_manage` para
+            agir. O Radix só monta a aba aberta, então nada disso consulta o
+            banco antes do clique. */}
+        <TabsContent value="meta-ia" className="mt-5 space-y-5">
+          <MetaAdScores />
+          <MetaTrafficManager />
+        </TabsContent>
+
+        <TabsContent value="planejador" className="mt-5">
+          <MetaCampaignPlanner />
+        </TabsContent>
+
+        <TabsContent value="alertas" className="mt-5">
+          <MetaAlertsPanel />
         </TabsContent>
       </Tabs>
     </div>
@@ -736,7 +765,7 @@ function DeveloperSummaryPanel({
         <p>
           {tudo
             ? "ROAS = VGV dos negócios ganhos ÷ gasto em campanhas, na mesma janela (todo o período)."
-            : "Com um mês escolhido, aporte, leads, negócios e VGV são do mês; o gasto em campanhas continua acumulado, então o ROAS do mês não existe. Retorno sobre aporte = VGV do mês ÷ aporte do mês — as duas pontas na mesma janela. A comparação com o mês anterior cobre só esses números mensais: não há CPL nem ROAS de campanha por mês enquanto o gasto for digitado e acumulado."}
+            : "Com um mês escolhido, aporte, leads, negócios e VGV são do mês; o gasto em campanhas continua acumulado (a soma do livro de cada campanha), então o ROAS do mês não existe aqui. Retorno sobre aporte = VGV do mês ÷ aporte do mês — as duas pontas na mesma janela. A comparação com o mês anterior cobre só esses números mensais; o custo do período, segundo a Meta, fica na aba Campanhas."}
         </p>
       </div>
     </Card>

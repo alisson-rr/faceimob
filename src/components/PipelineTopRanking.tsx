@@ -1,11 +1,7 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { endOfMonth, format, startOfMonth } from "date-fns";
-import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Flame, Lightbulb, Megaphone } from "lucide-react";
-import { loadMuralDoDia } from "@/integrations/supabase/recados";
 import type { WeekRange } from "@/integrations/supabase/game";
 import { useAuth } from "@/contexts/AuthContext";
 import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard";
@@ -16,7 +12,7 @@ import { cn } from "@/lib/utils";
 import type { PipelineDeal } from "@/types/crm";
 import { useCurrentSeasonId, useGameRanking, useSeasonRanking } from "@/hooks/useGameRanking";
 
-type Props = { deals: PipelineDeal[] };
+type Props = { deals: PipelineDeal[]; onAbrirPainel: () => void };
 
 /**
  * O mês da meta da faixa do corretor, no formato que `useGoal` espera.
@@ -57,8 +53,11 @@ export function intervaloDoMes(hoje: Date = new Date()): WeekRange {
  * (prints do cliente, 10/09/2026).
  *
  *   · corretor            → faixa fina: anel de progresso, nome, pontos, barra
- *                           da meta de VGV do mês e "Saiba Mais".
+ *                           da meta de VGV do mês e "Ver mais".
  *   · gerente/diretor/admin → pódio de três cartões (prata, ouro, bronze).
+ *
+ * O card inteiro e o "Ver mais" abrem o MESMO Painel para qualquer perfil
+ * (pedido de 11/09/2026); o recorte do que aparece lá dentro é do Painel.
  *
  * Sem cabeçalho de seção: o `SectionCard` custava mais uma faixa de título e o
  * pedido em aberto é o oposto ("o ranking está um pouco grande"). O nome da
@@ -67,7 +66,7 @@ export function intervaloDoMes(hoje: Date = new Date()): WeekRange {
  * O RECORTE DOS DADOS continua sendo do servidor (`visible_game_ranking`): esta
  * tela escolhe o que MOSTRA do que já chegou, e nunca o contrário.
  */
-export default function PipelineTopRanking({ deals }: Props) {
+export default function PipelineTopRanking({ deals, onAbrirPainel }: Props) {
   const dealsForHook = deals.map((d) => ({
     broker1_name: d.broker1,
     broker2_name: d.broker2,
@@ -76,9 +75,6 @@ export default function PipelineTopRanking({ deals }: Props) {
   }));
   const { scoped, meuScore, recorte, seasonId } = useGameRanking(dealsForHook);
   const { profile, user } = useAuth();
-  const [openInfo, setOpenInfo] = useState(false);
-  const [tip, setTip] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ title: string | null; message: string } | null>(null);
 
   const { soMinhaPosicao, escopo } = recorte;
 
@@ -118,17 +114,19 @@ export default function PipelineTopRanking({ deals }: Props) {
   const placarDoMes = useSeasonRanking(soMinhaPosicao ? seasonId : null, intervaloDoMes());
   const vgvDoMes = placarDoMes.data?.find((linha) => linha.profile_id === user?.id)?.vgv ?? 0;
 
-  // A consulta solta que vivia aqui não filtrava vigência (`starts_at`/`ends_at`)
-  // e o `important_notices_select` (0011) libera a tabela inteira para
-  // `is_admin()`: o card mostrava recado vencido a quem administra, enquanto o
-  // Painel mostrava o certo. `loadMuralDoDia` é a mesma leitura dos dois.
-  const loadInfo = async () => {
-    const { recados, dicas } = await loadMuralDoDia();
-    setTip(dicas[0]?.body ?? null);
-    setNotice(recados[0] ? { title: recados[0].title, message: recados[0].body } : null);
-  };
-
-  const openInfoDialog = async () => { await loadInfo(); setOpenInfo(true); };
+  // O "Ver mais" em texto do print do pódio. É `button` e não `Link`: abre o
+  // Painel aqui mesmo, em vez de levar para outra tela.
+  const verMais = (
+    <div className="flex justify-end">
+      <button
+        type="button"
+        onClick={onAbrirPainel}
+        className="rounded-full px-1 text-xs text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Ver mais
+      </button>
+    </div>
+  );
 
   const falhou = temporada.isError || placar.isError;
 
@@ -150,18 +148,24 @@ export default function PipelineTopRanking({ deals }: Props) {
   const conteudo = () => {
     if (falhou) {
       return (
-        <p className="px-1 py-3 text-sm text-destructive">
-          Não consegui carregar o placar da temporada.{" "}
-          {describeError(temporada.error ?? placar.error, "A leitura do ranking falhou.")}
-        </p>
+        <div className="space-y-2">
+          <p className="px-1 py-3 text-sm text-destructive">
+            Não consegui carregar o placar da temporada.{" "}
+            {describeError(temporada.error ?? placar.error, "A leitura do ranking falhou.")}
+          </p>
+          {verMais}
+        </div>
       );
     }
 
     if (!temporada.data) {
       return (
-        <p className="px-1 py-3 text-sm text-muted-foreground">
-          Nenhuma temporada aberta no momento. O placar volta quando a próxima começar.
-        </p>
+        <div className="space-y-2">
+          <p className="px-1 py-3 text-sm text-muted-foreground">
+            Nenhuma temporada aberta no momento. O placar volta quando a próxima começar.
+          </p>
+          {verMais}
+        </div>
       );
     }
 
@@ -176,7 +180,7 @@ export default function PipelineTopRanking({ deals }: Props) {
           erro={Boolean(metaVgv.error ?? placarDoMes.error)}
           realizado={vgvDoMes}
           meta={metaVgv.data?.target ?? null}
-          onSaibaMais={() => void openInfoDialog()}
+          onVerMais={onAbrirPainel}
         />
       );
     }
@@ -199,32 +203,22 @@ export default function PipelineTopRanking({ deals }: Props) {
           </p>
         )}
 
-        {/* Só "Ver mais", como no print. O botão "Mensagem do dia" saiu: o
-            recado e a dica de ouro que ele abria são os MESMOS do Painel, que
-            gerente, diretor e admin abrem pelo botão do cabeçalho do Pipeline —
-            nenhum caminho se perdeu. */}
-        <div className="flex justify-end">
-          <Link
-            to="/gamification"
-            className="rounded-full px-1 text-xs text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Ver mais
-          </Link>
-        </div>
+        {verMais}
       </div>
     );
   };
 
+  // O card inteiro abre o Painel no clique — o gesto que o cliente pediu. Para
+  // teclado a entrada é o "Ver mais", que é um botão de verdade; o clique nele
+  // sobe até aqui e chama o mesmo `onAbrirPainel`, que só abre (não alterna).
   return (
-    <>
-      <section
-        aria-label={`Ranking do game — ${escopo}`}
-        className="mx-auto w-full max-w-5xl rounded-2xl border border-border bg-card p-3 text-card-foreground"
-      >
-        {conteudo()}
-      </section>
-      <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
-    </>
+    <section
+      aria-label={`Ranking do game — ${escopo}`}
+      onClick={onAbrirPainel}
+      className="mx-auto w-full max-w-5xl cursor-pointer rounded-2xl border border-border bg-card p-3 text-card-foreground transition-colors hover:border-primary/40"
+    >
+      {conteudo()}
+    </section>
   );
 }
 
@@ -266,10 +260,10 @@ function AnelDeProgresso({ pct, children }: { pct: number; children: ReactNode }
  *
  * Quem ainda não pontuou vê o próprio nome com "0 pontos" e a barra vazia — o
  * estado do desenho do cliente. A colocação ("3º de 18") saiu: não está no
- * print, e o ranking inteiro continua a um clique em "Ver mais".
+ * print, e o placar continua a um clique em "Ver mais", que abre o Painel.
  */
 function FaixaDoCorretor({
-  nome, avatarUrl, pontos, noRanking, carregando, erro, realizado, meta, onSaibaMais,
+  nome, avatarUrl, pontos, noRanking, carregando, erro, realizado, meta, onVerMais,
 }: {
   nome: string;
   avatarUrl: string | null;
@@ -281,7 +275,8 @@ function FaixaDoCorretor({
   realizado: number;
   /** Meta de VGV do mês, em reais. `null` = não há linha em `goals`. */
   meta: number | null;
-  onSaibaMais: () => void;
+  /** Abre o Painel — o mesmo que o clique no card. */
+  onVerMais: () => void;
 }) {
   // Alvo e percentual saem juntos, num objeto só: sem meta cadastrada não há
   // denominador, e é isso que distingue a barra vazia da barra inexistente.
@@ -337,8 +332,8 @@ function FaixaDoCorretor({
         {!noRanking && !carregando && !erro && meta !== null && (
           <p className="text-xs font-semibold text-success">Meta de VGV: {brl(meta)}</p>
         )}
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onSaibaMais}>
-          Saiba Mais
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onVerMais}>
+          Ver mais
         </Button>
       </div>
     </div>
@@ -395,42 +390,5 @@ function BarraDaMeta({ pct, realizado, alvo }: { pct: number; realizado: number;
         </span>
       </span>
     </div>
-  );
-}
-
-function InfoDialog({
-  open, onOpenChange, tip, notice,
-}: {
-  open: boolean; onOpenChange: (v: boolean) => void;
-  tip: string | null; notice: { title: string | null; message: string } | null;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Flame className="h-5 w-5 text-warning" /> Mensagem do dia
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="rounded-xl border border-border p-3">
-            <div className="mb-1 flex items-center gap-2 text-xs font-semibold text-primary">
-              <Megaphone className="h-4 w-4" /> {notice?.title || "Aviso"}
-            </div>
-            <p className="whitespace-pre-wrap text-sm text-foreground">
-              {notice?.message || "Sem avisos ativos no momento."}
-            </p>
-          </div>
-          <div className="rounded-xl border border-border p-3">
-            <div className="mb-1 flex items-center gap-2 text-xs font-semibold text-warning">
-              <Lightbulb className="h-4 w-4" /> Dica de ouro
-            </div>
-            <p className="whitespace-pre-wrap text-sm text-foreground">
-              {tip || "Nenhuma dica de ouro publicada ainda."}
-            </p>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

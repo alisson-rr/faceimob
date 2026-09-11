@@ -136,3 +136,96 @@ pendências abaixo.
 
 As migrations sobem **antes** do front. Marketing passou a ler colunas que só
 existem a partir da 0113, e a aba de anexos precisa da 0106.
+
+---
+
+## Meta Ads — fase 1 e fase 2 (decisão de 11/09/2026)
+
+Referência técnica: repositório `dg-jarvis-os` (sistema da agência). Trazer =
+**reescrever no padrão do FACEIMOB** usando o Jarvis como referência de chamadas
+e regras de contagem — não copiar código (o Jarvis inventa número quando a Meta
+falha, tem funções sem login e guarda chave de IA em texto puro).
+
+**Fase 1:** conectar a conta de anúncios · sincronização diária automática no
+mesmo livro de gasto da planilha · pausar, ativar e mudar verba na Meta pela
+tela · resultado separado por formulário, WhatsApp e landing page · aviso de
+saldo · alertas de CPL, gasto sem lead e verba do mês · transcrição de áudio do
+lead no WhatsApp.
+
+**Fase 2:** nota por anúncio (escalar, manter, cortar) · gestor de tráfego IA
+com fila de aprovação · planejador de campanha para imóvel · resumo diário de
+marketing no WhatsApp · caixa de conversas completa.
+
+**Sem fase:** padrão de nome de campanha.
+
+**Fora:** criar, duplicar ou renomear campanha na Meta · relatório público ·
+estúdio de arte · comando pelo WhatsApp · agentes e cockpit · visão de agência.
+
+**Para ligar:** token de usuário de sistema do Business Manager, guardado no
+cofre pela tela Admin · Meta Ads. O código lê do cofre; sem token, nada liga.
+
+### Meta Ads — antes de publicar
+
+**Ordem obrigatória.** Publicar fora dela quebra telas que já existiam:
+1. **Migrations 0115 a 0121.** Sem a 0115, a tabela de campanhas do
+   /marketing fica vazia. Sem a 0120, "Assumir conversa" dá erro e a resposta
+   do atendente some do histórico.
+2. **Edge functions novas:** `meta-ads-connect`, `meta-sync`,
+   `meta-campaign-action`, `meta-ad-scores`, `meta-campaign-planner` e
+   `meta-traffic-manager`. **Republicar** `meta-ads-webhook`,
+   `whatsapp-inbound-webhook`, `sdr-whatsapp-broadcast` e `notify-dispatch`.
+3. **Front.**
+
+**Checagens que esta máquina não fez** (Docker e Deno indisponíveis):
+- `./scripts/validate-schema.sh --all` com o Docker ligado. Os testes SQL
+  passaram num PostgreSQL local, que não é a versão do Supabase.
+- `deno check` nas seis edge functions novas e nas quatro republicadas.
+- Nada foi testado contra a Meta real, porque falta o token. Se a Meta recusar
+  algum filtro de status na sincronização, a falha aparece na tela, com a frase
+  e a data da última sincronização boa.
+
+**Para ligar:** token de usuário de sistema do Business Manager, com
+`ads_read` e `ads_management`, guardado no cofre pela tela Admin · Meta Ads.
+
+**Urgente, independe do resto:** o `sdr-whatsapp-broadcast` usava a Graph API
+v20.0, que a Meta desliga em 24/09/2026. Ele passou para a versão central
+(`META_GRAPH`), mas **só vale depois de republicado**.
+
+### Meta Ads — estado em 12/09/2026
+
+**Implementado:** os 13 itens da fase 1 e da fase 2, em 13 frentes. Depois
+disso vieram quatro rodadas de conferência adversarial e de correção. As
+migrations são da 0115 à 0125.
+
+**Validação:**
+- typecheck, lint e vitest (1.279 testes) passam.
+- Suíte SQL completa no PostgreSQL 18 local: 116 migrations, 64 arquivos de
+  teste e RLS em todas as 73 tabelas.
+- Falta o harness oficial (`validate-schema.sh`, PG 15 no Docker), o
+  `deno check` e um teste contra a Meta real.
+
+**Correções que valem saber:**
+- **Furo de segurança anterior à integração.** O `requireServiceRole` aceitava
+  qualquer token que se dissesse "service_role", sem conferir a assinatura.
+  Pelo `meta-ads-webhook`, qualquer um injetava lead e podia fazer o robô
+  disparar WhatsApp. Fechado no código. **Continua aberto no ar** até
+  republicar as funções que importam `_shared/auth.ts`: `meta-ads-webhook`,
+  `notify-dispatch` e `submission-dispatch` (e as novas `meta-sync` e
+  `meta-traffic-manager`).
+- **Livro de gasto.** Um mesmo nome de campanha só tem gasto numa linha: a
+  manual e a sincronizada não recebem os mesmos dias, nem por planilha nem por
+  sincronização, nem em importações simultâneas. A importação que perderia
+  dias é recusada, com os intervalos exatos. Conta de anúncios com campanha
+  não se apaga: se desliga.
+- **Roleta:** o comportamento de antes foi mantido. Conversa assumida por um
+  SDR **não** segura o lead fora da roleta.
+
+**Publicação:** migrations 0115 a 0125 primeiro, depois as edge functions e por
+último o front, como descrito acima. Vale acrescentar `submission-dispatch` à
+lista de republicação.
+
+**Limites conhecidos (ponytail):**
+- A corrida entre a sincronização e uma importação no mesmo instante continua
+  possível.
+- Uma parada da sincronização maior que 90 dias deixa buraco.
+- O `types.ts` precisa ser regenerado para as tabelas e funções novas.

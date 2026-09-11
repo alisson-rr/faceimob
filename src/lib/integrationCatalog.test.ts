@@ -64,6 +64,19 @@ describe("catálogo de credenciais", () => {
       expect(slot.help.trim(), `help de ${slot.provider}/${slot.label}`).not.toBe("");
     }
   });
+
+  it("o token da Marketing API tem campo, com o nome de ambiente e todas as functions que o leem", () => {
+    // O revogar mostra `usedBy` como consequência: faltar uma function ali é o
+    // admin revogar sem saber que parou a sincronização ou a pausa na Meta.
+    const slot = INTEGRATION_SLOTS.find((s) => slotKey(s.provider, s.label) === "meta::marketing_access_token");
+    expect(slot?.title).toBe("Meta — token da Marketing API");
+    expect(slot?.envName).toBe("META_MARKETING_ACCESS_TOKEN");
+    for (const fn of [
+      "meta-sync", "meta-campaign-action", "meta-ads-connect", "meta-ad-scores", "meta-traffic-manager", "meta-campaign-planner",
+    ]) {
+      expect(slot?.usedBy, fn).toContain(fn);
+    }
+  });
 });
 
 /**

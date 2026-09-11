@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
-import { date } from "@/lib/format";
+import { date, monthStart } from "@/lib/format";
+import { functionErrorMessage } from "@/lib/functionError";
 import { dbError } from "@/lib/supabaseError";
 
 /**
@@ -89,15 +90,36 @@ export type AdCampaignRow = {
   lead_source_id: string | null;
   total_spend: number;
   synced_at: string | null;
-  /** Recorte que `total_spend` cobre quando ele veio de relatório importado
-   *  (0113). Nulo nos dois = gasto digitado. */
+  /** Recorte que `total_spend` cobre quando ele veio do livro — relatório
+   *  importado (0113) ou sincronização (0115). Nulo nos dois = gasto digitado. */
   spend_period_start: string | null;
   spend_period_end: string | null;
+  /** Conta de anúncios de onde a campanha é sincronizada (0115). Preenchida =
+   *  nome, status, verba e gasto vêm da Meta e o banco não os deixa editar. */
+  meta_account_id: string | null;
+  /** Canal que a sincronização leu nos conjuntos da campanha. */
+  meta_channel: CanalMeta | null;
+  /** Status de ENTREGA na Meta (CAMPAIGN_PAUSED, WITH_ISSUES…), que pode
+   *  diferir do `status` configurado. */
+  meta_effective_status: string | null;
+  meta_budget_level: NivelDeVerba | null;
+  /** Construtora sugerida pelo nome no padrão F0 — só sugestão: o vínculo é
+   *  `developer_id` e exige um clique. */
+  developer_suggested_id: string | null;
+  /** Procedência de `total_spend` segundo o livro. Nulo = digitado. */
+  spend_source: SpendSource | null;
 };
+
+/** Canal da campanha segundo a sincronização (0115, `canalDaCampanha`). */
+export type CanalMeta = "formulario" | "whatsapp" | "landing_page" | "misto" | "outro";
+/** Onde a verba mora na Meta: na campanha (CBO), nos conjuntos (ABO) ou total. */
+export type NivelDeVerba = "campaign" | "adset" | "lifetime";
+export type SpendSource = "planilha" | "meta_api" | "misto";
 
 const CAMPOS_CAMPANHA =
   "id,external_id,platform,name,developer_id,status,daily_budget,lifetime_budget,"
-  + "starts_on,ends_on,lead_source_id,total_spend,synced_at,spend_period_start,spend_period_end";
+  + "starts_on,ends_on,lead_source_id,total_spend,synced_at,spend_period_start,spend_period_end,"
+  + "meta_account_id,meta_channel,meta_effective_status,meta_budget_level,developer_suggested_id,spend_source";
 
 export async function listAdCampaigns(): Promise<AdCampaignRow[]> {
   // `untyped` pelo mesmo motivo das RPCs acima: as colunas da 0089 ainda não
@@ -144,31 +166,39 @@ export const adStatusLabel = (status: string | null): string =>
  * De onde veio o gasto da campanha — a MESMA frase nas duas tabelas de
  * `/marketing`.
  *
- * Três origens possíveis, e a tela precisa distinguir as três porque este é o
- * número que divide o CPL e o ROAS:
+ * Quatro origens, e a tela precisa distinguir todas porque este é o número que
+ * divide o CPL e o ROAS:
  *
- *   · RELATÓRIO IMPORTADO (0113) — tem período. O período aparece junto de
- *     propósito: o gasto importado vale pelo recorte que o gestor exportou, e
- *     um relatório de agosto lido como gasto vitalício subestimaria o CPL.
- *   · digitado com data — o `synced_at` de semente, sem nenhuma importação por
- *     trás. Continua dizendo "digitado": escrita em dois lugares, a frase
- *     divergiu uma vez ("sincronizado 28/07/2026" na tabela de baixo, para a
- *     linha que o painel dava como digitada) e afirmou uma conversa com a Meta
- *     que nunca houve.
- *   · digitado, sem data.
- *
- * Nada aqui fala com a Marketing API: o número importado veio de um arquivo que
- * uma pessoa exportou do Gerenciador de Anúncios.
+ *   · SINCRONIZADO DA META (0115, `spend_source = 'meta_api'`) — o livro só tem
+ *     dias da Marketing API. A frase diz até quando E desde quando: a
+ *     sincronização cobre a janela dela, não a vida inteira da campanha, e
+ *     "sincronizado" sem o início passaria por gasto vitalício.
+ *   · RELATÓRIO IMPORTADO (0113) — tem período, e ele aparece junto: um
+ *     relatório de agosto lido como gasto vitalício subestimaria o CPL. Linha
+ *     anterior à 0115 tem período e procedência nula: só a planilha existia.
+ *   · MISTO — o livro tem recortes das duas fontes (cada dia de uma só: a 0114
+ *     impede sobreposição).
+ *   · digitado, com ou sem data — o `synced_at` de semente, sem nada por trás,
+ *     continua dizendo "digitado": escrita em dois lugares, a frase divergiu uma
+ *     vez ("sincronizado 28/07/2026" para a linha que o painel dava como
+ *     digitada) e afirmou uma conversa com a Meta que nunca houve.
  */
 export const origemDoGasto = (
   syncedAt: string | null,
   spendPeriodStart?: string | null,
   spendPeriodEnd?: string | null,
+  spendSource?: SpendSource | null,
 ): string => {
+  if (spendSource === "meta_api") {
+    const ate = spendPeriodEnd ?? syncedAt;
+    const desde = spendPeriodStart && spendPeriodStart !== spendPeriodEnd ? ` · desde ${date(spendPeriodStart)}` : "";
+    return ate ? `sincronizado da Meta até ${date(ate)}${desde}` : "sincronizado da Meta";
+  }
   if (spendPeriodStart && spendPeriodEnd) {
-    return spendPeriodStart === spendPeriodEnd
-      ? `relatório da Meta · ${date(spendPeriodStart)}`
-      : `relatório da Meta · ${date(spendPeriodStart)} a ${date(spendPeriodEnd)}`;
+    const periodo = spendPeriodStart === spendPeriodEnd
+      ? date(spendPeriodStart)
+      : `${date(spendPeriodStart)} a ${date(spendPeriodEnd)}`;
+    return spendSource === "misto" ? `misto: relatório importado e Meta · ${periodo}` : `relatório importado · ${periodo}`;
   }
   return syncedAt ? `digitado · atualizado ${date(syncedAt)}` : "digitado";
 };
@@ -187,6 +217,9 @@ export type AdCampaignInput = {
   endsOn?: string | null;
   leadSourceId?: string | null;
   totalSpend?: number;
+  /** Preenchido = campanha sincronizada (0115): identificação, nome, status,
+   *  verba e gasto ficam fora do patch de `updateAdCampaign`. */
+  metaAccountId?: string | null;
 };
 
 /** Qual campo impediu o salvamento — a tela usa isto para focar o campo, e não
@@ -297,27 +330,53 @@ export async function createAdCampaign(input: AdCampaignInput): Promise<void> {
 export async function updateAdCampaign(id: string, patch: AdCampaignInput): Promise<void> {
   const problema = problemaNaCampanha(patch);
   if (problema) throw new Error(problema.frase);
+  // Campanha sincronizada (0115): identificação, nome, status, verba e gasto
+  // vêm da Meta, e o gatilho `ad_campaigns_guard_meta` recusa com 42501 o patch
+  // que os traga diferentes. Reenviar "os mesmos" também não serve: o
+  // formulário aberto antes da sincronização das 06:00 os mandaria VELHOS, e
+  // salvar só a construtora viraria recusa. Fica o vínculo, que é o editável.
+  const daPlataforma = patch.metaAccountId
+    ? {}
+    : {
+        external_id: patch.externalId,
+        platform: patch.platform,
+        name: patch.name,
+        status: patch.status ?? null,
+        // Verba só entra quando o chamador a informou: omitir preserva o valor
+        // já lançado, e `null` explícito é "sem verba".
+        ...(patch.dailyBudget !== undefined ? { daily_budget: patch.dailyBudget } : {}),
+        ...(patch.lifetimeBudget !== undefined ? { lifetime_budget: patch.lifetimeBudget } : {}),
+        ...(patch.totalSpend !== undefined ? { total_spend: patch.totalSpend } : {}),
+      };
   const { data, error } = await untyped
     .from("ad_campaigns")
     .update({
-      external_id: patch.externalId,
-      platform: patch.platform,
-      name: patch.name,
+      ...daPlataforma,
       developer_id: patch.developerId ?? null,
-      status: patch.status ?? null,
       lead_source_id: patch.leadSourceId ?? null,
       starts_on: patch.startsOn ?? null,
       ends_on: patch.endsOn ?? null,
-      // Verba só entra quando o chamador a informou: omitir preserva o valor
-      // já lançado, e `null` explícito é "sem verba".
-      ...(patch.dailyBudget !== undefined ? { daily_budget: patch.dailyBudget } : {}),
-      ...(patch.lifetimeBudget !== undefined ? { lifetime_budget: patch.lifetimeBudget } : {}),
-      ...(patch.totalSpend !== undefined ? { total_spend: patch.totalSpend } : {}),
     })
     .eq("id", id)
     .select("id");
   if (error?.code === "23505") throw new Error(ID_EXTERNO_REPETIDO);
   if (error) throw dbError("salvar campanha", error);
+  if (!data?.length) throw new Error("Sem permissão para alterar campanhas (apenas admin e marketing).");
+}
+
+/**
+ * "Vincular" a construtora que a sincronização sugeriu pelo nome (F0) — um
+ * clique, gravando só `developer_id`, que é o campo que o gatilho da 0115
+ * deixa editável na campanha sincronizada. `select("id")` pelo mesmo motivo de
+ * `deleteAdCampaign`: o RLS recusa filtrando a linha, sem erro.
+ */
+export async function vincularConstrutora(id: string, developerId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("ad_campaigns")
+    .update({ developer_id: developerId })
+    .eq("id", id)
+    .select("id");
+  if (error) throw dbError("vincular a construtora à campanha", error);
   if (!data?.length) throw new Error("Sem permissão para alterar campanhas (apenas admin e marketing).");
 }
 
@@ -519,6 +578,215 @@ export async function developerSummary(period: string | null): Promise<Developer
     sales: Number(row.sales ?? 0),
     vgv: Number(row.vgv ?? 0),
   }));
+}
+
+// -----------------------------------------------------------------------------
+// Números "segundo a Meta" (0115) — o front só exibe
+//
+// CTR, CPC, CPM, resultado do canal e custo por resultado são calculados nas
+// RPCs `meta_metricas` e `meta_metricas_por_canal`, que os alertas e as IAs
+// também leem. Refazer a conta aqui seria a mesma regra em dois lugares — a que
+// divergiu no sistema antigo. O CPL e o ROAS do CRM continuam nas funções puras
+// logo abaixo, com a mesma definição.
+// -----------------------------------------------------------------------------
+
+export const CANAL_META_LABEL: Record<CanalMeta, string> = {
+  formulario: "Formulário",
+  whatsapp: "WhatsApp",
+  landing_page: "Landing page",
+  misto: "Misto",
+  outro: "Outro",
+};
+
+/** Uma campanha no período, somada dos insights diários (`meta_metricas`). */
+export type MetaMetricaRow = {
+  campaign_id: string;
+  external_id: string;
+  name: string;
+  account_id: string | null;
+  channel: CanalMeta;
+  spend: number;
+  impressions: number;
+  /** Só em período de UM dia: a Meta conta pessoa única por período, e somar
+   *  dias inventaria número. A RPC devolve nulo nos outros. */
+  reach: number | null;
+  clicks: number;
+  link_clicks: number;
+  /** Fração (0,0123 = 1,23%): cliques no link ÷ impressões — o "CTR (link)" do
+   *  Gerenciador. Nulo quando não houve impressão. */
+  ctr: number | null;
+  /** Custo por clique no link. */
+  cpc: number | null;
+  cpm: number | null;
+  leads_form: number;
+  conversations: number;
+  lp_leads: number;
+  /** Resultado do canal da campanha, contado pela sincronização. */
+  resultados: number;
+  custo_por_resultado: number | null;
+  dias: number;
+  /** Primeiro dia sincronizado da conta: período que começa antes está incompleto. */
+  cobertura_desde: string | null;
+};
+
+/** Um canal no período (`meta_metricas_por_canal`): gasto das campanhas dele ÷ resultados delas. */
+export type MetaCanalRow = {
+  channel: CanalMeta;
+  spend: number;
+  resultados: number;
+  custo_por_resultado: number | null;
+  campanhas: number;
+};
+
+/** O PostgREST entrega `numeric` como texto; nulo continua nulo — razão sem
+ *  denominador não vira zero. */
+const numeroOuNulo = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
+export async function fetchMetaMetricas(from: string, to: string): Promise<MetaMetricaRow[]> {
+  const { data, error } = await untyped.rpc("meta_metricas", { p_from: from, p_to: to });
+  if (error) throw dbError("ler os números da Meta", error);
+  return ((data ?? []) as MetaMetricaRow[]).map((r) => ({
+    ...r,
+    spend: Number(r.spend ?? 0),
+    impressions: Number(r.impressions ?? 0),
+    reach: numeroOuNulo(r.reach),
+    clicks: Number(r.clicks ?? 0),
+    link_clicks: Number(r.link_clicks ?? 0),
+    ctr: numeroOuNulo(r.ctr),
+    cpc: numeroOuNulo(r.cpc),
+    cpm: numeroOuNulo(r.cpm),
+    leads_form: Number(r.leads_form ?? 0),
+    conversations: Number(r.conversations ?? 0),
+    lp_leads: Number(r.lp_leads ?? 0),
+    resultados: Number(r.resultados ?? 0),
+    custo_por_resultado: numeroOuNulo(r.custo_por_resultado),
+    dias: Number(r.dias ?? 0),
+  }));
+}
+
+export async function fetchMetaPorCanal(from: string, to: string): Promise<MetaCanalRow[]> {
+  const { data, error } = await untyped.rpc("meta_metricas_por_canal", { p_from: from, p_to: to });
+  if (error) throw dbError("ler os números da Meta por canal", error);
+  return ((data ?? []) as MetaCanalRow[]).map((r) => ({
+    channel: r.channel,
+    spend: Number(r.spend ?? 0),
+    resultados: Number(r.resultados ?? 0),
+    custo_por_resultado: numeroOuNulo(r.custo_por_resultado),
+    campanhas: Number(r.campanhas ?? 0),
+  }));
+}
+
+export type MetaSyncRun = {
+  status: "rodando" | "ok" | "falhou";
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+};
+
+/** Uma conta de anúncios e a execução mais recente dela. */
+export type MetaSyncConta = {
+  id: string;
+  act_id: string;
+  name: string | null;
+  enabled: boolean;
+  last_sync_ok_at: string | null;
+  last_sync_attempt_at: string | null;
+  /** Limpo pela sincronização boa; gravado pela que falha. */
+  last_sync_error: string | null;
+  ultima: MetaSyncRun | null;
+};
+
+/**
+ * Onde a sincronização está, por conta: a última boa (a data dos números da
+ * tela) e a última execução — que diz se falhou, por quê e quando, ou se há uma
+ * rodando agora. Leitura comum, sob RLS (`reports.view_finance`).
+ */
+export async function fetchMetaSyncStatus(): Promise<MetaSyncConta[]> {
+  const [contas, execucoes] = await Promise.all([
+    untyped
+      .from("meta_ad_accounts")
+      .select("id,act_id,name,enabled,last_sync_ok_at,last_sync_attempt_at,last_sync_error")
+      .order("name"),
+    // ponytail: as 50 execuções mais recentes bastam para achar a última de
+    // cada conta; uma consulta por conta (limit 1) quando houver dezenas delas.
+    untyped
+      .from("meta_sync_runs")
+      .select("account_id,status,error,started_at,finished_at")
+      .order("started_at", { ascending: false })
+      .limit(50),
+  ]);
+  if (contas.error) throw dbError("ler as contas de anúncios", contas.error);
+  if (execucoes.error) throw dbError("ler as sincronizações com a Meta", execucoes.error);
+  const ultima = new Map<string, MetaSyncRun>();
+  for (const r of (execucoes.data ?? []) as (MetaSyncRun & { account_id: string })[]) {
+    if (!ultima.has(r.account_id)) {
+      ultima.set(r.account_id, { status: r.status, error: r.error, started_at: r.started_at, finished_at: r.finished_at });
+    }
+  }
+  return ((contas.data ?? []) as Omit<MetaSyncConta, "ultima">[]).map((c) => ({ ...c, ultima: ultima.get(c.id) ?? null }));
+}
+
+export type ResultadoDaSincronizacao = {
+  ok: boolean;
+  contas: {
+    account_id: string;
+    status: "ok" | "falhou" | "em_andamento";
+    erro?: string;
+    campanhas?: number;
+    conflitos?: string[];
+  }[];
+};
+
+/**
+ * "Sincronizar agora": a edge `meta-sync` no modo manual (sem `account_id`,
+ * todas as contas ligadas). Quem pode é conferido lá, pelo mesmo
+ * `has_permission('marketing.meta_manage')` do banco; a tela só esconde o botão.
+ * Falha da Meta não vira número: a execução fica 'falhou' com a frase, e a tela
+ * continua nos números da última sincronização boa.
+ */
+export async function sincronizarMeta(accountId?: string): Promise<ResultadoDaSincronizacao> {
+  const { data, error } = await supabase.functions.invoke<ResultadoDaSincronizacao>("meta-sync", {
+    body: accountId ? { account_id: accountId } : {},
+  });
+  if (error) throw new Error(await functionErrorMessage(error, "Não foi possível sincronizar com a Meta."));
+  if (!data || !Array.isArray(data.contas)) throw new Error("A sincronização respondeu sem dizer o que fez.");
+  return data;
+}
+
+export const PERIODOS_META = ["ontem", "7d", "30d", "mes_atual", "mes_anterior"] as const;
+export type PeriodoMeta = (typeof PERIODOS_META)[number];
+
+export const PERIODO_META_LABEL: Record<PeriodoMeta, string> = {
+  ontem: "Ontem",
+  "7d": "7 dias, até ontem",
+  "30d": "30 dias, até ontem",
+  mes_atual: "Mês atual, até hoje",
+  mes_anterior: "Mês anterior",
+};
+
+const diaLocal = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/**
+ * O recorte `[from, to]` (`YYYY-MM-DD`, inclusivo) de cada período do seletor.
+ *
+ * Pelo construtor LOCAL de `Date`, e não por `toISOString`: depois das 21h em
+ * Brasília o UTC já é amanhã (a armadilha que `monthStart` documenta). "Ontem"
+ * é o único período de um dia — e por isso o único em que o alcance existe. 7 e
+ * 30 dias param em ontem, como no Gerenciador: hoje ainda está acontecendo. O
+ * mês atual vai até hoje e diz isso no rótulo, para não passar por mês inteiro.
+ */
+export function periodoMeta(periodo: PeriodoMeta, hoje: Date = new Date()): { from: string; to: string } {
+  const [ano, mes, dia] = [hoje.getFullYear(), hoje.getMonth(), hoje.getDate()];
+  const antes = (dias: number) => diaLocal(new Date(ano, mes, dia - dias));
+  const recortes: Record<PeriodoMeta, () => { from: string; to: string }> = {
+    ontem: () => ({ from: antes(1), to: antes(1) }),
+    "7d": () => ({ from: antes(7), to: antes(1) }),
+    "30d": () => ({ from: antes(30), to: antes(1) }),
+    mes_atual: () => ({ from: monthStart(hoje), to: antes(0) }),
+    mes_anterior: () => ({ from: diaLocal(new Date(ano, mes - 1, 1)), to: diaLocal(new Date(ano, mes, 0)) }),
+  };
+  return recortes[periodo]();
 }
 
 // -----------------------------------------------------------------------------

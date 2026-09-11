@@ -160,11 +160,27 @@ begin
   perform pg_temp.check113(c.spend_period_start = date '2026-08-01' and c.spend_period_end = date '2026-09-30',
     'o período coberto passa a ir de agosto a setembro');
 
-  -- Recorte DENTRO de agosto: se entrasse ao lado, os dias 10 a 20 contariam
-  -- duas vezes no mesmo total.
+  -- Recorte DENTRO de agosto (10-20/08) apagaria os outros 20 dias do mês
+  -- já lançado: desde a 0121 a importação recusa com 22023 e não mexe em nada.
+  -- Antes este bloco usava exatamente esse recorte e esperava a substituição,
+  -- que era o defeito (dias perdidos sem aviso).
+  begin
+    perform public.marketing_import_ad_spend($json$[
+      {"campaign_id":"7e000000-0000-0000-0000-000000011301","period_start":"2026-08-10","period_end":"2026-08-20","spend":500.00}
+    ]$json$::jsonb, 'recorte-parcial.csv');
+    perform pg_temp.check113(false, 'recorte que não cobre o mês lançado tem de ser recusado');
+  exception when invalid_parameter_value then
+    perform pg_temp.check113(true, 'recorte 10-20/08 sobre 01-31/08 leva 22023');
+  end;
+  select * into c from public.ad_campaigns where id = '7e000000-0000-0000-0000-000000011301';
+  perform pg_temp.check113(c.total_spend = 6250.90,
+    format('o recorte recusado não muda o total (ficou %s)', c.total_spend));
+
+  -- O mesmo mês reenviado cobre o lançado: substitui em vez de somar, senão
+  -- agosto contaria duas vezes no mesmo total.
   select * into a from public.marketing_import_ad_spend($json$[
-    {"campaign_id":"7e000000-0000-0000-0000-000000011301","period_start":"2026-08-10","period_end":"2026-08-20","spend":500.00}
-  ]$json$::jsonb, 'recorte-parcial.csv');
+    {"campaign_id":"7e000000-0000-0000-0000-000000011301","period_start":"2026-08-01","period_end":"2026-08-31","spend":500.00}
+  ]$json$::jsonb, 'agosto-corrigido.csv');
 
   select count(*) into linhas from public.ad_campaign_spend
    where campaign_id = '7e000000-0000-0000-0000-000000011301';
@@ -310,7 +326,7 @@ begin
   set role authenticated;
   perform pg_temp.become113(adm);
 
-  -- A campanha já tem 01-31/08 e 10-20/08 substituído por ele (bloco 3). Este
+  -- A campanha já tem 01-31/08 (reenviado no bloco 3) e 01-30/09. Este
   -- insert vai DIRETO na tabela, que é o que a policy `for all` permite —
   -- exatamente o caminho que não apaga o recorte antigo.
   begin

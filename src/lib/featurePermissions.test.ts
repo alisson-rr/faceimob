@@ -24,6 +24,7 @@ const CATALOGO = [
   "cca.review", "reports.view_finance", "teams.manage",
   "users.manage_roles", "settings.integrations", "game.close_season",
   "pipeline.export",
+  "marketing.meta_manage",
 ];
 
 /** Os 3 sem leitor: continuam no catálogo, mas a tela não pode prometer efeito. */
@@ -187,6 +188,20 @@ describe("featurePermissions", () => {
     );
     expect(m0045).toContain("has_permission('reports.view_finance')");
     expect(enforcementLabel(enforcementOf("reports.view_finance"))).toBe("Aplicada no banco");
+  });
+
+  it("marketing.meta_manage trava no banco desde a 0116 e nasce só para o marketing", () => {
+    // O `where` promete ao admin quem já nasce com o switch ligado; a promessa
+    // tem de sair da concessão escrita na migration, não do próprio mapa.
+    const m0116 = readFileSync(
+      path.resolve(MIGRATIONS, "20260911160000_0116_meta_acoes_ia.sql"),
+      "utf8",
+    );
+    expect(m0116).toContain("has_permission('marketing.meta_manage')");
+    expect(m0116).toMatch(/\('marketing',\s*'marketing\.meta_manage',\s*true\)/);
+    expect(m0116).not.toMatch(/\('(director|manager|broker|cca|sdr)',\s*'marketing\.meta_manage'/);
+    expect(FEATURE_PERMISSIONS["marketing.meta_manage"].where).toMatch(/só para o marketing/);
+    expect(enforcementLabel(enforcementOf("marketing.meta_manage"))).toBe("Aplicada no banco");
   });
 
   it("menu.admin_allowed_ips avisa que conceder o menu libera dado no banco", () => {

@@ -10,7 +10,17 @@ import type { Database } from "@/integrations/supabase/types";
 export const SEM_SELECAO = "__nenhum__";
 
 export type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"];
-export type Conversation = Database["public"]["Tables"]["sdr_conversations"]["Row"];
+/**
+ * Dono e resolução da conversa (0120) ainda não estão no `types.ts` gerado. A
+ * interseção cai no próximo `supabase gen types`, quando a linha já trouxer as
+ * colunas.
+ */
+export type Conversation = Database["public"]["Tables"]["sdr_conversations"]["Row"] & {
+  assumed_by: string | null;
+  assumed_at: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+};
 /** Roleta que recebe o lead depois do SDR (`sdr_agents.handoff_group_id`). */
 export type Group = Pick<
   Database["public"]["Tables"]["distribution_groups"]["Row"],
@@ -22,7 +32,12 @@ export type Group = Pick<
  * o declarava à mão saiu: o `types.ts` regerado já traz a coluna, e mantê-la
  * opcional aqui afrouxava um campo que a linha sempre tem.
  */
-export type Message = Database["public"]["Tables"]["sdr_messages"]["Row"];
+export type Message = Database["public"]["Tables"]["sdr_messages"]["Row"] & {
+  /** 0120: mídia que o lead mandou e o humano que escreveu a linha `broker`. */
+  media_type: string | null;
+  media_id: string | null;
+  sent_by: string | null;
+};
 export type Source = Database["public"]["Tables"]["lead_sources"]["Row"];
 export type WhatsAppTemplate = Database["public"]["Tables"]["whatsapp_templates"]["Row"];
 export type ListStats = { total: number; pending: number; sent: number; replied: number; failed: number };
@@ -97,7 +112,8 @@ export const ondeCadastrarIa = (podeAbrirIntegracoes: boolean) =>
 /**
  * Status da conversa em português. `human` entrou na 0064: o
  * `whatsapp-inbound-webhook` só atende conversa `active`, então marcar `human`
- * é o que faz o robô calar sem encerrar o atendimento.
+ * é o que faz o robô calar sem encerrar o atendimento. `resolved` (0120) é o
+ * encerramento pela caixa; mensagem nova do lead a reabre como `human`.
  */
 export const STATUS_CONVERSA: Record<string, string> = {
   active: "Robô atendendo",
@@ -106,7 +122,98 @@ export const STATUS_CONVERSA: Record<string, string> = {
   disqualified: "Desqualificada",
   handed_off: "Entregue à roleta",
   abandoned: "Abandonada",
+  resolved: "Resolvida",
 };
+
+/** Filtro padrão da caixa: tudo menos as resolvidas. */
+export const FILTRO_ABERTAS = "__abertas__";
+export const FILTRO_TODAS = "__todas__";
+
+export const OPCOES_DE_SITUACAO: { valor: string; rotulo: string }[] = [
+  { valor: FILTRO_ABERTAS, rotulo: "Em aberto (sem as resolvidas)" },
+  { valor: FILTRO_TODAS, rotulo: "Todas as situações" },
+  ...Object.entries(STATUS_CONVERSA).map(([valor, rotulo]) => ({ valor, rotulo })),
+];
+
+/**
+ * O recorte que a consulta leva ao banco. A lista é paginada: filtrar no
+ * navegador só o que já veio diria "nenhuma resolvida" com resolvidas além da
+ * primeira página.
+ */
+export function recorteDaSituacao(valor: string): { op: "eq" | "neq"; status: string } | null {
+  if (valor === FILTRO_TODAS) return null;
+  if (valor === FILTRO_ABERTAS) return { op: "neq", status: "resolved" };
+  return { op: "eq", status: valor };
+}
+
+/**
+ * Quem falou, por escrito, em toda bolha. `broker` é o humano e, desde a 0120,
+ * `sent_by` diz qual; o nome vem da view `sdr_operator_names`, porque
+ * `profiles_select` só mostra ao SDR o próprio perfil. Sem nome resolvido o
+ * rótulo fica "Humano" — nunca um nome chutado.
+ */
+export function rotuloDoAutor(
+  m: Pick<Message, "author" | "agent_id" | "sent_by">,
+  nomeDoAgente: (id: string) => string,
+  nomeDoOperador: (id: string) => string | null,
+): string {
+  if (m.author === "lead") return "Lead";
+  if (m.author === "agent") return m.agent_id ? `IA · ${nomeDoAgente(m.agent_id)}` : "IA";
+  if (m.author === "broker") {
+    const nome = m.sent_by ? nomeDoOperador(m.sent_by) : null;
+    return nome ? `Humano · ${nome}` : "Humano";
+  }
+  return "Sistema";
+}
+
+const ROTULO_MIDIA: Record<string, string> = {
+  imagem: "[imagem]",
+  video: "[vídeo]",
+  documento: "[documento]",
+  outro: "[mídia]",
+};
+
+/**
+ * Selo da mídia que o lead mandou. O áudio que não transcreveu chega com o
+ * corpo começando por "[áudio" — `[áudio não transcrito]` numa conversa e
+ * `[áudio]` de número sem lead, gravados pelo `whatsapp-inbound-webhook`; o
+ * transcrito traz o próprio texto.
+ */
+export function seloDeMidia(
+  m: { media_type?: string | null; body: string | null },
+): { rotulo: string; falhou: boolean } | null {
+  if (!m.media_type) return null;
+  if (m.media_type === "audio") {
+    const falhou = (m.body ?? "").trim().startsWith("[áudio");
+    return { rotulo: falhou ? "áudio não transcrito" : "áudio transcrito", falhou };
+  }
+  return { rotulo: ROTULO_MIDIA[m.media_type] ?? "[mídia]", falhou: false };
+}
+
+/**
+ * O que a tela oferece em cada conversa, espelhando o banco:
+ *  · escrever é da policy `sdr_conversations_write` (admin, sócio, marketing,
+ *    sdr) — diretor e gerente leem e não veem botão;
+ *  · assumir vale a partir de qualquer situação: o lead que escreve depois de
+ *    entregue ou resolvido entra na conversa e precisa de resposta;
+ *  · devolver ao robô é recusado pelo gatilho da 0120 em conversa já entregue
+ *    a corretor (o robô requalificaria e o `sdr_handoff` tiraria o lead dele);
+ *  · responder é de quem assumiu: é para o dono que o sino avisa a próxima
+ *    mensagem, e é o dono que segura o lead fora da roleta.
+ */
+export function acoesDaConversa(
+  c: Pick<Conversation, "status" | "assumed_by" | "handed_off_at">,
+  eu: string | null,
+  podeEscrever: boolean,
+) {
+  const minha = c.status === "human" && !!eu && c.assumed_by === eu;
+  return {
+    assumir: podeEscrever && !minha,
+    devolver: podeEscrever && c.status === "human" && !c.handed_off_at,
+    resolver: podeEscrever && (c.status === "active" || c.status === "human"),
+    responder: podeEscrever && minha,
+  };
+}
 
 /**
  * Papel do agente em português. O seletor da aba Agentes e a lista ao lado leem

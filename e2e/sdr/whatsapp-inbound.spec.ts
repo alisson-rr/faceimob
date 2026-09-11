@@ -135,10 +135,14 @@ test("método fora de GET/POST é 405 — e não um 500 que a Meta reentregaria"
  * `sdr_messages_touch` não roda e o selo "parada há X h" fica na lista logo
  * depois de o operador ter respondido.
  *
+ * `sdr_messages.sent_by` (0120) é o mesmo risco na resposta humana, com uma
+ * diferença: ali a chave vai de propósito (é quem respondeu), então o que se
+ * exige é a retentativa que a tira no PGRST204 — como o `insertMessages` faz.
+ *
  * Este teste é de fonte, e não de banco, porque a falha só aparece na janela
  * entre o deploy e a migration — janela que o teste de integração não alcança.
  */
-test("o insert em sdr_messages não depende da coluna da 0082", () => {
+test("o insert em sdr_messages não depende das colunas da 0082 e da 0120", () => {
   const shared = readFileSync(resolve("supabase/functions/_shared/sdrAgent.ts"), "utf8");
   // Quem grava a autoria do turno passa pelo helper que repete sem a chave.
   expect(shared, "o turno do agente voltou a gravar sem tolerância").toMatch(/async function insertMessages/);
@@ -155,9 +159,24 @@ test("o insert em sdr_messages não depende da coluna da 0082", () => {
     "supabase/functions/meta-ads-webhook/index.ts",
   ]) {
     const fonte = readFileSync(resolve(arquivo), "utf8");
-    const payload = /from\(['"]sdr_messages['"]\)\.insert\(\{([\s\S]*?)\n\s*\}\)/.exec(fonte)?.[1];
+    // O objeto gravado: o literal do `insert({...})` ou a constante que o
+    // `insert(nome)` recebe.
+    const nome = /from\(['"]sdr_messages['"]\)\.insert\((\w+)\)/.exec(fonte)?.[1];
+    const payload = (nome
+      ? new RegExp(`const ${nome} = \\{([\\s\\S]*?)\\n\\s*\\};`)
+      : /from\(['"]sdr_messages['"]\)\.insert\(\{([\s\S]*?)\n\s*\}\)/
+    ).exec(fonte)?.[1];
     expect(payload, `${arquivo}: o insert mudou de forma — ajuste este teste junto`).toBeDefined();
     expect(payload, `${arquivo}: chave que só existe depois da 0082 num insert que roda antes dela`)
       .not.toContain("agent_id");
+
+    // Quem manda `sent_by` precisa da retentativa que tira a chave no PGRST204:
+    // a Meta já entregou quando o insert roda, e sem ela a resposta some do
+    // histórico enquanto a 0120 não sobe.
+    if (payload?.includes("sent_by")) {
+      expect(fonte, `${arquivo}: sent_by (0120) sem a retentativa do PGRST204`).toMatch(
+        /code\s*[!=]==\s*['"]PGRST204['"][\s\S]*?\{\s*sent_by:\s*\w+\s*,\s*\.\.\.(\w+)\s*\}\s*=\s*\w+;[\s\S]*?from\(['"]sdr_messages['"]\)\.insert\(\1\)/,
+      );
+    }
   }
 });

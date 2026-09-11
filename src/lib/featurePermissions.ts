@@ -117,6 +117,10 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
     where: "Pipeline: botão \"Extrair planilha\". O arquivo sai com VGV, percentual de rateio e VGV POR CORRETOR do recorte inteiro — a folha de comissão da operação. A trava é de TELA: a planilha é montada no navegador a partir dos negócios que o RLS já entregou, então desligar aqui remove o caminho de um clique, não o acesso ao dado",
     enforcedBy: "tela",
   },
+  "marketing.meta_manage": {
+    where: "Marketing · Meta: pausar, ativar e mudar verba de campanha na Meta e aprovar ou recusar a fila do gestor IA (RPCs meta_action_create e meta_action_decide, 0116), e rodar a nota por anúncio e o gestor IA (meta_ai_run_start). O mesmo switch libera sincronizar agora, salvar plano e mudar os limites dos alertas. Nasce ligado só para o marketing; administrador e sócio passam sempre. Diretor e gerente leem os números por reports.view_finance, mas só mexem na Meta se o switch for ligado para eles",
+    enforcedBy: "banco",
+  },
 
   // Os três sem leitor. A frase tem de dizer QUEM decide, senão o admin fica
   // sem saber onde mexer para conseguir o efeito que procurava no switch.

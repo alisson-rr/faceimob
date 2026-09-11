@@ -91,8 +91,10 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     label: "api_key",
     title: "OpenAI — chave de API",
     envName: "OPENAI_API_KEY",
-    usedBy: "sdr-agent-chat",
-    help: "Agente de SDR que qualifica o lead antes da distribuição.",
+    // A mesma chave serve ao robô, à transcrição dos áudios e às análises de IA
+    // do marketing: quem a revoga precisa ler que para tudo isso junto.
+    usedBy: "sdr-agent-chat, whatsapp-inbound-webhook, meta-ad-scores, meta-traffic-manager, meta-campaign-planner",
+    help: "Agente de SDR, transcrição dos áudios do WhatsApp e as análises de IA do marketing (nota por anúncio, gestor de tráfego e planejador).",
   },
   {
     provider: "meta",
@@ -147,6 +149,14 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     // Sem `formato`: é o NOME de um template aprovado na Meta, e nenhuma regra
     // de forma separa um nome válido de um inválido — quem confere é o envio.
     help: "Template aprovado (categoria Utility) com UMA variável no corpo. Sem ele o aviso sai como texto livre, que a Meta recusa fora da janela de 24 h (código 131047).",
+  },
+  {
+    provider: "meta",
+    label: "marketing_access_token",
+    title: "Meta — token da Marketing API",
+    envName: "META_MARKETING_ACCESS_TOKEN",
+    usedBy: "meta-sync, meta-campaign-action, meta-ads-connect, meta-ad-scores, meta-traffic-manager, meta-campaign-planner",
+    help: "Token de usuário de sistema com ads_read e ads_management. Lê gasto, resultados e o estado das contas de anúncios e executa pausar, ativar e mudar verba aprovados no CRM.",
   },
   {
     provider: "voice_ai",

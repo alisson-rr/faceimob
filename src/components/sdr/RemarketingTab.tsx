@@ -37,7 +37,6 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
   const [groupId, setGroupId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [editando, setEditando] = useState<Rlist | null>(null);
-  const [testPhone, setTestPhone] = useState("");
   const [ocupado, setOcupado] = useState(false);
   // Quais listas estão disparando AGORA. Booleano global congelava os botões de
   // todas as listas por até um minuto sem mudar nada na tela — o operador lia
@@ -170,11 +169,11 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
   }
 
   async function enviarTeste(listId: string) {
-    const fone = testPhone.replace(/\D/g, "");
-    if (fone.length < 10) return toast.error("Informe o telefone de teste com DDD.");
+    // O destino é o telefone do perfil de quem pede, lido no servidor: a edge
+    // não aceita número vindo do corpo (senão viraria disparo para qualquer um).
     setOcupado(true);
-    const { error } = await supabase.functions.invoke("sdr-whatsapp-broadcast", {
-      body: { list_id: listId, test_phone: fone },
+    const { data, error } = await supabase.functions.invoke<{ destino?: string }>("sdr-whatsapp-broadcast", {
+      body: { list_id: listId, test: true },
     });
     setOcupado(false);
     setVersaoDados(v => v + 1);
@@ -184,7 +183,7 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
       return toast.error(falha.mensagem);
     }
     setSemCredencial(null);
-    toast.success("Teste enviado para o número informado.");
+    toast.success(data?.destino ? `Teste enviado para o seu telefone (${data.destino}).` : "Teste enviado para o seu telefone.");
   }
 
   async function salvarEdicao() {
@@ -343,7 +342,7 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
                             de qual — e a diferença é uma mensagem para cliente real. */}
                         <span className="sr-only"> da lista {l.name}</span>
                       </Button>
-                      <Button size="icon" variant="ghost" aria-label={`Configurar lista ${l.name}`} onClick={() => { setEditando(editando?.id === l.id ? null : l); setTestPhone(""); }}>
+                      <Button size="icon" variant="ghost" aria-label={`Configurar lista ${l.name}`} onClick={() => setEditando(editando?.id === l.id ? null : l)}>
                         <Settings2 className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="icon" variant="ghost" aria-label={`Excluir lista ${l.name}`} onClick={() => setConfirmando({ tipo: "exclusao", lista: l })}><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -436,11 +435,8 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
                   <div className="flex flex-wrap items-end gap-2">
                     <Button size="sm" onClick={salvarEdicao} disabled={ocupado}>Salvar</Button>
                     <Button size="sm" variant="outline" onClick={() => setEditando(null)}>Fechar</Button>
-                    <div className="flex items-end gap-2 ml-auto">
-                      <div>
-                        <Label htmlFor={`rl-teste-${l.id}`} className="text-xs">Telefone para teste</Label>
-                        <Input id={`rl-teste-${l.id}`} className="w-44" placeholder="51999999999" value={testPhone} onChange={e => setTestPhone(e.target.value)} />
-                      </div>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <span className="text-xs text-muted-foreground">O teste vai para o telefone do seu perfil.</span>
                       <Button size="sm" variant="outline" disabled={ocupado || !l.template_id} onClick={() => enviarTeste(l.id)}>
                         Enviar teste
                       </Button>

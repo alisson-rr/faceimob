@@ -489,7 +489,8 @@ test.describe("Marketing · o que a coluna promete", () => {
     // mudar ali não pausa nada na Meta; o KPI e a etiqueta da tabela
     // apresentavam `ad_campaigns.status` como o estado real da campanha, e nada
     // no sistema escreve `synced_at` — o status é sempre digitado.
-    await expect(page.getByText(/status digitado; a Meta não é consultada/i)).toBeVisible();
+    // Com campanha sincronizada visível no filtro, a frase vira "digitado nas demais".
+    await expect(page.getByText(/status digitado; a Meta não é consultada|digitado nas demais/i)).toBeVisible();
     const statusNaTabela = tabelaDeCampanhas(page)
       .getByRole("row")
       .filter({ hasText: nome })

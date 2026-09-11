@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "../_shared/secrets.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
+import { META_GRAPH } from "../_shared/metaAds.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -134,7 +135,7 @@ async function sendWhatsApp(
       text: { body: text },
     };
 
-  const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+  const res = await fetch(`${META_GRAPH}/${phoneId}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(payload),

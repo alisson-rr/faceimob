@@ -18,6 +18,13 @@
  * brasileira. Cobrir o catálogo inteiro da Graph API seria decorar documentação
  * que envelhece; estes são os que a equipe vai encontrar.
  *
+ * O MESMO NÚMERO MUDA DE SENTIDO CONFORME A API. 100, 10 e 200 existem no
+ * WhatsApp (parâmetro inválido, falta de permissão) e na Marketing API (verba
+ * abaixo do mínimo, sem ads_management). Os da Marketing API ficam num catálogo
+ * à parte, que só vale com o contexto "anuncios" — passado por `metaGraph.ts`,
+ * o cliente das chamadas de anúncio. Sem contexto, esses códigos caem na
+ * mensagem crua da Meta, como o remarketing mostrava antes.
+ *
  * Sem `import` nenhum, de propósito: é isto que permite ao vitest carregar o
  * arquivo (o resto de `_shared/` importa `secrets.ts`, que lê `Deno.env` e
  * quebra fora do runtime de edge function).
@@ -36,6 +43,25 @@ export type ErroMeta = {
    * recusa é de regra, e o que precisa mudar é a mensagem, o número ou a conta.
    */
   vale_repetir: boolean;
+};
+
+/** 10, 200 e 294: a mesma recusa, com o número variando conforme a chamada. */
+const SEM_PERMISSAO_ANUNCIOS: Omit<ErroMeta, "codigo"> = {
+  titulo: "Token sem permissão para anúncios",
+  explicacao:
+    "O token da Marketing API não tem ads_management (ou ads_read) sobre esta conta, ou o app ainda não foi aprovado pela Meta para gerenciar anúncios.",
+  proximo_passo:
+    "No Business Manager, dê ao usuário de sistema acesso à conta, gere o token com ads_read e ads_management e regrave em Integrações.",
+  vale_repetir: false,
+};
+
+/** 17, 613 e 80004: limite de chamadas do usuário, da chamada e da conta de anúncios. */
+const LIMITE_MARKETING_API: Omit<ErroMeta, "codigo"> = {
+  titulo: "Limite de chamadas da Marketing API",
+  explicacao:
+    "A conta de anúncios ou o app passou do número de chamadas que a Meta permite num intervalo curto. Esta chamada foi recusada inteira.",
+  proximo_passo: "Espere alguns minutos e tente de novo — repetir em seguida só prolonga o bloqueio.",
+  vale_repetir: true,
 };
 
 const CATALOGO: Record<number, Omit<ErroMeta, "codigo">> = {
@@ -132,6 +158,36 @@ const CATALOGO: Record<number, Omit<ErroMeta, "codigo">> = {
 };
 
 /**
+ * Marketing API (sincronização, pausar, ativar e mudar verba): só com o contexto
+ * "anuncios", e consultado antes do CATALOGO — o 4 de lá manda clicar em
+ * Disparar, que é do remarketing.
+ */
+const CATALOGO_ANUNCIOS: Record<number, Omit<ErroMeta, "codigo">> = {
+  4: LIMITE_MARKETING_API,
+  10: SEM_PERMISSAO_ANUNCIOS,
+  200: SEM_PERMISSAO_ANUNCIOS,
+  294: SEM_PERMISSAO_ANUNCIOS,
+  17: LIMITE_MARKETING_API,
+  613: LIMITE_MARKETING_API,
+  80004: LIMITE_MARKETING_API,
+  100: {
+    titulo: "A Meta recusou um valor enviado",
+    explicacao:
+      "Algum parâmetro não foi aceito. Numa mudança de verba, costuma ser valor abaixo do mínimo diário da conta.",
+    proximo_passo: "Confira o valor no Gerenciador de Anúncios e tente de novo com um valor aceito.",
+    vale_repetir: false,
+  },
+  2635: {
+    titulo: "Versão da Marketing API desativada",
+    explicacao:
+      "O sistema chamou uma versão da API de anúncios que a Meta já desligou. Nenhuma sincronização ou ação na Meta funciona até atualizar.",
+    proximo_passo:
+      "Avise quem mantém o sistema: a versão é a constante META_GRAPH em supabase/functions/_shared/metaGraph.ts; trocar é uma linha e publicar as functions.",
+    vale_repetir: false,
+  },
+};
+
+/**
  * Extrai o código de erro de uma resposta da Graph API.
  *
  * A Meta devolve o erro em lugares diferentes conforme a chamada: no corpo do
@@ -160,11 +216,14 @@ export function codigoDoErroMeta(payload: unknown): number | null {
   return null;
 }
 
-/** A explicação, ou `null` para código que não conhecemos. */
-export function explicarErroMeta(payload: unknown): ErroMeta | null {
+/**
+ * A explicação, ou `null` para código que não conhecemos. `contexto` "anuncios"
+ * só nas chamadas da Marketing API; sem ele, vale o sentido do WhatsApp.
+ */
+export function explicarErroMeta(payload: unknown, contexto?: "anuncios"): ErroMeta | null {
   const codigo = codigoDoErroMeta(payload);
   if (codigo === null) return null;
-  const entrada = CATALOGO[codigo];
+  const entrada = (contexto === "anuncios" ? CATALOGO_ANUNCIOS[codigo] : undefined) ?? CATALOGO[codigo];
   return entrada ? { codigo, ...entrada } : null;
 }
 
@@ -175,13 +234,31 @@ export function explicarErroMeta(payload: unknown): ErroMeta | null {
  * O limite de 400 caracteres é do campo; cortar aqui evita que a frase útil
  * seja engolida por um JSON gigante.
  */
-export function descreverFalhaMeta(payload: unknown): string {
-  const erro = explicarErroMeta(payload);
-  if (erro) return `${erro.titulo}: ${erro.explicacao} → ${erro.proximo_passo}`.slice(0, 400);
+export function descreverFalhaMeta(payload: unknown, contexto?: "anuncios"): string {
+  // O cliente da Marketing API (metaGraph.ts) já lança a frase pronta, e tempo
+  // esgotado e rede também chegam como Error: quem pega o erro não precisa
+  // saber de onde ele veio para mostrar a frase.
+  if (payload instanceof Error) return payload.message.slice(0, 400);
+
+  const erro = explicarErroMeta(payload, contexto);
+  if (erro) {
+    const frase = `${erro.titulo}: ${erro.explicacao} → ${erro.proximo_passo}`;
+    // 100 é o "parâmetro inválido" genérico: sem a frase da Meta ninguém sabe
+    // QUAL valor foi recusado.
+    const detalhe = erro.codigo === 100 ? detalheDaMeta(payload) : null;
+    return (detalhe ? `${frase} (Meta: ${detalhe})` : frase).slice(0, 400);
+  }
 
   const cru = (payload as { error?: { message?: string } } | null)?.error?.message;
   if (cru) return `A Meta recusou: ${cru}`.slice(0, 400);
   return JSON.stringify(payload ?? {}).slice(0, 400);
+}
+
+/** A frase para gente (`error_user_msg`) quando a Meta manda; senão a técnica. */
+function detalheDaMeta(payload: unknown): string | null {
+  const e = (payload as { error?: { error_user_msg?: unknown; message?: unknown } } | null)?.error;
+  const texto = typeof e?.error_user_msg === "string" && e.error_user_msg ? e.error_user_msg : e?.message;
+  return typeof texto === "string" && texto ? texto : null;
 }
 
 /**

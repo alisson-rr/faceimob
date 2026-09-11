@@ -34,6 +34,10 @@ export const SECRET_SLOTS = {
   // corretor, que nunca escreveu para o número da empresa, então a janela nunca
   // está aberta e a Meta recusa texto livre com o código 131047.
   META_WHATSAPP_NOTIFY_TEMPLATE: { provider: "meta", label: "whatsapp_notify_template" },
+  // Token de usuário de sistema da Marketing API (ads_read + ads_management),
+  // lido por `metaAds.ts`. Não é o token da página: aquele só completa o lead do
+  // Lead Ads; este lê gasto e resultados das contas e pausa ou muda verba.
+  META_MARKETING_ACCESS_TOKEN: { provider: "meta", label: "marketing_access_token" },
   VOICE_AI_WEBHOOK_SECRET: { provider: "voice_ai", label: "webhook_secret" },
   BREVO_API_KEY: { provider: "brevo", label: "api_key" },
   BREVO_SENDER_EMAIL: { provider: "brevo", label: "sender_email" },

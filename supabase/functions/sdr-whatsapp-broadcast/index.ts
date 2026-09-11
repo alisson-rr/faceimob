@@ -9,6 +9,7 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import { hasAnyRole } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
 import { descreverFalhaMeta } from '../_shared/metaErros.ts';
+import { META_GRAPH } from '../_shared/metaAds.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -136,7 +137,7 @@ async function humanReply(
   if (!token) return missingCredential('META_WHATSAPP_ACCESS_TOKEN');
   if (!phoneId) return missingCredential('META_WHATSAPP_PHONE_NUMBER_ID');
 
-  const res = await fetch(`https://graph.facebook.com/v20.0/${phoneId}/messages`, {
+  const res = await fetch(`${META_GRAPH}/${phoneId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
@@ -172,12 +173,26 @@ async function humanReply(
   // PGRST204 DEPOIS de a Meta ter aceitado a mensagem — o cliente recebia, o
   // trigger `sdr_messages_touch` não rodava e o selo "parada há X h" continuava
   // na lista logo após o operador responder.
-  const { error: insErr } = await supabase.from('sdr_messages').insert({
+  //
+  // `sent_by` (0120) é QUEM respondeu: a aba Conversas mostra "Humano · nome".
+  // Function e migration sobem por caminhos diferentes, e aqui a Meta JÁ
+  // entregou a mensagem: num banco sem a coluna o PostgREST recusa com PGRST204
+  // e a resposta sumiria do histórico. A recusa vem antes do banco (nada foi
+  // escrito), então repetir sem a chave é seguro — o mesmo que o
+  // `insertMessages` do sdrAgent faz com `agent_id`.
+  const linha = {
     conversation_id: conversationId,
     author: 'broker',
     body,
     provider_message_id: providerId,
-  });
+    sent_by: userId,
+  };
+  let { error: insErr } = await supabase.from('sdr_messages').insert(linha);
+  if (insErr?.code === 'PGRST204') {
+    console.warn('sdr-whatsapp-broadcast: banco sem sdr_messages.sent_by (migration 0120 não aplicada) — a resposta é gravada sem o autor.');
+    const { sent_by: _ignorado, ...semAutor } = linha;
+    ({ error: insErr } = await supabase.from('sdr_messages').insert(semAutor));
+  }
   if (insErr) {
     // A mensagem SAIU: dizer "falhou" faria o operador mandar de novo. O
     // desfecho honesto é sucesso com o aviso de que o histórico ficou incompleto.
@@ -217,7 +232,7 @@ function templateParams(variables: string[] | null | undefined, values: Record<s
 }
 
 async function sendTemplate(phoneNumberId: string, token: string, to: string, template: string, lang: string, params: string[]) {
-  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+  const url = `${META_GRAPH}/${phoneNumberId}/messages`;
   const body: {
     messaging_product: string;
     to: string;
@@ -298,8 +313,8 @@ Deno.serve(async (req) => {
 
     // O corpo é lido ANTES do cofre: `probe_page_token` testa uma credencial
     // diferente e não pode morrer porque o token do WhatsApp ainda não existe.
-    const { list_id, test_phone, action, conversation_id, text } = await req.json().catch(() => ({})) as {
-      list_id?: string; test_phone?: string; action?: string; conversation_id?: string; text?: string;
+    const { list_id, test, test_phone, action, conversation_id, text } = await req.json().catch(() => ({})) as {
+      list_id?: string; test?: boolean; test_phone?: string; action?: string; conversation_id?: string; text?: string;
     };
 
     // "Testar conexão" do token da PÁGINA (meta/page_access_token), que o
@@ -311,7 +326,7 @@ Deno.serve(async (req) => {
       const pageToken = await getSecret('META_PAGE_ACCESS_TOKEN');
       if (!pageToken) return missingCredential('META_PAGE_ACCESS_TOKEN');
       const res = await fetch(
-        `https://graph.facebook.com/v20.0/me?fields=id,name`,
+        `${META_GRAPH}/me?fields=id,name`,
         { headers: { Authorization: `Bearer ${pageToken}` } },
       );
       const data = await res.json().catch(() => ({}));
@@ -352,6 +367,24 @@ Deno.serve(async (req) => {
       return await humanReply(supabase, conversation_id, text, authData.user.id);
     }
 
+    // O teste vai para o telefone do PERFIL de quem chama, nunca para um número
+    // do corpo: com ele, qualquer operador fazia a WABA da empresa mandar
+    // template para o número que digitasse. `test_phone` ainda é lido só como o
+    // pedido de teste da tela atual — o valor é ignorado.
+    // Resolvido ANTES do cofre, como a resposta humana: é validação do pedido,
+    // e assim a regra vale (e o e2e a prova) no ambiente sem credencial.
+    const pedeTeste = test === true || test_phone !== undefined;
+    let destinoTeste = '';
+    if (pedeTeste) {
+      const { data: perfil, error: perfilErr } = await supabase
+        .from('profiles').select('phone').eq('id', authData.user.id).maybeSingle();
+      if (perfilErr) throw new Error(`profiles: ${perfilErr.message}`);
+      destinoTeste = String(perfil?.phone ?? '').replace(/\D/g, '');
+      if (!destinoTeste) {
+        return json({ error: 'Seu perfil não tem telefone. Cadastre-o em Meu Perfil para receber o teste.' }, 422);
+      }
+    }
+
     // Só revela/configura integrações depois de autenticar e autorizar o papel.
     const token = await getSecret('META_WHATSAPP_ACCESS_TOKEN');
     const phoneId = await getSecret('META_WHATSAPP_PHONE_NUMBER_ID');
@@ -367,7 +400,7 @@ Deno.serve(async (req) => {
     // isso, o primeiro sinal de credencial errada era um disparo real falhando.
     if (action === 'probe') {
       const res = await fetch(
-        `https://graph.facebook.com/v20.0/${phoneId}?fields=display_phone_number,verified_name`,
+        `${META_GRAPH}/${phoneId}?fields=display_phone_number,verified_name`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const data = await res.json().catch(() => ({}));
@@ -402,14 +435,13 @@ Deno.serve(async (req) => {
     const lang = templateRow.language || 'pt_BR';
     const variables = templateRow.variables as string[] | null;
 
-    if (test_phone) {
-      const to = String(test_phone).replace(/\D/g, '');
-      if (!to) throw new Error('Telefone de teste inválido');
+    // Destino já resolvido antes do cofre, do perfil de quem chama.
+    if (pedeTeste) {
       const res = await sendTemplate(
-        phoneId, token, to.startsWith('55') ? to : '55' + to, template, lang,
+        phoneId, token, destinoTeste.startsWith('55') ? destinoTeste : '55' + destinoTeste, template, lang,
         templateParams(variables, { nome: 'Teste', campanha: list.name }),
       );
-      return new Response(JSON.stringify({ test: true, ...res }), {
+      return new Response(JSON.stringify({ test: true, destino: `final ${destinoTeste.slice(-4)}`, ...res }), {
         status: res.ok ? 200 : 502,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -32,6 +34,11 @@ const cofre = vi.hoisted(() => ({
 }));
 vi.mock("@/integrations/supabase/integrations", () => cofre);
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// O card das contas tem teste próprio (MetaAdsAccountsCard.test.tsx); aqui só
+// importa ONDE ele entra na página.
+vi.mock("@/components/marketing/MetaAdsAccountsCard", () => ({
+  MetaAdsAccountsCard: () => "Card de contas da Marketing API",
+}));
 
 /**
  * A tela lê `can("settings.integrations")` — o MESMO código que guarda
@@ -114,19 +121,29 @@ describe("MetaAdsSetup", () => {
   });
 
   /**
-   * A gestão de campanha passou a existir — em /marketing, e LOCAL. A tela do
-   * webhook dizia "não está nesta entrega", o que virou informação errada; o
-   * que ela não pode é trocar isso por promessa de controle na Meta, que
-   * continua exigindo `ads_management` e revisão do app.
+   * Com a Marketing API, a fronteira depende do token: com ele e as contas
+   * ligadas, /marketing lê a Meta e pausa/ativa/muda verba; sem ele, continua
+   * registro local. O card antigo dizia que nada ia para a Meta, sem condição.
    */
-  it("aponta a gestão de campanha para /marketing sem prometer controle na Meta", async () => {
+  it("diz o que a Marketing API liga e o que continua local sem o token", async () => {
     const el = await montar([]);
+    const card = Array.from(el.querySelectorAll("section"))
+      .find((s) => s.textContent?.includes("Até onde esta integração vai"))!;
 
-    expect(el.querySelector('a[href="/marketing"]')).not.toBeNull();
-    expect(el.textContent).toContain("registro local");
-    expect(el.textContent).toContain("ads_management");
-    // A frase antiga negava a entrega inteira; a nova só nega o lado da Meta.
+    expect(card.querySelector('a[href="/marketing"]')).not.toBeNull();
+    expect(card.textContent).toContain("Gerenciar campanhas na Meta");
+    expect(card.textContent).toContain("Sem o token, nada disso liga");
+    expect(card.textContent).toContain("registro local");
+    expect(card.textContent).toContain("ads_management");
     expect(el.textContent).not.toContain("não está nesta entrega");
+  });
+
+  it("com o cofre lido, o card da Marketing API entra logo abaixo das credenciais", async () => {
+    const el = await montar([]);
+    const texto = el.textContent ?? "";
+
+    expect(texto).toContain("Card de contas da Marketing API");
+    expect(texto.indexOf("Credenciais da Meta no cofre")).toBeLessThan(texto.indexOf("Card de contas da Marketing API"));
   });
 
   it("token da página + verify token no cofre: webhook pronto e data do token", async () => {
@@ -233,6 +250,29 @@ describe("MetaAdsSetup", () => {
     expect(el.textContent).not.toContain("Não consegui ler o cofre");
   });
 
+  /**
+   * Antes o card sumia junto com o cofre recusado, e o caso acima conferia
+   * isso — era o defeito: ler `meta_ad_accounts` depende de
+   * `reports.view_finance`, não do cofre. O card lê `can()` sozinho e, sem
+   * `settings.integrations`, entra em modo leitura (botões desligados, aviso e
+   * lista de contas) — contrato provado em MetaAdsAccountsCard.test.tsx. Aqui o
+   * que se prova é que a recusa do cofre não tira o card da página.
+   */
+  it("sem settings.integrations: o card de contas aparece mesmo com o cofre recusado", async () => {
+    sessao.podeGravar = false;
+    cofre.listIntegrations.mockRejectedValueOnce(
+      Object.assign(new Error("negado"), { db: { code: "42501" } }),
+    );
+    const el = await montar([]);
+
+    await vi.waitFor(() => expect(el.textContent).toContain("Sem permissão para gerenciar integrações"));
+    const texto = el.textContent ?? "";
+    expect(texto).toContain("Card de contas da Marketing API");
+    // O que depende do cofre continua fora: nada de credencial nem Verify Token.
+    expect(texto).not.toContain("Credenciais da Meta no cofre");
+    expect(botao(el, "Gerar e salvar")).toBeUndefined();
+  });
+
   it("cofre legível mas sem permissão de escrita: campos em modo consulta", async () => {
     sessao.podeGravar = false;
     const el = await montar([]);
@@ -244,5 +284,21 @@ describe("MetaAdsSetup", () => {
     const senhas = Array.from(el.querySelectorAll<HTMLInputElement>('input[type="password"]'));
     expect(senhas.length).toBeGreaterThan(0);
     expect(senhas.every((i) => i.disabled)).toBe(true);
+  });
+});
+
+/**
+ * Token da Meta sempre no header. Nenhuma das duas functions desta tela monta
+ * URL com o token nem escreve a URL da Graph à mão: a versão mora em
+ * `_shared/metaGraph.ts`. O webhook usava v19.0 com o token na query string,
+ * que acabava em log.
+ */
+describe("fonte das functions da conexão", () => {
+  it.each(["meta-ads-connect", "meta-ads-webhook"])("%s: token só no header, Graph só por metaAds.ts", (fn) => {
+    const fonte = readFileSync(path.resolve(__dirname, `../../supabase/functions/${fn}/index.ts`), "utf8");
+
+    expect(fonte).not.toContain("access_token=");
+    expect(fonte).not.toContain("graph.facebook.com");
+    expect(fonte).toMatch(/from ['"]\.\.\/_shared\/metaAds\.ts['"]/);
   });
 });

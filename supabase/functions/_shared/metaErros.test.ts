@@ -70,6 +70,86 @@ describe("descreverFalhaMeta", () => {
   });
 });
 
+/**
+ * Marketing API: sincronizar, pausar e mudar verba. Um caso por código novo —
+ * cada grupo manda a operação para um lado diferente (permissão, espera, valor,
+ * versão), e é isso que a frase precisa acertar. Todos com o contexto
+ * "anuncios", que é o que metaGraph.ts passa: sem ele, o número é o do WhatsApp.
+ */
+describe("erros da Marketing API", () => {
+  it.each([10, 200, 294])("código %i: token sem permissão de anúncios, e repetir não adianta", (code) => {
+    const erro = explicarErroMeta({ error: { code, message: "(#200) Permissions error" } }, "anuncios");
+    expect(erro?.titulo).toBe("Token sem permissão para anúncios");
+    expect(erro?.proximo_passo).toMatch(/ads_management/);
+    expect(erro?.vale_repetir).toBe(false);
+  });
+
+  it.each([4, 17, 613, 80004])("código %i: limite de chamadas, passa esperando", (code) => {
+    const erro = explicarErroMeta({ error: { code } }, "anuncios");
+    expect(erro?.titulo).toBe("Limite de chamadas da Marketing API");
+    // O 4 do catálogo comum manda clicar em Disparar, botão que só o remarketing tem.
+    expect(erro?.proximo_passo).not.toMatch(/Disparar/);
+    expect(erro?.vale_repetir).toBe(true);
+  });
+
+  it("código que não é só de anúncio continua traduzido no contexto de anúncios", () => {
+    // Token expirado é a falha mais comum da sincronização; o catálogo à parte não pode escondê-la.
+    expect(explicarErroMeta({ error: { code: 190 } }, "anuncios")?.titulo).toBe("Token de acesso expirado ou inválido");
+  });
+
+  it("código 100: diz que um valor foi recusado e QUAL, pela frase da Meta", () => {
+    const texto = descreverFalhaMeta(
+      {
+        error: { code: 100, message: "(#100) Invalid parameter", error_user_msg: "O orçamento diário está abaixo do mínimo." },
+      },
+      "anuncios",
+    );
+    expect(texto).toMatch(/^A Meta recusou um valor enviado/);
+    expect(texto).toContain("(Meta: O orçamento diário está abaixo do mínimo.)");
+    expect(texto.length).toBeLessThanOrEqual(400);
+    // Sem a frase para gente, fica a técnica — melhor que nenhuma.
+    expect(descreverFalhaMeta({ error: { code: 100, message: "(#100) Invalid parameter" } }, "anuncios")).toContain(
+      "(Meta: (#100) Invalid parameter)",
+    );
+    expect(explicarErroMeta({ error: { code: 100 } }, "anuncios")?.vale_repetir).toBe(false);
+  });
+
+  it("código 2635: versão desativada diz onde se troca", () => {
+    const erro = explicarErroMeta(
+      { error: { code: 2635, message: "(#2635) You are calling a deprecated version of the Ads API." } },
+      "anuncios",
+    );
+    expect(erro?.titulo).toBe("Versão da Marketing API desativada");
+    expect(erro?.proximo_passo).toContain("META_GRAPH");
+  });
+
+  it("a frase que o cliente da Marketing API já lançou passa direto", () => {
+    // metaGraph.ts lança MetaApiError com a frase pronta; timeout e rede chegam como Error.
+    expect(descreverFalhaMeta(new Error("A Meta não respondeu em 30 s."))).toBe("A Meta não respondeu em 30 s.");
+  });
+});
+
+/**
+ * O mesmo número fora dos anúncios. A WhatsApp Cloud API usa 100 para parâmetro
+ * inválido e 10/200 para falta de permissão: o disparo de template do
+ * remarketing (que chama sem contexto) não pode receber orientação de verba nem
+ * de ads_management, e volta à mensagem crua da Meta, como antes da integração.
+ */
+describe("sem contexto de anúncios (WhatsApp)", () => {
+  it("parâmetro de template inválido não fala de verba e mantém o detalhe da Meta", () => {
+    const texto = descreverFalhaMeta({ error: { code: 100, message: "(#100) Invalid parameter" } });
+    expect(texto).toBe("A Meta recusou: (#100) Invalid parameter");
+    expect(texto).not.toMatch(/verba|valor enviado/i);
+  });
+
+  it.each([10, 200, 294, 17, 613, 80004, 2635])("código %i não recebe a explicação da Marketing API", (code) => {
+    expect(explicarErroMeta({ error: { code } })).toBeNull();
+    const texto = descreverFalhaMeta({ error: { code, message: `(#${code}) Permission denied` } });
+    expect(texto).toBe(`A Meta recusou: (#${code}) Permission denied`);
+    expect(texto).not.toMatch(/ads_management|anúncio/i);
+  });
+});
+
 describe("AVISO_ACEITE", () => {
   it("diz que o 200 é aceite e não entrega", () => {
     // A tela que escreve "enviado" no 200 mente por omissão: a falha definitiva

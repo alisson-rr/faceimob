@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { from, rpc } = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }));
-vi.mock("./client", () => ({ supabase: { from, rpc } }));
+const { from, rpc, invoke } = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn(), invoke: vi.fn() }));
+vi.mock("./client", () => ({ supabase: { from, rpc, functions: { invoke } } }));
 
 import {
   aportePayload,
@@ -11,20 +11,27 @@ import {
   createAdCampaign,
   deleteAdCampaign,
   developerSummary,
+  fetchMetaMetricas,
+  fetchMetaPorCanal,
+  fetchMetaSyncStatus,
   importMetaSpend,
   monthOverMonth,
   origemDoGasto,
+  periodoMeta,
   previousMonth,
   problemaNaCampanha,
   roas,
   roasLabel,
   setAdCampaignStatus,
+  sincronizarMeta,
   updateAdCampaign,
+  vincularConstrutora,
 } from "./analytics";
 
 beforeEach(() => {
   from.mockReset();
   rpc.mockReset();
+  invoke.mockReset();
 });
 
 /** Builder mínimo do PostgREST: `select` fecha a cadeia e resolve o resultado. */
@@ -355,7 +362,7 @@ describe("problemaNaCampanha", () => {
  * "sincronizado", para a MESMA linha.
  */
 describe("origemDoGasto", () => {
-  it("nunca diz sincronizado — a data sozinha é a do último toque, não de uma sincronia", () => {
+  it("sem procedência, nunca diz sincronizado — a data sozinha é a do último toque, não de uma sincronia", () => {
     expect(origemDoGasto(null)).toBe("digitado");
     expect(origemDoGasto("2026-07-28T12:00:00Z")).toBe("digitado · atualizado 28/07/2026");
     expect(origemDoGasto("2026-07-28T12:00:00Z")).not.toMatch(/sincroniz/i);
@@ -363,12 +370,31 @@ describe("origemDoGasto", () => {
 
   // O gasto importado (0113) vem com o RECORTE que ele cobre: sem o período na
   // frase, um relatório de agosto passaria por gasto da vida inteira da
-  // campanha e o CPL sairia menor do que o real.
+  // campanha e o CPL sairia menor do que o real. Linha anterior à 0115 tem
+  // período e procedência nula: só a planilha existia.
   it("com período importado, diz que veio do relatório e de quando", () => {
+    expect(origemDoGasto("2026-09-10T12:00:00Z", "2026-08-01", "2026-08-31", "planilha"))
+      .toBe("relatório importado · 01/08/2026 a 31/08/2026");
     expect(origemDoGasto("2026-09-10T12:00:00Z", "2026-08-01", "2026-08-31"))
-      .toBe("relatório da Meta · 01/08/2026 a 31/08/2026");
+      .toBe("relatório importado · 01/08/2026 a 31/08/2026");
     expect(origemDoGasto("2026-09-10T12:00:00Z", "2026-08-01", "2026-08-01"))
-      .toBe("relatório da Meta · 01/08/2026");
+      .toBe("relatório importado · 01/08/2026");
+  });
+
+  // A sincronização cobre a janela dela, não a vida da campanha: "sincronizado"
+  // sem o início passaria por gasto vitalício.
+  it("sincronizado da Meta diz até quando e desde quando", () => {
+    expect(origemDoGasto("2026-09-11T12:00:00Z", "2026-08-01", "2026-09-11", "meta_api"))
+      .toBe("sincronizado da Meta até 11/09/2026 · desde 01/08/2026");
+    expect(origemDoGasto("2026-09-11T12:00:00Z", "2026-09-11", "2026-09-11", "meta_api"))
+      .toBe("sincronizado da Meta até 11/09/2026");
+    // Sincronizada sem nenhum dia de gasto na janela: vale a data da sincronização.
+    expect(origemDoGasto("2026-09-11T12:00:00Z", null, null, "meta_api")).toBe("sincronizado da Meta até 11/09/2026");
+  });
+
+  it("planilha e sincronização no mesmo livro viram 'misto', com o período", () => {
+    expect(origemDoGasto("2026-09-11T12:00:00Z", "2026-07-01", "2026-09-11", "misto"))
+      .toBe("misto: relatório importado e Meta · 01/07/2026 a 11/09/2026");
   });
 
   // Semente antiga tem `synced_at` sem importação nenhuma por trás: ela continua
@@ -577,5 +603,174 @@ describe("comparação com o mês anterior", () => {
   it("valor ausente não inventa comparação", () => {
     expect(monthOverMonth(Number.NaN, 100)).toBeNull();
     expect(monthOverMonth(100, Number.NaN)).toBeNull();
+  });
+});
+
+/**
+ * A trava do banco (0115, `ad_campaigns_guard_meta`) recusa com 42501 o patch
+ * que traga nome, status, verba ou gasto de campanha sincronizada — inclusive
+ * os "mesmos", quando o formulário os carregou antes da sincronização.
+ */
+describe("updateAdCampaign em campanha sincronizada", () => {
+  it("o patch leva só o vínculo: identificação, nome, status, verba e gasto ficam de fora", async () => {
+    const { chamadas } = tabela({ data: [{ id: "c1" }], error: null });
+
+    await updateAdCampaign("c1", {
+      externalId: "120200000001",
+      platform: "meta",
+      name: "HORIZONTE | JARDINS | FORMULARIO",
+      status: "ACTIVE",
+      dailyBudget: 80,
+      lifetimeBudget: null,
+      totalSpend: 1234.5,
+      developerId: "d1",
+      leadSourceId: "s1",
+      startsOn: "2026-09-01",
+      endsOn: null,
+      metaAccountId: "conta-1",
+    });
+
+    expect(chamadas.update).toEqual({ developer_id: "d1", lead_source_id: "s1", starts_on: "2026-09-01", ends_on: null });
+  });
+});
+
+describe("vincularConstrutora", () => {
+  it("grava só a construtora, pela chave id", async () => {
+    const { chamadas } = tabela({ data: [{ id: "c1" }], error: null });
+
+    await vincularConstrutora("c1", "d1");
+
+    expect(chamadas.update).toEqual({ developer_id: "d1" });
+    expect(chamadas.filtros).toEqual([["id", "c1"]]);
+  });
+
+  it("update que não casa linha é falta de permissão, não sucesso", async () => {
+    tabela({ data: [], error: null });
+    await expect(vincularConstrutora("c1", "d1")).rejects.toThrow(/permissão/i);
+  });
+});
+
+/**
+ * Os números "segundo a Meta" chegam prontos das RPCs: aqui só a conversão.
+ * `numeric` vem como texto do PostgREST, e razão sem denominador (nulo) não
+ * pode virar zero — "CTR 0%" afirmaria um fato que não houve.
+ */
+describe("números segundo a Meta", () => {
+  it("fetchMetaMetricas pede o período e converte sem transformar nulo em zero", async () => {
+    rpc.mockResolvedValue({
+      data: [{
+        campaign_id: "c", external_id: "e", name: "N", account_id: "a", channel: "whatsapp",
+        spend: "150.50", impressions: 1000, reach: null, clicks: 20, link_clicks: 10,
+        ctr: "0.010000", cpc: "15.05", cpm: "150.50", leads_form: 0, conversations: 3, lp_leads: 0,
+        resultados: 3, custo_por_resultado: "50.17", dias: 7, cobertura_desde: "2026-08-01",
+      }],
+      error: null,
+    });
+
+    const [linha] = await fetchMetaMetricas("2026-09-04", "2026-09-10");
+
+    expect(rpc).toHaveBeenCalledWith("meta_metricas", { p_from: "2026-09-04", p_to: "2026-09-10" });
+    expect(linha.spend).toBe(150.5);
+    expect(linha.ctr).toBe(0.01);
+    expect(linha.custo_por_resultado).toBe(50.17);
+    expect(linha.reach).toBeNull();
+    expect(linha.cobertura_desde).toBe("2026-08-01");
+  });
+
+  it("fetchMetaPorCanal converte e mantém nulo o custo do canal sem resultado", async () => {
+    rpc.mockResolvedValue({
+      data: [{ channel: "outro", spend: "25.00", resultados: 0, custo_por_resultado: null, campanhas: 1 }],
+      error: null,
+    });
+
+    const [canal] = await fetchMetaPorCanal("2026-09-01", "2026-09-11");
+
+    expect(rpc).toHaveBeenCalledWith("meta_metricas_por_canal", { p_from: "2026-09-01", p_to: "2026-09-11" });
+    expect(canal).toEqual({ channel: "outro", spend: 25, resultados: 0, custo_por_resultado: null, campanhas: 1 });
+  });
+
+  it("erro do banco vira erro, e não lista vazia com cara de 'sem gasto'", async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "permission denied" } });
+    await expect(fetchMetaMetricas("2026-09-01", "2026-09-10")).rejects.toThrow();
+  });
+});
+
+describe("fetchMetaSyncStatus", () => {
+  /** Consulta encadeável: qualquer filtro devolve a própria consulta, e o `await` entrega o resultado. */
+  const consulta = (resultado: unknown) => {
+    const q: Record<string, unknown> = {};
+    for (const f of ["select", "order", "limit"]) q[f] = () => q;
+    q.then = (ok: (v: unknown) => unknown, falha: (e: unknown) => unknown) => Promise.resolve(resultado).then(ok, falha);
+    return q;
+  };
+
+  it("junta cada conta com a execução MAIS RECENTE dela", async () => {
+    const contas = [
+      { id: "a", act_id: "act_1", name: "A", enabled: true, last_sync_ok_at: "2026-09-10T09:00:00Z", last_sync_attempt_at: "2026-09-11T09:00:00Z", last_sync_error: "Token expirado" },
+      { id: "b", act_id: "act_2", name: "B", enabled: true, last_sync_ok_at: null, last_sync_attempt_at: null, last_sync_error: null },
+    ];
+    // Ordem do banco: da mais recente para a mais antiga.
+    const execucoes = [
+      { account_id: "a", status: "falhou", error: "Token expirado", started_at: "2026-09-11T09:00:00Z", finished_at: "2026-09-11T09:00:05Z" },
+      { account_id: "a", status: "ok", error: null, started_at: "2026-09-10T09:00:00Z", finished_at: "2026-09-10T09:01:00Z" },
+    ];
+    from.mockImplementation((nome: string) =>
+      consulta({ data: nome === "meta_ad_accounts" ? contas : execucoes, error: null }),
+    );
+
+    const [a, b] = await fetchMetaSyncStatus();
+
+    expect(a.ultima).toMatchObject({ status: "falhou", error: "Token expirado" });
+    // Conta que nunca rodou não ganha execução inventada.
+    expect(b.ultima).toBeNull();
+  });
+});
+
+describe("sincronizarMeta", () => {
+  it("chama a meta-sync no modo manual: todas as contas, ou só a pedida", async () => {
+    invoke.mockResolvedValue({ data: { ok: true, contas: [{ account_id: "a", status: "ok" }] }, error: null });
+
+    await sincronizarMeta();
+    expect(invoke).toHaveBeenLastCalledWith("meta-sync", { body: {} });
+
+    await sincronizarMeta("a");
+    expect(invoke).toHaveBeenLastCalledWith("meta-sync", { body: { account_id: "a" } });
+  });
+
+  // Sem token a edge responde 409 com a frase: ela vira o erro, e não um "ok" vazio.
+  it("recusa da edge vira a frase dela", async () => {
+    invoke.mockResolvedValue({
+      data: null,
+      error: Object.assign(new Error("Edge Function returned a non-2xx status code"), {
+        context: new Response(JSON.stringify({ error: "Token da Marketing API não cadastrado." }), { status: 409 }),
+      }),
+    });
+
+    await expect(sincronizarMeta()).rejects.toThrow("Token da Marketing API não cadastrado.");
+  });
+});
+
+describe("periodoMeta", () => {
+  // 22h30 no fuso local: em UTC já é o dia 12, e o recorte não pode andar junto.
+  const hoje = new Date(2026, 8, 11, 22, 30);
+
+  it("ontem é o único período de um dia", () => {
+    expect(periodoMeta("ontem", hoje)).toEqual({ from: "2026-09-10", to: "2026-09-10" });
+  });
+
+  it("7 e 30 dias param em ontem", () => {
+    expect(periodoMeta("7d", hoje)).toEqual({ from: "2026-09-04", to: "2026-09-10" });
+    expect(periodoMeta("30d", hoje)).toEqual({ from: "2026-08-12", to: "2026-09-10" });
+  });
+
+  it("mês atual vai até hoje; mês anterior é o mês inteiro", () => {
+    expect(periodoMeta("mes_atual", hoje)).toEqual({ from: "2026-09-01", to: "2026-09-11" });
+    expect(periodoMeta("mes_anterior", hoje)).toEqual({ from: "2026-08-01", to: "2026-08-31" });
+  });
+
+  it("vira o ano e respeita fevereiro", () => {
+    expect(periodoMeta("mes_anterior", new Date(2026, 0, 5))).toEqual({ from: "2025-12-01", to: "2025-12-31" });
+    expect(periodoMeta("ontem", new Date(2026, 0, 1))).toEqual({ from: "2025-12-31", to: "2025-12-31" });
+    expect(periodoMeta("mes_anterior", new Date(2026, 2, 10))).toEqual({ from: "2026-02-01", to: "2026-02-28" });
   });
 });

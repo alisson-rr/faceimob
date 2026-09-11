@@ -54,6 +54,9 @@ const PROBES: Record<string, { fn: string; body: Record<string, unknown> }> = {
   // o lead sem nome de formulário nem campanha, e o único sinal é uma linha de
   // log dentro da function.
   "meta::page_access_token": { fn: "sdr-whatsapp-broadcast", body: { action: "probe_page_token" } },
+  // Leitura de /me e /me/adaccounts: prova o token da Marketing API e diz
+  // quantas contas ele alcança, sem escolher nem gravar conta nenhuma.
+  "meta::marketing_access_token": { fn: "meta-ads-connect", body: { action: "testar" } },
   // Brevo: `/v3/senders` é leitura pura (nenhum e-mail sai) e responde as DUAS
   // perguntas do par — a chave é aceita? o remetente gravado está verificado
   // lá? É a única leitura possível de um valor que o cofre nunca devolve: em
@@ -89,6 +92,9 @@ type SondaResposta = {
   models?: number;
   remetente?: string;
   remetentes?: unknown;
+  /** meta-ads-connect: dono do token e contas de anúncios que ele alcança. */
+  usuario?: { name?: string | null };
+  contas?: unknown[];
 };
 
 /**
@@ -344,7 +350,9 @@ export default function AdminIntegrations() {
           ? ` — remetente ${corpo.remetente}, verificado na Brevo`
           : typeof corpo?.models === "number"
             ? ` — ${corpo.models} modelos disponíveis`
-            : "";
+            : Array.isArray(corpo?.contas)
+              ? ` — token de ${corpo.usuario?.name ?? "usuário sem nome"}, ${corpo.contas.length} conta(s) de anúncios ao alcance`
+              : "";
       // A function devolve 5xx com a frase pronta ("Credencial ausente: ...");
       // `functionErrorMessage` é a retaguarda para resposta sem corpo JSON.
       const texto = corpo?.ok

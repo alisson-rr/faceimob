@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getSecret } from '../_shared/secrets.ts'
 import { requireServiceRole } from '../_shared/auth.ts'
 import { checkMetaSignature, normalizePhone, sendWhatsAppTemplate } from '../_shared/meta.ts'
+import { MetaApiError, metaGet } from '../_shared/metaAds.ts'
 
 type SupabaseClient = ReturnType<typeof createClient>
 type MetaField = { name?: string; values?: unknown[] }
@@ -35,6 +36,9 @@ type IncomingLead = {
   campaign_id?: string | null
   adset_id?: string | null
   ad_id?: string | null
+  campaign_name?: string | null
+  adset_name?: string | null
+  ad_name?: string | null
   utm_source: string
   utm_medium?: string
   utm_campaign?: string
@@ -51,33 +55,60 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-async function fetchLeadFromGraph(leadgenId: string, pageAccessToken: string) {
+// As três leituras da Graph passam por `metaGet` (_shared/metaGraph.ts): versão
+// num lugar só e o token da página no header Authorization, nunca na URL — a
+// URL com o token acabava em log. Falha continua devolvendo null, como antes.
+
+/**
+ * Campos do lead com a atribuição. O evento `leadgen` real pode trazer só ad_id
+ * e adgroup_id (hipótese, a confirmar em leads.raw_payload): sem campaign_id o
+ * lead não casa com ad_campaigns e o CPL do CRM fica sem lead.
+ */
+const LEAD_FIELDS = 'field_data,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id'
+
+type LeadGraph = {
+  field_data?: MetaField[]
+  ad_id?: unknown
+  ad_name?: unknown
+  adset_id?: unknown
+  adset_name?: unknown
+  campaign_id?: unknown
+  campaign_name?: unknown
+}
+
+const codigoMeta = (e: unknown) => (e instanceof MetaApiError ? e.code ?? e.status : 'rede')
+
+async function fetchLeadFromGraph(
+  leadgenId: string,
+  pageAccessToken: string,
+): Promise<{ fields: Record<string, string>; graph: LeadGraph } | null> {
+  let json: LeadGraph | null = null
   try {
-    const url = `https://graph.facebook.com/v19.0/${leadgenId}?access_token=${pageAccessToken}`
-    const res = await fetch(url)
-    const json = await res.json()
-    if (json.error) {
-      console.error('Graph API error for leadgen', leadgenId, json.error?.code)
-      return null
-    }
-    const fields: Record<string, string> = {}
-    for (const f of json.field_data || []) {
-      fields[(f.name || '').toLowerCase()] = f.values?.[0] || ''
-    }
-    return fields
+    json = await metaGet<LeadGraph>(leadgenId, { fields: LEAD_FIELDS }, pageAccessToken)
   } catch (e) {
-    console.error('Graph fetch error:', e)
-    return null
+    console.error('Graph API error for leadgen', leadgenId, codigoMeta(e))
+    // A Meta recusou (não foi rede nem tempo esgotado): pode ser o token da
+    // página sem acesso aos campos de anúncio. Isso não pode custar o nome e o
+    // telefone do lead — repete o pedido de antes, sem `fields`.
+    if (e instanceof MetaApiError && e.status > 0) {
+      json = await metaGet<LeadGraph>(leadgenId, {}, pageAccessToken).catch((e2: unknown) => {
+        console.error('Graph API error for leadgen (sem atribuição)', leadgenId, codigoMeta(e2))
+        return null
+      })
+    }
   }
+  if (!json) return null
+  const fields: Record<string, string> = {}
+  for (const f of json.field_data || []) {
+    fields[(f.name || '').toLowerCase()] = String(f.values?.[0] ?? '')
+  }
+  return { fields, graph: json }
 }
 
 async function fetchFormName(formId: string, pageAccessToken: string): Promise<string | null> {
   try {
     if (!formId || !pageAccessToken) return null
-    const url = `https://graph.facebook.com/v19.0/${formId}?fields=name,status&access_token=${pageAccessToken}`
-    const res = await fetch(url)
-    const json = await res.json()
-    if (json?.error) return null
+    const json = await metaGet<{ name?: string }>(String(formId), { fields: 'name,status' }, pageAccessToken)
     return json?.name || null
   } catch {
     return null
@@ -87,10 +118,11 @@ async function fetchFormName(formId: string, pageAccessToken: string): Promise<s
 async function fetchAdName(adId: string, pageAccessToken: string): Promise<string | null> {
   try {
     if (!adId || !pageAccessToken) return null
-    const url = `https://graph.facebook.com/v19.0/${adId}?fields=name,campaign{name},adset{name}&access_token=${pageAccessToken}`
-    const res = await fetch(url)
-    const json = await res.json()
-    if (json?.error) return null
+    const json = await metaGet<{ name?: string; campaign?: { name?: string }; adset?: { name?: string } }>(
+      String(adId),
+      { fields: 'name,campaign{name},adset{name}' },
+      pageAccessToken,
+    )
     return json?.campaign?.name || json?.adset?.name || json?.name || null
   } catch {
     return null
@@ -210,9 +242,11 @@ Deno.serve(async (req) => {
 
             // 2) Graph API fetch (real leads) — SEMPRE tenta se tiver token,
             // pois muitas vezes o inline vem vazio ou incompleto
+            let graph: LeadGraph = {}
             if (v.leadgen_id && pageAccessToken) {
-              const g = await fetchLeadFromGraph(v.leadgen_id, pageAccessToken)
-              if (g && Object.keys(g).length > 0) fields = { ...g, ...fields }
+              const g = await fetchLeadFromGraph(String(v.leadgen_id), pageAccessToken)
+              if (g && Object.keys(g.fields).length > 0) fields = { ...g.fields, ...fields }
+              if (g) graph = g.graph
             }
 
             let formName = await fetchFormName(v.form_id, pageAccessToken)
@@ -247,9 +281,13 @@ Deno.serve(async (req) => {
               funnel_stage: 'new',
               form_id: v.form_id ? String(v.form_id) : null,
               external_id: v.leadgen_id ? String(v.leadgen_id) : null,
-              campaign_id: v.campaign_id ? String(v.campaign_id) : null,
-              adset_id: v.adset_id ? String(v.adset_id) : null,
-              ad_id: v.ad_id ? String(v.ad_id) : null,
+              // O evento manda; a Graph só completa o que ele não trouxe.
+              campaign_id: v.campaign_id ? String(v.campaign_id) : textValue(graph.campaign_id) || null,
+              adset_id: v.adset_id ? String(v.adset_id) : textValue(graph.adset_id) || null,
+              ad_id: v.ad_id ? String(v.ad_id) : textValue(graph.ad_id) || null,
+              campaign_name: textValue(graph.campaign_name) || null,
+              adset_name: textValue(graph.adset_name) || null,
+              ad_name: textValue(graph.ad_name) || null,
               utm_source: pickUtm(fields, 'utm_source') || 'meta',
               utm_medium: pickUtm(fields, 'utm_medium'),
               utm_campaign: pickUtm(fields, 'utm_campaign'),

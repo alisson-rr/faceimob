@@ -18,6 +18,7 @@ import { listIntegrations, setIntegrationSecret, type IntegrationRecord } from "
 import { INTEGRATION_SLOTS, slotKey, validarCredencial, type IntegrationSlot } from "@/lib/integrationCatalog";
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
+import { MetaAdsAccountsCard } from "@/components/marketing/MetaAdsAccountsCard";
 
 const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-ads-webhook`;
 /** O SDR só responde no WhatsApp se ESTE webhook também estiver assinado, no
@@ -267,7 +268,7 @@ export default function MetaAdsSetup() {
         title="Configuração do Meta Ads"
         eyebrow="Administração"
         icon={Facebook}
-        description="Conecte seus formulários de Lead Ads para receber leads em tempo real no CRM."
+        description="Receba os leads do Lead Ads em tempo real e conecte a Marketing API para ler gasto e resultados das campanhas."
         actions={badge}
       />
 
@@ -449,6 +450,11 @@ export default function MetaAdsSetup() {
         </>
       )}
 
+      {/* Fora do `loaded`: ler `meta_ad_accounts` depende de `reports.view_finance`,
+          não do cofre. Quem leva 42501 em `list_integrations` continua vendo as
+          contas salvas, no modo leitura do próprio card. */}
+      <MetaAdsAccountsCard />
+
       <SectionCard title="Passo a passo">
         <div className="space-y-3 text-sm">
           {STEPS.map((s, i) => (
@@ -475,21 +481,27 @@ export default function MetaAdsSetup() {
         </div>
       </SectionCard>
 
-      {/* Escrito na tela porque a ausência silenciosa vira expectativa. A
-          fronteira mudou: a gestão de campanha existe em /marketing, mas é
-          LOCAL. O que continua fora é o controle na Meta — ele exige token com
-          escopo `ads_management` e revisão do app, e um botão que sugerisse
-          isso prometeria pausar um gasto que continuaria saindo. */}
+      {/* Escrito na tela porque a ausência silenciosa vira expectativa. É o
+          token da Marketing API que decide qual das duas frases vale: com ele
+          e as contas ligadas, o sistema lê a Meta e executa pausar/ativar/verba;
+          sem ele, Marketing continua registro local. */}
       <SectionCard title="Até onde esta integração vai" icon={AlertTriangle}>
-        <p className="text-sm text-muted-foreground">
-          Aqui se configura o <b>recebimento</b> de leads do Lead Ads. A gestão das campanhas — verba, período,
-          pausar, copiar — fica em{" "}
-          <Link to="/marketing" className="font-medium text-primary hover:underline">Marketing → Campanhas</Link>{" "}
-          e é <b>registro local</b>: os números são digitados e nada é enviado para a Meta. Pausar de verdade, mudar
-          orçamento ou duplicar anúncio <b>na</b> Meta continua no Gerenciador de Anúncios — exige token com escopo{" "}
-          <code>ads_management</code> e revisão do app, e a verificação de empresa exigida para o setor imobiliário
-          limita o que a API permite automatizar.
-        </p>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            Aqui se configura o <b>recebimento</b> de leads do Lead Ads e a <b>conexão com a Marketing API</b>. Com o
+            token no cofre e as contas ligadas acima, o sistema lê da Meta, uma vez por dia, o gasto, a verba, o status
+            e os resultados de cada campanha, e quem tem a permissão &quot;Gerenciar campanhas na Meta&quot; pausa,
+            ativa e muda verba em{" "}
+            <Link to="/marketing" className="font-medium text-primary hover:underline">Marketing → Campanhas</Link>,
+            sempre com confirmação e registro de quem fez.
+          </p>
+          <p>
+            Sem o token, nada disso liga: a gestão em Marketing continua sendo <b>registro local</b>, com gasto
+            digitado ou importado da planilha, e nada é enviado para a Meta. Criar, duplicar ou editar anúncio continua
+            no Gerenciador de Anúncios. Pausar e mudar verba pela API exigem token com escopo <code>ads_management</code>{" "}
+            e o app aprovado pela Meta; anúncio de imóvel é categoria especial, com segmentação restrita.
+          </p>
+        </div>
       </SectionCard>
 
       <SectionCard title="Formato esperado (fallback direto)" icon={Plug}>

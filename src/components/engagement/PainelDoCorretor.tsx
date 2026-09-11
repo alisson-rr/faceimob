@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Lock, NotebookPen, PhoneOutgoing } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,59 +14,57 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
+import { recorteDoRanking, useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
+import { gameKeys, listEffectiveScoringRules } from "@/integrations/supabase/game";
+import { loadMuralDoDia, recadosKeys } from "@/integrations/supabase/recados";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { podiumRingClass } from "@/lib/tone";
 import { cn } from "@/lib/utils";
-import { loadMuralDoDia, recadosKeys } from "@/integrations/supabase/recados";
 import { MedalhaComFita } from "./MedalhaComFita";
-import {
-  LINHAS_DO_PAINEL,
-  diarioKeys,
-  loadDiarioDeHoje,
-  maiorValor,
-} from "./painel/diarioDeHoje";
-import { abreSozinho, hojeLocal } from "./painel/vezPorDia";
+import { itensDoGame } from "./painel/itensDoGame";
 import { ordenarRanking } from "./ranking";
 
 /**
- * Painel — o quadro de abertura do Pipeline: o diário de hoje, o mural da
- * operação e os três primeiros do placar.
+ * Painel — o quadro do game no Pipeline: os itens que pontuaram, os recados da
+ * operação e o placar.
  *
- * Comportamento ditado pelo cliente (10/09/2026): abre SOZINHO só para o
- * corretor, e só na primeira vez do dia (`./painel/vezPorDia`). Todo mundo
- * abre pelo botão, sempre.
+ * Comportamento ditado pelo cliente (11/09/2026):
+ *   · abre SOZINHO para o corretor TODA VEZ que ele carrega o Pipeline — não
+ *     "uma vez por dia", que nunca foi pedido;
+ *   · qualquer perfil abre pelo card de game do topo ou pelo "Ver mais" dele;
+ *   · o recorte é o do GAME (a temporada aberta), não o do dia.
  *
- * Nenhum dado é contado aqui. As três colunas leem fontes que já existem:
- *   · diário    → `daily_entries` de HOJE, as MESMAS métricas e a mesma conta
- *                 do Diário e do Checkpoint (`./painel/diarioDeHoje`);
- *   · mural     → `important_notices` / `gold_tips` (migration 0011);
- *   · destaques → `visible_game_ranking`, que já recorta por papel no banco
- *                 (`can_see_game_profile`, 0060 e 0112): corretor vê a equipe,
- *                 gerente vê quem lidera, diretor vê as equipes ATIVAS que
- *                 dirige, admin e sócio veem a casa. Repetir esse recorte no
- *                 front seria uma segunda regra para divergir da primeira.
+ * O que cada um vê sai de `recorteDoRanking`:
+ *   · corretor → os itens dele e o top 3 da equipe;
+ *   · gerente, diretor, admin e sócio → a soma do recorte e o ranking inteiro
+ *     dele (a equipe, a diretoria, a casa).
+ * QUAIS pessoas chegam é decisão do banco (`can_see_game_profile`, 0060/0112);
+ * o front só escolhe quanto da lista mostrar.
  */
 
 /**
  * O estado do modal, com a abertura automática junto.
  *
- * Fica num hook porque o botão mora no cabeçalho da página e o diálogo mora no
- * fim dela — sem isso a tela precisaria de dois `useState` para a mesma coisa.
+ * Decide uma vez por montagem da página: é o "toda vez que carregar" do
+ * cliente, e não a cada re-render ou troca de papel.
  */
 export function usePainelDoCorretor() {
-  const { role, user, loading } = useAuth();
+  const { role, loading } = useAuth();
   const [open, setOpen] = useState(false);
-  const profileId = user?.id ?? null;
+  const decidiu = useRef(false);
 
   useEffect(() => {
     // `loading` é obrigatório: até o perfil chegar, `role` ainda é o padrão
-    // 'broker' do contexto — sem esta guarda o modal abriria na cara do admin
+    // "broker" do contexto — sem esta guarda o modal abriria na cara do admin
     // no meio do carregamento.
-    if (loading) return;
-    if (abreSozinho(role, profileId)) setOpen(true);
-  }, [loading, role, profileId]);
+    if (loading || decidiu.current) return;
+    decidiu.current = true;
+    // `role` é o papel EFETIVO (`primaryRole`), nunca "roles inclui broker":
+    // toda conta nova ganha `broker` e nunca perde, e o `includes` abriria o
+    // modal também para admin, gerente e diretor.
+    if (role === "broker") setOpen(true);
+  }, [loading, role]);
 
   return { open, setOpen, abrir: () => setOpen(true) };
 }
@@ -84,17 +82,16 @@ export default function PainelDoCorretor({ open, onOpenChange }: PainelDoCorreto
       <DialogContent className="flex max-h-[90vh] max-w-5xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Painel</DialogTitle>
-          {/* O print tem só o título. A descrição continua no DOM em `sr-only`
-              porque é ela o `aria-describedby` do diálogo: apagá-la deixaria
-              quem usa leitor de tela ouvir "Painel" e mais nada. */}
+          {/* O print tem só o título. A descrição fica no DOM em `sr-only`
+              porque é ela o `aria-describedby` do diálogo. */}
           <DialogDescription className="sr-only">
-            O diário de hoje, os recados da operação e os destaques do seu recorte.
+            Os itens do game que pontuaram na temporada, os recados da operação e o
+            placar do seu recorte.
           </DialogDescription>
         </DialogHeader>
 
         {/* O conteúdo é um filho para os hooks dele só rodarem com o modal
-            ABERTO: o Radix não monta o portal enquanto fechado, e assim a carga
-            do painel do Dashboard não sai a cada entrada no Pipeline. */}
+            ABERTO: o Radix não monta o portal enquanto fechado. */}
         <Colunas />
 
         <DialogFooter className="sm:justify-center">
@@ -110,175 +107,124 @@ export default function PainelDoCorretor({ open, onOpenChange }: PainelDoCorreto
 function Colunas() {
   return (
     <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:grid-cols-3 lg:overflow-hidden">
-      <Diario />
+      <Pontuacao />
       <Mural />
       <Destaques />
     </div>
   );
 }
 
-/**
- * Caixa comum das três colunas.
- *
- * Sem ícone e sem régua sob o título: o print tem o texto âmbar e o conteúdo
- * logo abaixo. `tituloOculto` é a coluna do diário, que no print não tem
- * cabeçalho nenhum — o `sr-only` tira da tela e mantém o `h3`, que é o que dá
- * nome à região para quem navega por cabeçalhos.
- */
-function Caixa({
-  titulo,
-  tituloOculto = false,
-  children,
-}: {
-  titulo: string;
-  tituloOculto?: boolean;
-  children: ReactNode;
-}) {
+/** Caixa comum das três colunas: título âmbar e o conteúdo logo abaixo, como no print. */
+function Caixa({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <section className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-4 text-card-foreground">
-      <h3
-        className={cn(
-          "font-display text-sm font-bold text-warning",
-          tituloOculto ? "sr-only" : "mb-3",
-        )}
-      >
-        {titulo}
-      </h3>
+      <h3 className="mb-3 font-display text-sm font-bold text-warning">{titulo}</h3>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </section>
   );
 }
 
 /**
- * Coluna 1 — o diário de HOJE, as seis linhas do print.
+ * Coluna 1 — os itens do game que contaram ponto na temporada aberta.
  *
- * São métricas do DIÁRIO (`daily_entries`), não etapas do pipeline: a coluna
- * mostrava o funil de etapas (Incompleto, Lead, Proposta…), que tem outros
- * rótulos e outra conta. Os números saem da mesma leitura e da mesma soma do
- * Diário e do Checkpoint (`./painel/diarioDeHoje`) — duas fontes para o mesmo
- * número é o defeito mais caro de um painel.
- *
- * O recorte por papel é da RLS, não daqui: corretor vê a própria linha, gerente
- * e diretor as equipes que lideram, admin e sócio a casa (0109).
+ * É a mesma pontuação do placar (`visible_game_ranking.breakdown`) aberta por
+ * regra, com o rótulo e a ordem das regras vigentes da temporada: se o admin
+ * criar ou renomear uma regra, ela aparece aqui sem código.
  */
-function Diario() {
-  const dia = hojeLocal();
-  const diario = useQuery({
-    queryKey: diarioKeys.hoje(dia),
-    queryFn: () => loadDiarioDeHoje(dia),
-    staleTime: 60_000,
+function Pontuacao() {
+  const { roles, isAdmin, user } = useAuth();
+  const { soMinhaPosicao, escopo } = recorteDoRanking(roles, isAdmin);
+  const temporada = useCurrentSeasonId();
+  const placar = useSeasonRanking(temporada.data);
+  // Mesma chave e mesma leitura da tela de Gamificação: cache compartilhado.
+  const regras = useQuery({
+    queryKey: gameKeys.rules(temporada.data ?? null),
+    queryFn: () => listEffectiveScoringRules(temporada.data ?? null),
+    enabled: Boolean(temporada.data),
+    staleTime: 30_000,
   });
+  const titulo = soMinhaPosicao ? "Sua pontuação" : `Pontuação · ${escopo}`;
 
-  if (diario.isPending) {
+  if (temporada.isError || placar.isError || regras.isError) {
     return (
-      <Caixa titulo="Diário de hoje" tituloOculto>
-        <LoadingState variant="list" rows={6} label="Carregando o diário de hoje…" />
-      </Caixa>
-    );
-  }
-
-  if (diario.isError) {
-    return (
-      <Caixa titulo="Diário de hoje" tituloOculto>
-        {/* Falha de leitura NÃO vira zero: zero é uma afirmação sobre o dia que
-            a tela não conseguiu fazer. */}
+      <Caixa titulo={titulo}>
+        {/* Falha de leitura NÃO vira zero: zero é uma afirmação sobre o placar
+            que a tela não conseguiu fazer. */}
         <EmptyState
           icon={AlertTriangle}
           tone="danger"
-          title="Não consegui carregar o diário"
-          description={describeError(diario.error, "A leitura do diário de hoje falhou.")}
+          title="Não consegui carregar a pontuação"
+          description={describeError(
+            temporada.error ?? placar.error ?? regras.error,
+            "A leitura do game falhou.",
+          )}
         />
       </Caixa>
     );
   }
 
-  // Os dois vazios são coisas diferentes e por isso têm frases diferentes: um
-  // é o dia que ainda não começou a ser lançado, o outro é dado que existe e
-  // não é meu de ler. Nenhum dos dois pode virar seis zeros.
-  const resultado = diario.data;
-
-  if (resultado.estado === "sem-lancamento") {
+  if (temporada.isPending || (temporada.data && (placar.isPending || regras.isPending))) {
     return (
-      <Caixa titulo="Diário de hoje" tituloOculto>
-        <EmptyState
-          icon={NotebookPen}
-          title="Nenhum diário lançado hoje"
-          description="Ninguém do seu recorte enviou o diário de hoje ainda. As seis linhas aparecem no primeiro lançamento."
-        />
+      <Caixa titulo={titulo}>
+        <LoadingState variant="list" rows={5} label="Carregando a pontuação…" />
       </Caixa>
     );
   }
 
-  if (resultado.estado === "sem-acesso") {
+  if (!temporada.data) {
     return (
-      <Caixa titulo="Diário de hoje" tituloOculto>
-        <EmptyState
-          icon={Lock}
-          title="Diário de hoje fora do seu acesso"
-          description="Já há diário lançado hoje, mas nenhuma linha dele está no seu recorte. Isto não é zero — é o que o banco não devolveu para você."
-        />
+      <Caixa titulo={titulo}>
+        <p className="text-sm text-muted-foreground">
+          Nenhuma temporada aberta no momento. A pontuação volta quando a próxima começar.
+        </p>
       </Caixa>
     );
   }
 
-  const linha = resultado.linha;
-  const maior = maiorValor(linha);
+  const { total, itens } = itensDoGame(placar.data ?? [], regras.data ?? [], {
+    soMinhaPosicao,
+    meuId: user?.id ?? null,
+  });
+  const maior = Math.max(0, ...itens.map((item) => item.points));
 
   return (
-    <Caixa titulo="Diário de hoje" tituloOculto>
+    <Caixa titulo={titulo}>
+      <p className="mb-4 font-display text-2xl font-bold tabular-nums text-gold">{num(total)} pts</p>
       <ul className="space-y-4">
-        {LINHAS_DO_PAINEL.map((item) => {
-          const valor = linha[item.key];
-          // Piso de 4% para valor > 0: uma ligação contra um dia de 50 dá 2%, e
-          // 2% de uma barra fina é trilho vazio — a linha existiria no número e
-          // sumiria no desenho. Zero continua com zero de preenchimento: pintar
-          // barra cheia num dia sem movimento seria mentir para ficar igual ao
-          // print.
-          const pct = valor > 0 ? Math.max(4, Math.round((valor / maior) * 100)) : 0;
+        {itens.map((item) => {
+          // Piso de 4% para valor > 0: um item pequeno ao lado de uma venda
+          // some no trilho. Zero e negativo (distrato) ficam sem preenchimento
+          // — o número ao lado diz o resto.
+          const pct = item.points > 0 ? Math.max(4, Math.round((item.points / maior) * 100)) : 0;
           return (
-            <li key={item.key} className="space-y-1.5">
-              <p className={cn("flex items-center gap-2 text-sm font-semibold", item.rotulo)}>
-                {item.label}
-                {item.key === "ligacoes" && (
-                  <PhoneOutgoing className="h-4 w-4 shrink-0" aria-hidden />
-                )}
-              </p>
+            <li key={item.code} className="space-y-1.5">
+              <p className="text-sm font-semibold text-foreground">{item.label}</p>
               <div className="flex items-center gap-2">
-                {/* A barra é decorativa: `role="progressbar"` com mínimo igual
-                    ao máximo (dia inteiro zerado) é um medidor degenerado, e o
-                    rótulo com o número ao lado já diz tudo em texto. */}
                 <div
                   aria-hidden
-                  className={cn(
-                    "h-3 min-w-0 flex-1 overflow-hidden rounded-full border border-border bg-muted",
-                    // Dia lançado e ainda sem movimento: o trilho tracejado diz
-                    // "vazio de propósito" onde seis trilhos lisos pareciam
-                    // gráfico quebrado. O print mostra a barra de Leads cheia,
-                    // mas ali o dia tinha dado — cheia com zero seria mentira.
-                    maior === 0 && "border-dashed",
-                  )}
+                  className="h-3 min-w-0 flex-1 overflow-hidden rounded-full border border-border bg-muted"
                 >
                   <div
-                    className={cn("h-full rounded-full transition-[width]", item.barra)}
+                    className={cn(
+                      "h-full rounded-full transition-[width]",
+                      item.code === "venda" ? "bg-success" : "bg-primary",
+                    )}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-                {/* Um número só, e não o "0/0" do print: o diário não tem meta
-                    por métrica e um denominador inventado mentiria seis vezes
-                    por dia (ver `maiorValor`). */}
-                <span className="w-10 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">
-                  {num(valor)}
+                <span
+                  className={cn(
+                    "w-16 shrink-0 text-right text-sm font-semibold tabular-nums",
+                    item.points < 0 ? "text-destructive" : "text-foreground",
+                  )}
+                >
+                  {num(item.points)}
                 </span>
               </div>
             </li>
           );
         })}
       </ul>
-      {/* O dia fica no rótulo da região, não numa nota de rodapé: o print não
-          tem rodapé e a informação não pode simplesmente sumir. */}
-      <span className="sr-only">
-        Lançamentos de {dia.split("-").reverse().join("/")} no seu recorte.
-      </span>
     </Caixa>
   );
 }
@@ -365,26 +311,26 @@ const iniciais = (nome: string) =>
   nome.split(" ").map((parte) => parte[0]).slice(0, 2).join("").toUpperCase();
 
 /**
- * Coluna 3 — o top 3 do recorte de quem está olhando.
+ * Coluna 3 — o placar do recorte de quem está olhando.
  *
- * A lista chega recortada do servidor (`visible_game_ranking`). Não há `if` de
- * papel aqui de propósito: quem decide o que cada um enxerga é
- * `can_see_game_profile`, e uma segunda regra no front só teria como divergir
- * dela.
+ * Corretor vê o top 3 da equipe; gerente, diretor, admin e sócio veem o ranking
+ * INTEIRO do recorte ("toda a pontuação dos corretores dele"). As pessoas
+ * chegam recortadas do servidor (`visible_game_ranking`); aqui só se decide
+ * quantas mostrar.
  *
  * Lê a temporada e o placar direto, e não pelo `useGameRanking`: são as MESMAS
- * duas chaves de cache (nenhuma consulta a mais), mas com o `isError` à mão. O
- * hook devolve só `loading`, e por isso falha de leitura e temporada sem ponto
- * caíam os dois na frase "ninguém pontuou" — a tela afirmando sobre o placar o
- * que não conseguiu ler.
+ * duas chaves de cache, mas com o `isError` à mão — sem ele, falha de leitura e
+ * temporada sem ponto caíam na mesma frase.
  */
 function Destaques() {
+  const { roles, isAdmin } = useAuth();
+  const { soMinhaPosicao } = recorteDoRanking(roles, isAdmin);
   const temporada = useCurrentSeasonId();
   const placar = useSeasonRanking(temporada.data);
-  // `ordenarRanking` e não `slice` cru: a RPC ordena só por pontos, e três
-  // destaques tirados de nove empatados em 0 vinham em ordem qualquer — outra a
-  // cada carregamento, e com quem já foi desativado no meio.
-  const top = ordenarRanking(placar.data ?? []).slice(0, 3);
+  // `ordenarRanking` e não a ordem crua: a RPC ordena só por pontos, e empates
+  // em 0 vinham em ordem qualquer, com quem já foi desativado no meio.
+  const ordenado = ordenarRanking(placar.data ?? []);
+  const lista = soMinhaPosicao ? ordenado.slice(0, 3) : ordenado;
 
   const corpo = () => {
     if (temporada.isError || placar.isError) {
@@ -415,22 +361,23 @@ function Destaques() {
       );
     }
 
-    if (top.length === 0) {
+    if (lista.length === 0) {
       return (
         <p className="text-sm text-muted-foreground">
-          Ninguém pontuou nesta temporada ainda. Análise enviada, aprovação e venda entram no placar.
+          Ninguém do seu recorte entrou no placar desta temporada ainda.
         </p>
       );
     }
 
     return (
       <ol className="space-y-4">
-        {top.map((linha, i) => (
+        {lista.map((linha, i) => (
           <li
             key={linha.profile_id}
             className="flex items-center gap-3"
             aria-label={`${i + 1}º lugar: ${linha.full_name}, ${num(linha.points)} pontos`}
           >
+            {/* Do 4º em diante o disco é neutro — `MedalhaComFita` já trata. */}
             <MedalhaComFita lugar={i + 1} />
             <Avatar
               className={cn(

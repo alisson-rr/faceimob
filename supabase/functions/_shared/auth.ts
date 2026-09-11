@@ -21,6 +21,7 @@
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "./secrets.ts";
+import { tokenEhChaveDeServico } from "./chaveServico.ts";
 
 type Headers = Record<string, string>;
 
@@ -35,34 +36,6 @@ function bearerToken(req: Request): string {
   const raw = req.headers.get("Authorization") ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(raw.trim());
   return match ? match[1].trim() : "";
-}
-
-/**
- * Papel declarado no corpo do JWT, sem verificar assinatura.
- *
- * Ler o payload sem validar só é seguro porque o gateway já validou a
- * assinatura antes de invocar a function — o que ele NÃO faz é olhar o papel.
- * Token forjado não chega até aqui; token legítimo de anon chega, e é
- * exatamente esse que precisamos recusar.
- */
-function jwtRole(token: string): string | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")));
-    return typeof payload?.role === "string" ? payload.role : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Comparação sem atalho por prefixo: o tempo não pode contar quanto acertou. */
-function constantTimeEquals(a: string, b: string): boolean {
-  if (a.length === 0 || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 /** Cliente com service role — só para consultas do servidor, nunca autoriza nada. */
@@ -178,12 +151,16 @@ export async function hasAnyRole(
 /**
  * Porta do cron: só a chave de serviço entra.
  *
- * Aceita duas formas porque o projeto usa as chaves novas (`sb_secret_…`, que
- * não são JWT) e o valor que o pg_net manda vem do cofre, cadastrado à mão pelo
- * admin:
- *   1. o token é idêntico à chave de serviço (cofre à frente, `Deno.env` atrás
- *      — a mesma ordem que a migration 0018 usa para montar a chamada);
- *   2. o token é um JWT com `role = 'service_role'` (formato legado).
+ * O token precisa ser IGUAL à chave de serviço configurada, e aceita dois
+ * lugares porque os chamadores mandam de lugares diferentes:
+ *   - o cofre (`supabase/service_role_key`) — é o que os crons da 0018 à 0119
+ *     leem para montar o `Authorization` do pg_net;
+ *   - o `Deno.env` — a chave que a plataforma injeta, que a suíte E2E e os
+ *     scripts usam, e que vale mesmo quando o cofre guarda a `sb_secret_…`.
+ *
+ * NÃO basta um JWT dizer `role = 'service_role'`: sem conferir a assinatura,
+ * isso aceitava token forjado no meta-ads-webhook, que roda com
+ * `verify_jwt = false` e o gateway não confere nada.
  *
  * Qualquer outra coisa — inclusive a chave publicável e o JWT de um usuário
  * autenticado — leva 401.
@@ -195,10 +172,8 @@ export async function requireServiceRole(
   const token = bearerToken(req);
   if (!token) return deny("Endpoint interno: autenticação obrigatória.", 401, corsHeaders);
 
-  if (jwtRole(token) === "service_role") return null;
-
-  const serviceKey = await getSecret("SUPABASE_SERVICE_ROLE_KEY");
-  if (serviceKey && constantTimeEquals(token, serviceKey)) return null;
+  const chaves = [await getSecret("SUPABASE_SERVICE_ROLE_KEY"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")];
+  if (tokenEhChaveDeServico(token, chaves)) return null;
 
   return deny("Endpoint interno: somente a service role.", 401, corsHeaders);
 }

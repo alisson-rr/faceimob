@@ -89,13 +89,29 @@ async function insertMessages(supabase: SupabaseClient, rows: Record<string, unk
   return semAgente;
 }
 
+/**
+ * Sem teto, uma resposta travada segurava a edge até a plataforma derrubá-la
+ * (~150 s), e o áudio do webhook ficava reservado sem desfecho. 30 s cabem no
+ * limite junto do download (30 s) e da transcrição (60 s) do áudio.
+ */
+const OPENAI_TIMEOUT_MS = 30_000;
+
+/** O estouro vira falha do turno com motivo legível; outro erro segue como veio. */
+const semResposta = (e: unknown): never => {
+  if ((e as { name?: string } | null)?.name === "TimeoutError") {
+    throw new Error(`A OpenAI não respondeu em ${OPENAI_TIMEOUT_MS / 1000} s.`);
+  }
+  throw e;
+};
+
 async function callOpenAI(apiKey: string, model: string, messages: unknown[], temperature: number) {
   const r = await fetch(OPENAI_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model, messages, temperature }),
-  });
-  const data = await r.json();
+    signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
+  }).catch(semResposta);
+  const data = await r.json().catch(semResposta);
   if (!r.ok) throw new Error(data?.error?.message || `OpenAI ${r.status}`);
   return {
     text: (data.choices?.[0]?.message?.content ?? "") as string,
@@ -145,6 +161,12 @@ export async function runSdrAgentTurn(
      * a fila colocaria uma simulação na mão de um corretor de verdade.
      */
     handoffOnExhaust?: boolean;
+    /**
+     * Mídia da mensagem do lead (0120), gravada só na linha `lead`. O webhook
+     * manda o áudio transcrito: o texto vai em `message` e a origem aqui — é o
+     * que faz a aba Conversas mostrar o selo "áudio transcrito".
+     */
+    leadMessageExtra?: { media_type: string; media_id: string | null };
   },
 ): Promise<AgentTurnResult> {
   const apiKey = await requireSecret("OPENAI_API_KEY");
@@ -224,6 +246,13 @@ export async function runSdrAgentTurn(
 
   const past = history || [];
   const turnsUsed = past.filter((m) => m.author === "agent").length;
+
+  // A mídia é da linha do lead; a outra linha do lote leva as mesmas chaves
+  // nulas, porque o PostgREST recusa lote heterogêneo (PGRST102).
+  const midiaDoLead = input.leadMessageExtra
+    ? { media_type: input.leadMessageExtra.media_type, media_id: input.leadMessageExtra.media_id }
+    : {};
+  const semMidia = input.leadMessageExtra ? { media_type: null, media_id: null } : {};
   const maxTurns = Number(agent.max_turns ?? FALLBACK_MAX_TURNS) || FALLBACK_MAX_TURNS;
 
   // Teto atingido: guarda a mensagem do lead (é conteúdo real dele), avisa que
@@ -239,6 +268,7 @@ export async function runSdrAgentTurn(
         body: input.message,
         provider_message_id: input.providerMessageId ?? null,
         agent_id: null,
+        ...midiaDoLead,
       },
       {
         conversation_id: convId,
@@ -246,6 +276,7 @@ export async function runSdrAgentTurn(
         body: `[teto de ${maxTurns} respostas atingido] ${EXHAUSTED_REPLY}`,
         provider_message_id: null,
         agent_id: agent.id,
+        ...semMidia,
       },
     ]);
     if (teto) {
@@ -308,6 +339,7 @@ export async function runSdrAgentTurn(
       tokens_in: null,
       tokens_out: null,
       agent_id: null,
+      ...midiaDoLead,
     },
     {
       conversation_id: convId,
@@ -321,6 +353,7 @@ export async function runSdrAgentTurn(
       // aqui (coluna da 0082), a passagem pelo orquestrador some do histórico
       // e a aba Conversas não tem como mostrar por onde o lead andou.
       agent_id: agent.id,
+      ...semMidia,
     },
   ]);
   if (inErr) {

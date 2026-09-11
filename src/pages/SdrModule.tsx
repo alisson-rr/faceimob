@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card } from "@/components/ui/card";
@@ -23,7 +24,9 @@ export default function SdrModule() {
   const { roles, can } = useAuth();
   const canWrite = canManageSdr(roles);
   const canWriteTemplates = canEditTemplates(roles);
-  const [tab, setTab] = useState("agents");
+  // `?aba=conversas` é o destino dos avisos de WhatsApp no sino (0120).
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(params.get("aba") === "conversas" ? "conversations" : "agents");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [lists, setLists] = useState<Rlist[]>([]);

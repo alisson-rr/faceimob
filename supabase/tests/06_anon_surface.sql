@@ -118,6 +118,10 @@ begin
   -- exigindo LEITURA de toda tabela (é o que fazia o app subir morto antes da
   -- 0023) e passa a aceitar que a ESCRITA seja recortada, desde que a tabela
   -- esteja nesta lista, com o motivo escrito.
+  --
+  -- As sete tabelas da Meta (0115/0116) são livro, fila e auditoria de dinheiro
+  -- real: só RPC definer e edge com service role gravam. INSERT do cliente
+  -- permitiria forjar gasto, insight, execução de IA ou ação "aprovada".
   select string_agg(c.relname, ', ' order by c.relname)
     into sem_grant
   from pg_class c
@@ -128,7 +132,9 @@ begin
       has_table_privilege('authenticated', c.oid, 'SELECT')
       and (
         has_table_privilege('authenticated', c.oid, 'INSERT')
-        or c.relname in ('whatsapp_inbound_messages')
+        or c.relname in ('whatsapp_inbound_messages',
+                         'meta_ad_accounts', 'meta_sync_runs', 'meta_campaign_insights_daily',
+                         'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts')
       )
       and has_table_privilege('service_role', c.oid, 'SELECT')
     );

@@ -505,4 +505,42 @@ test.describe("SDR · estatísticas e disparo", () => {
     expect(res.status).toBe(403);
     expect(await res.text()).toMatch(/papel sem permissão/i);
   });
+
+  /**
+   * O "Enviar teste" vai para o telefone do PERFIL de quem pede, nunca para um
+   * número do corpo: aceitar `test_phone` reabria o disparo de template da
+   * empresa para qualquer número digitado, e nenhum outro caso quebraria.
+   *
+   * O perfil fica sem telefone de propósito. A recusa (422) sai antes do cofre,
+   * então vale no ambiente sem credencial da Meta e não manda mensagem para
+   * ninguém — e é a prova: se a function voltasse a ler o número do corpo, teria
+   * destino e não recusaria.
+   */
+  test("o envio de teste ignora o telefone do corpo e exige o do perfil de quem pede", async () => {
+    const alvo = resolveTarget();
+    const sessao = await mintSession("e2e.sdr@faceimob.test");
+    const template = await templateAprovado();
+    const [lista] = await db.insert<ListaRow>("remarketing_lists", { name: `Lista envio teste ${tag}`, template_id: template.id });
+    const [perfil] = await db.select<{ phone: string | null }>(`profiles?id=eq.${sessao.user.id}&select=phone`);
+    await db.update(`profiles?id=eq.${sessao.user.id}`, { phone: null });
+
+    try {
+      const res = await fetch(`${alvo.supabaseUrl}/functions/v1/sdr-whatsapp-broadcast`, {
+        method: "POST",
+        headers: {
+          apikey: alvo.anonKey,
+          Authorization: `Bearer ${sessao.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ list_id: lista.id, test: true, test_phone: "5511999999999" }),
+      });
+      const corpo = await res.json().catch(() => ({}));
+
+      expect(res.status, "perfil sem telefone tem de recusar, mesmo com número no corpo").toBe(422);
+      expect(corpo.error).toMatch(/perfil não tem telefone/i);
+      expect(corpo.destino, "o teste ganhou destino vindo do corpo").toBeUndefined();
+    } finally {
+      await db.update(`profiles?id=eq.${sessao.user.id}`, { phone: perfil?.phone ?? null });
+    }
+  });
 });
