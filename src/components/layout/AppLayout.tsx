@@ -12,15 +12,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Trophy } from "lucide-react";
 import { useGameRanking } from "@/hooks/useGameRanking";
 import { cn } from "@/lib/utils";
-
-const podiumTone = (rank: number) =>
-  rank === 1 ? "text-gold" : rank === 2 ? "text-silver" : "text-bronze";
+import { podiumTextClass } from "@/lib/tone";
 
 export default function AppLayout() {
   const location = useLocation();
   const pageTitle = pageTitleFor(location.pathname);
   const { user, profile } = useAuth();
-  const { scoped, myBroker, allScores } = useGameRanking();
+  const { scoped, meuScore, minhaPosicao, recorte } = useGameRanking();
 
   const me = profile
     ? { name: profile.name, avatar_url: profile.avatar_url }
@@ -31,10 +29,17 @@ export default function AppLayout() {
         }
       : null;
 
-  // Header ranking: mirrors the Pipeline top ranking, scoped by role.
-  // Broker sees only their own card entry; others see top 3 in scope.
-  const headerScores = myBroker && scoped.length === 1
-    ? [{ ...scoped[0], rank: allScores.findIndex(s => s.broker.id === myBroker.id) + 1 }]
+  // A tira do cabecalho espelha o card do Pipeline, e agora pela MESMA regra
+  // (`recorteDoRanking`, em useGameRanking). A condicao daqui era
+  // `scoped.length === 1`, que nunca acontece: o corretor recebe do servidor a
+  // equipe ATIVA inteira, entao ele caia no `else` e via o podio da equipe no
+  // cabecalho enquanto o card do Pipeline lhe mostrava a propria colocacao —
+  // duas telas, duas regras, e nenhuma delas escrita num lugar so.
+  //
+  // `minhaPosicao` nula = quem ainda nao pontuou na temporada. A tira fica
+  // vazia: escrever "0º" inventaria uma colocacao que o placar nao tem.
+  const headerScores = recorte.soMinhaPosicao
+    ? (meuScore && minhaPosicao !== null ? [{ ...meuScore, rank: minhaPosicao }] : [])
     : scoped.slice(0, 3).map((s, i) => ({ ...s, rank: i + 1 }));
 
   return (
@@ -77,7 +82,8 @@ export default function AppLayout() {
                   className="interactive ease-premium flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 hover:border-primary/40"
                 >
                   <span className="text-xs font-bold tabular-nums text-primary">{s.rank}º</span>
-                  <Trophy className={cn("h-3.5 w-3.5", podiumTone(s.rank))} aria-hidden />
+                  {/* `rank` da tira é 1º, 2º, 3º; o pódio de `@/lib/tone` é base 0. */}
+                  <Trophy className={cn("h-3.5 w-3.5", podiumTextClass(s.rank - 1))} aria-hidden />
                   <span className="max-w-[140px] truncate text-xs font-medium">{s.broker.name}</span>
                   <span className="text-xs tabular-nums text-muted-foreground">{s.points} pts</span>
                 </div>
@@ -88,7 +94,13 @@ export default function AppLayout() {
               <SoundToggle />
               <RoleSwitcher />
               <NotificationBell />
-              <span className="hidden text-xs tracking-tight text-muted-foreground sm:block">
+              {/* `lg`, nao `sm`: a faixa apertada e 768-1023 px — a lateral de
+                  224 px ja abriu e sobram 496 px de barra. O bloco da direita e
+                  `shrink-0` e mede ~460 px com o nome ligado, entao quem cede e
+                  o titulo (`min-w-0 truncate`): sobrava largura para meia
+                  palavra. O avatar ao lado e a lateral continuam dizendo quem
+                  esta logado. */}
+              <span className="hidden text-xs tracking-tight text-muted-foreground lg:block">
                 {me?.name || user?.email || "Usuário"}
               </span>
               {me?.avatar_url ? (

@@ -7,6 +7,10 @@ describe("describeError", () => {
     expect(describeError(cru, "erro")).toBe("Já existe um registro com esses dados.");
     expect(describeError({ code: "42501", message: "permission denied for table leads" }, "erro"))
       .toBe("Você não tem permissão para esta ação.");
+    expect(describeError({
+      code: "42501",
+      message: 'new row violates row-level security policy for table "deals"',
+    }, "erro")).toBe("Você não tem permissão para esta ação.");
     expect(describeError({ code: "23503", message: "violates foreign key constraint" }, "erro"))
       .toBe("Existe outro registro ligado a este; desfaça o vínculo antes.");
     expect(describeError({ code: "22P02", message: "invalid input syntax for type uuid" }, "erro"))
@@ -22,6 +26,23 @@ describe("describeError", () => {
       .toBe("Lead não encontrado.");
     // Sem mensagem util, cai no fallback em vez de mostrar vazio.
     expect(describeError({ code: "P0001", message: "  " }, "erro")).toBe("erro");
+  });
+
+  it("mostra o MOTIVO dos nossos gatilhos de 42501, em vez da frase generica", () => {
+    // As travas de negócio (0101/0102/0108) levantam 42501 com a frase já em
+    // pt-BR. Achatar tudo em "Você não tem permissão para esta ação." era
+    // esconder o único texto que diz o que fazer.
+    expect(describeError({
+      code: "42501",
+      message: "Seu papel não pode criar um negócio nesta etapa.",
+    }, "erro")).toBe("Seu papel não pode criar um negócio nesta etapa.");
+    expect(describeError({
+      code: "42501",
+      message: "Só administrador e sócio marcam OFF e distrato.",
+    }, "erro")).toBe("Só administrador e sócio marcam OFF e distrato.");
+    // Sem mensagem, continua valendo a frase genérica do código.
+    expect(describeError({ code: "42501", message: "  " }, "erro"))
+      .toBe("Você não tem permissão para esta ação.");
   });
 
   it("usa o fallback em vez de vazar ingles quando nao reconhece o erro", () => {

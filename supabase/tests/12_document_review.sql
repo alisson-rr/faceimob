@@ -86,10 +86,9 @@ begin
   select id into v_analysis from public.pipeline_stages where code = 'under_analysis';
   begin
     update public.deals set stage_id = v_analysis where id = v_deal.id;
-    raise exception 'FALHOU: negócio entrou no CCA sem revisão';
-  exception when raise_exception then
-    if position('aprovada pelo gerente' in sqlerrm) = 0 then raise; end if;
-    raise notice '  ok  etapa do CCA não pode ser pulada';
+    raise exception 'FALHOU: corretor mandou o negócio para o CCA sozinho';
+  exception when insufficient_privilege then
+    raise notice '  ok  corretor não move o negócio para o CCA';
   end;
 
   begin
@@ -98,6 +97,24 @@ begin
   exception when raise_exception then
     if position('Faltam documentos obrigatórios' in sqlerrm) = 0 then raise; end if;
     raise notice '  ok  documentos obrigatórios travam o envio ao gerente';
+  end;
+
+  reset role;
+
+  -- A conferência documental é a trava do GERENTE: desde a matriz de etapas da
+  -- 0101 o corretor nem chega a ela (é recusado por `can_enter_stage`, medido
+  -- acima). Sem trocar de ator aqui, o assert abaixo mediria a matriz de novo e
+  -- deixaria de cobrir `document_review_status`, que é o objeto deste arquivo.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', ger1::text, 'role', 'authenticated')::text, false);
+  set local role authenticated;
+
+  begin
+    update public.deals set stage_id = v_analysis where id = v_deal.id;
+    raise exception 'FALHOU: negócio entrou no CCA sem revisão';
+  exception when raise_exception then
+    if position('aprovada pelo gerente' in sqlerrm) = 0 then raise; end if;
+    raise notice '  ok  etapa do CCA não pode ser pulada';
   end;
 
   reset role;

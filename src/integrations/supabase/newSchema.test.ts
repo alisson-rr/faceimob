@@ -13,7 +13,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  dealStageCodeFor, legacyDealFields, toNumberOrNull, type SaveLegacyDealInput,
+  dealStageCodeFor, legacyDealFields, saleBlockedReason, STAGES_REQUIRING_REVIEW,
+  toNumberOrNull, type SaveLegacyDealInput,
 } from "./newSchema";
 
 const form = (patch: Partial<SaveLegacyDealInput> = {}): SaveLegacyDealInput => ({
@@ -60,6 +61,75 @@ describe("dealStageCodeFor", () => {
   it("qualquer outro rotulo mantem a etapa escolhida na tela", () => {
     expect(dealStageCodeFor({ status: "05. RP APROVADO", stage: "contract" })).toBe("contract");
     expect(dealStageCodeFor({ status: "PROPOSTA", stage: undefined })).toBe("incomplete");
+  });
+});
+
+describe("saleBlockedReason", () => {
+  const etapas = [{ id: "s-closed", code: "closed" }, { id: "s-prop", code: "proposal" }];
+  const liberado = () => true;
+  const negado = () => false;
+
+  it("diz o MOTIVO de quem nao pode registrar venda, antes de gravar", () => {
+    // O defeito medido: corretor e gerente preenchiam ~40 campos e recebiam
+    // 42501 do gatilho no fim, com mensagem tecnica.
+    expect(saleBlockedReason(form({ status: "VENDA" }), etapas, negado))
+      .toMatch(/Registrar venda é do administrador/);
+    // Pode entrar na etapa, mas a conferencia documental nao esta aprovada:
+    // a 0028 exige no UPDATE e a 0108 passou a exigir tambem no INSERT.
+    expect(saleBlockedReason(form({ status: "VENDA" }), etapas, liberado))
+      .toMatch(/documentação aprovada pelo gerente/);
+    expect(
+      saleBlockedReason(
+        form({ status: "VENDA", document_review_status: "approved" }),
+        etapas,
+        liberado,
+      ),
+    ).toBeNull();
+  });
+
+  it("nao inventa recusa fora da venda, nem quando a etapa ja e a mesma", () => {
+    expect(saleBlockedReason(form({ status: "PROPOSTA" }), etapas, negado)).toBeNull();
+    // Negocio que JA esta em "Fechado": regravar o mesmo `stage_id` nao e
+    // escrita para o gatilho, entao editar o telefone do cliente continua
+    // passando para quem edita o negocio.
+    expect(saleBlockedReason(
+      form({ status: "VENDA", stage_id: "s-closed" }), etapas, negado,
+    )).toBeNull();
+    // Sem o catalogo de etapas carregado a tela nao afirma nada.
+    expect(saleBlockedReason(form({ status: "VENDA" }), [], negado)).toBeNull();
+  });
+
+  it("recusa NASCER na faixa do CCA, e so de quem nao e administrador", () => {
+    const funil = [...etapas, { id: "s-analise", code: "under_analysis" }];
+    // O defeito medido: a matriz da a casa de "Em analise" a gerente, diretor e
+    // CCA porque eles MOVEM o negocio para la ao aprovar a conferencia (0101),
+    // entao o formulario de CRIACAO oferecia a etapa — e a 0111 §1.c recusava o
+    // INSERT com P0001 no fim de ~40 campos.
+    expect(saleBlockedReason(form({ stage: "under_analysis" }), funil, liberado))
+      .toMatch(/Negócio novo começa no funil/);
+    // Administrador e socio passam: a 0111 §1.c os isenta (migrar negocio que
+    // veio de fora e a mesma correcao manual que a 0110 ja lhes deu).
+    expect(saleBlockedReason(
+      form({ stage: "under_analysis" }), funil, liberado, { isAdmin: true },
+    )).toBeNull();
+    // Conferencia aprovada: a etapa abre para todos.
+    expect(saleBlockedReason(
+      form({ stage: "under_analysis", document_review_status: "approved" }), funil, liberado,
+    )).toBeNull();
+    // EDITAR um negocio que ja existe nao passa por aqui: quem cobra a
+    // MOVIMENTACAO e `blockedMoveReason` (pipeline/guards.ts), e regravar a
+    // mesma etapa nem escrita e para o gatilho.
+    expect(saleBlockedReason(form({ id: "d1", stage: "under_analysis" }), funil, liberado))
+      .toBeNull();
+  });
+
+  it("a lista de etapas que exigem conferencia e a do banco, e uma so", () => {
+    // Espelho de `deal_stage_document_block` (migration 0111:96-99). Ela vivia
+    // em tres formulacoes que discordavam — aqui (so 'closed'), em
+    // `pipeline/guards.ts` (as quatro) e no banco. Divergir de novo devolve ao
+    // operador a recusa que so aparece no fim do formulario.
+    expect([...STAGES_REQUIRING_REVIEW])
+      .toEqual(["under_analysis", "approved", "contract", "closed"]);
   });
 });
 

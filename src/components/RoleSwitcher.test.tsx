@@ -17,15 +17,20 @@ import { TooltipProvider } from "@/components/ui/tooltip";
  * é o e2e — `e2e/admin/configuracoes.spec.ts`.
  */
 /**
- * O seletor lê `realRole`/`realRoles` — os papéis de quem está logado, não os
- * efetivos. É o que o mantém na tela durante a prévia: com os efetivos,
- * `roles.includes('admin')` viraria falso ao pré-visualizar corretor, o
- * controle sumiria e o admin ficaria sem caminho de volta.
+ * O seletor lê `realRole`/`realRoles`/`realIsAdmin` — o que vale para quem está
+ * logado, não o efetivo. É o que o mantém na tela durante a prévia: com o
+ * efetivo, `isAdmin` viraria falso ao pré-visualizar corretor, o controle
+ * sumiria e o admin ficaria sem caminho de volta.
+ *
+ * Por isso os dois convivem no mock: `isAdmin` (efetivo) e `realIsAdmin`
+ * (real). Onde eles divergem está exatamente a armadilha que estes casos
+ * cobram.
  */
 const auth = vi.hoisted(() => ({
   estado: {
     realRole: "admin",
     realRoles: ["admin"] as string[],
+    realIsAdmin: true,
     isAdmin: true,
     previewRole: null as string | null,
     setPreviewRole: () => {},
@@ -52,7 +57,7 @@ async function render(ui: ReactNode) {
 }
 
 beforeEach(() => {
-  auth.estado = { realRole: "admin", realRoles: ["admin"], isAdmin: true, previewRole: null, setPreviewRole: () => {} };
+  auth.estado = { realRole: "admin", realRoles: ["admin"], realIsAdmin: true, isAdmin: true, previewRole: null, setPreviewRole: () => {} };
 });
 
 describe("RoleSwitcher", () => {
@@ -81,7 +86,7 @@ describe("RoleSwitcher", () => {
   it("quem não é admin não recebe o controle — só o rótulo do próprio papel", async () => {
     // A trava real está no AuthContext; aqui se cobra que a tela não ofereça um
     // menu que o banco não sustenta.
-    auth.estado = { realRole: "broker", realRoles: ["broker"], isAdmin: false, previewRole: null, setPreviewRole: () => {} };
+    auth.estado = { realRole: "broker", realRoles: ["broker"], realIsAdmin: false, isAdmin: false, previewRole: null, setPreviewRole: () => {} };
 
     const { container, unmount } = await render(<RoleSwitcher />);
     expect(container.querySelector('[role="combobox"]')).toBeNull();
@@ -89,16 +94,42 @@ describe("RoleSwitcher", () => {
     await unmount();
   });
 
+  it("o sócio recebe o controle — administrador e sócio têm o mesmo nível", async () => {
+    // Decisão do cliente em 10/09/2026. `setPreviewRole` no AuthContext já
+    // autoriza o sócio; sem esta regra a tela escondia o que o contexto liberava.
+    auth.estado = { realRole: "partner", realRoles: ["partner"], realIsAdmin: true, isAdmin: true, previewRole: null, setPreviewRole: () => {} };
+
+    const { container, unmount } = await render(<RoleSwitcher />);
+    expect(container.querySelector('[role="combobox"]')).not.toBeNull();
+    expect(container.textContent).toContain("Sócio (você)");
+    await unmount();
+  });
+
   it("em prévia, o gatilho mantém o nome e o papel previsto aparece", async () => {
-    // `isAdmin` é o EFETIVO (o AuthContext troca os papéis efetivos na prévia),
-    // então este é o estado em que a etiqueta "prévia" e o tooltip entram.
-    auth.estado = { realRole: "admin", realRoles: ["admin"], isAdmin: false, previewRole: "cca", setPreviewRole: () => {} };
+    // `isAdmin: false` com `realIsAdmin: true` é a prévia de corretor/CCA: o
+    // gate do seletor tem de olhar o REAL, senão o controle some e quem está
+    // conferindo fica trancado na prévia.
+    auth.estado = { realRole: "admin", realRoles: ["admin"], realIsAdmin: true, isAdmin: false, previewRole: "cca", setPreviewRole: () => {} };
 
     const { container, unmount } = await render(<RoleSwitcher />);
     const gatilho = container.querySelector('[role="combobox"]');
 
+    expect(gatilho, "o seletor tem de sobreviver à prévia").not.toBeNull();
     expect(gatilho?.getAttribute("aria-label")).toBe("Pré-visualizar como papel");
     expect(container.textContent).toContain("Ver como CCA");
+    expect(container.textContent).toContain("prévia");
+    await unmount();
+  });
+
+  it("o selo de prévia aparece mesmo quando o papel previsto continua podendo tudo", async () => {
+    // O caso que o `&& !isAdmin` apagava: em "Ver como Sócio" o isAdmin EFETIVO
+    // continua verdadeiro (sócio tem o poder do administrador desde 10/09/2026),
+    // e o selo sumia justamente na prévia mais fácil de confundir com a tela
+    // real. O aviso não depende do papel escolhido, e sim de haver prévia.
+    auth.estado = { realRole: "admin", realRoles: ["admin"], realIsAdmin: true, isAdmin: true, previewRole: "partner", setPreviewRole: () => {} };
+
+    const { container, unmount } = await render(<RoleSwitcher />);
+    expect(container.textContent).toContain("Ver como Sócio");
     expect(container.textContent).toContain("prévia");
     await unmount();
   });

@@ -8,6 +8,8 @@ export { KpiRow, type KpiRowProps } from "./KpiRow";
 export { DeveloperOverview, DeveloperRanking } from "./DeveloperOverview";
 export { SalesFunnelCard, type SalesFunnelCardProps } from "./SalesFunnelCard";
 export { GoalCard, type GoalCardProps } from "./GoalCard";
+export { GradeAnual } from "./GradeAnualCard";
+export { gradeAnual, MESES, type GradeCell, type GradeMetric, type GradeRow } from "./gradeAnual";
 export { TopBrokers, type TopBrokersProps } from "./TopBrokers";
 export { MonthlyTrend } from "./MonthlyTrend";
 export { LeadsPanel, type LeadsPanelProps } from "./LeadsPanel";

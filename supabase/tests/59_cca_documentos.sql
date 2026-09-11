@@ -259,15 +259,47 @@ begin
     'depois da devolução do CCA o corretor consegue reenviar ao gerente');
 
   -- ── exceção deliberada: encerrar o negócio continua permitido ─────────────
+  -- O motivo era "17. DISTRATO" e passou a ser "18. QUEDA": desde a 0101 os
+  -- DOIS desfechos que o cliente reservou ao administrador — OFF e DISTRATO —
+  -- exigem `deals.mark_off_distrato`, e o resto do Status 2 continua sendo do
+  -- corretor. A exceção que este bloco defende é a mesma de antes (encerrar o
+  -- negócio não fica travado pela esteira), só que provada com o motivo que
+  -- realmente é dele.
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
+  set local role authenticated;
+  update public.deals set status_detail = '18. QUEDA' where id = v_deal.id;
+  reset role;
+
+  select status_detail into v_label from public.deals where id = v_deal.id;
+  perform pg_temp.check59(v_label = '18. QUEDA',
+    'rótulo de encerramento passa mesmo com o caso na esteira (diálogo de perda)');
+
+  -- ── e o outro lado da mesma regra: distrato é de administrador ────────────
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
+  set local role authenticated;
+  v_recusou := false;
+  begin
+    update public.deals set status_detail = '17. DISTRATO' where id = v_deal.id;
+  exception when insufficient_privilege then
+    v_recusou := true;
+  end;
+  reset role;
+
+  select status_detail into v_label from public.deals where id = v_deal.id;
+  perform pg_temp.check59(v_recusou and v_label = '18. QUEDA',
+    'corretor encerra por QUEDA mas não marca distrato, e a recusa não grava nada');
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', adm::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
   update public.deals set status_detail = '17. DISTRATO' where id = v_deal.id;
   reset role;
 
   select status_detail into v_label from public.deals where id = v_deal.id;
   perform pg_temp.check59(v_label = '17. DISTRATO',
-    'rótulo de encerramento passa mesmo com o caso na esteira (diálogo de perda)');
+    'o administrador marca o distrato que o corretor não pôde marcar');
 end
 $$;
 

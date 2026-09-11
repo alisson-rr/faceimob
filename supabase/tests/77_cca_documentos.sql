@@ -378,8 +378,17 @@ do $$
 declare
   v_check text;
 begin
-  -- O 5º perfil da esteira: o sócio LÊ a esteira inteira (`can_read_all`) e não
-  -- escreve nela. Estava sem cobertura nenhuma.
+  -- O 5º perfil da esteira: o sócio enxerga a esteira inteira (`can_read_all`).
+  -- Estava sem cobertura nenhuma.
+  --
+  -- O segundo assert continua cobrando o MESMO fato de antes — a matriz não
+  -- concede `cca.review` ao sócio —, mas a conclusão que ele carregava ("a tela
+  -- dele é somente leitura") deixou de valer em 10/09/2026: o cliente decidiu
+  -- que sócio é administrador, a 0097 pôs `partner` em `is_admin()` e
+  -- `has_permission()` curto-circuita ali antes de olhar a matriz. É a linha
+  -- decorativa que a própria 0097 anunciou: desmarcar a permissão do sócio não
+  -- tira nada dele. Quem prova o lado novo — `has_permission('cca.review')`
+  -- verdadeiro para o sócio, sem linha na matriz — é o 99_socio_igual_admin.sql.
   perform pg_temp.check77(
     exists (select 1 from public.role_permissions
              where role = 'partner' and permission = 'menu.cca' and allowed),
@@ -387,7 +396,7 @@ begin
   perform pg_temp.check77(
     not exists (select 1 from public.role_permissions
                  where role = 'partner' and permission = 'cca.review' and allowed),
-    'o sócio não escreve na esteira: a tela dele é somente leitura');
+    'a matriz não concede cca.review ao sócio (a permissão dele vem de is_admin, não da linha)');
 
   select pg_get_expr(p.polwithcheck, p.polrelid) into v_check
     from pg_policy p where p.polname = 'deal_documents_insert'

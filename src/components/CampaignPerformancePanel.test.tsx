@@ -39,6 +39,8 @@ const campanha: CampaignResult = {
   endsOn: "2026-09-30",
   leadSourceId: null,
   syncedAt: null,
+  spendPeriodStart: null,
+  spendPeriodEnd: null,
   leads: 10,
   conversions: 2,
   sales: 1,

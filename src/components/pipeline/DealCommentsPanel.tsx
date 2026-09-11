@@ -4,12 +4,35 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { dateTime } from "@/lib/format";
+import { brokerTextClass } from "@/lib/tone";
 import { describeError } from "@/lib/supabaseError";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { dealParticipantNames } from "@/integrations/supabase/documents";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
 
 type DealComment = { id: string; actor_id: string | null; to_value: string | null; created_at: string };
+
+/**
+ * Quantos comentários o negócio tem — para o contador da aba, que é decidido
+ * fora deste painel (o painel só monta quando a aba já está aberta).
+ *
+ * Falha de rede devolve 0 em vez de estourar: é um número decorativo ao lado de
+ * um rótulo, e derrubar a barra de abas por causa dele seria pior que mostrar a
+ * aba sem contador. O erro de verdade — o da LISTA — aparece dentro do painel.
+ */
+export async function countDealComments(dealId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("deal_history")
+    .select("id", { count: "exact", head: true })
+    .eq("deal_id", dealId)
+    .eq("kind", "comment");
+  if (error) {
+    console.warn("[comentários] não deu para contar:", error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
 
 /**
  * Comentários manuais do negócio (`deal_history`, `kind = 'comment'`).
@@ -20,8 +43,18 @@ type DealComment = { id: string; actor_id: string | null; to_value: string | nul
 export function DealCommentsPanel({ dealId, people }: { dealId: string; people: PersonRecord[] }) {
   const id = useId();
   const [comments, setComments] = useState<DealComment[]>([]);
+  /** Nome de quem participa do negócio, vindo da RPC `deal_participant_names`.
+   *  `people` sai de `profiles`, e `profiles_select` é `auth_visible_profiles()`:
+   *  o corretor NÃO enxerga o perfil do gerente, então o comentário do gerente
+   *  aparecia como "—" — sem nome e, agora, sem cor — justamente para quem mais
+   *  precisa saber quem falou. A RPC (0027) é `security definer` e responde por
+   *  negócio que a pessoa já pode abrir. */
+  const [participantes, setParticipantes] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  /** Falha da LEITURA, separada do vazio: `if (!error)` deixava a lista em `[]` e
+   *  a tela dizia "Nenhum comentário ainda" para uma consulta que nem voltou. */
+  const [erro, setErro] = useState<unknown>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -30,13 +63,26 @@ export function DealCommentsPanel({ dealId, people }: { dealId: string; people: 
       .eq("deal_id", dealId)
       .eq("kind", "comment")
       .order("created_at", { ascending: true });
+    setErro(error);
     if (!error) setComments((data as DealComment[]) || []);
   }, [dealId]);
 
   useEffect(() => { void load(); }, [load]);
 
-  const authorName = (actorId: string | null) =>
-    actorId ? people.find((person) => person.id === actorId)?.name ?? "—" : "sistema";
+  useEffect(() => {
+    let ativo = true;
+    // Num `catch` próprio: nome que não veio vira "—", e isso não pode derrubar
+    // a lista de comentários, que já carregou por outro caminho.
+    dealParticipantNames(dealId)
+      .then((nomes) => { if (ativo) setParticipantes(nomes); })
+      .catch((falha) => console.warn("[comentários] não deu para nomear os autores:", falha));
+    return () => { ativo = false; };
+  }, [dealId]);
+
+  const authorName = (actorId: string | null) => {
+    if (!actorId) return "sistema";
+    return people.find((person) => person.id === actorId)?.name ?? participantes[actorId] ?? "—";
+  };
 
   const send = async () => {
     const body = draft.trim();
@@ -59,23 +105,59 @@ export function DealCommentsPanel({ dealId, people }: { dealId: string; people: 
   };
 
   return (
-    <div className="border-t border-border pt-3">
-      <h3 className="mb-2 text-sm font-bold">Comentários</h3>
-      <div className="max-h-40 space-y-2 overflow-y-auto">
-        {comments.map((entry) => (
-          <p key={entry.id} className="text-xs">
-            <span className="text-muted-foreground">{dateTime(entry.created_at)} </span>
-            <span className="font-bold text-primary">{authorName(entry.actor_id)}:</span>{" "}
-            <span className="text-muted-foreground">{entry.to_value}</span>
-          </p>
-        ))}
-        {comments.length === 0 && <p className="text-xs text-muted-foreground">Nenhum comentário ainda.</p>}
-      </div>
-      <div className="mt-2 flex gap-2">
+    <div className="space-y-2">
+      <h3 className="text-sm font-bold">
+        Comentários
+        {comments.length > 0 && (
+          <span className="ml-1 font-normal text-muted-foreground">({comments.length})</span>
+        )}
+      </h3>
+
+      {erro ? (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+          {describeError(erro, "Não consegui carregar os comentários deste negócio.")}
+        </p>
+      ) : (
+        <ul className="max-h-80 space-y-1.5 overflow-y-auto">
+          {comments.map((entry) => {
+            const nome = authorName(entry.actor_id);
+            return (
+              // A cor sai do NOME (`brokerTextClass`), a mesma que pinta o
+              // corretor no Pipeline: quem fala tem sempre a mesma cor, em
+              // qualquer tela e em qualquer ordem de leitura. `border-current`
+              // herda essa cor na faixa lateral sem inventar uma classe de borda
+              // que o Tailwind não enxergaria (a classe nasce montada em
+              // `tone.ts`, e concatenar `border-` no nome dela a apagaria do
+              // bundle). Só o autor fica colorido — o corpo continua em
+              // `foreground`, que é o que precisa de contraste de leitura.
+              <li
+                key={entry.id}
+                className={`rounded-md border-l-2 border-current bg-muted/20 px-2 py-1.5 ${brokerTextClass(nome)}`}
+              >
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-xs font-bold">{nome}</span>
+                  <span className="text-xs text-muted-foreground">{dateTime(entry.created_at)}</span>
+                </div>
+                {/* `whitespace-pre-wrap`: o campo é um textarea e o comentário de
+                    duas linhas virava um parágrafo só. */}
+                <p className="whitespace-pre-wrap break-words text-xs text-foreground">{entry.to_value}</p>
+              </li>
+            );
+          })}
+          {comments.length === 0 && (
+            <li className="text-xs text-muted-foreground">Nenhum comentário ainda.</li>
+          )}
+        </ul>
+      )}
+
+      <div className="flex gap-2">
         <Label htmlFor={`${id}-draft`} className="sr-only">Novo comentário</Label>
         <Textarea
           id={`${id}-draft`} rows={2} className="flex-1 text-xs"
           value={draft} onChange={(event) => setDraft(event.target.value)}
+          // 4000 é o teto que `add_deal_comment` cobra: sem isto o texto longo só
+          // era recusado depois do clique, com a frase crua do banco em toast.
+          maxLength={4000}
           placeholder="Escreva o próximo passo deste negócio…"
         />
         <Button

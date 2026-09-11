@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX,
-  AlertTriangle,
+  AlertTriangle, Pencil, Check, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,22 +12,26 @@ import { describeError } from "@/lib/supabaseError";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import {
+  MAX_DOCUMENT_ALIAS,
   canAttachNow,
   canEditDeal,
   countDealManagers,
   dealParticipantNames,
   deleteDealDocument,
+  documentDisplayName,
   getDealDocumentReview,
   listDealDocuments,
   listDocumentTypes,
   listMyDealRoles,
   missingRequiredTypes,
   missingStoragePaths,
+  renameDealDocument,
   reviewDealDocuments,
   signedDocumentUrl,
   submitBlockReason,
   submitDealForManagerReview,
   uploadDealDocument,
+  validateDocumentAlias,
   validateDocumentFile,
   type DealDocumentReview,
   type DealDocumentRecord,
@@ -120,6 +124,9 @@ export default function DealDocumentUpload({
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  /** Linha em edição de apelido (0106). Uma por vez: abrir duas caixas de texto
+   *  sobre a mesma lista é convite para salvar na linha errada. */
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
@@ -197,9 +204,18 @@ export default function DealDocumentUpload({
 
     setBusy(type.id);
     let enviados = 0;
+    // Nomes que este tipo já ocupa neste negócio — os que estão na tela MAIS os
+    // que acabaram de subir neste lote. Sem isto, dois arquivos chamados
+    // "documento.pdf" (o padrão de quem anexa pelo celular) recebiam o mesmo
+    // `stored_name`, que é o nome do anexo no e-mail da construtora: dois anexos
+    // homônimos e indistinguíveis. Só vale nos tipos que aceitam vários.
+    const usedNames = (byType.get(type.id) ?? []).map((d) => d.stored_name);
     try {
       for (const file of chosen) {
-        await uploadDealDocument({ dealId, documentType: type, file, clientName, dealCode });
+        const criado = await uploadDealDocument({
+          dealId, documentType: type, file, clientName, dealCode, usedNames,
+        });
+        usedNames.push(criado.stored_name);
         enviados += 1;
       }
       toast({
@@ -254,12 +270,41 @@ export default function DealDocumentUpload({
     }
   };
 
+  /**
+   * Grava o APELIDO da linha. O arquivo não muda de nome: `stored_name` continua
+   * sendo o que vai anexado no e-mail da construtora.
+   *
+   * Troca só a linha em vez de chamar `load()`: recarregar o dossiê inteiro por
+   * causa de um rótulo refaria sete consultas e reassinaria a lista de arquivos
+   * no Storage — e a lista pisca na frente de quem acabou de digitar.
+   */
+  const saveAlias = async (doc: DealDocumentRecord, alias: string) => {
+    const rejected = validateDocumentAlias(alias);
+    if (rejected) {
+      return toast({ title: "Apelido não salvo", description: rejected, variant: "destructive" });
+    }
+    setBusy(doc.id);
+    try {
+      const atualizado = await renameDealDocument(doc.id, alias);
+      setDocs((prev) => prev.map((d) => (d.id === atualizado.id ? atualizado : d)));
+      setRenaming(null);
+    } catch (e) {
+      toast({
+        title: "Apelido não salvo",
+        description: describeError(e, "O nome deste anexo continua como estava."),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const remove = async (doc: DealDocumentRecord) => {
     setBusy(doc.id);
     try {
       await deleteDealDocument(doc);
       await load();
-      toast({ title: "Documento excluído", description: doc.stored_name });
+      toast({ title: "Documento excluído", description: documentDisplayName(doc) });
     } catch (e) {
       toast({
         title: "Não foi possível excluir",
@@ -645,9 +690,16 @@ export default function DealDocumentUpload({
                     // mesmo nome acessível. A versão entra no rótulo apenas onde
                     // há ambiguidade de fato — renomear o caso comum trocaria o
                     // nome que o operador já conhece.
-                    const nome = visible.filter((o) => o.stored_name === d.stored_name).length > 1
-                      ? `${d.stored_name} versão ${d.version}`
-                      : d.stored_name;
+                    const rotuloBase = documentDisplayName(d);
+                    const nome = visible.filter((o) => documentDisplayName(o) === rotuloBase).length > 1
+                      ? `${rotuloBase} versão ${d.version}`
+                      : rotuloBase;
+                    // Apelido posto pelo operador (0106). Com ele na tela, o nome
+                    // técnico continua visível ao lado: é ele que a construtora
+                    // recebe anexado, e esconder isso faria o operador achar que
+                    // renomeou o arquivo.
+                    const apelidado = Boolean(d.display_name?.trim());
+                    const editando = renaming && renaming.id === d.id ? renaming : null;
                     // O registro existe e o arquivo não: oferecer "Baixar" aqui
                     // é prometer o que a assinatura vai recusar. A linha diz o
                     // que aconteceu e passa a oferecer o reenvio, que é o único
@@ -663,18 +715,78 @@ export default function DealDocumentUpload({
                         ausente ? "bg-destructive/10" : d.superseded_at ? "bg-muted/40 opacity-70" : "bg-success/10"
                       }`}
                     >
+                      {editando ? (
+                        <form
+                          className="flex min-w-0 flex-1 items-center gap-1"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void saveAlias(d, editando.value);
+                          }}
+                        >
+                          <input
+                            autoFocus
+                            value={editando.value}
+                            onChange={(event) => setRenaming({ id: d.id, value: event.target.value })}
+                            // Esc desiste sem gravar: é o que a caixa de texto de
+                            // uma linha faz em qualquer lugar, e sem isto a única
+                            // saída era clicar no "x".
+                            onKeyDown={(event) => { if (event.key === "Escape") setRenaming(null); }}
+                            maxLength={MAX_DOCUMENT_ALIAS}
+                            aria-label={`Apelido de ${d.stored_name}`}
+                            placeholder={d.stored_name}
+                            className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground"
+                          />
+                          <button
+                            type="submit"
+                            disabled={busy === d.id}
+                            aria-label="Salvar apelido"
+                            className="text-primary hover:text-primary/80 disabled:opacity-50"
+                          >
+                            {busy === d.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Check className="h-3 w-3" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRenaming(null)}
+                            aria-label="Cancelar apelido"
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </form>
+                      ) : (
                       <span className={`flex min-w-0 flex-1 items-center gap-1 ${
                         ausente ? "text-destructive" : d.superseded_at ? "text-muted-foreground" : "text-success"
                       }`}>
                         {ausente
                           ? <FileX className="h-3 w-3 shrink-0" />
                           : <Paperclip className="h-3 w-3 shrink-0" />}
-                        <span className="truncate">{d.stored_name}</span>
+                        <span className="truncate">{rotuloBase}</span>
+                        {apelidado && (
+                          <span className="truncate text-muted-foreground">· {d.stored_name}</span>
+                        )}
                         <span className="shrink-0 opacity-70">v{d.version} {formatSize(d.size_bytes)}</span>
                         {d.superseded_at && <span className="shrink-0 italic">· substituído</span>}
                         {ausente && <span className="shrink-0 font-semibold">· arquivo ausente</span>}
                       </span>
+                      )}
                       <span className="flex items-center gap-2 shrink-0">
+                        {/* Apelido só no vigente: o histórico "fica tudo como
+                            está" (decisão do cliente em 10/09/2026). Quem pode
+                            renomear é quem `can_edit_deal` autoriza — a MESMA
+                            cláusula que `rename_deal_document` cobra, então não
+                            existe botão que o banco recuse. */}
+                        {canUpload && !d.superseded_at && !editando && (
+                          <button
+                            type="button"
+                            onClick={() => setRenaming({ id: d.id, value: d.display_name ?? "" })}
+                            aria-label={`Renomear ${nome}`}
+                            className="text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          >
+                            <Pencil className="h-3 w-3" /> Renomear
+                          </button>
+                        )}
                         {ausente ? (
                           canAttach && !d.superseded_at && (
                             <button

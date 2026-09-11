@@ -21,6 +21,15 @@
  * `db:reset`. O que sobra é dizer a verdade no lugar onde o admin clica:
  * `enforcedBy: null` e o selo "Ainda sem efeito", com a frase explicando quem
  * decide de verdade.
+ *
+ * O mesmo vale para o código que PERDE o leitor: `deals.edit_stage` saiu daqui
+ * em 10/09/2026, porque quem decide a etapa voltou a ser a matriz de etapas e
+ * não um switch desta aba. Enquanto ele existir no catálogo do banco a tela cai
+ * no genérico — "Nenhuma tela ou RPC lê este código", selo "Ainda sem efeito" —,
+ * que é a verdade, mas é uma verdade contada: `e2e/admin/permissoes.spec.ts`
+ * exige que só os três acima apareçam inertes. Quem tira o leitor tira também o
+ * código do catálogo, por migration; o que não se faz é deixar entrada aqui
+ * prometendo efeito para um switch que ninguém lê.
  */
 export type EnforcedBy = "banco" | "tela";
 
@@ -82,6 +91,10 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
   },
   "deals.delete": {
     where: "Excluir negócio (policy deals_delete) — a tela ainda não tem esse botão; só quem chamar a API é barrado ou liberado por aqui",
+    enforcedBy: "banco",
+  },
+  "deals.mark_off_distrato": {
+    where: "Negócio: marcar os desfechos OFF e DISTRATO — os dois rótulos do Status 2 que o cliente reservou ao administrador em 10/09/2026, e que tiram o negócio do funil, do VGV e do ranking (gatilho deals_guard_status_columns). O RESTO do Status 2 continua livre para quem edita o negócio, e a \"Etapa (Status 1)\" não passa por aqui: quem decide etapa é a matriz de etapas (can_enter/can_exit), na aba ao lado",
     enforcedBy: "banco",
   },
   "cca.review": {

@@ -53,7 +53,11 @@ export function TopBrokers({ title, description, rows, scroll = false }: TopBrok
       title={title}
       description={description}
       icon={Trophy}
-      footer={`${num(rows.length)} com venda no período · empate desfeito pelo VGV`}
+      // O rodapé afirmava "empate desfeito pelo VGV" e parava aí — mas dois
+      // corretores do MESMO negócio rateado empatam também no VGV (1 venda e
+      // `deal_value / 2` cada) e ficavam na ordem de chegada dos negócios, que
+      // muda a cada cadastro novo. `rankBy` agora fecha no nome.
+      footer={`${num(rows.length)} com venda no período · empate desfeito pelo VGV e, nele, pelo nome`}
     >
       <ol className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {top.map((row, index) => {

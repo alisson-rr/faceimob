@@ -82,12 +82,17 @@ describe("ConvertLeadDialog", () => {
 
     await escolher(new File(["conteudo"], "fotos.zip", { type: "application/zip" }));
     // Recusado: o dropzone continua vazio, em vez de guardar o arquivo para
-    // derrubar a conversão inteira lá na frente.
-    expect(document.body.textContent).not.toMatch(/fotos\.zip/);
+    // derrubar a conversão inteira lá na frente. Quem prova isso é a ausência
+    // do botão de remover, que só existe quando há documento escolhido — o
+    // nome do arquivo PRECISA aparecer, mas dentro da recusa anunciada.
+    expect(document.body.querySelector('[aria-label="Remover documento"]')).toBeNull();
     expect(document.body.textContent).toMatch(/solte o documento/i);
+    const recusa = [...document.body.querySelectorAll('[role="alert"]')];
+    expect(recusa.some((el) => /fotos\.zip/.test(el.textContent ?? "")), "recusa em silêncio deixa a tela igual e ninguém sabe por quê").toBe(true);
 
     // Contraprova: um PDF entra.
     await escolher(new File(["%PDF-1.4"], "contrato.pdf", { type: "application/pdf" }));
+    expect(document.body.querySelector('[aria-label="Remover documento"]')).toBeTruthy();
     expect(document.body.textContent).toMatch(/contrato\.pdf/);
 
     await fechar();

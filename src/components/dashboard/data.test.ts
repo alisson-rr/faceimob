@@ -165,6 +165,22 @@ describe("monthView — o mês inteiro numa conta só", () => {
       ["TENDA", 1],
     ]);
   });
+
+  it("construtora acentuada ordena pela letra base, nao depois do Z", () => {
+    // `sort()` sem comparador compara code unit: "Á" e U+00C1, maior que "Z"
+    // (U+005A), entao toda construtora acentuada ia para o fim da grade, do
+    // grafico e do ranking de propostas — que herda esta ordem no empate.
+    const rows = [
+      venda({ id: "a", developer: "Zamboni" }),
+      venda({ id: "b", developer: "Águia" }),
+      venda({ id: "c", developer: "Brasal" }),
+    ];
+    expect(monthView(rows, "08/2026").developers.map((row) => row.dev)).toEqual([
+      "ÁGUIA",
+      "BRASAL",
+      "ZAMBONI",
+    ]);
+  });
 });
 
 describe("monthlySeries — o comparativo anual", () => {
@@ -326,6 +342,24 @@ describe("rankBy — rateio do negocio", () => {
       { id: "b1", name: "Diego", vendas: 1, vgv: 303_050 },
     ]);
   });
+
+  it("empate de vendas E de VGV desempata pelo nome, nao pela ordem de chegada", () => {
+    // Nao e caso raro: os dois corretores do MESMO negocio rateado empatam
+    // sempre — 1 venda e `deal_value / 2` cada, identicos ate o centavo. A
+    // ordem era a de insercao no `Map`, que segue a dos negocios
+    // (`created_at desc, id`): bastava cadastrar um negocio para o podio trocar
+    // de degrau. O acento entra junto — "Ávila" vem antes de "Zeca".
+    const zecaNoSlot1 = venda({
+      id: "x1", deal_value: 500_000,
+      broker1_id: "b9", broker1_name: "Zeca", broker2_id: "b2", broker2_name: "Ávila",
+    });
+    const avilaNoSlot1 = venda({
+      id: "x2", deal_value: 500_000,
+      broker1_id: "b2", broker1_name: "Ávila", broker2_id: "b9", broker2_name: "Zeca",
+    });
+    expect(rankBy([zecaNoSlot1], "broker").map((row) => row.name)).toEqual(["Ávila", "Zeca"]);
+    expect(rankBy([avilaNoSlot1], "broker").map((row) => row.name)).toEqual(["Ávila", "Zeca"]);
+  });
 });
 
 describe("dashboardScope — o recorte por papel, que espelha as policies", () => {
@@ -358,12 +392,17 @@ describe("dashboardScope — o recorte por papel, que espelha as policies", () =
     expect(dir.leadsLabel).toContain("sua carteira");
   });
 
-  it("socio le tudo, cadastra nada e tem a base de leads MENOR que a real", () => {
+  it("socio le tudo, cadastra meta e tem a base de leads MENOR que a real", () => {
     // `role_permissions` nao da `leads.view_queue` a partner, e a
     // `leads_select` so libera lead sem dono a quem tem a permissao: 69 de 74
     // na homologacao, sob um rotulo que dizia "total na base".
+    //
+    // `canManageGoal` e verdadeiro desde 10/09/2026: administrador e socio tem
+    // o mesmo nivel de permissao (decisao do cliente), e `goals_write` (0061)
+    // abre em `is_admin()`, que a 0097 fez responder sim para o socio. Enquanto
+    // isto era falso, a tela escondia do socio um botao que o banco aceitava.
     const socio = semFila(["partner"]);
-    expect(socio).toMatchObject({ readsAllDeals: true, seesEveryone: true, canManageGoal: false });
+    expect(socio).toMatchObject({ readsAllDeals: true, seesEveryone: true, canManageGoal: true });
     expect(socio.leadsLabel).toContain("fila sem dono não entra");
     // O booleano que a tela consome tem de dizer o MESMO que o rotulo: enquanto
     // o `LeadsPanel` recebia `seesEveryone`, ele escrevia "A base tem 69 leads"

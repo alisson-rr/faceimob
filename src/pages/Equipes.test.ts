@@ -18,11 +18,21 @@ import { describe, expect, it } from "vitest";
  */
 const fonte = readFileSync(path.resolve(__dirname, "Equipes.tsx"), "utf8");
 
+/**
+ * A meta de VGV saiu da tela para `MetaVgv.tsx` quando o cartão passou a mostrar
+ * só nome e foto — e levou junto um `update` em `goals`. A guarda segue o
+ * código: cobrir só este arquivo deixaria justamente o update que se mudou de
+ * lugar sem sentinela.
+ */
+const metaVgv = readFileSync(path.resolve(__dirname, "../components/equipes/MetaVgv.tsx"), "utf8");
+const fontes = { "Equipes.tsx": fonte, "MetaVgv.tsx": metaVgv };
+
 /** Cada cadeia `supabase.from(...).update(...)` até o `;` que a encerra. */
-const cadeiasDeUpdate = fonte
-  .split(".update(")
-  .slice(1)
-  .map((trecho) => trecho.slice(0, trecho.indexOf(";")));
+const cadeiasDeUpdate = Object.values(fontes).flatMap((arquivo) =>
+  arquivo
+    .split(".update(")
+    .slice(1)
+    .map((trecho) => trecho.slice(0, trecho.indexOf(";"))));
 
 describe("Equipes: nenhum update mente sobre ter gravado", () => {
   it("toda cadeia .update() pede a linha de volta com .select()", () => {
@@ -38,7 +48,9 @@ describe("Equipes: nenhum update mente sobre ter gravado", () => {
     // e o insert seguinte estourava 23505 com uma frase que não dizia nada.
     // Quem guarda o retorno escreve `const x = await supabase`; quem descarta
     // deixa a linha `await supabase` sozinha.
-    expect(fonte, "retorno de chamada supabase descartado").not.toMatch(/^\s*await supabase/m);
+    for (const [nome, arquivo] of Object.entries(fontes)) {
+      expect(arquivo, `retorno de chamada supabase descartado em ${nome}`).not.toMatch(/^\s*await supabase/m);
+    }
   });
 
   it("o toast de desligamento em massa conta o que o banco devolveu", () => {

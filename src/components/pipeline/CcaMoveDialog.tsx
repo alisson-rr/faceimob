@@ -6,7 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { dbError, describeError } from "@/lib/supabaseError";
-import { updateDeal } from "./data";
+import { useAuth } from "@/contexts/AuthContext";
+import { updateDeal, useCanExitStage, useDeals } from "./data";
 import { ccaStatusLabel, isDecision } from "./ccaStage";
 import type { CcaDeal, CcaStage } from "./ccaData";
 
@@ -26,40 +27,53 @@ interface Props {
  * criar o estágio: um "Aprovado" criado pela tela nascia `under_review` e não
  * decidia nem movia nada (achado P10).
  *
- * **O negócio vai primeiro.** São duas escritas em transações separadas, e a do
- * negócio é a que pode ser recusada — `deals_guard_closed_month` só perdoa
- * admin. Na ordem antiga o caso já estava Aprovado quando o guard barrava o
- * negócio: sobravam um toast de sucesso e um de erro juntos, o caso decidido e o
- * negócio parado no Pipeline, sem caminho de conserto para a analista. Movendo
- * o negócio antes, mês fechado recusa tudo e nada fica gravado pela metade.
- *
- * ponytail: sobra o risco inverso — `cca_cases` falhar com o negócio já movido.
- * É bem menos provável (quem abriu a tela é justamente quem `cca_cases_write`
- * aceita, e ali não há guard de mês). Evoluir para uma RPC `security definer`
- * com as duas escritas se aparecer um caso real de caso e negócio divergentes.
+ * **O caso vai primeiro; o negócio é consequência.** São duas escritas em
+ * transações separadas, e a do negócio é a que pode ser recusada — a matriz de
+ * etapas (`deals_guard_stage`) e o mês fechado (`deals_guard_closed_month`)
+ * cobram a analista, que não é dona do funil comercial. Enquanto o `updateDeal`
+ * vinha primeiro, um 42501 abortava o `confirm` inteiro: o caso NÃO era decidido
+ * e a analista ficava sem caminho nenhum — nem esteira, nem funil. Decidir o
+ * caso é o trabalho dela; a etapa que não andou vira aviso no mesmo toast, e o
+ * negócio segue movível pelo Pipeline por quem tem a etapa.
  */
 export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }: Props) {
+  const { canEnterStage } = useAuth();
+  const canExitStage = useCanExitStage();
   const [notes, setNotes] = useState(deal.notes || "");
   const [saving, setSaving] = useState(false);
+
+  // `CcaDeal` carrega o estágio da ESTEIRA, não a etapa do negócio no funil
+  // comercial — e sem ela não dá para espelhar a metade "sair" da matriz. A
+  // lista de negócios é cache compartilhado (`["deals"]`), não uma consulta
+  // nova por caso.
+  const negocio = useDeals().data?.find((row) => row.id === deal.dealId);
+
+  /**
+   * Por que o negócio NÃO vai andar no funil — `""` quando ele anda.
+   *
+   * As DUAS metades da matriz, como em `ScheduleVisitDialog`: o
+   * `deals_guard_stage` cobra `can_exit_stage(etapa atual)` ANTES de olhar o
+   * destino, e checar só o "entrar" fazia este diálogo prometer a
+   * movimentação para o banco recusá-la depois.
+   *
+   * Etapa atual ainda desconhecida (lista não carregou, ou o negócio não está
+   * na visibilidade de quem analisa) não vira promessa nem recusa: o
+   * `updateDeal` tenta e o toast conta o que voltou — é o degradê que este
+   * diálogo já tinha. Negócio JÁ em "Aprovado" também não precisa sair de
+   * lugar nenhum: a 0101 só cobra a matriz quando o `stage_id` muda.
+   */
+  const motivoParado = !approvedStageId
+    ? 'a etapa "Aprovado" do funil ainda não carregou.'
+    : !canEnterStage(approvedStageId)
+      ? 'seu perfil não pode mover negócios para "Aprovado" no funil.'
+      : negocio && negocio.stage_id !== approvedStageId && !canExitStage(negocio.stage_id)
+        ? `seu perfil não pode tirar um negócio de "${negocio.stage_label}".`
+        : "";
 
   const confirm = async () => {
     setSaving(true);
     try {
       const decision = isDecision(stage.status);
-
-      // Aprovar na esteira também aprova o negócio no funil comercial.
-      //
-      // O `&& approvedStageId` que estava aqui era a mesma porta pelo outro
-      // lado: com o catálogo de etapas ainda carregando a prop chega
-      // `undefined`, o `if` inteiro era pulado em silêncio e o caso virava
-      // Aprovado com o negócio parado no Pipeline. A falta da etapa é erro, não
-      // motivo para seguir — o `catch` abaixo já diz que nada foi alterado.
-      if (stage.status === "approved") {
-        if (!approvedStageId) {
-          throw new Error('A etapa "Aprovado" do funil ainda não carregou. Tente de novo.');
-        }
-        await updateDeal(deal.dealId, { stage_id: approvedStageId });
-      }
 
       // `.select("id")`: `cca_cases_write` exige `has_permission('cca.review')`
       // e a esteira habilita o botão pelo papel. Sem conferir a linha, a recusa
@@ -82,7 +96,27 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
         });
       }
 
-      toast({ title: "Caso movido", description: `${deal.client} → ${stage.name}.` });
+      // O caso JÁ está decidido. Uma recusa aqui (matriz de etapas, mês fechado)
+      // não desfaz a decisão: avisa e deixa o negócio para quem move o funil.
+      let avisoNegocio = "";
+      if (stage.status === "approved") {
+        if (motivoParado) {
+          avisoNegocio = motivoParado;
+        } else if (approvedStageId) {
+          try {
+            await updateDeal(deal.dealId, { stage_id: approvedStageId });
+          } catch (err) {
+            avisoNegocio = describeError(err, "o negócio não foi movido no funil.");
+          }
+        }
+      }
+
+      toast({
+        title: "Caso movido",
+        description: avisoNegocio
+          ? `${deal.client} → ${stage.name}. O negócio ficou parado no Pipeline: ${avisoNegocio}`
+          : `${deal.client} → ${stage.name}.`,
+      });
       await onMoved();
       onClose();
     } catch (err) {
@@ -114,6 +148,15 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
             value={notes} onChange={(event) => setNotes(event.target.value)}
           />
         </div>
+
+        {/* Mesma frase do toast, do mesmo `motivoParado`: enquanto o painel e o
+            toast montavam o motivo cada um por sua conta, um podia prometer o
+            que o outro desmentia. */}
+        {stage.status === "approved" && motivoParado && (
+          <p className="rounded-xl border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+            O caso será aprovado, mas o negócio continua na etapa atual do funil: {motivoParado}
+          </p>
+        )}
 
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>

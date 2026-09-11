@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { bareStatus } from "@/lib/dealStatus";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
-import { ALL, type DealFilterState } from "./filters";
+import { ALL, MY_TEAM, type DealFilterState } from "./filters";
 import { FACEIMOB_STATUSES } from "./statuses";
 import type { PipelineStage } from "./stages";
 
@@ -19,6 +20,9 @@ interface Props {
   brokers: PersonRecord[];
   managers: PersonRecord[];
   months: string[];
+  /** Tamanho da equipe que o usuário lidera (ele incluído). 0 ou 1 = não lidera
+   *  ninguém, e o recorte por equipe não aparece. */
+  teamCount: number;
 }
 
 /**
@@ -33,7 +37,7 @@ interface Props {
  * filtra.
  */
 export function DealFilters({
-  filters, onChange, onClear, onClose, stages, developers, brokers, managers, months,
+  filters, onChange, onClear, onClose, stages, developers, brokers, managers, months, teamCount,
 }: Props) {
   const id = useId();
   const field = (name: string) => `${id}-${name}`;
@@ -48,6 +52,26 @@ export function DealFilters({
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {/* Pedido do cliente em 10/09/2026 (B8): o gerente precisa de uma lista
+            com o time dele. O RECORTE do banco já é esse para quem é só gerente
+            (`can_see_deal` → `auth_visible_profiles()`), mas quem acumula
+            diretoria — ou administra — lê a operação inteira e não tinha como
+            estreitar. O filtro de "Gerente" logo abaixo não responde isso: ele
+            casa o SLOT de gerente do negócio, e o negócio de um corretor da
+            equipe com o slot vazio ficava de fora. */}
+        {teamCount > 1 && (
+          <div className="sm:col-span-2">
+            <Label htmlFor={field("team")}>Recorte</Label>
+            <Select value={filters.team} onValueChange={(v) => onChange({ team: v })}>
+              <SelectTrigger id={field("team")} className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos os negócios que enxergo</SelectItem>
+                <SelectItem value={MY_TEAM}>Só a minha equipe ({teamCount} pessoas)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         <div>
           <Label htmlFor={field("stage")}>Etapa</Label>
           <Select value={filters.stage} onValueChange={(v) => onChange({ stage: v })}>
@@ -67,8 +91,11 @@ export function DealFilters({
             <SelectTrigger id={field("status2")} className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent className="max-h-80">
               <SelectItem value={ALL}>Todos os Status 2</SelectItem>
+              {/* `value` é o que está gravado em `deals.status_detail` e filtra;
+                  o texto sai sem o prefixo numerado (pedido do cliente em
+                  10/09/2026). O gatilho espelha o filho, então acompanha. */}
               {FACEIMOB_STATUSES.map((status) => (
-                <SelectItem key={status.label} value={status.label}>{status.label}</SelectItem>
+                <SelectItem key={status.label} value={status.label}>{bareStatus(status.label)}</SelectItem>
               ))}
             </SelectContent>
           </Select>

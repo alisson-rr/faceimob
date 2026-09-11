@@ -176,9 +176,23 @@ Tokens de API vivem em `private.integration_credentials`, num schema que o
 PostgREST não expõe; o admin grava por RPC e nunca recebe o valor de volta. PIN
 de link público é hash bcrypt.
 
-**A superfície anônima são três funções.** `public_daily_team`,
-`public_daily_submit` e `public_director_checkpoint`. Nenhuma tabela é legível
-por `anon`.
+**A superfície anônima são duas funções.** `public_daily_team` e
+`public_daily_submit`. Nenhuma tabela é legível por `anon`.
+`public_director_checkpoint` era a terceira e **saiu na `0103`**: o checkpoint
+virou a tela logada `/checkpoint`, com recorte por hierarquia, e a rota anônima
+`/diretor/:slug` deixou de existir. A função continua no banco, `security
+definer` e chamável por `authenticated` — só o `execute` de `anon` foi revogado,
+para que a decisão seja reversível com um `grant`.
+
+**A matriz de etapas vive em par.** `stage_permissions` é semeada em dois
+lugares que precisam combinar: `supabase/seed.sql` (banco novo, porque
+`pipeline_stages` nasce ali e o seed roda depois das migrations) e a seção 3 de
+`0101_trava_etapa_e_desfecho` (ajusta onde as etapas já existem, no-op em banco
+novo). Mexer numa exige mexer na outra, senão `db:reset` e homologação passam a
+discordar sobre a mesma matriz. A seção 7 de `0061_equipes_permissoes` também
+semeia a matriz e o comentário dela — *"a matriz vigente na homologação (39
+linhas)"* — **está superado desde a 0101**: migration aplicada não se reescreve,
+então o registro válido é este e o cabeçalho do `seed.sql`.
 
 **Mês fechado trava edição.** `closed_months` impede que relatório passado mude
 retroativamente — a queixa sobre discrepância nos anuais.

@@ -11,6 +11,7 @@ import {
   createAdCampaign,
   deleteAdCampaign,
   developerSummary,
+  importMetaSpend,
   monthOverMonth,
   origemDoGasto,
   previousMonth,
@@ -351,13 +352,63 @@ describe("problemaNaCampanha", () => {
 /**
  * A frase de origem do gasto: escrita nos dois lugares que a mostram, ela
  * divergiu — o painel dizia "digitado" e a tabela logo abaixo dizia
- * "sincronizado", para a MESMA linha. NENHUM código escreve `synced_at`.
+ * "sincronizado", para a MESMA linha.
  */
 describe("origemDoGasto", () => {
-  it("nunca diz sincronizado — a data é a do último toque, não de uma sincronia", () => {
+  it("nunca diz sincronizado — a data sozinha é a do último toque, não de uma sincronia", () => {
     expect(origemDoGasto(null)).toBe("digitado");
     expect(origemDoGasto("2026-07-28T12:00:00Z")).toBe("digitado · atualizado 28/07/2026");
     expect(origemDoGasto("2026-07-28T12:00:00Z")).not.toMatch(/sincroniz/i);
+  });
+
+  // O gasto importado (0113) vem com o RECORTE que ele cobre: sem o período na
+  // frase, um relatório de agosto passaria por gasto da vida inteira da
+  // campanha e o CPL sairia menor do que o real.
+  it("com período importado, diz que veio do relatório e de quando", () => {
+    expect(origemDoGasto("2026-09-10T12:00:00Z", "2026-08-01", "2026-08-31"))
+      .toBe("relatório da Meta · 01/08/2026 a 31/08/2026");
+    expect(origemDoGasto("2026-09-10T12:00:00Z", "2026-08-01", "2026-08-01"))
+      .toBe("relatório da Meta · 01/08/2026");
+  });
+
+  // Semente antiga tem `synced_at` sem importação nenhuma por trás: ela continua
+  // sendo digitada, ou a tela afirmaria uma conversa com a Meta que não houve.
+  it("data sem período continua sendo gasto digitado", () => {
+    expect(origemDoGasto("2026-07-28T12:00:00Z", null, null)).toBe("digitado · atualizado 28/07/2026");
+  });
+});
+
+/**
+ * A importação do relatório é UMA chamada: apagar o período sobreposto e gravar
+ * o novo não podem acontecer pela metade — entre um e outro, o `total_spend`
+ * ficaria menor do que a realidade.
+ */
+describe("importMetaSpend", () => {
+  const linha = { campaign_id: "uuid-1", period_start: "2026-08-01", period_end: "2026-08-31", spend: 4250.9 };
+
+  it("manda as linhas e o nome do arquivo para a RPC", async () => {
+    rpc.mockResolvedValue({ data: [{ linhas: 1, campanhas: 1, substituidas: 0 }], error: null });
+
+    const resultado = await importMetaSpend([linha], "relatorio-agosto.csv");
+
+    expect(rpc).toHaveBeenCalledWith("marketing_import_ad_spend", {
+      p_rows: [linha],
+      p_source_file: "relatorio-agosto.csv",
+    });
+    expect(resultado).toEqual({ linhas: 1, campanhas: 1, substituidas: 0 });
+  });
+
+  // Lista vazia chegaria ao banco como importação de nada e voltaria "0 linhas
+  // gravadas" com cara de sucesso.
+  it("recusa lista vazia sem ir ao banco", async () => {
+    await expect(importMetaSpend([])).rejects.toThrow(/casou com campanha/i);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("erro do banco vira mensagem de erro, e não resultado zerado", async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "permission denied" } });
+
+    await expect(importMetaSpend([linha])).rejects.toThrow();
   });
 });
 

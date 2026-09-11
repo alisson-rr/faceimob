@@ -77,11 +77,12 @@ const optionLabel = (r: AppRole, isMine: boolean) =>
  * O seletor lê `realRole`/`realRoles`, não `role`/`roles`: desde 05/09/2026 os
  * segundos são os EFETIVOS, e com eles o item "(você)" passaria a apontar para o
  * papel pré-visualizado — o admin em prévia de corretor veria "Corretor (você)"
- * e perderia o caminho de volta. Pior: `roles.includes('admin')` ficaria falso
- * durante a prévia e o seletor sumiria da tela, trancando o admin na prévia.
+ * e perderia o caminho de volta. Pela mesma razão o gate abaixo é
+ * `realIsAdmin`, e não `isAdmin`: o efetivo fica falso durante a prévia e o
+ * seletor sumiria da tela, trancando o admin dentro dela.
  */
 export function RoleSwitcher() {
-  const { realRole: role, realRoles: roles, isAdmin, previewRole, setPreviewRole } = useAuth();
+  const { realRole: role, realRoles: roles, realIsAdmin, previewRole, setPreviewRole } = useAuth();
 
   /**
    * Como a PESSOA se chama — que não é o mesmo que o papel de maior poder dela.
@@ -99,9 +100,17 @@ export function RoleSwitcher() {
    */
   const meuPapel: AppRole = roles.includes('partner') ? 'partner' : role;
 
-  // Quem não é admin não troca de papel: veria um menu que não corresponde ao
-  // que pode fazer. A trava real está no AuthContext; isto é a UI.
-  if (!roles.includes('admin')) {
+  /**
+   * Quem não é admin não troca de papel: veria um menu que não corresponde ao
+   * que pode fazer. A trava real está no AuthContext; isto é a UI.
+   *
+   * `realIsAdmin` e não `isAdmin`: o segundo é o EFETIVO, e na prévia de
+   * corretor ele fica falso — o seletor sumiria e quem está conferindo ficaria
+   * sem caminho de volta. `realIsAdmin` é exatamente a resposta que
+   * `setPreviewRole` usa para autorizar, então a tela oferece o que o contexto
+   * libera, sem repetir a regra (sócio incluído desde 10/09/2026) aqui.
+   */
+  if (!realIsAdmin) {
     return (
       <div className="flex items-center gap-2">
         <Shield className={cn("h-3.5 w-3.5 shrink-0", roleColors[meuPapel])} />
@@ -152,7 +161,13 @@ export function RoleSwitcher() {
           outra pessoa importa mais no celular, não menos. Por isso ele é curto
           — cabe a 375 px sem empurrar o sino para fora. O texto inteiro fica no
           tooltip e, para leitor de tela, no `sr-only` ao lado. */}
-      {previewRole && !isAdmin && (
+      {/* `previewRole` sozinho: o `&& !isAdmin` de antes lia o isAdmin EFETIVO,
+          que só ficava falso porque toda prévia derrubava o poder de admin.
+          Desde 10/09/2026 o sócio TEM esse poder, então "Ver como Sócio"
+          mantinha `isAdmin` verdadeiro e apagava o selo justamente na prévia
+          que mais confunde — a que continua parecendo a tela do administrador.
+          O aviso não depende do papel escolhido; depende de haver prévia. */}
+      {previewRole && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" size="sm" className="shrink-0 border-warning/60 text-warning">

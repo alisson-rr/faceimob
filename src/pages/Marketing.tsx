@@ -59,6 +59,9 @@ type CampaignRow = {
   endsOn: string | null;
   leadSourceId: string | null;
   syncedAt: string | null;
+  /** Recorte do relatório da Meta que o gasto cobre (0113). Nulo = digitado. */
+  spendPeriodStart: string | null;
+  spendPeriodEnd: string | null;
   leads: number;
   conversions: number;
   sales: number;
@@ -147,6 +150,8 @@ async function loadCampaigns(): Promise<{
       endsOn: c.ends_on ?? null,
       leadSourceId: c.lead_source_id ?? null,
       syncedAt: c.synced_at,
+      spendPeriodStart: c.spend_period_start ?? null,
+      spendPeriodEnd: c.spend_period_end ?? null,
       leads: s?.leads ?? 0,
       conversions: s?.conversions ?? 0,
       sales: s?.sales ?? 0,
@@ -243,6 +248,10 @@ export default function Marketing() {
     };
   }, [filtered]);
 
+  /** Alguma linha do recorte visível tem gasto vindo de relatório: é o que
+   *  muda o que a legenda do KPI pode afirmar sobre o período. */
+  const temGastoImportado = useMemo(() => filtered.some((c) => c.spendPeriodStart !== null), [filtered]);
+
   const byChannel = useMemo(() => {
     const map = new Map<string, { spend: number; leads: number }>();
     filtered.forEach(c => {
@@ -298,7 +307,7 @@ export default function Marketing() {
               para a mesma campanha, dois valores na mesma dobra. */}
           <CampaignPerformancePanel
             rows={filtered}
-            total={campaigns.length}
+            allRows={campaigns}
             developers={developers}
             leadSources={leadSources}
             loading={isLoading}
@@ -337,8 +346,16 @@ export default function Marketing() {
                     </div>
                     <p className="text-2xl font-bold mt-1">{brl(totals.spend)}</p>
                     {/* Não é a mesma verba do aporte: aporte é o que a construtora
-                        põe no mês; isto é o que as campanhas gastaram na vida toda. */}
-                    <p className="text-xs text-muted-foreground mt-1">acumulado, não é o aporte do mês</p>
+                        põe no mês; isto é o que as campanhas gastaram.
+                        Com relatório importado o gasto vale pelo RECORTE de cada
+                        relatório — dizer "acumulado" aí seria afirmar que a soma
+                        cobre a vida inteira da campanha, e o CPL sairia menor do
+                        que o real sem nenhum aviso. */}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {temGastoImportado
+                        ? "inclui gasto importado da Meta, pelo período de cada relatório"
+                        : "acumulado, não é o aporte do mês"}
+                    </p>
                   </CardContent>
                 </Card>
                 <Card className="glass">
@@ -467,7 +484,7 @@ export default function Marketing() {
                                     o painel dava como digitada — sincronia que este
                                     sistema não tem, no número que divide o CPL. */}
                                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                                  {origemDoGasto(c.syncedAt)}
+                                  {origemDoGasto(c.syncedAt, c.spendPeriodStart, c.spendPeriodEnd)}
                                 </span>
                               </td>
                               <td className="p-3 text-right font-semibold">{brl(c.spend)}</td>

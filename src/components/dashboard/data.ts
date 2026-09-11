@@ -222,7 +222,9 @@ export const dashboardScope = (roles: string[], canViewQueue: boolean): Dashboar
     leadsIsWholeBase: seesEveryone && canViewQueue,
     seesAllCca: roles.includes("cca") || todosOsNegocios,
     isDirector: roles.includes("director"),
-    canManageGoal: roles.includes("admin") || roles.includes("director"),
+    // `goals_write` (0061) e um `or` com `is_admin()`, que desde a 0097 responde
+    // sim para o socio — administrador e socio tem o mesmo nivel de permissao.
+    canManageGoal: seesEveryone || roles.includes("director"),
     dealsLabel: todosOsNegocios ? "toda a operação" : "os negócios em que você entra",
     leadsLabel: seesEveryone
       ? canViewQueue
@@ -575,7 +577,16 @@ export const rankBy = (rows: DealRow[], role: RankRole): RankRow[] => {
       map.set(person.id, entry);
     }
   }
-  return Array.from(map.values()).sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv);
+  // Desempate final pelo NOME, como o banco faz ao congelar a temporada
+  // (`close_game_season`: `order by r.points desc, r.full_name`) e como a
+  // Gamificacao ja fazia na tela (`ordenarRanking`). Sem ele a ordem do empate
+  // era a de insercao no `Map`, ou seja, a ordem em que os NEGOCIOS chegaram
+  // (`listLegacyDeals` pede `created_at desc, id`): dois corretores no mesmo
+  // negocio rateado empatam sempre — 1 venda cada e `deal_value / 2` de VGV,
+  // identicos ate o centavo — e trocavam de degrau no podio a cada negocio novo
+  // cadastrado. `pt-BR` porque "Ana" tem de vir antes de "Ávila" e de "Bruno".
+  return Array.from(map.values())
+    .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv || a.name.localeCompare(b.name, "pt-BR"));
 };
 
 export type MonthView = ReturnType<typeof monthView>;
@@ -600,9 +611,13 @@ export function monthView(deals: DealRow[], activeMonth: string) {
   // esconde a construtora que parou. Quem decide se ha o que mostrar e o bloco,
   // pelo TOTAL do periodo: `data.length` nunca zerava e o estado vazio nunca
   // disparava, entao um mes sem negocio pintava um grafico inteiro de zeros.
+  // `sort()` sem comparador ordena por code unit: "Á" (U+00C1) cai DEPOIS de
+  // "Z", entao toda construtora acentuada ia para o fim da grade e do grafico —
+  // "ÁGUIA" depois de "ZAMBONI". `pt-BR` poe o acento no lugar da letra base.
+  // A lista sai em CAIXA ALTA, entao caixa nao pesa aqui.
   const devNames = Array.from(
     new Set(deals.map((deal) => deal.developer.trim().toUpperCase()).filter(Boolean)),
-  ).sort();
+  ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const developers: DeveloperStats[] = devNames.map((dev) => {
     const devRows = rows.filter((deal) => deal.developer.trim().toUpperCase() === dev);

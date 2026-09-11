@@ -6,10 +6,13 @@
  * "João Silva" na base colidiam num filtro só, e renomear o perfil fazia o
  * negócio sumir do filtro do próprio dono.
  */
-import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import type { LegacyDealRecord, PersonRecord } from "@/integrations/supabase/newSchema";
 import { faceimobStatusRank } from "./statuses";
 
 export const ALL = "all";
+
+/** Valor do filtro de recorte: só os negócios de quem eu lidero. */
+export const MY_TEAM = "mine";
 
 /**
  * Percentual em pt-BR — o rateio do corretor e as taxas do painel.
@@ -33,6 +36,8 @@ export const pct = (value: number | null | undefined, options?: { casas?: number
 
 export type DealFilterState = {
   search: string;
+  /** `ALL` ou `MY_TEAM` — o recorte por equipe. */
+  team: string;
   stage: string;
   status2: string;
   documentReview: string;
@@ -48,6 +53,7 @@ export type DealFilterState = {
 
 export const EMPTY_FILTERS: DealFilterState = {
   search: "",
+  team: ALL,
   stage: ALL,
   status2: ALL,
   documentReview: ALL,
@@ -88,9 +94,39 @@ const managerIds = (deal: LegacyDealRecord) => [
   deal.manager1_id, deal.manager2_id, deal.manager3_id,
 ];
 
+/**
+ * Quem eu lidero — eu mais os membros das equipes em que sou gerente ou diretor.
+ *
+ * É o `auth_visible_profiles()` do banco (0002) refeito com o que a tela já tem
+ * em mãos: `listPeople` traz `manager_id`/`director_id` da equipe de cada
+ * pessoa. Não é uma segunda regra de visibilidade — a RLS continua sendo a
+ * única trava; isto só recorta, DENTRO do que o banco já entregou, a lista que
+ * o gerente pediu ("ver só o time dele").
+ */
+export const teamProfileIds = (
+  people: Pick<PersonRecord, "id" | "manager_id" | "director_id">[],
+  profileId: string | null | undefined,
+): Set<string> => {
+  const ids = new Set<string>();
+  if (!profileId) return ids;
+  ids.add(profileId);
+  for (const person of people) {
+    if (person.manager_id === profileId || person.director_id === profileId) ids.add(person.id);
+  }
+  return ids;
+};
+
+/**
+ * `teamIds` só é consultado com `filters.team === MY_TEAM`, e o vazio recusa
+ * tudo de propósito: enquanto `usePeople` não respondeu, a tela ainda não sabe
+ * quem é da equipe, e mostrar negócio de fora do recorte pedido seria afirmar
+ * uma composição de equipe que ninguém leu. Quem chama já segura a listagem em
+ * "carregando" nessa janela.
+ */
 export function applyDealFilters(
   deals: LegacyDealRecord[],
   filters: DealFilterState,
+  teamIds: ReadonlySet<string> = new Set(),
 ): LegacyDealRecord[] {
   const term = filters.search.trim();
   const cpf = digits(filters.cpf);
@@ -105,6 +141,14 @@ export function applyDealFilters(
       includes(deal.code, term)
     )) return false;
 
+    // Todo slot de pessoa, e não só o de corretor: o negócio de um corretor da
+    // equipe com o slot de gerente vazio tem de entrar, e o da diretoria de quem
+    // lidera também. É o mesmo "qualquer participante" de `can_see_deal`.
+    if (filters.team === MY_TEAM
+      && ![...participantIds(deal), ...managerIds(deal), deal.director1_id, deal.director2_id]
+        .some((id) => id && teamIds.has(id))) {
+      return false;
+    }
     if (filters.developerId !== ALL && deal.developer_id !== filters.developerId) return false;
     if (filters.brokerId !== ALL && !participantIds(deal).includes(filters.brokerId)) return false;
     if (filters.managerId !== ALL && !managerIds(deal).includes(filters.managerId)) return false;

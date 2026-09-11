@@ -1,4 +1,5 @@
 import { date as formatDate } from "@/lib/format";
+import { bareStatus } from "@/lib/dealStatus";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { SheetData } from "write-excel-file/browser";
 import { dealMonth } from "./filters";
@@ -76,7 +77,12 @@ export function linhasDeNegocios(deals: LegacyDealRecord[]): Celula[][] {
     texto(deal.project),
     texto(deal.unit),
     texto(deal.stage_label),
-    texto(deal.status),
+    // Sem o prefixo numerado, igual à tela: o cliente tirou os números do
+    // Status 2 em 10/09/2026, e a planilha é o que se confere AO LADO dela —
+    // "17. DISTRATO" no arquivo e "DISTRATO" no sistema viram dúvida sobre se
+    // são o mesmo status. O valor gravado em `status_detail` continua com o
+    // número; quem tira é `bareStatus`, a mesma função da tabela e do editor.
+    texto(bareStatus(deal.status)),
     dinheiro(deal.deal_value),
     numero(deal.days_in_pipeline),
     texto(deal.broker1),

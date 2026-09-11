@@ -38,9 +38,12 @@ import {
   setDefaultScoringPoints,
   setScoringRuleActive,
   setSeasonScoringPoints,
+  weeksInRange,
   type GameSeason,
   type ScoringRule,
+  type WeekRange,
 } from '@/integrations/supabase/game';
+import { getCurrentWorkDate } from '@/integrations/supabase/checkin';
 
 /**
  * O rótulo do evento sai da COLUNA `label` da própria regra.
@@ -50,6 +53,18 @@ import {
  * o E2E teve que usar a do banco para achar o campo. Regra criada pela tela de
  * administração não teria tradução nenhuma.
  */
+
+/**
+ * A semana é FILTRO, não ciclo (CONTEXT.md): o jogo continua fechando por
+ * temporada. "Fechar a semana" não existe — o que existe é olhar a mesma
+ * pontuação recortada de segunda a domingo, porque a premiação é semanal
+ * (pedido do cliente em 10/09/2026). Este é o valor do item "sem recorte".
+ */
+const SEMANA_INTEIRA = 'temporada';
+
+function weekLabel(week: WeekRange) {
+  return `${date(week.from)} → ${date(week.to)}`;
+}
 
 /**
  * O ciclo do jogo não é mês de calendário (decisão de 21/08): começa quando o
@@ -426,19 +441,23 @@ function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; sea
 export default function Gamification() {
   // `isAdmin` do contexto acompanha a pré-visualização de papel; `role` é
   // sempre o papel REAL e deixava a aba Admin e o botão de fechar na prévia.
-  const { isAdmin, roles } = useAuth();
+  const { isAdmin } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  // Segunda-feira da semana escolhida; `null` = temporada inteira.
+  const [selectedWeekFrom, setSelectedWeekFrom] = useState<string | null>(null);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [pendingScoring, setPendingScoring] = useState<Record<string, string>>({});
 
-  // O corretor vê o placar da EQUIPE dele (decisão de 10/08, RPC
-  // `visible_game_ranking`); admin, diretor e sócio veem a casa. A tela dizia
-  // "Campeões gerais" para os dois — quem lê "geral" e vê cinco nomes não tem
-  // como saber que o recorte é da equipe.
-  const veTudo = isAdmin || roles.some((r) => r === 'director' || r === 'partner');
+  // Quem realmente recebe a casa inteira de `visible_game_ranking`: só
+  // administrador e sócio, e `isAdmin` já responde pelos dois. Desde a 0112 o
+  // DIRETOR é recortado no banco (as equipes ativas que ele dirige), como o
+  // gerente — se ele continuasse aqui, a tela rotularia "Campeões gerais" sobre
+  // a diretoria dele e pediria o congelado inteiro que a policy não entrega.
+  // O corretor vê a equipe dele (decisão de 10/08).
+  const veTudo = isAdmin;
 
   const { data: currentSeasonId, isPending: seasonPending } = useCurrentSeasonId();
 
@@ -463,6 +482,39 @@ export default function Gamification() {
   const isCurrent = Boolean(selected && selected.id === currentSeasonId);
   const isClosed = Boolean(selected?.closed_at);
 
+  /**
+   * O último dia com semana para oferecer sai do RELÓGIO DO BANCO
+   * (`current_work_date()`, America/Sao_Paulo desde a 0057), não do navegador:
+   * às 21h de Brasília o relógio UTC já virou o dia, e a TV da loja passaria a
+   * oferecer uma semana que ainda não começou.
+   */
+  const workDateQuery = useQuery({
+    queryKey: ['current_work_date'],
+    queryFn: getCurrentWorkDate,
+    staleTime: 5 * 60_000,
+  });
+
+  /**
+   * Semanas da temporada exibida, da mais recente para a mais antiga.
+   *
+   * Vazio quando a temporada está FECHADA, e é de propósito: ali o placar vem
+   * congelado de `game_season_results`, que guarda o total do ciclo e não o dia
+   * de cada ponto. Recortar sete dias em cima do congelado daria um número que
+   * não fecha com o pódio ao lado. O motivo está escrito no cabeçalho.
+   */
+  const weekOptions = useMemo(() => {
+    if (!selected || isClosed) return [];
+    const lastDay = selected.period_end ?? workDateQuery.data ?? selected.period_start;
+    return weeksInRange(selected.period_start, lastDay).reverse();
+  }, [selected, isClosed, workDateQuery.data]);
+
+  // Derivado, não sincronizado por efeito: trocar de temporada (ou abrir uma
+  // fechada) descarta sozinho a semana que não existe mais na lista.
+  const activeWeek = useMemo(
+    () => weekOptions.find((w) => w.from === selectedWeekFrom) ?? null,
+    [weekOptions, selectedWeekFrom],
+  );
+
   // Mês-base do ciclo, como o Pipeline escreve ("08/2026"). Com ciclo livre,
   // duas temporadas cabem no mesmo mês: a segunda encontra o mês já travado, e
   // o diálogo precisa dizer isso antes do clique.
@@ -480,7 +532,7 @@ export default function Gamification() {
    * corretor visível, com ou sem ponto — é a identidade de que o congelado
    * precisa, no mesmo recorte de RLS.
    */
-  const rankingQuery = useSeasonRanking(selected?.id ?? null);
+  const rankingQuery = useSeasonRanking(selected?.id ?? null, activeWeek);
   const seasonRanking = useMemo(() => rankingQuery.data ?? [], [rankingQuery.data]);
 
   const resultsQuery = useQuery({
@@ -496,13 +548,13 @@ export default function Gamification() {
   );
 
   /**
-   * `keepUnknown` acompanha o `can_read_all()` do banco (admin, diretor,
-   * sócio). Para eles o congelado fica inteiro, com a linha anônima de quem
-   * saiu da casa; para corretor e gerente a linha que o escopo de hoje não
-   * identifica sai — é o mesmo recorte da policy `game_season_results_select`
-   * (0060), e enquanto ela não estiver aplicada o SELECT ainda é `using (true)`:
-   * sem este filtro, abrir uma temporada fechada no seletor entregaria a um
-   * corretor os pontos e o VGV congelados da casa inteira.
+   * `keepUnknown` acompanha quem o banco deixa ler a casa inteira: administrador
+   * e sócio (`veTudo`). Para eles o congelado fica inteiro, com a linha anônima
+   * de quem saiu da casa; para corretor, gerente e — desde a 0112 — DIRETOR, a
+   * linha que o escopo de hoje não identifica sai. É o mesmo recorte da policy
+   * `game_season_results_select` (0060), e enquanto ela não estiver aplicada o
+   * SELECT ainda é `using (true)`: sem este filtro, abrir uma temporada fechada
+   * no seletor entregaria a um corretor os pontos e o VGV congelados da casa.
    */
   const scores = useMemo(
     () => (isClosed
@@ -668,7 +720,13 @@ export default function Gamification() {
         eyebrow="Gamificação"
         icon={Trophy}
         description={selected
-          ? <>Temporada <strong className="text-foreground">{selected.label}</strong> · {seasonPeriod(selected)}</>
+          ? (
+            <>
+              Temporada <strong className="text-foreground">{selected.label}</strong> · {seasonPeriod(selected)}
+              {activeWeek && <> · Semana <strong className="text-foreground">{weekLabel(activeWeek)}</strong> (segunda a domingo)</>}
+              {isClosed && ' · Sem filtro de semana: temporada fechada mostra o ranking congelado no fechamento, que guarda o total do ciclo e não o dia de cada ponto.'}
+            </>
+          )
           : 'Nenhuma temporada cadastrada ainda.'}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -682,6 +740,22 @@ export default function Gamification() {
                     <SelectItem key={s.id} value={s.id}>
                       {s.label} · {seasonPeriod(s)}{s.closed_at ? ' (fechada)' : ''}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {weekOptions.length > 0 && (
+              <Select
+                value={selectedWeekFrom ?? SEMANA_INTEIRA}
+                onValueChange={(value) => setSelectedWeekFrom(value === SEMANA_INTEIRA ? null : value)}
+              >
+                <SelectTrigger className="w-full sm:w-[240px]" aria-label="Semana exibida">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SEMANA_INTEIRA}>Temporada inteira</SelectItem>
+                  {weekOptions.map((week) => (
+                    <SelectItem key={week.from} value={week.from}>Semana {weekLabel(week)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -781,19 +855,26 @@ export default function Gamification() {
                   icon={isClosed ? Lock : Trophy}
                   title={congeladoForaDoEscopo
                     ? 'Ninguém do seu escopo pontuou nesta temporada'
-                    : isClosed ? 'Esta temporada fechou sem ninguém no placar' : 'Ninguém pontuou nesta temporada'}
+                    : isClosed ? 'Esta temporada fechou sem ninguém no placar'
+                      : activeWeek ? 'Ninguém no placar desta semana' : 'Ninguém pontuou nesta temporada'}
                   description={congeladoForaDoEscopo
                     ? 'O fechamento congelou linhas, mas todas são de corretores que você não enxerga. O ranking da casa inteira é da diretoria.'
                     : isClosed
                       ? 'O fechamento não congelou nenhuma linha: não houve venda, esteira nem aprovação enquanto ela esteve aberta.'
-                      : 'Assim que uma esteira, aprovação ou venda for registrada, o placar aparece aqui.'}
+                      : activeWeek
+                        ? 'A pontuação da temporada continua no lugar — volte o filtro para "Temporada inteira" para vê-la.'
+                        : 'Assim que uma esteira, aprovação ou venda for registrada, o placar aparece aqui.'}
                 />
               ) : (
                 <>
+                  {/* Com semana escolhida o pódio é o dela: o período escrito
+                      no cartão tem que ser o mesmo dos números logo abaixo. */}
                   <SectionCard
                     title={veTudo ? 'Campeões gerais' : 'Campeões da sua equipe'}
                     icon={Trophy}
-                    description={selected ? seasonPeriod(selected) : undefined}
+                    description={activeWeek
+                      ? `Semana ${weekLabel(activeWeek)}`
+                      : selected ? seasonPeriod(selected) : undefined}
                   >
                     <Podium entries={podium} />
                     {!veTudo && (

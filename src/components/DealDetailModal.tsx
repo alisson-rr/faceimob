@@ -1,5 +1,4 @@
-import { useId, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,6 +11,7 @@ import {
   DealCcaPanel, DealCommentsPanel, DealForm, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
+import { countDealComments } from "@/components/pipeline/DealCommentsPanel";
 import DealDocumentUpload from "@/components/DealDocumentUpload";
 import DealHistoryPanel from "@/components/DealHistoryPanel";
 import TaskPanel from "@/components/TaskPanel";
@@ -32,7 +32,7 @@ interface Props {
   defaultMonth?: string;
 }
 
-type TabKey = "detalhes" | "anexos" | "agenda" | "historico" | "cca";
+type TabKey = "detalhes" | "comentarios" | "anexos" | "agenda" | "historico" | "cca";
 
 /**
  * Negócio em branco.
@@ -108,6 +108,16 @@ export default function DealDetailModal({
   const dealId = deal?.id ?? null;
   const isNew = !dealId;
 
+  // Contador no rótulo da aba: sem ele o comentário sai da aba "Detalhes" e vira
+  // conteúdo escondido — ninguém clica numa aba que não avisa que tem algo. Em
+  // falha de rede `countDealComments` devolve 0 de propósito: número decorativo
+  // não pode derrubar a barra de abas.
+  const [comentarios, setComentarios] = useState(0);
+  useEffect(() => {
+    if (!dealId) return;
+    void countDealComments(dealId).then(setComentarios);
+  }, [dealId]);
+
   const patch = (next: Partial<SaveLegacyDealInput>) =>
     setForm((previous) => ({ ...previous, ...next }));
 
@@ -167,6 +177,7 @@ export default function DealDetailModal({
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "detalhes", label: "Detalhes" },
+    { key: "comentarios", label: comentarios > 0 ? `Comentários (${comentarios})` : "Comentários" },
     { key: "anexos", label: "Anexos" },
     { key: "agenda", label: "Agenda" },
     { key: "historico", label: "Histórico" },
@@ -184,46 +195,48 @@ export default function DealDetailModal({
             outras abas nascem cinzas — o que só o `title` do botão explicava. */}
         <DialogDescription className="sr-only">
           {isNew
-            ? "Cadastro do negócio em cinco abas; anexos, agenda, histórico e CCA abrem depois de salvar."
-            : "Negócio em cinco abas: detalhes, anexos, agenda, histórico e CCA."}
+            ? "Cadastro do negócio em seis abas; comentários, anexos, agenda, histórico e CCA abrem depois de salvar."
+            : "Negócio em seis abas: detalhes, comentários, anexos, agenda, histórico e CCA."}
         </DialogDescription>
 
-        <div className="flex items-center justify-between border-b border-border px-4 pb-0 pt-4">
-          <div className="flex gap-4 overflow-x-auto" role="tablist" aria-label="Seções do negócio">
-            {tabs.map((item) => {
-              const enabled = item.key === "detalhes" || !isNew;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === item.key}
-                  disabled={!enabled}
-                  title={enabled ? undefined : "Disponível depois de salvar o negócio"}
-                  onClick={() => setTab(item.key)}
-                  className={cn(
-                    "whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    "disabled:cursor-not-allowed disabled:opacity-40",
-                    tab === item.key
-                      ? "border-primary text-foreground"
-                      : "border-transparent text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-          <Button variant="ghost" size="icon" className="mb-3 h-8 w-8" onClick={onClose} aria-label="Fechar">
-            <X className="h-5 w-5" />
-          </Button>
+        {/* `pr-12` reserva o canto para o X do próprio `DialogContent` (fixo em
+            `right-4 top-4`): como aqui o conteúdo é `p-0`, sem essa folga as abas
+            passam por baixo dele. O X daqui era um segundo botão empilhado. */}
+        <div
+          className="flex gap-4 overflow-x-auto border-b border-border pl-4 pr-12 pt-4"
+          role="tablist"
+          aria-label="Seções do negócio"
+        >
+          {tabs.map((item) => {
+            const enabled = item.key === "detalhes" || !isNew;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.key}
+                disabled={!enabled}
+                title={enabled ? undefined : "Disponível depois de salvar o negócio"}
+                onClick={() => setTab(item.key)}
+                className={cn(
+                  "whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "disabled:cursor-not-allowed disabled:opacity-40",
+                  tab === item.key
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="space-y-4 p-4">
           {/* O motivo da trava vive AQUI, acima das abas, e não dentro do
               `DealForm`: o "Confirmar alterações" do rodapé está desabilitado
-              nas cinco abas, e o formulário que explicava o cinza só é montado
+              nas seis abas, e o formulário que explicava o cinza só é montado
               em "Detalhes". O caso concreto é o CCA — o analista preenchia a
               análise inteira, achava o botão apagado e não recebia motivo
               nenhum. Mesmo `lock` que desabilita o botão; uma frase, um lugar. */}
@@ -247,7 +260,7 @@ export default function DealDetailModal({
           {/* A terceira razão do `lock`, e a que mais confundia: `useDealWriteLock`
               fecha a trava quando a consulta de `closed_months` está pendente ou
               FALHOU, e a frase morava só no `DealForm` — que nem é montado fora de
-              "Detalhes". Nas outras quatro abas o botão ficava cinza sem motivo. */}
+              "Detalhes". Nas outras cinco abas o botão ficava cinza sem motivo. */}
           {lock.reason === "unknown" && (
             <p className="rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
               Não consegui confirmar se o mês <strong className="text-foreground">{lock.month}</strong>{" "}
@@ -263,9 +276,10 @@ export default function DealDetailModal({
                 people={people} developers={developers} stages={stages} isNew={isNew}
                 developerError={developerError}
               />
-              {dealId && <DealCommentsPanel dealId={dealId} people={people} />}
             </>
           )}
+
+          {tab === "comentarios" && dealId && <DealCommentsPanel dealId={dealId} people={people} />}
 
           {tab === "anexos" && dealId && (
             <DealDocumentUpload

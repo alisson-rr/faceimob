@@ -332,8 +332,14 @@ begin
 end
 $$;
 
--- Pedro (sócio) enxerga todo lead atribuído por auth_visible_profiles, mas ver
--- não é editar: a leads_update não virou cópia da leads_select.
+-- Pedro (sócio) enxerga todo lead atribuído por auth_visible_profiles e, desde
+-- 10/09/2026, TAMBÉM edita. A regra mudou por decisão do cliente ("quando eu
+-- falo administrador, estou falando do sócio também; os dois têm o mesmo nível
+-- de permissão"): a 0097 pôs `partner` dentro de `is_admin()` e a 0099 fez o
+-- mesmo em `has_any_role('admin', …)`. O assert não sumiu, virou de lado — ele
+-- cobrava que `leads_update` não era cópia da `leads_select`; agora cobra que o
+-- ramo `is_admin()` da `leads_update` alcança o sócio. A trava de escrita
+-- continua provada logo acima, pelo Bruno: corretor comum não edita lead alheio.
 select pg_temp.become('00000000-0000-0000-0000-0000000000f1');
 select pg_temp.assert_eq(
   (select count(*)::int from public.leads where full_name = 'Cliente do Bruno'),
@@ -343,10 +349,12 @@ declare v_rows int;
 begin
   update public.leads set funnel_stage = 'hot' where full_name = 'Cliente do Bruno';
   get diagnostics v_rows = row_count;
-  if v_rows <> 0 then
-    raise exception 'FALHOU: sócio editou lead que só deveria ler (% linhas)', v_rows;
+  if v_rows <> 1 then
+    raise exception 'FALHOU: sócio não editou o lead que o administrador edita (% linhas)', v_rows;
   end if;
-  raise notice '  ok  Pedro (sócio) não edita lead (leitura ampla, escrita nenhuma)';
+  -- Devolve o estágio de origem: o cenário deste arquivo é lido por outros blocos.
+  update public.leads set funnel_stage = 'warm' where full_name = 'Cliente do Bruno';
+  raise notice '  ok  Pedro (sócio) edita lead como administrador (regra de 10/09/2026)';
 end
 $$;
 

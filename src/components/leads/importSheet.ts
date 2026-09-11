@@ -19,7 +19,21 @@ export const MAX_IMPORT_ROWS = 5_000;
 
 export class ImportError extends Error {}
 
-const isExcel = (name: string) => /\.(xlsx|xls)$/i.test(name);
+/**
+ * O que o CONTEÚDO diz que o arquivo é — a extensão não decide.
+ *
+ * O nome do arquivo é digitado por quem o envia: um binário renomeado para
+ * `.csv` era lido como texto, e o `accept` do seletor não vale no
+ * arrastar-e-soltar. As duas assinaturas abaixo são o formato de verdade:
+ * XLSX é um zip (`PK\x03\x04`) e o `.xls` de 1997 é um documento OLE2.
+ */
+const ASSINATURA_XLSX = [0x50, 0x4b, 0x03, 0x04];
+const ASSINATURA_XLS = [0xd0, 0xcf, 0x11, 0xe0];
+
+const comecaCom = (bytes: Uint8Array, assinatura: readonly number[]) =>
+  assinatura.every((byte, i) => bytes[i] === byte);
+
+export const ERRO_XLS = "Planilha no formato antigo (.xls). Abra no Excel e salve como .xlsx ou CSV.";
 
 /** Separadores que aparecem em CSV de verdade, na ordem de desempate. */
 const CSV_DELIMITERS = [",", ";", "\t"] as const;
@@ -91,18 +105,72 @@ const readWorkbook = async (buffer: ArrayBuffer): Promise<string[][]> => {
  * `Blob.text()`/`.arrayBuffer()` não existem no jsdom, que é onde o teste do
  * parser roda; `FileReader` existe nos dois lados. É por isso que a planilha
  * continua entrando por ele, e não pelos métodos mais novos do `Blob`.
+ *
+ * Sempre em bytes: é o conteúdo que diz se o arquivo é planilha ou texto, e ler
+ * como texto antes de saber disso é justamente o que fazia um binário renomeado
+ * virar linhas.
  */
-function readFile(file: File, mode: "text"): Promise<string>;
-function readFile(file: File, mode: "buffer"): Promise<ArrayBuffer>;
-function readFile(file: File, mode: "text" | "buffer"): Promise<string | ArrayBuffer> {
+function readFile(file: File): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new ImportError("Não foi possível ler o arquivo."));
-    reader.onload = () => resolve(reader.result ?? "");
-    if (mode === "buffer") reader.readAsArrayBuffer(file);
-    else reader.readAsText(file);
+    reader.onload = () => resolve((reader.result as ArrayBuffer | null) ?? new ArrayBuffer(0));
+    reader.readAsArrayBuffer(file);
   });
 }
+
+/**
+ * Codificações que um BOM identifica sem ambiguidade — o "Unicode Text" do
+ * Excel é UTF-16. O próprio `TextDecoder` descarta o BOM depois de decodificar,
+ * então basta escolher o decodificador certo (um BOM deixado no texto viraria
+ * parte do primeiro cabeçalho e nenhuma coluna seria reconhecida).
+ */
+const BOMS = [
+  { assinatura: [0xef, 0xbb, 0xbf], encoding: "utf-8" },
+  { assinatura: [0xff, 0xfe], encoding: "utf-16le" },
+  { assinatura: [0xfe, 0xff], encoding: "utf-16be" },
+] as const;
+
+const ERRO_BINARIO = "O conteúdo do arquivo não é texto nem planilha — a extensão pode estar trocada. "
+  + "Envie um CSV ou XLSX exportado do Leadfy.";
+
+/**
+ * Os bytes como texto, na codificação em que o arquivo foi salvo.
+ *
+ * Decodificar sempre como UTF-8 e depois CONTAR caracteres quebrados recusava
+ * planilha boa: um CSV do Excel brasileiro (Windows-1252) com coluna de
+ * observação passa dos 10% de caracteres de substituição só de acento (o teste
+ * mede), e a importação em massa — único jeito de subir lead — parava nele.
+ *
+ * A ordem aqui é detecção, não adivinhação: BOM quando existe; sem BOM, UTF-8
+ * no modo `fatal`, que LANÇA em byte inválido em vez de mascará-lo; e o que não
+ * é UTF-8 é Windows-1252, que é o que o Excel em pt-BR grava.
+ *
+ * Binário continua recusado pela assinatura (em `parseSheet`) e pelo byte zero,
+ * que não existe em arquivo de texto e sobrevive a qualquer decodificação — o
+ * Windows-1252 aceita todo byte, então sem essa conferência um PNG renomeado
+ * para `.csv` voltaria como linhas de ruído.
+ */
+const comoTexto = (buffer: ArrayBuffer): string => {
+  const inicio = new Uint8Array(buffer, 0, Math.min(3, buffer.byteLength));
+  const bom = BOMS.find(({ assinatura }) => comecaCom(inicio, assinatura));
+
+  let texto: string;
+  if (bom) {
+    texto = new TextDecoder(bom.encoding).decode(buffer);
+  } else {
+    try {
+      texto = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    } catch {
+      texto = new TextDecoder("windows-1252").decode(buffer);
+    }
+  }
+
+  // ponytail: UTF-16 sem BOM decodifica como UTF-8 e cai aqui pelo byte zero;
+  // o Excel sempre grava o BOM — tratar se aparecer arquivo assim de verdade.
+  if (texto.includes("\0")) throw new ImportError(ERRO_BINARIO);
+  return texto;
+};
 
 /**
  * O `.xls` (Excel 97-2003) é o único formato que o parser novo deixou de ler.
@@ -113,7 +181,7 @@ function readFile(file: File, mode: "text" | "buffer"): Promise<string | ArrayBu
 const asImportError = (err: unknown): ImportError => {
   if (err instanceof ImportError) return err;
   if ((err as { code?: unknown } | null)?.code === "XLS_FILE_NOT_SUPPORTED") {
-    return new ImportError("Planilha no formato antigo (.xls). Abra no Excel e salve como .xlsx ou CSV.");
+    return new ImportError(ERRO_XLS);
   }
   return new ImportError("Formato não reconhecido. Envie um CSV ou XLSX exportado do Leadfy.");
 };
@@ -125,9 +193,14 @@ export async function parseSheet(file: File): Promise<string[][]> {
 
   let rows: string[][];
   try {
-    rows = isExcel(file.name)
-      ? await readWorkbook(await readFile(file, "buffer"))
-      : parseCsv(await readFile(file, "text"));
+    // O formato sai dos BYTES, e não de `file.name`: é a mesma leitura para o
+    // CSV e para o XLSX, e um arquivo com a extensão trocada não decide nada.
+    const buffer = await readFile(file);
+    const inicio = new Uint8Array(buffer, 0, Math.min(8, buffer.byteLength));
+    if (comecaCom(inicio, ASSINATURA_XLS)) throw new ImportError(ERRO_XLS);
+    rows = comecaCom(inicio, ASSINATURA_XLSX)
+      ? await readWorkbook(buffer)
+      : parseCsv(comoTexto(buffer));
   } catch (err) {
     throw asImportError(err);
   }

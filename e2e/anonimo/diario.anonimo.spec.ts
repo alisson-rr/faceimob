@@ -3,9 +3,10 @@ import { test, expect, db, runTag, aguardarCarregamento } from "../support/fixtu
 /**
  * Diário de equipe sem sessão — `/daily/:slug`.
  *
- * A superfície anônima do projeto são exatamente três RPCs (`public_daily_team`,
- * `public_daily_submit`, `public_director_checkpoint`); duas delas são exercidas
- * aqui. O portão é o PIN, guardado como bcrypt em `public_links.pin_hash`.
+ * A superfície anônima do projeto são exatamente duas RPCs (`public_daily_team`
+ * e `public_daily_submit`), as duas exercidas aqui — a terceira,
+ * `public_director_checkpoint`, saiu do anônimo na 0103. O portão é o PIN,
+ * guardado como bcrypt em `public_links.pin_hash`.
  *
  * Cenário próprio de propósito: o banco é compartilhado entre agentes e as
  * equipes do seed já têm `daily_reports` de hoje. Escrever nelas destruiria dado

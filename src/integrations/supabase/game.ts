@@ -226,9 +226,26 @@ export async function listSeasons(): Promise<GameSeason[]> {
   return (data ?? []) as GameSeason[];
 }
 
-export async function listRanking(seasonId: string): Promise<RankingRow[]> {
+/** Intervalo de dias `AAAA-MM-DD`, inclusivo nas duas pontas. */
+export type WeekRange = { from: string; to: string };
+
+/**
+ * Ranking da temporada, opcionalmente recortado por um intervalo de dias.
+ *
+ * Sem `week` a chamada usa a assinatura antiga (um argumento) e devolve a
+ * temporada inteira — é o que `EngagementLayer` e `PipelineTopRanking` pedem.
+ * Com `week`, é a MESMA pontuação somada só nos dias do intervalo: a semana é
+ * leitura, não um ciclo próprio (CONTEXT.md). Quem converte o fuso é o banco.
+ */
+export async function listRanking(seasonId: string, week?: WeekRange | null): Promise<RankingRow[]> {
+  // Variável, e não literal no `.rpc()`: as duas assinaturas da 0107 chegam ao
+  // `types.ts` como união, e um literal cairia na checagem de propriedade
+  // excedente do TypeScript ao ser comparado com o ramo de um argumento só.
+  const args = week
+    ? { p_season_id: seasonId, p_from: week.from, p_to: week.to }
+    : { p_season_id: seasonId };
   const { data, error } = await supabase
-    .rpc("visible_game_ranking", { p_season_id: seasonId })
+    .rpc("visible_game_ranking", args)
     .order("points", { ascending: false });
   if (error) throw dbError("visible_game_ranking", error);
   return (data ?? []) as RankingRow[];
@@ -352,6 +369,52 @@ export function monthStart(isoDate: string): string {
 }
 
 /**
+ * `AAAA-MM-DD` deslocada em dias, ancorada em UTC.
+ *
+ * A âncora `T00:00:00Z` com `get/setUTC*` deixa a conta independente do fuso do
+ * NAVEGADOR — sem ela, a TV da loja num notebook em outro fuso mudaria de
+ * semana antes ou depois da operação. A data que entra já é o dia de São Paulo
+ * (vem de `current_work_date()` ou de `game_seasons.period_start`, ambos `date`
+ * no banco) e o que sai é o mesmo tipo de dia: nenhum instante é convertido
+ * aqui, a conversão de fuso acontece uma vez só dentro de `visible_game_ranking`.
+ */
+function shiftDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Segunda e domingo da semana de `isoDate`.
+ *
+ * Segunda a domingo é como a operação fala de "essa semana" — o mesmo recorte
+ * de `leadCountWindows` (checkin.ts) e do checkpoint semanal. Domingo pertence
+ * à semana que começou na segunda anterior; a virada é na segunda de manhã.
+ */
+export function weekRange(isoDate: string): WeekRange {
+  const weekday = new Date(`${isoDate}T00:00:00Z`).getUTCDay(); // 0 = domingo
+  const from = shiftDays(isoDate, -((weekday + 6) % 7));
+  return { from, to: shiftDays(from, 6) };
+}
+
+/**
+ * As semanas que tocam `[startIso, endIso]`, da mais antiga para a mais nova.
+ *
+ * A primeira e a última são semanas inteiras mesmo quando a temporada começa
+ * numa quarta: o prêmio é por semana, não pró-rata dos dias corridos.
+ */
+export function weeksInRange(startIso: string, endIso: string): WeekRange[] {
+  const first = weekRange(startIso);
+  const last = weekRange(endIso);
+  const dias = (Date.parse(`${last.from}T00:00:00Z`) - Date.parse(`${first.from}T00:00:00Z`)) / 86_400_000;
+  const semanas = Math.round(dias / 7) + 1;
+  // Fim antes do começo devolve vazio em vez de laço: `semanas` sai <= 0 (ou
+  // NaN, se a data vier quebrada) e a comparação recusa os dois casos.
+  if (!(semanas > 0)) return [];
+  return Array.from({ length: semanas }, (_, i) => weekRange(shiftDays(first.from, i * 7)));
+}
+
+/**
  * Chaves do cache. Todas sob `["game", …]` para que uma invalidação só —
  * a que o `EngagementLayer` dispara a cada INSERT em `game_events` — atualize
  * placar, temporada e regras de uma vez.
@@ -360,7 +423,18 @@ export const gameKeys = {
   all: ["game"] as const,
   season: ["game", "season"] as const,
   seasons: ["game", "seasons"] as const,
-  ranking: (seasonId: string | null) => ["game", "ranking", seasonId] as const,
+  /**
+   * Ambos nulos = temporada inteira; com intervalo, as DUAS pontas entram.
+   *
+   * Só o começo não identifica a leitura: `intervaloDoMes()` (mês corrente) e
+   * `weekRange()` (a semana) começam no mesmo dia sempre que o mês vira numa
+   * segunda-feira. Chaves iguais para intervalos diferentes colidem no cache do
+   * TanStack Query — a faixa do corretor passava a mostrar o VGV da SEMANA
+   * dividido pela meta do MÊS, ou o inverso, conforme qual das duas consultas
+   * chegasse primeiro.
+   */
+  ranking: (seasonId: string | null, weekFrom: string | null = null, weekTo: string | null = null) =>
+    ["game", "ranking", seasonId, weekFrom, weekTo] as const,
   rules: (seasonId: string | null) => ["game", "rules", seasonId] as const,
   /** Todas as regras, inclusive as desativadas — só a aba Admin usa. */
   rulesAll: ["game", "rules", "all"] as const,

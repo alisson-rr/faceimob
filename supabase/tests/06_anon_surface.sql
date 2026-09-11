@@ -47,14 +47,20 @@ begin
     format('nenhuma função além das 3 RPCs é executável por anon (sobraram: %s)',
            coalesce(extras, 'nenhuma')));
 
-  -- As 3 continuam acessíveis — revogar demais quebraria o Diário público.
+  -- As 2 do Diário continuam acessíveis — revogar demais quebraria o
+  -- lançamento sem login, que é como o gerente trabalha.
   -- `public_daily_submit` é a assinatura da 0038 (notas e gerente): a 0019
   -- revoga EXECUTE de função nova, e o grant reemitido lá é o que se cobra aqui.
   perform pg_temp.check6(
     has_function_privilege('anon', 'public.public_daily_team(text,text)', 'execute')
-    and has_function_privilege('anon', 'public.public_daily_submit(text,text,jsonb,text,text)', 'execute')
-    and has_function_privilege('anon', 'public.public_director_checkpoint(text,date,text)', 'execute'),
-    'as 3 RPCs do Diário seguem executáveis por anon');
+    and has_function_privilege('anon', 'public.public_daily_submit(text,text,jsonb,text,text)', 'execute'),
+    'as 2 RPCs do Diário seguem executáveis por anon');
+
+  -- A terceira saiu na 0103: o checkpoint da diretoria virou tela logada
+  -- (/checkpoint, com recorte por hierarquia) e não tem mais link público.
+  perform pg_temp.check6(
+    not has_function_privilege('anon', 'public.public_director_checkpoint(text,date,text)', 'execute'),
+    'public_director_checkpoint não é mais chamável sem sessão (0103)');
 
   -- recalc_deal_shares é interna: só triggers (SECURITY DEFINER) e service_role.
   perform pg_temp.check6(

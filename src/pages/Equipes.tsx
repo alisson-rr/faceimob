@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,27 +8,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, Pencil, Link2, Search, Crown, Shield, UserCog, User, Loader2, KeyRound, UserPlus, AlertTriangle, IdCard } from "lucide-react";
+import { Users, Link2, Search, Crown, Shield, UserCog, User, Loader2, UserPlus, AlertTriangle, IdCard } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { cn, slugify } from "@/lib/utils";
-import { brl } from "@/lib/format";
+import { slugify } from "@/lib/utils";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { listPeople } from "@/integrations/supabase/newSchema";
 import { activeTeamIdOfManager, createTeamForManager, deactivateTeam, leadsProfile, listTeamLeaderNames } from "@/integrations/supabase/people";
 
-import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
+import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
 
 import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
 import { GlobalGoalCard } from "@/components/equipes/GlobalGoalCard";
-import { NewPersonDialog } from "@/components/equipes/NewPersonDialog";
+import { MetaVgv } from "@/components/equipes/MetaVgv";
+import { PessoaCard, iniciais } from "@/components/equipes/PessoaCard";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
-import { goalPeriods, goalsByProfile, otherMetricsByProfile, parseGoal } from "@/components/equipes/metas";
+import { CofreCredenciais } from "@/components/equipes/CofreCredenciais";
+import { goalPeriods, goalsByProfile, otherMetricsByProfile } from "@/components/equipes/metas";
 
 interface BrokerRow {
   id: string;
@@ -50,42 +52,12 @@ interface BrokerRow {
   roles: string[];
 }
 
-const ROTULO_STATUS: Record<string, string> = {
-  suspended: "Suspenso",
-  terminated: "Desligado",
-};
-
-/** Selo de situação. Só aparece para quem não está ativo — o normal não precisa de selo. */
-function StatusPessoa({ status }: { status: string }) {
-  const rotulo = ROTULO_STATUS[status];
-  if (!rotulo) return null;
-  return (
-    <StatusBadge tone={status === "terminated" ? "danger" : "warning"} className="shrink-0">
-      {rotulo}
-    </StatusBadge>
-  );
-}
-
 /**
- * Os papéis ALÉM do principal.
- *
- * Papel é N:N (`user_roles`) e a autorização usa a união, mas o organograma
- * mostrava só o principal: não havia tela nenhuma onde se lesse "quem tem qual
- * papel". O caso da ata de 23/07 — diretor que também atende como corretor —
- * ficava invisível, e o par {corretor, SDR} que o gatilho de cadastro cria
- * sozinho também.
+ * O cartão de pessoa mostra só nome e foto (`PessoaCard`), por pedido do
+ * cliente em 10/09/2026. O que estava nele — selo de situação, papéis extras,
+ * superior, e-mail de acesso, metas — foi para dentro da ficha, que abre no
+ * clique. Quem quiser o histórico do que saía daqui: `git log` deste arquivo.
  */
-function PapeisExtras({ roles, principal }: { roles: string[]; principal: string }) {
-  const extras = roles.filter(r => r !== principal);
-  if (!extras.length) return null;
-  return (
-    <p className="text-xs text-muted-foreground truncate">
-      também: {extras.map(r => ROTULO_PAPEL[r] ?? r).join(", ")}
-    </p>
-  );
-}
-
-const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map(s => s[0]).join("").toUpperCase();
 
 /** As quatro colunas do organograma. Quem não cai em nenhuma vai para "Outros". */
 const COLUNAS = new Set(["director", "manager", "broker", "cca"]);
@@ -109,117 +81,6 @@ const ROTULO_PAPEL: Record<string, string> = {
   broker: "Corretor",
   cca: "CCA",
 };
-
-function GoalRow({ broker, onSaved }: { broker: BrokerRow; onSaved: () => void }) {
-  const errorId = useId();
-  const [monthly, setMonthly] = useState(String(broker.monthly_goal ?? 0));
-  const [yearly, setYearly] = useState(String(broker.yearly_goal ?? 0));
-  const [saving, setSaving] = useState(false);
-  const parsedMonthly = parseGoal(monthly);
-  const parsedYearly = parseGoal(yearly);
-  const invalid = parsedMonthly === null || parsedYearly === null;
-  const dirty = parsedMonthly !== (broker.monthly_goal ?? 0) || parsedYearly !== (broker.yearly_goal ?? 0);
-
-  const save = async () => {
-    if (invalid) return;
-    setSaving(true);
-    const periods = goalPeriods();
-    const targets = [
-      { period_type: "month", period: periods.month, target: parsedMonthly },
-      { period_type: "year", period: periods.year, target: parsedYearly },
-    ];
-    let failure: { code?: string; message?: string } | null = null;
-    for (const goal of targets) {
-      const existing = await supabase
-        .from("goals")
-        .select("id")
-        .eq("scope", "profile")
-        .eq("profile_id", broker.id)
-        .eq("period_type", goal.period_type)
-        .eq("period", goal.period)
-        .eq("metric", "vgv")
-        .maybeSingle();
-      if (existing.error) {
-        failure = existing.error;
-        break;
-      }
-      const result = existing.data
-        ? await supabase.from("goals").update({ target: goal.target }).eq("id", existing.data.id).select("id")
-        : await supabase.from("goals").insert({
-            scope: "profile",
-            profile_id: broker.id,
-            period_type: goal.period_type,
-            period: goal.period,
-            metric: "vgv",
-            target: goal.target,
-          }).select("id");
-      if (result.error) {
-        failure = result.error;
-        break;
-      }
-      // Update que não casa linha nenhuma volta sem erro (a RLS `goals_write`
-      // só aceita admin e diretor). Sem esta conferência o toast verde apareceria
-      // para quem não gravou nada.
-      if (!result.data?.length) {
-        failure = { code: "42501", message: "sem permissão para gravar meta" };
-        break;
-      }
-    }
-    setSaving(false);
-    if (failure) return toast({ title: "Erro ao salvar meta", description: describeError(failure, "Não foi possível salvar a meta."), variant: "destructive" });
-    toast({ title: "Meta salva" });
-    onSaved();
-  };
-
-  return (
-    <div className="space-y-1">
-      {/* `flex-wrap` + `min-w-0` porque a linha tem rótulo, dois campos numéricos
-          e um botão: a 375 px ela estourava a lateral do card. */}
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-eyebrow shrink-0" title="Meta de VGV (R$) para o mês e para o ano correntes">Meta VGV R$</span>
-        <Input
-          type="number"
-          min={0}
-          value={monthly}
-          onChange={e => setMonthly(e.target.value)}
-          placeholder="mês"
-          className="h-6 text-xs px-2 min-w-0 flex-1 basis-16"
-          aria-label={`Meta mensal de ${broker.name}`}
-          aria-invalid={parsedMonthly === null}
-          aria-describedby={invalid ? errorId : undefined}
-        />
-        <Input
-          type="number"
-          min={0}
-          value={yearly}
-          onChange={e => setYearly(e.target.value)}
-          placeholder="ano"
-          className="h-6 text-xs px-2 min-w-0 flex-1 basis-16"
-          aria-label={`Meta anual de ${broker.name}`}
-          aria-invalid={parsedYearly === null}
-          aria-describedby={invalid ? errorId : undefined}
-        />
-        <Button
-          size="sm"
-          variant={dirty ? "default" : "ghost"}
-          className="h-6 px-2 text-xs"
-          aria-label={`Salvar metas de ${broker.name}`}
-          onClick={save}
-          disabled={saving || !dirty || invalid}
-        >
-          {saving ? "..." : "Salvar"}
-        </Button>
-      </div>
-      {invalid && <p id={errorId} className="text-xs text-destructive">Use um número maior ou igual a zero</p>}
-      {/* As metas de vendas e visitas existem no banco e não apareciam em tela
-          nenhuma. Aqui são só leitura: editá-las é de outra tela, e um campo
-          que não grava seria a mentira de novo. */}
-      {broker.other_goals && (
-        <p className="text-xs text-muted-foreground">Meta do mês, fora VGV: {broker.other_goals}</p>
-      )}
-    </div>
-  );
-}
 
 export default function Equipes() {
   // `role` é o papel REAL; quem manda na tela são os papéis EFETIVOS, senão a
@@ -265,27 +126,6 @@ export default function Equipes() {
   /** Confirmação nominal do desligamento — a única parte irreversível do diálogo. */
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Admin-only: credentials of each broker/manager/director
-  /**
-   * O e-mail de acesso no card, para o admin.
-   *
-   * Não há senha para mostrar nem copiar: o login é por código enviado a cada
-   * entrada. A versão anterior montava `password: null` para todo mundo e
-   * renderizava botões de "mostrar" e "copiar senha" que nunca apareciam —
-   * código morto prometendo credencial e entregando só o endereço.
-   */
-  const CredLine = ({ id }: { id: string }) => {
-    if (!isAdmin) return null;
-    const email = rows.find(r => r.id === id)?.email;
-    if (!email) return null;
-    return (
-      <div className="flex items-center gap-1 mt-1 rounded-md bg-background/60 border border-border/30 px-1.5 py-1">
-        <KeyRound className="h-3 w-3 text-primary shrink-0" />
-        <code className="text-xs truncate flex-1" title={email}>{email}</code>
-      </div>
-    );
-  };
 
   const load = async () => {
     setLoading(true);
@@ -428,7 +268,7 @@ export default function Equipes() {
         });
       }
     }
-    toast({ title: "Nome da equipe salvo" });
+    toast({ title: "Nome da equipe salvo", variant: "success" });
   };
 
   useEffect(() => { load(); }, []);
@@ -480,15 +320,6 @@ export default function Equipes() {
 
   const podeEditarFicha = (person: BrokerRow) =>
     canEdit || gestorDoAlvo(person);
-
-  /** Rótulo do superior: sem vínculo, com vínculo e nome, ou vínculo sem nome. */
-  const rotuloSuperior = (id: string | null, semVinculo: string) => {
-    if (!id) return { texto: semVinculo, temSuperior: false };
-    const nome = nomeDe(id);
-    return nome
-      ? { texto: `↑ ${nome}`, temSuperior: true }
-      : { texto: "↑ vínculo fora do seu acesso", temSuperior: true };
-  };
 
   /** Diretor que cria equipe entra como diretor dela — `teams_admin_write` (0061) exige. */
   const meuPerfilId = roles.includes("director") && !isAdmin ? myBroker?.id ?? null : null;
@@ -671,6 +502,7 @@ export default function Equipes() {
         title: saiu
           ? `${ids.length} vínculo(s) e ${saiu} desligamento(s) aplicados`
           : `${ids.length} vínculo(s) atualizados`,
+        variant: "success",
       });
       setBulk(null);
       load();
@@ -678,7 +510,7 @@ export default function Equipes() {
     } else {
       // O diretor mora na equipe do gerente: quem ainda não tem equipe não casa
       // linha nenhuma e o update volta 204 sem erro. Sem pedir a linha de volta
-      // o toast verde mentiria — mesmo defeito já fechado no GoalRow.
+      // o toast verde mentiria — mesmo defeito já fechado em `MetaVgv`.
       const { data, error } = await supabase
         .from("teams")
         .update({ director_id: bulkTarget })
@@ -707,7 +539,7 @@ export default function Equipes() {
       }
     }
     setSaving(false);
-    toast({ title: `${ids.length} vínculo(s) atualizados` });
+    toast({ title: `${ids.length} vínculo(s) atualizados`, variant: "success" });
     setBulk(null);
     load();
   };
@@ -775,191 +607,269 @@ export default function Equipes() {
         }
       />
 
-      {/* Meta global: mesma regra de escrita da RLS (admin e diretor) */}
-      {canEdit && <GlobalGoalCard />}
+      {/* Cofre da operação (0105) em ABA, e não empilhado no fim da tela: pedido
+          do cliente. O gate continua sendo `isAdmin` — que já inclui o sócio —,
+          e o componente também se autoprotege.
 
-      {/* Meu Perfil */}
-      <Card className="glass border-primary/30" role="region" aria-label="Meu Perfil">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <User className="h-4 w-4 text-primary" /> Meu Perfil
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {loading ? (
-            <LoadingState variant="list" rows={1} label="Carregando seu perfil…" />
-          ) : loadError ? (
-            // Sem este ramo, falha de carga virava "Seu usuário não está
-            // vinculado a um corretor cadastrado" — a mesma acusação falsa já
-            // corrigida nas quatro colunas do organograma logo abaixo.
-            <p className="text-xs text-destructive">Não foi possível carregar seu perfil. Use "Tentar de novo" abaixo.</p>
-          ) : myBroker ? (
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
-                {initials(myBroker.name)}
-              </div>
-              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div><span className="text-muted-foreground">Nome</span><p className="font-medium">{myBroker.name}</p></div>
-                <div><span className="text-muted-foreground">Função</span><p className="font-medium">{rotuloDaPessoa(myBroker.roles ?? [], myBroker.role)}</p></div>
-                <div><span className="text-muted-foreground">Gerente</span><p className="font-medium">{nomeDe(myBroker.manager_id) ?? "—"}</p></div>
-                <div><span className="text-muted-foreground">Diretor</span><p className="font-medium">{nomeDe(myBroker.director_id) ?? "—"}</p></div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Seu usuário não está vinculado a um corretor cadastrado.</p>
-          )}
-        </CardContent>
-      </Card>
+          A lista de abas aparece para todo mundo, mesmo com uma aba só: um
+          `TabsContent` sem `TabsTrigger` deixa o `aria-labelledby` do painel
+          apontando para um id que não existe. */}
+      <Tabs defaultValue="equipe" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="equipe">Equipe</TabsTrigger>
+          {isAdmin && <TabsTrigger value="cofre">Cofre de credenciais</TabsTrigger>}
+        </TabsList>
 
-      {/* Hierarquia */}
-      {/* Um gate só. Fora dele, "Nenhum … visível para o seu acesso" apareceria
-          no primeiro paint, antes de qualquer consulta voltar. */}
-      {loading ? (
-        <LoadingState variant="list" rows={4} label="Carregando equipes…" />
-      ) : loadError ? (
-        // Sem isto, falha de rede virava "Nenhum diretor visível para o seu
-        // acesso" nas quatro colunas — a tela culpava a permissão do usuário
-        // por um erro que não era dele, e o único sinal já tinha sumido no toast.
-        <EmptyState
-          icon={AlertTriangle}
-          tone="danger"
-          title="Não foi possível carregar as equipes"
-          description={`${loadError} As colunas abaixo ficariam vazias por engano, então não são mostradas.`}
-          action={<Button size="sm" onClick={load}>Tentar de novo</Button>}
-        />
-      ) : (
-        <>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Diretores */}
-          <Card className="border-info/30" role="region" aria-label="Diretores">
-            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-info flex items-center gap-2">
-                <Crown className="h-4 w-4" /> Diretores ({visibleDirectors.length})
+        <TabsContent value="equipe" className="mt-0 space-y-6">
+          {/* Meta global: mesma regra de escrita da RLS (admin e diretor) */}
+          {canEdit && <GlobalGoalCard />}
+
+          {/* Meu Perfil */}
+          <Card className="glass border-primary/30" role="region" aria-label="Meu Perfil">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <User className="h-4 w-4 text-primary" /> Meu Perfil
               </CardTitle>
             </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
-              {visibleDirectors.length === 0 && (
-                <p className="text-xs text-muted-foreground">{emptyLabel("diretor")}</p>
-              )}
-              {visibleDirectors.map(d => {
-                const dirManagers = managers.filter(m => m.director_id === d.id);
-                const sumMonthly = dirManagers.reduce((s, m) => s + Number(m.monthly_goal || 0), 0);
-                const sumYearly = dirManagers.reduce((s, m) => s + Number(m.yearly_goal || 0), 0);
-                const monthsLeft = 12 - new Date().getMonth();
-                const perMonthLeft = sumYearly > 0 ? sumYearly / 12 : 0;
-                return (
-                  <div key={d.id} className="p-2 rounded-lg border border-border/30 bg-info/5 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-info/20 flex items-center justify-center text-xs font-bold text-info">{initials(d.name)}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{d.name}</p>
-                        <PapeisExtras roles={d.roles} principal={d.role} />
-                      </div>
-                      <StatusPessoa status={d.status} />
-                      <Badge variant="outline" className="border-info/30 text-info">{dirManagers.length} ger.</Badge>
-                      {podeEditarFicha(d) && (
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" aria-label={`Editar ficha de ${d.name}`} onClick={() => openEdit("manager", d)}>
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div className="p-1.5 rounded bg-background/60 border border-border/30">
-                        <p className="text-eyebrow">Meta mês (Σ ger.)</p>
-                        <p className="font-bold text-info">{brl(sumMonthly)}</p>
-                      </div>
-                      <div className="p-1.5 rounded bg-background/60 border border-border/30">
-                        <p className="text-eyebrow">Meta ano (Σ ger.)</p>
-                        <p className="font-bold text-info">{brl(sumYearly)}</p>
-                      </div>
-                    </div>
-                    {sumYearly > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Meses restantes: <strong className="text-foreground">{monthsLeft}</strong> · Ritmo/mês: <strong className="text-foreground">{brl(perMonthLeft)}</strong>
-                      </p>
-                    )}
-                    <CredLine id={d.id} />
-
+            <CardContent className="px-4 pb-4">
+              {loading ? (
+                <LoadingState variant="list" rows={1} label="Carregando seu perfil…" />
+              ) : loadError ? (
+                // Sem este ramo, falha de carga virava "Seu usuário não está
+                // vinculado a um corretor cadastrado" — a mesma acusação falsa já
+                // corrigida nas quatro colunas do organograma logo abaixo.
+                <p className="text-xs text-destructive">Não foi possível carregar seu perfil. Use "Tentar de novo" abaixo.</p>
+              ) : myBroker ? (
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
+                    {iniciais(myBroker.name)}
                   </div>
-                );
-              })}
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div><span className="text-muted-foreground">Nome</span><p className="font-medium">{myBroker.name}</p></div>
+                    <div><span className="text-muted-foreground">Função</span><p className="font-medium">{rotuloDaPessoa(myBroker.roles ?? [], myBroker.role)}</p></div>
+                    <div><span className="text-muted-foreground">Gerente</span><p className="font-medium">{nomeDe(myBroker.manager_id) ?? "—"}</p></div>
+                    <div><span className="text-muted-foreground">Diretor</span><p className="font-medium">{nomeDe(myBroker.director_id) ?? "—"}</p></div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Seu usuário não está vinculado a um corretor cadastrado.</p>
+              )}
             </CardContent>
           </Card>
 
-          {/* Gerentes */}
-          <Card className="border-info/30" role="region" aria-label="Gerentes">
+          {/* Hierarquia */}
+          {/* Um gate só. Fora dele, "Nenhum … visível para o seu acesso" apareceria
+              no primeiro paint, antes de qualquer consulta voltar. */}
+          {loading ? (
+            <LoadingState variant="list" rows={4} label="Carregando equipes…" />
+          ) : loadError ? (
+            // Sem isto, falha de rede virava "Nenhum diretor visível para o seu
+            // acesso" nas quatro colunas — a tela culpava a permissão do usuário
+            // por um erro que não era dele, e o único sinal já tinha sumido no toast.
+            <EmptyState
+              icon={AlertTriangle}
+              tone="danger"
+              title="Não foi possível carregar as equipes"
+              description={`${loadError} As colunas abaixo ficariam vazias por engano, então não são mostradas.`}
+              action={<Button size="sm" onClick={load}>Tentar de novo</Button>}
+            />
+          ) : (
+            <>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Diretores */}
+              <Card className="border-info/30" role="region" aria-label="Diretores">
+                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm text-info flex items-center gap-2">
+                    <Crown className="h-4 w-4" /> Diretores ({visibleDirectors.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
+                  {visibleDirectors.length === 0 && (
+                    <p className="text-xs text-muted-foreground">{emptyLabel("diretor")}</p>
+                  )}
+                  {visibleDirectors.map(d => (
+                    <PessoaCard
+                      key={d.id}
+                      pessoa={d}
+                      tom="info"
+                      onAbrir={podeEditarFicha(d) ? () => openEdit("manager", d) : undefined}
+                    />
+                  ))}
+                </CardContent>
+              </Card>
+
+              {/* Gerentes */}
+              <Card className="border-info/30" role="region" aria-label="Gerentes">
+                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm text-info flex items-center gap-2">
+                    <UserCog className="h-4 w-4" /> Gerentes ({visibleManagers.length})
+                  </CardTitle>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-info/40 text-info" onClick={() => openBulk("manager")}>
+                      <Link2 className="h-3 w-3 mr-1" /> Vincular em massa
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
+                  {visibleManagers.length === 0 && (
+                    <p className="text-xs text-muted-foreground">{emptyLabel("gerente")}</p>
+                  )}
+                  {/* Nome da equipe e "Desativar" saíram daqui para o bloco
+                      "Performance por Equipe": são da EQUIPE, não da pessoa, e o
+                      cartão de pessoa agora é só nome e foto. */}
+                  {visibleManagers.map(m => (
+                    <PessoaCard
+                      key={m.id}
+                      pessoa={m}
+                      tom="info"
+                      onAbrir={podeEditarFicha(m) ? () => openEdit("manager", m) : undefined}
+                    />
+                  ))}
+                </CardContent>
+              </Card>
+
+              {/* Corretores */}
+              <Card className="border-success/30" role="region" aria-label="Corretores">
+                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm text-success flex items-center gap-2">
+                    <Users className="h-4 w-4" /> Corretores ({visibleBrokers.length})
+                  </CardTitle>
+                  {canManageMembers && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs border-success/40 text-success" onClick={() => openBulk("broker")}>
+                      <Link2 className="h-3 w-3 mr-1" /> Vincular em massa
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
+                  {visibleBrokers.length === 0 && (
+                    <p className="text-xs text-muted-foreground">{emptyLabel("corretor")}</p>
+                  )}
+                  {visibleBrokers.map(b => (
+                    <PessoaCard
+                      key={b.id}
+                      pessoa={b}
+                      tom="success"
+                      onAbrir={podeEditarFicha(b) ? () => openEdit("broker", b) : undefined}
+                    />
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+
+          {/* CCAs */}
+          <Card className="border-warning/30" role="region" aria-label="CCAs">
             <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-info flex items-center gap-2">
-                <UserCog className="h-4 w-4" /> Gerentes ({visibleManagers.length})
+              <CardTitle className="text-sm text-warning flex items-center gap-2">
+                <Shield className="h-4 w-4" /> CCAs ({visibleCcas.length})
               </CardTitle>
-              {canEdit && (
-                <Button size="sm" variant="outline" className="h-7 text-xs border-info/40 text-info" onClick={() => openBulk("manager")}>
-                  <Link2 className="h-3 w-3 mr-1" /> Vincular em massa
-                </Button>
-              )}
             </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
-              {visibleManagers.length === 0 && (
-                <p className="text-xs text-muted-foreground">{emptyLabel("gerente")}</p>
+            <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {visibleCcas.map(c => (
+                <PessoaCard
+                  key={c.id}
+                  pessoa={c}
+                  tom="warning"
+                  onAbrir={podeEditarFicha(c) ? () => openEdit("broker", c) : undefined}
+                />
+              ))}
+              {visibleCcas.length === 0 && (
+                <p className="text-xs text-muted-foreground col-span-full">
+                  {emptyLabel("CCA")}
+                  {!search && isAdmin && " Cadastre a pessoa em \"Novo colaborador\" e marque a função CCA na ficha."}
+                </p>
               )}
-              {visibleManagers.map(m => {
-                const superior = rotuloSuperior(m.director_id, "Sem diretor");
-                const equipe = teamsByMgr[m.id];
-                return (
-                  <div key={m.id} className="p-2 rounded-lg border border-border/30 bg-info/5 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-info/20 flex items-center justify-center text-xs font-bold text-info">{initials(m.name)}</div>
+            </CardContent>
+          </Card>
+
+
+          {/* Outros papéis — quem não entra no organograma continua alcançável.
+              Uma pessoa sumia da tela pelo próprio ato de receber o papel certo
+              (marcar SDR e desmarcar Corretor) e não havia como reabrir a ficha. */}
+          <Card className="border-border/50" role="region" aria-label="Outros papéis">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <IdCard className="h-4 w-4 text-muted-foreground" /> Outros papéis ({filter(outros).length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {filter(outros).map(o => (
+                <PessoaCard
+                  key={o.id}
+                  pessoa={o}
+                  onAbrir={podeEditarFicha(o) ? () => openEdit("broker", o) : undefined}
+                />
+              ))}
+              {filter(outros).length === 0 && (
+                <p className="text-xs text-muted-foreground col-span-full">
+                  {search ? "Ninguém com esse nome fora do organograma." : "Administrador, SDR, Marketing e Sócio aparecem aqui quando existirem."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Auditoria: as duas tabelas existiam, com policy de leitura só para
+              admin, e nenhuma tela as mostrava. */}
+          {isAdmin && <TrilhaAcesso />}
+
+          {/* Performance por Equipe */}
+          <Card className="glass">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" /> Performance por Equipe
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
+                {teamStats.map(t => {
+                  const equipe = teamsByMgr[t.manager.id];
+                  return (
+                  <div key={t.manager.id} className="shrink-0 w-[280px] snap-start p-3 rounded-lg border border-border/30 bg-secondary/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-8 h-8 rounded-full bg-info/20 flex items-center justify-center text-xs font-bold text-info">{iniciais(t.manager.name)}</div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{m.name}</p>
-                        <p className={cn("text-xs truncate", superior.temSuperior ? "text-info" : "text-muted-foreground")}>
-                          {superior.texto}
-                        </p>
-                        <PapeisExtras roles={m.roles} principal={m.role} />
+                        <p className="text-xs font-semibold truncate">{t.manager.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{t.director ?? "—"}</p>
                       </div>
-                      <StatusPessoa status={m.status} />
-                      <Badge variant="outline" className="border-info/30 text-info">
-                        {brokers.filter(b => b.manager_id === m.id).length}
-                      </Badge>
-                      {podeEditarFicha(m) && (
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" aria-label={`Editar ficha de ${m.name}`} onClick={() => openEdit("manager", m)}>
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                      )}
+                      <Badge className="bg-success/20 text-success border-success/30 shrink-0">{t.size}</Badge>
                     </div>
+                    {/* Nome da equipe e desativação vieram do cartão do gerente: são
+                        da EQUIPE, e o cartão de pessoa agora é só nome e foto.
+                        Gerente sem equipe ativa vê o campo vazio, e digitar um nome
+                        ali CRIA a equipe — que é a recuperação certa. */}
                     {canEdit && (
-                      <div className="flex flex-wrap items-center gap-1">
+                      <div className="mb-2 flex flex-wrap items-center gap-1">
                         <span className="text-eyebrow shrink-0">Equipe</span>
                         <Input
-                          aria-label={`Nome da equipe de ${m.name}`}
-                          value={teamNameDrafts[m.id] ?? ""}
-                          onChange={(e) => setTeamNameDrafts(p => ({ ...p, [m.id]: e.target.value }))}
+                          aria-label={`Nome da equipe de ${t.manager.name}`}
+                          value={teamNameDrafts[t.manager.id] ?? ""}
+                          onChange={(e) => setTeamNameDrafts(p => ({ ...p, [t.manager.id]: e.target.value }))}
                           onBlur={() => {
-                            const current = teamsByMgr[m.id]?.display_name ?? "";
-                            if ((teamNameDrafts[m.id] ?? "") !== current) void saveTeamName(m);
+                            const current = teamsByMgr[t.manager.id]?.display_name ?? "";
+                            if ((teamNameDrafts[t.manager.id] ?? "") !== current) void saveTeamName(t.manager);
                           }}
-                          placeholder={`Equipe ${m.name.split(" ")[0]}`}
+                          placeholder={`Equipe ${t.manager.name.split(" ")[0]}`}
                           className="h-6 text-xs px-2 min-w-0 flex-1 basis-24"
                         />
                         {/* A saída que faltava. `activeTeamIdOfManager` manda
-                            "desative as que sobram" quando o gerente tem mais de
-                            uma equipe ativa, e não havia NENHUM caminho na
-                            interface para desativar equipe — o vínculo em massa
-                            ficava travado sem solução. */}
-                        {/* `canManageMembers` e não `canEdit`: desativar precisa
-                            das DUAS escritas — `teams` (diretor da equipe) e
-                            `team_members` (`has_permission('teams.manage')`).
-                            Para o diretor com a permissão revogada o botão some
-                            em vez de fechar meio caminho. */}
+                            "desative as que sobram" quando o gerente tem mais de uma
+                            equipe ativa, e não havia NENHUM caminho na interface
+                            para desativar equipe — o vínculo em massa ficava travado
+                            sem solução. */}
+                        {/* `canManageMembers` e não `canEdit`: desativar precisa das
+                            DUAS escritas — `teams` (diretor da equipe) e
+                            `team_members` (`has_permission('teams.manage')`). Para o
+                            diretor com a permissão revogada o botão some em vez de
+                            fechar meio caminho. */}
                         {equipe && canManageMembers && (
                           <Button
                             size="sm"
                             variant="ghost"
                             className="h-6 px-2 text-xs text-destructive"
-                            aria-label={`Desativar a equipe de ${m.name}`}
+                            aria-label={`Desativar a equipe de ${t.manager.name}`}
                             onClick={() => setDesativar({
                               teamId: equipe.id,
-                              managerName: m.name,
-                              membros: brokers.filter(b => b.manager_id === m.id).length,
+                              managerName: t.manager.name,
+                              membros: t.size,
                             })}
                           >
                             Desativar
@@ -967,194 +877,52 @@ export default function Equipes() {
                         )}
                       </div>
                     )}
-                    {canEdit && <GoalRow broker={m} onSaved={load} />}
-                    <CredLine id={m.id} />
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          {/* Corretores */}
-          <Card className="border-success/30" role="region" aria-label="Corretores">
-            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-success flex items-center gap-2">
-                <Users className="h-4 w-4" /> Corretores ({visibleBrokers.length})
-              </CardTitle>
-              {canManageMembers && (
-                <Button size="sm" variant="outline" className="h-7 text-xs border-success/40 text-success" onClick={() => openBulk("broker")}>
-                  <Link2 className="h-3 w-3 mr-1" /> Vincular em massa
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
-              {visibleBrokers.length === 0 && (
-                <p className="text-xs text-muted-foreground">{emptyLabel("corretor")}</p>
-              )}
-              {visibleBrokers.map(b => {
-                const superior = rotuloSuperior(b.manager_id, "Sem gerente");
-                return (
-                  <div key={b.id} className="p-2 rounded-lg border border-border/30 bg-success/5 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center text-xs font-bold text-success">{initials(b.name)}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{b.name}</p>
-                        <p className={cn("text-xs truncate", superior.temSuperior ? "text-info" : "text-muted-foreground")}>
-                          {superior.texto}
-                        </p>
-                        <PapeisExtras roles={b.roles} principal={b.role} />
-                      </div>
-                      <StatusPessoa status={b.status} />
-                      {podeEditarFicha(b) && (
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" aria-label={`Editar ficha de ${b.name}`} onClick={() => openEdit("broker", b)}>
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                      )}
+                    <div className="flex flex-wrap gap-1">
+                      {t.brokers.map(b => (
+                        <span key={b.id} className="text-xs px-2 py-0.5 rounded-full bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
+                      ))}
+                      {t.brokers.length === 0 && <span className="text-xs text-muted-foreground">Sem corretores</span>}
                     </div>
-                    {/* Meta de VGV do corretor: `goals_write` é admin e diretor,
-                        a mesma regra de `canEdit` que já vale para o gerente. */}
-                    {canEdit && <GoalRow broker={b} onSaved={load} />}
-                    <CredLine id={b.id} />
                   </div>
-                );
-              })}
+                  );
+                })}
+                {teamStats.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma equipe visível para o seu acesso.</p>}
+              </div>
             </CardContent>
           </Card>
-        </div>
-
-      {/* CCAs */}
-      <Card className="border-warning/30" role="region" aria-label="CCAs">
-        <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm text-warning flex items-center gap-2">
-            <Shield className="h-4 w-4" /> CCAs ({visibleCcas.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-          {visibleCcas.map(c => (
-            <div key={c.id} className="p-2 rounded-lg border border-border/30 bg-warning/5 space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center text-xs font-bold text-warning">{initials(c.name)}</div>
-                <p className="text-xs font-medium flex-1 truncate">{c.name}</p>
-                <StatusPessoa status={c.status} />
-                {podeEditarFicha(c) && (
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" aria-label={`Editar ficha de ${c.name}`} onClick={() => openEdit("broker", c)}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-              <CredLine id={c.id} />
-            </div>
-          ))}
-          {visibleCcas.length === 0 && (
-            <p className="text-xs text-muted-foreground col-span-full">
-              {emptyLabel("CCA")}
-              {!search && isAdmin && " Cadastre a pessoa em \"Novo colaborador\" e marque a função CCA na ficha."}
-            </p>
+          </>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
 
+        {isAdmin && (
+          <TabsContent value="cofre" className="mt-0">
+            <CofreCredenciais />
+          </TabsContent>
+        )}
+      </Tabs>
 
-      {/* Outros papéis — quem não entra no organograma continua alcançável.
-          Uma pessoa sumia da tela pelo próprio ato de receber o papel certo
-          (marcar SDR e desmarcar Corretor) e não havia como reabrir a ficha. */}
-      <Card className="border-border/50" role="region" aria-label="Outros papéis">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <IdCard className="h-4 w-4 text-muted-foreground" /> Outros papéis ({filter(outros).length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-          {filter(outros).map(o => (
-            <div key={o.id} className="p-2 rounded-lg border border-border/30 bg-secondary/20 space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">{initials(o.name)}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{o.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {o.roles.map(r => ROTULO_PAPEL[r] ?? r).join(", ")}
-                  </p>
-                </div>
-                <StatusPessoa status={o.status} />
-                {podeEditarFicha(o) && (
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" aria-label={`Editar ficha de ${o.name}`} onClick={() => openEdit("broker", o)}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-              <CredLine id={o.id} />
-            </div>
-          ))}
-          {filter(outros).length === 0 && (
-            <p className="text-xs text-muted-foreground col-span-full">
-              {search ? "Ninguém com esse nome fora do organograma." : "Administrador, SDR, Marketing e Sócio aparecem aqui quando existirem."}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Auditoria: as duas tabelas existiam, com policy de leitura só para
-          admin, e nenhuma tela as mostrava. */}
-      {isAdmin && <TrilhaAcesso />}
-
-      {/* Performance por Equipe */}
-      <Card className="glass">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Shield className="h-4 w-4 text-primary" /> Performance por Equipe
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x">
-            {teamStats.map(t => (
-              <div key={t.manager.id} className="shrink-0 w-[280px] snap-start p-3 rounded-lg border border-border/30 bg-secondary/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-info/20 flex items-center justify-center text-xs font-bold text-info">{initials(t.manager.name)}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold truncate">{t.manager.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{t.director ?? "—"}</p>
-                  </div>
-                  <Badge className="bg-success/20 text-success border-success/30 shrink-0">{t.size}</Badge>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {t.brokers.map(b => (
-                    <span key={b.id} className="text-xs px-2 py-0.5 rounded-full bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
-                  ))}
-                  {t.brokers.length === 0 && <span className="text-xs text-muted-foreground">Sem corretores</span>}
-                </div>
-              </div>
-            ))}
-            {teamStats.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma equipe visível para o seu acesso.</p>}
-          </div>
-        </CardContent>
-      </Card>
-      </>
-      )}
-
-      {/* Cadastro de colaborador — abre a ficha em seguida para o admin definir
-          função e equipe, que o provisionamento não decide. */}
-      <NewPersonDialog
+      {/* Cadastro de colaborador — a MESMA ficha, vazia. O diálogo de dois
+          campos que existia aqui empurrava CPF, CRECI, função e equipe para uma
+          segunda etapa; o cliente pediu tudo de uma vez (10/09/2026). */}
+      <BrokerEditModal
         open={creating}
-        onOpenChange={setCreating}
-        onCreated={(person) => {
+        broker={null}
+        criando
+        managers={managers.map(m => ({ id: m.id, name: m.name }))}
+        directors={directors.map(d => ({ id: d.id, name: d.name }))}
+        isAdmin={isAdmin}
+        onClose={() => setCreating(false)}
+        onSaved={() => { setCreating(false); load(); }}
+        // E-mail já em uso: em vez de "já existe" sem saída, a ficha de quem já
+        // usa o endereço abre. Só id e nome — status, equipe e função a ficha
+        // relê do banco (`getPersonDetails`); chutar `active: true` abria o
+        // Switch ligado para quem estava suspenso e deixava a reativação sem
+        // caminho. E `login_email_confirmed` fica falso: o endereço é de outra
+        // pessoa, não do cadastro que acabou de ser digitado.
+        onDuplicado={(id, nome) => {
           setCreating(false);
           load();
-          // Só o que a função devolveu. Papel, equipe, diretor e status a ficha
-          // relê do banco (`getPersonDetails`): este mesmo callback atende o
-          // 409 de e-mail já em uso, onde a pessoa JÁ existe — chutar
-          // `active: true` abria o Switch ligado para quem estava suspenso e
-          // deixava a reativação sem caminho.
-          setProfileEdit({
-            id: person.id,
-            name: person.full_name,
-            full_name: person.full_name,
-            email: person.email,
-            login_email: person.email,
-            // Quem acabou de nascer teve o endereço digitado e conferido agora;
-            // ficha de gente que já existia volta ao gate de confirmação.
-            login_email_confirmed: !person.existing,
-            user_id: person.id,
-          });
+          setProfileEdit({ id, name: nome, full_name: nome, login_email_confirmed: false });
         }}
       />
 
@@ -1167,6 +935,17 @@ export default function Equipes() {
         managers={managers.map(m => ({ id: m.id, name: m.name }))}
         directors={directors.map(d => ({ id: d.id, name: d.name }))}
         isAdmin={isAdmin}
+        // A meta de VGV saiu do cartão junto com o resto e passou a morar aqui.
+        // `goals_write` é admin e diretor — a mesma regra de `canEdit`.
+        metas={canEdit && profileEdit
+          ? (() => {
+              const pessoa = rows.find(r => r.id === profileEdit.id);
+              // `key`: os campos da meta guardam estado local a partir do valor
+              // inicial. Sem trocar a identidade do elemento, a meta de quem foi
+              // aberto antes ficaria em tela para a próxima pessoa.
+              return pessoa ? <MetaVgv key={pessoa.id} pessoa={pessoa} onSaved={load} /> : null;
+            })()
+          : null}
         // Suspender/desligar é do admin e de quem LIDERA a equipe do alvo —
         // gerente OU diretor dela (`profiles_guard_admin_columns` deixa o ramo
         // `manages_profile` mexer em `status`, e `auth_led_team_ids()` casa os
@@ -1258,7 +1037,7 @@ export default function Equipes() {
                               });
                             }}
                           />
-                          <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold" aria-hidden>{initials(m.name)}</div>
+                          <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold" aria-hidden>{iniciais(m.name)}</div>
                           <Label htmlFor={`bulk-${m.id}`} className="flex-1 truncate cursor-pointer text-xs font-normal">
                             {m.name}
                           </Label>
@@ -1347,6 +1126,7 @@ export default function Equipes() {
                     toast({
                       title: "Equipe desativada",
                       description: saiu ? `${saiu} vínculo(s) encerrado(s).` : undefined,
+                      variant: "success",
                     });
                   } catch (error: unknown) {
                     toast({

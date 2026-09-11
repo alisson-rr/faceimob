@@ -20,6 +20,7 @@ import {
   type SaleEvent,
 } from "@/lib/engagement/celebrations";
 import { playSound } from "@/lib/engagement/audio";
+import { tocarPremiacao } from "@/hooks/useSomDePremiacao";
 import { buildScores } from "./ranking";
 import { fireConfetti } from "./Confetti";
 import { CelebrationContext, type Celebrate, type CelebrationPayload } from "./context";
@@ -109,7 +110,12 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
       return;
     }
 
-    playSound(spec.sound);
+    // Marco (meta batida, subiu no ranking) toca a faixa que o cliente entregou;
+    // o resto continua no catálogo sintetizado. O hook respeita o mesmo
+    // interruptor de som, o `prefers-reduced-motion` e cai na fanfarra
+    // sintetizada se o arquivo falhar.
+    if (kind === "goal" || kind === "rank_up") tocarPremiacao();
+    else playSound(spec.sound);
     fireConfetti(spec.confetti, payload?.origin);
 
     if (spec.visual !== "toast") return;
@@ -147,7 +153,9 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
   const saleId = sale?.id ?? null;
   useEffect(() => {
     if (!saleId) return;
-    playSound(CELEBRATION.sale.sound);
+    // Venda é o marco que o cliente pediu com a faixa dele. A guarda de
+    // não-empilhar do hook garante uma comemoração para duas vendas seguidas.
+    tocarPremiacao();
     fireConfetti(CELEBRATION.sale.confetti);
     const timer = setTimeout(() => setSaleQueue((queue) => queue.slice(1)), SALE_DISPLAY_MS);
     return () => clearTimeout(timer);

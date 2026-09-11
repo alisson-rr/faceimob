@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateMonth,
+  fromDailyEntry,
   hasAnyValue,
   isBusinessDay,
   monthMissingDays,
   targetsFrom,
+  toDailyEntry,
   zeroDailyRow,
 } from "./dailyFunnel";
 
@@ -100,5 +102,33 @@ describe("metas do funil", () => {
     expect(targetsFrom({ scope: "director", lead_to_analysis_pct: 11.5 })).toEqual({
       scope: "director", analises: 11.5, aprovados: 40, vendas: 50,
     });
+  });
+});
+
+describe("tradução coluna ↔ tela", () => {
+  it("os dois sentidos usam o mesmo apelidamento", () => {
+    // O defeito que este teste pega: renomear uma métrica só de um lado. A tela
+    // continuaria lendo certo e gravando na coluna errada (ou vice-versa), e
+    // nenhum tipo acusaria — `p_entries` chega ao banco como JSON.
+    const colunas = {
+      leads: 3, calls: 7, doc_collections: 2, visits_scheduled: 1,
+      visits_done: 1, analyses_sent: 4, analyses_approved: 2, sales: 1,
+    };
+    const tela = fromDailyEntry(colunas);
+    expect(toDailyEntry((key) => tela[key])).toEqual(colunas);
+  });
+
+  it("grava os nomes que `daily_entries` tem, não os da tela", () => {
+    expect(Object.keys(toDailyEntry(() => 0)).sort()).toEqual([
+      "analyses_approved", "analyses_sent", "calls", "doc_collections",
+      "leads", "sales", "visits_done", "visits_scheduled",
+    ]);
+  });
+
+  it("coluna ausente no SELECT vale zero, não NaN", () => {
+    // O painel da diretoria pede só 5 das 8 colunas; as outras não podem virar
+    // NaN e contaminar a soma.
+    expect(fromDailyEntry({ leads: 2 }).ligacoes).toBe(0);
+    expect(fromDailyEntry(null).vendas).toBe(0);
   });
 });

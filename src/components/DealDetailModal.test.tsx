@@ -32,7 +32,13 @@ import DealDetailModal from "./DealDetailModal";
 vi.mock("@/hooks/use-toast", () => ({ toast: vi.fn() }));
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "u1" }, isAdmin: true, roles: ["admin"], canEnterStage: () => true }),
+  useAuth: () => ({
+    user: { id: "u1" },
+    isAdmin: true,
+    roles: ["admin"],
+    canEnterStage: () => true,
+    can: () => true,
+  }),
 }));
 
 vi.mock("@/components/pipeline/data", () => ({

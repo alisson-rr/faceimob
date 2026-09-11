@@ -28,21 +28,36 @@ const MAX_NAME = 120;
  */
 const BAN_PARA_SEMPRE = "876000h";
 
+/** Limites da senha definida pelo administrador.
+ *
+ *  O teto é do bcrypt que o GoTrue usa: ele IGNORA o que passa de 72 bytes, e
+ *  uma senha silenciosamente truncada é pior do que uma recusada — o cofre
+ *  guardaria um valor que o Auth não confere por inteiro. O piso é decisão
+ *  nossa: 8 caracteres num sistema com dado de cliente dentro. */
+const SENHA_MIN_BYTES = 8;
+const SENHA_MAX_BYTES = 72;
+
 /**
  * Provisiona o acesso de um colaborador.
- *
- * Não define nem devolve senha: o login é por código no e-mail (`signInWithOtp`).
- * A versão anterior gerava senha aleatória e a devolvia no corpo da resposta —
- * ou seja, a credencial passava pelo navegador do admin e ia parar em print,
- * planilha ou mensagem. Aqui o e-mail é a credencial e o código é efêmero.
  *
  * `email_confirm: true` mantém o usuário apto a receber o OTP sem precisar
  * clicar em link de confirmação.
  *
- * Três ramos:
+ * SOBRE SENHA (pedido do cliente em 10/09/2026, com o risco avisado por escrito
+ * e o pedido reafirmado). Esta function NÃO devolve senha nenhuma no corpo da
+ * resposta, e continua não tendo como LER a senha que alguém já usa: o Auth
+ * guarda hash, e isso não se contorna. O que o ramo `password` faz é o outro
+ * caminho — o administrador DEFINE uma senha nova, ela é aplicada no Auth e
+ * gravada no cofre (`store_broker_password`, migration 0105) na mesma chamada,
+ * e a partir daí ele a consulta pela aba do cofre em Equipes, com auditoria de
+ * quem revelou. A tela diz isso em uma frase para ninguém achar que está vendo
+ * a senha antiga.
+ *
+ * Quatro ramos:
  *  · `access: "revoke" | "restore"` — bloqueia ou devolve a ENTRADA de quem já
  *    tem conta. É o que o desligamento na ficha chama: sem ele, marcar
  *    `status = 'terminated'` tirava a pessoa das listas e a deixava entrando.
+ *  · `password` + `profile_id` — define a senha de acesso e a guarda no cofre.
  *  · sem `profile_id` — cria a conta ("Novo colaborador"). O trigger
  *    `on_auth_user_created` grava perfil e papel 'broker' na mesma transação.
  *  · com `profile_id`/`broker_id` — troca o e-mail de acesso de quem já existe.
@@ -52,7 +67,9 @@ const BAN_PARA_SEMPRE = "876000h";
  * 1. O ramo de troca atualiza TAMBÉM `profiles.email`. Antes só o Auth mudava e
  *    a ficha continuava mostrando o endereço antigo — um login que existe e um
  *    e-mail exibido que não entra. Se o `profiles` recusar, o e-mail do Auth
- *    volta ao anterior: melhor nada mudar do que mudar metade.
+ *    volta ao anterior: melhor nada mudar do que mudar metade. E atualiza o
+ *    LOGIN guardado no cofre (`sync_broker_login`, 0108): o cofre guarda o par
+ *    login/senha e mostrava o endereço de antes da troca.
  * 2. E-mail duplicado devolve 409 com o perfil que JÁ tem aquele endereço. Sem
  *    isso, uma resposta 200 perdida por timeout deixava a conta criada, a
  *    segunda tentativa dizia "já existe" e o admin não tinha caminho nenhum
@@ -99,7 +116,7 @@ Deno.serve(async (req) => {
      */
     const registrar = async (
       target: string | null,
-      action: "create" | "reset" | "denied" | "revoked" | "restored",
+      action: "create" | "reset" | "denied" | "revoked" | "restored" | "password",
       email: string,
     ) => {
       const { error } = await admin.from("access_provision_log")
@@ -112,7 +129,13 @@ Deno.serve(async (req) => {
       .select("role")
       .eq("profile_id", actorId);
     if (roleError) throw roleError;
-    if (!(roleRows || []).some((row) => row.role === "admin")) {
+    // "Administrador" inclui o SÓCIO (decisão do cliente em 10/09/2026, a mesma
+    // da 0097/0099 no banco). Aqui a checagem é na mão — esta função roda com
+    // `service_role` e não passa por RLS nenhuma —, então ela precisa repetir a
+    // regra. Sem isto o desligamento feito pelo sócio gravava a ficha como
+    // desligada e o `access_provision_log` registrava "denied": a pessoa saía
+    // das listas e continuava entrando no sistema.
+    if (!(roleRows || []).some((row) => row.role === "admin" || row.role === "partner")) {
       // A tentativa recusada é a que mais interessa auditar — alguém sem papel
       // batendo no endpoint que cria acesso — e era a única que não deixava
       // rastro nenhum. `profile_id` fica nulo: ninguém foi provisionado.
@@ -189,6 +212,61 @@ Deno.serve(async (req) => {
       // `login_ready` viaja também aqui: devolver a entrada NÃO faz o código de
       // 6 dígitos sair enquanto o SMTP não existir, e a ficha prometia que sim.
       return json({ success: true, access: acesso, email: alvo.email, user_id: profileId, login_ready: loginReady });
+    }
+
+    // ── Ramo 0b: definir a senha de acesso e guardá-la no cofre ─────────────
+    //
+    // Vem ANTES do ramo 1, que dispara só por `profile_id` existir.
+    //
+    // Os dois efeitos são um pedido só: aplicar no Auth e gravar no cofre. Se o
+    // cofre recusar, a senha JÁ mudou no Auth — dizer "não deu" faria o admin
+    // repetir com outro valor e ninguém saberia qual está valendo. Por isso a
+    // resposta é de sucesso com `stored_in_vault: false`, e a tela mostra a
+    // senha uma última vez em vez de fingir que nada aconteceu.
+    const novaSenha = typeof body.password === "string" ? body.password : "";
+    if (novaSenha) {
+      if (!profileId) return json({ error: "profile_id obrigatório." }, 400);
+      // Bytes, não caracteres: o limite do bcrypt é em bytes e um acento ocupa
+      // dois. Medir em `length` deixaria passar senha que o GoTrue trunca.
+      const bytes = new TextEncoder().encode(novaSenha).length;
+      if (bytes < SENHA_MIN_BYTES || bytes > SENHA_MAX_BYTES) {
+        return json(
+          { error: `A senha precisa ter de ${SENHA_MIN_BYTES} a ${SENHA_MAX_BYTES} caracteres.` },
+          400,
+        );
+      }
+
+      const { data: alvo, error: alvoError } = await admin
+        .from("profiles").select("id,email").eq("id", profileId).maybeSingle();
+      if (alvoError || !alvo) return json({ error: "Perfil não encontrado." }, 404);
+      if (!alvo.email) return json({ error: "Perfil sem e-mail de acesso." }, 400);
+
+      const { error } = await admin.auth.admin.updateUserById(profileId, {
+        password: novaSenha,
+      });
+      if (error) throw error;
+
+      // `store_broker_password` (0105) é exclusiva da service role: o schema
+      // `private` não é exposto pelo PostgREST, então nem o browser do admin
+      // alcança o cofre direto. Nunca logar o valor — só o erro.
+      const { error: cofreError } = await admin.rpc("store_broker_password", {
+        p_profile_id: profileId,
+        p_login: alvo.email,
+        p_secret: novaSenha,
+        p_actor_id: actorId,
+        p_actor_email: actorEmail,
+      });
+      if (cofreError) {
+        console.error("store_broker_password falhou:", cofreError.message);
+      }
+
+      await registrar(profileId, "password", alvo.email);
+      return json({
+        success: true,
+        email: alvo.email,
+        user_id: profileId,
+        stored_in_vault: !cofreError,
+      });
     }
 
     // ── Ramo 1: trocar o e-mail de acesso de quem já existe ──────────────────
@@ -276,8 +354,29 @@ Deno.serve(async (req) => {
         }, 409);
       }
 
+      // O cofre (0105) guarda o PAR login/senha, e o login é o e-mail que valia
+      // na hora em que a senha foi definida. Sem esta linha, trocar o e-mail
+      // deixava o cofre entregando um login que o Auth já não conhece — e é
+      // exatamente daí que o administrador copia para entrar. Só o `login` muda:
+      // o `secret` continua sendo o que o Auth tem.
+      //
+      // Falhar aqui não desfaz a troca, pela mesma razão do ramo da senha: o
+      // e-mail JÁ mudou no Auth e no espelho, e mentir sobre isso é pior. Quem
+      // não tem linha no cofre volta `false` sem erro.
+      const { error: cofreError } = await admin.rpc("sync_broker_login", {
+        p_profile_id: profile.id,
+        p_login: email,
+      });
+      if (cofreError) console.error("sync_broker_login falhou:", cofreError.message);
+
       await registrar(profile.id, "reset", email);
-      return json({ success: true, email, user_id: profile.id, login_ready: loginReady });
+      return json({
+        success: true,
+        email,
+        user_id: profile.id,
+        login_ready: loginReady,
+        vault_login_synced: !cofreError,
+      });
     }
 
     // ── Ramo 2: criar a conta ────────────────────────────────────────────────

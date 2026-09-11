@@ -37,7 +37,10 @@ export function SectionCard({
 }: SectionCardProps) {
   return (
     <section className={cn("overflow-hidden rounded-2xl border border-border bg-card text-card-foreground", className)}>
-      <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Passo responsivo do shell (`px-4 sm:px-6` do AppLayout): a 375 px os
+          20 px de folga de cada lado comiam 40 dos 343 uteis. Do `sm` para
+          cima o cartao continua como estava. */}
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
         <div className="flex min-w-0 items-center gap-2.5">
           {/* Ícone sem o quadrado colorido atrás (05/09/2026): numa tela com
               seis seções eram seis manchas azuis disputando atenção com os
@@ -51,9 +54,9 @@ export function SectionCard({
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
-      <div className={cn(flush ? "" : "p-5", contentClassName)}>{children}</div>
+      <div className={cn(flush ? "" : "p-4 sm:p-5", contentClassName)}>{children}</div>
 
-      {footer && <div className="border-t border-border bg-muted/40 px-5 py-3 text-xs text-muted-foreground">{footer}</div>}
+      {footer && <div className="border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground sm:px-5">{footer}</div>}
     </section>
   );
 }

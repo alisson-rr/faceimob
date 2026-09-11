@@ -99,9 +99,15 @@ begin
   -- Revogar demais fecharia o Diário público, que é o oposto do objetivo.
   perform pg_temp.check80(
     has_function_privilege('anon', 'public.public_daily_team(text,text)', 'execute')
-    and has_function_privilege('anon', 'public.public_daily_submit(text,text,jsonb,text,text)', 'execute')
-    and has_function_privilege('anon', 'public.public_director_checkpoint(text,date,text)', 'execute'),
-    'as 3 RPCs do Diário seguem executáveis por anon');
+    and has_function_privilege('anon', 'public.public_daily_submit(text,text,jsonb,text,text)', 'execute'),
+    'as 2 RPCs do Diário seguem executáveis por anon');
+
+  -- `public_director_checkpoint` saiu da superfície anônima na 0103 (o
+  -- checkpoint virou tela logada). A função continua existindo para
+  -- `authenticated` — o que morreu foi o acesso sem sessão.
+  perform pg_temp.check80(
+    not has_function_privilege('anon', 'public.public_director_checkpoint(text,date,text)', 'execute'),
+    'public_director_checkpoint não é mais chamável sem sessão (0103)');
 
   -- As sete de 0059+ pelo nome: é o que a auditoria encontrou.
   perform pg_temp.check80(

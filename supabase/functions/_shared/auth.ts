@@ -15,6 +15,9 @@
  *
  * Ambas devolvem `null` quando liberam a passagem e uma `Response` pronta
  * quando barram — o chamador só precisa de `if (denied) return denied;`.
+ *
+ * `hasAnyRole` é o complemento das duas: não é porta, é a pergunta "que papel
+ * tem quem já entrou", para a operação cuja RLS pede papel e não código.
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "./secrets.ts";
@@ -132,6 +135,44 @@ export async function requireUserPermission(
   }
 
   return { denied: null, userId: data.user.id };
+}
+
+/**
+ * Segunda porta, quando a primeira não basta: o PAPEL de quem chama.
+ *
+ * `requireUserPermission` responde por um código da matriz (`menu.sdr` abre a
+ * tela do SDR); há operação que precisa de mais que isso — o Playground GRAVA
+ * conversa e o disparo em massa MANDA mensagem para cliente real, e a RLS
+ * dessas tabelas pergunta por papel, não por código.
+ *
+ * Espelha `public.has_any_role` (0002, redefinida pela 0099): pedir `'admin'`
+ * aceita TAMBÉM `'partner'` — administrador e sócio têm o mesmo nível de
+ * permissão (decisão do cliente em 10/09/2026). Pedir qualquer outro papel
+ * continua literal.
+ *
+ * Ponto único de propósito: a mesma lista escrita à mão em duas functions foi o
+ * defeito real — as duas ficaram com `['admin','marketing','sdr']` e recusavam
+ * o sócio que a policy já aceitava, cada uma com sua própria consulta a
+ * `user_roles`. Aqui a regra tem um lugar só, e o gate novo nasce certo.
+ *
+ * `error` separado de `allowed` porque falha de leitura não é recusa: quem
+ * chama devolve 500 ("não deu para verificar"), e não 403 ("você não pode").
+ */
+export async function hasAnyRole(
+  supabase: SupabaseClient,
+  userId: string,
+  ...targets: string[]
+): Promise<{ allowed: boolean; error: string | null }> {
+  const { data, error } = await supabase
+    .from("user_roles").select("role").eq("profile_id", userId);
+  if (error) return { allowed: false, error: error.message };
+
+  const aceitos = new Set(targets);
+  if (aceitos.has("admin")) aceitos.add("partner");
+  return {
+    allowed: (data ?? []).some((r: { role: string }) => aceitos.has(r.role)),
+    error: null,
+  };
 }
 
 /**

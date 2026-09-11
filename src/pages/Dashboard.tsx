@@ -12,6 +12,7 @@ import {
   DeveloperRanking,
   DirectorPanel,
   GoalCard,
+  GradeAnual,
   KpiRow,
   LeadsPanel,
   MonthlyTrend,
@@ -219,7 +220,7 @@ export default function Dashboard() {
     <>
       {header}
 
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-5">
         <KpiRow
           stats={view.stats}
           leadsNoPeriodo={leadsNoPeriodo}
@@ -268,6 +269,10 @@ export default function Dashboard() {
                 <SalesFunnelCard stageCounts={view.stageCounts} />
               </div>
               <DeveloperOverview rows={view.developers} />
+              {/* Histórico: recebe `deals` inteiro, não `view.rows`. A grade
+                  compara ano com ano e ignora o filtro de período do topo — o
+                  mesmo acordo do `MonthlyTrend`. */}
+              <GradeAnual deals={deals} />
             </div>
           </TabsContent>
 

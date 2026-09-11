@@ -10,12 +10,54 @@ import { blockedMoveReason } from "./guards";
 import type { PipelineStage } from "./stages";
 
 /**
+ * Recusa de OFF e DISTRATO por permissão, ou `null` quando ela passa.
+ *
+ * Os dois rótulos, e só eles: o pedido de 10/09/2026 é "off e distrato é só
+ * adm" e não diz nada sobre o resto do Status 2. A rodada anterior travou o
+ * catálogo inteiro e tirou do corretor rótulos que sempre foram dele.
+ *
+ * Quem reconhece o rótulo é `normalizeStatus`, a MESMA normalização do banco
+ * (`deal_status_bare`): a tabela manda "17. DISTRATO" e um `status_detail`
+ * importado pode vir "DISTRATO" — comparar o texto cru só casaria um dos dois.
+ *
+ * Exportada porque a tabela e o editor precisam da MESMA resposta ANTES do
+ * gesto (a opção nasce desabilitada, com o motivo) e o hook a aplica na
+ * escrita. Enquanto a frase e o código de permissão vivessem duas vezes,
+ * soltar uma delas era só questão de tempo.
+ *
+ * `can()` curto-circuita em admin igual ao `has_permission()` do banco, e desde
+ * a 0097 `is_admin()` é admin OU sócio — os dois passam sem linha própria.
+ */
+export const offDistratoBlocked = (
+  can: (code: string) => boolean,
+  status: string | null | undefined,
+): string | null => {
+  const outcome = normalizeStatus(status);
+  if (outcome !== "OFF" && outcome !== "DISTRATO") return null;
+  return can("deals.mark_off_distrato")
+    ? null
+    : "Só administrador e sócio marcam OFF e distrato.";
+};
+
+/**
  * Escritas do Pipeline: mover de etapa e trocar o Status 2.
  *
- * Fora da tela porque as duas coisas têm a mesma trava (`can_enter_stage()`) e
- * o mesmo caminho de erro — e porque o arrastar do kanban, o teclado e o Select
- * da tabela precisam chamar exatamente a mesma função. Duplicar a regra em cada
+ * Fora da tela porque o arraste do kanban, o teclado, o Select da tabela e o
+ * editor precisam chamar exatamente a mesma função — duplicar a regra em cada
  * gatilho era o jeito garantido de o teclado permitir o que o mouse recusa.
+ *
+ * Quem autoriza cada uma das duas é DIFERENTE, e tratá-las como a mesma coisa
+ * foi o defeito da primeira versão da trava de 10/09/2026:
+ *
+ *   · **Etapa (Status 1)** — a matriz `stage_permissions` (`can_enter`/
+ *     `can_exit`), que o admin já administra em Admin · Permissões e que
+ *     `deals_guard_stage` cobra no banco. Um código de permissão próprio
+ *     (`deals.edit_stage`) passava POR CIMA dela: o admin concedia a etapa na
+ *     tela e a concessão não produzia efeito nenhum, enquanto três fluxos
+ *     legítimos que gravam `stage_id` pelo token de quem clica — agendar
+ *     visita, aprovar o caso no CCA e encerrar o negócio — caíam em 42501.
+ *   · **Desfecho** — só OFF e DISTRATO, por `deals.mark_off_distrato`. O resto
+ *     do Status 2 continua livre, como sempre foi.
  */
 export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }: {
   stages: PipelineStage[];
@@ -24,12 +66,12 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
   /** Status que significa perda não grava direto: vai para a confirmação (F14). */
   onNeedsLossConfirmation: (deal: LegacyDealRecord, status: string) => void;
 }) {
-  const { canEnterStage, isAdmin } = useAuth();
+  const { canEnterStage, isAdmin, can } = useAuth();
   const canExitStage = useCanExitStage();
   const invalidateDeals = useInvalidateDeals();
 
   const moveDeal = useCallback(async (deal: LegacyDealRecord, stage: PipelineStage) => {
-    // As quatro recusas do banco (sair da etapa, entrar na etapa, mês fechado e
+    // As quatro recusas (sair da etapa, entrar na etapa, mês fechado e
     // conferência documental) num lugar só, ANTES da escrita — e o mesmo lugar
     // para o arraste, a seta do teclado e o botão de mover do cartão.
     const blocked = blockedMoveReason(deal, stage, {
@@ -70,6 +112,21 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
   }, [canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin]);
 
   const changeStatus = useCallback(async (deal: LegacyDealRecord, status: string) => {
+    // A trava dos dois desfechos de administrador mora AQUI, e não no Select da
+    // tabela nem no diálogo de perda: os dois são gatilhos do mesmo `update`, e
+    // enquanto a regra estava neles o rótulo que o modal mostrava cinza
+    // continuava gravável pela tabela. Antes do desvio para a confirmação de
+    // perda, senão o diálogo abre para quem não pode marcar OFF nem distrato.
+    const semPermissao = offDistratoBlocked(can, status);
+    if (semPermissao) {
+      toast({
+        variant: "destructive",
+        title: "Alteração não permitida",
+        description: semPermissao,
+      });
+      return;
+    }
+
     // Contra a lista de motivos do diálogo, não contra `normalizeStatus`: este
     // `if` listava QUEDA/DISTRATO/OFF e "19. REPROVADO" — que é um dos motivos
     // oferecidos na confirmação — escapava para o `update` direto, deixando o
@@ -105,7 +162,7 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
         description: describeError(err, "O status não foi atualizado no servidor."),
       });
     }
-  }, [canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin, onNeedsLossConfirmation, stages]);
+  }, [can, canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin, onNeedsLossConfirmation, stages]);
 
   return { moveDeal, changeStatus };
 }

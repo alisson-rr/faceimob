@@ -12,6 +12,19 @@ import type { User, Session } from "@supabase/supabase-js";
 
 export type AppRole = 'broker' | 'manager' | 'director' | 'partner' | 'admin' | 'cca' | 'sdr' | 'marketing';
 
+/**
+ * Sócio tem exatamente a mesma permissão do administrador — decisão do cliente
+ * em 10/09/2026. Espelha `is_admin()` do banco (migration 0097), que responde
+ * por `admin` OU `partner`.
+ *
+ * Ninguém é promovido: o papel continua `partner` em `user_roles` (a 0093
+ * promovia por gatilho e a 0094 desfez), e `roleLabelFor` continua escrevendo
+ * "Sócio" na tela. Ponto único do front — `isAdmin` e `can()` saem daqui, então
+ * nenhuma tela precisa lembrar de acrescentar `|| roles.includes('partner')`.
+ */
+const temPoderDeAdmin = (papeis: AppRole[]) =>
+  papeis.includes('admin') || papeis.includes('partner');
+
 /** Prévia de papel guardada por ABA (some ao fechar), nunca entre sessões. */
 const PREVIEW_KEY = 'faceimob-preview-role';
 
@@ -43,6 +56,19 @@ interface AuthContextType {
   /** Papéis REAIS, ignorando a prévia. Quem mostra QUEM VOCÊ É usa estes. */
   realRoles: AppRole[];
   /**
+   * `true` quando os papéis REAIS têm poder de administrador — sócio incluído.
+   *
+   * Separado de `isAdmin` (que sai dos EFETIVOS) porque é a resposta que
+   * `setPreviewRole` usa para autorizar a prévia: quem OFERECE a ferramenta
+   * precisa perguntar a mesma coisa. Com o efetivo, entrar em "Ver como
+   * Corretor" derruba `isAdmin`, o seletor some da tela e o admin fica trancado
+   * na prévia sem caminho de volta.
+   *
+   * É autorização, não rótulo: quem escreve o nome do papel na tela continua
+   * usando `realRole`/`realRoles`.
+   */
+  realIsAdmin: boolean;
+  /**
    * `true` quando a leitura do perfil/matriz falhou. Distingue "esta conta não
    * tem papel nenhum" de "não conseguimos ler os papéis" — `roles` fica vazio
    * nos DOIS casos (falha fechada), e uma tela que só olha `roles.length`
@@ -54,7 +80,8 @@ interface AuthContextType {
   /** Papel sendo pré-visualizado por um admin, ou null. */
   previewRole: AppRole | null;
   setPreviewRole: (role: AppRole | null) => void;
-  /** `true` se algum papel efetivo concede o código. Admin concede tudo. */
+  /** `true` se algum papel efetivo concede o código. Admin — e sócio, que tem
+   *  a mesma permissão — concede tudo. */
   can: (code: string) => boolean;
   /** `true` se algum papel efetivo pode mover um negócio para a etapa. */
   canEnterStage: (stageId: string) => boolean;
@@ -63,7 +90,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null, session: null, profile: null,
-  role: 'broker', roles: [], realRole: 'broker', realRoles: [],
+  role: 'broker', roles: [], realRole: 'broker', realRoles: [], realIsAdmin: false,
   perfilFalhou: false, isAdmin: false, loading: true,
   refreshProfile: async () => {},
   previewRole: null, setPreviewRole: () => {},
@@ -87,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** Último usuário cuja matriz de permissões já foi carregada. */
   const loadedForUser = useRef<string | null>(null);
 
-  const realIsAdmin = roles.includes('admin');
+  const realIsAdmin = temPoderDeAdmin(roles);
 
   /**
    * Pré-visualizar outro papel é ferramenta de admin. A trava fica aqui, e não
@@ -241,7 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // O rótulo acompanha o recorte: durante a prévia o cabeçalho tem de dizer o
   // papel que a tela está mostrando, não o de quem está logado.
   const effectiveRole = previewRoleState ?? role;
-  const isAdmin = effectiveRoles.includes('admin');
+  const isAdmin = temPoderDeAdmin(effectiveRoles);
 
   const allowedCodes = useMemo(() => {
     const set = new Set<string>();
@@ -307,7 +334,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
-      role: effectiveRole, roles: effectiveRoles, realRole: role, realRoles: roles,
+      role: effectiveRole, roles: effectiveRoles, realRole: role, realRoles: roles, realIsAdmin,
       previewRole: previewRoleState, setPreviewRole,
       can, canEnterStage, signOut,
     }}>

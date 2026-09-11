@@ -87,7 +87,9 @@ export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
  */
 export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
   const data = [...rows]
-    .sort((a, b) => b.propostas - a.propostas || b.vendas - a.vendas)
+    // Desempate final pelo nome: sem ele o empate herda a ordem de chegada de
+    // `view.developers` e a barra troca de lugar entre carregamentos.
+    .sort((a, b) => b.propostas - a.propostas || b.vendas - a.vendas || a.dev.localeCompare(b.dev, "pt-BR"))
     .map((row) => ({ name: row.dev, Propostas: row.propostas, token: row.token }));
 
   return (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHART_SERIES, developerColor, podiumToken, seriesToken, tone } from "./tone";
+import { CHART_SERIES, developerColor, podiumRingClass, podiumTextClass, podiumToken, seriesToken, tone } from "./tone";
 
 describe("developerColor", () => {
   it("da sempre a mesma cor para o mesmo nome, independente de caixa e espaco", () => {
@@ -36,6 +36,23 @@ describe("podiumToken", () => {
     expect(podiumToken(0)).toBe("gold");
     expect(podiumToken(2)).toBe("bronze");
     expect(podiumToken(3)).toBeNull();
+  });
+});
+
+describe("classes do podio", () => {
+  it("a base e a mesma de podiumToken: 0 e o ouro", () => {
+    // Havia tres implementacoes desta cor, uma delas de base 1. Se a base
+    // voltar a divergir, o 2o colocado sai de ouro em alguma tela.
+    expect(podiumTextClass(0)).toBe("text-gold");
+    expect(podiumTextClass(1)).toBe("text-silver");
+    expect(podiumTextClass(2)).toBe("text-bronze");
+    expect(podiumRingClass(0)).toBe("ring-gold");
+  });
+
+  it("fora do podio nao ha medalha", () => {
+    expect(podiumTextClass(3)).toBe("text-muted-foreground");
+    expect(podiumTextClass(-1)).toBe("text-muted-foreground");
+    expect(podiumRingClass(3)).toBe("ring-border");
   });
 });
 

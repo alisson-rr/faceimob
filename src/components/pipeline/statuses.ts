@@ -14,6 +14,17 @@
 import type { StatusTone } from "@/components/shared";
 import { isSystemStatus } from "@/lib/dealStatus";
 
+/**
+ * `label` é o VALOR gravado em `deals.status_detail`, e só isso. O rótulo que a
+ * tela mostra é `bareStatus(label)`, aplicado em cada ponto de exibição: o
+ * cliente pediu o Status 2 sem o prefixo numerado (10/09/2026) e trocar o valor
+ * gravado levaria junto `LOSS_REASONS`, `SYSTEM_STATUSES` e todo negócio que já
+ * está no banco.
+ *
+ * O número era o que ordenava a planilha antiga; aqui quem ordena é a posição
+ * no array. As duas entradas "15." ficam — sem o número viram dois rótulos
+ * distintos, e a chave de lista continua sendo o `label`, que tem o número.
+ */
 export type FaceimobStatus = { label: string; tone: StatusTone };
 
 export const FACEIMOB_STATUSES: FaceimobStatus[] = [
@@ -77,7 +88,7 @@ export const faceimobStatusRank = (label?: string | null): number => {
 export const statusChoices = (current?: string | null): FaceimobStatus[] => {
   const choices = FACEIMOB_STATUSES.filter((s) => s.label === current || !isSystemStatus(s.label));
   return current && !TONE_BY_LABEL.has(current)
-    ? [{ label: current, tone: "neutral" as StatusTone }, ...choices]
+    ? [{ label: current, tone: "neutral" }, ...choices]
     : choices;
 };
 

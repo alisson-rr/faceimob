@@ -38,7 +38,7 @@ export function DeleteLeadDialog({
       toast({
         variant: "destructive",
         title: "Não foi possível excluir",
-        description: describeError(err, "sem permissão para excluir este lead"),
+        description: describeError(err, "Você não tem permissão para excluir este lead."),
       });
     } finally {
       setRemoving(false);

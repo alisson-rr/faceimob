@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, Copy, Loader2, Megaphone, Pause, Pencil, Play, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, Copy, Loader2, Megaphone, Pause, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { EmptyState, LoadingState, StatusBadge } from "@/components/shared";
+import { MetaReportImportDialog } from "@/components/marketing/MetaReportImportDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -51,6 +52,10 @@ export type CampaignResult = {
   leadSourceId: string | null;
   /** Última vez que `total_spend` veio da plataforma. `null` = valor digitado. */
   syncedAt: string | null;
+  /** Recorte do relatório importado que `total_spend` cobre (0113). Nulo nos
+   *  dois = o gasto foi digitado. */
+  spendPeriodStart: string | null;
+  spendPeriodEnd: string | null;
   leads: number;
   conversions: number;
   /** Negócios GANHOS da campanha — o denominador do custo por VENDA. */
@@ -140,11 +145,16 @@ const irPara = (id: string) => {
 
 export interface CampaignPerformancePanelProps {
   rows: CampaignResult[];
-  /** Quantas campanhas existem ANTES do filtro de canal e status da tela.
-   *  Com `rows` vazio e `total > 0` o vazio é do filtro, não do cadastro — o
-   *  painel dizia "nenhuma campanha cadastrada" enquanto a tabela logo abaixo,
-   *  na mesma dobra, dizia corretamente que era o filtro. */
-  total?: number;
+  /** As campanhas ANTES do filtro de canal e status da tela. Serve a duas
+   *  coisas que não podem sair de `rows`:
+   *    · o vazio — com `rows` vazio e alguma campanha cadastrada, o vazio é do
+   *      filtro, e o painel dizia "nenhuma campanha cadastrada" enquanto a
+   *      tabela logo abaixo, na mesma dobra, dizia corretamente que era o filtro;
+   *    · o casamento do relatório importado — contra a lista filtrada, a
+   *      campanha escondida pelo filtro apareceria como "não cadastrada" e o
+   *      gasto dela ficaria de fora do CPL sem ninguém ter mexido no cadastro.
+   *  Ausente: o painel usa o que recebeu. */
+  allRows?: CampaignResult[];
   /** INTEIRA, ativas e inativas: a campanha de construtora desativada precisa
    *  continuar nomeando a construtora dela — filtrar aqui virava travessão numa
    *  tabela e o nome na outra, na mesma dobra. */
@@ -172,10 +182,12 @@ export interface CampaignPerformancePanelProps {
  * conta a empresa inteira. Dois números da MESMA campanha, lado a lado. A RPC é
  * a fonte correta: conta igual para todo papel e não expõe dado pessoal.
  *
- * O `total_spend` é digitado: nenhuma linha de código o escreve sozinha. Puxar
- * gasto, orçamento e status da Meta exige token da Marketing API com escopo
- * `ads_read` — que o cofre não tem. O botão de sincronizar existe desabilitado
- * com o motivo escrito, porque um botão que erra em silêncio é pior.
+ * O `total_spend` tem duas origens, e a coluna Investido diz qual é a de cada
+ * linha: digitado no formulário, ou vindo do relatório exportado do Gerenciador
+ * de Anúncios (0113) — que carrega o PERÍODO que ele cobre. Sincronizar sozinho
+ * continua fora: exige token da Marketing API com escopo `ads_read`, que o cofre
+ * não tem, e o botão segue desabilitado com o motivo escrito porque um botão que
+ * erra em silêncio é pior.
  *
  * A gestão que este painel entrega — cadastrar, corrigir, pausar/reativar,
  * copiar, lançar verba e período — é toda LOCAL, pelo mesmo motivo: alterar
@@ -183,10 +195,12 @@ export interface CampaignPerformancePanelProps {
  * a tela pode fazer é não mentir sobre isso, e por isso cada superfície de
  * escrita repete de onde o número vem.
  */
-export default function CampaignPerformancePanel({ rows, total, developers, leadSources, loading, error, onReload }: CampaignPerformancePanelProps) {
+export default function CampaignPerformancePanel({ rows, allRows, developers, leadSources, loading, error, onReload }: CampaignPerformancePanelProps) {
   const { toast } = useToast();
   const { isAdmin, roles, previewRole } = useAuth();
+  const cadastradas = allRows ?? rows;
   const [saving, setSaving] = useState(false);
+  const [importando, setImportando] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const [alternando, setAlternando] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -607,18 +621,38 @@ export default function CampaignPerformancePanel({ rows, total, developers, lead
 
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2">
+            {/* O caminho que EXISTE: o relatório que o gestor exporta traz o
+                mesmo gasto da Marketing API e não depende de app revisado. */}
+            <Button size="sm" variant="outline" onClick={() => setImportando(true)} className="h-8 text-xs gap-1">
+              <Upload className="h-4 w-4" /> Importar relatório da Meta
+            </Button>
+            {/* Continua desabilitado e com o motivo escrito: a sincronização
+                automática é outra coisa, e um botão que erra em silêncio é pior. */}
             <Button size="sm" variant="outline" disabled className="h-8 text-xs gap-1">
-              <RefreshCw className="h-4 w-4" /> Sincronizar gasto com a Meta
+              <RefreshCw className="h-4 w-4" /> Sincronizar sozinho
             </Button>
             <p className="text-xs text-muted-foreground">
-              Indisponível: falta o token da Marketing API com escopo <code className="text-foreground">ads_read</code> e o
-              id da conta de anúncios (<code className="text-foreground">act_…</code>) no cofre de integrações. Com eles, este
-              botão passa a puxar gasto, orçamento diário e status, e a coluna Investido deixa de ser digitada.
-              Enquanto não chegar, <b>tudo nesta tela é registro local e digitado</b>: cadastrar, pausar, copiar e
+              O <b>gasto</b> pode vir do relatório exportado do Gerenciador de Anúncios (CSV/XLSX): a coluna
+              Investido passa a dizer de que período ele é, e reimportar o mesmo arquivo não soma duas vezes.
+              A sincronização automática segue indisponível — falta o token da Marketing API com escopo{" "}
+              <code className="text-foreground">ads_read</code> e o id da conta (<code className="text-foreground">act_…</code>)
+              no cofre. <b>O resto desta tela continua sendo registro local e digitado</b>: cadastrar, pausar, copiar e
               mudar verba valem no CRM e não tocam na Meta — pausar o gasto de verdade exige o escopo{" "}
               <code className="text-foreground">ads_management</code> e continua no Gerenciador de Anúncios.
             </p>
           </div>
+        )}
+
+        {/* O casamento é contra as campanhas que a tela JÁ carregou — sem uma
+            segunda consulta — e contra a lista SEM filtro: a campanha escondida
+            pelo filtro de canal apareceria como "não cadastrada" e o gasto dela
+            ficaria fora do CPL sem ninguém ter mexido no cadastro. */}
+        {canEdit && importando && (
+          <MetaReportImportDialog
+            campanhas={cadastradas}
+            onClose={() => setImportando(false)}
+            onImported={onReload}
+          />
         )}
 
         {loading ? (
@@ -632,11 +666,11 @@ export default function CampaignPerformancePanel({ rows, total, developers, lead
             action={<Button variant="outline" onClick={onReload}>Tentar de novo</Button>}
           />
         ) : rows.length === 0 ? (
-          (total ?? 0) > 0 ? (
+          cadastradas.length > 0 ? (
             <EmptyState
               icon={Megaphone}
               title="Nenhuma campanha neste filtro"
-              description={`Volte para "Todos canais" e "Todos status" para ver as ${num(total ?? 0)} cadastradas.`}
+              description={`Volte para "Todos canais" e "Todos status" para ver as ${num(cadastradas.length)} cadastradas.`}
             />
           ) : (
             <EmptyState
@@ -706,7 +740,7 @@ export default function CampaignPerformancePanel({ rows, total, developers, lead
                             lugares ela divergiu — esta dizia "digitado" e a
                             outra, "sincronizado", para a MESMA linha. */}
                         <span className="block font-normal text-muted-foreground">
-                          {origemDoGasto(r.syncedAt)}
+                          {origemDoGasto(r.syncedAt, r.spendPeriodStart, r.spendPeriodEnd)}
                           {r.dailyBudget !== null && ` · ${brl(r.dailyBudget)}/dia`}
                           {/* Verba contratada ao lado do gasto: a diferença é o
                               que ainda dá para gastar, e é ela que justifica

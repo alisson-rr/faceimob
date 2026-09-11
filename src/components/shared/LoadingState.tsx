@@ -23,10 +23,12 @@ export function LoadingState({ variant = "block", rows = 3, label = "Carregandoâ
     <div role="status" aria-busy="true" aria-live="polite" className={cn("w-full", className)}>
       <span className="sr-only">{label}</span>
 
+      {/* A folga do esqueleto acompanha a do `KpiCard`: padding diferente do
+          cartao real faz a regua saltar quando o dado chega. */}
       {variant === "kpi" && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: count }, (_, i) => (
-            <div key={i} className="rounded-2xl border border-border bg-card p-5">
+            <div key={i} className="rounded-2xl border border-border bg-card p-4 sm:p-5">
               <Skeleton className="h-3 w-20 rounded-full" />
               <Skeleton className="mt-4 h-8 w-28 rounded-lg" />
               <Skeleton className="mt-3 h-3 w-16 rounded-full" />

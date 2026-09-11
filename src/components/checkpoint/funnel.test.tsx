@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { DirectorFunnelSection, TeamCheckpointCard, type BrokerRow, type TeamAggr, type TeamRow } from "./FunnelCards";
-import { buildTargetsMap, directorTargetKey, emptyAggr, targetsFrom } from "./funnel";
+import { format, parseISO, startOfWeek } from "date-fns";
+import {
+  addEntry, buildTargetsMap, DEFAULT_TARGETS, directorTargetKey, emptyAggr,
+  lancamentoKey, missingDays, monthRange, targetsForKey,
+} from "./funnel";
+import { fromDailyEntry } from "@/lib/dailyFunnel";
+import { IDEAL_STAGES } from "@/lib/metrics";
 
 // Sem @testing-library no projeto, o render é o do react-dom mesmo; a flag é o
 // que faz `act` aceitar o jsdom como ambiente de teste.
@@ -91,9 +97,9 @@ describe("buildTargetsMap", () => {
       { scope: "team", team_id: "T1", director_id: null, lead_to_analysis_pct: 12, analysis_to_approval_pct: 45, approval_to_sale_pct: 55 },
       { scope: "global", team_id: null, director_id: null, lead_to_analysis_pct: 10, analysis_to_approval_pct: 40, approval_to_sale_pct: 50 },
     ]);
-    expect(targetsFrom(map, directorTargetKey("D1"))).toEqual({ analise_enviada_pct: 11.5, aprovada_pct: 43, venda_pct: 53 });
-    expect(targetsFrom(map, "T1")).toEqual({ analise_enviada_pct: 12, aprovada_pct: 45, venda_pct: 55 });
-    expect(targetsFrom(map, directorTargetKey("D2"))).toEqual({ analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 });
+    expect(targetsForKey(map, directorTargetKey("D1"))).toEqual({ analise_enviada_pct: 11.5, aprovada_pct: 43, venda_pct: 53 });
+    expect(targetsForKey(map, "T1")).toEqual({ analise_enviada_pct: 12, aprovada_pct: 45, venda_pct: 55 });
+    expect(targetsForKey(map, directorTargetKey("D2"))).toEqual({ analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 });
   });
 });
 
@@ -118,7 +124,7 @@ describe("DirectorFunnelSection", () => {
         brokers={brokers}
         teams={teams}
         aggregate={() => ZERADO}
-        targetsFor={(key) => targetsFrom(map, key)}
+        targetsFor={(key) => targetsForKey(map, key)}
         teamNameFor={(t) => t.name}
       />,
     );
@@ -139,11 +145,105 @@ describe("DirectorFunnelSection", () => {
         brokers={brokers}
         teams={teams.filter((t) => t.id === "T2")}
         aggregate={() => ZERADO}
-        targetsFor={(key) => targetsFrom(map, key)}
+        targetsFor={(key) => targetsForKey(map, key)}
         teamNameFor={(t) => t.name}
       />,
     );
     expect(text).toContain("Ver gerentes (1)");
     expect(text).not.toContain("Sem diretor");
+  });
+});
+
+/**
+ * Mês acumulado e pendências: as duas réguas que vieram da RPC pública quando o
+ * checkpoint virou tela logada. Se divergirem do banco, o mesmo dia aparece
+ * cobrado num lado e quitado no outro.
+ */
+describe("monthRange", () => {
+  const segunda = (iso: string) => startOfWeek(parseISO(iso), { weekStartsOn: 1 });
+
+  it("na semana corrente o mês é o de HOJE, não o do início da semana", () => {
+    // O defeito que a 0071 corrigiu: em 02/09 (semana de 31/08) o acumulado
+    // vinha rotulado agosto e o que foi lançado em 01 e 02/09 sumia.
+    const r = monthRange(segunda("2026-09-02"), parseISO("2026-09-02"));
+    expect(format(r.start, "yyyy-MM-dd")).toBe("2026-09-01");
+    expect(format(r.end, "yyyy-MM-dd")).toBe("2026-09-02");
+  });
+
+  it("semana passada traz o mês dela, fechado no último dia", () => {
+    const r = monthRange(segunda("2026-08-10"), parseISO("2026-09-02"));
+    expect(format(r.start, "yyyy-MM-dd")).toBe("2026-08-01");
+    expect(format(r.end, "yyyy-MM-dd")).toBe("2026-08-31");
+  });
+
+  it("semana futura fica com intervalo vazio — mês futuro não soma nada", () => {
+    const r = monthRange(segunda("2026-10-05"), parseISO("2026-09-02"));
+    expect(r.end < r.start).toBe(true);
+  });
+});
+
+describe("missingDays", () => {
+  const semana = startOfWeek(parseISO("2026-09-07"), { weekStartsOn: 1 }); // 07/09, segunda
+  const sexta = parseISO("2026-09-11");
+
+  it("cobra o dia útil sem lançamento e ignora quem lançou", () => {
+    const lancado = new Set([lancamentoKey("t1", "2026-09-07"), lancamentoKey("t2", "2026-09-08")]);
+    const r = missingDays(semana, sexta, ["t1", "t2"], lancado);
+    expect(r).toEqual([
+      { date: "2026-09-07", teamIds: ["t2"] },
+      { date: "2026-09-08", teamIds: ["t1"] },
+      { date: "2026-09-09", teamIds: ["t1", "t2"] },
+      { date: "2026-09-10", teamIds: ["t1", "t2"] },
+    ]);
+  });
+
+  it("HOJE não é pendência — ainda está aberto para preencher", () => {
+    const r = missingDays(semana, parseISO("2026-09-08"), ["t1"], new Set());
+    expect(r.map((d) => d.date)).toEqual(["2026-09-07"]);
+  });
+
+  it("sábado e domingo ficam de fora", () => {
+    // Semana inteira no passado: só os 5 dias úteis podem ser cobrados.
+    const r = missingDays(semana, parseISO("2026-09-21"), ["t1"], new Set());
+    expect(r.map((d) => d.date)).toEqual([
+      "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11",
+    ]);
+  });
+});
+
+describe("a régua e a tradução do diário, fonte única", () => {
+  it("sem meta cadastrada a régua é o funil ideal, não um 10/40/50 digitado", () => {
+    // Eram dois lugares: literal aqui e derivado em `@/lib/dailyFunnel`. Mudar
+    // o funil ideal do produto tem de mover o Checkpoint junto.
+    const pct = (key: string) => IDEAL_STAGES.find((s) => s.key === key)?.stagePct;
+    expect(DEFAULT_TARGETS).toEqual({
+      analise_enviada_pct: pct("analises"),
+      aprovada_pct: pct("aprovados"),
+      venda_pct: pct("vendas"),
+    });
+  });
+
+  it("addEntry soma exatamente o que `fromDailyEntry` traduz", () => {
+    // A tradução coluna → tela estava escrita três vezes, com vocabulários
+    // diferentes. Se alguém reescrever uma delas, este assert cai.
+    const linha = {
+      leads: 9, calls: 8, doc_collections: 7, visits_scheduled: 6,
+      visits_done: 5, analyses_sent: 4, analyses_approved: 3, sales: 2,
+    };
+    const esperado = fromDailyEntry(linha);
+    const acc = addEntry(emptyAggr(), linha);
+    expect(acc.leads).toBe(esperado.leads);
+    expect(acc.ligacoes).toBe(esperado.ligacoes);
+    expect(acc.coleta_docs).toBe(esperado.coleta_docs);
+    expect(acc.visitas_agendadas).toBe(esperado.visitas_agendadas);
+    expect(acc.visitas_feitas).toBe(esperado.visitas_realizadas);
+    expect(acc.enviadas).toBe(esperado.analises);
+    expect(acc.aprovadas).toBe(esperado.aprovados);
+    expect(acc.vendas).toBe(esperado.vendas);
+  });
+
+  it("coluna nula não vira NaN no acumulado", () => {
+    const acc = addEntry(emptyAggr(), { leads: 3, calls: null, sales: undefined });
+    expect(acc).toEqual({ ...emptyAggr(), leads: 3 });
   });
 });

@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Database, Download, FileSpreadsheet, Inbox, Pencil, Save, Trash2, Upload, X } from "lucide-react";
+import { AlertTriangle, Database, Download, FileSpreadsheet, Inbox, Pencil, Save, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
-import { COLUMN_LABELS, FileDropzone, ImportError, LeadImportDialog, parseSheet, useLeadSources } from "@/components/leads";
+import { FileDropzone, ImportError, parseSheet } from "@/components/leads";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { aportePayload } from "@/integrations/supabase/analytics";
-import { useAuth, type AppRole } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { brl, monthStart, num, parseBrl, parseMonthStart } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
@@ -31,9 +30,6 @@ export type SheetAporte = {
   /** Valor já lançado para a mesma (construtora, mês) — será substituído. */
   replaces: number | null;
 };
-
-/** Espelha `leads_insert` (`has_any_role('admin','director','manager','marketing','sdr')`). */
-const LEAD_IMPORT_ROLES: AppRole[] = ["director", "manager", "marketing", "sdr"];
 
 const FORM_VAZIO = { amount: "", developer_id: "", notes: "" };
 
@@ -123,22 +119,20 @@ export function rowsToAportes(rows: string[][], devs: Developer[]): SheetParse {
 }
 
 /**
- * Dados — importação de leads do Leadfy e aportes de mídia por construtora.
+ * Dados — aportes de mídia por construtora.
  *
- * As duas caixas de upload eram decorativas: recebiam o arquivo, mostravam
- * "carregado" e o descartavam. Leadfy agora abre o mesmo diálogo de `/leads`
- * (parse, prévia e `createLeads` já moram lá); aportes têm importador próprio,
- * com prévia e validação antes de gravar.
+ * A caixa de upload era decorativa: recebia o arquivo, mostrava "carregado" e
+ * o descartava. Agora tem prévia e validação antes de gravar.
+ *
+ * Importar planilha de lead ficou só em `/leads`: o cliente descartou o Leadfy
+ * (10/09/2026) e os leads chegam pelas integrações (formulário da Meta).
  */
 export default function DataManagement() {
   const { isAdmin, roles } = useAuth();
-  // Espelha as policies: aporte escreve admin/marketing; lead insere gestor e SDR.
+  // Espelha a policy de aporte: escreve admin/marketing.
   // `roles` (N:N) e não `role`: diretor que também é marketing tem `role = director`.
   const canEditAporte = isAdmin || roles.includes("marketing");
-  const canImportLeads = isAdmin || roles.some((r) => LEAD_IMPORT_ROLES.includes(r));
 
-  const sourcesQuery = useLeadSources();
-  const [importOpen, setImportOpen] = useState(false);
   // Mesma causa do popup de /marketing: o resumo por construtora tem
   // `staleTime` de 60 s, então lançar aporte aqui e abrir /marketing em seguida
   // mostrava o total anterior. Invalidar na escrita é o ponto compartilhado.
@@ -339,268 +333,221 @@ export default function DataManagement() {
         title="Gestão de dados"
         eyebrow="Sistema"
         icon={Database}
-        description="Importação de leads do Leadfy e aportes de mídia por construtora."
+        description="Aportes de mídia por construtora."
       />
 
-      <Tabs defaultValue="leadfy" className="w-full">
-        <TabsList className="bg-transparent border-b border-border/40 rounded-none w-full justify-start gap-4 h-auto p-0">
-          {[["leadfy", "Leadfy"], ["marketing", "Marketing"]].map(([v, l]) => (
-            <TabsTrigger key={v} value={v} className="bg-transparent rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent pb-2 font-semibold">
-              {l}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        {/* LEADFY */}
-        <TabsContent value="leadfy" className="mt-6 grid gap-4 md:grid-cols-2">
-          <SectionCard title="Importar leads do Leadfy" icon={Upload} description="A planilha entra na fila da roleta, sem corretor.">
-            {canImportLeads ? (
-              <Button onClick={() => setImportOpen(true)}>
-                <Upload className="h-4 w-4" /> Importar planilha (CSV/XLSX)
-              </Button>
-            ) : (
-              /* Era um parágrafo solto, sem tom nem ícone, no lugar onde todo
-                 mundo espera um botão: parecia a tela ainda carregando. */
-              <EmptyState
-                icon={Upload}
-                title="Importação indisponível para o seu papel"
-                description="Importar lead é de diretor, gerente, marketing ou SDR. Peça a quem tem o papel, ou peça ao administrador para concedê-lo."
-              />
-            )}
-          </SectionCard>
-          <SectionCard title="Formato esperado">
-            {/* A lista sai de `COLUMN_LABELS`, a MESMA fonte que o importador
-                usa para casar cabeçalho. Escrita à mão, ela prometia
-                "Empreendimento" e "Status", que o parser ignora em silêncio:
-                quem montava a planilha com essas colunas perdia as duas sem
-                aviso nenhum. */}
-            <div className="text-xs space-y-1 text-muted-foreground">
-              <p>Colunas lidas: <code className="text-foreground">{Object.values(COLUMN_LABELS).join(", ")}</code></p>
-              <p>Primeira linha deve ser o cabeçalho.</p>
-              <p>
-                Qualquer outra coluna (Empreendimento, Status, valor) é <strong className="text-foreground">ignorada</strong>:
-                a planilha só cria o lead na fila, e esses campos entram depois, no cadastro do lead ou do negócio.
-              </p>
-            </div>
-          </SectionCard>
-        </TabsContent>
-
-        {/* MARKETING */}
-        <TabsContent value="marketing" className="mt-6 space-y-4">
-          <div className={cn("grid gap-4", canEditAporte && "md:grid-cols-2")}>
-            <SectionCard
-              title={`Aporte de mídia — ${monthLabel(period)}`}
-              icon={Save}
-              description={canEditAporte
-                ? "Um aporte por construtora e mês: salvar de novo corrige o valor. A nota em branco preserva a que já está gravada — use Editar para trocá-la."
-                : "Lançamento e correção de aporte são do marketing e do administrador."}
-              actions={
-                <>
-                  <Label htmlFor="aporte-mes" className="text-xs">Mês</Label>
-                  <Input
-                    id="aporte-mes"
-                    type="month"
-                    value={period.slice(0, 7)}
-                    onChange={(e) => { if (e.target.value) setPeriod(`${e.target.value}-01`); }}
-                    className="h-8 w-40 text-xs"
-                  />
-                </>
-              }
-            >
-              <p className="text-sm mb-3">Total do mês: <strong className="text-success">{brl(monthTotal)}</strong></p>
-              {canEditAporte && (devsError ? (
-                /* Sem a lista de construtoras o formulário recusaria toda
-                   tentativa com "Preencha valor e construtora" — o motivo
-                   errado. Aqui a tela diz o motivo certo e oferece a recarga. */
-                <EmptyState
-                  icon={AlertTriangle}
-                  tone="danger"
-                  title="Não consegui carregar as construtoras"
-                  description={`${devsError} Sem essa lista não dá para lançar nem importar aporte.`}
-                  action={<Button variant="outline" onClick={() => void loadDevs()}>Tentar de novo</Button>}
+      <div className="mt-6 space-y-4">
+        <div className={cn("grid gap-4", canEditAporte && "md:grid-cols-2")}>
+          <SectionCard
+            title={`Aporte de mídia — ${monthLabel(period)}`}
+            icon={Save}
+            description={canEditAporte
+              ? "Um aporte por construtora e mês: salvar de novo corrige o valor. A nota em branco preserva a que já está gravada — use Editar para trocá-la."
+              : "Lançamento e correção de aporte são do marketing e do administrador."}
+            actions={
+              <>
+                <Label htmlFor="aporte-mes" className="text-xs">Mês</Label>
+                <Input
+                  id="aporte-mes"
+                  type="month"
+                  value={period.slice(0, 7)}
+                  onChange={(e) => { if (e.target.value) setPeriod(`${e.target.value}-01`); }}
+                  className="h-8 w-40 text-xs"
                 />
-              ) : (
-                <div className="space-y-2">
-                  {editing && (
-                    <p className="text-xs font-semibold">Corrigindo o aporte de {developerName(form.developer_id)}</p>
-                  )}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <Input type="number" min={0} placeholder="Valor R$" aria-label="Valor do aporte" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} className="h-8 text-xs" />
-                    <Select value={form.developer_id} onValueChange={(v) => setForm((p) => ({ ...p, developer_id: v }))}>
-                      <SelectTrigger className="h-8 text-xs" aria-label="Construtora"><SelectValue placeholder="Construtora" /></SelectTrigger>
-                      <SelectContent>{opcoes.map((d) => <SelectItem key={d.id} value={d.id}>{d.active ? d.name : `${d.name} (inativa)`}</SelectItem>)}</SelectContent>
-                    </Select>
-                    {/* O popup de /marketing tem campo Nota e este não tinha: a
-                        mesma regra com duas interfaces diferentes. */}
-                    <Input placeholder="Nota (opcional)" aria-label="Nota do aporte" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-xs" />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    {editing && (
-                      <Button size="sm" variant="ghost" onClick={cancelEdit} className="gap-1"><X className="h-4 w-4" /> Cancelar</Button>
-                    )}
-                    <Button size="sm" onClick={saveAporte} disabled={saving} className="gap-1"><Save className="h-4 w-4" />{saving ? "Salvando..." : "Salvar aporte"}</Button>
-                  </div>
-                </div>
-              ))}
-            </SectionCard>
-
-            {canEditAporte && (
-              <SectionCard
-                title="Importar planilha de aportes"
-                icon={FileSpreadsheet}
-                description="Colunas Mês, Construtora e Valor (Nota é opcional). A construtora precisa existir no cadastro."
-                actions={
-                  <Button variant="outline" size="sm" onClick={baixarModelo} className="h-8 gap-1 text-xs">
-                    <Download className="h-4 w-4" /> Baixar modelo
-                  </Button>
-                }
-              >
-                {/* `accept` sem `.xls`: o parser (`read-excel-file`) recusa o
-                    formato de 97-2003, então oferecê-lo no seletor era convidar
-                    para o arquivo que a tela vai negar. Quem arrastar um .xls
-                    continua recebendo a instrução de salvar como .xlsx. */}
-                {/* A planilha casa a construtora PELO NOME contra `devs`: com a
-                    lista fora do ar toda linha voltaria como "construtora não
-                    cadastrada", acusando a planilha de um defeito que é da tela. */}
-                {devsError ? (
-                  <EmptyState
-                    icon={AlertTriangle}
-                    tone="danger"
-                    title="Importação indisponível: falta a lista de construtoras"
-                    description={`${devsError} Sem ela toda linha da planilha seria recusada como "construtora não cadastrada".`}
-                    action={<Button variant="outline" onClick={() => void loadDevs()}>Tentar de novo</Button>}
-                  />
-                ) : (
-                  <FileDropzone
-                    label={sheet?.name || "Solte a planilha aqui ou clique para escolher"}
-                    hint="CSV ou XLSX · até 8 MB · o .xls antigo não é lido"
-                    accept=".csv,.xlsx"
-                    onFile={receiveSheet}
-                  />
-                )}
-                {sheetError && (
-                  <p role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {sheetError}
-                  </p>
-                )}
-              </SectionCard>
-            )}
-          </div>
-
-          {sheet && (
-            <SectionCard
-              title="Prévia da importação"
-              description={sheetErrors
-                ? `${num(sheetValidas)} de ${num(sheet.rows.length)} linhas prontas — as ${num(sheetErrors)} com problema ficam de fora.`
-                : `${num(sheet.rows.length)} aportes prontos para gravar.`}
-              flush
-              footer={
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span>
-                    {substituicoes > 0
-                      ? `${num(substituicoes)} ${substituicoes === 1 ? "linha substitui" : "linhas substituem"} um aporte já lançado (o valor antigo está na coluna "Substitui").`
-                      : "Nenhuma linha substitui aporte existente."}
-                    {!sheet.hasNotes && " A planilha não trouxe coluna Nota: a nota já gravada é preservada."}
-                  </span>
-                  <span className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setSheet(null)}>Descartar</Button>
-                    <Button size="sm" onClick={importSheet} disabled={sheetValidas === 0 || importing}>
-                      {importing
-                        ? "Importando…"
-                        : sheetErrors
-                          ? `Importar ${num(sheetValidas)} ${sheetValidas === 1 ? "válida" : "válidas"}`
-                          : `Importar ${num(sheet.rows.length)} ${sheet.rows.length === 1 ? "aporte" : "aportes"}`}
-                    </Button>
-                  </span>
-                </div>
-              }
-            >
-              <div className="max-h-64 overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Linha</TableHead><TableHead>Mês</TableHead><TableHead>Construtora</TableHead>
-                      <TableHead className="text-right">Valor</TableHead><TableHead className="text-right">Substitui</TableHead><TableHead>Situação</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sheet.rows.map((r) => (
-                      <TableRow key={r.line}>
-                        <TableCell className="text-xs tabular-nums">{r.line}</TableCell>
-                        <TableCell className="text-xs">{r.period ? monthLabel(r.period) : "—"}</TableCell>
-                        <TableCell className="text-xs">{r.developer || "—"}</TableCell>
-                        <TableCell className="text-xs text-right tabular-nums">{brl(r.amount, { cents: true })}</TableCell>
-                        <TableCell className="text-xs text-right tabular-nums text-muted-foreground">{brl(r.replaces, { cents: true })}</TableCell>
-                        <TableCell className="text-xs">
-                          {r.error
-                            ? <StatusBadge tone="danger">{r.error}</StatusBadge>
-                            : r.replaces !== null
-                              ? <StatusBadge tone="warning">substitui</StatusBadge>
-                              : <StatusBadge tone="success">ok</StatusBadge>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </SectionCard>
-          )}
-
-          <SectionCard title={`Aportes de ${monthLabel(period)}`} flush>
-            {loading ? (
-              <LoadingState variant="table" rows={3} label="Carregando aportes…" />
-            ) : loadError ? (
+              </>
+            }
+          >
+            <p className="text-sm mb-3">Total do mês: <strong className="text-success">{brl(monthTotal)}</strong></p>
+            {canEditAporte && (devsError ? (
+              /* Sem a lista de construtoras o formulário recusaria toda
+                 tentativa com "Preencha valor e construtora" — o motivo
+                 errado. Aqui a tela diz o motivo certo e oferece a recarga. */
               <EmptyState
                 icon={AlertTriangle}
                 tone="danger"
-                title="Não consegui carregar os aportes"
-                description={loadError}
-                action={<Button variant="outline" onClick={() => void loadAportes(period)}>Tentar de novo</Button>}
+                title="Não consegui carregar as construtoras"
+                description={`${devsError} Sem essa lista não dá para lançar nem importar aporte.`}
+                action={<Button variant="outline" onClick={() => void loadDevs()}>Tentar de novo</Button>}
               />
-            ) : aportes.length === 0 ? (
-              <EmptyState icon={Inbox} title="Nenhum aporte neste mês" description="Troque o mês acima para ver lançamentos anteriores." />
             ) : (
-              <div className="max-h-72 overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mês</TableHead><TableHead>Construtora</TableHead><TableHead>Nota</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>{canEditAporte && <TableHead />}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {aportes.map((a) => (
-                      <TableRow key={a.id}>
-                        <TableCell className="text-xs">{monthLabel(a.period)}</TableCell>
-                        <TableCell className="text-xs">
-                          {developerName(a.developer_id)}
-                          {!developerAtivo(a.developer_id) && <StatusBadge tone="neutral" className="ml-1.5">inativa</StatusBadge>}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{a.notes || "—"}</TableCell>
-                        <TableCell className="text-xs text-right text-success font-semibold tabular-nums">{brl(Number(a.amount))}</TableCell>
-                        {canEditAporte && (
-                          <TableCell className="text-right whitespace-nowrap">
-                            {/* Sem este botão, corrigir o valor por /data obrigava a
-                                redigitar tudo — e quem não redigitasse a nota a perdia. */}
-                            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar aporte de ${developerName(a.developer_id)}`} onClick={() => startEdit(a)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir aporte de ${developerName(a.developer_id)}`} onClick={() => removeAporte(a)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="space-y-2">
+                {editing && (
+                  <p className="text-xs font-semibold">Corrigindo o aporte de {developerName(form.developer_id)}</p>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <Input type="number" min={0} placeholder="Valor R$" aria-label="Valor do aporte" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} className="h-8 text-xs" />
+                  <Select value={form.developer_id} onValueChange={(v) => setForm((p) => ({ ...p, developer_id: v }))}>
+                    <SelectTrigger className="h-8 text-xs" aria-label="Construtora"><SelectValue placeholder="Construtora" /></SelectTrigger>
+                    <SelectContent>{opcoes.map((d) => <SelectItem key={d.id} value={d.id}>{d.active ? d.name : `${d.name} (inativa)`}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {/* O popup de /marketing tem campo Nota e este não tinha: a
+                      mesma regra com duas interfaces diferentes. */}
+                  <Input placeholder="Nota (opcional)" aria-label="Nota do aporte" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="h-8 text-xs" />
+                </div>
+                <div className="flex justify-end gap-2">
+                  {editing && (
+                    <Button size="sm" variant="ghost" onClick={cancelEdit} className="gap-1"><X className="h-4 w-4" /> Cancelar</Button>
+                  )}
+                  <Button size="sm" onClick={saveAporte} disabled={saving} className="gap-1"><Save className="h-4 w-4" />{saving ? "Salvando..." : "Salvar aporte"}</Button>
+                </div>
               </div>
-            )}
+            ))}
           </SectionCard>
-        </TabsContent>
-      </Tabs>
 
-      {importOpen && <LeadImportDialog sources={sourcesQuery.data ?? []} onClose={() => setImportOpen(false)} />}
+          {canEditAporte && (
+            <SectionCard
+              title="Importar planilha de aportes"
+              icon={FileSpreadsheet}
+              description="Colunas Mês, Construtora e Valor (Nota é opcional). A construtora precisa existir no cadastro."
+              actions={
+                <Button variant="outline" size="sm" onClick={baixarModelo} className="h-8 gap-1 text-xs">
+                  <Download className="h-4 w-4" /> Baixar modelo
+                </Button>
+              }
+            >
+              {/* `accept` sem `.xls`: o parser (`read-excel-file`) recusa o
+                  formato de 97-2003, então oferecê-lo no seletor era convidar
+                  para o arquivo que a tela vai negar. Quem arrastar um .xls
+                  continua recebendo a instrução de salvar como .xlsx. */}
+              {/* A planilha casa a construtora PELO NOME contra `devs`: com a
+                  lista fora do ar toda linha voltaria como "construtora não
+                  cadastrada", acusando a planilha de um defeito que é da tela. */}
+              {devsError ? (
+                <EmptyState
+                  icon={AlertTriangle}
+                  tone="danger"
+                  title="Importação indisponível: falta a lista de construtoras"
+                  description={`${devsError} Sem ela toda linha da planilha seria recusada como "construtora não cadastrada".`}
+                  action={<Button variant="outline" onClick={() => void loadDevs()}>Tentar de novo</Button>}
+                />
+              ) : (
+                <FileDropzone
+                  label={sheet?.name || "Solte a planilha aqui ou clique para escolher"}
+                  hint="CSV ou XLSX · até 8 MB · o .xls antigo não é lido"
+                  accept=".csv,.xlsx"
+                  onFile={receiveSheet}
+                />
+              )}
+              {sheetError && (
+                <p role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {sheetError}
+                </p>
+              )}
+            </SectionCard>
+          )}
+        </div>
+
+        {sheet && (
+          <SectionCard
+            title="Prévia da importação"
+            description={sheetErrors
+              ? `${num(sheetValidas)} de ${num(sheet.rows.length)} linhas prontas — as ${num(sheetErrors)} com problema ficam de fora.`
+              : `${num(sheet.rows.length)} aportes prontos para gravar.`}
+            flush
+            footer={
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {substituicoes > 0
+                    ? `${num(substituicoes)} ${substituicoes === 1 ? "linha substitui" : "linhas substituem"} um aporte já lançado (o valor antigo está na coluna "Substitui").`
+                    : "Nenhuma linha substitui aporte existente."}
+                  {!sheet.hasNotes && " A planilha não trouxe coluna Nota: a nota já gravada é preservada."}
+                </span>
+                <span className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSheet(null)}>Descartar</Button>
+                  <Button size="sm" onClick={importSheet} disabled={sheetValidas === 0 || importing}>
+                    {importing
+                      ? "Importando…"
+                      : sheetErrors
+                        ? `Importar ${num(sheetValidas)} ${sheetValidas === 1 ? "válida" : "válidas"}`
+                        : `Importar ${num(sheet.rows.length)} ${sheet.rows.length === 1 ? "aporte" : "aportes"}`}
+                  </Button>
+                </span>
+              </div>
+            }
+          >
+            <div className="max-h-64 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Linha</TableHead><TableHead>Mês</TableHead><TableHead>Construtora</TableHead>
+                    <TableHead className="text-right">Valor</TableHead><TableHead className="text-right">Substitui</TableHead><TableHead>Situação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sheet.rows.map((r) => (
+                    <TableRow key={r.line}>
+                      <TableCell className="text-xs tabular-nums">{r.line}</TableCell>
+                      <TableCell className="text-xs">{r.period ? monthLabel(r.period) : "—"}</TableCell>
+                      <TableCell className="text-xs">{r.developer || "—"}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums">{brl(r.amount, { cents: true })}</TableCell>
+                      <TableCell className="text-xs text-right tabular-nums text-muted-foreground">{brl(r.replaces, { cents: true })}</TableCell>
+                      <TableCell className="text-xs">
+                        {r.error
+                          ? <StatusBadge tone="danger">{r.error}</StatusBadge>
+                          : r.replaces !== null
+                            ? <StatusBadge tone="warning">substitui</StatusBadge>
+                            : <StatusBadge tone="success">ok</StatusBadge>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </SectionCard>
+        )}
+
+        <SectionCard title={`Aportes de ${monthLabel(period)}`} flush>
+          {loading ? (
+            <LoadingState variant="table" rows={3} label="Carregando aportes…" />
+          ) : loadError ? (
+            <EmptyState
+              icon={AlertTriangle}
+              tone="danger"
+              title="Não consegui carregar os aportes"
+              description={loadError}
+              action={<Button variant="outline" onClick={() => void loadAportes(period)}>Tentar de novo</Button>}
+            />
+          ) : aportes.length === 0 ? (
+            <EmptyState icon={Inbox} title="Nenhum aporte neste mês" description="Troque o mês acima para ver lançamentos anteriores." />
+          ) : (
+            <div className="max-h-72 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mês</TableHead><TableHead>Construtora</TableHead><TableHead>Nota</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>{canEditAporte && <TableHead />}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {aportes.map((a) => (
+                    <TableRow key={a.id}>
+                      <TableCell className="text-xs">{monthLabel(a.period)}</TableCell>
+                      <TableCell className="text-xs">
+                        {developerName(a.developer_id)}
+                        {!developerAtivo(a.developer_id) && <StatusBadge tone="neutral" className="ml-1.5">inativa</StatusBadge>}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{a.notes || "—"}</TableCell>
+                      <TableCell className="text-xs text-right text-success font-semibold tabular-nums">{brl(Number(a.amount))}</TableCell>
+                      {canEditAporte && (
+                        <TableCell className="text-right whitespace-nowrap">
+                          {/* Sem este botão, corrigir o valor por /data obrigava a
+                              redigitar tudo — e quem não redigitasse a nota a perdia. */}
+                          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Editar aporte de ${developerName(a.developer_id)}`} onClick={() => startEdit(a)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Excluir aporte de ${developerName(a.developer_id)}`} onClick={() => removeAporte(a)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </SectionCard>
+      </div>
     </div>
   );
 }

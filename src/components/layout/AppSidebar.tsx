@@ -7,10 +7,7 @@ import {
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
-import logoFaceimobWhite from "@/assets/logo-faceimob-white.png";
-import logoFaceimobColor from "@/assets/logo-faceimob.png";
-import logoSymbolWhite from "@/assets/logo-faceimob-symbol-white.png";
-import logoSymbolColor from "@/assets/logo-faceimob-symbol.png";
+import { Logo } from "@/components/shared/Logo";
 import { useTheme } from "@/hooks/useTheme";
 import { useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
@@ -55,25 +52,10 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       <SidebarContent className="gap-0">
-        {/* Nao existe asset de logo com letra escura: `logo-faceimob.png` e
-            `logo-faceimob-white.png` sao o MESMO desenho de letra branca, que
-            some no sidebar claro. Ate a marca entregar a versao escura, o tema
-            claro usa a mesma arte sobre uma placa azul da marca — some com o
-            problema de contraste sem inventar outra tipografia. */}
+        {/* Qual arquivo de logo vale em cada tema e decidido em
+            `@/components/shared/Logo` — inclusive o asset que ainda falta. */}
         <div className="flex h-16 items-center justify-center px-4">
-          {!collapsed ? (
-            <img
-              src={isLight ? logoFaceimobColor : logoFaceimobWhite}
-              alt="Faceimob"
-              className={cn("h-9 object-contain", isLight && "rounded-xl bg-brand-blue px-3 py-1.5")}
-            />
-          ) : (
-            <img
-              src={isLight ? logoSymbolColor : logoSymbolWhite}
-              alt="Faceimob"
-              className="h-8 w-8 object-contain"
-            />
-          )}
+          {!collapsed ? <Logo className="h-9" /> : <Logo variant="symbol" className="h-8 w-8" />}
         </div>
         <div className="mx-3 h-px bg-sidebar-border" />
 

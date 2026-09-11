@@ -5,13 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { BrandMotif } from "@/components/shared/BrandMotif";
 import { ArrowLeft, KeyRound, Lock, Mail } from "lucide-react";
-import logoWhite from "@/assets/logo-faceimob-white.png";
+import { Logo } from "@/components/shared/Logo";
 import { supabase } from "@/integrations/supabase/client";
 import { classifyLoginError } from "@/lib/loginErrors";
 import { safeRedirect } from "@/lib/routePermissions";
 import { toast } from "@/hooks/use-toast";
-import { useTheme } from "@/hooks/useTheme";
-import { cn } from "@/lib/utils";
 
 /**
  * Duas formas de entrar (decisao do cliente em 21/08/2026, que reverte a de
@@ -93,8 +91,6 @@ type Mode = "password" | "otp";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme } = useTheme();
-  const isLight = theme === "light";
   const [mode, setMode] = useState<Mode>("password");
   const [mostrarCodigo, setMostrarCodigo] = useState(false);
   const [step, setStep] = useState<"email" | "code">("email");
@@ -285,7 +281,8 @@ export default function Login() {
       {/* Painel de marca — o motivo do simbolo em escala grande */}
       <aside className="relative hidden overflow-hidden bg-brand-blue lg:flex lg:flex-col lg:justify-between lg:p-12">
         <BrandMotif className="opacity-70" />
-        <img src={logoWhite} alt="Faceimob" className="relative h-11 w-auto self-start object-contain" />
+        {/* `onDark` porque este painel e `bg-brand-blue` nos dois temas. */}
+        <Logo onDark className="relative h-11 w-auto self-start" />
         <div className="relative max-w-md">
           <h2 className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-white xl:text-5xl">
             O primeiro imóvel de alguém começa aqui.
@@ -303,21 +300,14 @@ export default function Login() {
         <BrandMotif className="opacity-30 lg:hidden" />
 
         <div className="animate-slide-up relative w-full max-w-md">
-          {/* Mesmo contorno do sidebar (`AppSidebar.tsx`): nao existe asset de
-              logo com letra escura — `logo-faceimob.png` e o mesmo desenho de
-              letra branca —, entao no tema claro a arte vai sobre uma placa
-              azul da marca. Sem isso a marca some no fundo quase branco, e este
-              e o unico logo que aparece abaixo de 1024 px (o painel da esquerda
-              e `lg:flex`). */}
-          <img
-            src={logoWhite}
-            alt=""
-            aria-hidden
-            className={cn(
-              "mx-auto mb-8 h-10 object-contain lg:hidden",
-              isLight && "rounded-xl bg-brand-blue px-3 py-1.5",
-            )}
-          />
+          {/* Unico logo abaixo de 1024 px — o painel da esquerda e `lg:flex`.
+              O `lg:hidden` fica no wrapper, e nao no `Logo`: a classe de tema
+              dentro dele tem especificidade maior e venceria o `lg:hidden`,
+              reaparecendo no desktop claro. Qual arquivo usar em cada tema e
+              decidido em `@/components/shared/Logo`. */}
+          <div className="mb-8 lg:hidden">
+            <Logo alt="" className="mx-auto h-10" />
+          </div>
 
           <Card className="border-border">
             <CardHeader className="space-y-2">

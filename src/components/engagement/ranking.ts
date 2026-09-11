@@ -35,15 +35,29 @@ export interface BrokerScore {
 export const UNKNOWN_PERSON = "Corretor fora do escopo";
 
 /**
- * Desempate igual ao do banco.
+ * O ranking VIVO na ordem e no recorte que toda tela usa — ativo, pontos desc,
+ * nome como desempate.
  *
- * `close_game_season` congela com `row_number() over (order by r.points desc,
- * r.full_name)`. A tela ordenava só por pontos: nove corretores empatados em 0
- * entravam em ordem arbitrária, o pódio trocava de degrau a cada carregamento e
- * o "Você subiu para Nº X" disparava sem ninguém ter subido.
+ * É a fonte única das duas regras, e as duas nasceram de defeito medido:
+ *
+ * · DESEMPATE — `close_game_season` congela com `row_number() over (order by
+ *   r.points desc, r.full_name)`, mas `listRanking` pede ao servidor só
+ *   `order('points')`. Com nove corretores empatados em 0 (o normal no começo
+ *   da temporada) o Postgres devolve a ordem que quiser: o pódio trocava de
+ *   degrau a cada carregamento e o "Você subiu para Nº X" disparava sem
+ *   ninguém ter subido.
+ * · ATIVO — `visible_game_ranking` traz `active` e devolve quem foi desativado.
+ *   Sem o filtro, um corretor que saiu da casa ocupava um degrau do pódio.
+ *
+ * Fica aqui, e não em cada tela, porque foi exatamente a segunda cópia da regra
+ * que faltou: `buildScores` já filtrava e desempatava, o `useGameRanking` e os
+ * "Destaques" do Painel liam as MESMAS linhas cruas e mostravam outra ordem.
  */
-const byPointsThenName = (a: BrokerScore, b: BrokerScore) =>
-  b.points - a.points || a.brokerName.localeCompare(b.brokerName, "pt-BR");
+export function ordenarRanking(ranking: RankingRow[]): RankingRow[] {
+  return ranking
+    .filter((row) => row.active)
+    .sort((a, b) => b.points - a.points || a.full_name.localeCompare(b.full_name, "pt-BR"));
+}
 
 /**
  * Monta as linhas da tela a partir do ranking do servidor.
@@ -54,8 +68,7 @@ const byPointsThenName = (a: BrokerScore, b: BrokerScore) =>
  * auditável.
  */
 export function buildScores(ranking: RankingRow[]): BrokerScore[] {
-  return ranking
-    .filter((row) => row.active)
+  return ordenarRanking(ranking)
     .map((row) => ({
       brokerId: row.profile_id,
       brokerName: row.full_name,
@@ -68,8 +81,7 @@ export function buildScores(ranking: RankingRow[]): BrokerScore[] {
       vgv: Number(row.vgv),
       points: row.points,
       avatarUrl: row.avatar_url,
-    }))
-    .sort(byPointsThenName);
+    }));
 }
 
 /**
@@ -79,11 +91,13 @@ export function buildScores(ranking: RankingRow[]): BrokerScore[] {
  * `keepUnknown` decide o que fazer com a linha que o cadastro de hoje não
  * identifica — quem saiu da equipe, foi desativado ou perdeu o papel `broker`.
  *
- * - `true` para admin, diretor e sócio (o `can_read_all()` do banco): a linha
- *   fica, sem nome, porque para eles o congelado tem que continuar congelado —
- *   descartá-la fazia o 3º lugar de agosto virar 2º porque alguém pediu
- *   demissão em setembro.
- * - `false` para corretor e gerente: a linha sai. É o mesmo recorte que a
+ * - `true` para admin e sócio (os únicos que o banco deixa ler a casa inteira):
+ *   a linha fica, sem nome, porque para eles o congelado tem que continuar
+ *   congelado — descartá-la fazia o 3º lugar de agosto virar 2º porque alguém
+ *   pediu demissão em setembro.
+ * - `false` para corretor, gerente e, desde a 0112, DIRETOR: a linha sai, e o
+ *   diretor entrou nessa lista quando o banco passou a recortá-lo pelas equipes
+ *   que ele dirige. É o mesmo recorte que a
  *   policy `game_season_results_select` (migration 0060) aplica, e enquanto ela
  *   não estiver aplicada o SELECT ainda é `using (true)` — sem este filtro, um
  *   corretor de equipe de três abriria uma temporada fechada e leria os pontos

@@ -17,15 +17,12 @@ export type Group = Pick<
   "id" | "name" | "kind" | "active"
 >;
 /**
- * `agent_id` entrou na migration 0082 e ainda não está no `types.ts` gerado
- * (que é regerado por `supabase gen types`, não editado à mão). Opcional na
- * interseção: quando a regeneração acontecer, o campo já existe e nada quebra.
- * É o único lugar onde a CADEIA de agentes sobrevive — `sdr_conversations.
- * agent_id` guarda só o último.
+ * `sdr_messages.agent_id` (0082) é o único lugar onde a CADEIA de agentes
+ * sobrevive — `sdr_conversations.agent_id` guarda só o último. A interseção que
+ * o declarava à mão saiu: o `types.ts` regerado já traz a coluna, e mantê-la
+ * opcional aqui afrouxava um campo que a linha sempre tem.
  */
-export type Message = Database["public"]["Tables"]["sdr_messages"]["Row"] & {
-  agent_id?: string | null;
-};
+export type Message = Database["public"]["Tables"]["sdr_messages"]["Row"];
 export type Source = Database["public"]["Tables"]["lead_sources"]["Row"];
 export type WhatsAppTemplate = Database["public"]["Tables"]["whatsapp_templates"]["Row"];
 export type ListStats = { total: number; pending: number; sent: number; replied: number; failed: number };
@@ -38,17 +35,24 @@ export type Rlist = Database["public"]["Tables"]["remarketing_lists"]["Row"] & {
  * Quem escreve no módulo, espelhando as policies do banco: `sdr_agents_write`,
  * `lead_sources_write`, `remarketing_lists_all` (migrations 0008/0031) e, desde
  * a 0069, `whatsapp_templates_write` aceitam admin/marketing/sdr. Os outros
- * papéis com `menu.sdr` (director, manager, partner) leem. UPDATE/DELETE
- * barrado pelo `using` casa zero linhas SEM erro — então, além de esconder o
- * botão, toda gravação pede `.select("id")` e trata vazio como recusa.
+ * papéis com `menu.sdr` (director, manager) leem. UPDATE/DELETE barrado pelo
+ * `using` casa zero linhas SEM erro — então, além de esconder o botão, toda
+ * gravação pede `.select("id")` e trata vazio como recusa.
+ *
+ * `partner` está nas listas porque o BANCO já o aceita: as policies pedem
+ * `has_any_role('admin', …)` e a 0099 fez essa chamada responder também por
+ * `partner` (administrador e sócio têm o mesmo nível — decisão do cliente em
+ * 10/09/2026). Sem ele aqui era o defeito ao contrário do de sempre: a tela
+ * escondia o botão que o banco deixava usar, e o sócio ficava só olhando o
+ * módulo que administra.
  *
  * A migration 0069 alinhou os dois lados que estavam em desacordo: `marketing`
  * escrevia em quatro tabelas do módulo e NÃO tinha `menu.sdr` (não conseguia
  * abrir a tela), e `sdr`, que administra agentes, origens e listas, era o único
  * que não podia mexer no template que ele mesmo usa. Mudou lá, muda aqui.
  */
-const SDR_WRITE_ROLES: AppRole[] = ["admin", "marketing", "sdr"];
-const TEMPLATE_WRITE_ROLES: AppRole[] = ["admin", "marketing", "sdr"];
+const SDR_WRITE_ROLES: AppRole[] = ["admin", "partner", "marketing", "sdr"];
+const TEMPLATE_WRITE_ROLES: AppRole[] = ["admin", "partner", "marketing", "sdr"];
 
 export const canManageSdr = (roles: AppRole[]) => roles.some(r => SDR_WRITE_ROLES.includes(r));
 export const canEditTemplates = (roles: AppRole[]) => roles.some(r => TEMPLATE_WRITE_ROLES.includes(r));

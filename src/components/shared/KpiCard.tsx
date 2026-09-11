@@ -54,6 +54,11 @@ const deltaIcon = { up: ArrowUpRight, down: ArrowDownRight, flat: ArrowRight };
  *  · a sombra permanente do `highlight`. Destaque virou UMA coisa — a borda —
  *    em vez de borda + sombra + ícone âmbar ao mesmo tempo. Quando tudo se
  *    destaca, nada se destaca.
+ *
+ * A folga cai um passo abaixo de `sm` (pedido do cliente, 10/09/2026: "card
+ * gigante"). A regua empilha em UMA coluna no celular: com 20 px de folga e
+ * dois respiros de 12 px, sete cartoes somavam 896 px de rolagem antes do
+ * primeiro grafico. Do `sm` para cima nada muda.
  */
 export function KpiCard({ label, value, delta, icon: Icon, variant = "default", hint, className }: KpiCardProps) {
   const isHighlight = variant === "highlight";
@@ -63,7 +68,7 @@ export function KpiCard({ label, value, delta, icon: Icon, variant = "default", 
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border bg-card p-5 transition-colors duration-200",
+        "group relative overflow-hidden rounded-2xl border bg-card p-4 transition-colors duration-200 sm:p-5",
         isHighlight ? "border-highlight/50" : "border-border hover:border-border/80",
         className,
       )}
@@ -78,12 +83,12 @@ export function KpiCard({ label, value, delta, icon: Icon, variant = "default", 
         )}
       </div>
 
-      <p className="mt-3 font-display text-3xl font-bold leading-none tracking-tight tabular-nums text-foreground">
+      <p className="mt-2 font-display text-3xl font-bold leading-none tracking-tight tabular-nums text-foreground sm:mt-3">
         {value}
       </p>
 
       {(delta || hint) && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-3">
           {delta && DeltaIcon && (
             <span className={cn("inline-flex items-center gap-1 text-xs font-semibold tabular-nums", deltaTone[tone])}>
               <DeltaIcon className="h-3.5 w-3.5" aria-hidden />

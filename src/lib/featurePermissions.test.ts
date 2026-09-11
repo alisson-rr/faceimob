@@ -20,6 +20,7 @@ import {
 const CATALOGO = [
   "leads.view_queue", "leads.reassign", "leads.delete",
   "deals.view_all", "deals.edit_value", "deals.delete",
+  "deals.mark_off_distrato",
   "cca.review", "reports.view_finance", "teams.manage",
   "users.manage_roles", "settings.integrations", "game.close_season",
   "pipeline.export",
@@ -140,6 +141,43 @@ describe("featurePermissions", () => {
       expect(migration0061).toContain(`'${papel}'`);
     }
     expect(enforcementLabel(enforcementOf("deals.edit_value"))).toBe("Aplicada no banco");
+  });
+
+  it("OFF e distrato valem no banco; a ETAPA volta a ser decidida pela matriz", () => {
+    // A trava de 10/09/2026 nasceu larga demais: "off e distrato é só adm"
+    // virou recusa de TODO o Status 2, e "Status 1 é bloqueado" virou um código
+    // próprio (`deals.edit_stage`) que passava POR CIMA de `stage_permissions`
+    // — o admin concedia a etapa na matriz e a concessão não fazia efeito, e
+    // agendar visita, aprovar caso no CCA e encerrar negócio (que gravam
+    // `stage_id` pelo token de quem clica) caíam em 42501.
+    //
+    // O que o código de permissão cobre agora são os dois desfechos, e só eles.
+    expect(lidosNoBanco.has("deals.mark_off_distrato")).toBe(true);
+    expect(enforcementLabel(enforcementOf("deals.mark_off_distrato"))).toBe("Aplicada no banco");
+
+    // Quem autoriza a ETAPA é a matriz, no banco (`deals_guard_stage`, 0020/0028)
+    // e na tela — nunca um switch desta aba. Uma entrada nova aqui para etapa é
+    // a volta do mesmo defeito.
+    expect(FEATURE_PERMISSIONS).not.toHaveProperty("deals.edit_stage");
+    expect(migrationSql).toContain("can_exit_stage");
+    expect(migrationSql).toContain("can_enter_stage");
+
+    // Sem esta liberação a esteira para de andar em silêncio: aprovar a
+    // conferência documental (`review_deal_documents` → `submit_deal_for_analysis`)
+    // grava `stage_id`, e `cca_cases_sync_esteira_label` grava `status_detail`
+    // — as duas de dentro de funções `security definer`, onde `current_user` é
+    // o dono da função.
+    expect(migrationSql).toContain("current_user in ('postgres', 'service_role')");
+
+    // O inverso arruína a trava: `security definer` no PRÓPRIO gatilho faria
+    // `current_user` ser sempre o dono, e o guard passaria para todo mundo sem
+    // nenhum sintoma. Vale para TODA versão da função no diretório — a próxima
+    // reescrita também, que é o que a checagem presa a um arquivo só não pegava.
+    const definicoes = [...migrationSql.matchAll(
+      /create or replace function public\.deals_guard_status_columns\(\)([\s\S]*?)as \$\$/g,
+    )];
+    expect(definicoes.length).toBeGreaterThan(0);
+    for (const [, cabecalho] of definicoes) expect(cabecalho).not.toContain("security definer");
   });
 
   it("reports.view_finance é lido pelo banco desde a 0045 — o selo dizia o contrário", () => {

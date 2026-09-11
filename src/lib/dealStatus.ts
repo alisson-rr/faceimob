@@ -22,6 +22,11 @@ export type Status1 = "VENDA" | "PROPOSTA" | "QUEDA" | "DISTRATO" | "OFF";
  * "18. QUEDA" não é prefixo de "QUEDA — cliente desistiu", então o motivo era
  * reescrito por cima e a observação sumia. A normalização é a MESMA que o banco
  * aplica em `deal_status_bare`; ter duas seria ter duas respostas.
+ *
+ * Desde 10/09/2026 é também o rótulo de TELA do Status 2 (`FaceimobStatus.text`
+ * e o Select de motivo): o cliente pediu o catálogo sem o prefixo numerado, sem
+ * mexer no valor gravado. Por isso a caixa alta e o `trim` daqui são visíveis
+ * ao usuário — mudar qualquer um dos dois muda a comparação com o banco junto.
  */
 export const bareStatus = (s: string | null | undefined): string =>
   (s ?? "").toString().trim().toUpperCase().replace(/^\d+\.\s*/, "");

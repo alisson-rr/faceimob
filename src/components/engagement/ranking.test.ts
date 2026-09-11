@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFrozenScores, buildScores, UNKNOWN_PERSON } from "./ranking";
+import { buildFrozenScores, buildScores, ordenarRanking, UNKNOWN_PERSON } from "./ranking";
 import type { RankingRow, SeasonResultRow } from "@/integrations/supabase/game";
 
 const row = (over: Partial<RankingRow>): RankingRow => ({
@@ -30,6 +30,68 @@ const frozen = (over: Partial<SeasonResultRow>): SeasonResultRow => ({
   vgv: 0,
   breakdown: null,
   ...over,
+});
+
+/**
+ * A regra que o pódio do Pipeline e os "Destaques" do Painel liam CRUA da RPC —
+ * e por isso mostravam três nomes quaisquer no começo da temporada, em ordem
+ * diferente a cada carregamento. `listRanking` pede ao servidor só
+ * `order('points')`; o desempate e o filtro de ativo são daqui.
+ */
+describe("ordenarRanking", () => {
+  it("empate em 0 sai em ordem de nome, não na ordem de chegada", () => {
+    const ordenado = ordenarRanking([
+      row({ profile_id: "c", full_name: "Carlos", points: 0 }),
+      row({ profile_id: "a", full_name: "Ana", points: 0 }),
+      row({ profile_id: "b", full_name: "Bruno", points: 0 }),
+    ]);
+
+    expect(ordenado.map((r) => r.full_name)).toEqual(["Ana", "Bruno", "Carlos"]);
+  });
+
+  it("a mesma lista embaralhada dá o mesmo pódio", () => {
+    // É o defeito, escrito: dois carregamentos do MESMO placar não podem
+    // devolver três primeiros diferentes.
+    const linhas = [
+      row({ profile_id: "a", full_name: "Ana", points: 0 }),
+      row({ profile_id: "b", full_name: "Bruno", points: 0 }),
+      row({ profile_id: "c", full_name: "Carlos", points: 0 }),
+      row({ profile_id: "d", full_name: "Dora", points: 0 }),
+    ];
+    const podio = (l: typeof linhas) => ordenarRanking(l).slice(0, 3).map((r) => r.profile_id);
+
+    expect(podio([...linhas].reverse())).toEqual(podio(linhas));
+    expect(podio([linhas[2], linhas[0], linhas[3], linhas[1]])).toEqual(["a", "b", "c"]);
+  });
+
+  it("desempata como o banco congela: pontos desc, depois nome", () => {
+    // `close_game_season` usa `order by r.points desc, r.full_name`. Ordem
+    // diferente aqui faria a medalha da tela brigar com a do congelado.
+    const ordenado = ordenarRanking([
+      row({ full_name: "Ana", points: 10 }),
+      row({ full_name: "Zeca", points: 50 }),
+      row({ full_name: "Bruno", points: 10 }),
+    ]);
+
+    expect(ordenado.map((r) => r.full_name)).toEqual(["Zeca", "Ana", "Bruno"]);
+  });
+
+  it("quem foi desativado não ocupa degrau do pódio", () => {
+    const ordenado = ordenarRanking([
+      row({ profile_id: "x", full_name: "Ex-corretor", points: 900, active: false }),
+      row({ profile_id: "b", full_name: "Bruno", points: 3 }),
+    ]);
+
+    expect(ordenado.map((r) => r.profile_id)).toEqual(["b"]);
+  });
+
+  it("não mexe na lista recebida", () => {
+    // `sort` é in-place: sem a cópia, ordenar o cache do TanStack Query mutaria
+    // o objeto que outras telas estão lendo.
+    const linhas = [row({ full_name: "Ana", points: 1 }), row({ full_name: "Zeca", points: 9 })];
+    ordenarRanking(linhas);
+    expect(linhas.map((r) => r.full_name)).toEqual(["Ana", "Zeca"]);
+  });
 });
 
 describe("buildScores", () => {

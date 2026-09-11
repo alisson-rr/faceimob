@@ -1,3 +1,7 @@
+import { addDays, endOfMonth, format, min, startOfDay, startOfMonth } from "date-fns";
+import { fromDailyEntry, type DailyEntryColumns } from "@/lib/dailyFunnel";
+import { idealStagePct } from "@/lib/metrics";
+
 /**
  * Metas e base do funil do Checkpoint — a parte sem JSX, para ser testável.
  */
@@ -12,6 +16,10 @@ export type Targets = { analise_enviada_pct: number; aprovada_pct: number; venda
  *
  * `visitas_agendadas`/`visitas_feitas` são coletadas no Diário desde a 0009 e
  * não apareciam em lugar nenhum do Checkpoint: o SELECT da tela nem as pedia.
+ *
+ * Os nomes são os do card e do CSV, não os do banco: quem preenche este objeto
+ * é `addEntry`, e é lá — em um lugar só — que a coluna do banco vira campo de
+ * tela.
  */
 export type TeamAggr = {
   lancamentos: number; leads: number; ligacoes: number; coleta_docs: number;
@@ -24,7 +32,18 @@ export const emptyAggr = (): TeamAggr => ({
   visitas_agendadas: 0, visitas_feitas: 0, enviadas: 0, aprovadas: 0, vendas: 0,
 });
 
-export const DEFAULT_TARGETS: Targets = { analise_enviada_pct: 10, aprovada_pct: 40, venda_pct: 50 };
+/**
+ * Sem meta cadastrada, a régua é o funil ideal do produto (`IDEAL_STAGES`).
+ *
+ * O 10/40/50 era literal aqui e derivado em `@/lib/dailyFunnel` — duas réguas
+ * para o mesmo número, e o dia em que o produto mudasse o funil ideal o
+ * Checkpoint seguiria cobrando o antigo sem ninguém notar.
+ */
+export const DEFAULT_TARGETS: Targets = {
+  analise_enviada_pct: idealStagePct("analises"),
+  aprovada_pct: idealStagePct("aprovados"),
+  venda_pct: idealStagePct("vendas"),
+};
 
 export const GLOBAL_TARGET_KEY = "__global__";
 
@@ -65,8 +84,15 @@ export function buildTargetsMap(rows: FunnelTargetRow[]): Record<string, Targets
   return map;
 }
 
-/** Precedência chave → global → padrão: a mesma da RPC `public_director_checkpoint`. */
-export const targetsFrom = (map: Record<string, Targets>, key: string): Targets =>
+/**
+ * Precedência chave → global → padrão: a mesma da RPC `public_director_checkpoint`.
+ *
+ * Chamava-se `targetsFrom`, xará do `targetsFrom` de `@/lib/dailyFunnel`, que
+ * resolve OUTRA coisa (uma linha de `funnel_targets`) com outra assinatura.
+ * Dois nomes iguais em telas vizinhas é como a régua de um vira a régua do
+ * outro num import automático.
+ */
+export const targetsForKey = (map: Record<string, Targets>, key: string): Targets =>
   map[key] ?? map[GLOBAL_TARGET_KEY] ?? DEFAULT_TARGETS;
 
 /**
@@ -77,6 +103,27 @@ export const funnelBaseLabel = (aggr: { lancamentos: number; leads: number }): s
   aggr.lancamentos === 0 ? "Sem lançamentos nesta semana"
   : aggr.leads === 0 ? "Sem leads nesta semana"
   : null;
+
+/**
+ * Uma linha de `daily_entries` somada no acumulado da equipe.
+ *
+ * A tradução coluna → tela é a do Diário (`fromDailyEntry`) e não uma segunda
+ * escrita à mão no SELECT do Checkpoint. Os três apelidos abaixo são a única
+ * diferença de vocabulário entre o card da reunião e o Diário, e ficam AQUI,
+ * uma vez — não espalhados pela consulta, pelo tipo da linha e pela soma.
+ */
+export function addEntry(acc: TeamAggr, row: DailyEntryColumns): TeamAggr {
+  const valores = fromDailyEntry(row);
+  acc.leads += valores.leads;
+  acc.ligacoes += valores.ligacoes;
+  acc.coleta_docs += valores.coleta_docs;
+  acc.visitas_agendadas += valores.visitas_agendadas;
+  acc.visitas_feitas += valores.visitas_realizadas;
+  acc.enviadas += valores.analises;
+  acc.aprovadas += valores.aprovados;
+  acc.vendas += valores.vendas;
+  return acc;
+}
 
 export type FunnelStage = { base: number; pct: number; target: number };
 
@@ -122,4 +169,61 @@ export function teamStages(aggr: TeamAggr, targets: Targets): NamedStage[] {
 export function teamBottleneck(aggr: TeamAggr, targets: Targets): NamedStage | null {
   if (funnelBaseLabel(aggr)) return null;
   return bottleneck(teamStages(aggr, targets).slice(1));
+}
+
+// ============ Mês acumulado e pendências da semana ============
+// Vieram da tela pública do diretor (`public_director_checkpoint`, 0039/0071):
+// o quadro logado mostrava só a semana. As duas réguas abaixo são as MESMAS da
+// RPC de propósito — se divergirem, o mesmo dia aparece cobrado num lado e
+// quitado no outro.
+
+/** Formato de data que `daily_reports.report_date` usa. */
+export const ISO_DATE = "yyyy-MM-dd";
+
+/**
+ * O mês que o quadro acumula, com a âncora da 0071: na semana em que HOJE
+ * está, o mês é o de HOJE; fora dela, o da semana navegada.
+ *
+ * Ancorar sempre na segunda-feira fazia o acumulado mostrar o mês ANTERIOR nos
+ * primeiros dias de todo mês que não começa numa segunda. Termina no fim do mês
+ * ou hoje, o que vier antes — mês futuro fica com intervalo vazio e soma zero,
+ * como no banco (`least(month_end, current_date)`).
+ */
+export function monthRange(weekStart: Date, today: Date): { start: Date; end: Date } {
+  const hoje = startOfDay(today);
+  const weekEnd = addDays(weekStart, 6);
+  const ancora = hoje >= weekStart && hoje <= weekEnd ? hoje : weekStart;
+  const start = startOfMonth(ancora);
+  return { start, end: min([endOfMonth(start), hoje]) };
+}
+
+/** Chave de "esta equipe lançou neste dia". Uma só, para os dois lados casarem. */
+export const lancamentoKey = (teamId: string, isoDate: string) => `${teamId}|${isoDate}`;
+
+/**
+ * Dias úteis da semana em que uma equipe não lançou o Diário — a cobrança da
+ * reunião de segunda.
+ *
+ * Mesma régua da RPC (0080): sábado e domingo fora (ninguém lança no fim de
+ * semana), HOJE não é pendência (ainda está aberto para preencher) e dia
+ * "preenchido" é dia com LANÇAMENTO — relatório sem nenhuma entrada não limpa a
+ * cobrança, senão o Diário seguia mostrando o dia vazio e a tela dizia que
+ * estava em dia.
+ */
+export function missingDays(
+  weekStart: Date,
+  today: Date,
+  teamIds: string[],
+  lancado: ReadonlySet<string>,
+): { date: string; teamIds: string[] }[] {
+  const limite = addDays(startOfDay(today), -1);
+  const out: { date: string; teamIds: string[] }[] = [];
+  for (let i = 0; i < 5; i += 1) {
+    const dia = addDays(weekStart, i);
+    if (dia > limite) break;
+    const iso = format(dia, ISO_DATE);
+    const faltam = teamIds.filter((id) => !lancado.has(lancamentoKey(id, iso)));
+    if (faltam.length) out.push({ date: iso, teamIds: faltam });
+  }
+  return out;
 }

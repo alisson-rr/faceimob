@@ -22,14 +22,22 @@ interface Props {
 /**
  * Agendamento de visita.
  *
- * Grava as duas coisas: a etapa do negócio E a linha em `visits`. Antes a visita
- * só mudava a etapa e guardava a data em `useState` — sumia no reload.
+ * Grava as duas coisas: a linha em `visits` E, quando cabe, a etapa do negócio.
+ * Antes a visita só mudava a etapa e guardava a data em `useState` — sumia no
+ * reload.
+ *
+ * **A visita vem primeiro, e a etapa é consequência.** Agendar é o trabalho do
+ * corretor; mover o funil é efeito colateral, e é a única das duas escritas que
+ * a matriz de etapas (`stage_permissions`, cobrada pelo `deals_guard_stage`)
+ * pode recusar. Na ordem antiga o `updateDeal` vinha primeiro e um 42501 abortava
+ * o `confirm` inteiro: quem não pode mover o funil também perdia a visita, que
+ * ninguém restringiu. Agora a recusa da etapa vira aviso no mesmo toast.
  *
  * A etapa só anda para FRENTE e só em negócio aberto. Gravá-la sem condição
  * ressuscitava negócio perdido: `deals_guard_stage` põe `outcome = 'open'` e
  * `closed_at = null` ao entrar numa etapa aberta, então um clique no calendário
  * devolvia ao funil (e ao VGV, e ao ranking) um negócio encerrado, com o motivo
- * da perda ainda gravado. A visita, essa, é registrada sempre.
+ * da perda ainda gravado.
  */
 export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Props) {
   const { user, canEnterStage } = useAuth();
@@ -38,24 +46,38 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
   const [saving, setSaving] = useState(false);
 
   const stage = stages.find((row) => row.code === "visit_scheduled");
-  /** A visita só ANDA com a etapa quando o negócio está atrás dela; nesse caso
-   *  vale a matriz inteira (sair da atual e entrar em "Visita agendada"), que é
-   *  o que o `deals_guard_stage` cobra. Registrar a visita sem mover a etapa
-   *  continua permitido — é linha em `visits`, não mudança de funil. */
-  const willMove = deal.active && Boolean(stage) && deal.stage_position < (stage?.position ?? 0);
-  const allowed = Boolean(stage)
-    && (!willMove || (canEnterStage(stage?.id ?? "") && canExitStage(deal.stage_id)));
+  /** O negócio está ATRÁS de "Visita agendada"? Só nesse caso há etapa a mover. */
+  const behind = deal.active && Boolean(stage) && deal.stage_position < (stage?.position ?? 0);
+  /** Mover exige a matriz inteira — sair da etapa atual e entrar na de destino —,
+   *  que é o que o `deals_guard_stage` cobra. Registrar a visita não exige nada:
+   *  é linha em `visits`, não mudança de funil. */
+  const canMove = Boolean(stage) && canEnterStage(stage?.id ?? "") && canExitStage(deal.stage_id);
+  const moveTo = behind && canMove && stage ? stage.id : null;
 
   const confirm = async () => {
-    if (!date || !stage) return;
+    if (!date) return;
     if (!user?.id) return toast({ variant: "destructive", title: "Sessão expirada" });
     setSaving(true);
     try {
-      if (willMove) {
-        await updateDeal(deal.id, { stage_id: stage.id });
-      }
       await scheduleVisit({ dealId: deal.id, brokerId: user.id, scheduledAt: date.toISOString() });
-      toast({ title: "Visita agendada", description: `${deal.client} em ${format(date, "dd/MM/yyyy")}.` });
+      // A visita JÁ está gravada. Se o banco recusar a etapa (a matriz da tela
+      // pode estar desatualizada em relação à do servidor), o agendamento não é
+      // desfeito: o aviso entra no toast de sucesso em vez de virar erro.
+      let avisoEtapa = "";
+      if (moveTo) {
+        try {
+          await updateDeal(deal.id, { stage_id: moveTo });
+        } catch (err) {
+          avisoEtapa = describeError(err, "A etapa não foi movida.");
+        }
+      }
+      const quando = format(date, "dd/MM/yyyy");
+      toast({
+        title: "Visita agendada",
+        description: avisoEtapa
+          ? `${deal.client} em ${quando}. O negócio continua em "${deal.stage_label}": ${avisoEtapa}`
+          : `${deal.client} em ${quando}.`,
+      });
       await onScheduled();
       onClose();
     } catch (err) {
@@ -86,17 +108,18 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
           className="pointer-events-auto rounded-xl border border-border p-3"
         />
 
-        {!allowed && (
-          <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+        {behind && !canMove && (
+          <p className="rounded-xl border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+            A visita será registrada, mas o negócio continua em "{deal.stage_label}":{" "}
             {canExitStage(deal.stage_id)
-              ? 'Seu perfil não pode mover negócios para "Visita agendada".'
-              : `Seu perfil não pode tirar um negócio de "${deal.stage_label}".`}
+              ? 'seu perfil não pode mover negócios para "Visita agendada".'
+              : `seu perfil não pode tirar um negócio de "${deal.stage_label}".`}
           </p>
         )}
 
         <DialogFooter>
           <DialogClose asChild><Button variant="outline" size="sm">Cancelar</Button></DialogClose>
-          <Button size="sm" disabled={!date || saving || !allowed} onClick={() => void confirm()}>
+          <Button size="sm" disabled={!date || saving} onClick={() => void confirm()}>
             {saving ? "Agendando…" : "Agendar"}
           </Button>
         </DialogFooter>

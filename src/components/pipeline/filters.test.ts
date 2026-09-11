@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
-  ALL, EMPTY_FILTERS, applyDealFilters, dealMonth, hasActiveFilter, inconsistentClosedMonths,
-  monthClosePreview, pct, sortDeals, sortDealsBy,
+  ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealMonth, hasActiveFilter,
+  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds,
 } from "./filters";
 
 /**
@@ -119,6 +119,55 @@ describe("demais filtros", () => {
     expect(hasActiveFilter(EMPTY_FILTERS)).toBe(false);
     expect(hasActiveFilter({ ...EMPTY_FILTERS, month: "07/2026" })).toBe(true);
     expect(hasActiveFilter({ ...EMPTY_FILTERS, stage: ALL })).toBe(false);
+  });
+});
+
+/**
+ * Recorte por equipe — pedido B8 do cliente ("gerente precisa de uma lista onde
+ * ver só o time dele"), 10/09/2026.
+ *
+ * O RECORTE do banco já era o certo para quem é SÓ gerente: `can_see_deal`
+ * (0006) cai em `auth_visible_profiles()`, que devolve ele mais os membros das
+ * equipes que ele lidera. O que faltava era o FILTRO — para quem acumula
+ * diretoria (e lê a operação inteira por `can_read_all()`) e para separar, na
+ * mesma tela, a equipe do resto.
+ */
+describe("recorte por equipe", () => {
+  const GERENTE = "33333333-3333-3333-3333-333333333333";
+  const DA_EQUIPE = "44444444-4444-4444-4444-444444444444";
+  const DE_FORA = "55555555-5555-5555-5555-555555555555";
+  const people = [
+    { id: DA_EQUIPE, manager_id: GERENTE, director_id: null },
+    { id: DE_FORA, manager_id: JOAO_A, director_id: null },
+  ];
+  const linhas = [
+    deal({ id: "meu", broker1_id: DA_EQUIPE, manager1_id: null }),
+    deal({ id: "alheio", broker1_id: DE_FORA, manager1_id: JOAO_A }),
+  ];
+
+  it("a equipe é eu mais quem eu lidero", () => {
+    expect([...teamProfileIds(people, GERENTE)].sort()).toEqual([GERENTE, DA_EQUIPE].sort());
+    // Sem sessão lida ainda não há equipe — e o `Set` vazio não autoriza nada.
+    expect(teamProfileIds(people, null).size).toBe(0);
+  });
+
+  it("pega o negócio pelo corretor da equipe, com o slot de gerente vazio", () => {
+    const time = teamProfileIds(people, GERENTE);
+    expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, team: MY_TEAM }, time).map((r) => r.id))
+      .toEqual(["meu"]);
+    // E o filtro de "Gerente" que já existia NÃO responde a mesma pergunta: ele
+    // casa o slot de gerente do negócio, que neste caso está vazio.
+    expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, managerId: GERENTE })).toHaveLength(0);
+  });
+
+  it("sem a lista de pessoas carregada, o recorte não deixa passar nada", () => {
+    expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, team: MY_TEAM })).toHaveLength(0);
+  });
+
+  it("o recorte conta como filtro ativo, e o padrão continua sem recortar", () => {
+    expect(hasActiveFilter({ ...EMPTY_FILTERS, team: MY_TEAM })).toBe(true);
+    expect(hasActiveFilter(EMPTY_FILTERS)).toBe(false);
+    expect(applyDealFilters(linhas, EMPTY_FILTERS)).toHaveLength(2);
   });
 });
 

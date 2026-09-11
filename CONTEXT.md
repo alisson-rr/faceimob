@@ -74,6 +74,10 @@ crédito. É o **mesmo evento** que a aprovação da conferência documental
 dispara: não são dois passos, são dois nomes para a fronteira entre o corretor
 e o crédito.
 
+**CCA** — a *tela* onde a análise de crédito acontece depois disso. Esteira Ágil
+é o **evento**, CCA é a **tela**; a operação fala "esteira" para as duas coisas.
+Ao escrever na interface, o nome da tela é **CCA**. *(Decisão de 10/09/2026.)*
+
 ---
 
 ## Jogo e período
@@ -84,6 +88,14 @@ temporada pode atravessar a virada do mês.
 
 **Fechar a temporada** — congelar o ranking, travar o período e empurrar para o
 ciclo seguinte o que ficou em aberto. É irreversível e é ato de administrador.
+
+**Semana** — **filtro, não ciclo**. O jogo fecha por temporada; a operação
+premia por semana, mas isso é **leitura**: a mesma pontuação da temporada,
+recortada de segunda a domingo. Semana **não** congela ranking, não fecha nada e
+não é ato de administrador.
+
+> "Fechar a semana" não existe. Se alguém disser isso, quer dizer "olhar o
+> ranking da semana".
 
 ---
 
@@ -118,6 +130,12 @@ que autoriza é "qual é o papel dela, afinal?".
 - **Diretor** — enxerga as equipes das quais é responsável.
 - **Admin** — configura o sistema. Não é um degrau acima do diretor: é outro
   eixo.
+- **Sócio** — **mesma permissão do Admin, sem exceção**. A operação quer dois
+  nomes na tela, não dois níveis de acesso. *(Decisão de 10/09/2026: quando o
+  cliente diz "administrador", o Sócio está incluído.)* Já houve uma tentativa
+  de resolver isso transformando todo sócio em admin, e ela foi revertida —
+  Sócio continua sendo um papel próprio; o que muda é a autorização responder
+  por ele igual responde por Admin.
 
 **Quem enxerga quem** sai de um lugar só. Se a hierarquia mudar, muda ali —
 nunca tela por tela.

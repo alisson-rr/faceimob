@@ -14,6 +14,7 @@ import {
   directorTargetKey,
   type FunnelTargetRow,
 } from "@/components/checkpoint/funnel";
+import { fromDailyEntry } from "@/lib/dailyFunnel";
 import type { FunnelCounts } from "@/lib/metrics";
 import type { Lead } from "@/types/crm";
 import type { PipelineStageRecord } from "@/integrations/supabase/permissions";
@@ -58,7 +59,7 @@ export const RULER_LABEL: Record<FunnelRuler["scope"], string> = {
  * empresa > funil ideal.
  *
  * A mesma precedencia que a RPC `public_director_checkpoint` e o /checkpoint ja
- * usam (`buildTargetsMap` + `targetsFrom`, em `components/checkpoint/funnel`).
+ * usam (`buildTargetsMap` + `targetsForKey`, em `components/checkpoint/funnel`).
  * Enquanto esta aba comparava contra 10/40/50 chumbado em `IDEAL_STAGES`, o
  * MESMO diretor era medido por 53% no /checkpoint e por 50% aqui — e o selo
  * "Abaixo da meta" divergia entre as duas telas com o mesmo dado.
@@ -189,16 +190,18 @@ export function useDirectorDaily(teamIds: string[], mes: string) {
         .in("report_id", reportIds);
       if (entriesRes.error) throw dbError("daily_entries", entriesRes.error);
 
-      return (entriesRes.data ?? []).reduce<DirectorDaily>(
-        (total, entry) => ({
-          leads: total.leads + (entry.leads || 0),
-          coleta_docs: total.coleta_docs + (entry.doc_collections || 0),
-          analises: total.analises + (entry.analyses_sent || 0),
-          aprovados: total.aprovados + (entry.analyses_approved || 0),
-          vendas: total.vendas + (entry.sales || 0),
-        }),
-        { ...EMPTY_DAILY },
-      );
+      // A traducao coluna → tela e a de `fromDailyEntry`, a mesma que o Diario e
+      // o Checkpoint usam. Escrita a mao aqui, este painel era a quarta copia do
+      // apelidamento: renomear uma coluna consertava as outras telas e zerava
+      // esta calada. Deste painel so interessam as 5 chaves de `EMPTY_DAILY`.
+      const chaves = Object.keys(EMPTY_DAILY) as (keyof DirectorDaily)[];
+      return (entriesRes.data ?? []).reduce<DirectorDaily>((total, entry) => {
+        const row = fromDailyEntry(entry);
+        chaves.forEach((chave) => {
+          total[chave] += row[chave];
+        });
+        return total;
+      }, { ...EMPTY_DAILY });
     },
   });
 }

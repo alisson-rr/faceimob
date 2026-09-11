@@ -22,7 +22,7 @@ export function EmptyState({ icon: Icon, title, description, action, tone = "neu
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-dashed border-border bg-card/60 px-6 py-12 text-center",
+        "relative overflow-hidden rounded-2xl border border-dashed border-border bg-card/60 px-5 py-10 text-center sm:px-6",
         className,
       )}
     >

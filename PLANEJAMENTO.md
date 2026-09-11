@@ -95,7 +95,7 @@ Legenda: ✅ pronto · 🟡 banco pronto, falta UI/ligação · ❌ não começa
 | Relatórios por origem/corretor/período + metas | ✅ `annual_results`, `goals`, `funnel_targets` |
 | Metas de funil 10% / 40% / 50% | ✅ `funnel_targets` |
 | Controle de aportes de marketing | ✅ *(26/08)* tela de Marketing migrada; R$ 37.900 lançados em 08/2026 na homologação |
-| Diário com link público + PIN | ✅ PIN em bcrypt, 3 RPCs anônimas |
+| Diário com link público + PIN | ✅ PIN em bcrypt, 2 RPCs anônimas (`public_daily_team`, `public_daily_submit`); `public_director_checkpoint` saiu do anônimo na `0103` |
 | Painel da diretoria | ✅ `DirectorDashboard.tsx` migrada |
 | Rateio de VGV automático | ✅ `recalc_deal_shares`, fecha 100% com 3 corretores |
 | Ranking com animações para o top 3 | ✅ *(26/08)* pódio animado com anéis ouro/prata/bronze (Tarefa B) |
@@ -198,7 +198,10 @@ não foi remapeada: foi **apagada**, e o `/admin/daily-bi` redireciona para
 As 8 foram reescritas contra o schema novo e validadas. *(26/08: hoje são **9
 functions ativas**; `daily-team-info`, `director-weekly` e `submit-daily-report`
 foram removidas do repositório e do projeto remoto na Tarefa I — o frontend
-chama as três RPCs públicas direto.)* Nenhuma referencia tabela inexistente:
+chama as RPCs públicas direto.)* *(11/09: a `0103` revogou o `execute` de `anon`
+de `public_director_checkpoint`; sobraram **duas** RPCs anônimas, e o checkpoint
+passou a ser a tela logada `/checkpoint`.)* Nenhuma referencia tabela
+inexistente:
 
 | Function | Como ficou |
 |---|---|

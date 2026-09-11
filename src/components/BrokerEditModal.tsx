@@ -18,7 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
 import { date } from "@/lib/format";
 import { Camera, KeyRound, Loader2, Copy, Check, IdCard, Sparkles } from "lucide-react";
-import logoWhite from "@/assets/logo-faceimob-white.png";
+import { Logo } from "@/components/shared/Logo";
 
 type Manager = { id: string; name: string };
 type Director = { id: string; name: string };
@@ -70,15 +70,32 @@ type RespostaAcesso = {
   user_id?: string;
   login_ready?: boolean;
   access?: string;
+  /** O perfil que JÁ usa o endereço (409): é por onde a ficha dele abre. */
+  existing_profile_id?: string;
+  existing_full_name?: string;
 };
+
+/**
+ * Recusa da edge function COM o corpo da resposta.
+ *
+ * `throw new Error(mensagem)` jogava fora o `existing_profile_id` que vem no
+ * 409 — e é ele que dá saída ao cadastro duplicado: em vez de "já existe" sem
+ * caminho nenhum, a tela abre a ficha de quem já usa o endereço.
+ */
+class ErroDeAcesso extends Error {
+  constructor(message: string, readonly corpo: RespostaAcesso) {
+    super(message);
+    this.name = "ErroDeAcesso";
+  }
+}
 
 /**
  * A única porta para a edge function de acesso.
  *
- * Os dois botões da ficha que mexem no Auth (trocar o e-mail de login e
- * bloquear/devolver a entrada) passam por aqui: o cabeçalho, a leitura do erro
- * e a tradução da recusa do GoTrue são os mesmos, e duplicá-los deixaria os
- * dois caminhos divergirem no dia em que um deles mudasse.
+ * Os três caminhos da ficha que mexem no Auth (criar a conta, trocar o e-mail
+ * de login e bloquear/devolver a entrada) passam por aqui: o cabeçalho, a
+ * leitura do erro e a tradução da recusa do GoTrue são os mesmos, e duplicá-los
+ * deixaria os caminhos divergirem no dia em que um deles mudasse.
  */
 async function chamarProvisionamento(body: Record<string, unknown>): Promise<RespostaAcesso> {
   const { data: sess } = await supabase.auth.getSession();
@@ -96,13 +113,14 @@ async function chamarProvisionamento(body: Record<string, unknown>): Promise<Res
   });
 
   const data = (await response.json().catch(() => ({}))) as RespostaAcesso;
-  if (!response.ok) throw new Error(authErrorMessage(data.error || `Falha na função (${response.status})`));
-  if (data.error) throw new Error(authErrorMessage(data.error));
+  if (!response.ok) throw new ErroDeAcesso(authErrorMessage(data.error || `Falha na função (${response.status})`), data);
+  if (data.error) throw new ErroDeAcesso(authErrorMessage(data.error), data);
   return data;
 }
 
 export function BrokerEditModal({
   open, broker, managers, directors, onClose, onSaved, isAdmin, podeMudarSituacao = false,
+  criando = false, metas, onDuplicado,
 }: {
   open: boolean;
   broker: EditableBroker | null;
@@ -111,6 +129,18 @@ export function BrokerEditModal({
   onClose: () => void;
   onSaved: () => void;
   isAdmin: boolean;
+  /**
+   * Cadastro de gente nova: a MESMA ficha, vazia, em vez de um diálogo de dois
+   * campos que empurrava CPF, CRECI, equipe e função para uma segunda etapa
+   * (pedido do cliente em 10/09/2026 — "modal de novo corretor abrir todas as
+   * infos"). É explícito, e não inferido de `broker == null`, porque inferir
+   * faria um `open` distraído virar cadastro de pessoa.
+   */
+  criando?: boolean;
+  /** Meta de VGV da pessoa. Vem de fora porque quem tem os números é a lista. */
+  metas?: React.ReactNode;
+  /** O endereço já é de outra pessoa (409): quem chama abre a ficha DELA. */
+  onDuplicado?: (profileId: string, fullName: string) => void;
   /**
    * Quem pode suspender/reativar este colaborador: o admin e o GESTOR dele
    * (`profiles_guard_admin_columns` só libera `status` nesses dois ramos). Para
@@ -142,6 +172,15 @@ export function BrokerEditModal({
   const [avisoPapel, setAvisoPapel] = useState<string | null>(null);
   /** Confirmação do desligamento definitivo — a única ação sem volta da ficha. */
   const [confirmarDesligamento, setConfirmarDesligamento] = useState(false);
+  /**
+   * A ficha gravou e o ACESSO não (ou o contrário).
+   *
+   * Fica na tela, e não só no toast: o toast some em segundos e o administrador
+   * ia embora achando que tinha desligado alguém que continuava entrando.
+   */
+  const [acessoPendente, setAcessoPendente] = useState<string | null>(null);
+  /** No cadastro o e-mail segue o nome até alguém digitar o endereço. */
+  const [emailTocado, setEmailTocado] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -149,7 +188,27 @@ export function BrokerEditModal({
     setNovaFoto(null);
     setAvisoPapel(null);
     setConfirmarDesligamento(false);
-    if (!broker) { setForm(null); setBaseline(null); return; }
+    setAcessoPendente(null);
+    setEmailTocado(false);
+    if (!broker) {
+      // Ficha nova: não há nada para reler do banco, então ela já nasce
+      // destravada. `roles: ["broker"]` espelha o que o gatilho
+      // `handle_new_auth_user` concede a todo perfil criado — abrir com zero
+      // funções travaria o botão por uma regra que o banco aplica sozinho.
+      if (open && criando) {
+        setForm({
+          ...EMPTY_DETAILS,
+          id: "", name: "", full_name: "", email: "", celular: null, avatar_url: null,
+          active: true, status: "active", roles: ["broker"],
+        });
+        setBaseline(null);
+        setDetails("ready");
+      } else {
+        setForm(null);
+        setBaseline(null);
+      }
+      return;
+    }
     let alive = true;
     setForm({ ...EMPTY_DETAILS, roles: [], ...broker });
     setBaseline(null);
@@ -183,7 +242,7 @@ export function BrokerEditModal({
         toast({ title: "Erro ao carregar a ficha", description: describeError(error, "Não foi possível carregar os dados do colaborador."), variant: "destructive" });
       });
     return () => { alive = false; };
-  }, [broker]);
+  }, [broker, open, criando]);
 
   // Mesmo limite de `src/pages/Settings.tsx`, repetido aqui de propósito: são
   // dois formulários independentes e o bucket `avatars` não valida nada. Sem
@@ -271,12 +330,12 @@ export function BrokerEditModal({
    * escolher o arquivo, então fechar sem salvar deixava um arquivo órfão no
    * bucket e a foto do perfil continuava a antiga.
    */
-  const enviarFoto = async (): Promise<string | null> => {
+  const enviarFoto = async (profileId: string): Promise<string | null> => {
     if (!novaFoto) return form.avatar_url ?? null;
     setUploading(true);
     try {
       const ext = novaFoto.file.name.split(".").pop() || "jpg";
-      const path = `${form.id}/${Date.now()}.${ext}`;
+      const path = `${profileId}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("avatars").upload(path, novaFoto.file, { upsert: true });
       if (upErr) throw upErr;
       // ponytail: URL assinada por 5 anos gravada em `profiles.avatar_url` —
@@ -293,12 +352,28 @@ export function BrokerEditModal({
   };
 
   const save = async (desligar = false) => {
+    // Desligar são DUAS gravações — a ficha e o bloqueio da entrada — e só o
+    // administrador faz a segunda (a edge function recusa os demais). Sem esta
+    // guarda, quem não é admin gravaria "desligado" e deixaria a conta entrando:
+    // o estado pela metade que o desligamento existe para não criar. O botão já
+    // é só do admin; isto fecha a função, não o botão.
+    if (desligar && !isAdmin) {
+      return toast({
+        title: "Só o administrador desliga",
+        description: "O bloqueio da entrada no login é do administrador — sem ele a ficha ficaria desligada com a conta aberta.",
+        variant: "destructive",
+      });
+    }
     const input = buildSave(form.email, desligar);
     if (typeof input === "string") return toast({ title: "Falta preencher", description: input, variant: "destructive" });
     setSaving(true);
+    setAcessoPendente(null);
     try {
-      input.profile.avatar_url = await enviarFoto();
+      input.profile.avatar_url = await enviarFoto(form.id);
       await savePerson(input);
+      // A URL nova entra no formulário: sem isto, um Salvar seguinte (a
+      // retentativa depois de uma falha) regravaria a foto ANTIGA por cima.
+      upd("avatar_url", input.profile.avatar_url);
       descartarFoto();
 
       /**
@@ -336,6 +411,13 @@ export function BrokerEditModal({
         }
       }
 
+      // Metade gravada: a ficha mudou e o acesso não. A ficha NÃO fecha e o
+      // aviso fica na tela — sem isso o modal fechava com o toast vermelho, e
+      // repetir a ação era impossível: o botão "Desligar definitivamente" some
+      // para quem já consta desligado. Repetir aqui funciona porque as duas
+      // etapas são idempotentes (mesmo status, mesmo `ban_duration`).
+      if (avisoAcesso) setAcessoPendente(avisoAcesso);
+
       toast({
         title: avisoAcesso
           ? "Ficha salva, acesso não"
@@ -352,7 +434,7 @@ export function BrokerEditModal({
               : undefined),
         variant: avisoAcesso ? "destructive" : undefined,
       });
-      onSaved();
+      if (!avisoAcesso) onSaved();
     } catch (error: unknown) {
       // `SavePersonError` já traz a frase pronta (qual etapa falhou e o que já
       // ficou gravado); `describeError` cuidaria só do erro cru do Postgres.
@@ -361,6 +443,72 @@ export function BrokerEditModal({
         description: error instanceof Error && error.name === "SavePersonError"
           ? error.message
           : describeError(error, "Não foi possível salvar os dados do colaborador."),
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Cadastro: conta no Auth primeiro, ficha depois.
+   *
+   * A ordem não é escolha. Criar usuário exige a service role, que não sai do
+   * navegador — quem cria é a edge function, e é o gatilho `on_auth_user_created`
+   * que insere a linha em `profiles`. Sem esse id não existe ficha para gravar.
+   *
+   * As duas etapas não são uma transação, então a falha da segunda é dita com
+   * todas as letras: a conta JÁ existe, e clicar em Cadastrar de novo cai no 409
+   * de e-mail duplicado, que abre a ficha da pessoa para concluir. É o mesmo
+   * caminho de recuperação de sempre, agora com a frase que leva a ele.
+   */
+  const criar = async () => {
+    const input = buildSave(form.email);
+    if (typeof input === "string") return toast({ title: "Falta preencher", description: input, variant: "destructive" });
+    setSaving(true);
+    let idCriado: string | null = null;
+    try {
+      const criado = await chamarProvisionamento({
+        email: input.profile.email,
+        full_name: input.profile.full_name,
+      });
+      if (!criado.user_id) throw new Error("A função não devolveu o colaborador criado.");
+      idCriado = criado.user_id;
+      const avatar = await enviarFoto(idCriado);
+      await savePerson({
+        ...input,
+        id: idCriado,
+        profile: { ...input.profile, email: criado.email ?? input.profile.email, avatar_url: avatar },
+      });
+      descartarFoto();
+      toast({
+        title: "Colaborador cadastrado",
+        variant: "success",
+        // Só `true` explícito promete o código: campo ausente (função antiga no
+        // ar) tem de cair no aviso, nunca no silêncio otimista.
+        description: criado.login_ready === true
+          ? "Ele entra em /login com esse e-mail e recebe um código de 6 dígitos."
+          : "Atenção: o código de 6 dígitos ainda NÃO é enviado — falta configurar o SMTP (Brevo). Até lá ele não consegue entrar.",
+      });
+      onSaved();
+    } catch (error: unknown) {
+      const corpo = error instanceof ErroDeAcesso ? error.corpo : undefined;
+      if (corpo?.existing_profile_id && onDuplicado) {
+        const nome = corpo.existing_full_name ?? form.full_name ?? "quem já usa o endereço";
+        toast({
+          title: "Já existe um acesso com esse e-mail",
+          description: `Abrindo a ficha de ${nome} para você concluir o cadastro.`,
+        });
+        return onDuplicado(corpo.existing_profile_id, nome);
+      }
+      const motivo = error instanceof Error
+        ? authErrorMessage(error.message)
+        : "Não foi possível cadastrar o colaborador.";
+      toast({
+        title: idCriado ? "Conta criada, ficha não" : "Falha ao cadastrar",
+        description: idCriado
+          ? `A conta com o e-mail ${input.profile.email} JÁ existe — o que falhou foi a ficha: ${motivo} Clique em Cadastrar de novo: a tela abre a ficha dele para você concluir.`
+          : motivo,
         variant: "destructive",
       });
     } finally {
@@ -404,6 +552,7 @@ export function BrokerEditModal({
 
       toast({
         title: "E-mail de acesso atualizado",
+        variant: "success",
         description: data.login_ready === true
           ? "O colaborador entra em /login com esse e-mail e recebe o código."
           : "O endereço mudou no login. O código de 6 dígitos só chega quando o SMTP for configurado.",
@@ -457,13 +606,36 @@ export function BrokerEditModal({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Editar Colaborador</DialogTitle>
-          <DialogDescription>Perfil, dados pessoais e acesso ao sistema.</DialogDescription>
+          <DialogTitle>{criando ? "Novo colaborador" : "Editar Colaborador"}</DialogTitle>
+          <DialogDescription>
+            {criando
+              ? "A ficha inteira de uma vez: dados pessoais, funções, equipe e crachá. O e-mail vira o acesso — a pessoa entra em /login e recebe um código, não há senha para repassar."
+              : "Perfil, dados pessoais e acesso ao sistema."}
+          </DialogDescription>
         </DialogHeader>
 
         {details === "failed" && (
           <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
             Não foi possível carregar a ficha deste colaborador. Os campos ficam bloqueados para não gravar dados em branco por cima dos atuais — feche e abra de novo.
+          </p>
+        )}
+
+        {/* Metade gravada. Fica na tela até a ação ser repetida com sucesso — o
+            toast some e este é o único aviso de que alguém está desligado com a
+            entrada aberta (ou ativo e trancado do lado de fora). */}
+        {acessoPendente && (
+          <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+            {acessoPendente}
+          </p>
+        )}
+
+        {/* Credencial de terceiro que ainda falta: dizer antes é melhor do que
+            entregar uma conta que não entra e descobrir depois. */}
+        {criando && (
+          <p className="rounded-md border border-warning/30 bg-warning/5 px-2 py-1.5 text-xs text-warning">
+            O envio do código de 6 dígitos depende do SMTP (Brevo) configurado em
+            Authentication → Emails e do template de Magic Link aplicado no projeto.
+            Enquanto isso não estiver feito, a conta é criada mas o colaborador não recebe o código.
           </p>
         )}
 
@@ -473,7 +645,7 @@ export function BrokerEditModal({
             <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-primary/40 bg-secondary flex items-center justify-center">
               {novaFoto || form.avatar_url
                 ? <img src={novaFoto?.preview ?? form.avatar_url ?? ""} alt={form.name || ""} className="w-full h-full object-cover" />
-                : <img src={logoWhite} alt="" className="w-16 h-16 object-contain opacity-60" />}
+                : <Logo alt="" className="w-16 h-16 opacity-60" />}
             </div>
             <button
               type="button"
@@ -490,7 +662,7 @@ export function BrokerEditModal({
         </div>
         {novaFoto && (
           <p className="text-center text-xs text-muted-foreground">
-            Foto escolhida — só é enviada ao clicar em Salvar.{" "}
+            Foto escolhida — só é enviada ao clicar em {criando ? "Cadastrar" : "Salvar"}.{" "}
             <button type="button" className="underline hover:text-foreground" onClick={descartarFoto}>
               descartar
             </button>
@@ -501,12 +673,30 @@ export function BrokerEditModal({
             enquanto ela carrega: editar antes seria sobrescrito quando a
             resposta chegasse, e depois de falhar seria gravar vazio por cima. */}
         <fieldset disabled={details !== "ready"} className="grid min-w-0 grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="Nome completo" className="md:col-span-2"><Input value={form.full_name || ""} onChange={e => upd("full_name", e.target.value)} /></Field>
+          <Field label="Nome completo" className="md:col-span-2">
+            <Input
+              value={form.full_name || ""}
+              onChange={e => {
+                upd("full_name", e.target.value);
+                // No cadastro o endereço acompanha o nome até alguém digitar um
+                // — é o mesmo `primeiro.ultimo@faceimob.com.br` que a sugestão
+                // do bloco de acesso monta, sem obrigar a copiar à mão.
+                if (criando && !emailTocado) upd("email", suggestEmail(e.target.value));
+              }}
+            />
+          </Field>
           <Field
             label="Email"
-            hint={isAdmin ? undefined : "O e-mail espelha o login e só o administrador o altera."}
+            hint={criando
+              ? "É o e-mail de acesso: é com ele que a pessoa entra em /login."
+              : isAdmin ? undefined : "O e-mail espelha o login e só o administrador o altera."}
           >
-            <Input type="email" value={form.email || ""} disabled={!isAdmin} onChange={e => upd("email", e.target.value)} />
+            <Input
+              type="email"
+              value={form.email || ""}
+              disabled={!isAdmin}
+              onChange={e => { setEmailTocado(true); upd("email", e.target.value); }}
+            />
           </Field>
 
           <Field
@@ -611,7 +801,11 @@ export function BrokerEditModal({
           {/* Situação. O Switch sozinho só sabia dizer ativo/suspenso, e
               `profile_status` tem TRÊS valores: `terminated` existe no enum
               desde a 0002 e nenhuma tela escrevia nele — não havia desligamento
-              definitivo em lugar nenhum do sistema. */}
+              definitivo em lugar nenhum do sistema.
+
+              Fora do cadastro: quem está sendo criado nasce ativo, e um botão
+              de "desligar" antes de a pessoa existir não tem o que desligar. */}
+          {!criando && (
           <div className="md:col-span-3 flex flex-wrap items-center gap-3 rounded-lg border border-border/40 bg-secondary/20 p-3">
             <Label htmlFor="profile-active" className="text-xs">
               {desligado ? "Reativar (hoje: desligado)" : "Ativo"}
@@ -650,6 +844,12 @@ export function BrokerEditModal({
               </Button>
             )}
           </div>
+          )}
+
+          {/* Meta de VGV: mora aqui desde que o cartão da lista passou a mostrar
+              só nome e foto. Vem pronta de quem tem os números (a lista), então
+              a ficha não precisa saber de metas. */}
+          {metas && <div className="md:col-span-3">{metas}</div>}
 
           {/* Só admin: `profiles_guard_admin_columns` (0012) recusa a coluna para
               qualquer outro papel, inclusive o gerente do próprio subordinado.
@@ -672,8 +872,10 @@ export function BrokerEditModal({
           )}
         </fieldset>
 
-        {/* Access */}
-        {isAdmin && (() => {
+        {/* Access — só na ficha de quem JÁ existe: no cadastro não há e-mail de
+            login para trocar, o endereço do campo "Email" acima é que vira o
+            acesso quando a conta é criada. */}
+        {isAdmin && !criando && (() => {
           const suggested = suggestEmail(form.full_name, form.name);
           const currentEmail = (form.login_email || "").trim();
           const emailConfirmed = !!form.login_email_confirmed && !!currentEmail;
@@ -801,8 +1003,9 @@ export function BrokerEditModal({
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void save()} disabled={!canSave}>
-            {(saving || details === "loading") && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}Salvar
+          <Button onClick={() => void (criando ? criar() : save())} disabled={!canSave}>
+            {(saving || details === "loading") && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+            {criando ? "Cadastrar" : "Salvar"}
           </Button>
         </DialogFooter>
       </DialogContent>

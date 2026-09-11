@@ -158,13 +158,20 @@ begin
   select count(*) into v_count from public.selectable_brokers() where id = inativo;
   perform pg_temp.check76(v_count = 0, 'corretor inativo não é oferecido');
 
-  -- O sócio enxerga o pipeline (`menu.pipeline`) mas o banco recusa a escrita
-  -- de negócio: a lista de corretores não é dele. Sem este recorte, qualquer
-  -- autenticado enumerava id + nome de toda a corretagem.
+  -- O sócio monta o rateio como o administrador. A 0099 fez
+  -- `auth_effective_role()` devolver 'admin' para quem carrega `partner`; sem
+  -- isso ele cadastrava o negócio (`deals_insert` usa a MESMA função) e abria
+  -- "Corretor 2/3" com a lista vazia. O comentário anterior previa esta
+  -- inversão: cobrava `= 0` e dizia que viraria quando a migration acertasse.
   perform pg_temp.become76(socio);
-  select count(*) into v_count from public.selectable_brokers();
+  select count(*) into v_count from public.selectable_brokers() where id = cor;
+  perform pg_temp.check76(v_count = 1,
+    'sócio enxerga a lista do rateio, como o administrador (0099)');
+
+  -- O recorte não afrouxou junto com a inversão: o inativo segue fora para ele.
+  select count(*) into v_count from public.selectable_brokers() where id = inativo;
   perform pg_temp.check76(v_count = 0,
-    'sócio (que também carrega o broker do cadastro) não enumera a corretagem');
+    'nem para o sócio o corretor inativo é oferecido');
 
   -- E quem escreve negócio continua enxergando: o admin monta rateio pela tela.
   perform pg_temp.become76(adm);

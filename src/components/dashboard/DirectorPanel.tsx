@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState, KpiCard, LoadingState, SectionCard } from "@/components/shared";
 import ComparativeFunnel from "@/components/ComparativeFunnel";
 import { num } from "@/lib/format";
-import { DAILY_METRICS, type DailyMetricKey } from "@/lib/metrics";
+import { DAILY_FIELDS, type DailyFieldKey } from "@/lib/dailyFunnel";
 import { describeError } from "@/lib/supabaseError";
 import type { Lead } from "@/types/crm";
 import { ALL_MONTHS, useFunnelStages, type DealRow } from "./data";
@@ -42,7 +42,7 @@ import {
  * entao nao ha o que medir contra o declarado. Dizer isso no cartao vale mais
  * do que deixar quem le procurar o par que nao existe.
  */
-const KPIS: { key: keyof DirectorDaily & DailyMetricKey; icon: LucideIcon; hint?: string }[] = [
+const KPIS: { key: keyof DirectorDaily & DailyFieldKey; icon: LucideIcon; hint?: string }[] = [
   { key: "leads", icon: Users },
   { key: "coleta_docs", icon: FileText, hint: "declarado no diário · sem etapa equivalente no CRM" },
   { key: "analises", icon: ClipboardCheck },
@@ -50,8 +50,8 @@ const KPIS: { key: keyof DirectorDaily & DailyMetricKey; icon: LucideIcon; hint?
   { key: "vendas", icon: DollarSign },
 ];
 
-const metricLabel = (key: DailyMetricKey) =>
-  DAILY_METRICS.find((metric) => metric.key === key)?.label ?? key;
+const metricLabel = (key: DailyFieldKey) =>
+  DAILY_FIELDS.find((metric) => metric.key === key)?.label ?? key;
 
 export interface DirectorPanelProps {
   /** O mesmo período do filtro do topo. "Todos os meses" não serve aqui. */

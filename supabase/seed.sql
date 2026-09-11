@@ -3,6 +3,17 @@
 --
 -- Não contém dado de negócio (corretor, lead, negócio): apenas o catálogo que
 -- o produto pressupõe existir. Idempotente, pode rodar de novo sem duplicar.
+--
+-- MATRIZ DE ETAPAS (`stage_permissions`): vive em PAR — este arquivo mais a
+-- seção 3 de `migrations/20260911010000_0101_trava_etapa_e_desfecho.sql`. Este
+-- semeia banco novo; a 0101 ajusta onde as etapas já existem (homologação) e é
+-- no-op em banco novo. Mexer numa exige mexer na outra.
+--
+-- A seção 7 de `migrations/20260903610000_0061_equipes_permissoes.sql` também
+-- semeia a matriz, e o comentário dela ainda a chama de "a matriz vigente na
+-- homologação (39 linhas)": ESTÁ SUPERADA desde a 0101 e não descreve mais o
+-- banco. Migration aplicada não se reescreve — a verdade fica registrada aqui
+-- e em `supabase/README.md`, que é onde o próximo vai olhar.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -21,38 +32,50 @@ values
   ('lost',            'Perdido',         9, 'lost',   '#f87171', false, false)
 on conflict do nothing;
 
--- Quem pode mover para cada estágio. Corretor toca o funil comercial; a partir
--- da análise, o CCA assume.
+-- Matriz de etapas — ESTADO INICIAL, não regra final. O cliente reajusta em
+-- Admin · Permissões → Etapas, sem migration e sem deploy.
+--
+-- FONTE PAREADA: `migrations/20260911010000_0101_trava_etapa_e_desfecho.sql` §3.
+-- Ela é quem ajusta a matriz onde as etapas JÁ existem (homologação) e é no-op
+-- em banco novo, porque `pipeline_stages` nasce aqui e este seed roda DEPOIS de
+-- todas as migrations. Mexer numa exige mexer na outra: senão `db:reset` e
+-- homologação passam a discordar sobre a mesma matriz — a armadilha já
+-- registrada na 0052 e na 0061 §7.
+--
+-- ENTRAR é apertado: quem decide para ONDE o negócio vai é o administrador —
+-- e o sócio, que a 0099 trata como administrador. SAIR fica largo de propósito:
+-- encerrar o negócio e agendar visita exigem tirar o negócio da etapa em que
+-- ele está, seja ela qual for.
+
+-- Administrador e sócio entram e saem de tudo.
 insert into public.stage_permissions (stage_id, role, can_enter, can_exit)
 select s.id, r.role, true, true
 from public.pipeline_stages s
-cross join (values ('admin'::app_role), ('director')) as r(role)
+cross join (values ('admin'::app_role), ('partner')) as r(role)
 on conflict do nothing;
 
--- GERENTE NÃO ENTRA EM "APROVADO". Aprovar crédito é do CCA e da diretoria; o
--- gerente pede, não arrasta (decisão da 0061 §7, e a 0052 já tinha tirado o
--- corretor).
---
--- Por que a correção mora AQUI e não numa migration: `pipeline_stages` é criada
--- por este seed, que roda DEPOIS de todas as migrations. Qualquer insert ou
--- update em `stage_permissions` dentro de uma migration encontra a tabela de
--- etapas vazia e vira no-op — foi o que aconteceu com a 0052 e com a 0061 §7.
--- Em homologação elas funcionaram porque as etapas já existiam; num banco novo
--- (`db:reset`, branch de preview, self-hosted, restauração) o gerente nascia
--- podendo mover negócio para Aprovado, que é número que a diretoria olha.
+-- Diretor e gerente: saem de qualquer etapa; entram em "Visita Agendada",
+-- "Em Análise" (aprovar a conferência manda o negócio para a esteira por
+-- `submit_deal_for_analysis`, que roda com o `auth.uid()` do gerente) e
+-- "Perdido".
 insert into public.stage_permissions (stage_id, role, can_enter, can_exit)
-select s.id, 'manager'::app_role, s.code <> 'approved', true
+select s.id, r.role, s.code in ('visit_scheduled', 'under_analysis', 'lost'), true
 from public.pipeline_stages s
+cross join (values ('director'::app_role), ('manager')) as r(role)
 on conflict do nothing;
 
+-- Corretor: continua SAINDO do funil comercial inteiro, mas só ENTRA em
+-- "Visita Agendada" (ScheduleVisitDialog) e "Perdido" (LoseDealDialog).
 insert into public.stage_permissions (stage_id, role, can_enter, can_exit)
-select s.id, 'broker'::app_role, true, true
+select s.id, 'broker'::app_role, s.code in ('visit_scheduled', 'lost'), true
 from public.pipeline_stages s
 where s.code in ('incomplete','lead','proposal','visit_scheduled','under_analysis','lost')
 on conflict do nothing;
 
+-- CCA: a faixa de crédito. Entra em "Em Análise", "Aprovado", "Contrato" e
+-- "Perdido"; de "Fechado" ele só sai.
 insert into public.stage_permissions (stage_id, role, can_enter, can_exit)
-select s.id, 'cca'::app_role, true, true
+select s.id, 'cca'::app_role, s.code <> 'closed', true
 from public.pipeline_stages s
 where s.code in ('under_analysis','approved','contract','closed','lost')
 on conflict do nothing;

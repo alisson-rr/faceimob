@@ -582,7 +582,7 @@ export async function existingLeadPhones(phones: string[]): Promise<Set<string>>
 export async function deleteLead(id: string): Promise<void> {
   const { data, error } = await db.from("leads").delete().eq("id", id).select("id").maybeSingle();
   asError("excluir lead", error);
-  if (!data) throw dbError("excluir lead", { code: "42501", message: "sem permissão para excluir este lead" });
+  if (!data) throw dbError("excluir lead", { code: "42501", message: "Você não tem permissão para excluir este lead." });
 }
 
 /** Campos que a tela pode editar direto (RLS decide quem consegue). */
@@ -606,7 +606,7 @@ export async function updateLead(id: string, patch: LeadPatch): Promise<void> {
   // sem `error` — o toast de "Dados salvos" disparava com nada gravado.
   const { data, error } = await db.from("leads").update(patch).eq("id", id).select("id").maybeSingle();
   asError("atualizar lead", error);
-  if (!data) throw dbError("atualizar lead", { code: "42501", message: "sem permissão para editar este lead" });
+  if (!data) throw dbError("atualizar lead", { code: "42501", message: "Você não tem permissão para editar este lead." });
 }
 
 /** Move de etapa. `first_contact` também marca o primeiro contato. */

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, Filter, GitBranch, Plus, Target, Unlock, Users } from "lucide-react";
+import { Download, Filter, GitBranch, LayoutDashboard, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
@@ -12,6 +12,7 @@ import { PageHeader, StatusBadge } from "@/components/shared";
 import DealDetailModal from "@/components/DealDetailModal";
 import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
+import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
 import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { LeadRecord } from "@/integrations/supabase/leads";
@@ -25,6 +26,9 @@ import {
   useOpenSeason, usePeople, usePipelineStages, useStagePermissions,
   type DealFilterState,
 } from "@/components/pipeline";
+// Direto do módulo, e não do barril: o `index.ts` de `components/pipeline` é de
+// outra frente nesta rodada. Mesmo caminho que o `useDealActions` abaixo já usa.
+import { ALL, MY_TEAM, teamProfileIds } from "@/components/pipeline/filters";
 import { useDealActions } from "@/components/pipeline/useDealActions";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
@@ -71,7 +75,12 @@ export default function Pipeline() {
 
   const [tab, setTab] = useState<"deals" | "leads">("deals");
   const [extraindo, setExtraindo] = useState(false);
-  const [filters, setFilters] = useState<DealFilterState>(EMPTY_FILTERS);
+  // `null` = ninguém mexeu nos filtros ainda, e o recorte de abertura é
+  // DERIVADO do papel (abaixo). Guardar o padrão em `useState` congelaria o
+  // valor lido na primeira pintura, quando o `AuthContext` ainda está em
+  // `loading` e `roles` é `[]` — o gerente abriria a tela em "todos" e nunca
+  // mais voltaria para a equipe dele.
+  const [filtrosEscolhidos, setFiltrosEscolhidos] = useState<DealFilterState | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [view, setView] = useState<"table" | "kanban">("table");
@@ -82,6 +91,10 @@ export default function Pipeline() {
   const [closeMonthOpen, setCloseMonthOpen] = useState(false);
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
   const [convertingLead, setConvertingLead] = useState<LeadRecord | null>(null);
+
+  // Abre sozinho só para o corretor, e só na primeira vez do dia; para todo o
+  // resto (e para ele, do segundo acesso em diante) existe o botão "Painel".
+  const painel = usePainelDoCorretor();
 
   const dealsQuery = useDeals();
   const stagesQuery = usePipelineStages();
@@ -102,14 +115,42 @@ export default function Pipeline() {
   const people = useMemo(() => peopleQuery.data ?? [], [peopleQuery.data]);
   const developers = useMemo(() => developersQuery.data ?? [], [developersQuery.data]);
 
-  const requestLoss = useCallback(
-    (deal: LegacyDealRecord, preset: string) => setLosing({ deal, preset }),
+  /**
+   * O diálogo de perda é o ÚNICO caminho para OFF e DISTRATO: o botão "Perder"
+   * da tabela e do cartão chega aqui, e o Select de status da tabela desvia
+   * para cá em vez de gravar (`useDealActions`).
+   *
+   * A abertura é livre de propósito. Encerrar negócio é trabalho do corretor —
+   * o que o cliente restringiu (10/09/2026) foram DOIS motivos, OFF e distrato,
+   * não o ato. Enquanto esta porta cobrava a permissão de OFF/distrato, o
+   * corretor perdia também QUEDA e REPROVADO, que são dele. A restrição por
+   * motivo mora DENTRO do `LoseDealDialog`, nas opções do Select, e a de etapa
+   * na matriz `stage_permissions` — os dois lugares onde a escrita acontece.
+   */
+  const abrirPerda = useCallback(
+    (deal: LegacyDealRecord, preset?: string) => setLosing({ deal, preset }),
     [],
   );
   const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
   const { moveDeal, changeStatus } = useDealActions({
-    stages, closedMonths: closed, onNeedsLossConfirmation: requestLoss,
+    stages, closedMonths: closed, onNeedsLossConfirmation: abrirPerda,
   });
+
+  /** Eu + quem eu lidero — o mesmo conjunto de `auth_visible_profiles()`. */
+  const myTeam = useMemo(() => teamProfileIds(people, user?.id), [people, user?.id]);
+
+  /**
+   * Recorte de abertura da lista (pedido B8 do cliente, 10/09/2026).
+   *
+   * O gerente abre na equipe dele; administrador e sócio abrem na operação
+   * inteira, que é o que eles vêm ver. Quem não lidera ninguém não tem recorte a
+   * escolher — para o corretor, a lista da RLS já é só a dele.
+   */
+  const recorteInicial = !isAdmin && myTeam.size > 1 && roles.includes("manager") ? MY_TEAM : ALL;
+  const filters = useMemo(
+    () => filtrosEscolhidos ?? { ...EMPTY_FILTERS, team: recorteInicial },
+    [filtrosEscolhidos, recorteInicial],
+  );
 
   const brokers = useMemo(
     () => people.filter((person) => person.active && person.roles.includes("broker")),
@@ -128,7 +169,10 @@ export default function Pipeline() {
     [deals],
   );
 
-  const visible = useMemo(() => sortDeals(applyDealFilters(deals, filters)), [deals, filters]);
+  const visible = useMemo(
+    () => sortDeals(applyDealFilters(deals, filters, myTeam)),
+    [deals, filters, myTeam],
+  );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
   /**
@@ -180,7 +224,7 @@ export default function Pipeline() {
   const falhou = Boolean(dealsQuery.error ?? closedMonths.error);
 
   const patchFilters = (patch: Partial<DealFilterState>) =>
-    setFilters((previous) => ({ ...previous, ...patch }));
+    setFiltrosEscolhidos((previous) => ({ ...(previous ?? filters), ...patch }));
 
   return (
     <div className="space-y-6">
@@ -195,66 +239,76 @@ export default function Pipeline() {
             ? "Carregando negócios…"
             : falhou
               ? "Não consegui ler os negócios."
-              : `${activeCount} negócio(s) ativo(s) · ${brl(vgv)} em VGV.`
+              // O recorte entra na frase: o filtro mora num painel FECHADO por
+              // padrão, e sem isto o gerente lia um total menor sem nada na
+              // tela dizendo que a lista está estreitada na equipe dele.
+              : `${activeCount} negócio(s) ativo(s) · ${brl(vgv)} em VGV`
+                + (filters.team === MY_TEAM ? " · só a sua equipe." : ".")
         }
         actions={
-          tab === "deals" ? (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setShowFilters((open) => !open)}>
-                <Filter className="mr-1 h-4 w-4" /> Filtrar
-              </Button>
-              {canWrite ? (
-                <Button size="sm" onClick={() => setEditor({ deal: null })}>
-                  <Plus className="mr-1 h-4 w-4" /> Adicionar negócio
-                </Button>
-              ) : (
-                <StatusBadge tone="neutral">Somente leitura</StatusBadge>
-              )}
-              {podeExtrair && (
-                <Button
-                  variant="outline" size="sm"
-                  disabled={visible.length === 0 || extraindo}
-                  onClick={() => void extrair()}
-                >
-                  <Download className="mr-1 h-4 w-4" />
-                  {extraindo ? "Gerando…" : "Extrair planilha"}
-                </Button>
-              )}
-              {isAdmin && (
-                <Button
-                  variant="highlight" size="sm"
-                  disabled={carregando || falhou || fechaveis.length === 0}
-                  onClick={() => setCloseMonthOpen(true)}
-                >
-                  <Target className="mr-1 h-4 w-4" />
-                  {/* "Todos os meses fechados" é uma AFIRMAÇÃO sobre o banco:
-                      só depois da resposta. Enquanto as consultas estão em voo
-                      o rótulo continua "Fechar mês", desabilitado. */}
-                  {!carregando && !falhou && fechaveis.length === 0
-                    ? "Todos os meses fechados"
-                    : "Fechar mês"}
-                </Button>
-              )}
-              {/* Reabrir só aparece quando há mês fechado — e só para o admin,
-                  que é quem a policy `closed_months_write` autoriza. Sem este
-                  botão, o "Fale com o administrador para reabrir" que a tela
-                  escreve em três lugares apontava para um caminho que só
-                  existia em SQL na mão. */}
-              {isAdmin && closed.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => setReopenMonthOpen(true)}>
-                  <Unlock className="mr-1 h-4 w-4" /> Reabrir mês
-                </Button>
-              )}
-            </>
-          ) : (
-            // Criar lead é da tela de Leads (achado F02): o botão daqui inseria
-            // direto em `leads` com `status: 'queued'` e um `assigned_to` que a
-            // roleta sobrescreve — e a policy só aceita gestor, então o corretor
-            // levava erro de RLS num botão que a tela mostrava a ele.
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/leads"><Users className="mr-1 h-4 w-4" /> Abrir tela de Leads</Link>
+          <>
+            {/* Fora do ternário das abas: o Painel é o mesmo quadro nas duas. */}
+            <Button variant="outline" size="sm" onClick={painel.abrir}>
+              <LayoutDashboard className="mr-1 h-4 w-4" /> Painel
             </Button>
-          )
+            {tab === "deals" ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setShowFilters((open) => !open)}>
+                  <Filter className="mr-1 h-4 w-4" /> Filtrar
+                </Button>
+                {canWrite ? (
+                  <Button size="sm" onClick={() => setEditor({ deal: null })}>
+                    <Plus className="mr-1 h-4 w-4" /> Adicionar negócio
+                  </Button>
+                ) : (
+                  <StatusBadge tone="neutral">Somente leitura</StatusBadge>
+                )}
+                {podeExtrair && (
+                  <Button
+                    variant="outline" size="sm"
+                    disabled={visible.length === 0 || extraindo}
+                    onClick={() => void extrair()}
+                  >
+                    <Download className="mr-1 h-4 w-4" />
+                    {extraindo ? "Gerando…" : "Extrair planilha"}
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Button
+                    variant="highlight" size="sm"
+                    disabled={carregando || falhou || fechaveis.length === 0}
+                    onClick={() => setCloseMonthOpen(true)}
+                  >
+                    <Target className="mr-1 h-4 w-4" />
+                    {/* "Todos os meses fechados" é uma AFIRMAÇÃO sobre o banco:
+                        só depois da resposta. Enquanto as consultas estão em voo
+                        o rótulo continua "Fechar mês", desabilitado. */}
+                    {!carregando && !falhou && fechaveis.length === 0
+                      ? "Todos os meses fechados"
+                      : "Fechar mês"}
+                  </Button>
+                )}
+                {/* Reabrir só aparece quando há mês fechado — e só para o admin,
+                    que é quem a policy `closed_months_write` autoriza. Sem este
+                    botão, o "Fale com o administrador para reabrir" que a tela
+                    escreve em três lugares apontava para um caminho que só
+                    existia em SQL na mão. */}
+                {isAdmin && closed.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => setReopenMonthOpen(true)}>
+                    <Unlock className="mr-1 h-4 w-4" /> Reabrir mês
+                  </Button>
+                )}
+              </>
+            ) : (
+              // Criar lead é da tela de Leads (achado F02): o botão daqui inseria
+              // direto em `leads` com `status: 'queued'` e um `assigned_to` que a
+              // roleta sobrescreve — e a policy só aceita gestor, então o corretor
+              // levava erro de RLS num botão que a tela mostrava a ele.
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/leads"><Users className="mr-1 h-4 w-4" /> Abrir tela de Leads</Link>
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -284,13 +338,14 @@ export default function Pipeline() {
             <DealFilters
               filters={filters}
               onChange={patchFilters}
-              onClear={() => setFilters(EMPTY_FILTERS)}
+              onClear={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
               onClose={() => setShowFilters(false)}
               stages={stages}
               developers={developers}
               brokers={brokers}
               managers={managers}
               months={months}
+              teamCount={myTeam.size}
             />
           )}
 
@@ -335,13 +390,13 @@ export default function Pipeline() {
                 void peopleQuery.refetch();
                 void developersQuery.refetch();
               }}
-              onClearFilters={() => setFilters(EMPTY_FILTERS)}
+              onClearFilters={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
               onNewDeal={() => setEditor({ deal: null })}
               onOpen={(deal) => setEditor({ deal })}
               onMove={moveDeal}
               onStatusChange={changeStatus}
               onScheduleVisit={setVisitDeal}
-              onLose={(deal) => setLosing({ deal })}
+              onLose={abrirPerda}
               onReopen={setReopening}
               closedMonths={closed}
             />
@@ -455,6 +510,11 @@ export default function Pipeline() {
           onConverted={async () => { await invalidateDeals(); setTab("deals"); }}
         />
       )}
+
+      {/* Sempre montado, e não `{painel.open && …}`: o `Dialog` do Radix precisa
+          da transição de fechado→aberto para prender o foco e devolvê-lo ao
+          botão. O conteúdo (e as consultas dele) só monta com o modal aberto. */}
+      <PainelDoCorretor open={painel.open} onOpenChange={painel.setOpen} />
     </div>
   );
 }

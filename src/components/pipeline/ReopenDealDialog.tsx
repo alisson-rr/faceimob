@@ -9,8 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { describeError } from "@/lib/supabaseError";
+import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { updateDeal } from "./data";
+import { updateDeal, useCanExitStage } from "./data";
+import { isOffOrDistrato } from "./LoseDealDialog";
 import type { PipelineStage } from "./stages";
 
 interface Props {
@@ -33,19 +35,46 @@ interface Props {
  * põe `outcome = 'open'` e `closed_at = null` ao entrar numa etapa aberta, então
  * a reabertura é ato do banco, não uma coluna que a tela escreve à mão.
  *
+ * **A mesma autorização das outras telas, e não um `isAdmin` só no botão.**
+ * Reabrir é uma mudança de etapa: quem decide é a matriz `stage_permissions`
+ * (sair de "Perdido", entrar em "Proposta"), a mesma do arraste do kanban, com
+ * admin e sócio passando por cima. E quando o negócio foi encerrado como OFF ou
+ * distrato, apagar esse rótulo exige `deals.mark_off_distrato` — apagar um
+ * distrato é a mesma decisão que marcá-lo.
+ *
  * O motivo vira comentário no histórico (`add_deal_comment`): `deal_history` é
  * log imutável e a mudança de etapa já entra sozinha por trigger, mas o PORQUÊ
  * da reabertura só existe se alguém escrever.
  */
 export function ReopenDealDialog({ deal, stages, onClose, onReopened }: Props) {
+  const { can, canEnterStage } = useAuth();
+  const canExitStage = useCanExitStage();
   const id = useId();
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
   const target = stages.find((stage) => stage.code === "proposal") ?? stages[0];
 
+  const canLeave = canExitStage(deal.stage_id);
+  const canEnter = Boolean(target) && canEnterStage(target?.id ?? "");
+  // O rótulo gravado pode estar em qualquer uma das duas colunas: o diálogo de
+  // perda escreve as duas, mas negócio importado só tem `lost_reason`.
+  const eraOffOuDistrato = isOffOrDistrato(deal.status_detail) || isOffOrDistrato(deal.lost_reason);
+  const podeApagarRotulo = !eraOffOuDistrato || can("deals.mark_off_distrato");
+  const allowed = Boolean(target) && canLeave && canEnter && podeApagarRotulo;
+
+  const recusa = !target
+    ? "O catálogo de etapas ainda não carregou."
+    : !podeApagarRotulo
+      ? "Reabrir um negócio marcado como OFF ou distrato é do administrador e do sócio."
+      : !canLeave
+        ? `Seu perfil não pode tirar um negócio de "${deal.stage_label}". Peça a um gestor.`
+        : !canEnter
+          ? `Seu perfil não pode mover negócios para "${target.label}". Peça a um gestor.`
+          : "";
+
   const confirm = async () => {
-    if (!target) return;
+    if (!target || !allowed) return;
     setSaving(true);
     try {
       // `updateDeal` (com `.select`) e não o update cru: linha filtrada pela
@@ -115,10 +144,16 @@ export function ReopenDealDialog({ deal, stages, onClose, onReopened }: Props) {
           />
         </div>
 
+        {recusa && (
+          <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+            {recusa}
+          </p>
+        )}
+
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction
-            disabled={saving || !target}
+            disabled={saving || !allowed}
             onClick={(event) => { event.preventDefault(); void confirm(); }}
           >
             {saving ? "Reabrindo…" : "Reabrir negócio"}

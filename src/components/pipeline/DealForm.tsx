@@ -7,16 +7,20 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { brl, dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
-import { isLossStatus } from "@/lib/dealStatus";
+import { bareStatus, isLossStatus } from "@/lib/dealStatus";
 import type { DealStage } from "@/types/crm";
 import { useAuth } from "@/contexts/AuthContext";
 import { listDeveloperProjects } from "@/integrations/supabase/leads";
-import type { PersonRecord, SaveLegacyDealInput } from "@/integrations/supabase/newSchema";
+import {
+  dealStageCodeFor, saleBlockedReason,
+  type PersonRecord, type SaveLegacyDealInput,
+} from "@/integrations/supabase/newSchema";
 import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
 import { ChoiceField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
 import { projectPlaceholder } from "./guards";
 import { statusChoices } from "./statuses";
+import { offDistratoBlocked } from "./useDealActions";
 import { funnelStages, type PipelineStage } from "./stages";
 
 const SIM_NAO = ["NÃO", "SIM"];
@@ -28,6 +32,61 @@ const SIM_NAO = ["NÃO", "SIM"];
 const rateio = (share?: number | null) =>
   share == null ? undefined : `${pct(share)} do VGV`;
 const ORIGENS = ["Lead Próprio", "Indicação", "Facebook", "Google", "Stand"];
+
+/** Sufixos do item cinza. Curtos porque vivem DENTRO da opção do Select; a
+ *  frase inteira fica no parágrafo abaixo do campo. */
+export const SEM_PERMISSAO = "sem permissão";
+export const APOS_CONFERENCIA = "depois da conferência";
+
+/**
+ * Etapas que o banco recusaria, pelo `code`, e o motivo curto de cada uma.
+ *
+ * Dois donos, não um:
+ *
+ * 1. **A matriz** (`stage_permissions`, a metade "entrar" que `deals_guard_stage`
+ *    cobra depois do `can_exit_stage` — migration 0101).
+ * 2. **A conferência documental na CRIAÇÃO** (0111 §1.b/§1.c). A matriz dá a
+ *    casa de "Em análise" a gerente, diretor e CCA porque eles MOVEM o negócio
+ *    para lá ao aprovar a conferência; o gatilho recusa o INSERT de quem não é
+ *    administrador, porque nascer lá pula o passo do gerente. As duas fontes
+ *    estão certas — o que faltava era a tela distinguir CRIAR de MOVER, e quem
+ *    responde isso é `saleBlockedReason`, a mesma função que o gravador
+ *    (`saveLegacyDeal`) consulta antes de gravar. Ao EDITAR, nada muda.
+ *
+ * A etapa JÁ escolhida fica de fora da conta, pelos mesmos dois motivos do
+ * Select de Status 2: gravar o valor que já está lá não é escrita (a 0101 só
+ * cobra a matriz quando `new.stage_id is distinct from old.stage_id`), e o
+ * `<SelectValue/>` do Radix espelha os filhos do item escolhido — o sufixo do
+ * motivo iria parar dentro do próprio gatilho do Select.
+ */
+export const blockedStageEntries = (
+  stages: PipelineStage[],
+  form: Pick<SaveLegacyDealInput, "id" | "stage" | "stage_id" | "document_review_status">,
+  opts: { canEnterStage: (stageId: string) => boolean; isAdmin: boolean },
+): Map<string, string> => {
+  const bloqueadas = new Map<string, string>();
+  for (const stage of stages) {
+    if (stage.code === form.stage) continue;
+    if (!opts.canEnterStage(stage.id)) {
+      bloqueadas.set(stage.code, SEM_PERMISSAO);
+      continue;
+    }
+    const recusa = saleBlockedReason(
+      // `status: ""` de propósito: a pergunta aqui é sobre a ETAPA, e o Status 2
+      // não pode responder por ela — com o valor cru, "VENDA" traduz TODA opção
+      // em "Fechado" (`dealStageCodeFor`) e a lista inteira ficaria cinza pelo
+      // motivo errado. O Status 2 tem o aviso dele, abaixo do próprio campo.
+      // O cast é a mesma fronteira do `onValueChange` do Select logo abaixo: o
+      // código vem do catálogo do banco e `DealStage` é o espelho dele.
+      { ...form, status: "", stage: stage.code as DealStage },
+      stages,
+      opts.canEnterStage,
+      { isAdmin: opts.isAdmin },
+    );
+    if (recusa) bloqueadas.set(stage.code, APOS_CONFERENCIA);
+  }
+  return bloqueadas;
+};
 
 interface Props {
   form: SaveLegacyDealInput;
@@ -46,7 +105,7 @@ interface Props {
 
 /** Aba "Detalhes" do negócio: o formulário inteiro. */
 export function DealForm({ form, onChange, field, people, developers, stages, isNew, developerError }: Props) {
-  const { isAdmin, roles, canEnterStage } = useAuth();
+  const { isAdmin, roles, canEnterStage, can } = useAuth();
   const canExitStage = useCanExitStage();
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   /** Falha de carga do catálogo de empreendimentos — separada do "não tem
@@ -78,6 +137,35 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
   // A etapa só muda se o perfil puder SAIR da atual: `deals_guard_stage` cobra
   // `can_exit_stage(old.stage_id)` antes de olhar a etapa de destino.
   const canLeaveStage = isNew || !form.stage_id || canExitStage(form.stage_id);
+
+  // A etapa de perda fica fora da lista (ver o comentário do Select). As
+  // bloqueadas saem daqui para que o item cinza e a frase que o explica leiam a
+  // MESMA conta.
+  const etapas = funnelStages(stages);
+  const etapasBloqueadas = blockedStageEntries(etapas, form, { canEnterStage, isAdmin });
+  // Quais das duas frases o parágrafo abaixo do Select precisa dizer.
+  const motivosBloqueio = new Set(etapasBloqueadas.values());
+
+  // "VENDA" no Status 2 não é só rótulo: `dealStageCodeFor` o traduz em etapa
+  // "Fechado", que tem dois donos — a matriz de etapas e a conferência do
+  // gerente. `saveLegacyDeal` recusa com ESTA mesma frase, então o aviso aqui é
+  // a mesma regra lida antes do clique, não uma segunda. `stages` cru, e não
+  // `etapas`: `funnelStages` filtra, e "Fechado" pode não estar na lista.
+  //
+  // O `=== "closed"` é o recorte do que pertence a ESTE campo:
+  // `saleBlockedReason` também responde pela etapa escolhida na criação, e essa
+  // frase tem lugar próprio — o item cinza da lista de etapas, logo acima. Uma
+  // recusa de etapa impressa embaixo do Status 2 mandaria mexer no campo errado.
+  const vendaBloqueada = dealStageCodeFor(form) === "closed"
+    ? saleBlockedReason(form, stages, canEnterStage, { isAdmin })
+    : null;
+
+  // Revisão do cliente em 10/09/2026, no tamanho que ele pediu: dos rótulos do
+  // Status 2, só OFF e DISTRATO viraram de administrador e sócio — o resto do
+  // catálogo continua de quem edita o negócio. A ETAPA não tem código próprio:
+  // quem a decide é a matriz de etapas (`canEnterStage`/`canLeaveStage` logo
+  // acima), a mesma que o banco cobra em `deals_guard_stage`. Um código à parte
+  // passava por cima dela e deixava o admin sem como conceder pela tela.
 
   // A lista da RPC (`selectable_brokers`, security definer) unida à visível: a
   // RLS de `profiles` entrega ao corretor só o próprio perfil, e sem a união os
@@ -442,42 +530,126 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2">
         <div>
           <Label htmlFor={field("stage")} className="text-eyebrow">Etapa (Status 1)</Label>
-          <Select value={form.stage} disabled={!canLeaveStage} onValueChange={(v) => onChange({ stage: v as DealStage })}>
-            <SelectTrigger id={field("stage")} className="mt-1 text-xs"><SelectValue /></SelectTrigger>
+          <Select
+            value={form.stage} disabled={!canLeaveStage}
+            onValueChange={(v) => onChange({ stage: v as DealStage })}
+          >
+            {/* Desabilitado, e não escondido: um campo que some não ensina de
+                quem é a decisão. `aria-describedby` porque `title` em controle
+                desabilitado não recebe foco e não existe para teclado nem
+                leitor de tela — é a mesma escolha do mês-base acima. */}
+            <SelectTrigger
+              id={field("stage")} className="mt-1 text-xs"
+              aria-describedby={
+                !canLeaveStage || etapasBloqueadas.size > 0 ? field("stage-hint") : undefined
+              }
+            >
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               {/* Cada etapa é oferecida conforme `can_enter_stage()` — a mesma
-                  regra que barra o arrastar no kanban. O Select inteiro ficava
-                  `disabled={!isAdmin}`, escondendo do gerente o que o banco
-                  aceita (achado X01).
+                  regra que barra o arrastar no kanban —, e quem abre a lista é
+                  `can_exit_stage()` da etapa atual. As duas metades da MESMA
+                  matriz, e nada além dela: não é a volta do `disabled={!isAdmin}`
+                  do achado X01 (aquele era literal no código; este sai da
+                  matriz, e o admin solta pela tela, sem deploy).
 
                   A etapa de perda fica de fora: escolher "Perdido" aqui
                   encerraria o negócio no salvamento, sem motivo e sem a
                   confirmação que o achado F14 exige. Perder é pela ação
                   própria, na tabela. */}
-              {funnelStages(stages).map((stage) => (
-                <SelectItem key={stage.id} value={stage.code} disabled={!canEnterStage(stage.id)}>
-                  {stage.label}{canEnterStage(stage.id) ? "" : " (sem permissão)"}
-                </SelectItem>
-              ))}
+              {etapas.map((stage) => {
+                const motivo = etapasBloqueadas.get(stage.code);
+                return (
+                  <SelectItem key={stage.id} value={stage.code} disabled={Boolean(motivo)}>
+                    {/* Rótulo e motivo em `<span>` separados, como no Select de
+                        Status 2 logo abaixo e no da tabela. */}
+                    <span>{stage.label}</span>
+                    {motivo && (
+                      <span className="text-muted-foreground"> ({motivo})</span>
+                    )}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
-          {!canLeaveStage && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Seu perfil não pode tirar um negócio desta etapa (matriz de etapas do
-              admin). Peça a um gestor.
+          {/* Um motivo só, e ele é acionável: a matriz de etapas diz quem tira
+              o negócio de onde ele está e quem entra em cada destino, e o
+              administrador muda isso na tela de permissões. A frase anterior
+              ("só o administrador e o sócio mudam a etapa") mandava pedir uma
+              mudança que gestor nenhum faz — e, com o desenho atual, nem sequer
+              descrevia quem decide.
+
+              As duas frases dividem o mesmo `id` porque nunca aparecem juntas:
+              sem poder SAIR, o Select inteiro está desabilitado e a lista de
+              destinos não chega a abrir. */}
+          {!canLeaveStage ? (
+            <p id={field("stage-hint")} className="mt-1 text-xs text-muted-foreground">
+              Seu perfil não pode tirar um negócio desta etapa (matriz de etapas, em
+              Admin · Permissões → Etapas). Peça a um gestor.
+            </p>
+          ) : etapasBloqueadas.size > 0 && (
+            <p id={field("stage-hint")} className="mt-1 text-xs text-muted-foreground">
+              {motivosBloqueio.has(SEM_PERMISSAO) && (
+                <>
+                  As etapas marcadas &ldquo;sem permissão&rdquo; não estão liberadas para o
+                  seu perfil na matriz de etapas (Admin · Permissões → Etapas).{" "}
+                </>
+              )}
+              {motivosBloqueio.has(APOS_CONFERENCIA) && (
+                <>
+                  Negócio novo começa no funil: a etapa de análise vem depois da conferência
+                  do gerente. Crie o negócio numa etapa aberta, envie o dossiê e o gerente
+                  leva o negócio para a esteira.{" "}
+                </>
+              )}
+              As demais continuam com você.
             </p>
           )}
         </div>
         <div>
           <Label htmlFor={field("status")} className="text-eyebrow">Status da venda (Status 2)</Label>
           <Select value={form.status} onValueChange={(v) => onChange({ status: v })}>
-            <SelectTrigger id={field("status")} className="mt-1 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger
+              id={field("status")}
+              className="mt-1 text-xs"
+              aria-describedby={vendaBloqueada ? field("status-hint") : undefined}
+            >
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent className="max-h-80">
-              {statusChoices(form.status).map((option) => (
-                <SelectItem key={option.label} value={option.label}>{option.label}</SelectItem>
-              ))}
+              {/* `value` é o valor gravado; o texto vai sem o prefixo numerado.
+                  O campo inteiro NÃO fica cinza: o cliente reservou ao
+                  administrador dois desfechos (OFF e distrato), não o catálogo
+                  todo — trancar o resto tirava do corretor rótulos que sempre
+                  foram dele. Os dois saem desabilitados com o motivo, a mesma
+                  forma da lista de etapas acima e do Select da tabela. */}
+              {statusChoices(form.status).map((option) => {
+                // O rótulo ATUAL fica de fora: escolher o que já está escolhido
+                // não é escrita, e `<SelectValue/>` espelha os filhos do item —
+                // o sufixo iria parar dentro do próprio gatilho do Select.
+                const semPermissao = option.label === form.status
+                  ? null
+                  : offDistratoBlocked(can, option.label);
+                return (
+                  <SelectItem key={option.label} value={option.label} disabled={Boolean(semPermissao)}>
+                    {/* O rótulo no próprio `<span>` e o motivo em outro: o texto
+                        exibido continua sendo só `bareStatus(option.label)`, que
+                        é o que o `statusLabels.test.ts` lê daqui. */}
+                    <span>{bareStatus(option.label)}</span>
+                    {semPermissao && (
+                      <span className="text-muted-foreground"> (só administrador e sócio)</span>
+                    )}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
+          {vendaBloqueada && (
+            <p id={field("status-hint")} className="mt-1 text-xs text-muted-foreground">
+              {vendaBloqueada}
+            </p>
+          )}
         </div>
       </div>
 

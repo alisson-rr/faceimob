@@ -15,7 +15,7 @@ import { tone } from "@/lib/tone";
 import { differenceInCalendarDays, format, startOfMonth, eachDayOfInterval, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import logoWhite from "@/assets/logo-faceimob-white.png";
+import { Logo } from "@/components/shared/Logo";
 import { UpdateBanner } from "@/components/UpdateNotifier";
 import { CompactFunnel, type FunnelStep } from "@/components/ComparativeFunnel";
 import {
@@ -25,6 +25,7 @@ import {
   fromDailyEntry as fromRow,
   monthMissingDays,
   targetsFrom,
+  toDailyEntry,
   zeroDailyRow as zeroRow,
   type DailyBrokerMonth as BrokerMonth,
   type DailyDayRecord as DayRecord,
@@ -506,19 +507,14 @@ export default function DailyReport() {
     // fora do passo de 0,5 o banco recusa a equipe inteira com 23514 (0038).
     // Só a escala ativa: quem saiu aparece na tela por causa do mês (0062), com
     // os campos desabilitados, e a RPC ignoraria a linha dele de qualquer jeito.
+    // A tradução tela → coluna sai de `toDailyEntry`, o inverso do `fromRow`
+    // que esta mesma tela usa para ler: uma coluna renomeada quebra os dois
+    // sentidos de uma vez, em vez de consertar a leitura e calar a escrita.
     const payload = activeRoster.map((b) => {
       const row = entries[b.broker_id];
-      const v = (key: FieldKey) => halfStep(row?.[key] || 0);
       return {
         profile_id: b.broker_id,
-        leads: v("leads"),
-        calls: v("ligacoes"),
-        doc_collections: v("coleta_docs"),
-        visits_scheduled: v("visitas_agendadas"),
-        visits_done: v("visitas_realizadas"),
-        analyses_sent: v("analises"),
-        analyses_approved: v("aprovados"),
-        sales: v("vendas"),
+        ...toDailyEntry((key: FieldKey) => halfStep(row?.[key] || 0)),
       };
     });
     const { data, error } = await submitDaily({
@@ -628,7 +624,13 @@ export default function DailyReport() {
 
       <div className="relative max-w-6xl mx-auto p-6 space-y-6">
         <header className="text-center space-y-3">
-          <img src={logoWhite} alt="Faceimob" className="h-12 mx-auto object-contain" />
+          {/* O `Logo` rende as DUAS artes (a do tema errado fica `display:none`),
+              entao sem este wrapper ele conta como dois filhos do `space-y-3` e
+              a arte do tema claro, por ser a segunda, ganharia um respiro que a
+              do tema escuro nao tem. */}
+          <div>
+            <Logo className="h-12 mx-auto" />
+          </div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs uppercase tracking-widest">
             <Swords className="h-3 w-3 text-primary" /> Checkpoint Diário
           </div>

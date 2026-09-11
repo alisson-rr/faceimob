@@ -85,7 +85,14 @@ vi.mock("@/integrations/supabase/game", () => ({
 }));
 
 // Sem AudioContext nem canvas no jsdom — e som/confete não são o que se prova.
-vi.mock("@/lib/engagement/audio", () => ({ playSound: vi.fn() }));
+// O dublê precisa cobrir o módulo inteiro que o `EngagementLayer` alcança:
+// `tocarPremiacao` (o som de marco) lê `isSoundOn`/`subscribeSound` daqui.
+// Mudo por padrão — teste não toca som e não baixa a faixa.
+vi.mock("@/lib/engagement/audio", () => ({
+  playSound: vi.fn(),
+  isSoundOn: () => false,
+  subscribeSound: () => () => undefined,
+}));
 vi.mock("./Confetti", () => ({ fireConfetti: vi.fn() }));
 
 const toastSpy = vi.fn();

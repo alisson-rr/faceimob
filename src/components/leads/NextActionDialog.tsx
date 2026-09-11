@@ -65,7 +65,7 @@ export function NextActionDialog({
       toast({
         variant: "destructive",
         title: "Não foi possível marcar a próxima ação",
-        description: describeError(err, "sem permissão para editar este lead"),
+        description: describeError(err, "Você não tem permissão para editar este lead."),
       });
     } finally {
       setSaving(false);

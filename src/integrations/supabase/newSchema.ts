@@ -491,7 +491,10 @@ const legacyLeadStatus = (lead: Database["public"]["Tables"]["leads"]["Row"]): L
 
 export async function listLegacyLeads(): Promise<Lead[]> {
   const [leadsRes, sourcesRes, profilesRes] = await Promise.all([
-    db.from("leads").select("*").order("created_at", { ascending: false }),
+    // `.order("id")` desempata: com `created_at` igual (importação em lote, rajada
+    // do webhook da Meta) o Postgres pode devolver as linhas em ordem diferente a
+    // cada consulta, e a tela trocava de posição sozinha. Mesmo par de `listLegacyDeals`.
+    db.from("leads").select("*").order("created_at", { ascending: false }).order("id"),
     db.from("lead_sources").select("id,label"),
     db.from("profiles").select("id,full_name"),
   ]);
@@ -658,6 +661,38 @@ export const monthInputToPeriodIso = (month: string): string | null =>
   /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? `${month}-01` : null;
 
 /**
+ * Valida a meta antes de gravar. Devolve a frase do erro em pt-BR ou `null`
+ * quando o valor serve.
+ *
+ * A meta é o DENOMINADOR de todos os cartões do mês: um erro de digitação aqui
+ * não erra um número, erra o painel inteiro. O banco sozinho não segura isso —
+ * `goals.target` é `numeric(14,2) check (target >= 0)`, ou seja, aceita zero e
+ * só recusa acima de ~1e12.
+ *
+ * Zero é recusado de propósito: o `GoalCard` do Dashboard lê `target <= 0` como
+ * "sem meta cadastrada", então salvar 0 mostrava o toast "Meta global salva" e
+ * o painel continuava dizendo que não havia meta — a gravação que promete e
+ * nega. Os tetos são folgados para a operação; existem para pegar zero a mais
+ * na digitação, não para apertar a meta.
+ */
+export function validateGoalTarget(metric: "sales" | "vgv", target: number): string | null {
+  // Number.isFinite recusa NaN e Infinity de uma vez — é o que sobra de
+  // `Number("abc")` e de `Number("1e999")` vindos de um campo de texto.
+  if (!Number.isFinite(target)) return "Informe um número para a meta.";
+  if (target <= 0) return "A meta precisa ser maior que zero.";
+  if (metric === "sales" && !Number.isInteger(target)) {
+    return "A meta de vendas é uma quantidade inteira.";
+  }
+  if (metric === "sales" && target > 100_000) {
+    return "A meta de vendas não pode passar de 100.000 no mês.";
+  }
+  if (metric === "vgv" && target > 1_000_000_000) {
+    return "A meta de VGV não pode passar de R$ 1 bilhão no mês.";
+  }
+  return null;
+}
+
+/**
  * Grava (ou atualiza) a meta global do mês. `goals_global_idx` é índice parcial
  * (`where scope = 'global'`) e o upsert do PostgREST não repassa o predicado ao
  * ON CONFLICT, então o Postgres não consegue inferir o índice — por isso
@@ -668,6 +703,17 @@ export async function upsertGlobalMonthlyGoal(
   periodIso: string,
   target: number,
 ): Promise<void> {
+  // Fronteira de escrita: toda tela que grava a meta global passa por aqui (o
+  // cartão de /equipes e o mesmo formulário aberto no diálogo do Dashboard),
+  // então a validação mora neste ponto e não em cada formulário.
+  const invalido = validateGoalTarget(metric, target);
+  if (invalido) throw dbError("goals", { code: "P0001", message: invalido });
+  // `describeError` só repassa a mensagem crua dos códigos das nossas próprias
+  // exceções (P0001/P0002); é por isso que o código acima não é inventado.
+  if (!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(periodIso)) {
+    throw dbError("goals", { code: "P0001", message: "Escolha um mês válido para a meta." });
+  }
+
   const existing = await db
     .from("goals")
     .select("id")
@@ -689,7 +735,13 @@ export async function upsertGlobalMonthlyGoal(
   // sessão via o toast "Meta global salva" e o cartão recarregava o valor antigo.
   // É a mesma verificação do GoalRow de Equipes.
   if (!result.data?.length) {
-    throw dbError("goals", { code: "42501", message: "sem permissão para gravar meta" });
+    // Frase inteira, e não fragmento: desde a correção de `describeError` a
+    // mensagem de um 42501 nosso vai INTEIRA para o toast, em vez de ser
+    // achatada em "Você não tem permissão para esta ação.".
+    throw dbError("goals", {
+      code: "42501",
+      message: "Seu perfil não pode gravar a meta deste mês.",
+    });
   }
 }
 
@@ -821,6 +873,89 @@ export const dealStageCodeFor = (form: Pick<SaveLegacyDealInput, "status" | "sta
       : form.stage || "incomplete";
 
 /**
+ * Etapas que o banco só libera com a conferência documental aprovada.
+ *
+ * **Fonte única do front.** A mesma lista de `deal_stage_document_block`
+ * (migration 0111), que o gatilho chama nos dois momentos: no UPDATE com o id
+ * do negócio (movimentação) e no INSERT com nulo (nascimento). Ela vivia
+ * copiada em `guards.ts` e, aqui, encolhida para só `closed` — duas cópias que
+ * já discordavam entre si e da terceira, que é o banco.
+ *
+ * A quarta casa, `closed`, tem uma trava a mais no nascimento: a 0111 §1.b
+ * recusa nascer com `outcome = 'won'` para TODO MUNDO, administrador incluído
+ * (registrar venda passa pelo funil). As outras três a 0111 §1.c só cobra de
+ * quem não é administrador — `saleBlockedReason` faz essa distinção.
+ */
+export const STAGES_REQUIRING_REVIEW: readonly string[] = [
+  "under_analysis", "approved", "contract", "closed",
+];
+
+/** Quem move um negócio para "Fechado" — a matriz de etapas (0101), que fora do
+ *  admin e do sócio ninguém tem por padrão. */
+const VENDA_SEM_PERMISSAO =
+  "Registrar venda é do administrador: só ele e o sócio movem um negócio para "
+  + "\"Fechado\". Escolha outro Status 2 e peça o fechamento a um administrador.";
+
+/** A conferência do gerente, que a 0028 exige para ENTRAR em "Fechado" e a 0110
+ *  passou a exigir também para NASCER lá. Vale para todo mundo, admin incluído. */
+const VENDA_SEM_CONFERENCIA =
+  "Registrar venda exige a documentação aprovada pelo gerente. Envie o dossiê "
+  + "para a conferência e feche o negócio depois da aprovação.";
+
+/** A faixa do CCA no NASCIMENTO (0111 §1.c): a matriz dá a casa de "Em análise"
+ *  a gerente, diretor e CCA porque eles MOVEM o negócio para lá quando aprovam
+ *  a conferência — criar já lá é pular o passo do gerente. */
+const CRIACAO_SEM_CONFERENCIA =
+  "Negócio novo começa no funil: a etapa de análise vem depois da conferência "
+  + "do gerente. Crie o negócio em uma etapa aberta e envie o dossiê para ele.";
+
+/**
+ * Motivo, em pt-BR, para a ETAPA DE DESTINO recusar este salvamento — ou `null`
+ * quando ele passa.
+ *
+ * Existe porque "VENDA" não é só um rótulo: `dealStageCodeFor` o traduz em
+ * etapa "Fechado", e a etapa tem dois donos que o formulário não mostrava —
+ * a matriz de etapas e a conferência documental. Sem esta conta, corretor e
+ * gerente preenchiam ~40 campos para receber um 42501 do gatilho no fim.
+ *
+ * **Também cobre a CRIAÇÃO**, e é por isso que ela deixou de ser só sobre
+ * "VENDA": a matriz de etapas diz que gerente, diretor e CCA podem ENTRAR em
+ * "Em análise" (e o CCA, em "Aprovado" e "Contrato"), então o Select oferecia
+ * essas casas num negócio novo — e a 0111 §1.c recusava o INSERT com P0001 no
+ * fim do mesmo formulário de ~40 campos. As duas fontes estão certas: a matriz
+ * descreve quem MOVE, o gatilho descreve quem NASCE. O que faltava era a tela
+ * distinguir as duas coisas, e é o `form.id` que as separa — a mesma fronteira
+ * de `dealRequiredError` e `findDuplicateDeal` (pipeline/guards.ts).
+ *
+ * Editar um negócio que JÁ está numa dessas etapas não passa por aqui: quem
+ * cobra a movimentação é `blockedMoveReason` (pipeline/guards.ts), e regravar a
+ * MESMA etapa não é escrita para o gatilho (ele só cobra quando
+ * `new.stage_id is distinct from old.stage_id`).
+ */
+export const saleBlockedReason = (
+  form: Pick<SaveLegacyDealInput, "id" | "status" | "stage" | "stage_id" | "document_review_status">,
+  stages: { id: string; code: string }[],
+  canEnterStage: (stageId: string) => boolean,
+  opts: { isAdmin?: boolean } = {},
+): string | null => {
+  const code = dealStageCodeFor(form);
+  if (!STAGES_REQUIRING_REVIEW.includes(code)) return null;
+  const destino = stages.find((stage) => stage.code === code);
+  // Sem o catálogo carregado a tela não afirma nada: quem recusa é o banco.
+  if (!destino || destino.id === form.stage_id) return null;
+  const conferida = form.document_review_status === "approved";
+  if (code === "closed") {
+    if (!canEnterStage(destino.id)) return VENDA_SEM_PERMISSAO;
+    return conferida ? null : VENDA_SEM_CONFERENCIA;
+  }
+  // As outras três só recusam no NASCIMENTO, e só fora do administrador — é o
+  // recorte exato da 0111 §1.c. Cobrá-las na edição inventaria recusa que o
+  // banco não faz e trancaria o negócio que já está na esteira.
+  if (form.id || conferida || opts.isAdmin) return null;
+  return CRIACAO_SEM_CONFERENCIA;
+};
+
+/**
  * Os campos de `deals` que saem do formulário — puro, para ficar testável.
  *
  * Duas regras que só existem aqui:
@@ -872,7 +1007,31 @@ export function legacyDealFields(form: SaveLegacyDealInput) {
 }
 
 export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string> {
-  const stageId = await getStageIdByCode(dealStageCodeFor(form));
+  const stageCode = dealStageCodeFor(form);
+  const stageId = await getStageIdByCode(stageCode);
+
+  // Recusa HONESTA antes de gravar qualquer coisa.
+  //
+  // "VENDA" leva o negócio para "Fechado", e o banco cobra duas coisas na
+  // entrada dessa etapa: a matriz de etapas (0101) e a conferência documental
+  // aprovada (0028, e no INSERT desde a 0110). Sem esta parada o corretor
+  // preenchia o formulário inteiro para receber "Você não tem permissão para
+  // esta ação." — verdade sem motivo, e sem dizer o que fazer.
+  //
+  // `can_enter_stage` em vez da matriz espelhada: `saveLegacyDeal` não é hook e
+  // não enxerga o `AuthContext`. A ida ao banco só acontece quando o Status 2
+  // escolhido é venda E a etapa muda de verdade. `!== false` para não inventar
+  // recusa quando a RPC não responde: aí quem decide continua sendo o gatilho,
+  // cuja mensagem `describeError` agora mostra inteira.
+  if (stageCode === "closed" && stageId !== form.stage_id) {
+    const { data: podeEntrar } = await db.rpc("can_enter_stage", { target_stage: stageId });
+    const motivo = saleBlockedReason(
+      form,
+      [{ id: stageId, code: stageCode }],
+      () => podeEntrar !== false,
+    );
+    if (motivo) throw dbError("deals", { code: "P0001", message: motivo });
+  }
 
   let developerId = form.developer_id ?? null;
   if (!developerId && form.developer) {

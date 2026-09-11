@@ -23,13 +23,24 @@ import { ALL_MONTHS, GOAL_SCOPE_LABEL, type GoalScope } from "./data";
  * `goals` — e a primeira já ensinou o que acontece quando período de escrita e
  * de leitura divergem: a meta salva não volta.
  */
-function EditarMetaGlobal({ mes }: { mes: string | null }) {
+function EditarMetaGlobal({
+  mes,
+  rotulo = "Editar meta",
+  size = "sm",
+}: {
+  mes: string | null;
+  /** "Cadastrar meta" quando ainda nao ha linha: o verbo tem que ser honesto. */
+  rotulo?: string;
+  size?: "sm" | "default";
+}) {
   const [aberto, setAberto] = useState(false);
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5">
-          <Pencil className="h-3.5 w-3.5" aria-hidden /> Editar meta
+        {/* No cabecalho do card o botao e compacto (h-8, como os demais dali);
+            no estado vazio ele e a acao principal e usa a altura padrao. */}
+        <Button variant="outline" size={size} className={size === "sm" ? "h-8 gap-1.5" : "gap-1.5"}>
+          <Pencil className="h-3.5 w-3.5" aria-hidden /> {rotulo}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
@@ -140,18 +151,21 @@ export function GoalCard({ month, vendas, goal, scope, canManage, isLoading, err
       // `GlobalGoalCard` para os dois. Afirmar ausencia de tela a quem grava a
       // meta global e mentira — o que falta para ele e a linha DESTE escopo.
       //
-      // O MES vai escrito na frase, nao so no link: o `GlobalGoalCard` de
-      // /equipes abre no mes do RELOGIO e ainda nao le o `?mes=` da URL (a
-      // leitura esta pendente com o dono daquele arquivo), entao quem clicava
-      // aqui olhando 01/2026 caia no formulario de 09/2026 e gravava a meta no
-      // mes errado sem perceber. Enquanto o outro lado nao le o parametro, quem
-      // avisa qual mes escolher e o texto — a tela nao pode mandar cadastrar sem
-      // dizer onde.
+      // O MES continua escrito na frase, nao so no link: quem nao pode gravar
+      // le a frase para pedir a meta a quem grava, e ele precisa dizer QUAL mes.
+      // (O `GlobalGoalCard` ja le o `?mes=` da URL, entao o link tambem acerta o
+      // mes; a frase e para a pessoa, nao para o formulario.)
       const temTela = scope === "global";
+      // Quem pode gravar a meta da empresa cadastra AQUI. Antes esta tela dizia
+      // "cadastre em Equipes" enquanto o botao "Editar meta" abria o formulario
+      // no proprio cartao, dois passos acima: duas ofertas, destinos diferentes,
+      // e a que estava escrita mandava embora. O pedido do cliente ("colocar
+      // lugar para editar meta") era justamente nao ter achado o lugar.
+      const cadastraAqui = temTela && canManage;
       const ondeCadastrar = `em Equipes, no cartão "Meta global do mês", escolhendo ${periodo} no campo Mês`;
       const saida = temTela
         ? canManage
-          ? `Cadastre ${ondeCadastrar}.`
+          ? "Cadastre agora, sem sair do Dashboard."
           : `Peça a um administrador ou diretor para cadastrar ${ondeCadastrar}.`
         : canManage
           ? `Nenhuma tela cadastra a meta deste escopo ainda — ela é lançada direto no banco. A meta da empresa você cadastra ${ondeCadastrar}.`
@@ -163,12 +177,13 @@ export function GoalCard({ month, vendas, goal, scope, canManage, isLoading, err
           title={`Sem meta cadastrada para ${periodo}`}
           description={`${SEM_META[scope]} ${saida}`}
           action={
-            canManage ? (
+            cadastraAqui ? (
+              <EditarMetaGlobal mes={mesParaCadastro(periodo)} rotulo="Cadastrar meta" size="default" />
+            ) : canManage ? (
+              // Escopo de perfil ou de equipe: nao ha formulario para ELE. O link
+              // leva a meta da EMPRESA, que a frase acima ja nomeia, com o mes em
+              // `yyyy-MM` — a forma do <input type=month> que /equipes le do `?mes=`.
               <Button variant="outline" asChild>
-                {/* `mes` em `yyyy-MM`, a forma do <input type=month> de /equipes.
-                    O parametro ja viaja, mas o destino ainda NAO o le: enquanto
-                    `GlobalGoalCard` nao chamar `useSearchParams`, quem diz o mes
-                    ao usuario e a frase acima. Ver `pendencias`. */}
                 <Link to={`/equipes?mes=${mesParaCadastro(periodo)}`}>Cadastrar em Equipes</Link>
               </Button>
             ) : undefined

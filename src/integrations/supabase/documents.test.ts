@@ -8,14 +8,17 @@ vi.mock("./client", () => ({
 }));
 
 import {
+  MAX_DOCUMENT_ALIAS,
   MAX_DOCUMENT_BYTES,
   canAttachNow,
   deleteDealDocument,
+  documentDisplayName,
   missingRequiredTypes,
   missingStoragePaths,
   resolveStoredName,
   submitBlockReason,
   updateDocumentType,
+  validateDocumentAlias,
   validateDocumentFile,
   type DealDocumentRecord,
   type DocumentTypeRecord,
@@ -55,6 +58,7 @@ const doc = (over: Partial<DealDocumentRecord> = {}): DealDocumentRecord => ({
   storage_path: "deal-1/1-x.pdf",
   original_name: "x.pdf",
   stored_name: "x.pdf",
+  display_name: null,
   mime_type: "application/pdf",
   size_bytes: 10,
   version: 1,
@@ -111,6 +115,64 @@ describe("resolveStoredName", () => {
 
   it("o tipo que versiona continua com o nome estável (sem sufixo)", () => {
     expect(resolveStoredName("{tipo}-{cliente}", parts, "scan.pdf")).toBe("rg-cpf-joao-da-silva.pdf");
+  });
+
+  /**
+   * O buraco que sobrava em "Outros": quem anexa pelo celular manda dois
+   * arquivos chamados `documento.pdf`, o sufixo pelo nome original não distingue
+   * nada e os dois viravam o MESMO `stored_name` — que é o nome do anexo no
+   * e-mail da construtora (`submission-dispatch`), onde dois anexos homônimos
+   * são indistinguíveis. O molde por tipo não pode mudar, então o desempate é um
+   * sufixo numérico e só a partir do segundo.
+   */
+  it("desempata nome repetido com sufixo numérico, preservando o primeiro", () => {
+    const opts = (ocupados: string[]) => ({ distinguir: true, ocupados: new Set(ocupados) });
+
+    const primeiro = resolveStoredName("{tipo}-{cliente}", parts, "documento.pdf", opts([]));
+    const segundo = resolveStoredName("{tipo}-{cliente}", parts, "documento.pdf", opts([primeiro]));
+    const terceiro = resolveStoredName("{tipo}-{cliente}", parts, "documento.pdf", opts([primeiro, segundo]));
+
+    expect(primeiro).toBe("rg-cpf-joao-da-silva-documento.pdf");
+    expect(segundo).toBe("rg-cpf-joao-da-silva-documento-2.pdf");
+    expect(terceiro).toBe("rg-cpf-joao-da-silva-documento-3.pdf");
+    expect(new Set([primeiro, segundo, terceiro]).size).toBe(3);
+  });
+
+  it("nome livre não ganha sufixo só porque o tipo tem outros anexos", () => {
+    const ocupados = new Set(["rg-cpf-joao-da-silva-outro.pdf"]);
+    expect(resolveStoredName("{tipo}-{cliente}", parts, "Extrato 03.pdf", { distinguir: true, ocupados }))
+      .toBe("rg-cpf-joao-da-silva-extrato-03.pdf");
+  });
+
+  it("o sufixo entra ANTES da extensão, senão o arquivo deixa de abrir", () => {
+    const ocupados = new Set(["rg-cpf-2026-08-02.jpg"]);
+    expect(resolveStoredName("{tipo}-{data}", parts, "a.jpg", { distinguir: false, ocupados }))
+      .toBe("rg-cpf-2026-08-02-2.jpg");
+  });
+});
+
+/**
+ * Apelido do anexo (0106): o rótulo da tela. O `stored_name` NÃO muda — é ele
+ * que `submission-dispatch` usa como nome do anexo no e-mail da construtora.
+ */
+describe("apelido do anexo", () => {
+  it("a tela mostra o apelido quando existe, e o nome técnico quando não", () => {
+    expect(documentDisplayName(doc())).toBe("x.pdf");
+    expect(documentDisplayName(doc({ display_name: "RG da esposa" }))).toBe("RG da esposa");
+  });
+
+  it("apelido só de espaço não conta como apelido", () => {
+    expect(documentDisplayName(doc({ display_name: "   " }))).toBe("x.pdf");
+  });
+
+  it("aceita exatamente o teto e recusa um caractere além", () => {
+    expect(validateDocumentAlias("a".repeat(MAX_DOCUMENT_ALIAS))).toBeNull();
+    expect(validateDocumentAlias("a".repeat(MAX_DOCUMENT_ALIAS + 1))).toContain(String(MAX_DOCUMENT_ALIAS));
+  });
+
+  it("vazio é válido: é como a tela limpa o apelido", () => {
+    expect(validateDocumentAlias("")).toBeNull();
+    expect(validateDocumentAlias("   ")).toBeNull();
   });
 });
 

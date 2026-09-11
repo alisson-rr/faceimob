@@ -595,6 +595,48 @@ export type Database = {
           },
         ]
       }
+      credential_reveal_log: {
+        Row: {
+          actor_email: string | null
+          actor_id: string | null
+          created_at: string
+          credential_id: string | null
+          credential_label: string
+          id: string
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          credential_id?: string | null
+          credential_label: string
+          id?: string
+        }
+        Update: {
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          credential_id?: string | null
+          credential_label?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credential_reveal_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credential_reveal_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       daily_entries: {
         Row: {
           analyses_approved: number
@@ -819,6 +861,7 @@ export type Database = {
         Row: {
           created_at: string
           deal_id: string
+          display_name: string | null
           document_type_id: string
           id: string
           mime_type: string | null
@@ -834,6 +877,7 @@ export type Database = {
         Insert: {
           created_at?: string
           deal_id: string
+          display_name?: string | null
           document_type_id: string
           id?: string
           mime_type?: string | null
@@ -849,6 +893,7 @@ export type Database = {
         Update: {
           created_at?: string
           deal_id?: string
+          display_name?: string | null
           document_type_id?: string
           id?: string
           mime_type?: string | null
@@ -1871,6 +1916,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      import_bubble_map: {
+        Row: {
+          bubble_id: string
+          entidade: string
+          importado_em: string
+          registro_id: string
+          tabela_destino: string
+        }
+        Insert: {
+          bubble_id: string
+          entidade: string
+          importado_em?: string
+          registro_id: string
+          tabela_destino: string
+        }
+        Update: {
+          bubble_id?: string
+          entidade?: string
+          importado_em?: string
+          registro_id?: string
+          tabela_destino?: string
+        }
+        Relationships: []
       }
       important_notices: {
         Row: {
@@ -4068,6 +4137,7 @@ export type Database = {
         }[]
       }
       deal_status_bare: { Args: { p_label: string }; Returns: string }
+      delete_operation_credential: { Args: { p_id: string }; Returns: boolean }
       dispatch_pending_notifications: { Args: never; Returns: undefined }
       dispatch_pending_submissions: { Args: never; Returns: undefined }
       distribute_queued_lead: { Args: { p_lead_id: string }; Returns: string }
@@ -4131,6 +4201,20 @@ export type Database = {
           id: string
           label: string
           provider: string
+          updated_at: string
+        }[]
+      }
+      list_operation_credentials: {
+        Args: never
+        Returns: {
+          created_at: string
+          created_by_email: string
+          id: string
+          label: string
+          link: string
+          login: string
+          profile_id: string
+          profile_name: string
           updated_at: string
         }[]
       }
@@ -4313,6 +4397,32 @@ export type Database = {
           total: number
         }[]
       }
+      rename_deal_document: {
+        Args: { p_alias: string; p_document_id: string }
+        Returns: {
+          created_at: string
+          deal_id: string
+          display_name: string | null
+          document_type_id: string
+          id: string
+          mime_type: string | null
+          original_name: string
+          size_bytes: number | null
+          storage_path: string
+          stored_name: string
+          superseded_at: string | null
+          superseded_by: string | null
+          uploaded_by: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "deal_documents"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reveal_operation_credential: { Args: { p_id: string }; Returns: string }
       review_deal_documents: {
         Args: { p_approve: boolean; p_deal_id: string; p_reason?: string }
         Returns: Json
@@ -4346,6 +4456,16 @@ export type Database = {
         }
         Returns: string
       }
+      set_operation_credential: {
+        Args: {
+          p_id?: string
+          p_label: string
+          p_link?: string
+          p_login: string
+          p_secret: string
+        }
+        Returns: string
+      }
       set_profile_roles: {
         Args: {
           p_profile_id: string
@@ -4358,32 +4478,63 @@ export type Database = {
         Returns: undefined
       }
       slugify: { Args: { txt: string }; Returns: string }
+      store_broker_password: {
+        Args: {
+          p_actor_email?: string
+          p_actor_id?: string
+          p_login: string
+          p_profile_id: string
+          p_secret: string
+        }
+        Returns: string
+      }
       submit_deal_for_analysis: { Args: { p_deal_id: string }; Returns: Json }
       submit_deal_for_manager_review: {
         Args: { p_deal_id: string }
         Returns: Json
       }
       unaccent_fallback: { Args: { txt: string }; Returns: string }
-      visible_game_ranking: {
-        Args: { p_season_id: string }
-        Returns: {
-          active: boolean
-          avatar_url: string
-          breakdown: Json
-          director_id: string
-          director_name: string
-          full_name: string
-          manager_id: string
-          manager_name: string
-          points: number
-          profile_id: string
-          sales: number
-          season_id: string
-          team_id: string
-          team_name: string
-          vgv: number
-        }[]
-      }
+      visible_game_ranking:
+        | {
+            Args: { p_season_id: string }
+            Returns: {
+              active: boolean
+              avatar_url: string
+              breakdown: Json
+              director_id: string
+              director_name: string
+              full_name: string
+              manager_id: string
+              manager_name: string
+              points: number
+              profile_id: string
+              sales: number
+              season_id: string
+              team_id: string
+              team_name: string
+              vgv: number
+            }[]
+          }
+        | {
+            Args: { p_from: string; p_season_id: string; p_to: string }
+            Returns: {
+              active: boolean
+              avatar_url: string
+              breakdown: Json
+              director_id: string
+              director_name: string
+              full_name: string
+              manager_id: string
+              manager_name: string
+              points: number
+              profile_id: string
+              sales: number
+              season_id: string
+              team_id: string
+              team_name: string
+              vgv: number
+            }[]
+          }
     }
     Enums: {
       app_role:
@@ -4455,12 +4606,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4484,11 +4635,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4509,11 +4660,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4534,11 +4685,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4551,11 +4702,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4633,3 +4784,4 @@ export const Constants = {
     },
   },
 } as const
+

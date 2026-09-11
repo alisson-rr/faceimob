@@ -247,13 +247,13 @@ describe("GoalCard", () => {
       </MemoryRouter>,
     );
     expect(text).toContain("Sem meta cadastrada para 08/2026");
-    // O cartão de /equipes abre no mês do RELÓGIO e ainda não lê o `?mes=` da
-    // URL (pendência com o dono daquele arquivo): quem clicava aqui em 08/2026
-    // caía no formulário de outro mês e gravava a meta no lugar errado sem
-    // perceber. Enquanto o destino não lê o parâmetro, quem diz o mês é a
-    // FRASE — é ela que este teste trava, não só o atributo do link.
-    expect(text).toContain("escolhendo 08/2026 no campo Mês");
-    expect(query('a[href="/equipes?mes=2026-08"]')).not.toBeNull();
+    // Quem PODE gravar a meta da empresa cadastra aqui mesmo: o estado vazio
+    // abre o formulário de /equipes dentro do Dashboard (05/09/2026). Antes ele
+    // mandava a pessoa embora enquanto o botão do cabeçalho abria o formulário
+    // ali — duas ofertas, destinos diferentes. Uma oferta, um destino.
+    expect(text).toContain("Cadastre agora, sem sair do Dashboard.");
+    expect(text).toContain("Cadastrar meta");
+    expect(query('a[href="/equipes?mes=2026-08"]')).toBeNull();
     expect(query('[role="progressbar"]')).toBeNull();
     await cleanup();
   });
@@ -505,6 +505,26 @@ describe("LeadsPanel", () => {
     // cartão aqui punha duas cópias idênticas na mesma tela.
     expect(text).not.toContain("Base de leads");
     expect(text).not.toContain("sem recorte de período");
+    await cleanup();
+  });
+
+  it("empate no número de leads sai em ordem alfabética, não na ordem de chegada", async () => {
+    // `listLegacyLeads` pede só `created_at desc`, sem desempate: com um lead
+    // para cada corretor, os três empatam e a ordem da lista era a de chegada —
+    // ela mudava a cada lead novo. "Ávila" também prende o acento: em ordem de
+    // code unit ele cairia depois de "Zeca".
+    const empatados = ["Zeca", "Ávila", "Bruno"].map((nome, index) => ({
+      ...lead(nome, `2026-08-1${index}T12:00:00-03:00`),
+      broker_name: nome,
+    }));
+    const { text, cleanup } = await renderComCache(
+      <LeadsPanel month="08/2026" />,
+      semearLeads(empatados),
+    );
+    const posicao = (nome: string) => text.indexOf(nome);
+    expect(posicao("Ávila")).toBeGreaterThan(-1);
+    expect(posicao("Ávila")).toBeLessThan(posicao("Bruno"));
+    expect(posicao("Bruno")).toBeLessThan(posicao("Zeca"));
     await cleanup();
   });
 

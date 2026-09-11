@@ -276,8 +276,10 @@ test.describe("efeito no banco", () => {
  * A matriz por etapa era conferida pelo BANCO (`07_core_fixes.sql`) e pelo
  * arraste do corretor (`broker/etapas.spec.ts`), mas nada reprovava se o switch
  * desta aba parasse de gravar. O papel escolhido é "Sócio" pelo mesmo motivo do
- * bloco de cima: nenhum usuário da suíte o tem, e ele começa sem linha nenhuma
- * em `stage_permissions` — ou seja, negado.
+ * bloco de cima: nenhum usuário da suíte o tem. A linha da etapa é APAGADA no
+ * `beforeAll` porque `supabase/seed.sql` passou a semear o sócio em todas as
+ * etapas (par da migration 0101): o teste precisa começar do negado, e "sem
+ * linha" é o negado do banco.
  */
 test.describe("aba de etapas", () => {
   let etapaId = "";

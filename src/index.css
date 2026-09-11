@@ -49,7 +49,7 @@
     --warning-foreground: 222 45% 10%;
     --info: 196 78% 60%;
     --info-foreground: 222 45% 10%;
-    --highlight: 47 88% 58%;
+    --highlight: 46 96% 58%;
     --highlight-foreground: 222 45% 10%;
 
     /* Cores literais do simbolo — so decoracao (motivo da marca), nunca texto */
@@ -66,7 +66,7 @@
     --chart-5: 268 55% 68%;
 
     /* Podio */
-    --gold: 45 90% 60%;
+    --gold: 45 96% 62%;
     --gold-foreground: 222 45% 10%;
     --silver: 214 18% 76%;
     --silver-foreground: 222 45% 10%;
@@ -123,7 +123,12 @@
     --chart-4: 200 78% 36%;
     --chart-5: 268 45% 48%;
 
-    --gold: 43 82% 28%;
+    /* Dourado do tema claro e o mais saturado que o piso de 4,5:1 sobre `card`
+       permite: 42 95% 30% da 4,85:1, e cada ponto de luminosidade a mais
+       derruba isso (31% ja cai para 4,6:1). Ouro claro e vibrante no tema claro
+       so existe como PREENCHIMENTO com tinta escura em cima — e o papel de
+       `--highlight`, nao deste token, que tambem e lido como texto. */
+    --gold: 42 95% 30%;
     --gold-foreground: 0 0% 100%;
     --silver: 214 12% 44%;
     --silver-foreground: 0 0% 100%;

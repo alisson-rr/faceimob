@@ -135,10 +135,15 @@ begin
     exists (select 1 from public.leads where full_name = 'Lead Fila 0044'),
     'marketing continua vendo a fila (concessão da 0044 reproduz a policy antiga)');
 
+  -- Invertido em 10/09/2026 com a decisão do cliente de que sócio é
+  -- administrador (0097/0099): `has_permission()` curto-circuita em
+  -- `is_admin()`, então o sócio passa na `leads_select` da fila sem ter a linha
+  -- de `leads.view_queue` na matriz. Que a fila só abre para quem TEM a
+  -- permissão continua provado abaixo, ligando e desligando a do marketing.
   perform pg_temp.become21(soc);
   perform pg_temp.check21(
-    not exists (select 1 from public.leads where full_name = 'Lead Fila 0044'),
-    'sócio (sem a permissão) não vê a fila');
+    exists (select 1 from public.leads where full_name = 'Lead Fila 0044'),
+    'sócio vê a fila por ser administrador, sem linha na matriz (regra de 10/09/2026)');
 
   -- Desligar para o marketing tira a fila dele; só a matriz decide.
   perform pg_temp.become21(adm);
@@ -447,7 +452,7 @@ begin
 end
 $$;
 
-\echo '== 8. allowed_ips: conceder o menu é leitura; escrita continua do admin =='
+\echo '== 8. allowed_ips: conceder o menu é leitura; escrita é de quem administra =='
 
 do $$
 declare
@@ -456,9 +461,16 @@ declare
   cor uuid := '00000000-0000-0000-0000-000000004403';
   n int;
 begin
+  -- Os asserts do sócio viraram de lado em 10/09/2026, com a decisão do
+  -- cliente de que sócio e administrador têm o mesmo nível (0097 em
+  -- `is_admin()`, 0099 em `has_any_role('admin', …)`). A policy `allowed_ips_admin`
+  -- é `for all using (is_admin())`, então ele lê, cadastra e desativa faixa —
+  -- não por causa do menu, e sim por ser administrador. A regra do menu (quem
+  -- recebe o item ganha leitura, quem perde deixa de ler) continua provada
+  -- abaixo, com o corretor, que é o alvo real do controle antifraude.
   perform pg_temp.become21(soc);
   select count(*) into n from public.allowed_ips where label = 'faixa 0044';
-  perform pg_temp.check21(n = 0, 'sócio sem o menu não lê allowed_ips');
+  perform pg_temp.check21(n = 1, 'sócio lê allowed_ips sem o menu, por ser administrador (regra de 10/09/2026)');
 
   perform pg_temp.become21(adm);
   insert into public.role_permissions (role, permission, allowed)
@@ -467,18 +479,17 @@ begin
 
   perform pg_temp.become21(soc);
   select count(*) into n from public.allowed_ips where label = 'faixa 0044';
-  perform pg_temp.check21(n = 1, 'sócio com o menu lê a lista (a tela deixa de abrir vazia)');
+  perform pg_temp.check21(n = 1, 'conceder o menu ao sócio não muda nada: a linha dele na matriz é decorativa');
 
-  begin
-    insert into public.allowed_ips (label, ip_range) values ('invasao 0044', '198.51.100.45/32');
-    raise exception 'FALHOU: sócio cadastrou IP';
-  exception
-    when insufficient_privilege then
-      raise notice '  ok  sócio não cadastra IP';
-  end;
+  insert into public.allowed_ips (label, ip_range) values ('invasao 0044', '198.51.100.45/32');
+  select count(*) into n from public.allowed_ips where label = 'invasao 0044';
+  perform pg_temp.check21(n = 1, 'sócio cadastra IP como administrador (regra de 10/09/2026)');
+
   update public.allowed_ips set active = false where label = 'faixa 0044';
   get diagnostics n = row_count;
-  perform pg_temp.check21(n = 0, 'sócio não desativa IP');
+  perform pg_temp.check21(n = 1, 'sócio desativa IP como administrador (regra de 10/09/2026)');
+  -- Devolve a faixa ativa: o assert do corretor, abaixo, lê a mesma linha.
+  update public.allowed_ips set active = true where label = 'faixa 0044';
 
   perform pg_temp.become21(adm);
   delete from public.role_permissions where role = 'partner' and permission = 'menu.admin_allowed_ips';

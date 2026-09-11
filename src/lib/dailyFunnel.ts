@@ -1,5 +1,5 @@
 import { eachDayOfInterval, format, parseISO, startOfMonth } from "date-fns";
-import { IDEAL_STAGES } from "@/lib/metrics";
+import { idealStagePct } from "@/lib/metrics";
 
 /**
  * As contas do Diário — fora do componente porque três telas dependem delas e
@@ -12,34 +12,43 @@ import { IDEAL_STAGES } from "@/lib/metrics";
  * `funnel_targets` — o mesmo número cobrado por duas réguas.
  */
 
-/** As 8 métricas do checkpoint, na ordem em que a grade as mostra. */
+/**
+ * As 8 métricas do checkpoint, na ordem em que a grade as mostra — o catálogo,
+ * em um lugar só. `@/lib/metrics` mantinha um `DAILY_METRICS` idêntico byte a
+ * byte até 11/09/2026; foi apagado, e quem o usava lê daqui.
+ *
+ * `col` é o nome da MESMA métrica em `daily_entries`. Fica aqui porque as duas
+ * traduções (banco → tela e tela → banco) saem deste par: separá-las era o que
+ * permitia uma tela renomear de um lado e esquecer o outro.
+ */
 export const DAILY_FIELDS = [
-  { key: "leads", label: "Leads", color: "text-info" },
-  { key: "ligacoes", label: "Ligações", color: "text-info" },
-  { key: "coleta_docs", label: "Coleta Docs", color: "text-info" },
-  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-chart-5" },
-  { key: "visitas_realizadas", label: "Visita Real.", color: "text-chart-5" },
-  { key: "analises", label: "Análise Env.", color: "text-warning" },
-  { key: "aprovados", label: "Análise Aprov.", color: "text-success" },
-  { key: "vendas", label: "Venda", color: "text-warning" },
+  { key: "leads", label: "Leads", color: "text-info", col: "leads" },
+  { key: "ligacoes", label: "Ligações", color: "text-info", col: "calls" },
+  { key: "coleta_docs", label: "Coleta Docs", color: "text-info", col: "doc_collections" },
+  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-chart-5", col: "visits_scheduled" },
+  { key: "visitas_realizadas", label: "Visita Real.", color: "text-chart-5", col: "visits_done" },
+  { key: "analises", label: "Análise Env.", color: "text-warning", col: "analyses_sent" },
+  { key: "aprovados", label: "Análise Aprov.", color: "text-success", col: "analyses_approved" },
+  { key: "vendas", label: "Venda", color: "text-warning", col: "sales" },
 ] as const;
 
 export type DailyFieldKey = typeof DAILY_FIELDS[number]["key"];
+export type DailyColumn = typeof DAILY_FIELDS[number]["col"];
 export type DailyRow = Record<DailyFieldKey, number>;
 export type DailyBrokerMonth = Record<string, DailyRow & { days_filled?: number }>;
 
-/** Linha de `daily_entries` como a RPC a devolve (nomes das colunas do banco). */
-export type DailyEntry = {
-  profile_id: string;
-  leads?: number | null;
-  calls?: number | null;
-  doc_collections?: number | null;
-  visits_scheduled?: number | null;
-  visits_done?: number | null;
-  analyses_sent?: number | null;
-  analyses_approved?: number | null;
-  sales?: number | null;
-};
+/**
+ * As oito colunas de `daily_entries` como o BANCO as nomeia, derivadas do
+ * catálogo acima.
+ *
+ * Separado de `DailyEntry` porque nem todo SELECT pede `profile_id`: o
+ * Checkpoint soma por equipe e agrupa por relatorio. Sem este tipo, aquela tela
+ * reescrevia a traducao coluna → tela inteira so para nao pedir uma coluna.
+ */
+export type DailyEntryColumns = { [K in DailyColumn]?: number | null };
+
+/** Linha de `daily_entries` como a RPC a devolve, com o dono do lançamento. */
+export type DailyEntry = DailyEntryColumns & { profile_id: string };
 
 /** Um dia do mês: quem preencheu, as observações e a linha de cada corretor. */
 export type DailyDayRecord = { filled_by?: string | null; notes?: string | null; entries?: DailyEntry[] };
@@ -66,20 +75,38 @@ export const TARGET_SCOPE_LABEL: Record<string, string> = {
 export const zeroDailyRow = (): DailyRow =>
   DAILY_FIELDS.reduce((acc, field) => ({ ...acc, [field.key]: 0 }), {} as DailyRow);
 
-/** Linha da RPC (nomes do banco) → linha da tela (nomes das colunas). */
-export const fromDailyEntry = (row?: DailyEntry | null): DailyRow => ({
-  leads: Number(row?.leads) || 0,
-  ligacoes: Number(row?.calls) || 0,
-  coleta_docs: Number(row?.doc_collections) || 0,
-  visitas_agendadas: Number(row?.visits_scheduled) || 0,
-  visitas_realizadas: Number(row?.visits_done) || 0,
-  analises: Number(row?.analyses_sent) || 0,
-  aprovados: Number(row?.analyses_approved) || 0,
-  vendas: Number(row?.sales) || 0,
-});
+/**
+ * Linha da RPC (nomes do banco) → linha da tela (nomes das colunas).
+ *
+ * A ÚNICA tradução coluna → tela do diário. Havia três, com vocabulários
+ * diferentes (`visitas_feitas`/`enviadas`/`aprovadas` no Checkpoint), batendo
+ * por coincidência de manutenção: renomear uma coluna consertava uma tela e
+ * zerava calada a outra. Checkpoint e Diário passam por aqui.
+ */
+export const fromDailyEntry = (row?: DailyEntryColumns | null): DailyRow =>
+  DAILY_FIELDS.reduce(
+    (acc, field) => ({ ...acc, [field.key]: Number(row?.[field.col]) || 0 }),
+    {} as DailyRow,
+  );
 
-/** Meta de referência do produto — não um literal novo a cada tela. */
-const idealPct = (key: string) => IDEAL_STAGES.find((stage) => stage.key === key)?.stagePct ?? 0;
+/**
+ * Linha da tela → colunas de `daily_entries`. O INVERSO de `fromDailyEntry`,
+ * derivado do mesmo catálogo.
+ *
+ * O Diário público escrevia esta tradução à mão no envio — a terceira cópia do
+ * mesmo apelidamento, e a que ninguém lembra de atualizar quando uma coluna
+ * muda de nome.
+ *
+ * Recebe um LEITOR, não um objeto, porque o valor não vai cru para o banco: o
+ * Diário passa cada número por `halfStep` antes de gravar (0038).
+ */
+export const toDailyEntry = (
+  value: (key: DailyFieldKey) => number,
+): Record<DailyColumn, number> =>
+  DAILY_FIELDS.reduce(
+    (acc, field) => ({ ...acc, [field.col]: value(field.key) }),
+    {} as Record<DailyColumn, number>,
+  );
 
 /**
  * `funnel_targets` manda quando existe; o funil ideal do produto é o fallback.
@@ -89,9 +116,9 @@ const idealPct = (key: string) => IDEAL_STAGES.find((stage) => stage.key === key
  */
 export const targetsFrom = (raw: FunnelTargetsRow | null | undefined): DailyTargets => ({
   scope: raw?.scope ?? "ideal",
-  analises: Number(raw?.lead_to_analysis_pct) || idealPct("analises"),
-  aprovados: Number(raw?.analysis_to_approval_pct) || idealPct("aprovados"),
-  vendas: Number(raw?.approval_to_sale_pct) || idealPct("vendas"),
+  analises: Number(raw?.lead_to_analysis_pct) || idealStagePct("analises"),
+  aprovados: Number(raw?.analysis_to_approval_pct) || idealStagePct("aprovados"),
+  vendas: Number(raw?.approval_to_sale_pct) || idealStagePct("vendas"),
 });
 
 /** Sábado e domingo não são dia de checkpoint. */

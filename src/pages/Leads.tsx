@@ -406,7 +406,7 @@ export default function Leads() {
                 : undefined
             }
           >
-            <div className={filtered.length > 0 ? "border-b border-border p-4" : "pb-4"}>
+            <div className={filtered.length > 0 ? "border-b border-border p-4 sm:p-5" : "pb-4"}>
               <LeadFilters
                 filters={filters}
                 onChange={setFilters}

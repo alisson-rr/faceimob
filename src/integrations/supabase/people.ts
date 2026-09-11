@@ -492,6 +492,7 @@ export type TrailEntry = {
 const ACTION_LABEL: Record<string, string> = {
   create: "criou o acesso",
   reset: "trocou o e-mail de acesso",
+  password: "definiu a senha de acesso",
   denied: "TENTOU provisionar sem ser administrador",
   revoked: "BLOQUEOU a entrada",
   restored: "devolveu a entrada",

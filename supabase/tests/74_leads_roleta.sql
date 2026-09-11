@@ -203,6 +203,7 @@ $$;
 do $$
 declare
   cora uuid := '00000000-0000-0000-0000-000000740003';
+  corb uuid := '00000000-0000-0000-0000-000000740004';
   soc  uuid := '00000000-0000-0000-0000-000000740005';
   v_group uuid;
   v_lead  uuid;
@@ -238,12 +239,22 @@ begin
     raise notice '  ok  encerrar o lead exige motivo';
   end;
 
-  -- Quem não escreve no lead não encerra: o sócio enxerga e não decide.
+  -- Quem não escreve no lead não encerra. O sócio deixou de ser essa
+  -- testemunha em 10/09/2026: por decisão do cliente ele é administrador
+  -- (0097 em `is_admin()`, 0099 em `has_any_role('admin', …)`), e `close_lead`
+  -- cobra `can_write_lead`, que passa por `is_admin()`. O assert virou de lado
+  -- — agora afirma que o sócio escreve — e a recusa passa a ser provada pelo
+  -- corretor de fora, que continua sem direito de escrita no lead alheio.
   perform set_config('request.jwt.claims',
     json_build_object('sub', soc::text, 'role', 'authenticated')::text, false);
+  perform pg_temp.check74(public.can_write_lead(v_lead),
+    'sócio escreve no lead: encerrar deixou de ser recusa para ele (regra de 10/09/2026)');
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', corb::text, 'role', 'authenticated')::text, false);
   begin
     perform public.close_lead(v_lead, 'lost', 'Sem interesse');
-    raise exception 'FALHOU: sócio encerrou lead de outro corretor';
+    raise exception 'FALHOU: corretor de fora encerrou lead de outro corretor';
   exception when insufficient_privilege then
     raise notice '  ok  quem não escreve no lead não o encerra';
   end;

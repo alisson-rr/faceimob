@@ -2,10 +2,11 @@
 // resposta do operador humano dentro do CRM e testes de credencial da Meta.
 //
 // As três coisas vivem aqui porque compartilham a MESMA porta: sessão do
-// usuário → papel admin/marketing/sdr → só então o cofre é tocado. Uma function
+// usuário → papel admin (sócio junto), marketing ou sdr → só então o cofre é tocado. Uma function
 // nova por ação repetiria essa porta três vezes, e é ela que impede a chave
 // publicável do bundle de fazer a WABA da empresa mandar mensagem.
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { hasAnyRole } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
 import { descreverFalhaMeta } from '../_shared/metaErros.ts';
 
@@ -275,9 +276,20 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    const { data: roles } = await supabase
-      .from('user_roles').select('role').eq('profile_id', authData.user.id);
-    const allowed = (roles || []).some((role: { role: string }) => ['admin', 'marketing', 'sdr'].includes(role.role));
+    // `hasAnyRole` e não a lista à mão: pedir 'admin' aceita também o sócio,
+    // como `has_any_role` no banco (0099) — sem isso a function recusava o
+    // disparo que `remarketing_lists_all` já deixa o sócio fazer.
+    const { allowed, error: rolesErr } = await hasAnyRole(
+      supabase, authData.user.id, 'admin', 'marketing', 'sdr',
+    );
+    // Falha de LEITURA não é recusa: antes ela caía no 403 e mandava o operador
+    // procurar uma permissão que ele tem. Continua sem disparar nada.
+    if (rolesErr) {
+      console.error('sdr-whatsapp-broadcast: falha ao ler papéis —', rolesErr);
+      return new Response(JSON.stringify({ error: 'Não foi possível verificar seu papel.' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     if (!allowed) {
       return new Response(JSON.stringify({ error: 'Papel sem permissão para disparo em massa' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

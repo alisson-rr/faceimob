@@ -102,14 +102,25 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true }: L
 
       const origem = lead.source || "Sem origem";
       porOrigem.set(origem, (porOrigem.get(origem) ?? 0) + 1);
-      porSituacao.set(lead.status, (porSituacao.get(lead.status) ?? 0) + 1);
+      // Agrupa pelo RÓTULO, não pelo valor cru: o desempate do `ordenar` ordena
+      // o que a pessoa lê ("Convertido" antes de "Novo"), e não "converted"
+      // antes de "new" — que só por acaso dá a mesma ordem.
+      const situacao = statusLabel(lead.status);
+      porSituacao.set(situacao, (porSituacao.get(situacao) ?? 0) + 1);
 
       const corretor = lead.broker_name || "Não atribuído";
       porCorretor.set(corretor, (porCorretor.get(corretor) ?? 0) + 1);
     }
 
+    // Desempate pelo rótulo: a ordem do empate era a de inserção no `Map`, que
+    // é a ordem em que os LEADS chegaram (`listLegacyLeads` pede só
+    // `created_at desc`, sem desempate no banco). Três origens com 4 leads cada
+    // trocavam de posição entre um carregamento e outro, e o corte do
+    // `slice(0, 10)` dos corretores mudava de vítima junto. `pt-BR` para o
+    // acento e a caixa não jogarem o nome para o fim da lista.
     const ordenar = (map: Map<string, number>) =>
-      Array.from(map, ([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+      Array.from(map, ([label, value]) => ({ label, value }))
+        .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, "pt-BR"));
 
     return {
       base: base.length,
@@ -121,7 +132,7 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true }: L
       // e recuaria o rótulo um dia em Brasília.
       porDia: Array.from(porDia, ([iso, value]) => ({ name: format(parseISO(iso), "dd/MM"), value })),
       porOrigem: ordenar(porOrigem),
-      porSituacao: ordenar(porSituacao).map((row) => ({ ...row, label: statusLabel(row.label) })),
+      porSituacao: ordenar(porSituacao),
       porCorretor: ordenar(porCorretor).slice(0, 10),
     };
   }, [leads, month]);

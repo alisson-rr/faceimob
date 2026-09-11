@@ -20,6 +20,7 @@
  * aqui ele também passa — a tela não pode negar o que o banco aceita.
  */
 import {
+  STAGES_REQUIRING_REVIEW,
   toNumberOrNull,
   type LegacyDealRecord,
   type SaveLegacyDealInput,
@@ -51,9 +52,6 @@ export function dealLock(
   return { locked: false, reason: "", monthClosed };
 }
 
-/** Etapas que a 0028 só libera com a conferência documental aprovada. */
-const REQUIRE_APPROVED_REVIEW = ["under_analysis", "approved", "contract", "closed"];
-
 /**
  * Motivo pelo qual a movimentação seria recusada, ou `null` se ela passa.
  *
@@ -79,10 +77,13 @@ export function blockedMoveReason(
   if (!opts.isAdmin && opts.closedMonths.includes(dealMonth(deal))) {
     return `O mês ${dealMonth(deal)} está fechado. Fale com o administrador para reabrir.`;
   }
-  // `under_analysis` fica de fora: mover para lá tem caminho próprio (envia
-  // para a conferência do gerente em vez de gravar a etapa).
+  // A lista é a de `STAGES_REQUIRING_REVIEW` (newSchema), que espelha
+  // `deal_stage_document_block` (0111) — era uma cópia local que já divergia.
+  // `under_analysis` fica de fora DESTA porta, e só dela: mover para lá tem
+  // caminho próprio (envia para a conferência do gerente em vez de gravar a
+  // etapa). A exceção é do CAMINHO, não da lista.
   if (stage.code !== "under_analysis"
-      && REQUIRE_APPROVED_REVIEW.includes(stage.code)
+      && STAGES_REQUIRING_REVIEW.includes(stage.code)
       && deal.document_review_status !== "approved") {
     return `"${stage.label}" só aceita negócio com a documentação aprovada pelo gerente.`;
   }

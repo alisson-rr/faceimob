@@ -45,7 +45,14 @@ export type StagePermissionRecord = {
 
 /** Papéis editáveis na tela. `admin` fica de fora: `has_permission()` e
  *  `can_enter_stage()` curto-circuitam em `is_admin()`, então conceder ou negar
- *  linha para admin não mudaria nada e daria a impressão errada de que muda. */
+ *  linha para admin não mudaria nada e daria a impressão errada de que muda.
+ *
+ *  `partner` está na mesma situação desde a 0097 (sócio responde por
+ *  `is_admin()`), mas CONTINUA na lista porque ela virou a fonte de papéis
+ *  atribuíveis de `BrokerEditModal` e o mapa de rótulos de `Settings`: tirá-lo
+ *  daqui impediria conceder o papel de sócio a alguém. Quem separar a coluna da
+ *  matriz de permissões da lista de atribuição deve deixar de oferecer sócio
+ *  lá — a linha dele não muda mais nada. */
 export const EDITABLE_ROLES: { value: NewAppRole; label: string; color: string }[] = [
   // Cor e apoio visual do chip; quem identifica o papel e o rotulo ao lado.
   // A escala de grafico tem 5 tons, entao dois papeis repetem tom de proposito.
@@ -82,10 +89,10 @@ export const ROLE_LABEL: Record<NewAppRole, string> = {
  * `primaryRole` — e precisa ter, é `primaryRole` que espelha
  * `auth_effective_role()` do banco nas travas de escrita.
  *
- * `partner` sozinho continua sendo o observador de leitura ampla e escrita
- * nenhuma que 15 asserções do harness SQL cobram (a 0093 o promovia
- * automaticamente a admin e a 0094 desfez isso). Os dois casos leem "Sócio" na
- * tela; o que muda é o que cada um pode.
+ * Desde a 0097 `partner` sozinho também tem a permissão do administrador
+ * (`is_admin()` responde por ele), sem receber o papel `admin` — a promoção
+ * automática da 0093 foi desfeita pela 0094 e não voltou. Por isso o rótulo
+ * segue sendo decidido aqui, e não por `primaryRole`.
  *
  * Ou seja: `primaryRole` responde "o que esta pessoa PODE"; esta função
  * responde "como esta pessoa se chama". Misturar as duas foi o que fez o papel

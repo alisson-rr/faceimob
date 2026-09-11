@@ -3,7 +3,7 @@
 // mesma do webhook de WhatsApp: vive em ../_shared/sdrAgent.ts.
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { ConversationClosedError, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
-import { requireUserPermission, serviceClient } from '../_shared/auth.ts';
+import { hasAnyRole, requireUserPermission, serviceClient } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
 
 const corsHeaders = {
@@ -22,10 +22,13 @@ const PLAYGROUND_SOURCE = 'sdr_playground';
 /**
  * Papéis que a RLS deixa escrever em `sdr_conversations`/`sdr_messages`
  * (policies `sdr_conversations_write` da 0008). O playground GRAVA conversa:
- * liberá-lo para todo mundo com `menu.sdr` fazia director/manager/partner
- * escreverem pela function o que o banco recusa no acesso direto — e depois não
+ * liberá-lo para todo mundo com `menu.sdr` fazia director/manager escreverem
+ * pela function o que o banco recusa no acesso direto — e depois não
  * conseguirem reler a própria simulação na aba Conversas. Além disso, cada
  * turno gasta crédito da OpenAI.
+ *
+ * O sócio NÃO está nesta lista e ainda assim passa: `hasAnyRole` espelha a
+ * `has_any_role` do banco, onde pedir 'admin' aceita também 'partner' (0099).
  */
 const WRITE_ROLES = ['admin', 'marketing', 'sdr'];
 
@@ -115,17 +118,16 @@ Deno.serve(async (req) => {
     }
 
     // Segunda porta: gravar conversa é dos papéis que a RLS aceita.
-    const { data: roles, error: rolesErr } = await supabase
-      .from('user_roles').select('role').eq('profile_id', userId);
+    const { allowed, error: rolesErr } = await hasAnyRole(supabase, userId, ...WRITE_ROLES);
     if (rolesErr) {
-      console.error('sdr-agent-chat: falha ao ler papéis —', rolesErr.message);
+      console.error('sdr-agent-chat: falha ao ler papéis —', rolesErr);
       return json({ error: 'Não foi possível verificar seu papel.' }, 500);
     }
-    if (!(roles || []).some((r: { role: string }) => WRITE_ROLES.includes(r.role))) {
+    if (!allowed) {
       return json({
         code: 'role_forbidden',
-        error: 'A simulação grava conversa no banco: só admin, marketing e SDR podem usar o Playground. '
-          + 'Seu papel consulta o módulo.',
+        error: 'A simulação grava conversa no banco: só administrador, sócio, marketing e SDR podem usar o '
+          + 'Playground. Seu papel consulta o módulo.',
       }, 403);
     }
 

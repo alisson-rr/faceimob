@@ -89,11 +89,15 @@ export type AdCampaignRow = {
   lead_source_id: string | null;
   total_spend: number;
   synced_at: string | null;
+  /** Recorte que `total_spend` cobre quando ele veio de relatório importado
+   *  (0113). Nulo nos dois = gasto digitado. */
+  spend_period_start: string | null;
+  spend_period_end: string | null;
 };
 
 const CAMPOS_CAMPANHA =
   "id,external_id,platform,name,developer_id,status,daily_budget,lifetime_budget,"
-  + "starts_on,ends_on,lead_source_id,total_spend,synced_at";
+  + "starts_on,ends_on,lead_source_id,total_spend,synced_at,spend_period_start,spend_period_end";
 
 export async function listAdCampaigns(): Promise<AdCampaignRow[]> {
   // `untyped` pelo mesmo motivo das RPCs acima: as colunas da 0089 ainda não
@@ -140,16 +144,34 @@ export const adStatusLabel = (status: string | null): string =>
  * De onde veio o gasto da campanha — a MESMA frase nas duas tabelas de
  * `/marketing`.
  *
- * NENHUM código escreve `ad_campaigns.synced_at`: não há Marketing API neste
- * sistema, e a coluna só tem valor de semente. Escrita em dois lugares, a frase
- * divergiu — o painel dizia "digitado · atualizado 28/07/2026" e a tabela logo
- * abaixo dizia "sincronizado 28/07/2026" para a MESMA linha, afirmando uma
- * conversa com a Meta que nunca houve. A data continua visível porque a idade
- * do gasto importa (ele divide o CPL e o ROAS); o que não pode variar é de onde
- * ela veio.
+ * Três origens possíveis, e a tela precisa distinguir as três porque este é o
+ * número que divide o CPL e o ROAS:
+ *
+ *   · RELATÓRIO IMPORTADO (0113) — tem período. O período aparece junto de
+ *     propósito: o gasto importado vale pelo recorte que o gestor exportou, e
+ *     um relatório de agosto lido como gasto vitalício subestimaria o CPL.
+ *   · digitado com data — o `synced_at` de semente, sem nenhuma importação por
+ *     trás. Continua dizendo "digitado": escrita em dois lugares, a frase
+ *     divergiu uma vez ("sincronizado 28/07/2026" na tabela de baixo, para a
+ *     linha que o painel dava como digitada) e afirmou uma conversa com a Meta
+ *     que nunca houve.
+ *   · digitado, sem data.
+ *
+ * Nada aqui fala com a Marketing API: o número importado veio de um arquivo que
+ * uma pessoa exportou do Gerenciador de Anúncios.
  */
-export const origemDoGasto = (syncedAt: string | null): string =>
-  syncedAt ? `digitado · atualizado ${date(syncedAt)}` : "digitado";
+export const origemDoGasto = (
+  syncedAt: string | null,
+  spendPeriodStart?: string | null,
+  spendPeriodEnd?: string | null,
+): string => {
+  if (spendPeriodStart && spendPeriodEnd) {
+    return spendPeriodStart === spendPeriodEnd
+      ? `relatório da Meta · ${date(spendPeriodStart)}`
+      : `relatório da Meta · ${date(spendPeriodStart)} a ${date(spendPeriodEnd)}`;
+  }
+  return syncedAt ? `digitado · atualizado ${date(syncedAt)}` : "digitado";
+};
 
 export type AdCampaignInput = {
   externalId: string;
@@ -333,6 +355,93 @@ export async function deleteAdCampaign(id: string): Promise<void> {
   const { data, error } = await supabase.from("ad_campaigns").delete().eq("id", id).select("id");
   if (error) throw dbError("excluir campanha", error);
   if (!data?.length) throw new Error("Sem permissão para excluir campanhas (apenas admin e marketing).");
+}
+
+/** Uma linha do relatório da Meta já casada com a campanha cadastrada. */
+export type AdSpendImportRow = {
+  campaign_id: string;
+  /** `YYYY-MM-DD` — o recorte do relatório, não a veiculação da campanha. */
+  period_start: string;
+  period_end: string;
+  spend: number;
+};
+
+export type ResultadoDaImportacao = {
+  linhas: number;
+  campanhas: number;
+  /** Linhas de período que saíram para o relatório novo entrar. */
+  substituidas: number;
+};
+
+/**
+ * Grava o gasto do relatório exportado do Gerenciador de Anúncios.
+ *
+ * Uma chamada só, e não um insert por linha: apagar o período sobreposto e
+ * gravar o novo são dois passos que não podem acontecer pela metade — entre um
+ * e outro o `total_spend` ficaria menor do que a realidade. A RPC (0113) faz os
+ * dois na mesma transação, é `security invoker` (a RLS de `ad_campaign_spend`
+ * continua valendo) e recusa quem não é admin, sócio ou marketing com 42501.
+ *
+ * Reimportar o mesmo arquivo não duplica: a chave é campanha + período.
+ */
+export async function importMetaSpend(
+  rows: AdSpendImportRow[],
+  sourceFile?: string | null,
+): Promise<ResultadoDaImportacao> {
+  if (!rows.length) throw new Error("Nenhuma linha do relatório casou com campanha cadastrada.");
+  const { data, error } = await untyped.rpc("marketing_import_ad_spend", {
+    p_rows: rows,
+    p_source_file: sourceFile ?? null,
+  });
+  if (error) throw dbError("importar o relatório da Meta", error);
+  const resultado = (data as ResultadoDaImportacao[] | null)?.[0];
+  return {
+    linhas: Number(resultado?.linhas ?? 0),
+    campanhas: Number(resultado?.campanhas ?? 0),
+    substituidas: Number(resultado?.substituidas ?? 0),
+  };
+}
+
+/** Um recorte já gravado do livro do gasto (`ad_campaign_spend`, 0113). Em
+ *  português porque quem consome é a conciliação do relatório. */
+export type AdSpendBookRow = {
+  campaignId: string;
+  /** `YYYY-MM-DD`. */
+  inicio: string;
+  fim: string;
+  gasto: number;
+};
+
+/**
+ * O gasto JÁ IMPORTADO das campanhas — o livro que a próxima importação soma.
+ *
+ * A prévia precisa dele para não mentir: `marketing_import_ad_spend` regrava
+ * `total_spend` como a soma do livro INTEIRO da campanha, então dizer "serão
+ * gravados R$ X" com a soma das linhas do arquivo promete um número que a tela
+ * não vai mostrar quando já existe outro período gravado.
+ *
+ * Leitura comum, sob RLS (`reports.view_finance`, 0045) — a mesma permissão que
+ * a tela de marketing já exige para ver dinheiro de campanha.
+ */
+export async function adSpendBook(campaignIds: string[]): Promise<AdSpendBookRow[]> {
+  if (!campaignIds.length) return [];
+  const { data, error } = await untyped
+    .from("ad_campaign_spend")
+    .select("campaign_id,period_start,period_end,spend")
+    .in("campaign_id", campaignIds);
+  if (error) throw dbError("ler o gasto já importado das campanhas", error);
+  const rows = (data ?? []) as {
+    campaign_id: string;
+    period_start: string;
+    period_end: string;
+    spend: number | string | null;
+  }[];
+  return rows.map((row) => ({
+    campaignId: row.campaign_id,
+    inicio: row.period_start,
+    fim: row.period_end,
+    gasto: Number(row.spend ?? 0),
+  }));
 }
 
 export type CampaignStatRow = {

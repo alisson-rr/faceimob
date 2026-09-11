@@ -297,7 +297,13 @@ begin
   on conflict do nothing;
   set role authenticated;
 
-  -- Sócio: leitura ampla, zero escrita. É o papel que separa ver de editar.
+  -- Sócio: desde 10/09/2026 ele é administrador por decisão do cliente (0097 em
+  -- `is_admin()`, 0099 em `has_any_role('admin', …)`), então escreve igual. Os
+  -- dois asserts abaixo cobravam o contrário e foram invertidos junto com a
+  -- regra: `deal_clients_update` chega nele por `can_edit_deal` →
+  -- `has_permission` → `is_admin()`, e `deal_clients_delete` pelo `is_admin()`
+  -- que ela testa direto. Quem separa ver de editar aqui passou a ser o CCA,
+  -- logo abaixo: corrige o comprador e não o exclui.
   perform set_config('request.jwt.claims',
     json_build_object('sub', socio::text, 'role','authenticated')::text, false);
 
@@ -305,13 +311,9 @@ begin
     (select count(*) from public.deal_clients where deal_id = v_deal) = 1,
     'sócio enxerga o cliente do negócio');
 
-  delete from public.deal_clients where deal_id = v_deal;
-  get diagnostics v_linhas = row_count;
-  perform pg_temp.check2(v_linhas = 0, 'sócio não apaga cliente (só leitura)');
-
   update public.deal_clients set full_name = 'Alterado' where deal_id = v_deal;
   get diagnostics v_linhas = row_count;
-  perform pg_temp.check2(v_linhas = 0, 'sócio não edita cliente');
+  perform pg_temp.check2(v_linhas = 1, 'sócio edita cliente como administrador (regra de 10/09/2026)');
 
   -- CCA: corrige dado do comprador, mas não exclui o comprador.
   perform set_config('request.jwt.claims',
@@ -324,6 +326,15 @@ begin
   delete from public.deal_clients where deal_id = v_deal;
   get diagnostics v_linhas = row_count;
   perform pg_temp.check2(v_linhas = 0, 'CCA não exclui o comprador do negócio');
+
+  -- A exclusão do sócio fica por último justamente porque agora ELA FUNCIONA:
+  -- feita antes, tiraria a linha que o CCA precisa encontrar.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', socio::text, 'role','authenticated')::text, false);
+
+  delete from public.deal_clients where deal_id = v_deal;
+  get diagnostics v_linhas = row_count;
+  perform pg_temp.check2(v_linhas = 1, 'sócio apaga cliente como administrador (regra de 10/09/2026)');
 end
 $$;
 

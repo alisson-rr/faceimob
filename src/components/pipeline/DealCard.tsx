@@ -6,6 +6,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
+import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS } from "@/lib/tone";
 import { calcDealProbability } from "@/lib/aiAnalytics";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { dealMonth, pct } from "./filters";
@@ -74,7 +75,7 @@ export function DealCard({
 }: Props) {
   const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
   const probability = calcDealProbability(deal);
-  const stale = deal.days_in_pipeline > 30;
+  const idade = dealAgeTone(deal.days_in_pipeline);
   const movable = !lock.locked && canExit;
   const mes = dealMonth(deal);
 
@@ -199,7 +200,7 @@ export function DealCard({
             >
               {probability}%
             </span>
-            <span className={cn("text-xs tabular-nums", stale ? "text-destructive" : "text-muted-foreground")}>
+            <span className={cn("text-xs font-semibold tabular-nums", DEAL_AGE_CLASS[idade].text)}>
               {deal.days_in_pipeline}d
             </span>
           </div>
@@ -212,7 +213,17 @@ export function DealCard({
       <div className="mt-2 flex items-center gap-2 border-t border-border/20 pt-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <User className="h-3 w-3 flex-shrink-0 text-muted-foreground" aria-hidden />
-          <span className="truncate text-xs text-muted-foreground">{deal.broker1 || "Sem corretor"}</span>
+          {/* Nome do corretor colorido por pessoa, igual à tabela: no quadro a
+              coluna é uma pilha de cartões e o nome era mais um cinza entre
+              cinzas. A cor acompanha o nome escrito — nunca é o único sinal. */}
+          <span
+            className={cn(
+              "truncate text-xs",
+              deal.broker1 ? `font-medium ${brokerTextClass(deal.broker1)}` : "text-muted-foreground",
+            )}
+          >
+            {deal.broker1 || "Sem corretor"}
+          </span>
           {/* Fatia do corretor no VGV — o número que define comissão e que só
               existia dentro do modal, na aba Detalhes. */}
           {deal.broker1_share != null && (
@@ -224,7 +235,9 @@ export function DealCard({
         <div className="flex items-center gap-1">
           {deal.visit_date && <CalendarCheck className="h-3 w-3 text-warning" aria-label="Visita agendada" />}
           {deal.notes && <StickyNote className="h-3 w-3 text-muted-foreground" aria-label="Tem observação" />}
-          {stale && <AlertCircle className="h-3 w-3 text-destructive" aria-label="Parado há mais de 30 dias" />}
+          {idade === "danger" && (
+            <AlertCircle className="h-3 w-3 text-destructive" aria-label="Parado há 10 dias ou mais" />
+          )}
           {moveButton(previousStage, ChevronLeft)}
           {moveButton(nextStage, ChevronRight)}
           {/* Perder existia só na tabela: encerrar um negócio pelo kanban

@@ -103,7 +103,11 @@ begin
   perform pg_temp.check22(v_count = 4,
     'cenário reproduz o broker automático do cadastro nos quatro perfis');
 
-  select id into v_stage from public.pipeline_stages where code = 'proposal';
+  -- A etapa INICIAL, e não "Proposta": desde a 0101 quem não é administrador só
+  -- CRIA negócio na etapa de nascimento (`is_initial`) — é onde o editor de
+  -- negócio nasce (`emptyDeal`, src/components/DealDetailModal.tsx). A etapa
+  -- aqui é cenário; o que este arquivo mede é o participante do criador.
+  select id into v_stage from public.pipeline_stages where is_initial and active;
   perform pg_temp.check22(v_stage is not null, 'catálogo de etapas carregado');
 
   -- `deals_guard_closed_month` é BEFORE INSERT e testes anteriores fecham meses.

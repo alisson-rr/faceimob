@@ -1,50 +1,71 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { endOfMonth, format, startOfMonth } from "date-fns";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronDown, Flame, Lightbulb, Megaphone } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { SectionCard } from "@/components/shared";
+import { Flame, Lightbulb, Megaphone } from "lucide-react";
+import { loadMuralDoDia } from "@/integrations/supabase/recados";
+import type { WeekRange } from "@/integrations/supabase/game";
+import { useAuth } from "@/contexts/AuthContext";
+import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard";
+import { PodiumCards } from "@/components/engagement";
+import { brl, num } from "@/lib/format";
+import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
-import { num } from "@/lib/format";
 import type { PipelineDeal } from "@/types/crm";
-import { useGameRanking } from "@/hooks/useGameRanking";
+import { useCurrentSeasonId, useGameRanking, useSeasonRanking } from "@/hooks/useGameRanking";
 
 type Props = { deals: PipelineDeal[] };
 
 /**
- * O que este papel vê no card — a regra sozinha, para o teste alcançar.
+ * O mês da meta da faixa do corretor, no formato que `useGoal` espera.
  *
- * Falha FECHADO: papel desconhecido cai no recorte mais estreito (só a própria
- * posição). Errar para o lado estreito esconde informação de quem talvez
- * pudesse vê-la; errar para o largo publica o placar da empresa para quem não
- * deveria — e papel novo no enum é exatamente o caso em que ninguém lembra de
- * voltar aqui.
+ * É o mês do RELÓGIO, e é de propósito. Antes saía de `season.period_start`,
+ * e isso dava dois alvos diferentes para a mesma pessoa: numa temporada aberta
+ * em agosto, o Dashboard mostrava a meta de setembro (o mês escolhido no filtro,
+ * que abre no corrente) e esta faixa a de agosto. Pior, era mais uma razão para
+ * o traço: `MetaVgv` (/equipes) grava sempre em `goalPeriods()`, o mês CORRENTE
+ * — a faixa procurava a meta num mês em que ninguém cadastra.
+ *
+ * Fora da faixa do corretor devolve `ALL_MONTHS`, que é o valor com que
+ * `useGoal` desliga a consulta: gerente, diretor e admin veem o pódio e não têm
+ * por que pagar a leitura.
  */
-export function recorteDoRanking(role: string): { soMinhaPosicao: boolean; escopo: string } {
-  if (role === "admin") return { soMinhaPosicao: false, escopo: "Empresa" };
-  if (role === "director") return { soMinhaPosicao: false, escopo: "Sua diretoria" };
-  if (role === "manager") return { soMinhaPosicao: false, escopo: "Sua equipe" };
-  return { soMinhaPosicao: true, escopo: "Sua posição" };
+export function mesDaMetaDoCorretor(soMinhaPosicao: boolean, hoje: Date = new Date()): string {
+  return soMinhaPosicao ? format(hoje, "MM/yyyy") : ALL_MONTHS;
 }
 
 /**
- * Ranking do game no Pipeline — três recortes, um por quem está olhando.
+ * O mês corrente em dias, no `AAAA-MM-DD` que `visible_game_ranking` aceita.
  *
- * Decisão do dono em 05/09/2026:
- *   · corretor  → só a posição DELE. Ele já vê o pódio completo em Gamificação;
- *                 aqui, no meio do trabalho, o que interessa é onde ele está.
- *   · gerente e diretor → top 3 da equipe/diretoria que lideram.
- *   · admin e sócio     → top 3 da empresa.
+ * A barra comparava o realizado da TEMPORADA com a meta do MÊS — dois períodos
+ * diferentes na mesma fração, e um percentual que crescia sozinho a cada mês
+ * que a temporada atravessava. Com este intervalo o numerador é lido no mesmo
+ * mês do denominador, pela MESMA RPC que já monta o placar (0107): é filtro de
+ * leitura, não um segundo jeito de contar venda.
+ */
+export function intervaloDoMes(hoje: Date = new Date()): WeekRange {
+  return {
+    from: format(startOfMonth(hoje), "yyyy-MM-dd"),
+    to: format(endOfMonth(hoje), "yyyy-MM-dd"),
+  };
+}
+
+/**
+ * Card de game do topo do Pipeline — dois desenhos, um por quem está olhando
+ * (prints do cliente, 10/09/2026).
+ *
+ *   · corretor            → faixa fina: anel de progresso, nome, pontos, barra
+ *                           da meta de VGV do mês e "Saiba Mais".
+ *   · gerente/diretor/admin → pódio de três cartões (prata, ouro, bronze).
+ *
+ * Sem cabeçalho de seção: o `SectionCard` custava mais uma faixa de título e o
+ * pedido em aberto é o oposto ("o ranking está um pouco grande"). O nome da
+ * região vai no `aria-label`, que é quem o leitor de tela usa para anunciá-la.
  *
  * O RECORTE DOS DADOS continua sendo do servidor (`visible_game_ranking`): esta
- * tela escolhe o que MOSTRA do que já chegou, e nunca o contrário. Um sócio com
- * poderes de administrador entra pelo ramo de admin, porque carrega os dois
- * papéis; sócio que só acompanha cai no recorte estreito, que é o certo para
- * quem só lê.
- *
- * Enxugado no mesmo passo (pedido de 05/09: "um pouco poluído", "ranking está
- * grande"): o card perdeu o gradiente e o badge de contagem — a contagem agora
- * vive no botão que expande a lista, onde ela serve para alguma coisa.
+ * tela escolhe o que MOSTRA do que já chegou, e nunca o contrário.
  */
 export default function PipelineTopRanking({ deals }: Props) {
   const dealsForHook = deals.map((d) => ({
@@ -53,151 +74,327 @@ export default function PipelineTopRanking({ deals }: Props) {
     stage: d.stage,
     active: d.active,
   }));
-  const { role, scoped, meuScore, minhaPosicao } = useGameRanking(dealsForHook);
+  const { scoped, meuScore, recorte, seasonId } = useGameRanking(dealsForHook);
+  const { profile, user } = useAuth();
   const [openInfo, setOpenInfo] = useState(false);
-  const [verTodos, setVerTodos] = useState(false);
   const [tip, setTip] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ title: string | null; message: string } | null>(null);
 
+  const { soMinhaPosicao, escopo } = recorte;
+
+  // As MESMAS duas chaves de cache que o `useGameRanking` já usa — nenhuma
+  // consulta a mais, só o `isError` e o "há temporada?" que o hook não devolve.
+  // Sem isso, falha de leitura e temporada fechada sumiam com o card inteiro.
+  const temporada = useCurrentSeasonId();
+  const placar = useSeasonRanking(seasonId);
+
+  /**
+   * A meta do mês da faixa do corretor — VGV, e é a única que existe de verdade.
+   *
+   * O rótulo já foi "Meta de Análises" (`metric = 'analyses'`) e depois "Meta de
+   * Vendas" (`metric = 'sales'`): as duas colunas passam no check da 0011 e
+   * NENHUMA TELA grava qualquer uma delas no escopo de perfil. O traço não era
+   * falta de cadastro, era uma promessa que o produto não tinha como cumprir.
+   *
+   * A meta de VGV por pessoa é gravada hoje, na ficha de /equipes
+   * (`components/equipes/MetaVgv.tsx`: scope 'profile', metric 'vgv', mês
+   * corrente). É a que o corretor realmente tem cadastrada — e por isso é a que
+   * aparece aqui.
+   *
+   * `useVgvGoal` é o hook de metas do Dashboard, com a mesma precedência
+   * (perfil > equipes lideradas) e o mesmo prefixo de cache: não há como a
+   * faixa mostrar um alvo e o painel outro.
+   */
+  const metaVgv = useVgvGoal(mesDaMetaDoCorretor(soMinhaPosicao));
+
+  /**
+   * O realizado do MESMO mês da meta, pela mesma RPC do placar.
+   *
+   * `meuScore.vendas` conta a TEMPORADA inteira; dividir isso pela meta mensal
+   * dava um percentual sem significado. Aqui o recorte de dias é o mês corrente
+   * (`intervaloDoMes`), e o valor é o `vgv` que `visible_game_ranking` já
+   * devolve por pessoa.
+   */
+  const placarDoMes = useSeasonRanking(soMinhaPosicao ? seasonId : null, intervaloDoMes());
+  const vgvDoMes = placarDoMes.data?.find((linha) => linha.profile_id === user?.id)?.vgv ?? 0;
+
+  // A consulta solta que vivia aqui não filtrava vigência (`starts_at`/`ends_at`)
+  // e o `important_notices_select` (0011) libera a tabela inteira para
+  // `is_admin()`: o card mostrava recado vencido a quem administra, enquanto o
+  // Painel mostrava o certo. `loadMuralDoDia` é a mesma leitura dos dois.
   const loadInfo = async () => {
-    const [{ data: tips }, { data: notices }] = await Promise.all([
-      supabase.from("gold_tips").select("body").eq("active", true).order("created_at", { ascending: false }).limit(1),
-      supabase.from("important_notices").select("title,body").eq("active", true).order("created_at", { ascending: false }).limit(1),
-    ]);
-    setTip(tips?.[0]?.body ?? null);
-    setNotice(notices?.[0] ? { title: notices[0].title, message: notices[0].body } : null);
+    const { recados, dicas } = await loadMuralDoDia();
+    setTip(dicas[0]?.body ?? null);
+    setNotice(recados[0] ? { title: recados[0].title, message: recados[0].body } : null);
   };
 
   const openInfoDialog = async () => { await loadInfo(); setOpenInfo(true); };
 
-  if (!scoped.length) return null;
+  const falhou = temporada.isError || placar.isError;
 
-  const { soMinhaPosicao, escopo } = recorteDoRanking(role);
+  // Carregando continua sem desenhar nada: a faixa mora acima do quadro de
+  // negócios e um esqueleto piscando ali empurra o pipeline inteiro.
+  if (!falhou && (temporada.isPending || (temporada.data && placar.isPending))) return null;
+
+  const podio = scoped.slice(0, 3);
+
+  /**
+   * O que aparece quando não há pódio.
+   *
+   * O card inteiro sumia (`if (!scoped.length) return null`), e sumir é a única
+   * resposta que serve para os três casos ao mesmo tempo: falha de leitura,
+   * temporada fechada e ninguém pontuado. São coisas diferentes, e a de cima é
+   * defeito — quem olha precisa saber que a tela não conseguiu ler, e não achar
+   * que o jogo acabou.
+   */
+  const conteudo = () => {
+    if (falhou) {
+      return (
+        <p className="px-1 py-3 text-sm text-destructive">
+          Não consegui carregar o placar da temporada.{" "}
+          {describeError(temporada.error ?? placar.error, "A leitura do ranking falhou.")}
+        </p>
+      );
+    }
+
+    if (!temporada.data) {
+      return (
+        <p className="px-1 py-3 text-sm text-muted-foreground">
+          Nenhuma temporada aberta no momento. O placar volta quando a próxima começar.
+        </p>
+      );
+    }
+
+    if (soMinhaPosicao) {
+      return (
+        <FaixaDoCorretor
+          nome={meuScore?.broker.name || profile?.name || "Você"}
+          avatarUrl={meuScore?.broker.avatar_url ?? profile?.avatar_url ?? null}
+          pontos={meuScore?.points ?? 0}
+          noRanking={!meuScore}
+          carregando={metaVgv.isLoading || placarDoMes.isLoading}
+          erro={Boolean(metaVgv.error ?? placarDoMes.error)}
+          realizado={vgvDoMes}
+          meta={metaVgv.data?.target ?? null}
+          onSaibaMais={() => void openInfoDialog()}
+        />
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {podio.length ? (
+          <PodiumCards entries={podio.map((s) => ({
+            id: s.broker.id,
+            name: s.broker.name,
+            points: s.points,
+            avatarUrl: s.broker.avatar_url,
+          }))} />
+        ) : (
+          /* Só o diretor chega aqui: o corretor sem ponto continua na lista
+             (o ranking traz todo mundo com zero), então lista vazia quer
+             dizer que o filtro por diretoria não achou ninguém. */
+          <p className="px-1 py-3 text-sm text-muted-foreground">
+            Nenhum corretor do seu recorte entrou no ranking desta temporada.
+          </p>
+        )}
+
+        {/* Só "Ver mais", como no print. O botão "Mensagem do dia" saiu: o
+            recado e a dica de ouro que ele abria são os MESMOS do Painel, que
+            gerente, diretor e admin abrem pelo botão do cabeçalho do Pipeline —
+            nenhum caminho se perdeu. */}
+        <div className="flex justify-end">
+          <Link
+            to="/gamification"
+            className="rounded-full px-1 text-xs text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Ver mais
+          </Link>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
-      <SectionCard
-        title={`Ranking do game — ${escopo}`}
-        icon={Flame}
-        className="mx-auto max-w-4xl"
+      <section
+        aria-label={`Ranking do game — ${escopo}`}
+        className="mx-auto w-full max-w-5xl rounded-2xl border border-border bg-card p-3 text-card-foreground"
       >
-        {soMinhaPosicao ? (
-          <MinhaPosicao
-            posicao={minhaPosicao}
-            total={scoped.length}
-            pontos={meuScore?.points ?? 0}
-            detalhe={meuScore ? `${meuScore.vendas}V · ${meuScore.aprovados}A · ${meuScore.analises}An` : null}
-            onDetalhes={() => void openInfoDialog()}
-          />
-        ) : (
-          <div className="space-y-2">
-            {/* Lista, e não o pódio de pedestais.
-                Medido a 1440x900: o pódio ocupava ~350 px — a primeira dobra
-                inteira do Pipeline, empurrando o quadro de negócios (que é o
-                trabalho) para baixo da linha d'água. Pedido do cliente em
-                05/09: "o ranking está um pouco grande". O pódio continua na
-                tela de Gamificação, que é onde ele é o assunto.
-
-                Top 3 e resto usam a MESMA linha: dois renderizadores para a
-                mesma informação divergem na primeira mudança de layout. */}
-            <ol className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60">
-              {(verTodos ? scoped : scoped.slice(0, 3)).map((s, i) => (
-                <li key={s.broker.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                  <span
-                    className={cn(
-                      "w-7 shrink-0 text-right font-semibold tabular-nums",
-                      i === 0 ? "text-gold" : i === 1 ? "text-silver" : i === 2 ? "text-bronze" : "text-muted-foreground",
-                    )}
-                  >
-                    {i + 1}º
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{s.broker.name}</span>
-                  <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-                    {s.vendas}V · {s.aprovados}A · {s.analises}An
-                  </span>
-                  <span className="w-16 shrink-0 text-right font-semibold tabular-nums">{num(s.points)}</span>
-                </li>
-              ))}
-            </ol>
-
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => void openInfoDialog()}
-                className="rounded-full px-1 text-xs text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                Mensagem do dia
-              </button>
-
-              {scoped.length > 3 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-muted-foreground"
-                  aria-expanded={verTodos}
-                  onClick={() => setVerTodos((v) => !v)}
-                >
-                  {verTodos ? "Mostrar só o top 3" : `Ver todos (${num(scoped.length)})`}
-                  <ChevronDown className={cn("ml-1 h-3.5 w-3.5 transition-transform", verTodos && "rotate-180")} aria-hidden />
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-      </SectionCard>
+        {conteudo()}
+      </section>
       <InfoDialog open={openInfo} onOpenChange={setOpenInfo} tip={tip} notice={notice} />
     </>
   );
 }
 
 /**
- * A linha do corretor.
+ * Anel de progresso com a foto dentro.
  *
- * Uma métrica grande (a colocação) e o resto pequeno — a hierarquia que faltava
- * quando o card trazia quatro números do mesmo tamanho.
+ * `pathLength={100}` deixa o `strokeDasharray` ser lido em por cento direto,
+ * sem conta de circunferência para alguém errar quando o raio mudar.
  *
- * `posicao` nula significa que a pessoa não está no ranking da temporada. Isso
- * NÃO é "0º lugar": é conta sem pontuação ainda, e escrever um número aqui
- * inventaria uma colocação que o placar não tem.
+ * O TRILHO é azul (`stroke-primary/30`), não cinza: no print do cliente o anel
+ * é um círculo azul inteiro mesmo com o corretor em 0 ponto e 0% da meta, e
+ * `stroke-border` deixava a faixa começando o mês com um aro apagado. Quem
+ * marca progresso continua sendo o arco cheio por cima — 0% não desenha arco
+ * nenhum, então o trilho azul não afirma avanço que não houve.
  */
-function MinhaPosicao({
-  posicao, total, pontos, detalhe, onDetalhes,
+function AnelDeProgresso({ pct, children }: { pct: number; children: ReactNode }) {
+  return (
+    <span className="relative grid h-14 w-14 shrink-0 place-items-center">
+      <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden focusable="false">
+        <circle cx="18" cy="18" r="16" fill="none" strokeWidth="2.5" className="stroke-primary/30" />
+        {pct > 0 && (
+          <circle
+            cx="18" cy="18" r="16" fill="none" strokeWidth="2.5" strokeLinecap="round"
+            pathLength={100} strokeDasharray={`${pct} 100`} className="stroke-primary"
+          />
+        )}
+      </svg>
+      {children}
+    </span>
+  );
+}
+
+/**
+ * A faixa do corretor: quem ele é, quanto tem e o quanto falta para a meta.
+ *
+ * `meta` é a de VGV do mês (`goals`, scope 'profile', metric 'vgv') e
+ * `realizado` é o VGV do MESMO mês, lido do placar — as duas pontas da fração
+ * vêm do mesmo período, que era o defeito anterior.
+ *
+ * Quem ainda não pontuou vê o próprio nome com "0 pontos" e a barra vazia — o
+ * estado do desenho do cliente. A colocação ("3º de 18") saiu: não está no
+ * print, e o ranking inteiro continua a um clique em "Ver mais".
+ */
+function FaixaDoCorretor({
+  nome, avatarUrl, pontos, noRanking, carregando, erro, realizado, meta, onSaibaMais,
 }: {
-  posicao: number | null;
-  total: number;
+  nome: string;
+  avatarUrl: string | null;
   pontos: number;
-  detalhe: string | null;
-  onDetalhes: () => void;
+  noRanking: boolean;
+  carregando: boolean;
+  erro: boolean;
+  /** VGV do mês corrente, em reais. */
+  realizado: number;
+  /** Meta de VGV do mês, em reais. `null` = não há linha em `goals`. */
+  meta: number | null;
+  onSaibaMais: () => void;
 }) {
-  if (posicao === null) {
-    return (
-      <button
-        type="button"
-        onClick={onDetalhes}
-        className="w-full rounded-xl border border-border/60 px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        Você ainda não pontuou nesta temporada. Cada análise enviada, aprovação e venda entra no placar.
-      </button>
-    );
-  }
+  // Alvo e percentual saem juntos, num objeto só: sem meta cadastrada não há
+  // denominador, e é isso que distingue a barra vazia da barra inexistente.
+  const barra = meta && meta > 0
+    ? { alvo: meta, pct: Math.min(100, Math.round((realizado / meta) * 100)) }
+    : null;
 
   return (
-    <button
-      type="button"
-      onClick={onDetalhes}
-      aria-label={`Sua posição: ${posicao} de ${total}, ${pontos} pontos. Abrir mensagem do dia.`}
-      className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border/60 px-4 py-3 text-left transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span className="font-display text-4xl font-bold leading-none tabular-nums text-foreground">
-        {posicao}
-        <span className="ml-0.5 align-top text-lg text-muted-foreground">º</span>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex min-w-0 items-center gap-3 sm:w-60 sm:shrink-0">
+        <AnelDeProgresso pct={barra?.pct ?? 0}>
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={avatarUrl || undefined} alt="" />
+            <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
+              {nome.split(" ").map((parte) => parte[0]).slice(0, 2).join("").toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        </AnelDeProgresso>
+        <div className="min-w-0">
+          <p className="truncate font-display text-base font-bold leading-tight text-gold">{nome}</p>
+          <p className="text-sm font-semibold tabular-nums text-foreground">{num(pontos)} pontos</p>
+        </div>
+      </div>
+
+      <div className="hidden w-px self-stretch bg-border sm:block" aria-hidden />
+
+      <div className="min-w-0 flex-1">
+        {noRanking ? (
+          <p className="text-sm text-muted-foreground">
+            Você ainda não está no ranking desta temporada. Cada análise enviada, aprovação e venda entra no placar.
+          </p>
+        ) : carregando ? (
+          <p className="text-xs text-muted-foreground">Carregando a meta do mês…</p>
+        ) : erro ? (
+          /* Falha de leitura não pode virar "sem meta": o traço seria uma
+             afirmação sobre o banco que a tela não conseguiu fazer. */
+          <p className="text-xs text-destructive">Não foi possível ler a meta de VGV do mês.</p>
+        ) : barra === null ? (
+          /* Sem linha em `goals` não existe denominador: a barra viraria um
+             medidor sem escala. O que dá para afirmar é o realizado. */
+          <p className="text-xs text-muted-foreground">
+            {brl(realizado)} de VGV neste mês · meta de VGV ainda não cadastrada na sua ficha
+          </p>
+        ) : (
+          <BarraDaMeta pct={barra.pct} realizado={realizado} alvo={barra.alvo} />
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-3 sm:flex-col sm:items-end sm:gap-1.5">
+        {/* Sem meta cadastrada o rótulo não aparece: era exatamente aqui que
+            nascia o "Meta de Vendas: —". Quem explica a ausência é a linha do
+            meio, com a frase inteira. */}
+        {!noRanking && !carregando && !erro && meta !== null && (
+          <p className="text-xs font-semibold text-success">Meta de VGV: {brl(meta)}</p>
+        )}
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onSaibaMais}>
+          Saiba Mais
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A barra da meta com o marcador redondo do print.
+ *
+ * O percentual ficava solto na direita, sem relação visível com o
+ * preenchimento. Aqui ele anda junto com o marcador; passando da metade troca
+ * de lado para não escorregar para fora da barra.
+ */
+function BarraDaMeta({ pct, realizado, alvo }: { pct: number; realizado: number; alvo: number }) {
+  // O marcador tem 28 px: recuar meio marcador em cada ponta deixa o 0% e o
+  // 100% inteiros dentro da barra, em vez de metade cortada na borda.
+  const posicao = `calc(0.875rem + (100% - 1.75rem) * ${pct} / 100)`;
+  const aEsquerda = pct > 50;
+
+  return (
+    <div className="relative h-7 min-w-0 flex-1">
+      <div
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Meta de VGV do mês: ${brl(realizado)} de ${brl(alvo)}`}
+        className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-full border border-border bg-muted"
+      >
+        <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+      </div>
+      <span
+        aria-hidden
+        style={{ left: posicao }}
+        className="absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-primary bg-card"
+      />
+      {/* Caixa de largura zero ancorada no marcador: o texto transborda para o
+          lado que `justify-*` mandar, sem conta de largura. */}
+      <span
+        aria-hidden
+        style={{ left: posicao }}
+        className={cn(
+          "absolute top-1/2 flex w-0 -translate-y-1/2",
+          aEsquerda ? "justify-end" : "justify-start",
+        )}
+      >
+        <span
+          className={cn(
+            "whitespace-nowrap text-xs font-semibold tabular-nums text-primary",
+            aEsquerda ? "mr-5" : "ml-5",
+          )}
+        >
+          {pct}%
+        </span>
       </span>
-      <span className="text-xs text-muted-foreground">de {num(total)} no ranking</span>
-      <span className="ml-auto text-right">
-        <span className="block text-sm font-semibold tabular-nums text-foreground">{num(pontos)} pts</span>
-        {detalhe && <span className="block text-xs text-muted-foreground">{detalhe}</span>}
-      </span>
-    </button>
+    </div>
   );
 }
 

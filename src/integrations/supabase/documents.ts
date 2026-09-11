@@ -12,6 +12,12 @@ import { dbError } from "@/lib/supabaseError";
 
 export const DEAL_DOCUMENTS_BUCKET = "deal-documents";
 
+/** Uma lista só: as duas consultas que devolvem `DealDocumentRecord` liam
+ *  colunas escritas duas vezes, e uma coluna nova entrava numa e esquecia a
+ *  outra. */
+const DOCUMENT_COLUMNS =
+  "id,deal_id,document_type_id,storage_path,original_name,stored_name,display_name,mime_type,size_bytes,version,superseded_at,created_at";
+
 /**
  * Fronteira do upload: nada de tamanho nem de extensão era conferido antes de o
  * arquivo subir. O bucket ganhou teto de servidor na migration 0059 — este
@@ -42,6 +48,23 @@ export function validateDocumentFile(file: { name: string; size: number }): stri
   return null;
 }
 
+/** Teto do apelido. 120 é o que cabe numa linha da lista a 375 px sem empurrar
+ *  "Baixar"/"Excluir" para fora; o mesmo número está no `check` da 0106. */
+export const MAX_DOCUMENT_ALIAS = 120;
+
+/**
+ * Motivo da recusa do apelido, ou `null` quando serve. Vazio é válido: é como a
+ * tela LIMPA o apelido e volta a mostrar o `stored_name`.
+ *
+ * Mesma regra que a 0106 cobra no `check` e na RPC — a tela a usa antes só para
+ * o operador ver a recusa enquanto digita.
+ */
+export function validateDocumentAlias(value: string): string | null {
+  return value.trim().length > MAX_DOCUMENT_ALIAS
+    ? `O apelido passa de ${MAX_DOCUMENT_ALIAS} caracteres.`
+    : null;
+}
+
 export type DocumentTypeRecord = {
   id: string;
   code: string;
@@ -60,12 +83,22 @@ export type DealDocumentRecord = {
   storage_path: string;
   original_name: string;
   stored_name: string;
+  /** Apelido escolhido na tela (0106), ou `null`. NÃO substitui o
+   *  `stored_name`: é o `stored_name` que vai anexado no e-mail da construtora
+   *  (`submission-dispatch`) e no download assinado. */
+  display_name: string | null;
   mime_type: string | null;
   size_bytes: number | null;
   version: number;
   superseded_at: string | null;
   created_at: string;
 };
+
+/** O que a tela mostra: apelido quando há, nome técnico quando não. Uma função
+ *  só, porque toda lista de anexo precisa da mesma resposta. */
+export const documentDisplayName = (
+  doc: Pick<DealDocumentRecord, "display_name" | "stored_name">,
+): string => doc.display_name?.trim() || doc.stored_name;
 
 export type DocumentReviewStatus = "draft" | "pending" | "returned" | "approved";
 
@@ -109,11 +142,11 @@ export async function listDocumentTypes(): Promise<DocumentTypeRecord[]> {
 export async function listDealDocuments(dealId: string): Promise<DealDocumentRecord[]> {
   const { data, error } = await supabase
     .from("deal_documents")
-    .select("id,deal_id,document_type_id,storage_path,original_name,stored_name,mime_type,size_bytes,version,superseded_at,created_at")
+    .select(DOCUMENT_COLUMNS)
     .eq("deal_id", dealId)
     .order("created_at", { ascending: false });
   if (error) throw dbError("deal_documents", error);
-  return (data ?? []) as DealDocumentRecord[];
+  return data ?? [];
 }
 
 export async function getDealDocumentReview(dealId: string): Promise<DealDocumentReview> {
@@ -193,15 +226,18 @@ const extensionOf = (fileName: string) => {
  * diferentes com o mesmo nome. Nos tipos que versionam isso não acontece (só um
  * vigente por vez), por isso o sufixo entra apenas onde há de fato vários.
  *
- * ponytail: dois arquivos com o MESMO nome original (de pastas diferentes)
- * continuam colidindo no nome exibido — o `storage_path` já carrega o timestamp
- * e não colide. Evoluir para um sufixo numérico se aparecer caso real.
+ * `ocupados` fecha o buraco que sobrava: dois arquivos com o MESMO nome original
+ * (o caso real é o celular, que chama tudo de `documento.pdf`) davam o mesmo
+ * `stored_name` mesmo com o sufixo — e `stored_name` é o nome do anexo no
+ * e-mail da construtora (`submission-dispatch`), onde dois anexos homônimos são
+ * indistinguíveis. Sufixo numérico `-2`, `-3`… mantém o molde por tipo intacto:
+ * o primeiro arquivo continua com o nome de sempre.
  */
 export function resolveStoredName(
   pattern: string | null,
   parts: { tipo: string; cliente: string; negocio: string; data?: Date },
   originalName: string,
-  options?: { distinguir?: boolean },
+  options?: { distinguir?: boolean; ocupados?: ReadonlySet<string> },
 ): string {
   const date = parts.data ?? new Date();
   const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -222,7 +258,18 @@ export function resolveStoredName(
     .replace(/^-+|-+$/g, "");
 
   const safeBase = base || slug(originalName);
-  return ext ? `${safeBase}.${ext}` : safeBase;
+  const comExtensao = (nome: string) => (ext ? `${nome}.${ext}` : nome);
+
+  const ocupados = options?.ocupados ?? new Set<string>();
+  let candidato = comExtensao(safeBase);
+  // Começa em 2 porque o "-1" implícito é o arquivo que já está lá. Termina
+  // sempre: `ocupados` é finito e cada volta gera um nome novo.
+  let n = 2;
+  while (ocupados.has(candidato)) {
+    candidato = comExtensao(`${safeBase}-${n}`);
+    n += 1;
+  }
+  return candidato;
 }
 
 export type UploadDealDocumentInput = {
@@ -231,6 +278,10 @@ export type UploadDealDocumentInput = {
   file: File;
   clientName: string;
   dealCode: string;
+  /** `stored_name` dos anexos que este tipo já tem neste negócio — inclusive os
+   *  que acabaram de subir no mesmo lote. Só usado nos tipos que aceitam vários:
+   *  o tipo que versiona precisa do nome ESTÁVEL entre as versões. */
+  usedNames?: readonly string[];
 };
 
 /**
@@ -242,7 +293,7 @@ export type UploadDealDocumentInput = {
  * o que o usuário vê e baixa.
  */
 export async function uploadDealDocument(input: UploadDealDocumentInput): Promise<DealDocumentRecord> {
-  const { dealId, documentType, file, clientName, dealCode } = input;
+  const { dealId, documentType, file, clientName, dealCode, usedNames } = input;
 
   // Ponto único da validação de fronteira: todo chamador passa por aqui.
   const rejected = validateDocumentFile(file);
@@ -252,7 +303,10 @@ export async function uploadDealDocument(input: UploadDealDocumentInput): Promis
     documentType.naming_pattern,
     { tipo: documentType.code, cliente: clientName, negocio: dealCode },
     file.name,
-    { distinguir: documentType.allows_multiple },
+    {
+      distinguir: documentType.allows_multiple,
+      ocupados: documentType.allows_multiple ? new Set(usedNames ?? []) : undefined,
+    },
   );
   const path = `${dealId}/${Date.now()}-${storedName}`;
 
@@ -272,7 +326,7 @@ export async function uploadDealDocument(input: UploadDealDocumentInput): Promis
       mime_type: file.type || null,
       size_bytes: file.size,
     })
-    .select("id,deal_id,document_type_id,storage_path,original_name,stored_name,mime_type,size_bytes,version,superseded_at,created_at")
+    .select(DOCUMENT_COLUMNS)
     .single();
 
   if (error) {
@@ -281,7 +335,36 @@ export async function uploadDealDocument(input: UploadDealDocumentInput): Promis
     await supabase.storage.from(DEAL_DOCUMENTS_BUCKET).remove([path]);
     throw dbError("registrar documento", error);
   }
-  return data as DealDocumentRecord;
+  return data;
+}
+
+/**
+ * Grava o APELIDO do anexo — o rótulo da tela, não o nome do arquivo.
+ *
+ * `stored_name` continua intocado de propósito: é ele que `submission-dispatch`
+ * usa como nome do anexo no e-mail da construtora e que o download assinado
+ * entrega. Renomear o arquivo mudaria o registro do que já foi enviado.
+ *
+ * Vai por RPC porque `deal_documents` não tem policy de UPDATE — e não pode
+ * ganhar uma: a 0023 concede `update` de TABELA a `authenticated`, então
+ * qualquer policy nova abriria junto `storage_path`, `stored_name`, `version` e
+ * `superseded_at`, que a 0077 travou. `rename_deal_document` é
+ * `security definer`, cobra `can_edit_deal` e grava uma coluna só.
+ *
+ * String vazia limpa o apelido e a lista volta ao nome técnico.
+ */
+export async function renameDealDocument(
+  documentId: string,
+  alias: string,
+): Promise<DealDocumentRecord> {
+  const rejected = validateDocumentAlias(alias);
+  if (rejected) throw new Error(rejected);
+  const { data, error } = await supabase.rpc("rename_deal_document", {
+    p_document_id: documentId,
+    p_alias: alias.trim() || null,
+  });
+  if (error) throw dbError("rename_deal_document", error);
+  return data;
 }
 
 /** URL assinada de 5 minutos, já com o nome amigável no download. */

@@ -1,38 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { recorteDoRanking } from "./PipelineTopRanking";
+import { ALL_MONTHS } from "@/components/dashboard";
+import { intervaloDoMes, mesDaMetaDoCorretor } from "./PipelineTopRanking";
 
 /**
- * Quem vê o quê no card de ranking do Pipeline (decisão do dono, 05/09/2026).
+ * O período da faixa do corretor — as duas pontas da mesma fração.
  *
- * O card mostrava o pódio da equipe para TODO MUNDO. Para o corretor isso é
- * ruído no meio do trabalho — ele já tem o pódio completo em Gamificação; aqui
- * o que interessa é onde ele está.
- *
- * O recorte dos DADOS continua sendo do servidor (`visible_game_ranking`).
- * Isto aqui decide só o que a tela mostra do que já chegou.
+ * A faixa mostrava "Meta de Vendas: —" para todo corretor real: lia `goals` com
+ * `metric = 'sales'` no escopo de perfil, que nenhuma tela grava, e ainda
+ * procurava no mês da TEMPORADA, enquanto /equipes grava sempre no mês
+ * corrente. Agora lê a meta de VGV do perfil no mês do relógio — o mesmo mês em
+ * que `MetaVgv` grava e o mesmo que o Dashboard abre — e o realizado é lido
+ * nesse mesmo mês (`intervaloDoMes`), em vez do acumulado da temporada.
  */
-describe("recorteDoRanking", () => {
-  it("admin e sócio veem o pódio da empresa", () => {
-    // Um sócio com poderes de administrador entra por aqui: ele carrega
-    // {admin, partner} e `primaryRole` devolve 'admin'. Sócio que só acompanha
-    // (`partner` sozinho) cai no recorte estreito, coberto no caso abaixo.
-    expect(recorteDoRanking("admin")).toEqual({ soMinhaPosicao: false, escopo: "Empresa" });
+describe("mesDaMetaDoCorretor", () => {
+  it("é o mês corrente, no formato que `useGoal` espera", () => {
+    expect(mesDaMetaDoCorretor(true, new Date(2026, 8, 10))).toBe("09/2026");
   });
 
-  it("diretor e gerente veem o pódio do que lideram", () => {
-    expect(recorteDoRanking("director")).toEqual({ soMinhaPosicao: false, escopo: "Sua diretoria" });
-    expect(recorteDoRanking("manager")).toEqual({ soMinhaPosicao: false, escopo: "Sua equipe" });
+  it("não segue a temporada: em setembro cobra a meta de setembro", () => {
+    // Temporada aberta em agosto atravessa a virada do mês. A meta é MENSAL e
+    // /equipes só grava no mês corrente — ler agosto em setembro devolvia nulo
+    // e o traço voltava com outra causa.
+    expect(mesDaMetaDoCorretor(true, new Date(2026, 7, 31))).toBe("08/2026");
+    expect(mesDaMetaDoCorretor(true, new Date(2026, 8, 1))).toBe("09/2026");
   });
 
-  it("corretor vê só a posição dele", () => {
-    expect(recorteDoRanking("broker")).toEqual({ soMinhaPosicao: true, escopo: "Sua posição" });
+  it("desliga a consulta para quem não vê a faixa", () => {
+    // Gerente, diretor e admin veem o pódio, não a barra da meta pessoal.
+    expect(mesDaMetaDoCorretor(false, new Date(2026, 8, 10))).toBe(ALL_MONTHS);
+  });
+});
+
+describe("intervaloDoMes", () => {
+  it("cobre o mês inteiro do dia informado", () => {
+    expect(intervaloDoMes(new Date(2026, 8, 10))).toEqual({ from: "2026-09-01", to: "2026-09-30" });
   });
 
-  it("papel desconhecido falha fechado, no recorte mais estreito", () => {
-    // Papel novo no enum sem ninguém lembrar de voltar aqui é o caso real: o
-    // padrão não pode ser "mostra o placar da empresa".
-    for (const papel of ["cca", "sdr", "marketing", "papel_que_ainda_nao_existe", ""]) {
-      expect(recorteDoRanking(papel).soMinhaPosicao, papel).toBe(true);
-    }
+  it("fecha em 31 e em 28 quando é o caso — sem dia inventado", () => {
+    expect(intervaloDoMes(new Date(2026, 0, 15)).to).toBe("2026-01-31");
+    expect(intervaloDoMes(new Date(2026, 1, 15)).to).toBe("2026-02-28");
+  });
+
+  it("fevereiro bissexto vai até 29", () => {
+    expect(intervaloDoMes(new Date(2028, 1, 3)).to).toBe("2028-02-29");
+  });
+
+  it("é o mesmo mês que a meta cobra", () => {
+    const hoje = new Date(2026, 8, 22);
+    // As duas pontas da fração saem da mesma data: numerador e denominador não
+    // têm como cair em meses diferentes.
+    expect(intervaloDoMes(hoje).from.slice(0, 7)).toBe("2026-09");
+    expect(mesDaMetaDoCorretor(true, hoje)).toBe("09/2026");
   });
 });

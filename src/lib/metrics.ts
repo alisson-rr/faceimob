@@ -1,29 +1,15 @@
 /**
  * Catalogo de metricas da operacao — fonte unica.
  *
- * As oito metricas do diario de equipe estavam copiadas em `DailyReport.FIELDS`
- * e `PublicDirectorCheckpoint.MONTH_FIELDS`, e as metas do funil (10 / 40 / 50)
- * apareciam mais tres vezes: no `ComparativeFunnel`, no `DirectorDashboard` e no
- * `Checkpoint`. Era o achado T07 — mudar uma meta exigia lembrar de cinco
- * lugares. Aqui e um.
+ * As oito metricas do diario moram em `DAILY_FIELDS` (`@/lib/dailyFunnel`),
+ * ao lado das contas que as usam; aqui ficou so o FUNIL. Ate 11/09/2026 este
+ * arquivo mantinha um `DAILY_METRICS` identico byte a byte ao `DAILY_FIELDS`,
+ * com um unico consumidor (`DirectorPanel`) — duas listas da mesma coisa nunca
+ * sao lidas juntas, e a segunda envelhece calada.
  *
- * `Checkpoint`, `DailyReport` e `PublicDirectorCheckpoint` ainda tem a copia
- * deles; adotam este modulo quando forem redesenhados.
+ * O 10/40/50 tambem era literal em cinco lugares (achado T07): mudar uma meta
+ * exigia lembrar de todos. Agora sai de `IDEAL_STAGES`, por `idealStagePct`.
  */
-
-/** Metrica do diario. `color` e classe de texto para quem lista campo a campo. */
-export const DAILY_METRICS = [
-  { key: "leads", label: "Leads", color: "text-info" },
-  { key: "ligacoes", label: "Ligações", color: "text-info" },
-  { key: "coleta_docs", label: "Coleta Docs", color: "text-info" },
-  { key: "visitas_agendadas", label: "Visita Agend.", color: "text-chart-5" },
-  { key: "visitas_realizadas", label: "Visita Real.", color: "text-chart-5" },
-  { key: "analises", label: "Análise Env.", color: "text-warning" },
-  { key: "aprovados", label: "Análise Aprov.", color: "text-success" },
-  { key: "vendas", label: "Venda", color: "text-warning" },
-] as const;
-
-export type DailyMetricKey = (typeof DAILY_METRICS)[number]["key"];
 
 /**
  * Funil ideal, etapa a etapa: Leads 100% → Análise 10% das leads → Aprovação
@@ -36,6 +22,16 @@ export const IDEAL_STAGES = [
   { key: "aprovados", label: "Aprovações", stagePct: 40, absPct: 4 },
   { key: "vendas", label: "Vendas", stagePct: 50, absPct: 2 },
 ] as const;
+
+/**
+ * Meta de conversao da etapa no funil ideal — o 10/40/50 sai SO daqui.
+ *
+ * Etapa desconhecida devolve 0 de proposito: quem chama passa uma chave de
+ * `IDEAL_STAGES`, e 0 e o valor que `Number(x) || fallback` trata como "sem
+ * meta" em vez de fingir uma regua.
+ */
+export const idealStagePct = (key: string): number =>
+  IDEAL_STAGES.find((stage) => stage.key === key)?.stagePct ?? 0;
 
 export type FunnelStep = {
   key: string;

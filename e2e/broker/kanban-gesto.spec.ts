@@ -21,13 +21,11 @@ import { abrirPipelineFiltrado, criarNegocio, limparCenario } from "../matriz/ce
 const tag = runTag();
 
 let negocio: { id: string; cliente: string };
-let etapaLead = "";
 let etapaProposta = "";
 let etapaVisita = "";
 let etapaAnalise = "";
 
 test.beforeAll(async () => {
-  [{ id: etapaLead }] = await db.select<{ id: string }>("pipeline_stages?code=eq.lead&select=id");
   [{ id: etapaProposta }] = await db.select<{ id: string }>("pipeline_stages?code=eq.proposal&select=id");
   [{ id: etapaVisita }] = await db.select<{ id: string }>(
     "pipeline_stages?code=eq.visit_scheduled&select=id",
@@ -121,14 +119,26 @@ test.describe("corretor · kanban pelo teclado", () => {
     ).toBeVisible();
   });
 
+  /**
+   * A volta é medida de "Em Análise" para "Visita Agendada", e não de
+   * "Proposta" para "Lead".
+   *
+   * A 0101 tirou do corretor o ENTRAR em "Lead" (a matriz inicial vive em
+   * `supabase/seed.sql`): o par antigo passou a ser uma recusa legítima, e o
+   * caso morreria por falta de permissão sem nada dizer sobre a tecla. O que
+   * este teste protege é o GESTO — Shift+← grava a etapa ANTERIOR —, não qual
+   * par de etapas ele atravessa; "Visita Agendada" é a volta que o corretor
+   * mantém.
+   */
   test("Shift+← volta para a etapa anterior", async ({ page }) => {
+    await porEmAnalise();
     await abrirKanban(page);
 
     await cartao(page).focus();
     await page.keyboard.press("Shift+ArrowLeft");
 
-    await expect(page.getByText(/negócio movido para lead/i)).toBeVisible();
-    await esperarEtapa(etapaLead, "Shift+← tem que gravar a etapa anterior");
+    await expect(page.getByText(/negócio movido para visita agendada/i)).toBeVisible();
+    await esperarEtapa(etapaVisita, "Shift+← tem que gravar a etapa anterior");
   });
 
   test("seta sozinha não move o negócio", async ({ page }) => {

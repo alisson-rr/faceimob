@@ -1,19 +1,21 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
-  Lock, RotateCcw, XCircle,
+  Lock, Maximize2, RotateCcw, XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
-import { developerColor, type ChartToken } from "@/lib/tone";
+import { brokerTextClass, dealAgeTone, developerColor, type AgeTone, type ChartToken } from "@/lib/tone";
+import { bareStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { DOCUMENT_REVIEW_META } from "./review";
 import { faceimobStatusTone, statusChoices, STATUS_TONE_CLASS } from "./statuses";
 import { dealLock } from "./guards";
+import { offDistratoBlocked } from "./useDealActions";
 import { dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
 
 const PER_PAGE = 15;
@@ -29,15 +31,13 @@ const DEVELOPER_DOT: Record<ChartToken, string> = {
   "chart-5": "bg-chart-5",
 };
 
-/** Faixa de idade do negócio. Cor + número: a cor não é o único sinal. */
-const ageTone = (days: number) =>
-  days > 60 ? "bg-destructive/15 text-destructive"
-    : days > 30 ? "bg-warning/15 text-warning"
-      : days > 14 ? "bg-info/15 text-info"
-        : "bg-success/15 text-success";
-
-const ageStripe = (days: number) =>
-  days > 60 ? "bg-destructive" : days > 30 ? "bg-warning" : days > 14 ? "bg-info" : "bg-success";
+/** Faixa vertical da linha: a mesma cor do número, em preenchimento sólido.
+ *  Cor + número: a cor não é o único sinal. */
+const AGE_STRIPE: Record<AgeTone, string> = {
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-destructive",
+};
 
 interface Props {
   deals: LegacyDealRecord[];
@@ -72,7 +72,7 @@ interface Props {
 export function DealsTable({
   deals, canWrite, closedMonths, onOpen, onStatusChange, onScheduleVisit, onLose, onReopen,
 }: Props) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, can } = useAuth();
   const [page, setPage] = useState(1);
   // A ordem era fixa (construtora, depois catálogo de Status 2): não dava para
   // perguntar "maiores VGV" nem "parados há mais tempo" sem sair da tela.
@@ -130,7 +130,8 @@ export function DealsTable({
       <div className="overflow-x-auto rounded-2xl border border-border bg-card">
         <table className="w-full text-xs">
           <caption className="sr-only">
-            Negócios do pipeline. O nome do cliente abre o detalhe do negócio.
+            Negócios do pipeline. Clicar na linha abre o detalhe do negócio; por teclado,
+            use o nome do cliente ou o botão Abrir da coluna Ações.
           </caption>
           <thead>
             <tr className="border-b border-border text-muted-foreground">
@@ -160,12 +161,30 @@ export function DealsTable({
                 canWrite, isAdmin, closedMonths,
               });
               return (
-                // O realce segue o foco, não o ponteiro: a linha inteira não é
-                // clicável (só o nome do cliente é), e `hover` na linha prometia
-                // um alvo que não existe.
-                <tr key={deal.id} className="border-b border-border/40 transition-colors focus-within:bg-secondary/30">
+                // A linha inteira abre o negócio no clique (pedido do cliente em
+                // 10/09/2026). O `<tr>` NÃO vira `role="button"` nem ganha
+                // `tabIndex`: isso apagaria a semântica de linha da tabela e
+                // criaria uma parada de tabulação sem nome. O teclado continua
+                // pelos dois botões nomeados da linha — o nome do cliente e o
+                // "Abrir" da coluna Ações —, e o realce segue foco e ponteiro.
+                <tr
+                  key={deal.id}
+                  // Arrastar o mouse para copiar um valor da célula termina em
+                  // `click` na linha, e o modal abria por cima da seleção. Só
+                  // barra quando há seleção viva: `getSelection()` pode devolver
+                  // `null` (e o `?.` daria `undefined`), e aí o clique normal
+                  // precisa passar.
+                  onClick={() => {
+                    if (window.getSelection()?.isCollapsed === false) return;
+                    onOpen(deal);
+                  }}
+                  className="cursor-pointer border-b border-border/40 transition-colors hover:bg-secondary/30 focus-within:bg-secondary/30"
+                >
                   <td className="relative w-3 p-0">
-                    <span className={cn("absolute bottom-0 left-0 top-0 w-1.5", ageStripe(deal.days_in_pipeline))} aria-hidden />
+                    <span
+                      className={cn("absolute bottom-0 left-0 top-0 w-1.5", AGE_STRIPE[dealAgeTone(deal.days_in_pipeline)])}
+                      aria-hidden
+                    />
                   </td>
                   <td className="whitespace-nowrap p-2">
                     <span className="font-semibold">{deal.stage_label}</span>
@@ -190,11 +209,20 @@ export function DealsTable({
                   <td className="max-w-[140px] truncate p-2">{deal.project || "—"}</td>
                   <td className="p-2 text-center">{deal.unit || "—"}</td>
                   <td className="p-2 text-center">
-                    <span className={cn("rounded px-1.5 py-0.5 font-bold tabular-nums", ageTone(deal.days_in_pipeline))}>
+                    <span
+                      className={cn(
+                        "rounded px-1.5 py-0.5 font-bold tabular-nums",
+                        STATUS_TONE_CLASS[dealAgeTone(deal.days_in_pipeline)],
+                      )}
+                    >
                       {deal.days_in_pipeline}
                     </span>
                   </td>
-                  <td className="p-2">
+                  {/* O Select vive dentro da linha clicável: sem barrar a subida
+                      do evento, abrir a lista de Status 2 abriria o negócio
+                      junto. Vale para a célula toda — o que entrar aqui depois
+                      já nasce protegido. */}
+                  <td className="p-2" onClick={(event: MouseEvent) => event.stopPropagation()}>
                     {/* Negócio encerrado não troca de status por aqui: a etapa
                         já é `lost` e mudar só o rótulo deixaria um "PROPOSTA"
                         fora do funil. Reabrir é decisão de gestor, e esta tela
@@ -214,11 +242,42 @@ export function DealsTable({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="max-h-80">
-                        {statusChoices(status).map((option) => (
-                          <SelectItem key={option.label} value={option.label} className="text-xs">
-                            {option.label}
-                          </SelectItem>
-                        ))}
+                        {/* `value` continua sendo o valor gravado em
+                            `status_detail`; só o texto perde o prefixo numerado.
+                            O badge do gatilho é `<SelectValue/>`, que espelha o
+                            filho do item escolhido — ele vem junto. */}
+                        {statusChoices(status).map((option) => {
+                          // OFF e distrato são do administrador (10/09/2026), e
+                          // o resto do catálogo continua de quem edita o
+                          // negócio. Desabilitados COM o motivo no texto, como
+                          // o kanban e o editor já fazem: oferecer a opção e
+                          // responder com toast vermelho é o gesto que a tela
+                          // recusa depois de aceitar.
+                          //
+                          // O rótulo ATUAL fica de fora: escolher o que já está
+                          // escolhido não é escrita, e `<SelectValue/>` espelha
+                          // os filhos do item — o "(só administrador...)" iria
+                          // parar dentro do badge colorido da linha.
+                          const semPermissao = option.label === status
+                            ? null
+                            : offDistratoBlocked(can, option.label);
+                          return (
+                            <SelectItem
+                              key={option.label} value={option.label} className="text-xs"
+                              disabled={Boolean(semPermissao)}
+                            >
+                              {/* O rótulo no próprio `<span>` e o motivo em
+                                  outro: o texto exibido continua sendo só
+                                  `bareStatus(option.label)` — é o que o
+                                  `statusLabels.test.ts` lê daqui para garantir
+                                  que o número não volta para a tela. */}
+                              <span>{bareStatus(option.label)}</span>
+                              {semPermissao && (
+                                <span className="text-muted-foreground"> (só administrador e sócio)</span>
+                              )}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </td>
@@ -228,12 +287,13 @@ export function DealsTable({
                     </Badge>
                   </td>
                   <td className="max-w-[150px] p-2">
-                    {/* A linha inteira clicável não é alcançável por teclado nem
-                        anunciada como ação (X03/X06). O nome do cliente é o
-                        botão — um alvo só, com nome acessível. */}
+                    {/* O clique da linha não é alcançável por teclado nem
+                        anunciado como ação (X03/X06). O nome do cliente é o
+                        botão — com nome acessível. `stopPropagation` porque o
+                        clique aqui já abre: sem ele, `onOpen` rodava duas vezes. */}
                     <button
                       type="button"
-                      onClick={() => onOpen(deal)}
+                      onClick={(event: MouseEvent) => { event.stopPropagation(); onOpen(deal); }}
                       className="block max-w-full truncate rounded font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {deal.client}
@@ -244,7 +304,13 @@ export function DealsTable({
                       do modal: conferir a comissão do mês exigia abrir negócio
                       por negócio. Aqui ele fica ao lado do dono da fatia. */}
                   <td className="max-w-[110px] p-2">
-                    <span className="block truncate">{deal.broker1 || "—"}</span>
+                    {/* Nome do corretor colorido por pessoa (`brokerTextClass`):
+                        com dezenas de linhas na tela, achar as suas era ler nome
+                        por nome. A cor acompanha o nome escrito — nunca é o
+                        único sinal. */}
+                    <span className={cn("block truncate font-medium", deal.broker1 && brokerTextClass(deal.broker1))}>
+                      {deal.broker1 || "—"}
+                    </span>
                     {deal.broker1_share != null && (
                       <span className="block text-xs tabular-nums text-muted-foreground">
                         {pct(deal.broker1_share)} do VGV
@@ -255,8 +321,19 @@ export function DealsTable({
                   {/* `flex` com `gap`: os dois ícones ficavam colados na mesma
                       célula e, a 375 px, o alvo de "perder" encostava no de
                       agendar — errar o toque aqui encerra um negócio. */}
-                  <td className="whitespace-nowrap p-2">
+                  <td className="whitespace-nowrap p-2" onClick={(event: MouseEvent) => event.stopPropagation()}>
                     <div className="flex items-center justify-center gap-1.5">
+                      {/* Ícone dedicado de abrir, ao lado dos outros gestos da
+                          linha: quem enxerga precisa VER que a linha abre, e
+                          quem usa teclado precisa de um alvo na coluna de ações
+                          — não só do nome do cliente lá atrás. */}
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7"
+                        aria-label={`Abrir o negócio de ${deal.client}`}
+                        onClick={() => onOpen(deal)}
+                      >
+                        <Maximize2 className="h-3.5 w-3.5" />
+                      </Button>
                       {/* Mesma trava do botão de perder ao lado: negócio encerrado
                           não agenda visita. Sem ela, o clique aqui reabria o
                           negócio e o fazia voltar para "Visita agendada".

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
-import { LOSS_REASONS, isLossStatus } from "@/lib/dealStatus";
+import { LOSS_REASONS, bareStatus, isLossStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { updateDeal, useCanExitStage } from "./data";
@@ -24,6 +24,22 @@ interface Props {
   onConfirmed: () => void | Promise<void>;
 }
 
+const OFF_DISTRATO = new Set(["OFF", "DISTRATO"]);
+
+/**
+ * Este rótulo de encerramento é de administrador e sócio?
+ *
+ * Só OFF e DISTRATO são ("off e distrato é só adm", cliente em 10/09/2026) —
+ * QUEDA e REPROVADO continuam sendo trabalho do corretor, e o resto do Status 2
+ * nunca foi restrito. Compara sem o prefixo numerado porque a lista literal usa
+ * "17. DISTRATO" e um `status_detail` importado pode vir "DISTRATO".
+ *
+ * Exportado para o `ReopenDealDialog`: apagar um distrato é a mesma decisão que
+ * marcá-lo, e a regra tem de ter uma resposta só.
+ */
+export const isOffOrDistrato = (status: string | null | undefined): boolean =>
+  OFF_DISTRATO.has(bareStatus(status));
+
 /**
  * Confirmação de perda do negócio (achado F14).
  *
@@ -33,6 +49,12 @@ interface Props {
  * nomeada, com motivo obrigatório, e passa pela mesma trava de etapa que o
  * arrastar do kanban.
  *
+ * **Encerrar é do corretor; OFF e distrato não.** A restrição do cliente é por
+ * MOTIVO, não pelo ato: quem não tem `deals.mark_off_distrato` continua
+ * encerrando por QUEDA e REPROVADO, e vê as outras duas opções desabilitadas
+ * com o porquê. Travar a ABERTURA do diálogo tirava do corretor o encerramento
+ * inteiro, que é trabalho dele.
+ *
  * **Obrigatório de verdade, não pré-selecionado.** O motivo nascia em
  * `LOSS_REASONS[0]` = "17. DISTRATO" — o rótulo mais forte da lista — e quem
  * apertasse "Encerrar negócio" sem olhar gravava um distrato. Sem `presetStatus`
@@ -41,12 +63,18 @@ interface Props {
  * ali a escolha já foi feita, pedir de novo é atrito à toa.
  */
 export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirmed }: Props) {
-  const { canEnterStage } = useAuth();
+  const { can, canEnterStage } = useAuth();
   const canExitStage = useCanExitStage();
   const id = useId();
   const lostStage = stages.find((stage) => stage.code === LOST_STAGE_CODE);
+  const podeOffDistrato = can("deals.mark_off_distrato");
   const [status, setStatus] = useState(
-    presetStatus && isLossStatus(presetStatus) ? presetStatus : "",
+    // Um preset de OFF/distrato vindo do Select da tabela não entra pela janela:
+    // sem permissão o campo nasce vazio, como se ninguém tivesse escolhido.
+    presetStatus && isLossStatus(presetStatus)
+      && (podeOffDistrato || !isOffOrDistrato(presetStatus))
+      ? presetStatus
+      : "",
   );
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -60,9 +88,10 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
   // Um preset sem prefixo ("QUEDA", vindo de importação) é motivo válido e não
   // está na lista literal: sem ele nas opções o Select abriria em branco.
   const choices = !status || LOSS_REASONS.includes(status) ? LOSS_REASONS : [status, ...LOSS_REASONS];
+  const motivoBloqueado = !podeOffDistrato && isOffOrDistrato(status);
 
   const confirm = async () => {
-    if (!lostStage || !status) return;
+    if (!lostStage || !status || motivoBloqueado) return;
     setSaving(true);
     try {
       const reason = notes.trim() ? `${status} — ${notes.trim()}` : status;
@@ -72,7 +101,9 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
       await updateDeal(deal.id, {
         stage_id: lostStage.id, status_detail: status, lost_reason: reason,
       });
-      toast({ title: "Negócio encerrado", description: `${deal.client} — ${status}.` });
+      // `reason` acima é dado gravado e leva o rótulo inteiro; o aviso é tela e
+      // segue a mesma regra do Select.
+      toast({ title: "Negócio encerrado", description: `${deal.client} — ${bareStatus(status)}.` });
       await onConfirmed();
       onClose();
     } catch (err) {
@@ -108,9 +139,30 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
                 <SelectValue placeholder="Escolha o motivo" />
               </SelectTrigger>
               <SelectContent>
-                {choices.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                {/* O motivo gravado continua sendo o `value` — é ele que vai
+                    para `status_detail` e `lost_reason`. Na tela vai sem o
+                    prefixo numerado, como o resto do Status 2.
+                    OFF e distrato aparecem DESABILITADOS para quem não pode, e
+                    não sumidos: opção que some não ensina o motivo. */}
+                {choices.map((option) => {
+                  const bloqueado = !podeOffDistrato && isOffOrDistrato(option);
+                  return (
+                    <SelectItem key={option} value={option} disabled={bloqueado}>
+                      <span>{bareStatus(option)}</span>
+                      {bloqueado && (
+                        <span className="text-muted-foreground"> — só administrador e sócio</span>
+                      )}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
+            {!podeOffDistrato && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Marcar OFF ou distrato é do administrador e do sócio. Encerrar por
+                queda ou reprovado continua com você.
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor={`${id}-notes`}>Observação (opcional)</Label>
@@ -132,7 +184,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction
-            disabled={saving || !allowed || !status}
+            disabled={saving || !allowed || !status || motivoBloqueado}
             onClick={(event) => { event.preventDefault(); void confirm(); }}
           >
             {saving ? "Encerrando…" : "Encerrar negócio"}

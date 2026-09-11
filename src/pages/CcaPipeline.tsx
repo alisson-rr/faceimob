@@ -7,17 +7,20 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { describeError } from "@/lib/supabaseError";
-import { useToast } from "@/hooks/use-toast";
+import { dbError, describeError } from "@/lib/supabaseError";
+import { toast, useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
+import DealDetailModal from "@/components/DealDetailModal";
 import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
 import {
   listDocumentTypesForAdmin, updateDocumentType, type DocumentTypeAdminRecord,
 } from "@/integrations/supabase/documents";
+import { saveLegacyDeal } from "@/integrations/supabase/newSchema";
 import {
   CcaBoard, CcaMoveDialog, CcaStageSettingsDialog,
-  useCcaBoard, useInvalidateCcaBoard, usePipelineStages,
+  dealRangeError, useCcaBoard, useDeals, useDevelopers, useInvalidateCcaBoard,
+  useInvalidateDeals, usePeople, usePipelineStages,
   type CcaDeal, type CcaStage,
 } from "@/components/pipeline";
 
@@ -201,12 +204,22 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
  * - **Mover é um Select visível** (X02) — ver `CcaBoard`.
  * - **Busca** (0059): 12 casos cabem na tela, 200 viram rolagem. O filtro é do
  *   lado do cliente porque a esteira inteira já vem numa consulta só.
+ * - **O cartão abre o `DealDetailModal`** (pedido do cliente, 10/09/2026): o
+ *   MESMO editor do Pipeline, não uma cópia. Nenhuma regra de permissão nasce
+ *   aqui — o modal e o `DealForm` já consultam `can()`, `canEnterStage()` e
+ *   `useDealWriteLock()`, e é de lá que sai o que a analista pode tocar.
  */
 export default function CcaPipeline() {
   const { can } = useAuth();
   const board = useCcaBoard();
   const refresh = useInvalidateCcaBoard();
   const pipelineStages = usePipelineStages();
+  // Insumos do editor. São as MESMAS consultas do Pipeline (mesmas chaves do
+  // TanStack Query), então abrir as duas telas na sessão não refaz a carga.
+  const dealsQuery = useDeals();
+  const peopleQuery = usePeople();
+  const developersQuery = useDevelopers();
+  const invalidateDeals = useInvalidateDeals();
   const buscaId = useId();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -214,10 +227,17 @@ export default function CcaPipeline() {
   const [busca, setBusca] = useState("");
   const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
   const [submissionDeal, setSubmissionDeal] = useState<CcaDeal | null>(null);
+  /** Negócio aberto no editor — o `id`, não a linha: assim o modal acompanha o
+   *  refetch de `useDeals` em vez de segurar uma cópia congelada. */
+  const [openDealId, setOpenDealId] = useState<string | null>(null);
 
   const canAct = can("cca.review");
   const stages = useMemo(() => board.data?.stages ?? [], [board.data]);
   const deals = useMemo(() => board.data?.deals ?? [], [board.data]);
+  const openDeal = useMemo(
+    () => dealsQuery.data?.find((row) => row.id === openDealId) ?? null,
+    [dealsQuery.data, openDealId],
+  );
 
   const visiveis = useMemo(() => {
     const termo = fold(busca.trim());
@@ -230,18 +250,42 @@ export default function CcaPipeline() {
   // O catálogo de etapas entra no gate porque `CcaMoveDialog` depende dele para
   // levar o negócio junto ao aprovar: abrir a esteira antes de ele chegar
   // deixava o diálogo confirmar com `approvedStageId` indefinido.
-  if (board.isPending || pipelineStages.isPending) {
+  //
+  // Negócios, pessoas e construtoras entram pelo mesmo motivo, agora que o
+  // cartão abre o editor: engoli-los com `?? []` daria um clique que não abre
+  // nada (o negócio ainda não está na lista) ou um modal com os Selects de
+  // corretor e construtora vazios — sem erro e sem "Tentar de novo", com a
+  // mesma cara de uma base sem cadastro. É o gate que o Pipeline já faz.
+  if (board.isPending || pipelineStages.isPending
+      || dealsQuery.isPending || peopleQuery.isPending || developersQuery.isPending) {
     return <LoadingState variant="kpi" rows={5} label="Carregando a esteira…" />;
   }
 
-  if (board.isError) {
+  // `pipelineStages` entra aqui, e não só no gate de espera: falhando, ela
+  // devolvia `undefined` em silêncio — `CcaMoveDialog` aprovava com
+  // `approvedStageId` indefinido e o editor abriria com a lista de etapas vazia.
+  const cargaFalhou = board.error ?? pipelineStages.error
+    ?? dealsQuery.error ?? peopleQuery.error ?? developersQuery.error;
+  if (cargaFalhou) {
     return (
       <EmptyState
         icon={AlertTriangle}
         tone="danger"
         title="Não consegui carregar a esteira CCA"
-        description={describeError(board.error, "Verifique a conexão e tente de novo.")}
-        action={<Button onClick={() => void board.refetch()}>Tentar de novo</Button>}
+        description={describeError(cargaFalhou, "Verifique a conexão e tente de novo.")}
+        action={
+          <Button
+            onClick={() => {
+              void board.refetch();
+              void pipelineStages.refetch();
+              void dealsQuery.refetch();
+              void peopleQuery.refetch();
+              void developersQuery.refetch();
+            }}
+          >
+            Tentar de novo
+          </Button>
+        }
       />
     );
   }
@@ -249,7 +293,7 @@ export default function CcaPipeline() {
   return (
     // `min-w-0`: sem isso o quadro rolável estoura a largura da página inteira —
     // o `main` do shell é item de flex e um filho de bloco cresce até o conteúdo.
-    <div className="min-w-0 space-y-4">
+    <div className="min-w-0 space-y-5">
       <PageHeader
         title="Esteira CCA"
         eyebrow="Crédito"
@@ -302,8 +346,58 @@ export default function CcaPipeline() {
           stages={stages}
           deals={visiveis}
           canAct={canAct}
+          onOpen={(deal) => {
+            // O caso existe na esteira mas o negócio pode não estar na
+            // visibilidade de quem olha (`can_see_deal`) — é o mesmo motivo
+            // pelo qual `loadCcaBoard` cai em "Cliente não informado". Dizer
+            // isso é melhor que um clique que não abre nada.
+            const registro = dealsQuery.data?.find((row) => row.id === deal.dealId);
+            if (!registro) {
+              toast({
+                variant: "destructive",
+                title: "Não consegui abrir este negócio",
+                description: "O caso está na esteira, mas o negócio não aparece na sua "
+                  + "visibilidade. Recarregue a página; se continuar, fale com o administrador.",
+              });
+              return;
+            }
+            setOpenDealId(registro.id);
+          }}
           onMove={(deal, stage) => setMoving({ deal, stage })}
           onSubmitToDeveloper={setSubmissionDeal}
+        />
+      )}
+
+      {/* O MESMO editor do Pipeline, não uma cópia. Nenhuma permissão é
+          decidida aqui: `DealForm` já lê `useDealWriteLock`, `canEnterStage`/
+          `can_exit_stage` e `offDistratoBlocked` (`can('deals.mark_off_distrato')`),
+          e `DealCcaPanel` lê `can('cca.review')` — os mesmos gates que valem
+          quando o modal abre pelo Pipeline. */}
+      {openDeal && (
+        <DealDetailModal
+          key={openDeal.id}
+          deal={openDeal}
+          open
+          stages={pipelineStages.data ?? []}
+          people={peopleQuery.data ?? []}
+          developers={developersQuery.data ?? []}
+          onClose={() => setOpenDealId(null)}
+          onReviewChanged={async () => { await invalidateDeals(); await refresh(); }}
+          onSave={async (updated) => {
+            // Só esta guarda: `dealRequiredError` e `findDuplicateDeal`, as
+            // outras duas que o Pipeline aplica, só valem na CRIAÇÃO (`form.id`
+            // vazio) e daqui nunca sai negócio novo — devolveriam `null` sempre.
+            const foraDeFaixa = dealRangeError(updated);
+            if (foraDeFaixa) throw dbError("deals", { code: "P0001", message: foraDeFaixa });
+            await saveLegacyDeal(updated);
+            await invalidateDeals();
+            await refresh();
+            // O modal fica ABERTO de propósito: logo depois deste `await` ele
+            // grava a análise da aba CCA (`saveCcaAnalysis`), que a RLS pode
+            // recusar. Fechar aqui apagaria da tela a análise recém-digitada,
+            // deixando só o toast de erro — e ela é justamente o que a analista
+            // veio fazer.
+          }}
         />
       )}
 

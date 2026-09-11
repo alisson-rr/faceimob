@@ -77,9 +77,14 @@ begin
   returning id into v_shift;
 
   -- c1 e c2 batem ponto; c3 não.
+  --
+  -- `public.current_work_date()` e NAO `current_date`: o banco roda em UTC e a
+  -- roleta filtra a presenca pelo dia operacional de Sao Paulo (0057). Depois
+  -- das 21h de Brasilia as duas datas divergem, a fila volta vazia e este teste
+  -- falhava por causa da hora do relogio, nao do codigo. Mesma regua do 13.
   insert into public.checkins (profile_id, shift_id, work_date) values
-    (c1, v_shift, current_date),
-    (c2, v_shift, current_date);
+    (c1, v_shift, public.current_work_date()),
+    (c2, v_shift, public.current_work_date());
 end
 $$;
 

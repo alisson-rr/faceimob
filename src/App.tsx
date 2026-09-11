@@ -32,7 +32,6 @@ const Checkin = lazy(() => import("@/pages/Checkin"));
 const AdminAllowedIps = lazy(() => import("@/pages/AdminAllowedIps"));
 const MetaAdsSetup = lazy(() => import("@/pages/MetaAdsSetup"));
 const AdminLeadAutomation = lazy(() => import("@/pages/AdminLeadAutomation"));
-const PublicDirectorCheckpoint = lazy(() => import("@/pages/PublicDirectorCheckpoint"));
 const SdrModule = lazy(() => import("@/pages/SdrModule"));
 import NotFound from "./pages/NotFound";
 
@@ -188,7 +187,6 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPasswordRoute />} />
             <Route path="/daily/:teamId/:slug" element={<DailyReport />} />
             <Route path="/daily/:slug" element={<DailyReport />} />
-            <Route path="/diretor/:slug" element={<PublicDirectorCheckpoint />} />
             <Route element={<RequireAuth />}>
               {/* Dentro do guard de sessão: sem sessão, "/" cai no login como
                   qualquer outra rota, em vez de saltar por /dashboard. */}

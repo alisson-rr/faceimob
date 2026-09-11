@@ -1,3 +1,5 @@
+import type { StatusTone } from "@/components/shared";
+
 /**
  * Cor como string CSS, a partir do nome do token.
  *
@@ -17,6 +19,15 @@ export type ChartToken = (typeof CHART_SERIES)[number];
 export const seriesToken = (index: number): ChartToken =>
   CHART_SERIES[((index % CHART_SERIES.length) + CHART_SERIES.length) % CHART_SERIES.length];
 
+/** Hash do nome normalizado: a mesma cor para o mesmo nome em qualquer tela e
+ *  em qualquer ordem de consulta. */
+function nameHash(name: string): number {
+  const key = name.trim().toUpperCase();
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return hash;
+}
+
 /**
  * Cor da construtora — deterministica pelo NOME, nao pela posicao na lista.
  *
@@ -31,17 +42,93 @@ export const seriesToken = (index: number): ChartToken =>
  * cor nunca e o unico sinal.
  */
 export function developerColor(name: string): ChartToken {
-  const key = name.trim().toUpperCase();
-  if (!key) return CHART_SERIES[0];
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return CHART_SERIES[hash % CHART_SERIES.length];
+  return CHART_SERIES[nameHash(name) % CHART_SERIES.length];
 }
+
+/**
+ * Cor do CORRETOR, para escrever o nome dele colorido no Pipeline (pedido do
+ * cliente em 10/09/2026: a cor do corretor precisa ser visivel, por corretor).
+ *
+ * Mesma regra do `developerColor`, com uma paleta menor: `chart-3` fica de fora
+ * porque no tema claro ele da 3,98:1 sobre `card` e nome de corretor e texto de
+ * 12 px, que exige 4,5:1. Os outros quatro passam nos dois temas. A bolinha da
+ * construtora continua usando a serie inteira — ali e objeto grafico (3:1).
+ */
+const BROKER_TEXT = ["text-chart-1", "text-chart-2", "text-chart-4", "text-chart-5"] as const;
+
+export const brokerTextClass = (name: string): string =>
+  BROKER_TEXT[nameHash(name) % BROKER_TEXT.length];
+
+/**
+ * Faixa de tempo do negocio em tres cores (decisao do cliente em 10/09/2026):
+ * verde ate 3 dias, amarelo de 4 a 9, vermelho de 10 em diante.
+ *
+ * O tipo DERIVA de `StatusTone` em vez de repetir os tres nomes: sem o
+ * `Extract`, um union proprio so indexa um `Record<StatusTone, …>` por
+ * coincidencia de chaves, e a coincidencia some no dia em que um dos dois
+ * lados renomear um tom.
+ */
+export type AgeTone = Extract<StatusTone, "success" | "warning" | "danger">;
+
+export const dealAgeTone = (days: number): AgeTone =>
+  days >= 10 ? "danger" : days >= 4 ? "warning" : "success";
+
+/**
+ * Cor da idade do negocio — fonte unica, e SO de idade, para a tabela e o
+ * cartao.
+ *
+ * Nao usa `STATUS_TONE_CLASS`: aquele mapa e a paleta do Status 2, significado
+ * sem relacao nenhuma com idade. Emprestado, quem ajustasse a cor de um status
+ * repintava a coluna "Dias" sem querer.
+ *
+ * `text` = numero do cartao · `soft` = pilula da coluna "Dias" · `solid` =
+ * faixa vertical da linha. Classes literais, para o Tailwind enxergar.
+ */
+export const DEAL_AGE_CLASS: Record<AgeTone, { text: string; soft: string; solid: string }> = {
+  success: { text: "text-success", soft: "bg-success/15 text-success", solid: "bg-success" },
+  warning: { text: "text-warning", soft: "bg-warning/15 text-warning", solid: "bg-warning" },
+  danger: {
+    text: "text-destructive",
+    soft: "bg-destructive/15 text-destructive",
+    solid: "bg-destructive",
+  },
+};
 
 /** Pódio: 0 = ouro, 1 = prata, 2 = bronze. Fora disso nao ha medalha. */
 export const PODIUM_TOKENS = ["gold", "silver", "bronze"] as const;
 export type PodiumToken = (typeof PODIUM_TOKENS)[number];
 export const podiumToken = (rank: number): PodiumToken | null => PODIUM_TOKENS[rank] ?? null;
+
+/**
+ * Classes do podio por token. Literais, para o Tailwind enxergar na varredura.
+ *
+ * Havia tres implementacoes da mesma cor — `podiumToken` aqui, um `podiumTone`
+ * de indice BASE 1 no `AppLayout` e um par `MEDALHA`/`ANEL` de base 0 no
+ * `PainelDoCorretor`. Bases diferentes para a mesma ideia sao convite a coroar
+ * o segundo colocado de ouro; a base agora e uma so, a de `podiumToken`.
+ */
+export const PODIUM_CLASS: Record<PodiumToken, { text: string; ring: string }> = {
+  gold: { text: "text-gold", ring: "ring-gold" },
+  silver: { text: "text-silver", ring: "ring-silver" },
+  bronze: { text: "text-bronze", ring: "ring-bronze" },
+};
+
+/**
+ * Cor do texto da colocacao. `rank` e BASE 0, igual a `podiumToken`.
+ *
+ * Fora do podio nao ha degrau: o 12o colocado com a cor de bronze anunciava uma
+ * medalha que ele nao tem.
+ */
+export const podiumTextClass = (rank: number): string => {
+  const token = podiumToken(rank);
+  return token ? PODIUM_CLASS[token].text : "text-muted-foreground";
+};
+
+/** Anel do avatar no podio. Mesma base 0; sem medalha, sem anel colorido. */
+export const podiumRingClass = (rank: number): string => {
+  const token = podiumToken(rank);
+  return token ? PODIUM_CLASS[token].ring : "ring-border";
+};
 
 // ─── Recharts ───────────────────────────────────────────────────────────────
 // O Recharts nao le classe do Tailwind: eixo, grade e tooltip sao props com

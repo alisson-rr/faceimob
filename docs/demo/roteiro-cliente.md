@@ -75,12 +75,16 @@ defeito, é a regra de turno.
 
 ### 3. ✅ Os quatro links públicos têm PIN
 
-Conferido em 01/09: **4 links ativos, 0 sem PIN** — os dois de diretoria
-(`seed-diretoria-daniela` e `diretor-ricardo-sampaio`) que estavam abertos em
-26/08 foram fechados. Os PINs foram combinados fora do repositório e **não
-estão escritos aqui**; quem for demonstrar o diário público (ver "Extras")
-precisa tê-los à mão. O bloqueio por tentativas (migration 0034) passa a
-proteger todos eles, porque agora há segredo a adivinhar.
+Conferido em 01/09: **4 links ativos, 0 sem PIN**. Os PINs foram combinados
+fora do repositório e **não estão escritos aqui**; quem for demonstrar o diário
+público (ver "Extras") precisa tê-los à mão. O bloqueio por tentativas
+(migration 0034) passa a proteger todos eles, porque agora há segredo a
+adivinhar.
+
+> Os dois links de diretoria (`seed-diretoria-daniela` e
+> `diretor-ricardo-sampaio`) continuam na tabela, mas **não abrem mais nada**: a
+> migration 0103 tirou o checkpoint da superfície anônima. Só os **dois links de
+> diário** importam para a demo.
 
 > Ainda pendente no painel do Supabase: **Authentication → Sign In / Providers →
 > "Allow new users to sign up"** precisa ser desligado. O `config.toml` só vale
@@ -348,10 +352,13 @@ voltar, escolha "Administrador (você)".
 - **Equipes** — Paulista 7 membros (Marcos Gerente / Daniela Diretora), Sul 5
   (Fernanda Gerente / Daniela Diretora), Centro 4 (Paula Marchesi / Ricardo
   Sampaio). Duas diretorias.
-- **Checkpoint da diretoria** — https://faceimob.vercel.app/diretor/seed-diretoria-daniela
-  abre sem sessão, pede o PIN da diretoria (item 3 do topo) e mostra a semana
-  de 24 a 30/08: 32 leads, 9 análises, 5 aprovações, 2 vendas, quebrado por
-  equipe.
+- **Checkpoint da diretoria** — **Checkpoint** no menu lateral, ou
+  https://faceimob.vercel.app/checkpoint?semana=2026-08-24 (o parâmetro abre
+  direto na semana de 24 a 30/08). Mostra 32 leads, 9 análises, 5 aprovações,
+  2 vendas, quebrado por equipe. **É tela logada, e não link público:** desde a
+  migration 0103 a rota anônima `/diretor/<slug>` não existe mais e o recorte
+  vem da hierarquia — admin e sócio veem todas as equipes, o diretor vê as
+  dele, o gerente vê só a sua. Não peça PIN aqui; basta estar logado.
 - **Diário público** — `/daily/<slug>` pede o PIN da equipe. PIN certo abre a
   escala e grava o checkpoint ("🎯 Checkpoint concluído! +XP"); PIN errado ou
   link bloqueado responde **"Envio recusado"**. *(Os dois caminhos foram

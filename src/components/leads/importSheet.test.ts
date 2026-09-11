@@ -24,6 +24,33 @@ const CSV_FIXTURE = [
   'Carla Nogueira,11988770003,carla.nogueira@exemplo.com,Indicação,"Já visitou o decorado, ligar à tarde"',
 ].join("\n");
 
+/**
+ * A planilha que o cliente manda de verdade: exportada do Excel em pt-BR, com
+ * ponto e vírgula e campo de observação em português. É o arquivo que a regra
+ * dos 10% de caractere quebrado passou a recusar.
+ */
+const CSV_ACENTOS = [
+  "Cliente;Telefone;Observação",
+  'João Antônio;11988770001;"Não há urgência; só à tarde"',
+  'Conceição Assunção;11988770002;"Três suítes; região da Aurélia"',
+  'Antônia Fátima;11988770003;"Já é proprietária; quer imóvel térreo"',
+  'Mônica Sá;11988770004;"Irmã do condômino; ligar à noite, não de manhã"',
+  'Sérgio Façanha;11988770005;"É só em março; não quer térreo, e sim sótão"',
+].join("\n");
+
+/** Bytes em Windows-1252, que é o que o Excel brasileiro grava. Vale para o
+ *  intervalo latin-1 (até U+00FF), onde ele coincide com o acento do português. */
+const win1252 = (texto: string) => Uint8Array.from([...texto].map((c) => c.charCodeAt(0)));
+
+/** Bytes em UTF-16LE com BOM — o "Unicode Text" do Excel. */
+const utf16le = (texto: string) => {
+  const bytes = new Uint8Array(2 + texto.length * 2);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(0, 0xfeff, true);
+  for (let i = 0; i < texto.length; i += 1) view.setUint16(2 + i * 2, texto.charCodeAt(i), true);
+  return bytes;
+};
+
 const asFile = (content: BlobPart, name: string) => new File([content], name);
 
 describe("parseSheet", () => {
@@ -72,6 +99,67 @@ describe("parseSheet", () => {
 
     await expect(parseSheet(asFile(ole2, "antiga.xls"))).rejects.toThrow(/\.xls/);
     await expect(parseSheet(asFile(ole2, "antiga.xls"))).rejects.toThrow(/salve como \.xlsx/);
+  });
+
+  // O tipo saía do NOME do arquivo, e o nome é digitado por quem envia: um
+  // binário renomeado para .csv era decodificado como texto e virava linhas de
+  // ruído, que a tela mostrava como "0 leads" sem dizer o que houve.
+  it("recusa binário com a extensão trocada para .csv", async () => {
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x01, 0x00,
+    ]);
+
+    await expect(parseSheet(asFile(png, "planilha.csv"))).rejects.toThrow(ImportError);
+    await expect(parseSheet(asFile(png, "planilha.csv"))).rejects.toThrow(/extensão pode estar trocada/);
+  });
+
+  it("lê pelo conteúdo: um .xlsx salvo com nome .csv continua sendo planilha", async () => {
+    const rows = await parseSheet(asFile(XLSX_FIXTURE, "leads-teste.csv"));
+
+    expect(rows).toHaveLength(4);
+    expect(rows[0][0]).toBe("Cliente");
+  });
+
+  it("lê o CSV do Excel brasileiro (Windows-1252) com acento denso", async () => {
+    const bytes = win1252(CSV_ACENTOS);
+    // A conta da regra antiga, sobre este mesmo arquivo: decodificar tudo como
+    // UTF-8 e contar caractere de substituição passa dos 10% que ela recusava.
+    // Planilha boa, exportada do Excel — e a importação em massa parava aqui.
+    const decodadoComoUtf8 = new TextDecoder("utf-8").decode(bytes);
+    const quebrados = [...decodadoComoUtf8].filter((c) => c === "\uFFFD").length;
+    expect(quebrados / decodadoComoUtf8.length).toBeGreaterThan(0.1);
+
+    const rows = await parseSheet(asFile(bytes, "excel-ptbr.csv"));
+
+    expect(rows).toHaveLength(6);
+    expect(rows[0]).toEqual(["Cliente", "Telefone", "Observação"]);
+    expect(rows[1][0]).toBe("João Antônio");
+    // O ponto e vírgula dentro das aspas é parte da observação, não separador.
+    expect(rows[4][2]).toBe("Irmã do condômino; ligar à noite, não de manhã");
+  });
+
+  it("lê o CSV em UTF-8, com ou sem BOM", async () => {
+    const utf8 = new TextEncoder().encode(CSV_ACENTOS);
+    const comBom = new Uint8Array([0xef, 0xbb, 0xbf, ...utf8]);
+
+    for (const bytes of [utf8, comBom]) {
+      const rows = await parseSheet(asFile(bytes, "utf8.csv"));
+
+      // O BOM deixado no texto viraria parte do primeiro cabeçalho, e nenhuma
+      // coluna seria reconhecida — o decodificador precisa descartá-lo.
+      expect(rows[0]).toEqual(["Cliente", "Telefone", "Observação"]);
+      expect(rows[2][0]).toBe("Conceição Assunção");
+    }
+  });
+
+  it("lê o 'Unicode Text' do Excel: UTF-16 com BOM", async () => {
+    // Cada caractere ASCII vem com um byte zero ao lado: decodificado como
+    // UTF-8, o arquivo inteiro parecia binário e a planilha era recusada.
+    const rows = await parseSheet(asFile(utf16le(CSV_ACENTOS), "unicode.csv"));
+
+    expect(rows[0]).toEqual(["Cliente", "Telefone", "Observação"]);
+    expect(rows[3][2]).toBe("Já é proprietária; quer imóvel térreo");
   });
 });
 

@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Crown } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { num } from "@/lib/format";
+import { podiumToken, type PodiumToken } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 
 /**
@@ -47,14 +48,20 @@ export interface PodiumProps {
   className?: string;
 }
 
-/** Posição no pódio → token de cor e altura do degrau. */
-const PLACE = [
-  { tone: "gold", step: "h-20", stepSm: "h-12" },
-  { tone: "silver", step: "h-14", stepSm: "h-9" },
-  { tone: "bronze", step: "h-10", stepSm: "h-7" },
+/**
+ * Altura do degrau por posição na lista (0 = o mais alto). Só altura: a cor sai
+ * de `podiumToken`, que é a base 0 declarada em `@/lib/tone` — aqui havia uma
+ * segunda tabela posição → token, em base 1, do mesmo feitio do `podiumTone`
+ * que já foi apagado do `AppLayout`. Duas bases para a mesma ideia é convite a
+ * coroar o segundo colocado de ouro.
+ */
+const STEP_HEIGHT = [
+  { step: "h-20", stepSm: "h-12" },
+  { step: "h-14", stepSm: "h-9" },
+  { step: "h-10", stepSm: "h-7" },
 ] as const;
 
-const TONE_CLASS: Record<string, { ring: string; text: string; step: string }> = {
+const TONE_CLASS: Record<PodiumToken | "plain", { ring: string; text: string; step: string }> = {
   gold: { ring: "ring-gold", text: "text-gold", step: "border-gold/40 bg-gold/15" },
   silver: { ring: "ring-silver", text: "text-silver", step: "border-silver/40 bg-silver/15" },
   bronze: { ring: "ring-bronze", text: "text-bronze", step: "border-bronze/40 bg-bronze/15" },
@@ -67,7 +74,7 @@ const TONE_CLASS: Record<string, { ring: string; text: string; step: string }> =
  * Coroa, medalha e altura seguem daí — 5º lugar não recebe ouro.
  */
 const placeOf = (entry: PodiumEntry, index: number) => entry.place ?? index + 1;
-const toneOf = (place: number) => TONE_CLASS[place <= 3 ? PLACE[place - 1].tone : "plain"];
+const toneOf = (place: number) => TONE_CLASS[podiumToken(place - 1) ?? "plain"];
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
@@ -120,7 +127,7 @@ function Step({
   onSelect?: (entry: PodiumEntry) => void;
   still: boolean;
 }) {
-  const config = PLACE[place];
+  const config = STEP_HEIGHT[place];
   const colocacao = placeOf(entry, place);
   const tone = toneOf(colocacao);
   const first = colocacao === 1;

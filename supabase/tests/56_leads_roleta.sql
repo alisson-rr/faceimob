@@ -445,19 +445,42 @@ begin
   perform pg_temp.check56(not public.can_write_lead(v_lead),
     'corretor de fora não escreve no lead de outro');
 
-  -- O sócio ENXERGA o lead (`can_see_lead`) e é justamente isso que a policy de
-  -- insert usava antes: leitura liberando escrita.
+  -- O sócio ENXERGA o lead (`can_see_lead`) e, desde 10/09/2026, também escreve
+  -- nele: o cliente decidiu que sócio e administrador têm o mesmo nível, a 0097
+  -- pôs `partner` em `is_admin()` e a 0099 em `has_any_role('admin', …)` — e é
+  -- `is_admin()` que `can_write_lead` consulta. O assert virou de lado junto com
+  -- a regra.
+  --
+  -- Consequência que precisa ficar escrita: o sócio era o ÚNICO papel que
+  -- enxergava lead alheio sem poder escrever, então o defeito que a 0056
+  -- corrigiu (policy de insert cobrando `can_see_lead`) perdeu a testemunha de
+  -- comportamento. A cobertura continua em dois pontos: o corretor de fora, que
+  -- segue recusado, e o TEXTO das policies, conferido no fim deste bloco.
   perform set_config('request.jwt.claims',
     json_build_object('sub', soc::text, 'role', 'authenticated')::text, false);
   perform pg_temp.check56(public.can_see_lead(v_lead), 'cenário: o sócio enxerga o lead');
-  perform pg_temp.check56(not public.can_write_lead(v_lead), 'o sócio não escreve no lead alheio');
+  perform pg_temp.check56(public.can_write_lead(v_lead),
+    'o sócio escreve no lead alheio como administrador (regra de 10/09/2026)');
+
+  set local role authenticated;
+  insert into public.lead_comments (lead_id, author_id, body)
+  values (v_lead, soc, 'comentário do sócio');
+  reset role;
+  perform pg_temp.check56(
+    exists (select 1 from public.lead_comments where lead_id = v_lead and author_id = soc),
+    'a policy de comentário acompanha: o sócio comenta no lead alheio');
+
+  -- Quem não escreve no lead continua recusado: o corretor de fora ocupa o
+  -- lugar que era do sócio nestes dois blocos.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', corb::text, 'role', 'authenticated')::text, false);
 
   begin
     set local role authenticated;
     insert into public.lead_comments (lead_id, author_id, body)
-    values (v_lead, soc, 'comentário do sócio');
+    values (v_lead, corb, 'comentário de fora');
     reset role;
-    raise exception 'FALHOU: a policy deixou o sócio comentar em lead alheio';
+    raise exception 'FALHOU: a policy deixou corretor de fora comentar em lead alheio';
   exception when insufficient_privilege then
     reset role;
     raise notice '  ok  lead_comments recusa comentário de quem não escreve no lead';
@@ -466,13 +489,45 @@ begin
   begin
     set local role authenticated;
     insert into public.lead_attachments (lead_id, storage_path, original_name, stored_name, uploaded_by)
-    values (v_lead, format('%s/x.pdf', v_lead), 'x.pdf', 'x.pdf', soc);
+    values (v_lead, format('%s/x.pdf', v_lead), 'x.pdf', 'x.pdf', corb);
     reset role;
-    raise exception 'FALHOU: a policy deixou o sócio anexar em lead alheio';
+    raise exception 'FALHOU: a policy deixou corretor de fora anexar em lead alheio';
   exception when insufficient_privilege then
     reset role;
     raise notice '  ok  lead_attachments recusa anexo de quem não escreve no lead';
   end;
+
+  -- O conserto da 0056 no texto da policy: insert de comentário e de anexo
+  -- pergunta `can_write_lead`, nunca `can_see_lead`. É o que sobrou de prova
+  -- direta agora que os dois conjuntos (quem vê / quem escreve) coincidem.
+  perform pg_temp.check56(
+    (select coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
+       from pg_policy p
+      where p.polname = 'lead_comments_insert'
+        and p.polrelid = 'public.lead_comments'::regclass)
+      like '%can_write_lead%',
+    'lead_comments_insert cobra can_write_lead');
+  perform pg_temp.check56(
+    (select coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
+       from pg_policy p
+      where p.polname = 'lead_comments_insert'
+        and p.polrelid = 'public.lead_comments'::regclass)
+      not like '%can_see_lead%',
+    'lead_comments_insert não voltou a liberar escrita por leitura');
+  perform pg_temp.check56(
+    (select coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
+       from pg_policy p
+      where p.polname = 'lead_attachments_insert'
+        and p.polrelid = 'public.lead_attachments'::regclass)
+      like '%can_write_lead%',
+    'lead_attachments_insert cobra can_write_lead');
+  perform pg_temp.check56(
+    (select coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
+       from pg_policy p
+      where p.polname = 'lead_attachments_insert'
+        and p.polrelid = 'public.lead_attachments'::regclass)
+      not like '%can_see_lead%',
+    'lead_attachments_insert não voltou a liberar escrita por leitura');
 
   -- Contraprova: o dono continua comentando.
   perform set_config('request.jwt.claims',

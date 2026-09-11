@@ -6,10 +6,10 @@ import { abrirPipelineFiltrado, criarNegocio, limparCenario } from "../matriz/ce
  * `can_enter_stage`: mover um card para uma etapa negada tem de FALHAR na tela
  * com motivo legível e NÃO mexer no banco.
  *
- * A matriz semeada já nega "Aprovado" ao corretor (`stage_permissions` só tem
- * linha de broker para incomplete/lead/proposal/visita/análise/perdido). Testar
- * com a matriz de verdade em vez de mexer nela evita brigar com os outros
- * agentes que compartilham este banco.
+ * A matriz semeada já nega "Aprovado" ao corretor: desde a 0101 ele só ENTRA em
+ * "Visita Agendada" e "Perdido" — sai do funil comercial inteiro, mas escolhe o
+ * destino em só duas etapas. Testar com a matriz de verdade em vez de mexer
+ * nela evita brigar com os outros agentes que compartilham este banco.
  */
 const tag = runTag();
 let negocio: { id: string; cliente: string };
@@ -41,6 +41,25 @@ test.describe("corretor · matriz de etapas", () => {
     );
     // Sem linha = negado (o default do banco é "ninguém além de admin entra").
     expect(linhas.every((l) => !l.can_enter)).toBe(true);
+  });
+
+  /**
+   * A matriz INICIAL tem duas fontes: `supabase/seed.sql` (banco novo, onde as
+   * etapas nascem) e a §3 da migration 0101 (banco que já as tem). As duas já
+   * divergiram — o seed ficou com o estado antigo e só a homologação recebeu a
+   * regra nova, então `db:reset` e homologação respondiam coisas diferentes
+   * para a mesma pergunta. Este assert é o que reprova a divergência: mudar uma
+   * fonte sem a outra derruba o teste em vez de virar defeito em produção.
+   *
+   * Só o ENTRAR é cobrado. O SAIR fica largo de propósito (0101): agendar visita
+   * e encerrar o negócio exigem tirá-lo da etapa em que ele estiver.
+   */
+  test("o corretor só ENTRA em 'Visita Agendada' e 'Perdido'", async () => {
+    const linhas = await db.select<{ pipeline_stages: { code: string } }>(
+      "stage_permissions?role=eq.broker&can_enter=is.true&select=pipeline_stages(code)",
+    );
+    expect(linhas.map((l) => l.pipeline_stages.code).sort())
+      .toEqual(["lost", "visit_scheduled"]);
   });
 
   /**

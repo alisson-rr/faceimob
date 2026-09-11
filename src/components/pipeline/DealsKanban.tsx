@@ -54,7 +54,11 @@ export function DealsKanban({ stages, deals, onOpen, onMove, onLose, canWrite, c
   /** A mesma recusa que `useDealActions` consulta antes de gravar, agora também
    *  ANTES de oferecer o gesto: `can_exit` sozinho é metade da matriz, e o
    *  `can_enter` do destino e a conferência documental só apareciam depois do
-   *  clique, em toast vermelho. */
+   *  clique, em toast vermelho.
+   *
+   *  Uma checagem só, e não duas: quem decide a etapa é a matriz de etapas. A
+   *  permissão extra que existiu aqui recusava o arraste inclusive para papéis
+   *  que a matriz autoriza, deixando o admin sem como conceder pela tela. */
   const blockedMove = (deal: LegacyDealRecord, stage: PipelineStage) =>
     blockedMoveReason(deal, stage, { isAdmin, canEnterStage, canExitStage, closedMonths });
 
