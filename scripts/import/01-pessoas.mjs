@@ -144,6 +144,7 @@ import {
   dataBubble,
   dataBubbleDia,
   ehDryRun,
+  emailLogin,
   inserirEmLote,
   lerCsv,
   lerMapa,
@@ -260,17 +261,21 @@ async function main() {
   // ── 1. ler os exports ──────────────────────────────────────────────────────
   const usuarios = [];
   const porEmail = new Map();
+  // Cadastro repetido (mesmo e-mail) aponta para o perfil do primeiro: é a mesma
+  // pessoa duas vezes no Bubble, e as cargas seguintes exigem par para todo id.
+  const repetidos = [];
   for await (const linha of lerCsv(acharExport("export_All-Users"))) {
-    const email = String(linha.email ?? "")
-      .trim()
-      .toLowerCase();
+    const email = emailLogin(linha.email);
     const bubbleId = String(linha["unique id"] ?? "").trim();
     if (!email || !bubbleId) {
       rel.aviso("linha de Users sem e-mail ou sem unique id — descartada");
       continue;
     }
+    if (email !== String(linha.email).trim().toLowerCase())
+      rel.aviso(`e-mail com acento no Bubble — a conta usa o endereço sem acento: ${linha.colaboradores}`);
     if (porEmail.has(email)) {
-      rel.aviso(`e-mail repetido no CSV (${linha.colaboradores}) — 2ª linha descartada`);
+      rel.aviso(`e-mail repetido no CSV (${linha.colaboradores}) — a 2ª linha aponta para o perfil da 1ª`);
+      repetidos.push({ bubbleId, email });
       continue;
     }
     const u = {
@@ -580,6 +585,12 @@ async function main() {
     if (criadas % 50 === 0) console.log(`[pessoas]   ${criadas} contas criadas…`);
   }
   rel.conta("pessoas:contas-criadas", criadas);
+  for (const r of repetidos) {
+    const dono = porEmail.get(r.email)?.profileId;
+    if (!dono) continue; // o 1º ficou sem perfil: já denunciado em "pessoas ficaram sem perfil"
+    paresUsuario.push({ bubble_id: r.bubbleId, tabela_destino: "profiles", registro_id: dono });
+    rel.conta("pessoas:cadastro-repetido-apontado");
+  }
 
   // De-para antes de qualquer passo dependente: se a carga morrer no meio, a
   // próxima execução reencontra as contas em vez de duplicar.

@@ -547,6 +547,23 @@ export function normalizarNome(txt) {
 }
 
 /**
+ * E-mail de login. O GoTrue recusa acento antes do @ ("Unable to validate email
+ * address: invalid format") e o provedor do domínio (KingHost) não cria caixa
+ * com acento: o Bubble guardou o endereço como foi digitado. A conta nasce com
+ * o mesmo endereço sem o acento — o resto do texto não muda.
+ *
+ * @param {string} txt
+ * @returns {string}
+ */
+export function emailLogin(txt) {
+  return String(txt ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "");
+}
+
+/**
  * Lista do Bubble separada por " , " → array já com trim. "" → [].
  * (Alguns arquivos usam ", " — leads §16. Este separador é o de `Equipes`.)
  *
@@ -894,6 +911,10 @@ export function ehDryRun() {
 // ── autoteste ────────────────────────────────────────────────────────────────
 
 async function autoteste() {
+  // e-mail de login: só o acento sai
+  assert.equal(emailLogin(" Luís.Silva@FaceImob.com.br "), "luis.silva@faceimob.com.br");
+  assert.equal(emailLogin("joao_1@gmail.com"), "joao_1@gmail.com");
+
   // datas: os dois casos de relógio de 12h e o dia que não pode deslizar
   assert.equal(dataBubble("May 11, 2024 6:18 pm"), "2024-05-11T18:18:00-03:00");
   assert.equal(dataBubble("Jan 3, 2025 12:00 am"), "2025-01-03T00:00:00-03:00");

@@ -352,6 +352,10 @@ const nomeOriginal = (url) => decodificar(url.split("/").at(-1));
 // do `Content-Disposition` e o do anexo no e-mail para a construtora. Quem decide
 // é a CONTAGEM de dígitos da janela, não o formato dela.
 const JANELA_DIGITOS = /(?<!\d)\d[\d.\s-]*\d(?!\d)/g;
+// CPF como bloco próprio dentro de uma janela maior: grudado por hífen numa data
+// ou num horário (`rg-60112345608-20240115`), a janela passa de 11 dígitos e o
+// CPF saía inteiro. Medido na carga de 12/09/2026: 76 nomes com CPF válido.
+const CPF_EM_BLOCO = /(?<!\d)(?:\d{3}[.\s-]+\d{3}[.\s-]+\d{3}[.\s-]+\d{2}|\d{11})(?!\d)/g;
 // Só para medir o que a versão de um separador deixava passar (relatório N-27).
 const CPF_UM_SEPARADOR = /\d{3}[.\s-]\d{3}[.\s-]\d{3}[-.\s]\d{2}|(?<!\d)\d{11}(?!\d)/;
 
@@ -359,13 +363,14 @@ const CPF_UM_SEPARADOR = /\d{3}[.\s-]\d{3}[.\s-]\d{3}[-.\s]\d{2}|(?<!\d)\d{11}(?
  * Tira o CPF do nome (N-27). Roda ANTES de sanear: depois, `601.123.456-08` já
  * teria virado `601-123-456-08` e a janela quebraria no hífen.
  *
- * Mascara toda janela com exatamente 11 dígitos. Mascarar demais é aceitável e
+ * Mascara toda janela com exatamente 11 dígitos e, dentro de janela maior, o
+ * bloco com forma de CPF (`CPF_EM_BLOCO`). Mascarar demais é aceitável e
  * mascarar de menos não é: `original_name` guarda o nome real para auditoria, e o
  * carimbo do Bubble (`impressao-20260722140305`, 14 dígitos) não é tocado.
  */
 function mascararCpf(nome) {
   return String(nome ?? "").replace(JANELA_DIGITOS, (janela) =>
-    janela.replace(/\D/g, "").length === 11 ? "***" : janela,
+    janela.replace(/\D/g, "").length === 11 ? "***" : janela.replace(CPF_EM_BLOCO, "***"),
   );
 }
 
@@ -882,6 +887,18 @@ const gb = (n) => (n / 1024 ** 3).toFixed(2);
 /** Arquivo que o bucket recusaria: vira registro sem arquivo, como os antigos. */
 const GRANDE_DEMAIS = Symbol("grande demais");
 
+/** `cf-polished: ok, orig_size=123425` → 123425; sem o cabeçalho → null. */
+const tamanhoOriginal = (polished) => {
+  const m = /orig_size=(\d+)/.exec(polished ?? "");
+  return m ? Number(m[1]) : null;
+};
+
+/** O mesmo arquivo na origem S3 do Bubble, antes do Cloudflare do CDN. */
+const semPolish = (url) => {
+  const u = new URL(url);
+  return u.hostname.endsWith(".cdn.bubble.io") ? `https://s3.amazonaws.com/appforest_uf${u.pathname}` : url;
+};
+
 /**
  * Traz o binário do CDN e sobe no bucket. Devolve o que a linha precisa, ou
  * `GRANDE_DEMAIS`. Falha de rede sobe como exceção — e falha NÃO vira linha.
@@ -898,7 +915,18 @@ async function migrar(item, cliente) {
 
   const corpo = await comBackoff(item.url);
   if (!corpo.ok) throw new Error(`CDN GET ${corpo.status}`);
-  const dados = Buffer.from(await corpo.arrayBuffer());
+  let dados = Buffer.from(await corpo.arrayBuffer());
+  // O CDN passa imagem pelo Cloudflare Polish: com o cache quente o GET devolve
+  // a versão otimizada (`cf-polished: ok, orig_size=N`), não o arquivo enviado.
+  // Medido na carga de 12/09/2026. A origem S3 do Bubble entrega o original.
+  const original = tamanhoOriginal(corpo.headers.get("cf-polished"));
+  if (original !== null && dados.length !== original) {
+    const cru = await comBackoff(semPolish(item.url));
+    if (!cru.ok) throw new Error(`origem S3 GET ${cru.status}`);
+    dados = Buffer.from(await cru.arrayBuffer());
+    if (dados.length !== original) throw new Error(`origem S3 devolveu ${dados.length} bytes, o original tem ${original}`);
+    rel.conta("arquivo:original_pela_origem_s3");
+  }
   if (dados.length === 0) throw new Error("arquivo vazio no CDN");
 
   // `scripts/seed-documents-storage.mjs` faz `encodeURIComponent` por segmento
@@ -932,7 +960,7 @@ async function processarBloco(bloco, cliente) {
         // Um arquivo que falhou não derruba a carga nem vira linha: a
         // reexecução tenta de novo porque o par não entrou no de-para.
         rel.conta("arquivo:falhou");
-        rel.aviso(`arquivo não migrado (${item.stored}): ${String(e.message ?? e).slice(0, 120)}`);
+        rel.aviso(`arquivo não migrado (${item.stored}, negócio ${item.dealId}): ${String(e.message ?? e).slice(0, 120)}`);
       }
     },
   );
@@ -1144,6 +1172,13 @@ async function autoteste() {
   assert.ok(!/\d{3}/.test(sanear(mascararCpf("RG--601--123--456--08.jpg"))));
   // Corrida longa de dígitos NÃO é CPF: o carimbo do Bubble tem de sobreviver.
   assert.equal(mascararCpf("Impressao_20260722140305.pdf"), "Impressao_20260722140305.pdf");
+  // CPF grudado por hífen numa data: a janela passa de 11 dígitos, o bloco não.
+  assert.equal(mascararCpf("rg-60112345608-20240115-1030.pdf"), "rg-***-20240115-1030.pdf");
+  assert.equal(sanear(mascararCpf("CPF 601.123.456-08-20240115.pdf")), "cpf-20240115.pdf");
+  // Polish do CDN: tamanho do original no cabeçalho e o mesmo arquivo na origem S3.
+  assert.equal(tamanhoOriginal("ok, orig_size=123425"), 123425);
+  assert.equal(tamanhoOriginal(null), null);
+  assert.equal(semPolish("https://abc.cdn.bubble.io/f1x2/a%20b.jpg"), "https://s3.amazonaws.com/appforest_uf/f1x2/a%20b.jpg");
   assert.equal(sanear(mascararCpf("CTPS 601.123.456-08.pdf")), "ctps.pdf");
   assert.ok(!/\d{11}|\d{3}[.-]\d{3}/.test(sanear(mascararCpf("cpf 601.123.456-08 joao.PDF"))));
   assert.equal(sanear("Certidão de Casamento.PDF"), "certidao-de-casamento.pdf");
