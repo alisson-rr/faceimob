@@ -61,6 +61,23 @@ Os scripts de reparo (itens 3 e 4) foram descartáveis e ficaram fora do reposit
 - **LAKEWOOD** está cadastrado em duas construtoras. **Julho 2026** tem os pesos deslocados no
   próprio Bubble.
 
+## Desempenho depois da carga (migrations 0126 e 0127)
+
+Com o volume real, o Pipeline e o Dashboard pararam de abrir: as consultas estouravam o tempo limite de
+8 s do banco. A causa eram as regras de acesso (RLS) que chamavam uma função por linha:
+- `can_see_deal`: 1 s por página de negócios e 3,9 s por página de nomes;
+- `can_edit_deal`: 8 s por página de participantes.
+
+As migrations 0126 e 0127 mantêm as mesmas regras, mas calculam o papel e o conjunto de negócios
+visíveis uma vez por consulta. Antes de aplicar, a lista visível e a editável foram comparadas entre a
+regra antiga e a nova, por usuário, para admin, diretor, gerente, corretor, CCA, sócio, suspenso e quem
+não tem negócio: nenhuma divergência.
+
+Carga inteira do Pipeline depois da correção: 0,32 s (admin) e 0,10 s (diretor e corretor).
+
+Uma limitação continua: as telas ainda baixam as tabelas inteiras, página por página. Com mais volume,
+o caminho é filtrar e paginar no servidor.
+
 ## Pendências operacionais
 
 - **IP real da unidade** em Admin · IPs: sem ele nenhum corretor faz check-in e a roleta não entrega
