@@ -191,7 +191,7 @@ insert into public.permissions (code, label, category, description) values
   ('deals.delete',          'Excluir negócios',            'negocios', null),
   ('cca.review',            'Analisar crédito',            'cca',      'Movimentar a esteira do CCA'),
   ('reports.view_finance',  'Ver dados financeiros',       'relatorios', 'Aportes, custos e VGV consolidado'),
-  ('teams.manage',          'Gerenciar equipes',           'equipes',  'Incluir e desligar integrantes'),
+  ('teams.manage',          'Gerenciar equipes',           'equipes',  'Desligar integrantes; incluir só quem já está no seu alcance'),
   ('users.manage_roles',    'Gerenciar papéis',            'usuarios', null),
   ('settings.integrations', 'Gerenciar integrações',       'config',   'Tokens de API'),
   ('game.close_season',     'Encerrar temporada',          'jogo',     null),

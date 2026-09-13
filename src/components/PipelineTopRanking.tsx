@@ -6,6 +6,7 @@ import type { WeekRange } from "@/integrations/supabase/game";
 import { useAuth } from "@/contexts/AuthContext";
 import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard";
 import { PodiumCards } from "@/components/engagement";
+import { StatusBadge } from "@/components/shared";
 import { brl, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
@@ -203,7 +204,10 @@ export default function PipelineTopRanking({ deals, onAbrirPainel }: Props) {
           </p>
         )}
 
-        {verMais}
+        <div className="flex items-center justify-between gap-2">
+          <StatusBadge tone="live">Game ativo</StatusBadge>
+          {verMais}
+        </div>
       </div>
     );
   };
@@ -215,7 +219,7 @@ export default function PipelineTopRanking({ deals, onAbrirPainel }: Props) {
     <section
       aria-label={`Ranking do game — ${escopo}`}
       onClick={onAbrirPainel}
-      className="mx-auto w-full max-w-5xl cursor-pointer rounded-2xl border border-border bg-card p-3 text-card-foreground transition-colors hover:border-primary/40"
+      className="gold-hairline relative mx-auto w-full max-w-5xl cursor-pointer rounded-2xl border border-border bg-card p-3 text-card-foreground transition-colors hover:border-primary/40"
     >
       {conteudo()}
     </section>
@@ -228,21 +232,24 @@ export default function PipelineTopRanking({ deals, onAbrirPainel }: Props) {
  * `pathLength={100}` deixa o `strokeDasharray` ser lido em por cento direto,
  * sem conta de circunferência para alguém errar quando o raio mudar.
  *
- * O TRILHO é azul (`stroke-primary/30`), não cinza: no print do cliente o anel
- * é um círculo azul inteiro mesmo com o corretor em 0 ponto e 0% da meta, e
+ * O TRILHO é colorido (`stroke-gold/30`), não cinza: no print do cliente o anel
+ * é um círculo inteiro mesmo com o corretor em 0 ponto e 0% da meta, e
  * `stroke-border` deixava a faixa começando o mês com um aro apagado. Quem
  * marca progresso continua sendo o arco cheio por cima — 0% não desenha arco
- * nenhum, então o trilho azul não afirma avanço que não houve.
+ * nenhum, então o trilho não afirma avanço que não houve.
+ *
+ * Ouro no mesmo tom da barra da meta (12/09/2026): anel e barra medem a mesma
+ * fração. `gold` e não `highlight` porque é traço — 3:1 também no tema claro.
  */
 function AnelDeProgresso({ pct, children }: { pct: number; children: ReactNode }) {
   return (
     <span className="relative grid h-14 w-14 shrink-0 place-items-center">
       <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden focusable="false">
-        <circle cx="18" cy="18" r="16" fill="none" strokeWidth="2.5" className="stroke-primary/30" />
+        <circle cx="18" cy="18" r="16" fill="none" strokeWidth="2.5" className="stroke-gold/30" />
         {pct > 0 && (
           <circle
             cx="18" cy="18" r="16" fill="none" strokeWidth="2.5" strokeLinecap="round"
-            pathLength={100} strokeDasharray={`${pct} 100`} className="stroke-primary"
+            pathLength={100} strokeDasharray={`${pct} 100`} className="stroke-gold"
           />
         )}
       </svg>
@@ -295,9 +302,14 @@ function FaixaDoCorretor({
             </AvatarFallback>
           </Avatar>
         </AnelDeProgresso>
+        {/* O nome voltou a neutro: com anel, barra, marcador e percentual em
+            ouro, o nome âmbar era o quinto ponto da mesma cor na faixa. */}
         <div className="min-w-0">
-          <p className="truncate font-display text-base font-bold leading-tight text-gold">{nome}</p>
-          <p className="text-sm font-semibold tabular-nums text-foreground">{num(pontos)} pontos</p>
+          <p className="truncate font-display text-base font-bold leading-tight text-foreground">{nome}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-sm font-semibold tabular-nums text-foreground">{num(pontos)} pontos</p>
+            <StatusBadge tone="live">Game ativo</StatusBadge>
+          </div>
         </div>
       </div>
 
@@ -330,7 +342,7 @@ function FaixaDoCorretor({
             nascia o "Meta de Vendas: —". Quem explica a ausência é a linha do
             meio, com a frase inteira. */}
         {!noRanking && !carregando && !erro && meta !== null && (
-          <p className="text-xs font-semibold text-success">Meta de VGV: {brl(meta)}</p>
+          <p className="text-xs font-semibold text-muted-foreground">Meta de VGV: {brl(meta)}</p>
         )}
         <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onVerMais}>
           Ver mais
@@ -363,15 +375,21 @@ function BarraDaMeta({ pct, realizado, alvo }: { pct: number; realizado: number;
         aria-label={`Meta de VGV do mês: ${brl(realizado)} de ${brl(alvo)}`}
         className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-full border border-border bg-muted"
       >
-        <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+        {/* `gold`: âmbar vivo no escuro, ouro fundo no claro — a barra sobre a
+            trilha `muted` precisa de 3:1 e o `highlight` não passa no claro. */}
+        <div className="h-full rounded-full bg-gold transition-[width]" style={{ width: `${pct}%` }} />
       </div>
       <span
         aria-hidden
         style={{ left: posicao }}
-        className="absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-primary bg-card"
+        className="glow-highlight absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-gold bg-card"
       />
       {/* Caixa de largura zero ancorada no marcador: o texto transborda para o
-          lado que `justify-*` mandar, sem conta de largura. */}
+          lado que `justify-*` mandar, sem conta de largura. O rótulo fica na
+          mesma faixa vertical da barra, então leva fundo `card` próprio: sem
+          ele, acima de 50% era ouro sobre o preenchimento ouro (~1:1) e, abaixo,
+          ouro sobre `muted` dava 4,21:1 no claro. Ouro sobre `card` passa 4,5
+          nos dois temas (par travado no theme-contrast). */}
       <span
         aria-hidden
         style={{ left: posicao }}
@@ -382,7 +400,7 @@ function BarraDaMeta({ pct, realizado, alvo }: { pct: number; realizado: number;
       >
         <span
           className={cn(
-            "whitespace-nowrap text-xs font-semibold tabular-nums text-primary",
+            "whitespace-nowrap rounded-full bg-card px-1.5 text-xs font-semibold tabular-nums text-gold",
             aEsquerda ? "mr-5" : "ml-5",
           )}
         >

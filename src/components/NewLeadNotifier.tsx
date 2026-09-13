@@ -30,8 +30,12 @@ type IncomingLead = {
 
 const GESTOR_ROLES = ["admin", "director", "manager", "marketing"];
 
-/** Quem enxerga a fila inteira; os demais gestores veem só os grupos deles. */
-const FILA_INTEIRA_ROLES = ["admin", "director"];
+/**
+ * Quem ouve a fila inteira; os demais gestores, só os grupos deles. O diretor
+ * saiu na 0141: a `leads_select` passou a entregar a ele só a fila geral e a
+ * dos grupos da hierarquia, e o aviso não pode anunciar lead que ele não abre.
+ */
+const FILA_INTEIRA_ROLES = ["admin"];
 
 /** Janela em que a mudança ainda é "acabou de acontecer". */
 const FRESH_MS = 20_000;
@@ -264,10 +268,13 @@ export default function NewLeadNotifier() {
               {lead.form_id && <Badge variant="outline">📋 {lead.form_id}</Badge>}
               {lead.phone && <Badge variant="outline">{lead.phone}</Badge>}
             </div>
+            {/* Cronômetro neutro até o último minuto: âmbar é o botão "Atender
+                agora", e a mesma cor no relógio passava a significar duas
+                coisas no mesmo diálogo. No fim ele fica vermelho. */}
             {assigned && secondsLeft !== null && (
               <p className={cn(
                 "text-sm font-semibold flex items-center gap-1",
-                secondsLeft <= 60 ? "text-destructive" : "text-warning",
+                secondsLeft <= 60 ? "text-destructive" : "text-foreground",
               )}>
                 <Timer className="h-4 w-4" />
                 {secondsLeft > 0
@@ -280,7 +287,7 @@ export default function NewLeadNotifier() {
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => setLead(null)}>Depois</Button>
           {assigned ? (
-            <Button onClick={attend} disabled={claiming || secondsLeft === 0}>
+            <Button variant="highlight" onClick={attend} disabled={claiming || secondsLeft === 0}>
               <HandMetal className="h-4 w-4 mr-1" /> {claiming ? "Atendendo..." : "Atender agora"}
             </Button>
           ) : podeAbrirLeads ? (

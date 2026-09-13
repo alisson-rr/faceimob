@@ -379,16 +379,18 @@ describe("dashboardScope — o recorte por papel, que espelha as policies", () =
     });
   });
 
-  it("diretor le TODOS os negocios, mas nao todos os perfis", () => {
-    // `deals_select` -> `can_see_deal` -> `can_read_all()` inclui director;
-    // `auth_visible_profiles()` devolve so a subarvore dele. Sao coisas
-    // diferentes, e a regua mostra as duas lado a lado.
+  it("diretor le so os negocios da propria hierarquia (0141)", () => {
+    // Regra do dono (12/09/2026): so socio e admin veem tudo. `can_read_all()`
+    // virou `is_admin()` e o diretor chega aos negocios por
+    // `auth_visible_deal_ids()` — o mesmo recorte de pessoas dos leads. A tela
+    // nao pode continuar prometendo "toda a operação" nem a esteira inteira.
     const dir = comFila(["director"]);
-    expect(dir.readsAllDeals).toBe(true);
+    expect(dir.readsAllDeals).toBe(false);
     expect(dir.seesEveryone).toBe(false);
+    expect(dir.seesAllCca).toBe(false);
     expect(dir.isDirector).toBe(true);
     expect(dir.canManageGoal).toBe(true);
-    expect(dir.dealsLabel).toBe("toda a operação");
+    expect(dir.dealsLabel).toContain("equipes que você lidera");
     expect(dir.leadsLabel).toContain("sua carteira");
   });
 
@@ -425,7 +427,7 @@ describe("dashboardScope — o recorte por papel, que espelha as policies", () =
         isDirector: false,
         canManageGoal: false,
       });
-      expect(escopo.dealsLabel).toBe("os negócios em que você entra");
+      expect(escopo.dealsLabel).toBe("os negócios da sua carteira e das equipes que você lidera");
     }
   });
 
@@ -436,7 +438,9 @@ describe("dashboardScope — o recorte por papel, que espelha as policies", () =
   it("diretor que tambem e corretor continua diretor (papel e N:N)", () => {
     const dual = comFila(["director", "broker"]);
     expect(dual.isDirector).toBe(true);
-    expect(dual.readsAllDeals).toBe(true);
+    expect(dual.readsAllDeals).toBe(false);
+    // Acumular papel nao amplia: so admin ou socio junto leem a empresa.
+    expect(comFila(["director", "partner"]).readsAllDeals).toBe(true);
   });
 });
 
@@ -451,23 +455,21 @@ describe("vazioTotal — o painel sem negocio e sem lead", () => {
     expect(texto(admin).title).toBe("A base ainda está vazia");
   });
 
-  it("socio e diretor leem toda a empresa, mas nao toda a base de leads", () => {
-    // Socio: `role_permissions` nao lhe da `leads.view_queue` e a
-    // `leads_select` esconde dele o lead sem dono. Diretor: tem a permissao,
-    // mas `auth_visible_profiles()` o prende na propria subarvore. Nos dois
-    // casos, "a base esta vazia" com a fila cheia manda procurar defeito onde
-    // ha recorte — e "nada esta atribuido a voce" nega o `can_read_all()` que
-    // ele tem.
-    for (const escopo of [socio, diretor]) {
-      const saida = texto(escopo);
-      expect(saida.title).toBe("Nenhum negócio cadastrado ainda");
-      expect(saida.description).toContain("menor que a base da operação");
-      expect(saida.description).not.toContain("atribuído a você");
-    }
+  it("socio sem a fila le toda a empresa, mas nao toda a base de leads", () => {
+    // "a base esta vazia" com a fila cheia manda procurar defeito onde ha
+    // recorte — e "nada esta atribuido a voce" nega o `can_read_all()` que ele
+    // tem.
+    const saida = texto(socio);
+    expect(saida.title).toBe("Nenhum negócio cadastrado ainda");
+    expect(saida.description).toContain("menor que a base da operação");
+    expect(saida.description).not.toContain("atribuído a você");
   });
 
-  it("ao corretor, o vazio continua sendo o dele", () => {
+  it("ao corretor e ao diretor (0141), o vazio e o do proprio recorte", () => {
+    // O diretor deixou de ler a empresa: afirmar "nenhum negocio cadastrado"
+    // falaria de uma base que ele nao enxerga mais.
     expect(texto(corretor).title).toBe("Você ainda não tem lead nem negócio");
+    expect(texto(diretor).title).toBe("Você ainda não tem lead nem negócio");
   });
 });
 
@@ -503,13 +505,11 @@ describe("pickSalesGoal — o denominador segue o escopo do numerador", () => {
     ).toEqual({ target: 3, scope: "profile" });
   });
 
-  it("quem le TODOS os negocios cai na meta global — inclusive o diretor", () => {
-    // `deals_select` -> `can_see_deal(id)` -> `can_read_all()` =
-    // has_any_role('admin','director','partner'). O diretor le o negocio de
-    // TODA a empresa, mesmo enxergando so a propria subarvore de perfis: com o
-    // escopo saindo de `auth_visible_profiles()` ele comparava as vendas da
-    // empresa inteira com a soma das metas das equipes que lidera, sob o rotulo
-    // "meta da equipe". Medido na homologacao: Paulista(6) + Sul(5) = 11.
+  it("o diretor soma as metas das equipes que lidera, nao a global (0141)", () => {
+    // Desde a 0141 `can_read_all()` e so admin e socio: o realizado do diretor
+    // sai dos negocios da hierarquia dele, entao o denominador e a soma das
+    // equipes que ele lidera — Paulista(6) + Sul(5) = 11, e nao a global (14),
+    // que falaria da empresa inteira sobre um numero parcial.
     const paulista: MonthlyGoalRow = { scope: "team", profile_id: null, team_id: "t1", target: 6 };
     const sul: MonthlyGoalRow = { scope: "team", profile_id: null, team_id: "t2", target: 5 };
     expect(
@@ -517,6 +517,13 @@ describe("pickSalesGoal — o denominador segue o escopo do numerador", () => {
         profileId: "dir",
         ledTeamIds: ["t1", "t2"],
         roles: ["director"],
+      }),
+    ).toEqual({ target: 11, scope: "team" });
+    expect(
+      pickSalesGoal([global, paulista, sul], {
+        profileId: "soc",
+        ledTeamIds: ["t1", "t2"],
+        roles: ["partner"],
       }),
     ).toEqual({ target: 14, scope: "global" });
   });
@@ -531,7 +538,7 @@ describe("pickSalesGoal — o denominador segue o escopo do numerador", () => {
 
   it("sem linha global, quem le tudo fica sem alvo — nao herda a meta da equipe", () => {
     expect(
-      pickSalesGoal([equipe], { profileId: "dir", ledTeamIds: ["t1"], roles: ["director"] }),
+      pickSalesGoal([equipe], { profileId: "soc", ledTeamIds: ["t1"], roles: ["partner"] }),
     ).toEqual({ target: null, scope: "global" });
   });
 

@@ -1,9 +1,9 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { isSoundOn, playSound, subscribeSound } from "@/lib/engagement/audio";
+import { audioLiberado, isSoundOn, playSound, subscribeSound, type SoundName } from "@/lib/engagement/audio";
 
 /**
  * Som de premiação — a faixa que o cliente entregou, tocada quando alguém
- * atinge um marco (meta batida, primeira posição).
+ * atinge um marco (venda fechada, subida no ranking, meta batida).
  *
  * NÃO é um sistema de conquistas: é só o disparo. Quem decide que houve marco
  * é quem chama.
@@ -25,15 +25,20 @@ const FAIXA = "/senna.weba";
  * A faixa inteira tem 4min53s. Premiação é um toque curto, não uma música: o
  * trecho toca e sai sozinho. Corte seco no meio soa como falha, então os
  * últimos 600 ms são de esmaecimento.
+ *
+ * Exportado porque o card de venda dura o trecho inteiro — ver `EngagementLayer`.
  */
-const TRECHO_MS = 7000;
+export const TRECHO_MS = 7000;
 const ESMAECER_MS = 600;
 const VOLUME = 0.5;
 
 let elemento: HTMLAudioElement | null = null;
 let corte: ReturnType<typeof setTimeout> | undefined;
 let fade: ReturnType<typeof setInterval> | undefined;
-let tocando = false;
+/** `Date.now()` do começo da última comemoração — a trava de não empilhar. */
+let comecouEm = -Infinity;
+/** Número do toque atual: a rejeição de um toque já substituído não pode calar o novo. */
+let geracao = 0;
 
 function menosEstimulo(): boolean {
   return (
@@ -44,11 +49,15 @@ function menosEstimulo(): boolean {
 }
 
 function parar(): void {
+  // Todo `pause` rejeita o `play` ainda pendente com AbortError — no recomeço e
+  // também no fim do esmaecimento, com a rede lenta. Encerrar a geração aqui é o
+  // que faz o `catch` reconhecer essa rejeição como pausa do próprio app, e não
+  // tocar o som curto atrasado como se o navegador tivesse recusado a faixa.
+  geracao++;
   clearTimeout(corte);
   clearInterval(fade);
   corte = undefined;
   fade = undefined;
-  tocando = false;
   if (!elemento) return;
   elemento.pause();
   elemento.currentTime = 0;
@@ -71,40 +80,58 @@ function esmaecer(): void {
  * chama daqui.
  *
  * `manual` marca o toque que a PESSOA pediu (botão de prévia). O padrão é o
- * disparo automático, que é o que precisa respeitar `prefers-reduced-motion`.
+ * disparo automático, que é o que respeita a trava e o `prefers-reduced-motion`.
+ *
+ * `sintetizado` é o som do catálogo que entra no lugar da faixa quando ela não
+ * cabe (menos movimento) ou não sai (navegador recusou, arquivo falhou). Quem
+ * chama passa o som do próprio marco (`CELEBRATION[kind].sound`).
  */
-export function tocarPremiacao({ manual = false }: { manual?: boolean } = {}): void {
+export function tocarPremiacao({ manual = false, sintetizado = "sale" }: { manual?: boolean; sintetizado?: SoundName } = {}): void {
   if (!isSoundOn()) return;
-  // Quem pede menos movimento está pedindo menos estímulo: marco automático não
-  // toca. Clique explícito continua tocando — ali o estímulo foi solicitado.
-  if (!manual && menosEstimulo()) return;
-  // Dois marcos no mesmo instante são UMA comemoração. Sem isto, o rateio de um
-  // negócio com três corretores empilhava três faixas.
-  if (tocando) return;
   if (typeof Audio === "undefined") return;
+
+  // Dois marcos dentro do mesmo trecho são UMA comemoração: a venda e a subida
+  // no ranking de quem vendeu chegam juntas. A trava é pelo relógio, e não por
+  // "a faixa ainda está tocando": o esmaecimento corre em `setInterval`, que
+  // aba em segundo plano estica, e a venda seguinte achava a faixa ocupada e
+  // ficava muda. Clique na prévia fura a trava — ali a pessoa pediu para ouvir.
+  const agora = Date.now();
+  if (!manual && agora - comecouEm < TRECHO_MS) return;
+  comecouEm = agora;
+
+  // Menos movimento é menos estímulo, não silêncio: o marco automático troca os
+  // 7 s da faixa pelo som curto do catálogo. Clique explícito toca a faixa.
+  if (!manual && menosEstimulo()) {
+    playSound(sintetizado);
+    return;
+  }
 
   if (!elemento) {
     elemento = new Audio(FAIXA);
     // `none` é o que garante que os 5 MB não entram na rede em toda sessão que
-    // não bate meta nenhuma.
+    // não comemora nada.
     elemento.preload = "none";
-    // Formato não suportado (Opus em WebM ainda falha em Safari antigo) ou
-    // arquivo fora do ar: cai na fanfarra sintetizada, que não depende de
-    // download. Som é sempre reforço — o card e o toast avisam sozinhos.
-    elemento.addEventListener("error", () => {
-      parar();
-      playSound("goal");
-    });
   }
 
-  elemento.volume = VOLUME;
-  tocando = true;
+  // Nunca duas faixas: é sempre o mesmo elemento, que recomeça do zero, e o
+  // esmaecimento do toque anterior (se ainda corria) é cancelado.
+  parar();
+  const toque = ++geracao;
   corte = setTimeout(esmaecer, Math.max(0, TRECHO_MS - ESMAECER_MS));
 
-  // Sem gesto do usuário na aba o navegador REJEITA o play. Isso é o esperado,
-  // não um erro: engolir a rejeição é o que evita `Uncaught (in promise)` no
-  // console e o que garante que nada toca sozinho no carregamento da página.
-  void elemento.play().catch(() => parar());
+  void elemento.play().catch(() => {
+    // Rejeição depois de um `parar()` — recomeço ou fim do trecho — é pausa do
+    // próprio app (AbortError): parar aqui calaria a faixa nova, e o som curto
+    // sairia atrasado sobre o card que já está saindo.
+    if (toque !== geracao) return;
+    parar();
+    // Navegador recusou (sem gesto, ou Safari que exige gesto por elemento),
+    // formato não suportado ou arquivo fora do ar: cai no sintetizado, que usa
+    // o contexto de áudio. Só se esse contexto já foi liberado por um gesto
+    // nesta aba — é o que mantém o carregamento da página mudo. A rejeição em
+    // si é esperada, e engoli-la evita `Uncaught (in promise)` no console.
+    if (audioLiberado()) playSound(sintetizado);
+  });
 }
 
 /**
@@ -114,6 +141,6 @@ export function tocarPremiacao({ manual = false }: { manual?: boolean } = {}): v
  */
 export function useSomDePremiacao() {
   const ligado = useSyncExternalStore(subscribeSound, isSoundOn, () => true);
-  const tocar = useCallback((opcoes?: { manual?: boolean }) => tocarPremiacao(opcoes), []);
+  const tocar = useCallback((opcoes?: Parameters<typeof tocarPremiacao>[0]) => tocarPremiacao(opcoes), []);
   return { ligado, tocar };
 }

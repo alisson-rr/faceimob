@@ -449,7 +449,11 @@ test("o selo de cada switch diz a verdade sobre quem lê o código", async ({ pa
  * decide o botão "Vincular em massa"), e é predicado de `team_members_manage`
  * desde a 0044. Até aqui o selo "Aplicada no banco" dele era conferido pelo
  * vitest contra o fonte da migration, não contra a recusa medida: ninguém
- * tinha chamado a API com o JWT do gerente para ver o 403 aparecer e sumir.
+ * tinha chamado a API com o JWT do gerente para ver a recusa aparecer e sumir.
+ *
+ * Desde a 0128 o switch governa DESLIGAR integrante. Incluir gente de fora do
+ * alcance do gerente é recusado com ou sem a permissão — era assim que ele
+ * ampliava a própria visão de leads e negócios —, e a prova mede as duas coisas.
  *
  * O corretor é criado só para este caso: mexer em quem já está numa equipe
  * quebraria os specs de isolamento que rodam no mesmo banco.
@@ -474,22 +478,41 @@ test.describe("efeito no banco · gerenciar equipes", () => {
     });
   };
 
-  /** Insere a filiação com o JWT do GERENTE — quem barra é a policy, não a tela. */
-  const vincularComoGerente = async () => {
+  /** Chamada ao PostgREST com o JWT do GERENTE — quem barra é a policy, não a tela. */
+  const comoGerente = async (caminho: string, init: RequestInit) => {
     const t = resolveTarget();
     const { access_token } = await mintSession(userFor("manager").email);
-    const res = await fetch(`${t.supabaseUrl}/rest/v1/team_members`, {
-      method: "POST",
+    const res = await fetch(`${t.supabaseUrl}/rest/v1/${caminho}`, {
+      ...init,
       headers: {
         apikey: t.anonKey,
         Authorization: `Bearer ${access_token}`,
         "Content-Type": "application/json",
         Prefer: "return=representation",
       },
-      body: JSON.stringify({ team_id: equipeId, profile_id: corId }),
     });
     return { status: res.status, body: await res.text() };
   };
+
+  const vincularComoGerente = () =>
+    comoGerente("team_members", {
+      method: "POST",
+      body: JSON.stringify({ team_id: equipeId, profile_id: corId }),
+    });
+
+  /** UPDATE recusado pela RLS volta 200 com `[]`: quem diz se valeu é o corpo. */
+  const desligarComoGerente = async () => {
+    const res = await comoGerente(`team_members?profile_id=eq.${corId}&left_at=is.null`, {
+      method: "PATCH",
+      body: JSON.stringify({ left_at: new Date().toISOString().slice(0, 10) }),
+    });
+    const linhas = res.status === 200 ? (JSON.parse(res.body) as unknown[]).length : -1;
+    return { ...res, linhas };
+  };
+
+  const filiacoesAbertas = async () =>
+    (await db.select<{ team_id: string }>(`team_members?profile_id=eq.${corId}&left_at=is.null&select=team_id`))
+      .map((linha) => linha.team_id);
 
   const restaurarGrant = async () => {
     await db.remove(GRANT);
@@ -515,6 +538,8 @@ test.describe("efeito no banco · gerenciar equipes", () => {
     );
     if (!equipes.length) throw new Error("cenário inválido: o gerente E2E precisa de uma equipe ativa");
     equipeId = equipes[0].id;
+    // Pelo service role: incluir gente de fora da equipe é do admin desde a 0128.
+    await db.insert("team_members", { team_id: equipeId, profile_id: corId });
   });
 
   test.afterAll(async () => {
@@ -527,7 +552,7 @@ test.describe("efeito no banco · gerenciar equipes", () => {
     if (conta) await authAdmin(`users/${conta.id}`, { method: "DELETE" });
   });
 
-  test("desligar 'Gerenciar equipes' faz o banco recusar a filiação; religar libera", async ({ page }) => {
+  test("desligar 'Gerenciar equipes' faz o banco recusar o desligamento; religar libera — e incluir gente de fora nunca passa", async ({ page }) => {
     await page.goto("/admin/permissions");
     await aguardarCarregamento(page);
     await page.getByRole("tab", { name: /funcionalidades/i }).click();
@@ -540,8 +565,9 @@ test.describe("efeito no banco · gerenciar equipes", () => {
       expect(await db.select<{ allowed: boolean }>(`${GRANT}&select=allowed`)).toEqual([{ allowed: false }]);
     }).toPass({ timeout: 10_000 });
 
-    const recusa = await vincularComoGerente();
-    expect(recusa.status, `esperava 403 do banco, veio ${recusa.status}: ${recusa.body}`).toBe(403);
+    const recusa = await desligarComoGerente();
+    expect(recusa.linhas, `sem o grant o banco não desliga ninguém — veio ${recusa.status}: ${recusa.body}`).toBe(0);
+    expect(await filiacoesAbertas(), "recusado, o corretor continua na equipe").toEqual([equipeId]);
 
     await chave.click();
     await expect(chave).toBeChecked();
@@ -549,11 +575,13 @@ test.describe("efeito no banco · gerenciar equipes", () => {
       expect(await db.select<{ allowed: boolean }>(`${GRANT}&select=allowed`)).toEqual([{ allowed: true }]);
     }).toPass({ timeout: 10_000 });
 
-    const aceite = await vincularComoGerente();
-    expect(aceite.status, `esperava 201 do banco, veio ${aceite.status}: ${aceite.body}`).toBe(201);
-    const linhas = await db.select<{ team_id: string }>(
-      `team_members?profile_id=eq.${corId}&left_at=is.null&select=team_id`,
-    );
-    expect(linhas.map((l) => l.team_id), "com o grant de volta a filiação tem de valer").toEqual([equipeId]);
+    const aceite = await desligarComoGerente();
+    expect(aceite.linhas, `com o grant o desligamento tem de valer — veio ${aceite.status}: ${aceite.body}`).toBe(1);
+    expect(await filiacoesAbertas(), "desligado, o corretor fica sem equipe").toEqual([]);
+
+    // Sem equipe ele saiu do alcance do gerente, e incluí-lo de volta daria ao
+    // gerente os leads dele (0128). Com o grant ligado, ainda assim 403.
+    const inclusao = await vincularComoGerente();
+    expect(inclusao.status, `esperava 403 do banco, veio ${inclusao.status}: ${inclusao.body}`).toBe(403);
   });
 });

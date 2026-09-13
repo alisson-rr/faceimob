@@ -188,7 +188,7 @@ describe("setTeamByManager", () => {
       team_members: [
         ok([{ id: "m1" }, { id: "m2" }]),              // fecha as abertas
         { data: null, error: { code: "42501", message: "denied" } }, // insert recusado
-        ok(),                                           // reabertura
+        ok([{ id: "m1" }, { id: "m2" }]),              // reabertura
       ],
     });
 
@@ -199,6 +199,21 @@ describe("setTeamByManager", () => {
     );
     expect(reabertura, "sem reabrir, a pessoa fica sem equipe nenhuma").toBeTruthy();
     expect(chamadas.some((c) => c.metodo === "in" && JSON.stringify(c.argumentos[1]) === '["m1","m2"]')).toBe(true);
+  });
+
+  it("reabertura que casa 0 linhas diz que o vínculo anterior não voltou", async () => {
+    // Desde a 0128 o gestor que fechou pode já não enxergar a pessoa: o update
+    // da reabertura volta 204 sem erro e sem linha, e a pessoa ficaria sem equipe.
+    prepararTabelas({
+      teams: [ok([{ id: "t1", name: "Alfa" }])],
+      team_members: [
+        ok([{ id: "m1" }]),                                          // fecha a aberta
+        { data: null, error: { code: "42501", message: "denied" } }, // insert recusado
+        ok([]),                                                      // reabertura recusada pela RLS
+      ],
+    });
+
+    await expect(setTeamByManager("p1", "ger1")).rejects.toThrow(/não pôde ser restaurada/);
   });
 
   it("gerente sem equipe ativa é recusado antes de fechar qualquer filiação", async () => {

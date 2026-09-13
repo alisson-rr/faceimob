@@ -157,18 +157,17 @@ export const GOAL_SCOPE_LABEL: Record<GoalScope, string> = {
 export type SalesGoal = { target: number | null; scope: GoalScope };
 
 /**
- * Quem le o negocio de TODA a empresa — o espelho de `can_read_all()`
- * (`has_any_role('admin','director','partner')`), que a `deals_select` alcanca
- * por `can_see_deal(id)`.
+ * Quem le o negocio de TODA a empresa — o espelho de `can_read_all()`, que desde
+ * a 0141 e `is_admin()`: administrador e socio. A `deals_select` alcanca por
+ * `can_see_deal(id)`.
  *
- * NAO e `auth_visible_profiles()`: o numerador do `GoalCard` e do KPI de VGV sai
- * de `deals`, nao de `profiles`. O diretor enxerga so a propria subarvore de
- * PERFIS e, ao mesmo tempo, todos os NEGOCIOS — `listLegacyDeals` nao filtra
- * nada no cliente. Trocar uma funcao pela outra aqui devolvia ao diretor a soma
- * das metas das equipes que ele lidera sob o realizado da empresa inteira.
+ * O diretor saiu na 0141 (regra do dono, 12/09/2026): ele le os negocios da
+ * PROPRIA hierarquia, pelo mesmo `auth_visible_profiles()` que recorta os leads.
+ * Deixar o diretor aqui prometia na tela "toda a operação" e a meta global sobre
+ * um realizado que o banco ja nao entrega a ele.
  */
 export const readsAllDeals = (roles: string[]) =>
-  roles.includes("admin") || roles.includes("director") || roles.includes("partner");
+  roles.includes("admin") || roles.includes("partner");
 
 export type DashboardScope = {
   /** `can_read_all()` — o negocio de toda a empresa. */
@@ -201,12 +200,12 @@ export type DashboardScope = {
  * O recorte da tela por papel, numa funcao pura — porque cada regra dessas e um
  * espelho de uma policy do banco, e espelho sem teste racha calado.
  *
- * Os rotulos existem porque a mesma regua mostra recortes DIFERENTES lado a
- * lado: `deals_select` chega em `can_read_all()` (admin, diretor, socio leem a
- * empresa inteira), enquanto `leads_select` recorta por
- * `auth_visible_profiles()` — o diretor via 35 negocios da empresa ao lado de
- * 58 leads da propria subarvore, sem nada dizendo que os dois numeros nao falam
- * do mesmo conjunto.
+ * Os rotulos existem porque a mesma regua pode mostrar recortes DIFERENTES lado
+ * a lado: `deals_select` chega em `can_read_all()` (admin e socio leem a empresa
+ * inteira), enquanto `leads_select` recorta por `auth_visible_profiles()` e pela
+ * fila. Ate a 0141 o diretor via 35 negocios da empresa ao lado de 58 leads da
+ * propria subarvore, sem nada dizendo que os dois numeros nao falavam do mesmo
+ * conjunto.
  *
  * O socio e o caso extremo: ele enxerga todo perfil, mas `role_permissions` nao
  * da `leads.view_queue` a ele, e a `leads_select` so libera lead sem dono a quem
@@ -225,7 +224,9 @@ export const dashboardScope = (roles: string[], canViewQueue: boolean): Dashboar
     // `goals_write` (0061) e um `or` com `is_admin()`, que desde a 0097 responde
     // sim para o socio — administrador e socio tem o mesmo nivel de permissao.
     canManageGoal: seesEveryone || roles.includes("director"),
-    dealsLabel: todosOsNegocios ? "toda a operação" : "os negócios em que você entra",
+    // `auth_visible_deal_ids()`: os negocios em que ele ou alguem da hierarquia
+    // dele participa — "em que você entra" negava ao gestor a equipe que ele ve.
+    dealsLabel: todosOsNegocios ? "toda a operação" : "os negócios da sua carteira e das equipes que você lidera",
     leadsLabel: seesEveryone
       ? canViewQueue
         ? "toda a base"
@@ -242,14 +243,12 @@ export const dashboardScope = (roles: string[], canViewQueue: boolean): Dashboar
  *
  * - `leadsIsWholeBase` (admin): le todo negocio e todo lead — so ele pode
  *   afirmar que a base da operacao esta vazia.
- * - `readsAllDeals` sem a base de leads inteira (socio, diretor): o zero de
- *   NEGOCIO fala da empresa, o de LEAD fala do recorte dele. O socio nao tem
- *   `leads.view_queue` e a `leads_select` esconde dele o lead sem dono; o
- *   diretor tem a permissao, mas `auth_visible_profiles()` o prende na propria
- *   subarvore. Dizer a qualquer um dos dois "a base esta vazia" com a fila cheia
- *   manda procurar defeito onde ha recorte — e dizer "nada esta atribuido a
- *   voce" nega a leitura da empresa que ele tem.
- * - o resto (corretor, gerente): o vazio e o dele, nos dois eixos.
+ * - `readsAllDeals` sem a base de leads inteira (socio sem a fila): o zero de
+ *   NEGOCIO fala da empresa, o de LEAD fala do recorte dele. Dizer "a base esta
+ *   vazia" com a fila cheia manda procurar defeito onde ha recorte — e dizer
+ *   "nada esta atribuido a voce" nega a leitura da empresa que ele tem.
+ * - o resto (corretor, gerente, diretor desde a 0141): o vazio e o da carteira
+ *   e da hierarquia dele, nos dois eixos.
  */
 export const vazioTotal = (
   readsAllDeals: boolean,
@@ -281,8 +280,8 @@ export const vazioTotal = (
  * os negocios (`can_read_all()`) tem um unico denominador coerente, o global —
  * por isso ele e testado ANTES do proprio perfil e da equipe. Um admin com linha
  * `scope='profile'` cadastrada comparava a meta pessoal dele com as vendas da
- * empresa inteira; o diretor comparava a meta das equipes que lidera com as
- * vendas de todas as diretorias.
+ * empresa inteira. O diretor, desde a 0141, le so a propria hierarquia — e cai
+ * na regra de baixo, com a meta das equipes que lidera.
  *
  * Para quem NAO le tudo, a ordem e a de sempre: meta do proprio perfil > meta
  * das equipes que ele lidera. Sem linha casando, devolve `target: null` com o

@@ -15,10 +15,12 @@ import { cn } from "@/lib/utils";
  * medalha com cores fixas de tema escuro. As cores são os tokens `gold`,
  * `silver` e `bronze`, os mesmos do pódio do header.
  *
- * Movimento: entrada com stagger de baixo para cima, coroa balançando e brilho
- * contínuo apenas no 1º. Quem pediu menos movimento no sistema recebe o pódio
- * parado — `useReducedMotion` corta as animações do framer-motion e o
- * `animate-glow-pulse` já cai no bloco `@media` de `index.css`.
+ * Movimento: entrada com stagger de baixo para cima e coroa balançando. Quem
+ * pediu menos movimento no sistema recebe o pódio parado — `useReducedMotion`
+ * corta as animações do framer-motion.
+ *
+ * O 1º lugar (12/09/2026) tem degrau em ouro cheio e brilho âmbar PARADO em
+ * volta da foto; o pulso infinito saiu. Prata e bronze não mudaram.
  */
 
 export type PodiumEntry = {
@@ -61,12 +63,17 @@ const STEP_HEIGHT = [
   { step: "h-10", stepSm: "h-7" },
 ] as const;
 
+/**
+ * `step` carrega a cor do número do degrau junto com o fundo: o degrau de ouro
+ * é cheio, e aí o número precisa da tinta `gold-foreground` (4,5:1 nos dois
+ * temas), não do `text-gold`, que some sobre o próprio ouro.
+ */
 const TONE_CLASS: Record<PodiumToken | "plain", { ring: string; text: string; step: string }> = {
-  gold: { ring: "ring-gold", text: "text-gold", step: "border-gold/40 bg-gold/15" },
-  silver: { ring: "ring-silver", text: "text-silver", step: "border-silver/40 bg-silver/15" },
-  bronze: { ring: "ring-bronze", text: "text-bronze", step: "border-bronze/40 bg-bronze/15" },
+  gold: { ring: "ring-gold", text: "text-gold", step: "border-gold bg-gold text-gold-foreground" },
+  silver: { ring: "ring-silver", text: "text-silver", step: "border-silver/40 bg-silver/15 text-silver" },
+  bronze: { ring: "ring-bronze", text: "text-bronze", step: "border-bronze/40 bg-bronze/15 text-bronze" },
   /** Colocação fora do trio: nada de medalha, só o número. */
-  plain: { ring: "ring-border", text: "text-muted-foreground", step: "border-border bg-muted/40" },
+  plain: { ring: "ring-border", text: "text-muted-foreground", step: "border-border bg-muted/40 text-muted-foreground" },
 };
 
 /**
@@ -146,10 +153,10 @@ function Step({
             <Crown className={size === "sm" ? "h-4 w-4" : "h-6 w-6"} />
           </motion.span>
         )}
-        {/* O brilho contínuo vai num invólucro, não no Avatar: `animate-glow-pulse`
-            e o `ring` do Tailwind escrevem os dois em `box-shadow`, e o anel de
-            ouro do 1º lugar sumia sob a animação. */}
-        <span className={cn("block rounded-full", first && !still && "animate-glow-pulse")}>
+        {/* O brilho vai num invólucro, não no Avatar: `.glow-highlight` e o
+            `ring` do Tailwind escrevem os dois em `box-shadow`, e o anel de
+            ouro do 1º lugar sumiria sob o brilho. */}
+        <span className={cn("block rounded-full", first && "glow-highlight")}>
           <Avatar
             className={cn(
               "ring-2 ring-offset-2 ring-offset-card",
@@ -204,7 +211,7 @@ function Step({
           size === "sm" ? config.stepSm : config.step,
         )}
       >
-        <span className={cn("font-display font-bold", tone.text, size === "sm" ? "text-sm" : "text-lg")}>
+        <span className={cn("font-display font-bold", size === "sm" ? "text-sm" : "text-lg")}>
           {colocacao}º
         </span>
       </div>

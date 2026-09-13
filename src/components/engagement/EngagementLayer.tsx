@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { endOfMonth, format, startOfMonth } from "date-fns";
 import { HandMetal, MapPin, Target, TrendingUp, WifiOff } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
+import { recorteDoRanking, useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
+// Caminho direto, e não o barril `@/components/dashboard`: o barril arrasta os
+// componentes do Dashboard para a camada que monta em toda tela.
+import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard/data";
+import { brl } from "@/lib/format";
 import {
   countSalesSince,
   gameKeys,
@@ -20,7 +25,7 @@ import {
   type SaleEvent,
 } from "@/lib/engagement/celebrations";
 import { playSound } from "@/lib/engagement/audio";
-import { tocarPremiacao } from "@/hooks/useSomDePremiacao";
+import { TRECHO_MS, tocarPremiacao } from "@/hooks/useSomDePremiacao";
 import { buildScores } from "./ranking";
 import { fireConfetti } from "./Confetti";
 import { CelebrationContext, type Celebrate, type CelebrationPayload } from "./context";
@@ -38,14 +43,39 @@ import { MotivationalPopup } from "@/components/MotivationalPopup";
  *
  * Só os eventos que o banco realmente emite estão ligados: venda (`game_events`),
  * check-in (`checkins`) e atendimento de lead (`lead_events` com `kind='claimed'`).
- * `goal` existe na API e ainda não tem gatilho — nada no banco publica meta.
+ * `goal` não vem do banco: sai da própria meta de VGV do mês, lida aqui mesmo
+ * (ver "meta batida", abaixo).
  */
 
 /** Janela de acúmulo das vendas do mesmo negócio antes de comemorar. */
 const SALE_WINDOW_MS = 500;
 
-/** Tempo do card de venda na tela. Aviso permanente não é aviso, é ruído. */
-const SALE_DISPLAY_MS = 6000;
+/**
+ * Tempo do card de venda na tela: o trecho inteiro da música. Aviso permanente
+ * não é aviso, é ruído — mas card mais curto que o trecho (eram 6 s contra 7 s)
+ * fazia a venda seguinte entrar com a faixa ainda na trava de não empilhar, e
+ * a segunda venda seguida ficava muda.
+ */
+const SALE_DISPLAY_MS = TRECHO_MS;
+
+/** Marca, por pessoa, temporada e mês, de que a meta de VGV já foi comemorada. */
+const MARCA_META = "faceimob-meta-batida";
+
+function metaJaComemorada(chave: string): boolean {
+  try {
+    return localStorage.getItem(chave) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function marcarMetaComemorada(chave: string): void {
+  try {
+    localStorage.setItem(chave, "1");
+  } catch {
+    // Storage bloqueado: vale só a memória desta sessão (`metaAntes`).
+  }
+}
 
 const TOAST_MS = 5000;
 
@@ -77,7 +107,7 @@ type GameEventRow = {
 };
 
 export function EngagementLayer({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, roles, isAdmin } = useAuth();
   const profileId = user?.id ?? null;
   const queryClient = useQueryClient();
 
@@ -112,9 +142,9 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
 
     // Marco (meta batida, subiu no ranking) toca a faixa que o cliente entregou;
     // o resto continua no catálogo sintetizado. O hook respeita o mesmo
-    // interruptor de som, o `prefers-reduced-motion` e cai na fanfarra
-    // sintetizada se o arquivo falhar.
-    if (kind === "goal" || kind === "rank_up") tocarPremiacao();
+    // interruptor de som e, com `prefers-reduced-motion` ou faixa recusada,
+    // toca no lugar o som curto do próprio marco — o da tabela.
+    if (kind === "goal" || kind === "rank_up") tocarPremiacao({ sintetizado: spec.sound });
     else playSound(spec.sound);
     fireConfetti(spec.confetti, payload?.origin);
 
@@ -153,9 +183,10 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
   const saleId = sale?.id ?? null;
   useEffect(() => {
     if (!saleId) return;
-    // Venda é o marco que o cliente pediu com a faixa dele. A guarda de
-    // não-empilhar do hook garante uma comemoração para duas vendas seguidas.
-    tocarPremiacao();
+    // Venda é o marco que o cliente pediu com a faixa dele. O card dura o
+    // trecho inteiro, então o card seguinte encontra a faixa livre: duas vendas
+    // seguidas são duas comemorações, uma depois da outra, nunca sobrepostas.
+    tocarPremiacao({ sintetizado: CELEBRATION.sale.sound });
     fireConfetti(CELEBRATION.sale.confetti);
     const timer = setTimeout(() => setSaleQueue((queue) => queue.slice(1)), SALE_DISPLAY_MS);
     return () => clearTimeout(timer);
@@ -414,6 +445,71 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
     const jump = detectRankUp(antes, order, profileId);
     if (jump) celebrate("rank_up", jump);
   }, [order, seasonId, profileId, celebrate]);
+
+  // ── meta batida: a própria meta de VGV do mês, uma vez por temporada ──────
+  /**
+   * `goal` só tem gatilho aqui. A meta é a MESMA da faixa do corretor no card
+   * de game (`PipelineTopRanking`): `goals` com scope 'profile' e metric 'vgv',
+   * gravada na ficha de /equipes; o realizado é o `vgv` do mesmo mês pela mesma
+   * RPC do placar. As chaves de cache são as mesmas — com o Pipeline aberto,
+   * nenhuma leitura a mais — e o intervalo precisa continuar igual ao
+   * `intervaloDoMes` de lá (não é importado: o card importa este barril).
+   *
+   * Só no recorte individual (`soMinhaPosicao`): para gerente e diretor o
+   * `useGoal` pode devolver a soma das equipes lideradas, e comparar isso com o
+   * VGV só da pessoa daria "meta batida" falso. E o ranking do mês só é lido com
+   * meta de perfil cadastrada: sem alvo não há o que cruzar, e a leitura custa
+   * ~1 s por corretor na carga real.
+   */
+  const individual = recorteDoRanking(roles, isAdmin).soMinhaPosicao;
+  const hoje = new Date();
+  const mesDaMeta = format(hoje, "MM/yyyy");
+  const { data: meta } = useVgvGoal(individual ? mesDaMeta : ALL_MONTHS);
+  const alvo = meta?.scope === "profile" && meta.target && meta.target > 0 ? meta.target : null;
+  const { data: placarDoMes } = useSeasonRanking(alvo ? seasonId : null, {
+    from: format(startOfMonth(hoje), "yyyy-MM-dd"),
+    to: format(endOfMonth(hoje), "yyyy-MM-dd"),
+  });
+  // Fora da lista é zero, como na faixa do card; lista ainda não lida é "não sei".
+  const vgvDoMes = placarDoMes
+    ? placarDoMes.find((linha) => linha.profile_id === profileId)?.vgv ?? 0
+    : undefined;
+
+  /**
+   * Comemora a TRAVESSIA, não o estado: a primeira leitura — e cada mês,
+   * temporada ou pessoa nova — é só a linha de base. Quem abre o app com a meta
+   * já batida não ganha música no carregamento; quem cruza com a tela aberta (a
+   * venda chega pelo realtime, que invalida o placar) ganha. A marca no
+   * localStorage segura o "uma vez": distrato que derruba o VGV e venda que
+   * cruza de novo não repetem a festa, nem depois de recarregar.
+   *
+   * ponytail: marca por navegador — com o CRM aberto no celular e no notebook
+   * na hora da venda, comemora nos dois; evoluir para marca no banco quando meta
+   * batida virar evento do servidor.
+   */
+  const metaAntes = useRef<{ chave: string; alvo: number; batida: boolean } | null>(null);
+  useEffect(() => {
+    // Sem leitura completa não há linha de base: meta apagada e recriada depois
+    // que o VGV passou dela não pode parecer travessia.
+    if (!profileId || !seasonId || !alvo || vgvDoMes === undefined) {
+      metaAntes.current = null;
+      return;
+    }
+    const chave = `${MARCA_META}:${profileId}:${seasonId}:${mesDaMeta}`;
+    const batida = vgvDoMes >= alvo;
+    const antes = metaAntes.current;
+    metaAntes.current = { chave, alvo, batida };
+    // Meta alterada em /equipes também é linha de base nova: quem cruza é o VGV,
+    // não o número que o gerente baixou. O alvo fica fora da `chave` porque ela
+    // é a marca do "uma vez por temporada" — subir a meta não reabre a festa.
+    if (!batida || !antes || antes.chave !== chave || antes.alvo !== alvo || antes.batida) return;
+    if (metaJaComemorada(chave)) return;
+    marcarMetaComemorada(chave);
+    celebrate("goal", {
+      title: "Meta de VGV do mês batida!",
+      detail: `${brl(vgvDoMes)} de ${brl(alvo)} neste mês.`,
+    });
+  }, [profileId, seasonId, alvo, vgvDoMes, mesDaMeta, celebrate]);
 
   return (
     <CelebrationContext.Provider value={celebrate}>

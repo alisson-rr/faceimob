@@ -132,36 +132,36 @@ test.describe("diretor · dashboard", () => {
   /**
    * Os dois recortes da mesma régua, escritos.
    *
-   * `deals_select` chega em `can_read_all()` — o diretor lê o negócio de TODA a
-   * empresa. `leads_select` recorta por `auth_visible_profiles()`, que para ele
-   * é só a própria subárvore. A régua somava 35 negócios da operação ao lado de
-   * 58 leads da subárvore e ainda dizia "total na base, sem recorte de período":
-   * três números, dois conjuntos, nenhuma pista.
+   * Até a 0141 `deals_select` chegava em `can_read_all()` e o diretor lia o
+   * negócio de TODA a empresa, ao lado de leads só da própria subárvore. Desde a
+   * 0141 (regra do dono: só sócio e admin veem tudo) negócio e lead dele saem da
+   * mesma hierarquia — e a régua não pode continuar dizendo "toda a operação".
    */
-  test("a régua diz de quem é cada número — negócio e lead não têm o mesmo recorte", async ({ page }) => {
+  test("a régua diz de quem é cada número — negócio e lead da hierarquia dele", async ({ page }) => {
     await abrirDashboardNoMes(page, MES);
 
-    await expect(page.getByText("vendas + em aberto · toda a operação")).toBeVisible();
+    await expect(
+      page.getByText("vendas + em aberto · os negócios da sua carteira e das equipes que você lidera"),
+    ).toBeVisible();
+    await expect(page.getByText("vendas + em aberto · toda a operação")).toHaveCount(0);
     await expect(
       page.getByText(/recebidos em \d{2}\/\d{4} · os leads da sua carteira e das equipes que você lidera/),
     ).toBeVisible();
     await expect(page.getByText("total na base, sem recorte de período")).toHaveCount(0);
   });
 
-  test("a meta comparada é a da EMPRESA, não a soma das equipes que ele lidera", async ({ page }) => {
+  test("a meta comparada é a da hierarquia dele, não a da empresa (0141)", async ({ page }) => {
     await abrirDashboardNoMes(page, MES);
 
-    // O numerador do cartão sai de `deals`, e `deals_select` chega em
-    // `can_read_all()` = has_any_role('admin','director','partner'): o diretor
-    // lê o negócio de TODA a operação, mesmo enxergando só a própria subárvore
-    // de perfis em `auth_visible_profiles()`. Enquanto o escopo da meta saía da
-    // segunda função, o cartão mostrava as vendas da empresa inteira sobre a
-    // soma das metas das equipes dele, com o rótulo "meta da equipe" — o
-    // realizado e o alvo eram de recortes diferentes.
+    // O numerador do cartão sai de `deals`. Desde a 0141 `can_read_all()` é só
+    // admin e sócio: o diretor lê os negócios da própria hierarquia, então o
+    // alvo é a meta dele ou a soma das equipes que lidera (`pickSalesGoal`).
+    // Comparar esse realizado com a meta da EMPRESA seria o descasamento de
+    // recortes que a regra do cartão existe para impedir.
     await expect(
-      page.getByText(`Vendas realizadas × meta da empresa de ${MES}`).first(),
+      page.getByText(new RegExp(`Vendas realizadas × (meta da equipe|sua meta) de ${MES.replace("/", "\\/")}`)).first(),
     ).toBeVisible();
-    await expect(page.getByText(/Vendas realizadas × meta da equipe/)).toHaveCount(0);
+    await expect(page.getByText(/Vendas realizadas × meta da empresa/)).toHaveCount(0);
 
     // E, sem linha cadastrada, a saída não pode dizer a ele que não existe
     // tela: `goals_write` aceita diretor e /equipes renderiza o cartão "Meta

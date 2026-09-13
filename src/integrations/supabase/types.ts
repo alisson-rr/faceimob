@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       access_provision_log: {
@@ -79,6 +54,13 @@ export type Database = {
             foreignKeyName: "access_provision_log_actor_id_fkey"
             columns: ["actor_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_provision_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -93,6 +75,75 @@ export type Database = {
             foreignKeyName: "access_provision_log_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_provision_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ad_campaign_spend: {
+        Row: {
+          campaign_id: string
+          imported_at: string
+          imported_by: string | null
+          period_end: string
+          period_start: string
+          source: string
+          source_file: string | null
+          spend: number
+        }
+        Insert: {
+          campaign_id: string
+          imported_at?: string
+          imported_by?: string | null
+          period_end: string
+          period_start: string
+          source?: string
+          source_file?: string | null
+          spend?: number
+        }
+        Update: {
+          campaign_id?: string
+          imported_at?: string
+          imported_by?: string | null
+          period_end?: string
+          period_start?: string
+          source?: string
+          source_file?: string | null
+          spend?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_campaign_spend_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ad_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_campaign_spend_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_campaign_spend_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_campaign_spend_imported_by_fkey"
+            columns: ["imported_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -103,13 +154,21 @@ export type Database = {
           created_at: string
           daily_budget: number | null
           developer_id: string | null
+          developer_suggested_id: string | null
           ends_on: string | null
           external_id: string
           id: string
           lead_source_id: string | null
           lifetime_budget: number | null
+          meta_account_id: string | null
+          meta_budget_level: string | null
+          meta_channel: string | null
+          meta_effective_status: string | null
           name: string
           platform: string
+          spend_period_end: string | null
+          spend_period_start: string | null
+          spend_source: string | null
           starts_on: string | null
           status: string | null
           synced_at: string | null
@@ -120,13 +179,21 @@ export type Database = {
           created_at?: string
           daily_budget?: number | null
           developer_id?: string | null
+          developer_suggested_id?: string | null
           ends_on?: string | null
           external_id: string
           id?: string
           lead_source_id?: string | null
           lifetime_budget?: number | null
+          meta_account_id?: string | null
+          meta_budget_level?: string | null
+          meta_channel?: string | null
+          meta_effective_status?: string | null
           name: string
           platform?: string
+          spend_period_end?: string | null
+          spend_period_start?: string | null
+          spend_source?: string | null
           starts_on?: string | null
           status?: string | null
           synced_at?: string | null
@@ -137,13 +204,21 @@ export type Database = {
           created_at?: string
           daily_budget?: number | null
           developer_id?: string | null
+          developer_suggested_id?: string | null
           ends_on?: string | null
           external_id?: string
           id?: string
           lead_source_id?: string | null
           lifetime_budget?: number | null
+          meta_account_id?: string | null
+          meta_budget_level?: string | null
+          meta_channel?: string | null
+          meta_effective_status?: string | null
           name?: string
           platform?: string
+          spend_period_end?: string | null
+          spend_period_start?: string | null
+          spend_source?: string | null
           starts_on?: string | null
           status?: string | null
           synced_at?: string | null
@@ -159,10 +234,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ad_campaigns_developer_suggested_id_fkey"
+            columns: ["developer_suggested_id"]
+            isOneToOne: false
+            referencedRelation: "developers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ad_campaigns_lead_source_id_fkey"
             columns: ["lead_source_id"]
             isOneToOne: false
             referencedRelation: "lead_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_campaigns_meta_account_id_fkey"
+            columns: ["meta_account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -204,6 +293,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "allowed_ips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -262,6 +358,13 @@ export type Database = {
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "annual_results_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -328,6 +431,13 @@ export type Database = {
             foreignKeyName: "automation_settings_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -370,6 +480,13 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cca_case_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -440,6 +557,13 @@ export type Database = {
             columns: ["analyst_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cca_cases_analyst_id_fkey"
+            columns: ["analyst_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -547,6 +671,13 @@ export type Database = {
             foreignKeyName: "checkins_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkins_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -590,6 +721,13 @@ export type Database = {
             foreignKeyName: "closed_months_closed_by_fkey"
             columns: ["closed_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closed_months_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -626,6 +764,13 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credential_reveal_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -695,6 +840,13 @@ export type Database = {
             foreignKeyName: "daily_entries_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_entries_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -747,6 +899,13 @@ export type Database = {
             columns: ["submitted_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_reports_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -939,6 +1098,13 @@ export type Database = {
             foreignKeyName: "deal_documents_uploaded_by_fkey"
             columns: ["uploaded_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -981,6 +1147,13 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_history_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1043,6 +1216,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_participants_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1154,6 +1334,13 @@ export type Database = {
             foreignKeyName: "deals_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -1175,6 +1362,13 @@ export type Database = {
             foreignKeyName: "deals_document_review_requested_by_fkey"
             columns: ["document_review_requested_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_document_review_requested_by_fkey"
+            columns: ["document_review_requested_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -1183,6 +1377,13 @@ export type Database = {
             columns: ["document_reviewed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_document_reviewed_by_fkey"
+            columns: ["document_reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1334,6 +1535,13 @@ export type Database = {
             foreignKeyName: "developer_submissions_requested_by_fkey"
             columns: ["requested_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "developer_submissions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -1442,6 +1650,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distribution_group_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1577,6 +1792,13 @@ export type Database = {
             foreignKeyName: "funnel_targets_director_id_fkey"
             columns: ["director_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_targets_director_id_fkey"
+            columns: ["director_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -1629,6 +1851,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_events_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1731,6 +1960,13 @@ export type Database = {
             foreignKeyName: "game_season_results_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_season_results_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -1780,6 +2016,13 @@ export type Database = {
             columns: ["closed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_seasons_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1843,6 +2086,13 @@ export type Database = {
             foreignKeyName: "goals_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -1851,6 +2101,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1906,6 +2163,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gold_tips_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -1990,6 +2254,13 @@ export type Database = {
             foreignKeyName: "important_notices_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "important_notices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2064,6 +2335,13 @@ export type Database = {
             foreignKeyName: "lead_assignments_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_assignments_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2132,6 +2410,13 @@ export type Database = {
             foreignKeyName: "lead_attachments_uploaded_by_fkey"
             columns: ["uploaded_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_attachments_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2168,6 +2453,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -2223,6 +2515,13 @@ export type Database = {
             columns: ["actor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -2434,6 +2733,13 @@ export type Database = {
             foreignKeyName: "leads_assigned_to_fkey"
             columns: ["assigned_to"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2503,6 +2809,13 @@ export type Database = {
             foreignKeyName: "marketing_investments_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_investments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2511,6 +2824,636 @@ export type Database = {
             columns: ["developer_id"]
             isOneToOne: false
             referencedRelation: "developers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_actions: {
+        Row: {
+          acao: string
+          account_id: string | null
+          ai_run_id: string | null
+          campaign_external_id: string
+          campaign_id: string | null
+          campaign_name: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          erro: string | null
+          executed_at: string | null
+          exigiu_aprendizado: boolean
+          expires_at: string | null
+          id: string
+          motivo: string | null
+          origem: string
+          requested_by: string | null
+          resultado: Json | null
+          status: string
+          variacao: number | null
+          verba_anterior: number | null
+          verba_nova: number | null
+        }
+        Insert: {
+          acao: string
+          account_id?: string | null
+          ai_run_id?: string | null
+          campaign_external_id: string
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          erro?: string | null
+          executed_at?: string | null
+          exigiu_aprendizado?: boolean
+          expires_at?: string | null
+          id?: string
+          motivo?: string | null
+          origem: string
+          requested_by?: string | null
+          resultado?: Json | null
+          status: string
+          variacao?: number | null
+          verba_anterior?: number | null
+          verba_nova?: number | null
+        }
+        Update: {
+          acao?: string
+          account_id?: string | null
+          ai_run_id?: string | null
+          campaign_external_id?: string
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          erro?: string | null
+          executed_at?: string | null
+          exigiu_aprendizado?: boolean
+          expires_at?: string | null
+          id?: string
+          motivo?: string | null
+          origem?: string
+          requested_by?: string | null
+          resultado?: Json | null
+          status?: string
+          variacao?: number | null
+          verba_anterior?: number | null
+          verba_nova?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_actions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_ai_run_id_fkey"
+            columns: ["ai_run_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ai_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ad_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_actions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_ad_accounts: {
+        Row: {
+          account_checked_at: string | null
+          account_status: number | null
+          act_id: string
+          amount_spent: number | null
+          balance_state: string
+          balance_state_changed_at: string | null
+          cpl_limite: number | null
+          currency: string | null
+          disable_reason: number | null
+          enabled: boolean
+          gasto_sem_lead_dias: number | null
+          gasto_sem_lead_limite: number | null
+          id: string
+          is_prepay: boolean | null
+          last_sync_attempt_at: string | null
+          last_sync_error: string | null
+          last_sync_ok_at: string | null
+          name: string | null
+          prepay_available: number | null
+          saldo_baixo_limite: number | null
+          spend_cap: number | null
+          timezone_name: string | null
+          verba_aviso_pct: number | null
+          verba_mensal: number | null
+        }
+        Insert: {
+          account_checked_at?: string | null
+          account_status?: number | null
+          act_id: string
+          amount_spent?: number | null
+          balance_state?: string
+          balance_state_changed_at?: string | null
+          cpl_limite?: number | null
+          currency?: string | null
+          disable_reason?: number | null
+          enabled?: boolean
+          gasto_sem_lead_dias?: number | null
+          gasto_sem_lead_limite?: number | null
+          id?: string
+          is_prepay?: boolean | null
+          last_sync_attempt_at?: string | null
+          last_sync_error?: string | null
+          last_sync_ok_at?: string | null
+          name?: string | null
+          prepay_available?: number | null
+          saldo_baixo_limite?: number | null
+          spend_cap?: number | null
+          timezone_name?: string | null
+          verba_aviso_pct?: number | null
+          verba_mensal?: number | null
+        }
+        Update: {
+          account_checked_at?: string | null
+          account_status?: number | null
+          act_id?: string
+          amount_spent?: number | null
+          balance_state?: string
+          balance_state_changed_at?: string | null
+          cpl_limite?: number | null
+          currency?: string | null
+          disable_reason?: number | null
+          enabled?: boolean
+          gasto_sem_lead_dias?: number | null
+          gasto_sem_lead_limite?: number | null
+          id?: string
+          is_prepay?: boolean | null
+          last_sync_attempt_at?: string | null
+          last_sync_error?: string | null
+          last_sync_ok_at?: string | null
+          name?: string | null
+          prepay_available?: number | null
+          saldo_baixo_limite?: number | null
+          spend_cap?: number | null
+          timezone_name?: string | null
+          verba_aviso_pct?: number | null
+          verba_mensal?: number | null
+        }
+        Relationships: []
+      }
+      meta_ai_runs: {
+        Row: {
+          account_id: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          kind: string
+          model: string | null
+          params: Json
+          requested_by: string | null
+          result: Json | null
+          run_date: string
+          started_at: string
+          status: string
+          tokens_in: number | null
+          tokens_out: number | null
+          trigger: string
+        }
+        Insert: {
+          account_id: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind: string
+          model?: string | null
+          params?: Json
+          requested_by?: string | null
+          result?: Json | null
+          run_date?: string
+          started_at?: string
+          status?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          trigger: string
+        }
+        Update: {
+          account_id?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          model?: string | null
+          params?: Json
+          requested_by?: string | null
+          result?: Json | null
+          run_date?: string
+          started_at?: string
+          status?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_ai_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_ai_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_ai_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_ai_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_alerts: {
+        Row: {
+          account_id: string
+          campaign_id: string | null
+          dedupe_key: string
+          id: string
+          kind: string
+          limite: number | null
+          mensagem: string
+          notified_at: string | null
+          opened_at: string
+          resolved_at: string | null
+          valor: number | null
+        }
+        Insert: {
+          account_id: string
+          campaign_id?: string | null
+          dedupe_key: string
+          id?: string
+          kind: string
+          limite?: number | null
+          mensagem: string
+          notified_at?: string | null
+          opened_at?: string
+          resolved_at?: string | null
+          valor?: number | null
+        }
+        Update: {
+          account_id?: string
+          campaign_id?: string | null
+          dedupe_key?: string
+          id?: string
+          kind?: string
+          limite?: number | null
+          mensagem?: string
+          notified_at?: string | null
+          opened_at?: string
+          resolved_at?: string | null
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_alerts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_alerts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ad_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_campaign_insights_daily: {
+        Row: {
+          campaign_id: string
+          clicks: number
+          conversations: number
+          day: string
+          impressions: number
+          leads_form: number
+          link_clicks: number
+          lp_leads: number
+          lp_views: number
+          reach: number
+          resultados: number
+          run_id: string | null
+          spend: number
+          synced_at: string
+        }
+        Insert: {
+          campaign_id: string
+          clicks?: number
+          conversations?: number
+          day: string
+          impressions?: number
+          leads_form?: number
+          link_clicks?: number
+          lp_leads?: number
+          lp_views?: number
+          reach?: number
+          resultados?: number
+          run_id?: string | null
+          spend?: number
+          synced_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          clicks?: number
+          conversations?: number
+          day?: string
+          impressions?: number
+          leads_form?: number
+          link_clicks?: number
+          lp_leads?: number
+          lp_views?: number
+          reach?: number
+          resultados?: number
+          run_id?: string | null
+          spend?: number
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_campaign_insights_daily_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ad_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_insights_daily_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "meta_sync_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_campaign_plans: {
+        Row: {
+          canal: string
+          created_at: string
+          created_by: string | null
+          developer_id: string | null
+          formato: string
+          id: string
+          link: string | null
+          model: string | null
+          nome: string
+          observacoes: string | null
+          padrao: string
+          plano: Json
+          project_id: string | null
+          verba_diaria: number
+        }
+        Insert: {
+          canal: string
+          created_at?: string
+          created_by?: string | null
+          developer_id?: string | null
+          formato: string
+          id?: string
+          link?: string | null
+          model?: string | null
+          nome: string
+          observacoes?: string | null
+          padrao: string
+          plano: Json
+          project_id?: string | null
+          verba_diaria: number
+        }
+        Update: {
+          canal?: string
+          created_at?: string
+          created_by?: string | null
+          developer_id?: string | null
+          formato?: string
+          id?: string
+          link?: string | null
+          model?: string | null
+          nome?: string
+          observacoes?: string | null
+          padrao?: string
+          plano?: Json
+          project_id?: string | null
+          verba_diaria?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_campaign_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_plans_developer_id_fkey"
+            columns: ["developer_id"]
+            isOneToOne: false
+            referencedRelation: "developers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "developer_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_plano_tentativas: {
+        Row: {
+          created_at: string
+          dia: string
+          id: string
+          profile_id: string
+        }
+        Insert: {
+          created_at?: string
+          dia?: string
+          id?: string
+          profile_id: string
+        }
+        Update: {
+          created_at?: string
+          dia?: string
+          id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_plano_tentativas_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_plano_tentativas_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_plano_tentativas_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_sync_runs: {
+        Row: {
+          account_id: string
+          campaigns: number | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          requested_by: string | null
+          rows: number | null
+          started_at: string
+          status: string
+          trigger: string
+          window_end: string | null
+          window_start: string | null
+        }
+        Insert: {
+          account_id: string
+          campaigns?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          requested_by?: string | null
+          rows?: number | null
+          started_at?: string
+          status?: string
+          trigger: string
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Update: {
+          account_id?: string
+          campaigns?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          requested_by?: string | null
+          rows?: number | null
+          started_at?: string
+          status?: string
+          trigger?: string
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_sync_runs_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "meta_ad_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_sync_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_sync_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_sync_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -2552,6 +3495,13 @@ export type Database = {
             foreignKeyName: "month_reopenings_closed_by_fkey"
             columns: ["closed_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "month_reopenings_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2560,6 +3510,13 @@ export type Database = {
             columns: ["reopened_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "month_reopenings_reopened_by_fkey"
+            columns: ["reopened_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -2582,6 +3539,11 @@ export type Database = {
           last_error: string | null
           link: string | null
           profile_id: string
+          push_attempts: number
+          push_claimed_at: string | null
+          push_done_subs: string[] | null
+          push_error: string | null
+          push_sent_at: string | null
           read_at: string | null
           sent_at: string | null
           title: string
@@ -2596,6 +3558,11 @@ export type Database = {
           last_error?: string | null
           link?: string | null
           profile_id: string
+          push_attempts?: number
+          push_claimed_at?: string | null
+          push_done_subs?: string[] | null
+          push_error?: string | null
+          push_sent_at?: string | null
           read_at?: string | null
           sent_at?: string | null
           title: string
@@ -2610,6 +3577,11 @@ export type Database = {
           last_error?: string | null
           link?: string | null
           profile_id?: string
+          push_attempts?: number
+          push_claimed_at?: string | null
+          push_done_subs?: string[] | null
+          push_error?: string | null
+          push_sent_at?: string | null
           read_at?: string | null
           sent_at?: string | null
           title?: string
@@ -2620,6 +3592,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -2836,6 +3815,13 @@ export type Database = {
             foreignKeyName: "public_links_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "public_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2850,6 +3836,13 @@ export type Database = {
             foreignKeyName: "public_links_director_id_fkey"
             columns: ["director_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "public_links_director_id_fkey"
+            columns: ["director_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -2858,6 +3851,104 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_preferences: {
+        Row: {
+          category: string
+          enabled: boolean
+          profile_id: string
+        }
+        Insert: {
+          category: string
+          enabled: boolean
+          profile_id: string
+        }
+        Update: {
+          category?: string
+          enabled?: boolean
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_preferences_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_preferences_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_preferences_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          failures: number
+          id: string
+          last_success_at: string | null
+          p256dh: string
+          profile_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          failures?: number
+          id?: string
+          last_success_at?: string | null
+          p256dh: string
+          profile_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          failures?: number
+          id?: string
+          last_success_at?: string | null
+          p256dh?: string
+          profile_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
         ]
@@ -2984,6 +4075,13 @@ export type Database = {
             foreignKeyName: "remarketing_lists_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "remarketing_lists_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -3046,6 +4144,13 @@ export type Database = {
             foreignKeyName: "role_change_log_actor_id_fkey"
             columns: ["actor_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "role_change_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -3054,6 +4159,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "role_change_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -3160,6 +4272,8 @@ export type Database = {
       sdr_conversations: {
         Row: {
           agent_id: string | null
+          assumed_at: string | null
+          assumed_by: string | null
           collected: Json
           created_at: string
           handed_off_at: string | null
@@ -3168,6 +4282,8 @@ export type Database = {
           last_message_at: string | null
           lead_id: string
           qualified_at: string | null
+          resolved_at: string | null
+          resolved_by: string | null
           score: number | null
           started_at: string
           status: string
@@ -3176,6 +4292,8 @@ export type Database = {
         }
         Insert: {
           agent_id?: string | null
+          assumed_at?: string | null
+          assumed_by?: string | null
           collected?: Json
           created_at?: string
           handed_off_at?: string | null
@@ -3184,6 +4302,8 @@ export type Database = {
           last_message_at?: string | null
           lead_id: string
           qualified_at?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
           score?: number | null
           started_at?: string
           status?: string
@@ -3192,6 +4312,8 @@ export type Database = {
         }
         Update: {
           agent_id?: string | null
+          assumed_at?: string | null
+          assumed_by?: string | null
           collected?: Json
           created_at?: string
           handed_off_at?: string | null
@@ -3200,6 +4322,8 @@ export type Database = {
           last_message_at?: string | null
           lead_id?: string
           qualified_at?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
           score?: number | null
           started_at?: string
           status?: string
@@ -3215,10 +4339,38 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sdr_conversations_assumed_by_fkey"
+            columns: ["assumed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_conversations_assumed_by_fkey"
+            columns: ["assumed_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_conversations_assumed_by_fkey"
+            columns: ["assumed_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sdr_conversations_handed_off_to_fkey"
             columns: ["handed_off_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_conversations_handed_off_to_fkey"
+            columns: ["handed_off_to"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -3235,6 +4387,27 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sdr_conversations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_conversations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_conversations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
         ]
       }
       sdr_messages: {
@@ -3245,7 +4418,10 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          media_id: string | null
+          media_type: string | null
           provider_message_id: string | null
+          sent_by: string | null
           template_id: string | null
           tokens_in: number | null
           tokens_out: number | null
@@ -3257,7 +4433,10 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
+          media_id?: string | null
+          media_type?: string | null
           provider_message_id?: string | null
+          sent_by?: string | null
           template_id?: string | null
           tokens_in?: number | null
           tokens_out?: number | null
@@ -3269,7 +4448,10 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
+          media_id?: string | null
+          media_type?: string | null
           provider_message_id?: string | null
+          sent_by?: string | null
           template_id?: string | null
           tokens_in?: number | null
           tokens_out?: number | null
@@ -3287,6 +4469,27 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "sdr_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_messages_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_messages_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sdr_messages_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
           {
@@ -3385,6 +4588,13 @@ export type Database = {
             foreignKeyName: "tasks_assigned_to_fkey"
             columns: ["assigned_to"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -3393,6 +4603,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -3435,6 +4652,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -3496,6 +4720,13 @@ export type Database = {
             foreignKeyName: "teams_director_id_fkey"
             columns: ["director_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teams_director_id_fkey"
+            columns: ["director_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -3504,6 +4735,13 @@ export type Database = {
             columns: ["manager_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teams_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -3582,6 +4820,13 @@ export type Database = {
             foreignKeyName: "user_roles_granted_by_fkey"
             columns: ["granted_by"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -3590,6 +4835,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_roles_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -3650,6 +4902,13 @@ export type Database = {
             foreignKeyName: "visits_broker_id_fkey"
             columns: ["broker_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -3680,8 +4939,10 @@ export type Database = {
           handled_by: string | null
           id: string
           lead_id: string | null
+          media_type: string | null
           outcome: string
           provider_message_id: string
+          reserved_at: string
         }
         Insert: {
           body?: string | null
@@ -3693,8 +4954,10 @@ export type Database = {
           handled_by?: string | null
           id?: string
           lead_id?: string | null
+          media_type?: string | null
           outcome?: string
           provider_message_id: string
+          reserved_at?: string
         }
         Update: {
           body?: string | null
@@ -3706,8 +4969,10 @@ export type Database = {
           handled_by?: string | null
           id?: string
           lead_id?: string | null
+          media_type?: string | null
           outcome?: string
           provider_message_id?: string
+          reserved_at?: string
         }
         Relationships: [
           {
@@ -3722,6 +4987,13 @@ export type Database = {
             columns: ["handled_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_inbound_messages_handled_by_fkey"
+            columns: ["handled_by"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
             referencedColumns: ["id"]
           },
           {
@@ -3844,6 +5116,13 @@ export type Database = {
             foreignKeyName: "game_events_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_events_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
             referencedRelation: "team_leader_names"
             referencedColumns: ["id"]
           },
@@ -3855,6 +5134,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sdr_operator_names: {
+        Row: {
+          full_name: string | null
+          id: string | null
+        }
+        Insert: {
+          full_name?: string | null
+          id?: string | null
+        }
+        Update: {
+          full_name?: string | null
+          id?: string | null
+        }
+        Relationships: []
       }
       team_leader_names: {
         Row: {
@@ -3876,6 +5170,7 @@ export type Database = {
       }
     }
     Functions: {
+      ad_campaign_recalc_spend: { Args: { p_ids: string[] }; Returns: number }
       add_deal_comment: {
         Args: { p_body: string; p_deal_id: string }
         Returns: {
@@ -3900,15 +5195,19 @@ export type Database = {
         Returns: string
       }
       assign_queued_leads: { Args: never; Returns: number }
+      auth_distribution_group_ids: { Args: never; Returns: string[] }
+      auth_editable_deal_ids: { Args: never; Returns: string[] }
       auth_effective_role: {
         Args: { p_profile: string }
         Returns: Database["public"]["Enums"]["app_role"]
       }
       auth_led_team_ids: { Args: never; Returns: string[] }
+      auth_queue_lead_ids: { Args: never; Returns: string[] }
       auth_roles: {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"][]
       }
+      auth_visible_deal_ids: { Args: never; Returns: string[] }
       auth_visible_profiles: { Args: never; Returns: string[] }
       auto_checkout_expired: { Args: never; Returns: number }
       award_game_points: {
@@ -3994,6 +5293,21 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      claim_push_batch: {
+        Args: { p_limit?: number }
+        Returns: {
+          body: string
+          category: string
+          created_at: string
+          id: string
+          kind: string
+          link: string
+          profile_id: string
+          push_attempts: number
+          push_done_subs: string[]
+          title: string
+        }[]
       }
       close_game_season: {
         Args: { p_close_month?: boolean; p_next_label?: string }
@@ -4136,9 +5450,17 @@ export type Database = {
           role: string
         }[]
       }
+      deal_stage_document_block: {
+        Args: { p_deal_id: string; p_review_status: string; p_stage_id: string }
+        Returns: string
+      }
       deal_status_bare: { Args: { p_label: string }; Returns: string }
       delete_operation_credential: { Args: { p_id: string }; Returns: boolean }
+      dispatch_meta_gestor: { Args: never; Returns: undefined }
+      dispatch_meta_sync: { Args: never; Returns: boolean }
+      dispatch_meta_sync_modo: { Args: { p_modo: string }; Returns: boolean }
       dispatch_pending_notifications: { Args: never; Returns: undefined }
+      dispatch_pending_push: { Args: never; Returns: boolean }
       dispatch_pending_submissions: { Args: never; Returns: undefined }
       distribute_queued_lead: { Args: { p_lead_id: string }; Returns: string }
       distribution_queue: {
@@ -4163,10 +5485,12 @@ export type Database = {
         Args: { p_max_age?: string }
         Returns: number
       }
+      faixas_de_dias: { Args: { p_dias: string[] }; Returns: string }
       get_integration_secret: {
         Args: { p_label: string; p_provider: string }
         Returns: string
       }
+      get_push_public_key: { Args: never; Returns: string }
       has_any_role: {
         Args: { targets: Database["public"]["Enums"]["app_role"][] }
         Returns: boolean
@@ -4244,6 +5568,188 @@ export type Database = {
           sales: number
           vgv: number
         }[]
+      }
+      marketing_import_ad_spend: {
+        Args: { p_rows: Json; p_source_file?: string }
+        Returns: {
+          campanhas: number
+          linhas: number
+          substituidas: number
+        }[]
+      }
+      meta_account_thresholds_set: {
+        Args: {
+          p_account_id: string
+          p_cpl_limite: number
+          p_gasto_sem_lead_dias: number
+          p_gasto_sem_lead_limite: number
+          p_saldo_baixo_limite: number
+          p_verba_aviso_pct: number
+          p_verba_mensal: number
+        }
+        Returns: undefined
+      }
+      meta_accounts_save: { Args: { p_accounts: Json }; Returns: number }
+      meta_action_claim: { Args: { p_action_id: string }; Returns: Json }
+      meta_action_create: {
+        Args: {
+          p_acao: string
+          p_campaign_id: string
+          p_confirma_aprendizado?: boolean
+          p_verba_nova?: number
+        }
+        Returns: Json
+      }
+      meta_action_decide: {
+        Args: {
+          p_action_id: string
+          p_confirma_aprendizado?: boolean
+          p_decisao: string
+        }
+        Returns: Json
+      }
+      meta_action_finish: {
+        Args: {
+          p_action_id: string
+          p_erro: string
+          p_resultado: Json
+          p_status: string
+        }
+        Returns: undefined
+      }
+      meta_action_precisa_aprendizado: {
+        Args: { p_atual: number; p_novo: number }
+        Returns: boolean
+      }
+      meta_action_propose: {
+        Args: {
+          p_acao: string
+          p_ai_run_id: string
+          p_campaign_id: string
+          p_motivo: string
+          p_verba_nova: number
+        }
+        Returns: string
+      }
+      meta_action_validar: {
+        Args: { p_acao: string; p_campaign_id: string; p_verba_nova: number }
+        Returns: Record<string, unknown>
+      }
+      meta_ai_run_finish: {
+        Args: {
+          p_error: string
+          p_model: string
+          p_result: Json
+          p_run_id: string
+          p_status: string
+          p_tokens_in: number
+          p_tokens_out: number
+        }
+        Returns: undefined
+      }
+      meta_ai_run_start: {
+        Args: {
+          p_account_id: string
+          p_kind: string
+          p_params: Json
+          p_trigger: string
+        }
+        Returns: {
+          reused: boolean
+          run_id: string
+        }[]
+      }
+      meta_alerta_titulo: { Args: { p_kind: string }; Returns: string }
+      meta_avaliar_alertas: {
+        Args: { p_account_id: string; p_so_estado?: boolean }
+        Returns: Json
+      }
+      meta_brl: { Args: { p_valor: number }; Returns: string }
+      meta_classifica_conta: {
+        Args: {
+          p_amount_spent: number
+          p_disable_reason: number
+          p_is_prepay: boolean
+          p_limite: number
+          p_prepay_available: number
+          p_spend_cap: number
+          p_status: number
+        }
+        Returns: string
+      }
+      meta_enfileirar_resumo_diario: { Args: never; Returns: number }
+      meta_janela_campanha: {
+        Args: { p_campaign_id: string; p_fim: string; p_inicio: string }
+        Returns: unknown
+      }
+      meta_metricas: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          account_id: string
+          campaign_id: string
+          channel: string
+          clicks: number
+          cobertura_desde: string
+          conversations: number
+          cpc: number
+          cpm: number
+          ctr: number
+          custo_por_resultado: number
+          dias: number
+          external_id: string
+          impressions: number
+          leads_form: number
+          link_clicks: number
+          lp_leads: number
+          name: string
+          reach: number
+          resultados: number
+          spend: number
+        }[]
+      }
+      meta_metricas_por_canal: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          campanhas: number
+          channel: string
+          custo_por_resultado: number
+          resultados: number
+          spend: number
+        }[]
+      }
+      meta_notificar: {
+        Args: { p_corpo: string; p_kind: string; p_titulo: string }
+        Returns: number
+      }
+      meta_plano_tentativa_registrar: {
+        Args: { p_profile_id: string }
+        Returns: boolean
+      }
+      meta_plano_tentativas_hoje: { Args: never; Returns: number }
+      meta_sync_apply: {
+        Args: { p_payload: Json; p_run_id: string }
+        Returns: Json
+      }
+      meta_sync_finish: {
+        Args: { p_error: string; p_run_id: string; p_status: string }
+        Returns: undefined
+      }
+      meta_sync_start: {
+        Args: {
+          p_account_id: string
+          p_requested_by: string
+          p_trigger: string
+        }
+        Returns: string
+      }
+      meta_sync_window: {
+        Args: {
+          p_account_id: string
+          p_external_ids: string[]
+          p_fim: string
+          p_inicio: string
+        }
+        Returns: string
       }
       month_start: { Args: { d: string }; Returns: string }
       normalize_phone: { Args: { raw: string }; Returns: string }
@@ -4334,6 +5840,13 @@ export type Database = {
         Args: { p_pin?: string; p_slug: string; p_week_start?: string }
         Returns: Json
       }
+      push_category: { Args: { p_kind: string }; Returns: string }
+      push_destino: {
+        Args: { p_kind: string; p_profile_id: string }
+        Returns: boolean
+      }
+      push_kick: { Args: never; Returns: boolean }
+      push_pendentes: { Args: { p_limit: number }; Returns: string[] }
       reassign_lead: {
         Args: { p_lead_id: string; p_target: string }
         Returns: {
@@ -4386,6 +5899,15 @@ export type Database = {
         }
       }
       recalc_deal_shares: { Args: { p_deal_id: string }; Returns: undefined }
+      register_push_subscription: {
+        Args: {
+          p_auth: string
+          p_endpoint: string
+          p_p256dh: string
+          p_user_agent?: string
+        }
+        Returns: string
+      }
       release_expired_leads: { Args: never; Returns: number }
       remarketing_list_stats: {
         Args: { p_list_id: string }
@@ -4435,6 +5957,7 @@ export type Database = {
         Args: { p_event_code: string; p_season_id: string }
         Returns: number
       }
+      sdr_conversation_lead_ids: { Args: never; Returns: string[] }
       sdr_handoff: {
         Args: { p_conversation_id: string; p_reason?: string }
         Returns: string
@@ -4447,6 +5970,7 @@ export type Database = {
           id: string
         }[]
       }
+      send_test_push: { Args: never; Returns: string }
       set_integration_secret: {
         Args: {
           p_config?: Json
@@ -4493,7 +6017,15 @@ export type Database = {
         Args: { p_deal_id: string }
         Returns: Json
       }
+      sync_broker_login: {
+        Args: { p_login: string; p_profile_id: string }
+        Returns: boolean
+      }
       unaccent_fallback: { Args: { txt: string }; Returns: string }
+      unregister_push_subscription: {
+        Args: { p_endpoint: string }
+        Returns: undefined
+      }
       visible_game_ranking:
         | {
             Args: { p_season_id: string }
@@ -4535,6 +6067,24 @@ export type Database = {
               vgv: number
             }[]
           }
+      webpush_guardar_vapid: {
+        Args: { p_private: string; p_public: string; p_subject: string }
+        Returns: boolean
+      }
+      whatsapp_inbound_resolve_phone: {
+        Args: { p_phone: string }
+        Returns: number
+      }
+      whatsapp_inbox_unmatched: {
+        Args: never
+        Returns: {
+          from_phone: string
+          media_type: string
+          pendentes: number
+          ultima_em: string
+          ultima_mensagem: string
+        }[]
+      }
     }
     Enums: {
       app_role:
@@ -4606,12 +6156,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4635,11 +6185,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4660,11 +6210,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4685,11 +6235,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4702,11 +6252,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4716,9 +6266,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_role: [
@@ -4784,4 +6331,3 @@ export const Constants = {
     },
   },
 } as const
-

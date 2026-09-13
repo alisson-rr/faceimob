@@ -34,7 +34,11 @@ export function MotivationalPopup() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="glass-strong glow-primary max-w-sm text-center border-primary/20">
+      {/* Destaque em âmbar, não mais o azul `glow-primary`: brilho só no escuro
+          (`.light .glow-highlight` zera), ícone em `gold` porque `highlight` em
+          traço some no claro. Sem `border-*` aqui: o `glass-strong` vem depois
+          das utilities no CSS gerado e a borda dele é a que pinta. */}
+      <DialogContent className="glass-strong glow-highlight max-w-sm text-center">
         <DialogTitle className="sr-only">Mensagem Motivacional</DialogTitle>
         <AnimatePresence>
           {open && (
@@ -47,13 +51,13 @@ export function MotivationalPopup() {
               <motion.div
                 animate={{ y: [0, -8, 0] }}
                 transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center"
+                className="w-16 h-16 rounded-full bg-highlight/20 flex items-center justify-center"
               >
-                <Icon className="w-8 h-8 text-primary" />
+                <Icon className="w-8 h-8 text-gold" aria-hidden />
               </motion.div>
               <h3 className="text-xl font-bold text-foreground">{msg.title}</h3>
               <p className="text-muted-foreground text-sm leading-relaxed">{msg.text}</p>
-              <Button onClick={() => setOpen(false)} className="mt-2 glow-primary">
+              <Button variant="highlight" onClick={() => setOpen(false)} className="mt-2">
                 Bora Vender! 💪
               </Button>
             </motion.div>

@@ -7,7 +7,11 @@ import { dbError, describeError } from "@/lib/supabaseError";
  * A tela calculava tudo no cliente a partir de `deals`, com pesos em `useState`:
  * dois usuários podiam ver rankings diferentes e nada era auditável. A fonte de
  * verdade é `game_events` (alimentada por `award_game_points` e pelos triggers
- * `deals_award_points` / `cca_award_points`), agregada pela view `game_ranking`.
+ * `deals_award_points` / `cca_award_points` / rateio / documentos), somada por
+ * `visible_game_ranking`. Desde a 0142 o congelado de `close_game_season` sai
+ * dessa MESMA função — vivo e congelado contam as mesmas pessoas (papel
+ * `broker`) e os mesmos pontos. A view `game_ranking` não é mais lida por tela
+ * nem pelo fechamento.
  *
  * Os códigos de evento são os do banco — `incompleto_com_doc`, `esteira`,
  * `aprovado`, `venda`, `distrato`. O front usava um vocabulário próprio

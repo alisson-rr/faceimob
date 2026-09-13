@@ -56,13 +56,32 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "perfil-1" } }),
+/** O que cada teste gira: papel, meta do mês, VGV do mês e o interruptor de som. */
+const estado = vi.hoisted(() => ({
+  roles: ["broker"] as string[],
+  meta: null as { target: number | null; scope: string } | null,
+  placarDoMes: [] as { profile_id: string; vgv: number }[],
+  somLigado: false,
 }));
 
-vi.mock("@/hooks/useGameRanking", () => ({
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "perfil-1" }, roles: estado.roles, isAdmin: false }),
+}));
+
+vi.mock("@/hooks/useGameRanking", async (importOriginal) => ({
+  // `recorteDoRanking` é o real: quem tem meta individual é a regra do card de game.
+  ...(await importOriginal<typeof import("@/hooks/useGameRanking")>()),
   useCurrentSeasonId: () => ({ data: "temporada-1" }),
-  useSeasonRanking: () => ({ data: [] }),
+  // Com `week` é a leitura do mês (o realizado da meta); sem, o placar da temporada.
+  useSeasonRanking: (seasonId: string | null, week?: unknown) => ({
+    data: week ? (seasonId ? estado.placarDoMes : undefined) : [],
+  }),
+}));
+
+// `useGoal` desliga a consulta com `ALL_MONTHS`; o dublê respeita o mesmo contrato.
+vi.mock("@/components/dashboard/data", () => ({
+  ALL_MONTHS: "all",
+  useVgvGoal: (mes: string) => ({ data: mes === "all" ? undefined : estado.meta ?? undefined }),
 }));
 
 const listRanking = vi.fn(async (_seasonId: string) => [
@@ -87,10 +106,12 @@ vi.mock("@/integrations/supabase/game", () => ({
 // Sem AudioContext nem canvas no jsdom — e som/confete não são o que se prova.
 // O dublê precisa cobrir o módulo inteiro que o `EngagementLayer` alcança:
 // `tocarPremiacao` (o som de marco) lê `isSoundOn`/`subscribeSound` daqui.
-// Mudo por padrão — teste não toca som e não baixa a faixa.
+// Mudo por padrão — teste não toca som e não baixa a faixa. Só o teste da
+// venda seguida liga (`estado.somLigado`), com `play` espionado.
 vi.mock("@/lib/engagement/audio", () => ({
   playSound: vi.fn(),
-  isSoundOn: () => false,
+  isSoundOn: () => estado.somLigado,
+  audioLiberado: () => false,
   subscribeSound: () => () => undefined,
 }));
 vi.mock("./Confetti", () => ({ fireConfetti: vi.fn() }));
@@ -143,8 +164,10 @@ const evento = (over: Record<string, unknown> = {}) => ({
   },
 });
 
+let client: QueryClient;
+
+/** Monta — ou re-renderiza, com o mesmo cliente, quando chamado de novo no teste. */
 async function montar() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -175,6 +198,12 @@ async function quedaEVolta(motivo = "CHANNEL_ERROR") {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  estado.roles = ["broker"];
+  estado.meta = null;
+  estado.placarDoMes = [];
+  estado.somLigado = false;
+  localStorage.clear();
   canal.filtros = [];
   canal.status = null;
   canal.criados = 0;
@@ -344,5 +373,121 @@ describe("EngagementLayer · queda do canal", () => {
     await esperarPromessas();
     expect(countSalesSince).not.toHaveBeenCalled();
     expect(toastSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("EngagementLayer · som da venda", () => {
+  let tocarFaixa: { mockRestore: () => void; mock: { calls: unknown[] } };
+  let pausar: { mockRestore: () => void };
+
+  beforeEach(() => {
+    estado.somLigado = true;
+    // jsdom não reproduz áudio: o que se prova é quantas vezes a faixa foi pedida.
+    tocarFaixa = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
+    pausar = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    Object.defineProperty(HTMLMediaElement.prototype, "currentTime", { configurable: true, writable: true, value: 0 });
+  });
+
+  afterEach(() => {
+    tocarFaixa.mockRestore();
+    pausar.mockRestore();
+  });
+
+  /**
+   * O card durava 6 s e o trecho da música 7 s: o card da segunda venda entrava
+   * com a faixa ainda na trava de não empilhar e a loja via o card sem som.
+   */
+  it("a segunda venda seguida também toca: o card dura o trecho inteiro da música", async () => {
+    const { TRECHO_MS } = await import("@/hooks/useSomDePremiacao");
+    await montar();
+
+    await act(async () => {
+      handlerDe("game_events")(evento({ id: "v1", ref_id: "negocio-1", profile_id: "p1" }));
+      handlerDe("game_events")(evento({ id: "v2", ref_id: "negocio-2", profile_id: "p2" }));
+    });
+    await passarJanela();
+    await esperarPromessas();
+
+    expect(container.querySelector("[data-testid=venda]")?.textContent).toBe("Ana Lima");
+    expect(tocarFaixa.mock.calls).toHaveLength(1);
+
+    await act(async () => { vi.advanceTimersByTime(TRECHO_MS); });
+
+    expect(container.querySelector("[data-testid=venda]")?.textContent).toBe("Bruno Reis");
+    expect(tocarFaixa.mock.calls).toHaveLength(2);
+  });
+});
+
+describe("EngagementLayer · meta batida", () => {
+  const vgvDoMes = (valor: number) => [{ profile_id: "perfil-1", vgv: valor }];
+  const comemoracoesDeMeta = () => toastSpy.mock.calls.filter(([titulo]) => String(titulo).includes("Meta"));
+
+  beforeEach(() => {
+    estado.meta = { target: 100_000, scope: "profile" };
+  });
+
+  it("comemora quando o VGV do mês cruza a meta — e uma vez só, mesmo caindo, recarregando e cruzando de novo", async () => {
+    estado.placarDoMes = vgvDoMes(60_000);
+    await montar();
+    expect(comemoracoesDeMeta()).toHaveLength(0);
+
+    estado.placarDoMes = vgvDoMes(120_000);
+    await montar();
+    expect(comemoracoesDeMeta()).toHaveLength(1);
+
+    // Distrato derruba o VGV, a página é recarregada e uma venda nova cruza de
+    // novo: é a mesma meta da mesma temporada, e a marca está no localStorage.
+    estado.placarDoMes = vgvDoMes(80_000);
+    await act(async () => { root.unmount(); });
+    root = createRoot(container);
+    await montar();
+    estado.placarDoMes = vgvDoMes(130_000);
+    await montar();
+    expect(comemoracoesDeMeta()).toHaveLength(1);
+  });
+
+  it("quem abre o app com a meta já batida não recebe comemoração no carregamento", async () => {
+    estado.placarDoMes = vgvDoMes(150_000);
+    await montar();
+    await montar();
+    expect(comemoracoesDeMeta()).toHaveLength(0);
+  });
+
+  /**
+   * Quem cruza é o PROGRESSO da pessoa, não o número de /equipes: baixar a meta
+   * abaixo do VGV, ou apagar e recriar depois que o VGV passou dela, não é
+   * venda nenhuma — só uma linha de base nova.
+   */
+  it("mexer só na meta não comemora", async () => {
+    estado.meta = { target: 200_000, scope: "profile" };
+    estado.placarDoMes = vgvDoMes(150_000);
+    await montar();
+
+    estado.meta = { target: 120_000, scope: "profile" };
+    await montar();
+    expect(comemoracoesDeMeta()).toHaveLength(0);
+
+    estado.meta = { target: 200_000, scope: "profile" };
+    await montar();
+    estado.meta = null;
+    await montar();
+    estado.placarDoMes = vgvDoMes(250_000);
+    estado.meta = { target: 200_000, scope: "profile" };
+    await montar();
+    expect(comemoracoesDeMeta()).toHaveLength(0);
+  });
+
+  /**
+   * Para gerente e diretor a meta que o `useGoal` devolve pode ser a soma das
+   * equipes lideradas, comparada com o VGV só da pessoa: um "Meta batida"
+   * assim seria falso. Só quem tem a faixa individual no card de game entra.
+   */
+  it("fora do recorte individual não há gatilho", async () => {
+    estado.roles = ["manager"];
+    estado.placarDoMes = vgvDoMes(60_000);
+    await montar();
+    estado.placarDoMes = vgvDoMes(120_000);
+    await montar();
+    expect(comemoracoesDeMeta()).toHaveLength(0);
   });
 });

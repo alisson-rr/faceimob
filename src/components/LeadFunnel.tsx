@@ -73,6 +73,18 @@ export default function LeadFunnel({
     [leads, now, profileId],
   );
 
+  // Um destaque por tela: com vários leads aguardando atendimento, o "Atender"
+  // âmbar vai só no que vence primeiro; os outros ficam no botão padrão.
+  const primeiroDaFila = useMemo(() => {
+    const prazo = (lead: LeadRecord) =>
+      lead.attend_deadline ? new Date(lead.attend_deadline).getTime() : Number.POSITIVE_INFINITY;
+    let primeiro: LeadRecord | null = null;
+    for (const lead of leads) {
+      if (canClaim(lead, profileId) && (!primeiro || prazo(lead) < prazo(primeiro))) primeiro = lead;
+    }
+    return primeiro?.id ?? null;
+  }, [leads, profileId]);
+
   // Deriva da consulta: sem isso o modal congela uma cópia e ignora o realtime.
   const selected = useMemo(
     () => leads.find((lead) => lead.id === selectedId) ?? null,
@@ -158,6 +170,7 @@ export default function LeadFunnel({
                     inactivityHours={inactivityHours}
                     attendTimeout={attendTimeout}
                     claimable={canClaim(lead, profileId)}
+                    primeiroDaFila={lead.id === primeiroDaFila}
                     overdue={isLeadOverdue(lead, now)}
                     onOpen={() => setSelectedId(lead.id)}
                     onAttend={() => attend(lead)}
@@ -243,13 +256,15 @@ export default function LeadFunnel({
  * dentro de botão é HTML inválido e o navegador desmonta a árvore.
  */
 function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, overdue, onOpen, onAttend,
+  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, onOpen, onAttend,
 }: {
   lead: LeadRecord;
   now: number;
   inactivityHours: number;
   attendTimeout: number;
   claimable: boolean;
+  /** O lead aguardando atendimento que vence primeiro: só ele leva o "Atender" âmbar. */
+  primeiroDaFila: boolean;
   overdue: boolean;
   onOpen: () => void;
   onAttend: () => void;
@@ -304,8 +319,10 @@ function LeadCardMini({
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
         <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
+        {/* Cronômetro neutro, como o do NewLeadNotifier: o âmbar deste cartão é
+            o botão "Atender". No último minuto vira alerta vermelho. */}
         {secondsLeft !== null && (
-          <StatusBadge tone={secondsLeft <= 60 ? "danger" : "warning"} icon={Timer}>
+          <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
             <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>
           </StatusBadge>
         )}
@@ -323,7 +340,12 @@ function LeadCardMini({
       </div>
 
       {claimable && (
-        <Button size="sm" className="mt-2 h-8 w-full text-xs" onClick={onAttend}>
+        <Button
+          size="sm"
+          variant={primeiroDaFila ? "highlight" : "default"}
+          className="mt-2 h-8 w-full text-xs"
+          onClick={onAttend}
+        >
           <HandMetal className="h-3.5 w-3.5" /> Atender
           {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
         </Button>

@@ -129,9 +129,16 @@ export function ReopenDealDialog({ deal, stages, onClose, onReopened }: Props) {
             Reabrir o negócio de {deal.client}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Ele volta para <strong className="text-foreground">{target?.label ?? "a primeira etapa"}</strong>,
-            volta a contar no VGV e no ranking do game, e o motivo da perda
-            {deal.lost_reason ? ` ("${deal.lost_reason}")` : ""} é apagado.
+            {/* Regra da 0142: reabrir não mexe em ponto nenhum; é GANHAR de novo
+                que retira o distrato da temporada aberta. Venda que já pontuou
+                numa temporada encerrada não pontua outra vez (item j). O texto
+                antigo dizia que reabrir já devolvia VGV e ranking — negócio
+                aberto não conta em nenhum dos dois. */}
+            Ele volta para <strong className="text-foreground">{target?.label ?? "a primeira etapa"}</strong> e
+            o motivo da perda{deal.lost_reason ? ` ("${deal.lost_reason}")` : ""} é apagado. Reabrir não
+            mexe nos pontos do game. Se ele for ganho de novo, volta a contar no VGV e a penalidade de
+            distrato desta temporada sai; uma venda que já pontuou numa temporada encerrada não pontua
+            outra vez.
           </AlertDialogDescription>
         </AlertDialogHeader>
 

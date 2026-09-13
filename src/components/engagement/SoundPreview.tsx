@@ -3,28 +3,42 @@ import { Play, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/shared";
 import { isSoundOn, playSound, setSoundOn, subscribeSound, type SoundName } from "@/lib/engagement/audio";
+import { tocarPremiacao } from "@/hooks/useSomDePremiacao";
 
 /**
- * Escuta dos seis sons do sistema, um a um.
+ * Escuta dos sons do sistema, um a um.
  *
- * Os sons saem de osciladores (`lib/engagement/audio`), sem arquivo de áudio, e
- * nenhuma máquina do harness tem saída de som: nenhum teste automatizado
- * consegue afirmar que a fanfarra soa bem — só que ela é disparada. A
- * conferência é por ouvido, e até 06/09 ela exigia fechar uma venda de verdade
- * para ouvir a fanfarra. Aqui cada som toca sozinho, sem mexer no placar.
+ * A música de premiação é a faixa do cliente (`useSomDePremiacao`); o resto sai
+ * de osciladores (`lib/engagement/audio`). Nenhuma máquina do harness tem saída
+ * de som: nenhum teste automatizado consegue afirmar que um som soa bem — só
+ * que ele é disparado. A conferência é por ouvido, e até 06/09 ela exigia
+ * fechar uma venda de verdade. Aqui cada som toca sozinho, sem mexer no placar.
  *
- * Com o som DESLIGADO, `playSound` retorna cedo e não toca nada: um botão que
- * não faz som e não diz por quê é pior do que um botão desabilitado com o
- * motivo escrito. Por isso a lista inteira sai do ar com o aviso e o atalho
- * para religar.
+ * Os três sons curtos de marco (venda, ranking, meta) só tocam no lugar da
+ * música: com `prefers-reduced-motion`, ou quando o navegador recusa a faixa.
+ * O texto diz isso para ninguém procurar a fanfarra numa venda normal.
+ *
+ * Com o som DESLIGADO nada toca: um botão que não faz som e não diz por quê é
+ * pior do que um botão desabilitado com o motivo escrito. Por isso a lista
+ * inteira sai do ar com o aviso e o atalho para religar.
  */
-const SONS: { name: SoundName; label: string; quando: string }[] = [
-  { name: "leadNew", label: "Lead novo", quando: "Lead entra na roleta." },
-  { name: "leadClaimed", label: "Lead travado", quando: "O corretor pega o lead e a trava começa." },
-  { name: "checkin", label: "Check-in", quando: "Presença confirmada, o corretor entra na fila." },
-  { name: "rankUp", label: "Subiu no ranking", quando: "O próprio usuário ganha posição." },
-  { name: "sale", label: "Venda fechada", quando: "A loja inteira ouve — é o som da ata de 14/07." },
-  { name: "goal", label: "Meta batida", quando: "Sem gatilho: nada no banco publica meta batida hoje." },
+const catalogo = (name: SoundName) => () => playSound(name, { manual: true });
+
+const SONS: { id: string; label: string; quando: string; tocar: () => void }[] = [
+  {
+    id: "premiacao",
+    label: "Música de premiação",
+    quando: "Venda fechada (todos ouvem), subida no ranking e meta batida (quem conquistou). Trecho de 7 s.",
+    tocar: () => tocarPremiacao({ manual: true }),
+  },
+  { id: "leadNew", label: "Lead novo", quando: "Lead entra na roleta.", tocar: catalogo("leadNew") },
+  { id: "leadClaimed", label: "Lead travado", quando: "O corretor pega o lead e a trava começa.", tocar: catalogo("leadClaimed") },
+  { id: "checkin", label: "Check-in", quando: "Presença confirmada, o corretor entra na fila.", tocar: catalogo("checkin") },
+  { id: "sale", label: "Venda fechada (curto)", quando: "No lugar da música, com menos movimento ou música recusada.", tocar: catalogo("sale") },
+  { id: "rankUp", label: "Subiu no ranking (curto)", quando: "No lugar da música, para quem subiu.", tocar: catalogo("rankUp") },
+  { id: "goal", label: "Meta batida (curto)", quando: "No lugar da música, para quem bateu a meta de VGV do mês.", tocar: catalogo("goal") },
+  { id: "success", label: "Sucesso", quando: "Aviso de gravação concluída (toast de sucesso).", tocar: catalogo("success") },
+  { id: "error", label: "Erro", quando: "Aviso de falha (toast de erro).", tocar: catalogo("error") },
 ];
 
 export function SoundPreview() {
@@ -34,7 +48,7 @@ export function SoundPreview() {
     <SectionCard
       title="Sons do sistema"
       icon={ligado ? Volume2 : VolumeX}
-      description="Toca cada som isolado, sem pontuar nada. Os sons são gerados no navegador; a conferência é por ouvido."
+      description="Toca cada som isolado, sem pontuar nada. A música é a faixa entregue pelo cliente; os outros sons são gerados no navegador."
       actions={!ligado
         ? (
           <Button size="sm" variant="outline" onClick={() => setSoundOn(true)}>
@@ -51,7 +65,7 @@ export function SoundPreview() {
       <ul className="grid gap-2 sm:grid-cols-2">
         {SONS.map((som) => (
           <li
-            key={som.name}
+            key={som.id}
             className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
           >
             <div className="min-w-0">
@@ -63,7 +77,7 @@ export function SoundPreview() {
               variant="ghost"
               disabled={!ligado}
               aria-label={`Tocar o som ${som.label}`}
-              onClick={() => playSound(som.name)}
+              onClick={som.tocar}
             >
               <Play className="h-4 w-4" aria-hidden />
             </Button>

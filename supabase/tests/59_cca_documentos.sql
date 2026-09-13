@@ -350,7 +350,8 @@ begin
   end if;
 
   select pg_get_expr(p.polwithcheck, p.polrelid) into v_check
-    from pg_policy p where p.polname = 'deal_documents_storage'
+    -- A 0141 separou a FOR ALL em _select/_insert/_delete; a gravação é a _insert.
+    from pg_policy p where p.polname = 'deal_documents_storage_insert'
      and p.polrelid = 'storage.objects'::regclass;
   perform pg_temp.check59(position('deal_id_of_object' in coalesce(v_check, '')) > 0,
     'gravar no bucket deixou de ser livre para qualquer autenticado');

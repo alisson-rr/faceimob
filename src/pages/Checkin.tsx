@@ -196,7 +196,10 @@ export default function Checkin() {
         icon={Clock}
         description="Bata o ponto dentro da janela para entrar na fila de distribuição de leads."
         actions={
-          <StatusBadge tone={activeShift ? "success" : "neutral"}>
+          // Neutro: verde aqui e dourado no cartão diziam o mesmo estado com duas
+          // cores, e `live` repetiria o selo "Turno ativo" do cartão. O dourado
+          // fica no cartão e no botão de check-in; aqui o texto diz o estado.
+          <StatusBadge tone="neutral">
             {activeShift ? activeShift.label : "Fora do expediente"}
           </StatusBadge>
         }
@@ -283,6 +286,7 @@ export default function Checkin() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
+              variant="highlight"
               disabled={pendingAction === "checkin" || !activeShift || !!activeCheckin || blocked}
               aria-busy={pendingAction === "checkin"}
               onClick={() => action("checkin")}
@@ -351,20 +355,25 @@ export default function Checkin() {
               return (
                 <div
                   key={shift.id}
-                  className={`rounded-xl border p-4 ${activeNow ? "border-primary bg-primary/5" : "border-border"}`}
+                  className={`relative rounded-xl border p-4 ${activeNow ? "gold-hairline border-gold" : "border-border"}`}
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="font-semibold">{shift.label}</span>
-                    {record && (
-                      <StatusBadge tone={record.checked_out_at ? "neutral" : "success"}>
-                        {/* `auto_checkout` distingue quem encerrou: o corretor ou o
-                            cron do fim do turno. Sem isso a presença fechada pelo
-                            job parecia um check-out que ele não fez. */}
-                        {record.checked_out_at
-                          ? (record.auto_checkout ? "Encerrado pelo sistema" : "Encerrado")
-                          : "Ativo"}
-                      </StatusBadge>
-                    )}
+                    <span className="flex flex-wrap items-center justify-end gap-1.5">
+                      {activeNow && <StatusBadge tone="live">Turno ativo</StatusBadge>}
+                      {record && (
+                        <StatusBadge tone={record.checked_out_at ? "neutral" : "success"}>
+                          {/* `auto_checkout` distingue quem encerrou: o corretor ou o
+                              cron do fim do turno. Sem isso a presença fechada pelo
+                              job parecia um check-out que ele não fez. "Check-in
+                              ativo", e não só "Ativo": ao lado do selo "Turno
+                              ativo" os dois "ativos" pareciam a mesma coisa. */}
+                          {record.checked_out_at
+                            ? (record.auto_checkout ? "Encerrado pelo sistema" : "Encerrado")
+                            : "Check-in ativo"}
+                        </StatusBadge>
+                      )}
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {hhmm(shift.checkin_start)} → {hhmm(shift.checkout_time)}<br />
@@ -395,8 +404,8 @@ export default function Checkin() {
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="glass-strong max-w-sm border-primary/20 text-center">
           <DialogHeader>
-            <div className="mx-auto mb-2 grid h-14 w-14 place-items-center rounded-full bg-primary/20">
-              <Rocket className="h-7 w-7 text-primary" aria-hidden />
+            <div className="mx-auto mb-2 grid h-14 w-14 place-items-center rounded-full bg-highlight/15">
+              <Rocket className="h-7 w-7 text-gold" aria-hidden />
             </div>
             <DialogTitle className="text-center">Check-in confirmado! ✅</DialogTitle>
             <DialogDescription className="pt-2 text-center text-sm leading-relaxed">{incentive}</DialogDescription>

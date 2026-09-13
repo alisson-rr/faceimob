@@ -351,7 +351,7 @@ export default function Login() {
                     />
                   </div>
                   {errorBlock}
-                  <Button type="submit" size="lg" className="w-full" disabled={loading}>
+                  <Button type="submit" variant="highlight" size="lg" className="w-full" disabled={loading}>
                     {loading ? "Entrando…" : "Entrar"}
                   </Button>
                   {/* Não existe autoatendimento de redefinição: ligar o envio
@@ -408,7 +408,7 @@ export default function Login() {
                       onChange={(e) => setEmail(e.target.value)}
                     />
                   </div>
-                  <Button type="submit" size="lg" className="w-full" disabled={loading}>
+                  <Button type="submit" variant="highlight" size="lg" className="w-full" disabled={loading}>
                     {loading ? "Enviando…" : "Enviar link de acesso"}
                   </Button>
                 </form>
@@ -441,7 +441,7 @@ export default function Login() {
                           onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                         />
                       </div>
-                      <Button type="submit" size="lg" className="w-full" disabled={loading || code.length !== CODE_LENGTH}>
+                      <Button type="submit" variant="highlight" size="lg" className="w-full" disabled={loading || code.length !== CODE_LENGTH}>
                         {loading ? "Verificando…" : "Entrar"}
                       </Button>
                     </>

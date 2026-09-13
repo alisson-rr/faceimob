@@ -200,6 +200,33 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     usedBy: "_shared/brevo.ts",
     help: "E-mail verificado no Brevo que assina os disparos.",
   },
+  // Push do navegador (migration 0143). Os três valores formam UM par: trocar a
+  // chave pública invalida toda assinatura já feita, e cada aparelho precisa
+  // ativar as notificações de novo.
+  {
+    provider: "webpush",
+    label: "vapid_public_key",
+    title: "Push — chave pública VAPID",
+    envName: "WEBPUSH_VAPID_PUBLIC_KEY",
+    usedBy: "push-dispatch, get_push_public_key (navegador)",
+    help: "Ponto P-256 não comprimido (65 bytes) em base64url sem padding. O navegador assina o push com ela, então precisa estar aqui no cofre. Trocar exige que cada aparelho ative as notificações de novo.",
+  },
+  {
+    provider: "webpush",
+    label: "vapid_private_key",
+    title: "Push — chave privada VAPID",
+    envName: "WEBPUSH_VAPID_PRIVATE_KEY",
+    usedBy: "push-dispatch",
+    help: "Escalar d (32 bytes) em base64url sem padding, par da chave pública acima. Só a edge function lê; nunca vai ao navegador.",
+  },
+  {
+    provider: "webpush",
+    label: "vapid_subject",
+    title: "Push — contato VAPID",
+    envName: "WEBPUSH_VAPID_SUBJECT",
+    usedBy: "push-dispatch",
+    help: "mailto:ti@suaempresa.com.br — contato que Google, Mozilla e Apple usam se precisarem falar com quem envia os avisos.",
+  },
 ];
 
 export const slotKey = (provider: string, label: string) => `${provider}::${label}`;

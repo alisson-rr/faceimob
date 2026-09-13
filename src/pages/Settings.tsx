@@ -15,6 +15,8 @@ import { listTeamLeaderNames } from '@/integrations/supabase/people';
 import { EDITABLE_ROLES } from '@/integrations/supabase/permissions';
 import { dbError, describeError } from '@/lib/supabaseError';
 import { useAuth, type AppRole } from '@/contexts/AuthContext';
+import PushSettings from '@/components/notifications/PushSettings';
+import { clearPushOnAllDevices, signOutWithPush } from '@/lib/push';
 
 const MIN_PASSWORD = 8;
 
@@ -370,7 +372,15 @@ export default function Settings() {
         // aqui, nem nos outros dispositivos, que seguem com refresh token
         // válido. Sem esta leitura, a tela diria "senha salva" e a pessoa
         // acharia que tinha derrubado o invasor junto.
-        const { error: signOutError } = await supabase.auth.signOut({ scope: 'global' });
+        //
+        // Os avisos dos outros aparelhos caem antes, porque depois nenhum deles
+        // tem sessão para apagar a própria assinatura. Se isso falhar, as
+        // sessões caem mesmo assim: derrubar o invasor vale mais que o aviso,
+        // e o toast manda repetir por "Encerrar todas as sessões".
+        const pushCleared = await clearPushOnAllDevices();
+        const { error: signOutError } = await signOutWithPush(
+          () => supabase.auth.signOut({ scope: 'global' }),
+        );
         toast(
           signOutError
             ? {
@@ -378,10 +388,17 @@ export default function Settings() {
                 description: 'Use "Encerrar todas as sessões", abaixo nesta tela, para tentar de novo.',
                 variant: 'destructive',
               }
-            : {
-                title: 'Senha salva',
-                description: 'Encerramos as sessões abertas. Entre de novo com a senha nova.',
-              },
+            : !pushCleared
+              ? {
+                  title: 'Senha salva, mas outros aparelhos podem continuar recebendo avisos',
+                  description:
+                    'Encerramos as sessões abertas. Entre de novo com a senha nova e use "Encerrar todas as sessões", nesta tela, para desligar os avisos deles.',
+                  variant: 'destructive',
+                }
+              : {
+                  title: 'Senha salva',
+                  description: 'Encerramos as sessões abertas. Entre de novo com a senha nova.',
+                },
         );
         return;
       }
@@ -419,7 +436,19 @@ export default function Settings() {
   const revokeAllSessions = async () => {
     setConfirmRevoke(false);
     setLoading(true);
-    const { error } = await supabase.auth.signOut({ scope: 'global' });
+    // Os avisos de todos os aparelhos caem ANTES das sessões: depois do signOut
+    // global nenhum aparelho tem sessão para apagar a própria assinatura, e o
+    // celular perdido seguiria recebendo lead. Sem essa confirmação, nada é
+    // encerrado e a pessoa tenta de novo.
+    if (!(await clearPushOnAllDevices())) {
+      setLoading(false);
+      return toast({
+        title: 'Não foi possível encerrar as sessões',
+        description: 'Não conseguimos desligar os avisos dos outros aparelhos, então nada foi encerrado. Tente de novo em instantes.',
+        variant: 'destructive',
+      });
+    }
+    const { error } = await signOutWithPush(() => supabase.auth.signOut({ scope: 'global' }));
     setLoading(false);
     if (error) {
       return toast({
@@ -444,7 +473,7 @@ export default function Settings() {
         title="Configurações"
         eyebrow="Sua conta"
         icon={SettingsIcon}
-        description="Seus dados, como você entra e o controle das sessões abertas."
+        description="Seus dados, os avisos no celular, como você entra e o controle das sessões abertas."
       />
 
       <div className="space-y-4">
@@ -525,6 +554,9 @@ export default function Settings() {
             </div>
           </form>
         </SectionCard>
+
+        {/* Logo depois do perfil: é o que o corretor mais precisa ligar. */}
+        <PushSettings />
 
         {/* Antes, para saber quem é o seu gerente, era preciso abrir Equipes —
             tela de administração que nem todo papel enxerga. */}

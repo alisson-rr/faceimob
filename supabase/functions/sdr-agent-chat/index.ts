@@ -1,7 +1,7 @@
 // SDR Agent Chat — playground interno de conversa com o agente.
 // A lógica do turno (histórico, OpenAI, persistência, tag de qualificação) é a
 // mesma do webhook de WhatsApp: vive em ../_shared/sdrAgent.ts.
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { ConversationClosedError, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
 import { hasAnyRole, requireUserPermission, serviceClient } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
@@ -18,6 +18,51 @@ const json = (body: unknown, status = 200) =>
 
 /** Marca do lead de teste em `leads.utm_source`. A tela de leads pode filtrá-lo por aqui. */
 const PLAYGROUND_SOURCE = 'sdr_playground';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A mesma resposta de id inexistente: "sem permissão" confirmaria que o lead existe. */
+const naoEncontrada = () => json({ code: 'not_found', error: 'Conversa não encontrada.' }, 404);
+
+/**
+ * O usuário enxerga o lead? Quem responde é o RLS, com o JWT dele: a mesma
+ * resposta que a tela de leads daria, sem copiar a regra de visibilidade aqui.
+ *
+ * O lead de teste do Playground que é DELE também vale: ele nasce sem dono, e
+ * quem tem `leads.view_queue` desligado deixaria de conseguir continuar a
+ * própria simulação.
+ *
+ * A chave do `apikey` segue a cascata de `_shared/auth.ts`: só o gateway a lê;
+ * quem decide o papel no PostgREST é o `Authorization`, que é o do usuário.
+ */
+async function podeUsarLead(
+  req: Request,
+  supabase: SupabaseClient,
+  leadId: string,
+  userId: string,
+): Promise<boolean> {
+  const doUsuario = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')
+      ?? Deno.env.get('SUPABASE_PUBLISHABLE_KEY')
+      ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+      ?? '',
+    { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } },
+  );
+  const { data: visivel, error } = await doUsuario
+    .from('leads').select('id').eq('id', leadId).maybeSingle();
+  if (error) throw new Error(`leads (alcance do usuário): ${error.message}`);
+  if (visivel) return true;
+
+  const { data: meu, error: meuErr } = await supabase
+    .from('leads').select('id')
+    .eq('id', leadId)
+    .eq('utm_source', PLAYGROUND_SOURCE)
+    .eq('raw_payload->>playground_user', userId)
+    .maybeSingle();
+  if (meuErr) throw new Error(`leads: ${meuErr.message}`);
+  return Boolean(meu);
+}
 
 /**
  * Papéis que a RLS deixa escrever em `sdr_conversations`/`sdr_messages`
@@ -163,7 +208,27 @@ Deno.serve(async (req) => {
     const asId = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
     const conversationId = asId(conversation_id);
-    const leadId = conversationId ? null : (asId(lead_id) ?? await playgroundLeadId(supabase, userId));
+    const bodyLeadId = asId(lead_id);
+    // Id malformado chegava ao PostgREST e voltava 500 com o erro de cast.
+    if ([conversationId, bodyLeadId].some((id) => id !== null && !UUID.test(id))) {
+      return json({ error: 'conversation_id e lead_id precisam ser uuid' }, 400);
+    }
+
+    // Terceira porta: lead e conversa vêm do corpo e o turno roda com service
+    // role. Sem isto, quem abre o Playground lia e escrevia na conversa de
+    // qualquer lead pelo id. A conversa tem de ser do lead informado, e o lead
+    // tem de estar no alcance do usuário.
+    let alvo = bodyLeadId;
+    if (conversationId) {
+      const { data: conv, error: convErr } = await supabase
+        .from('sdr_conversations').select('lead_id').eq('id', conversationId).maybeSingle();
+      if (convErr) throw new Error(`sdr_conversations: ${convErr.message}`);
+      if (!conv || (bodyLeadId && conv.lead_id !== bodyLeadId)) return naoEncontrada();
+      alvo = conv.lead_id;
+    }
+    if (alvo && !(await podeUsarLead(req, supabase, alvo, userId))) return naoEncontrada();
+
+    const leadId = conversationId ? null : (bodyLeadId ?? await playgroundLeadId(supabase, userId));
 
     const turn = await runSdrAgentTurn(supabase, {
       conversationId,

@@ -559,17 +559,28 @@ export async function createLeads(
  * equipe, invisível para quem importa — devolve só o telefone, nunca a linha.
  * Sem ela, reimportar a mesma exportação do Leadfy criava tudo de novo e
  * mandava dois corretores para o mesmo cliente.
+ *
+ * Em lotes de `PHONE_CHECK_CHUNK`: desde a 0141 a RPC recusa mais que isso por
+ * chamada (a lista era ilimitada e a função é `security definer`), e a planilha
+ * aceita `MAX_IMPORT_ROWS` = 5.000 linhas.
  */
+export const PHONE_CHECK_CHUNK = 1000;
+
 export async function existingLeadPhones(phones: string[]): Promise<Set<string>> {
   const digits = Array.from(
     new Set(phones.map((phone) => phone.replace(/\D/g, "")).filter(Boolean)),
   );
-  if (!digits.length) return new Set();
-  // `types.ts` é gerado e ainda não conhece a RPC da 0056; o mesmo desvio de
-  // `analytics.ts`, num ponto só, até a regeneração.
-  const { data, error } = await untyped.rpc("existing_lead_phones", { p_phones: digits });
-  asError("conferir telefones repetidos", error);
-  return new Set(((data || []) as { phone_digits: string }[]).map((row) => row.phone_digits));
+  const found = new Set<string>();
+  for (let start = 0; start < digits.length; start += PHONE_CHECK_CHUNK) {
+    // `types.ts` é gerado e ainda não conhece a RPC da 0056; o mesmo desvio de
+    // `analytics.ts`, num ponto só, até a regeneração.
+    const { data, error } = await untyped.rpc("existing_lead_phones", {
+      p_phones: digits.slice(start, start + PHONE_CHECK_CHUNK),
+    });
+    asError("conferir telefones repetidos", error);
+    for (const row of (data || []) as { phone_digits: string }[]) found.add(row.phone_digits);
+  }
+  return found;
 }
 
 /**
@@ -1088,18 +1099,23 @@ export type GroupQueue = {
  * leads atrasados. Sem isso, gerente e diretor não tinham onde responder "por
  * que fulano não recebeu lead?" nem enxergar que a roleta está parada.
  *
- * Desde a 0056 a RPC exige ser membro do grupo ou ter `leads.view_queue`: por
- * isso cada grupo carrega o próprio erro em vez de derrubar a lista.
+ * Só os grupos ao alcance de quem olha (`auth_distribution_group_ids`, 0141):
+ * a RPC devolve fila vazia para grupo alheio, e sem este recorte o card pintava
+ * "Ninguém elegível" na roleta de outra equipe. Cada grupo ainda carrega o
+ * próprio erro em vez de derrubar a lista.
  */
 export async function listGroupQueues(): Promise<GroupQueue[]> {
-  const { data, error } = await db
-    .from("distribution_groups")
-    .select("id,name,kind")
-    .eq("active", true)
-    .order("name");
-  asError("distribution_groups", error);
+  const [gruposRes, alcanceRes] = await Promise.all([
+    db.from("distribution_groups").select("id,name,kind").eq("active", true).order("name"),
+    // `types.ts` é gerado e ainda não conhece a função da 0141.
+    untyped.rpc("auth_distribution_group_ids"),
+  ]);
+  asError("distribution_groups", gruposRes.error);
+  asError("auth_distribution_group_ids", alcanceRes.error);
 
-  const groups = (data || []) as { id: string; name: string; kind: string }[];
+  const alcance = new Set((alcanceRes.data || []) as string[]);
+  const groups = ((gruposRes.data || []) as { id: string; name: string; kind: string }[])
+    .filter((group) => alcance.has(group.id));
   return Promise.all(
     groups.map(async (group) => {
       const res = await db.rpc("distribution_queue", { p_group_id: group.id });

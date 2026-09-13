@@ -21,6 +21,7 @@ import { listPeople } from "@/integrations/supabase/newSchema";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { slugify } from "@/lib/utils";
+import { bloqueioFiliacao, RECUSA_FILIACAO, roletasNaTela } from "@/lib/roletaAlcance";
 
 type Settings = {
   roleta_seconds: number;
@@ -96,9 +97,16 @@ type WriteResult = { data: unknown[] | null; error: { code?: string; message?: s
  * (o `using` filtra antes de o `with check` ser avaliado), e o supabase-js
  * entrega `error: null` — sem `.select()` e contagem, o toast de sucesso mente.
  * `byCode` traduz um código específico do Postgres (ex.: 23505) numa frase que
- * explica a regra em vez do genérico do `describeError`.
+ * explica a regra em vez do genérico do `describeError`. `semLinha` é a recusa
+ * silenciosa: o padrão fala do administrador, mas a filiação à roleta também
+ * aceita diretor e precisa dizer a regra dele.
  */
-async function wrote(q: PromiseLike<WriteResult>, fallback: string, byCode: Record<string, string> = {}) {
+async function wrote(
+  q: PromiseLike<WriteResult>,
+  fallback: string,
+  byCode: Record<string, string> = {},
+  semLinha = NO_PERMISSION,
+) {
   const { data, error } = await q;
   if (error) {
     const description = (error.code && byCode[error.code]) || describeError(error, fallback);
@@ -106,7 +114,7 @@ async function wrote(q: PromiseLike<WriteResult>, fallback: string, byCode: Reco
     return false;
   }
   if (!data?.length) {
-    toast({ variant: "destructive", title: NO_PERMISSION });
+    toast({ variant: "destructive", title: semLinha });
     return false;
   }
   return true;
@@ -115,9 +123,10 @@ async function wrote(q: PromiseLike<WriteResult>, fallback: string, byCode: Reco
 export default function AdminLeadAutomation() {
   const { isAdmin, roles } = useAuth();
   // Espelha as policies da 0004: regras, turnos, grupos e formulários são
-  // `is_admin()`; só os corretores do grupo aceitam diretor.
+  // `is_admin()`; só os corretores do grupo aceitam diretor — e, desde a 0141,
+  // só nas roletas ao alcance dele (`bloqueioFiliacao`).
   const readOnly = !isAdmin;
-  const canEditMembers = isAdmin || roles.includes("director");
+  const isDirector = roles.includes("director");
 
   const [settings, setSettings] = useState<Settings>({
     roleta_seconds: 300,
@@ -136,6 +145,10 @@ export default function AdminLeadAutomation() {
   const [windows, setWindows] = useState<Window[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  /** `auth_distribution_group_ids()` de quem olha (0141). Vem do banco: a tela
+   *  não sabe quem lidera quem e não tenta adivinhar. */
+  const [alcance, setAlcance] = useState<ReadonlySet<string>>(new Set());
+  const [alcanceFalhou, setAlcanceFalhou] = useState(false);
   const [detectedForms, setDetectedForms] = useState<FormRef[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -151,6 +164,14 @@ export default function AdminLeadAutomation() {
   >(null);
   const [formDialog, setFormDialog] = useState<{ groupId: string; form_id: string; form_name: string } | null>(null);
   const editingGroup = groups.find((g) => g.id === editingGroupId) || null;
+  // `groups` fica inteiro de propósito: o dono de um formulário ("grupo: X") e
+  // o diálogo aberto seguem verdadeiros quando uma remoção tira a roleta do
+  // alcance — o diretor vê o controle travado com o motivo, em vez de o
+  // diálogo sumir sem explicação.
+  const gruposNaTela = roletasNaTela({ livre: isAdmin, alcance }, groups);
+  const bloqueioMembros = editingGroup
+    ? bloqueioFiliacao({ livre: isAdmin, diretor: isDirector, alcance }, editingGroup.id)
+    : null;
   // União: o que o grupo já tem (inclusive form manual sem lead nenhum) na
   // frente, depois os demais detectados. Só `detectedForms` escondia o vínculo
   // manual e não deixava desmarcá-lo.
@@ -161,7 +182,7 @@ export default function AdminLeadAutomation() {
 
   const load = async () => {
     try {
-      const [s, w, people, g, gb, gf, lf] = await Promise.all([
+      const [s, w, people, g, gb, gf, lf, alc] = await Promise.all([
         supabase.from("automation_settings").select("*").eq("id", true).maybeSingle(),
         supabase.from("work_shifts").select("*").order("position"),
         listPeople(),
@@ -169,9 +190,18 @@ export default function AdminLeadAutomation() {
         supabase.from("distribution_group_members").select("*"),
         supabase.from("distribution_group_forms").select("*"),
         supabase.from("leads").select("form_id").not("form_id", "is", null).limit(1000),
+        // Grupos e membros são `using (true)` na leitura: sem este recorte o
+        // diretor via e clicava em roleta que a policy de gravação recusa.
+        supabase.rpc("auth_distribution_group_ids"),
       ]);
       const failed = [s, w, g, gb, gf, lf].find((r) => r.error);
       if (failed?.error) throw failed.error;
+      // O alcance fica fora do `failed`: o admin não usa o recorte, e derrubar a
+      // tela por ele deixava as regras nos padrões do useState com o Salvar
+      // habilitado. Na falha o alcance fecha (nada editável) e o motivo aparece
+      // na lista de grupos, que é o que fica vazio para quem depende dele.
+      setAlcance(new Set(alc.error ? [] : alc.data ?? []));
+      setAlcanceFalhou(!!alc.error);
 
       if (s.data) {
         const row = s.data;
@@ -188,6 +218,8 @@ export default function AdminLeadAutomation() {
         }));
       }
       setWindows((w.data ?? []).map((row, i) => ({ ...row, slot: row.code, position: row.position ?? i })));
+      // `profiles` passa por `auth_visible_profiles()` na RLS: o diretor já
+      // recebe só quem enxerga — a outra metade da policy de filiação.
       setBrokers(people.filter((person) => person.active && person.roles.includes("broker")));
       const links = gf.data ?? [];
       setGroups((g.data ?? []).map((row) => ({
@@ -364,13 +396,23 @@ export default function AdminLeadAutomation() {
     if (await wrote(supabase.from("distribution_groups").delete().eq("id", id).select("id"), "Não foi possível excluir o grupo.")) load();
   };
   const toggleGroupBroker = async (groupId: string, brokerId: string, on: boolean) => {
-    const ok = await wrote(
+    await wrote(
       on
         ? supabase.from("distribution_group_members").upsert({ group_id: groupId, profile_id: brokerId, active: true }).select("profile_id")
         : supabase.from("distribution_group_members").delete().eq("group_id", groupId).eq("profile_id", brokerId).select("profile_id"),
       on ? "Não foi possível incluir o corretor no grupo." : "Não foi possível remover o corretor do grupo.",
+      // A tabela não tem gatilho: 42501 aqui é sempre a recusa crua da RLS, e o
+      // "sem permissão" genérico não diz ao diretor qual é a regra. O admin passa
+      // na policy por `is_admin()`, então a regra do diretor não vale para ele.
+      isAdmin ? {} : { "42501": RECUSA_FILIACAO },
+      // 0 linhas sem erro: a lista estava velha (outra pessoa já mexeu) ou, para
+      // o diretor, o alcance mudou desde o load — o banco não diz qual.
+      isAdmin
+        ? "Nada mudou: o corretor já não estava no grupo. Lista recarregada."
+        : "Nada mudou: o corretor já tinha saído ou a roleta saiu do seu alcance. Lista recarregada.",
     );
-    if (ok) load();
+    // Recarrega sempre: na recusa, a tela precisa mostrar o estado real.
+    load();
   };
   const addGroupForm = async (groupId: string, formId: string, form_name: string | null) => {
     const form_id = formId.trim();
@@ -408,7 +450,7 @@ export default function AdminLeadAutomation() {
         <p role="status" className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           <Lock className="h-4 w-4 shrink-0" />
           Somente o administrador altera regras, turnos, grupos e formulários — a tela está em modo de consulta.
-          {canEditMembers && " Como diretor, você pode ajustar os corretores de cada grupo."}
+          {isDirector && " Como diretor, você ajusta os corretores da sua equipe nas roletas que ela já atende — as outras não aparecem aqui."}
         </p>
       )}
 
@@ -500,13 +542,17 @@ export default function AdminLeadAutomation() {
         </CardHeader>
         <CardContent className="space-y-3">
           {loading && <LoadingState variant="list" rows={3} label="Carregando grupos de distribuição…" />}
-          {!loading && groups.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in.
+          {!loading && gruposNaTela.length === 0 && (
+            <p className={`text-sm ${readOnly && alcanceFalhou ? "text-destructive" : "text-muted-foreground"}`}>
+              {readOnly && alcanceFalhou
+                ? "Não foi possível ler as roletas ao seu alcance. Recarregue a página."
+                : readOnly
+                ? "Nenhuma roleta ao seu alcance. Para incluir sua equipe numa roleta, fale com o administrador."
+                : "Crie grupos para direcionar leads de formulários específicos a corretores específicos. A fila dentro do grupo segue a ordem de check-in."}
             </p>
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {groups.map((g) => (
+            {gruposNaTela.map((g) => (
               <div
                 key={g.id}
                 className={`p-4 rounded-lg border transition-colors ${
@@ -577,13 +623,27 @@ export default function AdminLeadAutomation() {
                   </h3>
                   <Badge variant="secondary">{editingGroup.brokers.length} selecionados</Badge>
                 </div>
+                {bloqueioMembros && (
+                  <p id="bloqueio-membros" className="mb-2 flex items-start gap-1 text-xs text-muted-foreground">
+                    <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden /> {bloqueioMembros}
+                  </p>
+                )}
+                {/* O alcance do diretor sai da própria filiação (0141): tirar o
+                    último da equipe tira a roleta — e a fila dela — do alcance, e
+                    a caixa grava no clique. Aviso fixo em vez de contar "quem é da
+                    equipe" aqui, que seria copiar a hierarquia. */}
+                {!isAdmin && !bloqueioMembros && (
+                  <p id="aviso-membros" className="mb-2 text-xs text-warning">
+                    Se tirar a última pessoa da sua equipe desta roleta, ela pode sair do seu alcance (e a fila dela) e só o administrador religa.
+                  </p>
+                )}
                 <ScrollArea className="h-72 rounded border border-border/60 p-2">
                   <div className="space-y-1">
                     {brokers.map((b) => {
                       const on = editingGroup.brokers.includes(b.id);
                       return (
                         <label key={b.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-muted/50 cursor-pointer">
-                          <Checkbox checked={on} disabled={!canEditMembers} onCheckedChange={(v) => toggleGroupBroker(editingGroup.id, b.id, !!v)} />
+                          <Checkbox checked={on} disabled={!!bloqueioMembros} aria-describedby={bloqueioMembros ? "bloqueio-membros" : isAdmin ? undefined : "aviso-membros"} onCheckedChange={(v) => toggleGroupBroker(editingGroup.id, b.id, !!v)} />
                           <span className="truncate">{b.name}</span>
                         </label>
                       );

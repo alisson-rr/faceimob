@@ -72,9 +72,20 @@ export function AppSidebar() {
               <SidebarMenu>
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
-                      <NavLink to={item.url} end activeClassName="glow-primary">
-                        <item.icon className="h-4 w-4" />
+                    {/* Item ativo (12/09/2026): pílula escura com borda fina e ícone
+                        em ouro, sem brilho — era pílula azul cheia com halo azul.
+                        A borda é `inset` em `box-shadow` para não mexer 1 px no
+                        layout e somar com o anel de foco em vez de trocá-lo.
+                        `gold` e não `highlight`: traço e ícone precisam de 3:1
+                        também no tema claro (4,3:1 sobre `sidebar-accent`). */}
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.url)}
+                      tooltip={item.title}
+                      className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--gold))]"
+                    >
+                      <NavLink to={item.url} end>
+                        <item.icon className={cn("h-4 w-4", isActive(item.url) && "text-gold")} />
                         {/* Recolhida, a barra esconde o rotulo — mas ele nao pode sair do
                             DOM: o icone nao carrega texto, entao sem o <span> TODO link do
                             menu fica sem nome acessivel. E nao e estado raro: o

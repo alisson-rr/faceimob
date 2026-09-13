@@ -385,9 +385,13 @@ declare
 begin
   select id into v_team from public.teams where name = 'Equipe 0044';
 
-  perform pg_temp.become21(ger);
+  -- Célio está fora de qualquer equipe, então fora do alcance da Gina: desde a
+  -- 0128 incluí-lo é do admin (incluir gente de fora ampliava a visão do
+  -- gerente). O que teams.manage governa é desligar, provado abaixo; a recusa
+  -- da inclusão está em 99_hierarquia_escopo.sql.
+  perform pg_temp.become21(adm);
   insert into public.team_members (team_id, profile_id) values (v_team, cor3);
-  perform pg_temp.check21(true, 'gerente inclui integrante na equipe que lidera');
+  perform pg_temp.check21(true, 'admin inclui integrante na equipe da Gina');
 
   perform pg_temp.become21(adm);
   update public.role_permissions set allowed = false

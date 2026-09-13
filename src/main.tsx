@@ -5,6 +5,7 @@ import "@fontsource-variable/bricolage-grotesque";
 import "@fontsource-variable/dm-sans";
 import App from "./App.tsx";
 import "./index.css";
+import { registerServiceWorker } from "@/lib/push";
 
 /**
  * Tema aplicado ANTES do React montar.
@@ -18,5 +19,9 @@ import "./index.css";
 if (localStorage.getItem("faceimob-theme") === "light") {
   document.documentElement.classList.add("light");
 }
+
+// Service worker só de notificação push (sem cache): precisa estar ativo antes
+// de a pessoa ligar os avisos em Configurações.
+registerServiceWorker();
 
 createRoot(document.getElementById("root")!).render(<App />);

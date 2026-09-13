@@ -240,8 +240,10 @@ export default function LeadDetailModal({
             <span>{lead.name}</span>
             <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
             <StatusBadge tone={funnelStageTone(lead.funnel_stage)}>{funnelStageLabel(lead.funnel_stage)}</StatusBadge>
+            {/* Cronômetro neutro, igual ao funil e ao aviso de lead (lá o âmbar é
+                o botão "Atender"). No último minuto vira alerta vermelho. */}
             {secondsLeft !== null && (
-              <StatusBadge tone={secondsLeft <= 60 ? "danger" : "warning"} icon={Timer}>
+              <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
                 <span className="tabular-nums">{formatCountdown(secondsLeft)}</span> para atender
               </StatusBadge>
             )}

@@ -483,7 +483,7 @@ export async function deleteDealDocument(
  * `has_permission('cca.review')` **ou** participar do rateio **ou** gerenciar
  * alguém do rateio. Reimplementar isso no cliente exigiria copiar
  * `manages_profile` — e a cópia erraria justamente no gerente de equipe. Quem
- * só enxerga o negócio (diretor e sócio caem em `can_read_all`) via nove botões
+ * só enxerga o negócio (o sócio cai em `can_read_all`) via nove botões
  * "Anexar": o arquivo subia, o insert era barrado e a tela dizia "Falha no
  * envio" depois do upload inteiro.
  */

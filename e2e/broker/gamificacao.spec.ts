@@ -234,14 +234,14 @@ test.describe("corretor · gamificação", () => {
    *
    * O `EngagementLayer` está montado no `AppLayout` e assina o realtime de
    * `game_events`: uma venda em QUALQUER tela solta som, confete e o card
-   * "Venda fechada!". Até 06/09 nada em `e2e/` encostava nisso — `grep -rn
+   * "Venda fechada". Até 06/09 nada em `e2e/` encostava nisso — `grep -rn
    * "confetti\|SaleCelebration" e2e/` voltava vazio —, então se o canal parasse
    * de assinar a tabela, se `event_code` mudasse ou se a publicação
    * `supabase_realtime` perdesse `game_events`, a suíte inteira continuaria
    * verde com a loja muda.
    *
    * O teste NÃO abre a Gamificação: o valor do card é justamente aparecer para
-   * quem está em outra tela. O card fica 6 s na tela, e o `toBeVisible` do
+   * quem está em outra tela. O card fica 7 s na tela, e o `toBeVisible` do
    * Playwright reprova por ausência, não por atraso da entrega.
    */
   test("uma venda no banco toca a comemoração em qualquer tela", async ({ page }) => {
@@ -253,7 +253,9 @@ test.describe("corretor · gamificação", () => {
     // Fora da Gamificação de propósito.
     await page.goto("/dashboard");
     await aguardarCarregamento(page);
-    await expect(page.getByText(/venda fechada!/i)).toHaveCount(0);
+    // Texto exato: o card virou rótulo `text-eyebrow` sem "!" (12/09), e um
+    // regex solto casaria com "Ainda não há venda fechada" do próprio dashboard.
+    await expect(page.getByText("Venda fechada", { exact: true })).toHaveCount(0);
 
     // `ref_type` marcado: o `afterAll` deste arquivo limpa por ele.
     await db.insert("game_events", {
@@ -266,7 +268,7 @@ test.describe("corretor · gamificação", () => {
 
     // O nome sai de `visible_game_ranking`, não de `profiles`: quem está fora do
     // escopo do espectador vira "Equipe". O corretor enxerga a si mesmo.
-    await expect(page.getByText(/venda fechada!/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Venda fechada", { exact: true })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("E2E Corretor", { exact: true }).first()).toBeVisible();
   });
 });

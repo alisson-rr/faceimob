@@ -723,7 +723,11 @@ export default function Gamification() {
           ? (
             <>
               Temporada <strong className="text-foreground">{selected.label}</strong> · {seasonPeriod(selected)}
-              {activeWeek && <> · Semana <strong className="text-foreground">{weekLabel(activeWeek)}</strong> (segunda a domingo)</>}
+              {/* O recorte é pelo dia em que o ponto ENTROU no placar
+                  (`game_events.occurred_at`, 0107/0112), não pela data de
+                  fechamento digitada no negócio: venda de sexta lançada na
+                  segunda conta na semana da segunda. A tela diz isso. */}
+              {activeWeek && <> · Semana <strong className="text-foreground">{weekLabel(activeWeek)}</strong> (segunda a domingo, pelo dia em que cada ponto entrou no placar — não pela data de fechamento digitada no negócio)</>}
               {isClosed && ' · Sem filtro de semana: temporada fechada mostra o ranking congelado no fechamento, que guarda o total do ciclo e não o dia de cada ponto.'}
             </>
           )
@@ -761,7 +765,7 @@ export default function Gamification() {
               </Select>
             )}
             {isClosed && <StatusBadge tone="neutral" icon={Lock}>Temporada fechada</StatusBadge>}
-            {isCurrent && !isClosed && <StatusBadge tone="success">Game ativo</StatusBadge>}
+            {isCurrent && !isClosed && <StatusBadge tone="live">Game ativo</StatusBadge>}
             {isAdmin && isCurrent && !isClosed && (
               <Button
                 variant="destructive"

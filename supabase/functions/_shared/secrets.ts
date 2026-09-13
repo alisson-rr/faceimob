@@ -47,6 +47,14 @@ export const SECRET_SLOTS = {
   // migration lê — cofre à frente, `Deno.env` atrás. O par já estava no catálogo
   // da tela de Integrações desde a 0018.
   SUPABASE_SERVICE_ROLE_KEY: { provider: "supabase", label: "service_role_key" },
+  // Par VAPID do push do navegador (`push-dispatch`, migration 0143), em
+  // base64url sem padding: pública = ponto P-256 não comprimido (65 bytes),
+  // privada = escalar d (32 bytes). A pública também é lida pelo banco em
+  // `get_push_public_key()` para o navegador assinar — por isso ela precisa
+  // estar no COFRE: o fallback do `Deno.env` não chega à tela.
+  WEBPUSH_VAPID_PUBLIC_KEY: { provider: "webpush", label: "vapid_public_key" },
+  WEBPUSH_VAPID_PRIVATE_KEY: { provider: "webpush", label: "vapid_private_key" },
+  WEBPUSH_VAPID_SUBJECT: { provider: "webpush", label: "vapid_subject" },
 } as const;
 
 export type SecretName = keyof typeof SECRET_SLOTS;

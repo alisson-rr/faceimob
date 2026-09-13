@@ -76,9 +76,13 @@ const PARES: [string, string, number][] = [
   ["info", "background", 4.5],
   ["info-foreground", "info", 4.5],
   // `highlight` e token de FUNDO: nao existe par "highlight sobre background"
-  // de proposito — no claro daria 1,6:1. Amarelo em texto usa `warning`.
+  // de proposito — no claro daria 1,6:1. Ambar em texto, icone e traco usa `gold`.
   ["highlight-foreground", "highlight", 4.5],
   ["gold", "card", 4.5],
+  // Ouro como objeto grafico (3:1): barra da meta sobre a trilha `muted` (faixa
+  // do game no Pipeline) e borda/icone do item ativo do menu lateral.
+  ["gold", "muted", 3],
+  ["gold", "sidebar-accent", 3],
   ["silver", "card", 4.5],
   ["bronze", "card", 4.5],
   ["gold-foreground", "gold", 4.5],

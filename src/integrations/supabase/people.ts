@@ -238,11 +238,11 @@ export async function setTeamByManager(
   const opened = await supabase.from("team_members").insert({ team_id: teamId, profile_id: profileId });
   if (opened.error) {
     const ids = (closed.data ?? []).map((row) => row.id);
-    if (ids.length) {
-      const reopened = await supabase.from("team_members").update({ left_at: null }).in("id", ids);
-      if (reopened.error) {
-        throw ruleError("A nova equipe foi recusada e a anterior não pôde ser restaurada. Revise o vínculo em Equipes.");
-      }
+    // Conferido pelas linhas, não pelo `error`: desde a 0128 o gestor que fechou
+    // pode já não enxergar a pessoa, e a reabertura casa 0 linhas com 204 sem
+    // erro — ela ficava sem equipe e a tela só mostrava a recusa do insert.
+    if (!(await reopenMemberships(ids))) {
+      throw ruleError("A nova equipe foi recusada e a anterior não pôde ser restaurada. Revise o vínculo em Equipes.");
     }
     throw dbError("team_members", opened.error);
   }

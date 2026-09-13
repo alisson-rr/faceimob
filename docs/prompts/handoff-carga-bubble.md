@@ -89,8 +89,10 @@ o caminho é filtrar e paginar no servidor.
   e o de produção.
 - **Os 4 crons `faceimob-meta-*`** estão desligados. Ligar só com as credenciais da Meta e da IA e
   aceitando o custo.
-- **Alerta falso de cron:** `notify_cron_failures()` conta execução em andamento como falha e gerou 12
-  avisos "Automação com falha" às 21:15.
+- **Alerta falso de cron:** `notify_cron_failures()` contava execução em andamento como falha e gerou 12
+  avisos "Automação com falha" às 21:15. Corrigido pela outra frente na `0144_cron_falha_em_andamento`.
+- **Validação local (`validate-schema.sh --all`) não rodou** para 0126/0127 nem para 0141–0145: o Docker
+  Desktop não sobe nesta máquina. A equivalência das regras foi provada por usuário no banco real.
 - **Conferências documentais desatualizadas:**
   - a consulta de CPF do COMO_RODAR §6 e a do cabeçalho do 06 dão falso positivo;
   - o `ESPERADO` do 01 ainda diz 317 papéis e 267 vínculos (vigente: 316 e 266);

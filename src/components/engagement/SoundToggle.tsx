@@ -7,8 +7,9 @@ import { isSoundOn, setSoundOn, subscribeSound } from "@/lib/engagement/audio";
  * Liga e desliga o som do sistema. Fica no header, ao lado do troca-papel.
  *
  * A preferência mora em `localStorage` (`faceimob-sound`) e é lida pelo módulo
- * de áudio — este botão só reflete e alterna. `useSyncExternalStore` mantém
- * todas as abas da mesma sessão coerentes sem estado duplicado.
+ * de áudio — este botão só reflete e alterna. `useSyncExternalStore` mantém a
+ * tela coerente sem estado duplicado, e o módulo escuta o evento `storage`:
+ * desligar numa aba desliga as outras abertas.
  */
 export function SoundToggle() {
   const on = useSyncExternalStore(subscribeSound, isSoundOn, () => true);

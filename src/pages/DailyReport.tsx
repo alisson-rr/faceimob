@@ -573,8 +573,8 @@ export default function DailyReport() {
     toast({
       title: "🎯 Checkpoint concluído!",
       description: viewingPastDay
-        ? `Correção gravada no dia ${format(parseISO(date), "dd/MM", { locale: ptBR })} — ${num(xpEarned)} pontos naquele dia.`
-        : `${num(xpEarned)} pontos no placar do dia. Dados da equipe registrados.`,
+        ? `Correção gravada no dia ${format(parseISO(date), "dd/MM", { locale: ptBR })} — ${num(xpEarned)} pontos do Diário naquele dia.`
+        : `${num(xpEarned)} pontos do Diário no dia. Dados da equipe registrados.`,
     });
     setTimeout(() => setXpBurst(0), 3000);
     if (resolvedTeamId) loadMonth();
@@ -711,15 +711,15 @@ export default function DailyReport() {
                   <CardContent className="p-3 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="text-xs uppercase text-muted-foreground">{formOpen ? "Pontos do checkpoint" : "Pontos do mês"}</p>
+                        <p className="text-xs uppercase text-muted-foreground">{formOpen ? "Pontos do Diário (checkpoint)" : "Pontos do Diário no mês"}</p>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button type="button" aria-label="Como os pontos do checkpoint são calculados">
+                            <button type="button" aria-label="Como os pontos do Diário são calculados">
                               <Info className="h-3 w-3 text-muted-foreground hover:text-warning" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent side="bottom" className="text-xs max-w-[260px]">
-                            <p className="font-bold mb-1">Como é calculado:</p>
+                            <p className="font-bold mb-1">Pontos do Diário — como é calculado:</p>
                             <ul className="space-y-0.5">
                               <li>• Venda = <b>100 pontos</b></li>
                               <li>• Análise aprovada = <b>40 pontos</b></li>
@@ -728,10 +728,13 @@ export default function DailyReport() {
                             </ul>
                             <p className="mt-2 text-xs text-muted-foreground">Fechado: acumulado do mês. Editando: o placar do dia.</p>
                             {/* O ranking da temporada é alimentado por `game_events`
-                                (negócio fechado, esteira), e o Diário não escreve lá.
-                                Chamar isto de XP prometia uma pontuação que nunca era
-                                creditada. */}
-                            <p className="mt-1 text-xs text-warning">Placar do esforço do dia — não entra no ranking da temporada, que conta negócios fechados.</p>
+                                (venda, esteira, aprovação…), e o Diário não escreve lá.
+                                Os NOMES são os mesmos do game ("Venda", "Análise
+                                aprovada") com pesos diferentes — sem dizer de quem
+                                são os pontos, "Venda = 100" parecia contradizer a
+                                venda de 600 da Gamificação. A regra do Diário não
+                                muda; só o rótulo. */}
+                            <p className="mt-1 text-xs text-warning">São pontos do Diário, não do ranking do game. Os nomes se repetem, mas o ranking usa as regras de pontuação da Gamificação, com pesos próprios, e não soma estes pontos.</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>

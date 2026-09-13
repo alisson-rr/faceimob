@@ -74,7 +74,7 @@ const none = (where: string): PermissionEnforcement => ({ where, enforcedBy: nul
 /** Códigos fora de `menu.*` do catálogo (migrations 0044, 0045 e 0061). */
 export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
   "leads.view_queue": {
-    where: "Leads: enxergar e editar leads ainda sem corretor (policies leads_select e leads_update)",
+    where: "Leads: enxergar, editar, anexar, distribuir e realocar leads ainda sem corretor (policies leads_select e leads_update, 0141). Marketing, administrador e sócio alcançam a fila inteira; gerente, diretor e qualquer outro papel com o switch ligado, só a fila geral e a dos grupos de distribuição em que está alguém da equipe dele",
     enforcedBy: "banco",
   },
   "leads.reassign": {
@@ -102,11 +102,11 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
     enforcedBy: "banco",
   },
   "reports.view_finance": {
-    where: "Marketing: ler campanhas e aportes e chamar marketing_campaign_stats() (policies ad_campaigns_select e marketing_investments_select, 0045). Resultados ainda decide por papel",
+    where: "Marketing: ler campanhas e aportes e chamar marketing_campaign_stats() (policies ad_campaigns_select e marketing_investments_select, 0045). Os totais de leads e negócios são da empresa só para marketing, administrador e sócio; os demais papéis somam o que enxergam (0141). Resultados ainda decide por papel",
     enforcedBy: "banco",
   },
   "teams.manage": {
-    where: "Equipes: incluir e desligar integrantes da equipe que lidera (policy team_members_manage). Vale para GERENTE e DIRETOR — a policy não tem ramo de diretor, então desligar aqui tira o 'Vincular em massa' dos dois. Renomear equipe e vincular diretoria continuam pelo papel",
+    where: "Equipes: desligar integrantes da equipe que lidera e incluir SÓ quem já está no seu alcance (policy team_members_manage, 0128) — gente de fora da hierarquia só o administrador inclui. Vale para GERENTE e DIRETOR — a policy não tem ramo de diretor, então desligar aqui tira o 'Vincular em massa' dos dois. Renomear equipe e vincular diretoria continuam pelo papel",
     enforcedBy: "banco",
   },
   "settings.integrations": {
@@ -125,7 +125,7 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
   // Os três sem leitor. A frase tem de dizer QUEM decide, senão o admin fica
   // sem saber onde mexer para conseguir o efeito que procurava no switch.
   "deals.view_all": none(
-    "Nada lê este código: quem enxerga negócio fora da própria equipe é decidido por PAPEL em can_see_deal() — diretor, sócio e CCA. Ligar ou desligar aqui não muda visibilidade nenhuma",
+    "Nada lê este código: quem enxerga todos os negócios é decidido por PAPEL em can_see_deal() — administrador, sócio e CCA. O diretor vê só os negócios da própria hierarquia desde a 0141. Ligar ou desligar aqui não muda visibilidade nenhuma",
   ),
   "users.manage_roles": none(
     "Nada lê este código: trocar papel passa por set_profile_roles(), que exige administrador por construção (0046). Para dar o poder a alguém, torne a pessoa administradora",

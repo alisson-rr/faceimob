@@ -9,6 +9,11 @@ import { cn } from "@/lib/utils";
  * card de raio grande. `default` e `highlight` sao os CTAs: ganham sombra da
  * propria cor e sobem 2px no hover; os demais ficam quietos porque aparecem em
  * tabela e barra de filtro, onde o pulo vira ruido.
+ *
+ * `highlight` e O botao da tela (um por tela: "Atender agora", "Fazer check-in",
+ * "Entrar"): ambar com luz de cima, texto escuro e o brilho parado de
+ * `.glow-highlight`, que so existe no tema escuro. O foco e o anel padrao — ele
+ * vem depois do brilho no CSS e o substitui enquanto o botao esta focado.
  */
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
@@ -18,7 +23,7 @@ const buttonVariants = cva(
         default:
           "bg-primary text-primary-foreground shadow-[0_6px_20px_-8px_hsl(var(--primary)/0.7)] hover:bg-primary/90 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-8px_hsl(var(--primary)/0.75)]",
         highlight:
-          "bg-highlight text-highlight-foreground shadow-[0_6px_20px_-8px_hsl(var(--highlight)/0.7)] hover:bg-highlight/90 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-8px_hsl(var(--highlight)/0.75)]",
+          "bg-highlight bg-gradient-to-b from-white/25 text-highlight-foreground glow-highlight hover:-translate-y-0.5 hover:from-white/40",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",

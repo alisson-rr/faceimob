@@ -14,8 +14,8 @@
  * (`text-primary`) mantendo 4,5:1 nos dois temas.
  *
  * Excecao documentada: `--highlight` (amarelo da marca) e token de FUNDO. No
- * claro `text-highlight` sobre `background` da 1,6:1 — para amarelo em texto
- * use `--warning`, que e o mesmo tom escurecido.
+ * claro `text-highlight` sobre `background` da 1,6:1 — ambar em texto, icone ou
+ * traco usa `--gold` (4,85:1 no claro); `--warning` fica para alerta.
  */
 @layer base {
   :root {
@@ -204,9 +204,33 @@
                 0 4px 20px -4px hsl(var(--primary) / 0.45),
                 0 0 40px -8px hsl(var(--primary) / 0.25);
   }
+  /*
+   * Brilho âmbar do destaque (botão `highlight`, 1º do pódio, venda fechada,
+   * marcador da meta). PARADO: nada de pulso infinito. Só existe no escuro — no
+   * claro um halo amarelo sobre branco vira mancha, e o destaque fica por conta
+   * da cor. A regra de foco (`focus-visible:ring-*`) vem depois deste bloco no
+   * CSS gerado e troca o brilho pelo anel: o foco nunca some sob o halo.
+   */
   .glow-highlight {
-    box-shadow: 0 4px 24px -6px hsl(var(--highlight) / 0.45),
-                0 0 40px -10px hsl(var(--highlight) / 0.3);
+    box-shadow: 0 0 0 1px hsl(var(--highlight) / 0.35),
+                0 6px 24px -6px hsl(var(--highlight) / 0.5),
+                0 0 36px -8px hsl(var(--highlight) / 0.35);
+  }
+  .light .glow-highlight { box-shadow: none; }
+
+  /*
+   * Filete dourado no topo do cartão em destaque (turno ativo, card do game,
+   * venda fechada). É traço, então usa `--gold` (3:1 nos dois temas), não o
+   * `--highlight`, que no claro some no branco. Recua 1rem de cada lado para
+   * não passar por cima da curva do canto. O elemento precisa de `relative`.
+   */
+  .gold-hairline::before {
+    content: "";
+    position: absolute;
+    inset: 0 1rem auto;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, hsl(var(--gold)) 20%, hsl(var(--gold)) 80%, transparent);
+    pointer-events: none;
   }
   .glow-success { box-shadow: 0 0 20px hsl(var(--success) / 0.2); }
   .glow-warning { box-shadow: 0 0 20px hsl(var(--warning) / 0.2); }
@@ -299,7 +323,7 @@
 
 /*
  * Quem pediu menos movimento recebe menos movimento — inclusive as animacoes
- * continuas (float, glow-pulse, shimmer) e as que vem do tailwindcss-animate.
+ * continuas (float, shimmer) e as que vem do tailwindcss-animate.
  * O <MotionConfig reducedMotion="user"> cobre o framer-motion; este bloco cobre
  * o CSS. Achados G11 / a11y.
  */

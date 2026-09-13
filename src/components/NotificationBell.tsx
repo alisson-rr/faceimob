@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Loader2, RotateCcw, Trash2 } from "lucide-react";
+import { Bell, BellRing, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +9,7 @@ import { toast } from "@/hooks/use-toast";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { resolveLink } from "@/lib/notificationLink";
+import { getPushStatus, notifyLocally, type PushStatus } from "@/lib/push";
 import {
   countMyUnreadNotifications,
   deleteNotification,
@@ -91,9 +92,13 @@ export default function NotificationBell() {
   // filtro, e um INSERT no meio da troca se perdia.
   const loadRef = useRef(load);
   useEffect(() => { loadRef.current = load; }, [load]);
+  // Mesmo motivo: o canal não pode ser refeito a cada troca de rota.
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
   useEffect(() => {
     if (!user?.id) return;
+    const profileId = user.id;
     let recarga: ReturnType<typeof setTimeout> | null = null;
     const agendar = () => {
       if (recarga) return;
@@ -110,7 +115,16 @@ export default function NotificationBell() {
         // apagar é um DELETE. Só com INSERT, esta aba continuava mostrando o
         // badge de um aviso que já tinha sido lido em outro lugar.
         { event: "*", schema: "public", table: "notifications", filter: `profile_id=eq.${user.id}` },
-        agendar,
+        (payload) => {
+          agendar();
+          // Onde não há push (Electron, navegador sem PushManager), aviso novo
+          // com a janela oculta vira notificação do sistema. `notifyLocally`
+          // não faz nada onde há push — ali quem avisa é o sw.js.
+          if (payload.eventType !== "INSERT") return;
+          notifyLocally(profileId, payload.new, (path) => navigateRef.current(path)).catch((err) => {
+            console.warn("Aviso do sistema não exibido:", err);
+          });
+        },
       )
       .subscribe();
     return () => {
@@ -118,6 +132,38 @@ export default function NotificationBell() {
       void supabase.removeChannel(channel);
     };
   }, [user?.id]);
+
+  // Mensagens do sw.js: push que chegou com o app na tela (recarrega já, sem
+  // esperar o realtime) e clique na notificação do sistema — troca de rota pelo
+  // React Router, sem recarregar a página e perder formulário aberto.
+  useEffect(() => {
+    if (!user?.id || !("serviceWorker" in navigator)) return;
+    const sw = navigator.serviceWorker;
+    const onMessage = ({ data }: MessageEvent<unknown>) => {
+      if (typeof data !== "object" || data === null || !("type" in data)) return;
+      if (data.type === "faceimob:push") void loadRef.current();
+      if (data.type === "faceimob:navigate" && "link" in data && typeof data.link === "string") {
+        navigateRef.current(resolveLink(data.link));
+      }
+    };
+    sw.addEventListener("message", onMessage);
+    return () => sw.removeEventListener("message", onMessage);
+  }, [user?.id]);
+
+  // Atalho para quem ainda não ligou os avisos neste aparelho. Lido ao abrir o
+  // painel: permissão e assinatura mudam fora do React (Configurações, navegador).
+  const [avisos, setAvisos] = useState<PushStatus | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let vivo = true;
+    getPushStatus().then(
+      (status) => { if (vivo) setAvisos(status); },
+      // Acessório: sem estado lido, o atalho só não aparece.
+      () => undefined,
+    );
+    return () => { vivo = false; };
+  }, [open]);
+  const convidarAvisos = avisos === "off" || avisos === "local_off" || avisos === "ios_install";
 
   // Esc fecha e devolve o foco ao sino — o painel é sobreposto e sem isso quem
   // navega por teclado fica preso atrás dele.
@@ -334,6 +380,18 @@ export default function NotificationBell() {
                 </>
               )}
             </div>
+            {convidarAvisos && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/settings#avisos");
+                }}
+                className="flex w-full items-center gap-1.5 border-t border-border/40 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-primary/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
+                <BellRing className="h-3 w-3 shrink-0" aria-hidden /> Receber avisos no celular/computador
+              </button>
+            )}
           </div>
         </>
       )}

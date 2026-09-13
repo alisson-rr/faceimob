@@ -269,9 +269,11 @@ export default function Pipeline() {
                     {extraindo ? "Gerando…" : "Extrair planilha"}
                   </Button>
                 )}
+                {/* Discreto de propósito: é ação rara do admin, e o âmbar fica
+                    reservado para o botão principal de cada tela. */}
                 {isAdmin && (
                   <Button
-                    variant="highlight" size="sm"
+                    variant="outline" size="sm"
                     disabled={carregando || falhou || fechaveis.length === 0}
                     onClick={() => setCloseMonthOpen(true)}
                   >

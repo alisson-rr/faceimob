@@ -127,8 +127,10 @@ function LeadRow({
           <StatusBadge tone={funnelStageTone(lead.funnel_stage)} className="lg:hidden">
             {funnelStageLabel(lead.funnel_stage)}
           </StatusBadge>
+          {/* Cronômetro neutro, igual ao funil e ao aviso de lead (lá o âmbar é
+              o botão "Atender"). No último minuto vira alerta vermelho. */}
           {secondsLeft !== null && (
-            <StatusBadge tone={secondsLeft <= 60 ? "danger" : "warning"} icon={Timer}>
+            <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
               <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>
             </StatusBadge>
           )}

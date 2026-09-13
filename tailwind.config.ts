@@ -105,10 +105,6 @@ export default {
           "0%, 100%": { transform: "translateY(0) rotate(0deg)" },
           "50%": { transform: "translateY(-10px) rotate(2deg)" },
         },
-        "glow-pulse": {
-          "0%, 100%": { boxShadow: "0 0 20px -5px hsl(var(--highlight) / 0.3)" },
-          "50%": { boxShadow: "0 0 40px -5px hsl(var(--highlight) / 0.6)" },
-        },
         "bg-slide": {
           "0%": { opacity: "1" },
           "25%": { opacity: "1" },
@@ -123,7 +119,6 @@ export default {
         "fade-in-up": "fade-in-up 0.4s cubic-bezier(.22,1,.36,1) forwards",
         "slide-in-right": "slide-in-right 0.4s cubic-bezier(.22,1,.36,1) forwards",
         float: "float 7s ease-in-out infinite",
-        "glow-pulse": "glow-pulse 3s ease-in-out infinite",
       },
     },
   },

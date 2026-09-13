@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback,
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { getCurrentProfile } from "@/integrations/supabase/newSchema";
+import { signOutWithPush, syncPushSubscription } from "@/lib/push";
 import {
   listRolePermissions,
   listStagePermissions,
@@ -260,6 +261,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applySession]);
 
+  // Navegador que já tinha avisos ligados volta a apontar para a conta que
+  // entrou — troca de conta no mesmo aparelho e assinatura renovada pelo
+  // navegador. Sem permissão ou sem assinatura, não faz nada.
+  useEffect(() => {
+    if (user?.id) void syncPushSubscription();
+  }, [user?.id]);
+
   // Papéis que valem para autorização agora: os reais, ou o previsualizado.
   const effectiveRoles = useMemo<AppRole[]>(
     () => (previewRoleState ? [previewRoleState] : roles),
@@ -320,7 +328,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * O erro não sobe: o chamador (`AppSidebar`) não trata rejeição.
    */
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
+    // O push deste aparelho é desligado ANTES: depois do signOut não há sessão
+    // para a RPC, e aparelho compartilhado não pode seguir recebendo lead.
+    const { error } = await signOutWithPush(() => supabase.auth.signOut());
     if (!error) return;
     console.error("Falha ao encerrar a sessão no servidor:", error);
     toast({

@@ -75,15 +75,18 @@ export function KpiCard({ label, value, delta, icon: Icon, variant = "default", 
     >
       <div className="flex items-start justify-between gap-3">
         <p className="text-eyebrow">{label}</p>
-        {Icon && (
-          <Icon
-            className={cn("h-4 w-4 shrink-0", isHighlight ? "text-warning" : "text-muted-foreground")}
-            aria-hidden
-          />
-        )}
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
       </div>
 
-      <p className="mt-2 font-display text-3xl font-bold leading-none tracking-tight tabular-nums text-foreground sm:mt-3">
+      {/* Destaque = borda âmbar + NÚMERO em ouro (12/09/2026). O ícone voltou a
+          cinza: ícone e número âmbar no mesmo cartão eram dois pontos de cor
+          disputando o olho. `gold`, e não `highlight`, porque é texto. */}
+      <p
+        className={cn(
+          "mt-2 font-display text-3xl font-bold leading-none tracking-tight tabular-nums sm:mt-3",
+          isHighlight ? "text-gold" : "text-foreground",
+        )}
+      >
         {value}
       </p>
 

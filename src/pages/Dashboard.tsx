@@ -106,9 +106,9 @@ export default function Dashboard() {
       month={activeMonth}
       vendas={view.stats.vendas}
       goal={goal.data?.target ?? null}
-      // O palpite enquanto a consulta nao volta segue `can_read_all()`, nao
-      // `auth_visible_profiles()`: o realizado embaixo do rotulo sai de `deals`,
-      // e o diretor le os negocios de toda a empresa.
+      // O palpite enquanto a consulta nao volta segue `can_read_all()` (admin e
+      // socio desde a 0141): o realizado embaixo do rotulo sai de `deals`, e so
+      // eles leem os negocios de toda a empresa.
       scope={goal.data?.scope ?? (recorte.readsAllDeals ? "global" : "profile")}
       canManage={canManageGoal}
       isLoading={goal.isLoading}

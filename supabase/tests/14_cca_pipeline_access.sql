@@ -55,10 +55,11 @@ begin
 
   select pg_get_expr(p.polqual, p.polrelid) into v_qual
   from pg_policy p
-  where p.polname = 'deal_documents_storage'
+  -- A 0141 separou a FOR ALL em _select/_insert/_delete; a leitura é a _select.
+  where p.polname = 'deal_documents_storage_select'
     and p.polrelid = 'storage.objects'::regclass;
 
-  perform pg_temp.check14(v_qual is not null, 'policy deal_documents_storage existe');
+  perform pg_temp.check14(v_qual is not null, 'policy deal_documents_storage_select existe');
   perform pg_temp.check14(position('has_role(''cca''' in v_qual) > 0,
     'policy do bucket libera o papel cca');
   perform pg_temp.check14(position('can_see_deal' in v_qual) > 0,
