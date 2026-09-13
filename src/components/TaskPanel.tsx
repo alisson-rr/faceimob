@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarClock, Check, Loader2, Plus, X } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   createTask,
@@ -36,7 +36,6 @@ const formatDue = (v: string | null) => (v ? new Date(v).toLocaleString("pt-BR",
  * bloqueio de check-in. Atividade esquecida vira trava de roleta.
  */
 export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
-  const { toast } = useToast();
   const { user } = useAuth();
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,25 +47,31 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setTasks(await listTasksFor(refType, refId));
+      const lista = await listTasksFor(refType, refId);
+      setTasks(lista);
+      return lista;
     } catch (e) {
-      toast({
-        title: "Falha ao carregar atividades",
-        description: describeError(e, "Não foi possível carregar as atividades."),
-        variant: "destructive",
+      toast.error("Não foi possível carregar as atividades", {
+        description: describeError(e, "tente de novo"),
       });
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [refType, refId, toast]);
+  }, [refType, refId]);
 
   useEffect(() => { void load(); }, [load]);
 
   const add = async () => {
     const t = title.trim();
-    if (!t) return toast({ title: "Descreva a atividade", variant: "destructive" });
+    // Sem título o botão fica desabilitado, como nos outros formulários do lead:
+    // campo vazio não é falha e não merece o som de erro.
+    if (!t) return;
     const assignee = defaultAssignee || user?.id;
-    if (!assignee) return toast({ title: "Sem responsável definido", variant: "destructive" });
+    if (!assignee) {
+      toast.warning("Sem responsável definido");
+      return;
+    }
 
     setBusy("new");
     try {
@@ -82,12 +87,10 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
       });
       setTitle(""); setDueAt(""); setPriority("normal");
       await load();
-      toast({ title: "Atividade criada" });
+      toast.success("Atividade criada");
     } catch (e) {
-      toast({
-        title: "Não foi possível criar",
-        description: describeError(e, "Não foi possível criar a atividade."),
-        variant: "destructive",
+      toast.error("Não foi possível criar a atividade", {
+        description: describeError(e, "tente de novo"),
       });
     } finally {
       setBusy(null);
@@ -95,15 +98,26 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
   };
 
   const change = async (task: TaskRecord, status: "done" | "cancelled") => {
+    const feita = status === "done";
     setBusy(task.id);
     try {
       await setTaskStatus(task.id, status);
-      await load();
+      const lista = await load();
+      // Se a releitura falhou, o aviso dela já saiu.
+      if (!lista) return;
+      // Update barrado pelo RLS volta sem erro e sem linha (o sócio vê a
+      // atividade, mas `tasks_write` não o deixa alterar): só a lista relida
+      // prova que gravou.
+      if (lista.find((t) => t.id === task.id)?.status !== status) {
+        toast.error(feita ? "Não foi possível concluir a atividade" : "Não foi possível cancelar a atividade", {
+          description: "a alteração não foi gravada, provavelmente por falta de permissão",
+        });
+        return;
+      }
+      toast.success(feita ? "Atividade concluída" : "Atividade cancelada", { duration: 2500 });
     } catch (e) {
-      toast({
-        title: "Não foi possível atualizar",
-        description: describeError(e, "Não foi possível mudar o status da atividade."),
-        variant: "destructive",
+      toast.error(feita ? "Não foi possível concluir a atividade" : "Não foi possível cancelar a atividade", {
+        description: describeError(e, "tente de novo"),
       });
     } finally {
       setBusy(null);
@@ -148,7 +162,7 @@ export default function TaskPanel({ refType, refId, defaultAssignee }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" onClick={add} disabled={busy === "new"} className="h-8 text-xs gap-1">
+        <Button size="sm" onClick={add} disabled={busy === "new" || !title.trim()} className="h-8 text-xs gap-1">
           {busy === "new" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Criar
         </Button>
       </div>

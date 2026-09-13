@@ -103,7 +103,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
       });
       // `reason` acima é dado gravado e leva o rótulo inteiro; o aviso é tela e
       // segue a mesma regra do Select.
-      toast({ title: "Negócio encerrado", description: `${deal.client} — ${bareStatus(status)}.` });
+      toast({ variant: "success", title: "Negócio encerrado", description: `${deal.client} — ${bareStatus(status)}.` });
       await onConfirmed();
       onClose();
     } catch (err) {

@@ -360,7 +360,7 @@ voltar, escolha "Administrador (você)".
   vem da hierarquia — admin e sócio veem todas as equipes, o diretor vê as
   dele, o gerente vê só a sua. Não peça PIN aqui; basta estar logado.
 - **Diário público** — `/daily/<slug>` pede o PIN da equipe. PIN certo abre a
-  escala e grava o checkpoint ("🎯 Checkpoint concluído! +XP"); PIN errado ou
+  escala e grava o checkpoint (aviso "Checkpoint salvo"); PIN errado ou
   link bloqueado responde **"Envio recusado"**. *(Os dois caminhos foram
   percorridos na URL publicada em 26/08, com um link descartável que foi
   apagado depois.)*

@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import TaskPanel from "@/components/TaskPanel";
 import VisitPanel from "@/components/VisitPanel";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -95,8 +95,9 @@ export default function LeadDetailModal({
   // circulando 20 vezes, saber por qual fila ele passa deixou de ser cosmético.
   const groupsQuery = useDistributionGroups();
   const settingsQuery = useAutomationSettings();
-  // Cronômetro da trava: só vale a pena o tique de 1s com o modal aberto.
-  const now = useNowTicker(open);
+  // Cronômetro da trava: tique de 1s só com o modal aberto num lead em trava.
+  // Sem trava não há contagem, e o tique refazia o modal inteiro a cada segundo.
+  const now = useNowTicker(open && !!lead && attendSecondsLeft(lead) !== null);
 
   // "O registro histórico deve permitir comentários manuais para manter um log
   // de toda a movimentação do lead" (ata 23/07): as duas fontes numa só linha.
@@ -142,11 +143,9 @@ export default function LeadDetailModal({
     try {
       await claimLead(lead.id);
       travado = true;
-      toast({ title: "Lead em atendimento", description: "O cronômetro parou: o lead é seu." });
+      // "Lead em atendimento" sai do realtime no EngagementLayer, com som.
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível atender",
+      toast.error("Não foi possível atender o lead", {
         description: describeError(err, "outro corretor pode ter assumido antes"),
       });
     }
@@ -159,28 +158,47 @@ export default function LeadDetailModal({
   };
 
   const moveTo = async (stage: LeadFunnelStage) => {
+    const etapa = funnelStageLabel(stage);
+    const mesmaEtapa = stage === lead.funnel_stage;
     try {
       await moveLeadStage(lead.id, stage);
-      toast({ title: `Movido para ${funnelStageLabel(stage)}` });
+      // Clicar na etapa atual também grava, mas não move nada: "movido" mentiria.
+      if (mesmaEtapa) toast(`Lead já está em ${etapa}`, { duration: 2500 });
+      else toast.success(`Lead movido para ${etapa}`, { duration: 2500 });
       onStageChanged?.();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao mover",
-        description: describeError(err, "sem permissão para este lead"),
+      toast.error("Não foi possível mover o lead", {
+        description: describeError(err, "tente de novo"),
       });
     }
   };
 
+  const primeiroContato = funnelStageLabel("first_contact");
+
+  /**
+   * Ligar, WhatsApp, comentar e anexar num lead Novo contam como primeiro
+   * contato. Devolve se moveu, para quem chama juntar isso ao próprio aviso.
+   *
+   * Só para quem escreve no lead: WhatsApp e Ligar aparecem também em modo
+   * leitura, e o banco recusaria a cada clique.
+   */
   const touchFirstContact = async () => {
-    if (lead.funnel_stage !== "new") return;
+    if (!writable || lead.funnel_stage !== "new") return false;
     try {
       await moveLeadStage(lead.id, "first_contact");
       onStageChanged?.();
-    } catch {
-      // Contato registrado por gesto do usuário: falhar aqui não deve
-      // interromper a ação (ligar, mandar WhatsApp) que ele acabou de fazer.
+      return true;
+    } catch (err) {
+      // Avisa sem interromper o gesto (ligar, mandar WhatsApp, comentar).
+      toast.error(`Não foi possível mover o lead para ${primeiroContato}`, {
+        description: describeError(err, "o contato seguiu normalmente; mova a etapa pelos botões"),
+      });
+      return false;
     }
+  };
+
+  const contactClick = async () => {
+    if (await touchFirstContact()) toast.success(`Lead movido para ${primeiroContato}`, { duration: 2500 });
   };
 
   const submitComment = async () => {
@@ -189,13 +207,12 @@ export default function LeadDetailModal({
     try {
       await addLeadComment(lead.id, newComment);
       setNewComment("");
-      await touchFirstContact();
+      const moveu = await touchFirstContact();
+      toast.success("Comentário enviado", moveu ? { description: `Lead movido para ${primeiroContato}` } : undefined);
       await reload();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao comentar",
-        description: describeError(err, "tente novamente"),
+      toast.error("Não foi possível enviar o comentário", {
+        description: describeError(err, "tente de novo"),
       });
     } finally {
       setSendingComment(false);
@@ -206,14 +223,12 @@ export default function LeadDetailModal({
     setUploading(true);
     try {
       await uploadLeadAttachment(lead.id, file);
-      toast({ title: "Anexo enviado" });
-      await touchFirstContact();
+      const moveu = await touchFirstContact();
+      toast.success("Anexo enviado", moveu ? { description: `Lead movido para ${primeiroContato}` } : undefined);
       await reload();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro no upload",
-        description: describeError(err, "tente novamente"),
+      toast.error("Não foi possível enviar o anexo", {
+        description: describeError(err, "tente de novo"),
       });
     } finally {
       setUploading(false);
@@ -224,10 +239,8 @@ export default function LeadDetailModal({
     try {
       window.open(await signedAttachmentUrl(attachment.storage_path), "_blank", "noopener");
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao baixar",
-        description: describeError(err, "link não gerado"),
+      toast.error("Não foi possível abrir o anexo", {
+        description: describeError(err, "o link não foi gerado; tente de novo"),
       });
     }
   };
@@ -289,12 +302,12 @@ export default function LeadDetailModal({
             </Button>
           )}
           {waLink && (
-            <Button size="sm" variant="outline" className="border-success/40 text-success hover:text-success" asChild onClick={touchFirstContact}>
+            <Button size="sm" variant="outline" className="border-success/40 text-success hover:text-success" asChild onClick={contactClick}>
               <a href={waLink} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
             </Button>
           )}
           {lead.phone && (
-            <Button size="sm" variant="outline" asChild onClick={touchFirstContact}>
+            <Button size="sm" variant="outline" asChild onClick={contactClick}>
               <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4" /> Ligar</a>
             </Button>
           )}
@@ -661,13 +674,11 @@ function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void 
         else if (!exigePrazo) patch.next_action_at = null;
       }
       await updateLead(lead.id, patch);
-      toast({ title: "Dados salvos" });
+      toast.success("Lead atualizado");
       onSaved?.();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao salvar",
-        description: describeError(err, "sem permissão para este lead"),
+      toast.error("Não foi possível salvar o lead", {
+        description: describeError(err, "tente de novo"),
       });
     } finally {
       setSaving(false);

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 
 /**
@@ -61,6 +62,8 @@ const SESSAO = {
 } as unknown as Session;
 
 let ctx: ReturnType<typeof useAuth> | null = null;
+/** O cache do React Query da montagem atual — o App monta o AuthProvider dentro dele. */
+let cache: QueryClient;
 
 function Sonda() {
   ctx = useAuth();
@@ -70,7 +73,10 @@ function Sonda() {
 async function montar(children: ReactNode = <Sonda />) {
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
-  await act(async () => { root.render(<AuthProvider>{children}</AuthProvider>); });
+  cache = new QueryClient();
+  await act(async () => {
+    root.render(<QueryClientProvider client={cache}><AuthProvider>{children}</AuthProvider></QueryClientProvider>);
+  });
   return async () => {
     await act(async () => { root.unmount(); });
     container.remove();
@@ -168,6 +174,53 @@ describe("perfilFalhou", () => {
 });
 
 /**
+ * Voltar à aba travava a tela: o auth-js 2.110 emite `SIGNED_IN` a cada
+ * `visibilitychange` para visível, com a sessão relida do storage (objeto
+ * novo, mesmo conteúdo). O contexto regravava sessão, usuário, perfil, papéis e
+ * matriz como objetos novos e re-renderizava TODA tela que chama `useAuth`,
+ * duas vezes — em /leads com 1000 linhas, 31 mil componentes por render.
+ *
+ * A releitura continua (papel alterado por um admin ainda chega na volta de
+ * aba); o que não pode é re-renderizar quando nada mudou.
+ */
+describe("volta de aba", () => {
+  const mesmaSessaoRelida = () => JSON.parse(JSON.stringify(SESSAO)) as Session;
+
+  it("SIGNED_IN com a mesma sessão relê os papéis sem re-renderizar quem usa useAuth", async () => {
+    let renders = 0;
+    function Contador() {
+      useAuth();
+      renders += 1;
+      return null;
+    }
+    const desmontar = await montar(<><Sonda /><Contador /></>);
+    const rendersAntes = renders;
+    const leiturasAntes = mocks.getCurrentProfile.mock.calls.length;
+
+    await act(async () => { mocks.emitir?.("SIGNED_IN", mesmaSessaoRelida()); });
+
+    expect(mocks.getCurrentProfile.mock.calls.length).toBe(leiturasAntes + 1);
+    expect(renders - rendersAntes, "nada mudou: a árvore não pode re-renderizar").toBe(0);
+    await desmontar();
+  });
+
+  it("papel alterado no banco ainda chega na volta de aba", async () => {
+    const desmontar = await montar();
+    expect(ctx!.roles).toEqual(["broker"]);
+    mocks.getCurrentProfile.mockResolvedValue({
+      profile: { full_name: "Corretor", email: "corretor@faceimob.test", phone: null, avatar_url: null },
+      role: "manager",
+      roles: ["manager"],
+    });
+
+    await act(async () => { mocks.emitir?.("SIGNED_IN", mesmaSessaoRelida()); });
+
+    expect(ctx!.roles).toEqual(["manager"]);
+    await desmontar();
+  });
+});
+
+/**
  * A prévia de papel só valia para `isAdmin` e `can()`. `roles` continuava
  * devolvendo os papéis REAIS, e como metade das telas recorta por `roles`
  * (Pipeline, Checkpoint, Atividades, o editor de negócio), "Ver como Corretor"
@@ -227,6 +280,40 @@ describe("prévia de papel", () => {
     expect(ctx!.previewRole, "a trava é do contexto, não do componente que desenha o seletor").toBeNull();
     expect(ctx!.isAdmin).toBe(false);
     expect(ctx!.roles).toEqual(["broker"]);
+    await desmontar();
+  });
+});
+
+/**
+ * Nem toda chave do React Query leva o id do usuário (o placar é
+ * `["game","ranking",temporada]`). Sem limpar o cache na saída, quem entrava em
+ * seguida no mesmo navegador via por um instante o ranking e os números da
+ * pessoa anterior, até a releitura chegar.
+ */
+describe("cache do React Query", () => {
+  const PLACAR = ["game", "ranking", "t-1", null, null];
+
+  it("sair apaga o cache de quem saiu", async () => {
+    const desmontar = await montar();
+    cache.setQueryData(PLACAR, [{ profile_id: "u-1", points: 99 }]);
+
+    await act(async () => { mocks.emitir?.("SIGNED_OUT", null); });
+
+    expect(cache.getQueryData(PLACAR), "o próximo a entrar não pode ler o placar de quem saiu").toBeUndefined();
+    await desmontar();
+  });
+
+  it("outro usuário na aba apaga o cache; o mesmo usuário (token renovado, volta de aba) não", async () => {
+    const desmontar = await montar();
+    cache.setQueryData(PLACAR, [{ profile_id: "u-1", points: 99 }]);
+
+    await act(async () => { mocks.emitir?.("TOKEN_REFRESHED", SESSAO); });
+    await act(async () => { mocks.emitir?.("SIGNED_IN", JSON.parse(JSON.stringify(SESSAO)) as Session); });
+    expect(cache.getQueryData(PLACAR), "mesmo usuário: limpar refaria todas as consultas da tela à toa").toBeDefined();
+
+    const outra = { user: { id: "u-2", email: "outro@faceimob.test", user_metadata: {} } } as unknown as Session;
+    await act(async () => { mocks.emitir?.("SIGNED_IN", outra); });
+    expect(cache.getQueryData(PLACAR)).toBeUndefined();
     await desmontar();
   });
 });

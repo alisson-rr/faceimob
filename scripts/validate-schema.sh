@@ -31,14 +31,17 @@ done
 
 cleanup() {
   if [ "$KEEP" -eq 0 ]; then
-    docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+    # `-v`: a imagem do postgres cria um volume anônimo para os dados, e sem
+    # isto cada rodada deixava ~50 MB órfãos no Docker (273 volumes, 13 GB,
+    # medidos em 13/09/2026).
+    docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
   else
     echo "container mantido: docker exec -it $CONTAINER psql -U postgres"
   fi
 }
 trap cleanup EXIT
 
-docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
 
 echo "==> subindo $IMAGE"
 docker run -d --name "$CONTAINER" \

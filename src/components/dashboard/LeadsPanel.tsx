@@ -62,6 +62,12 @@ export interface LeadsPanelProps {
   scopeLabel?: string;
   /** A base mostrada é a da operação inteira (admin/sócio) ou o recorte do usuário. */
   toda?: boolean;
+  /**
+   * O que a lista cobre quando veio cortada ("últimos 1.000 leads"), ou null.
+   * A lista para no `max-rows` do PostgREST; sem esta legenda a aba contava
+   * 1.000 leads de uma base de 102.799 como se fossem todos.
+   */
+  amostra?: string | null;
 }
 
 /**
@@ -81,7 +87,7 @@ export interface LeadsPanelProps {
  * data de cada lead para respeitar o filtro de periodo, entao o Dashboard ja a
  * dispara na abertura.
  */
-export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true }: LeadsPanelProps) {
+export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amostra = null }: LeadsPanelProps) {
   const { data: leads, isPending, error, refetch } = useDashboardLeads();
 
   const view = useMemo(() => {
@@ -186,17 +192,29 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true }: L
   // lead na base" com 42 leads em outro mes mandava procurar defeito onde ha so
   // filtro.
   if (view.total === 0) {
+    // Com a lista cortada, "a base tem 1.000 leads, mas nenhum neste período"
+    // seria duas mentiras: a base é maior e o período pode ter lead mais antigo
+    // que o corte.
     return (
       <EmptyState
         icon={Inbox}
-        title={`Nenhum lead em ${periodo}`}
-        description={`${toda ? "A base tem" : "Você enxerga"} ${num(view.base)} ${view.base === 1 ? "lead" : "leads"}, mas nenhum foi criado neste período. Troque o mês no filtro do topo.`}
+        title={amostra ? `Nenhum lead de ${periodo} nos ${amostra}` : `Nenhum lead em ${periodo}`}
+        description={
+          amostra
+            ? `Esta aba só lê os ${amostra}, então um período mais antigo aparece vazio aqui. O total exato está em “Base de leads”, no topo.`
+            : `${toda ? "A base tem" : "Você enxerga"} ${num(view.base)} ${view.base === 1 ? "lead" : "leads"}, mas nenhum foi criado neste período. Troque o mês no filtro do topo.`
+        }
       />
     );
   }
 
   return (
     <div className="flex flex-col gap-5">
+      {amostra && (
+        <p className="text-xs text-muted-foreground">
+          Calculado sobre os {amostra} — os mais antigos não entram nesta aba.
+        </p>
+      )}
       {/* Sem "Base de leads" aqui: a régua do topo do Dashboard fica visível em
           TODAS as abas e já traz esse cartão com o mesmo número e o mesmo texto
           de apoio ("sem recorte de período · <recorte>"). Repetido, o mesmo

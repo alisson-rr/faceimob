@@ -174,18 +174,20 @@ export function MetaReportImportDialog({ campanhas, onClose, onImported }: MetaR
     try {
       const resultado = await importMetaSpend(payload, fileName);
       toast({
-        title: `Gasto importado em ${num(resultado.campanhas)} campanha(s)`,
+        variant: "success",
+        title: "Relatório importado",
         description: resultado.substituidas > 0
-          ? `${num(resultado.linhas)} linha(s) gravada(s); ${num(resultado.substituidas)} período(s) já importado(s) foram substituídos.`
-          : `${num(resultado.linhas)} linha(s) gravada(s). O CPL e o ROAS passam a usar este número.`,
+          ? `Gasto gravado em ${num(resultado.campanhas)} campanha(s): ${num(resultado.linhas)} linha(s); ${num(resultado.substituidas)} período(s) já importado(s) foram substituídos.`
+          : `Gasto gravado em ${num(resultado.campanhas)} campanha(s): ${num(resultado.linhas)} linha(s). O CPL e o ROAS passam a usar este número.`,
       });
       onImported();
       onClose();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Não foi possível importar",
-        description: describeError(err, "não foi possível gravar o gasto do relatório"),
+        title: "Não foi possível importar o relatório",
+        // Recusa nossa ("nenhuma linha casou") já vem em pt-BR; a do banco não pode sair crua.
+        description: describeError(err, err instanceof Error && !("db" in err) ? err.message : "Confira o arquivo e tente de novo."),
       });
     } finally {
       setGravando(false);

@@ -81,8 +81,8 @@ export function MetaVgv({ pessoa, onSaved }: { pessoa: MetaDaPessoa; onSaved: ()
       }
     }
     setSaving(false);
-    if (failure) return toast({ title: "Erro ao salvar meta", description: describeError(failure, "Não foi possível salvar a meta."), variant: "destructive" });
-    toast({ title: "Meta salva" });
+    if (failure) return toast({ title: "Não foi possível salvar a meta de VGV", description: describeError(failure, "Tente de novo em instantes."), variant: "destructive" });
+    toast({ title: "Meta de VGV salva", variant: "success" });
     // A faixa do Pipeline e o Dashboard leem a meta por `["dashboard","sales-goal"]`.
     // Sem invalidar, eles seguem com o alvo antigo ate a consulta envelhecer.
     void queryClient.invalidateQueries({ queryKey: ["dashboard", "sales-goal"] });

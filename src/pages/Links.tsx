@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertTriangle, ArrowDown, ArrowUp, Link2, Plus, ExternalLink, Copy, Pencil, Trash2, Save } from "lucide-react";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import { toast } from "@/hooks/use-toast";
+import { toast as sonner } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,13 +43,47 @@ export const isHttpUrl = (value: string): boolean => {
 
 const normalizeUrl = (value: string) => value.trim().replace(/\/+$/, "").toLowerCase();
 
+const LINKS_KEY = ["links", "lista"] as const;
+const SEM_LINKS: LinkRow[] = [];
+
+async function listarLinks(): Promise<LinkRow[]> {
+  // Sem filtro de `active`: `useful_links_select` já entrega o inativo só ao
+  // admin. Filtrar aqui deixava o link desativado invisível PARA SEMPRE,
+  // inclusive para quem poderia reativá-lo.
+  const { data, error } = await supabase.from("useful_links").select("*").order("sort_order").order("label");
+  // Sem este `throw`, a falha caía em `links = []` e a tela afirmava "nenhum
+  // link cadastrado" — o toast some e a mentira fica.
+  if (error) throw error;
+  return (data || []).map(row => ({ ...row, title: row.label }));
+}
+
 export default function Links() {
   // `isAdmin` do contexto sai dos papéis efetivos: respeita a prévia "Ver como
   // corretor" do cabeçalho. `role === "admin"` era o papel real e ignorava a prévia.
-  const { isAdmin } = useAuth();
-  const [links, setLinks] = useState<LinkRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { isAdmin, user } = useAuth();
+  const queryClient = useQueryClient();
+  /**
+   * Cache do TanStack Query: voltar à tela mostra a lista que já estava aqui e
+   * relê por trás, em vez de repetir "Carregando links…" a cada entrada. Sem
+   * releitura ao focar a aba — a carga manual nunca releu assim. O usuário entra
+   * na chave: a RLS entrega o link inativo só ao admin, e quem entrasse depois
+   * no mesmo navegador herdaria a leitura de quem saiu.
+   */
+  const linksKey = [...LINKS_KEY, user?.id ?? null] as const;
+  const linksQuery = useQuery({ queryKey: linksKey, queryFn: listarLinks, refetchOnWindowFocus: false });
+  const links = linksQuery.data ?? SEM_LINKS;
+  const loading = linksQuery.data === undefined && linksQuery.isFetching;
+  const loadError = linksQuery.error ? describeError(linksQuery.error, TENTE_DE_NOVO) : null;
+  const load = () => queryClient.invalidateQueries({ queryKey: LINKS_KEY });
+  /**
+   * Ajuste local depois de uma gravação que o banco já confirmou. Uma leitura
+   * ainda em voo saiu antes da gravação e, ao chegar, a desfaria na tela: ela
+   * recomeça (o `invalidate` cancela a velha).
+   */
+  const setLinks = (atualizar: (prev: LinkRow[]) => LinkRow[]) => {
+    queryClient.setQueryData<LinkRow[]>(linksKey, (prev) => atualizar(prev ?? SEM_LINKS));
+    if (queryClient.isFetching({ queryKey: linksKey })) void load();
+  };
   const [edit, setEdit] = useState<Partial<LinkRow> | null>(null);
   const [saving, setSaving] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
@@ -70,21 +106,6 @@ export default function Links() {
     setas.current.get(foco)?.focus();
     setFoco(null);
   }, [foco]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    // Sem filtro de `active`: `useful_links_select` já entrega o inativo só ao
-    // admin. Filtrar aqui deixava o link desativado invisível PARA SEMPRE,
-    // inclusive para quem poderia reativá-lo.
-    const { data, error } = await supabase.from("useful_links").select("*").order("sort_order").order("label");
-    setLoading(false);
-    // Sem este `return`, a falha caía em `links = []` e a tela afirmava "nenhum
-    // link cadastrado" — o toast some e a mentira fica.
-    if (error) return setLoadError(describeError(error, TENTE_DE_NOVO));
-    setLinks((data || []).map(row => ({ ...row, title: row.label })));
-  }, []);
-  useEffect(() => { void load(); }, [load]);
 
   const categorias = useMemo(
     () => Array.from(new Set(links.map(l => (l.category || SEM_CATEGORIA).trim()))).sort((a, b) => a.localeCompare(b, "pt-BR")),
@@ -111,9 +132,9 @@ export default function Links() {
       // `writeText` rejeita em http, sem permissão ou com a aba sem foco: sem o
       // await o "Link copiado" saía mesmo quando nada foi para a área de transferência.
       await navigator.clipboard.writeText(url);
-      toast({ title: "Link copiado" });
+      toast({ title: "Link copiado", variant: "success" });
     } catch (e) {
-      toast({ title: "Não foi possível copiar", description: describeError(e, "Copie o link manualmente."), variant: "destructive" });
+      toast({ title: "Não foi possível copiar o link", description: describeError(e, "Copie o link manualmente."), variant: "destructive" });
     }
   };
 
@@ -150,10 +171,10 @@ export default function Links() {
       ? await supabase.from("useful_links").update(payload).eq("id", edit.id).select("id")
       : await supabase.from("useful_links").insert(payload).select("id");
     setSaving(false);
-    if (error) return toast({ title: "Erro ao salvar", description: describeError(error, "Não foi possível salvar o link."), variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível salvar o link", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
     // O RLS não erra ao recusar: filtra a linha e o PostgREST devolve 204.
-    if (!data?.length) return toast({ title: "Sem permissão para salvar links (apenas administrador).", variant: "destructive" });
-    toast({ title: "Salvo!" });
+    if (!data?.length) return toast({ title: "Não foi possível salvar o link", description: "Sem permissão para salvar links (apenas administrador).", variant: "destructive" });
+    toast({ title: edit?.id ? "Link atualizado" : "Link criado", variant: "success" });
     setEdit(null); void load();
   };
 
@@ -163,10 +184,10 @@ export default function Links() {
       .update({ active: !link.active })
       .eq("id", link.id)
       .select("id");
-    if (error) return toast({ title: "Erro ao atualizar", description: describeError(error, "Não foi possível atualizar o link."), variant: "destructive" });
-    if (!data?.length) return toast({ title: "Sem permissão para alterar links (apenas administrador).", variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível alterar o link", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível alterar o link", description: "Sem permissão para alterar links (apenas administrador).", variant: "destructive" });
     setLinks(prev => prev.map(l => (l.id === link.id ? { ...l, active: !l.active } : l)));
-    toast({ title: link.active ? "Link desativado" : "Link reativado" });
+    toast({ title: link.active ? "Link desativado" : "Link reativado", variant: "success" });
   };
 
   /**
@@ -206,18 +227,19 @@ export default function Links() {
         // na ordem antiga e o banco numa ordem que ninguém pediu — igual ao
         // ramo de recusa do RLS logo abaixo.
         void load();
-        return toast({ title: "Erro ao reordenar", description: describeError(error, "Não foi possível reordenar os links."), variant: "destructive" });
+        return toast({ title: "Não foi possível reordenar os links", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
       }
       // O RLS não erra ao recusar: filtra a linha e devolve 204. Sem esta
       // conferência a lista se reordenava na tela e voltava no próximo F5.
       if (!data?.length) {
         setMoving(null);
         void load();
-        return toast({ title: "Sem permissão para reordenar links (apenas administrador).", variant: "destructive" });
+        return toast({ title: "Não foi possível reordenar os links", description: "Sem permissão para reordenar links (apenas administrador).", variant: "destructive" });
       }
     }
     setMoving(null);
     setAnuncio(`${link.title} movido para a posição ${para + 1} de ${grupo.length} em ${chave}.`);
+    sonner.success("Link movido", { duration: 2500 });
     // Na ponta a seta acionada vira `disabled`; o foco vai para a oposta do
     // mesmo link. Fora da ponta ela continua válida e o foco volta para ela.
     const naPonta = direcao === -1 ? para === 0 : para === grupo.length - 1;
@@ -239,10 +261,10 @@ export default function Links() {
   const remove = async (link: LinkRow) => {
     if (!confirm(`Excluir "${link.title}"? Para tirar da lista sem perder o cadastro, desative.`)) return;
     const { data, error } = await supabase.from("useful_links").delete().eq("id", link.id).select("id");
-    if (error) return toast({ title: "Erro ao excluir", description: describeError(error, "Não foi possível excluir o link."), variant: "destructive" });
-    if (!data?.length) return toast({ title: "Sem permissão para excluir links (apenas administrador).", variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível excluir o link", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível excluir o link", description: "Sem permissão para excluir links (apenas administrador).", variant: "destructive" });
     setLinks(prev => prev.filter(l => l.id !== link.id));
-    toast({ title: "Link excluído" });
+    toast({ title: "Link excluído", variant: "success" });
   };
 
   return (

@@ -253,9 +253,12 @@ export function MetaAdScores() {
         toast.info("Análise reaproveitada", {
           description: "Já havia uma análise igual em andamento ou feita há menos de 10 minutos: nenhuma chamada nova de IA.",
         });
+        return;
       }
+      // A edge só responde depois de gravar o resultado: aqui a análise já terminou.
+      toast.success("Análise concluída");
     },
-    onError: (e) => toast.error("A análise falhou", { description: e.message }),
+    onError: (e) => toast.error("Não foi possível rodar a análise", { description: e.message }),
     // A falha também fica gravada na execução: a tela relê e a mostra com a data.
     onSettled: () => queryClient.invalidateQueries({ queryKey: CHAVE }),
   });

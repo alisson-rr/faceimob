@@ -81,6 +81,12 @@ export interface DirectorPanelProps {
    * `auth_led_team_ids()` —, só o texto muda.
    */
   escopo?: "diretoria" | "equipe";
+  /**
+   * O que a lista de leads cobre quando veio cortada ("últimos 1.000 leads"), ou
+   * null. Mesma legenda da aba Leads: o "medido" de leads sai dessa lista, e sem
+   * o aviso um mês anterior ao corte pintava divergência que o banco não tem.
+   */
+  amostra?: string | null;
 }
 
 /**
@@ -96,7 +102,13 @@ export interface DirectorPanelProps {
  * `manager_id`), e ele nao tinha tela nenhuma que puxasse o declarado ao lado do
  * medido — so o /checkpoint, que ate agora cobrava por outra regua.
  */
-export function DirectorPanel({ month, deals, leads, escopo = "diretoria" }: DirectorPanelProps) {
+export function DirectorPanel({
+  month,
+  deals,
+  leads,
+  escopo = "diretoria",
+  amostra = null,
+}: DirectorPanelProps) {
   const { user, previewRole } = useAuth();
   const daDiretoria = escopo === "diretoria";
   const deQuem = daDiretoria ? "da diretoria" : "da sua equipe";
@@ -256,11 +268,11 @@ export function DirectorPanel({ month, deals, leads, escopo = "diretoria" }: Dir
       <EmptyState
         icon={ClipboardCheck}
         title={`Nenhum lançamento em ${month}`}
-        description={
+        description={`${
           porEquipe
             ? `Nem o diário nem o pipeline de ${equipeAtual || "desta equipe"} registraram movimento neste período. Veja todas as equipes ou escolha outro mês no filtro do topo.`
             : "Nem o diário das equipes nem o pipeline registraram movimento neste período. Os indicadores e o funil voltam assim que houver lançamento; escolha outro mês no filtro do topo."
-        }
+        }${amostra ? ` Os leads medidos saem só dos ${amostra}, então um mês mais antigo pode aparecer sem lead aqui.` : ""}`}
         action={
           porEquipe ? (
             <Button variant="outline" onClick={() => setTeamFilter(ALL_TEAMS)}>
@@ -284,6 +296,12 @@ export function DirectorPanel({ month, deals, leads, escopo = "diretoria" }: Dir
             : `${equipeAtual || "Esta equipe"} não tem corretor vinculado como membro.`}{" "}
           O lado <strong>medido</strong> do funil fica zerado por falta de vínculo em Equipes — não por
           falta de venda. O <strong>declarado</strong> continua valendo.
+        </p>
+      )}
+
+      {amostra && (
+        <p className="text-xs text-muted-foreground">
+          Leads medidos sobre os {amostra} — os mais antigos não entram neste comparativo.
         </p>
       )}
 

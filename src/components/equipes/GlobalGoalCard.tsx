@@ -113,9 +113,9 @@ export function GlobalGoalCard({ mesInicial }: GlobalGoalCardProps = {}) {
       // O Dashboard guarda a meta por 60 s (`staleTime` do App); sem isto quem
       // salva e abre o painel em seguida ainda vê "—".
       await queryClient.invalidateQueries({ queryKey: ["dashboard", "sales-goal"] });
-      toast({ title: "Meta global salva" });
+      toast({ title: "Meta global salva", variant: "success" });
     } catch (error: unknown) {
-      toast({ title: "Erro ao salvar meta global", description: describeError(error, "Não foi possível salvar a meta global."), variant: "destructive" });
+      toast({ title: "Não foi possível salvar a meta global", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
     } finally {
       setSaving(false);
     }

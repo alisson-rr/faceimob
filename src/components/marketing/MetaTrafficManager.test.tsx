@@ -198,7 +198,7 @@ describe("MetaTrafficManager", () => {
     expect(m.toast.error).not.toHaveBeenCalled();
 
     clicar(botao(dialogo()!, "Aprovar mesmo assim"));
-    await vi.waitFor(() => expect(m.toast.success).toHaveBeenCalledWith("Aprovada e feita na Meta", expect.anything()));
+    await vi.waitFor(() => expect(m.toast.success).toHaveBeenCalledWith("Proposta aprovada", expect.anything()));
     expect(m.invoke).toHaveBeenCalledTimes(2);
     expect(m.invoke).toHaveBeenLastCalledWith("meta-campaign-action", {
       body: { action_id: "p1", decisao: "aprovar", confirma_aprendizado: true },
@@ -222,7 +222,7 @@ describe("MetaTrafficManager", () => {
     await vi.waitFor(() => expect(dialogo()).not.toBeNull());
     clicar(botao(dialogo()!, "Aprovar e executar"));
     await vi.waitFor(() => expect(m.toast.error).toHaveBeenCalledTimes(1));
-    expect(m.toast.error).toHaveBeenCalledWith("A decisão não foi concluída", {
+    expect(m.toast.error).toHaveBeenCalledWith("Não foi possível aprovar a proposta", {
       description: expect.stringContaining("Token sem permissão para anúncios"),
     });
     expect(m.toast.success).toHaveBeenCalledTimes(1);
@@ -246,7 +246,7 @@ describe("MetaTrafficManager", () => {
     clicar(botao(el, "Rodar agora"));
     await vi.waitFor(() => expect(m.toast.error).toHaveBeenCalled());
     expect(m.invoke).toHaveBeenCalledWith("meta-traffic-manager", { body: { account_id: "conta-1" } });
-    expect(m.toast.error).toHaveBeenCalledWith("O gestor falhou", {
+    expect(m.toast.error).toHaveBeenCalledWith("Não foi possível rodar o gestor de tráfego", {
       description: expect.stringContaining("Sem entrega registrada na Meta"),
     });
     expect(m.toast.success).not.toHaveBeenCalled();

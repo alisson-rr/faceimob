@@ -339,8 +339,10 @@ test.describe("SDR · estatísticas e disparo", () => {
     await confirmacao.getByRole("button", { name: /disparar agora/i }).click();
 
     await expect(page.locator("[data-sonner-toast]")).toBeVisible({ timeout: 25_000 });
-    // Nada de "Enviados: 0 | Falhas: 0" fingindo disparo: a function abortou.
-    await expect(page.getByText(/^Enviados:/)).toHaveCount(0);
+    await expect(page.getByText("Não foi possível disparar a lista")).toBeVisible();
+    // Nada de sucesso fingindo disparo: a function abortou. "Enviados:" é o título
+    // antigo e o do envio parcial; "Disparo concluído", o do sucesso.
+    await expect(page.getByText(/^(Enviados:|Disparo concluído)/)).toHaveCount(0);
     // O toast some em segundos; o aviso que não muda sozinho continua na tela.
     await expect(aviso).toBeVisible();
 

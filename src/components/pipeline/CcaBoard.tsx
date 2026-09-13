@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { Building2, DollarSign, Send, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { brl } from "@/lib/format";
+import { brl, num } from "@/lib/format";
 import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
 import type { CcaDeal, CcaStage } from "./ccaData";
+
+/** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
+const POR_COLUNA = 200;
 
 interface Props {
   stages: CcaStage[];
@@ -25,6 +29,14 @@ interface Props {
  * inalcançáveis pelo teclado e abaixo do piso de tamanho (achados X02 e X07).
  */
 export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeveloper }: Props) {
+  /**
+   * Quantos cartões cada coluna desenha. Com a esteira inteira (7.560 casos na
+   * homologação) eram ~280 mil nós e 15,7 s de montagem no teste; o PostgREST
+   * cortava a lista em 1.000 casos e escondia o custo. 200 por coluna fica no
+   * volume que a tela já desenhava, os contadores seguem contando todos e a
+   * busca alcança qualquer caso.
+   */
+  const [limites, setLimites] = useState<Record<string, number>>({});
   return (
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -47,6 +59,7 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
           {stages.map((stage) => {
             const tone = CCA_TONE_CLASS[ccaStageTone(stage.color)];
             const stageDeals = deals.filter((deal) => deal.stageId === stage.id);
+            const limite = limites[stage.id] ?? POR_COLUNA;
             return (
               <section key={stage.id} className="w-64 flex-shrink-0 rounded-2xl border border-border bg-muted/10">
                 <div className="flex items-center justify-between border-b border-border p-3">
@@ -58,7 +71,7 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
                 </div>
 
                 <div className="max-h-[calc(100vh-380px)] min-h-[200px] space-y-2 overflow-y-auto p-2">
-                  {stageDeals.map((deal) => (
+                  {stageDeals.slice(0, limite).map((deal) => (
                     <article key={deal.caseId} className="space-y-2 rounded-xl border border-border bg-card p-3">
                       {/* Mesmo desenho do `DealCard`: o corpo clicável é IRMÃO
                           do rodapé com o Select e o botão, nunca o pai deles —
@@ -120,26 +133,20 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
                             <Send className="h-3 w-3" aria-hidden /> Enviar à construtora
                           </Button>
 
-                          <Select
-                            value=""
-                            onValueChange={(stageId) => {
-                              const target = stages.find((item) => item.id === stageId);
-                              if (target) onMove(deal, target);
-                            }}
-                          >
-                            <SelectTrigger className="h-7 text-xs" aria-label={`Mover ${deal.client} para outro estágio`}>
-                              <SelectValue placeholder="Mover para…" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {stages.filter((item) => item.id !== stage.id).map((item) => (
-                                <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />
                         </>
                       )}
                     </article>
                   ))}
+
+                  {stageDeals.length > limite && (
+                    <Button
+                      size="sm" variant="ghost" className="h-7 w-full text-xs"
+                      onClick={() => setLimites((atual) => ({ ...atual, [stage.id]: limite + POR_COLUNA }))}
+                    >
+                      Mostrar mais ({num(stageDeals.length - limite)} restantes)
+                    </Button>
+                  )}
 
                   {stageDeals.length === 0 && (
                     <p className="py-8 text-center text-xs text-muted-foreground">Nenhum caso</p>
@@ -151,5 +158,46 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * "Mover para…" com a lista de estágios montada só depois da primeira abertura.
+ *
+ * Fechado, o `SelectContent` do Radix monta os itens mesmo assim, num fragmento
+ * (2 renders por cartão). Aqui o valor é sempre vazio — o Select só dispara o
+ * movimento —, então não há rótulo a buscar nos itens. Com a esteira inteira
+ * (7.560 casos na homologação) eram milhares de listas que ninguém abria; a
+ * montagem de 7.560 cartões estourava a memória do teste. Depois de aberto uma
+ * vez ele fica montado, e a animação de fechar continua a mesma.
+ */
+function MoverPara({ deal, stages, atual, onMove }: {
+  deal: CcaDeal;
+  stages: CcaStage[];
+  /** Estágio em que o caso está: não aparece como destino. */
+  atual: string;
+  onMove: (deal: CcaDeal, stage: CcaStage) => void;
+}) {
+  const [montado, setMontado] = useState(false);
+  return (
+    <Select
+      value=""
+      onOpenChange={(aberto) => { if (aberto) setMontado(true); }}
+      onValueChange={(stageId) => {
+        const target = stages.find((item) => item.id === stageId);
+        if (target) onMove(deal, target);
+      }}
+    >
+      <SelectTrigger className="h-7 text-xs" aria-label={`Mover ${deal.client} para outro estágio`}>
+        <SelectValue placeholder="Mover para…" />
+      </SelectTrigger>
+      {montado && (
+        <SelectContent>
+          {stages.filter((item) => item.id !== atual).map((item) => (
+            <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+          ))}
+        </SelectContent>
+      )}
+    </Select>
   );
 }

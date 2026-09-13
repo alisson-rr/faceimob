@@ -134,8 +134,14 @@ const Sidebar = React.forwardRef<
     side?: "left" | "right";
     variant?: "sidebar" | "floating" | "inset";
     collapsible?: "offcanvas" | "icon" | "none";
+    /**
+     * Painel expandido POR CIMA do conteúdo: o espaçador fica na largura do
+     * ícone e a página não muda de largura. Só para `variant="sidebar"` com
+     * `collapsible="icon"`.
+     */
+    overlay?: boolean;
   }
->(({ side = "left", variant = "sidebar", collapsible = "offcanvas", className, children, ...props }, ref) => {
+>(({ side = "left", variant = "sidebar", collapsible = "offcanvas", overlay = false, className, children, ...props }, ref) => {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
   if (collapsible === "none") {
@@ -179,15 +185,19 @@ const Sidebar = React.forwardRef<
       data-variant={variant}
       data-side={side}
     >
-      {/* This is what handles the sidebar gap on desktop */}
+      {/* This is what handles the sidebar gap on desktop. Sem transição de
+          largura: ele está no fluxo da página, e animar a largura refazia o
+          layout e a pintura da tela inteira a cada quadro. Quem anima é o
+          painel fixo abaixo, que não empurra nada. */}
       <div
         className={cn(
-          "relative h-svh w-[--sidebar-width] bg-transparent transition-[width] duration-500 ease-out",
+          "relative h-svh w-[--sidebar-width] bg-transparent",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
             : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]",
+          overlay && "w-[--sidebar-width-icon]",
         )}
       />
       <div
@@ -200,6 +210,8 @@ const Sidebar = React.forwardRef<
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
             : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l",
+          // Por cima do cabeçalho (`z-30`) enquanto cobre o conteúdo.
+          overlay && "z-40",
           className,
         )}
         {...props}
@@ -455,7 +467,11 @@ const SidebarMenuButton = React.forwardRef<
     />
   );
 
-  if (!tooltip) {
+  // No celular o tooltip nunca aparece (o Sheet mostra os rótulos), e o Sheet
+  // remonta os itens a cada abertura: sem a árvore do Tooltip (Tooltip, Popper,
+  // Presence, Slot) cada item monta bem menos. `isMobile` não muda ao abrir ou
+  // fechar, então isto não cria remontagem nova.
+  if (!tooltip || isMobile) {
     return button;
   }
 
@@ -468,7 +484,7 @@ const SidebarMenuButton = React.forwardRef<
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="right" align="center" hidden={state !== "collapsed" || isMobile} {...tooltip} />
+      <TooltipContent side="right" align="center" hidden={state !== "collapsed"} {...tooltip} />
     </Tooltip>
   );
 });

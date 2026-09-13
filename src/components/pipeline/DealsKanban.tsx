@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Inbox } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -59,13 +59,22 @@ export function DealsKanban({ stages, deals, onOpen, onMove, onLose, canWrite, c
    *  Uma checagem só, e não duas: quem decide a etapa é a matriz de etapas. A
    *  permissão extra que existiu aqui recusava o arraste inclusive para papéis
    *  que a matriz autoriza, deixando o admin sem como conceder pela tela. */
-  const blockedMove = (deal: LegacyDealRecord, stage: PipelineStage) =>
-    blockedMoveReason(deal, stage, { isAdmin, canEnterStage, canExitStage, closedMonths });
+  const blockedMove = useCallback(
+    (deal: LegacyDealRecord, stage: PipelineStage) =>
+      blockedMoveReason(deal, stage, { isAdmin, canEnterStage, canExitStage, closedMonths }),
+    [isAdmin, canEnterStage, canExitStage, closedMonths],
+  );
 
-  const move = (deal: LegacyDealRecord, stage: PipelineStage) => {
+  // Funções estáveis de propósito, aqui e no arraste: o `DealCard` é `memo`, e
+  // um fecho novo por render refazia os 2.288 cartões ativos a cada render do
+  // Pipeline e a cada coluna que o arraste cruzava (~1,1 s por vez no
+  // `desempenho.test.tsx`).
+  const move = useCallback((deal: LegacyDealRecord, stage: PipelineStage) => {
     setAnnouncement(`Movendo ${deal.client} para ${stage.label}.`);
     onMove(deal, stage);
-  };
+  }, [onMove]);
+  const iniciarArraste = useCallback((deal: LegacyDealRecord) => setDragged(deal.id), []);
+  const encerrarArraste = useCallback(() => { setDragged(null); setDragOver(null); }, []);
 
   const drop = (stage: PipelineStage) => {
     const deal = deals.find((row) => row.id === dragged);
@@ -140,14 +149,14 @@ export function DealsKanban({ stages, deals, onOpen, onMove, onLose, canWrite, c
                     onMove={move}
                     lock={dealLock(deal, { canWrite, isAdmin, closedMonths })}
                     canExit={canExitStage(deal.stage_id)}
-                    blockedMove={(destino) => blockedMove(deal, destino)}
+                    blockedMove={blockedMove}
                     onBlockedMove={setAnnouncement}
                     previousStage={columns[index - 1]}
                     nextStage={columns[index + 1]}
                     onLose={onLose}
                     dragging={dragged === deal.id}
-                    onDragStart={() => setDragged(deal.id)}
-                    onDragEnd={() => { setDragged(null); setDragOver(null); }}
+                    onDragStart={iniciarArraste}
+                    onDragEnd={encerrarArraste}
                   />
                 ))}
                 {stageDeals.length === 0 && (

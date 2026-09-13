@@ -120,6 +120,7 @@ export function EmailDialog({ lead, onClose }: { lead: LeadRecord; onClose: () =
     window.open(
       `mailto:${lead.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
     );
+    toast({ title: "E-mail aberto", description: `Rascunho preparado para ${lead.name}.` });
     onClose();
   };
 

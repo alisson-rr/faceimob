@@ -125,3 +125,59 @@ describe("CcaBoard · o cartão abre o negócio", () => {
     await board.encerrar();
   });
 });
+
+/**
+ * A lista de "Mover para…" só é montada quando o menu abre — fechado, o
+ * `SelectContent` do Radix montava os itens de todos os cartões da esteira. O
+ * que este teste fixa é que a economia não custou o gesto: abrir pelo teclado
+ * mostra os OUTROS estágios e escolher um chama `onMove` com ele.
+ */
+describe("CcaBoard · mover para outro estágio", () => {
+  it("monta a lista só ao abrir e move para o estágio escolhido", async () => {
+    // O jsdom não tem o que o posicionamento do Radix usa.
+    const semResize = !("ResizeObserver" in globalThis);
+    if (semResize) {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+    }
+    const semScroll = !Element.prototype.scrollIntoView;
+    if (semScroll) Element.prototype.scrollIntoView = () => undefined;
+
+    const outro: CcaStage = { ...STAGE, id: "s2", name: "Aprovado", position: 2, status: "approved" };
+    const movidos: string[] = [];
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[STAGE, outro]}
+          deals={[DEAL]}
+          canAct
+          onOpen={() => undefined}
+          onMove={(_caso, stage) => movidos.push(stage.id)}
+          onSubmitToDeveloper={() => undefined}
+        /> as ReactNode,
+      );
+    });
+
+    expect(document.querySelectorAll('[role="option"]'), "fechado, a lista não existe").toHaveLength(0);
+
+    const mover = container.querySelector<HTMLElement>('[aria-label="Mover Cliente Teste para outro estágio"]');
+    await act(async () => {
+      mover?.focus();
+      mover?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    const opcoes = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+    // O estágio atual do caso não é destino.
+    expect(opcoes.map((opcao) => opcao.textContent)).toEqual(["Aprovado"]);
+
+    await act(async () => {
+      opcoes[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(movidos).toEqual(["s2"]);
+
+    await act(async () => { root.unmount(); });
+    container.remove();
+    if (semResize) delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    if (semScroll) delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+});

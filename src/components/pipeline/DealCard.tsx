@@ -1,4 +1,4 @@
-import type { KeyboardEvent, MouseEvent } from "react";
+import { memo, type KeyboardEvent, type MouseEvent } from "react";
 import {
   AlertCircle, CalendarCheck, ChevronLeft, ChevronRight, GripVertical, Lock, StickyNote, User,
   XCircle,
@@ -33,8 +33,11 @@ interface Props {
    *  a conferência documental dependem de PARA ONDE se move, e ficavam para
    *  depois do clique, em toast vermelho. Hoje corretor e gerente saem de
    *  "Em Análise" e não entram em "Aprovado" (medido em 02/09/2026): a seta da
-   *  direita aparecia habilitada e sempre voltava recusada. */
-  blockedMove: (stage: PipelineStage) => string | null;
+   *  direita aparecia habilitada e sempre voltava recusada.
+   *
+   *  Recebe o negócio, e não um fecho por cartão: a função é a MESMA para todos
+   *  os cartões, e é isso que deixa o `memo` pular o cartão que não mudou. */
+  blockedMove: (deal: LegacyDealRecord, stage: PipelineStage) => string | null;
   /** Recusa do Shift+seta a caminho do `role="status"` do quadro.
    *
    *  O botão de mover recusado fica desabilitado com o motivo no nome
@@ -48,7 +51,7 @@ interface Props {
   previousStage?: PipelineStage;
   nextStage?: PipelineStage;
   dragging: boolean;
-  onDragStart: () => void;
+  onDragStart: (deal: LegacyDealRecord) => void;
   onDragEnd: () => void;
 }
 
@@ -69,7 +72,7 @@ interface Props {
  * (regra `nested-interactive` do axe). O corpo do cartão continua sendo o alvo
  * único de abrir/arrastar/Shift+seta; o rodapé com os dois botões é irmão dele.
  */
-export function DealCard({
+function DealCardBase({
   deal, onOpen, onMove, onLose, lock, canExit, blockedMove, onBlockedMove,
   previousStage, nextStage, dragging, onDragStart, onDragEnd,
 }: Props) {
@@ -98,7 +101,7 @@ export function DealCard({
     event.preventDefault();
     // Recusa MUDA era o defeito: o mesmo motivo que o botão põe no nome
     // acessível vai para o `aria-live` do quadro, em vez de o gesto sumir.
-    const recusa = blockedMove(destino);
+    const recusa = blockedMove(deal, destino);
     if (recusa) return onBlockedMove(recusa);
     onMove(deal, destino);
   };
@@ -115,7 +118,7 @@ export function DealCard({
    *  já está no nome acessível do cartão. */
   const moveButton = (stage: PipelineStage | undefined, Icon: typeof ChevronLeft) => {
     if (!stage || !movable) return null;
-    const recusa = blockedMove(stage);
+    const recusa = blockedMove(deal, stage);
     return (
       <button
         type="button"
@@ -158,7 +161,7 @@ export function DealCard({
               lock.monthClosed ? ` Mês ${mes} fechado.` : ""}`
             : `${deal.client} — ${deal.stage_label}. Enter abre; ${impedimento}.`
         }
-        onDragStart={onDragStart}
+        onDragStart={() => onDragStart(deal)}
         onDragEnd={onDragEnd}
         onClick={() => onOpen(deal)}
         onKeyDown={handleKeyDown}
@@ -258,3 +261,19 @@ export function DealCard({
     </article>
   );
 }
+
+const mesmaTrava = (a: DealLock, b: DealLock) =>
+  a.locked === b.locked && a.reason === b.reason && a.monthClosed === b.monthClosed;
+
+/**
+ * O kanban desenha os 2.288 negócios ativos da homologação, e sem `memo` todos
+ * eram refeitos a cada render do Pipeline (tecla na busca, abrir o modal) e a
+ * cada coluna que o arraste cruzava: ~1,1 s por vez no `desempenho.test.tsx`.
+ *
+ * `lock` é comparado pelo VALOR porque `dealLock` devolve um objeto novo a cada
+ * chamada; o resto das props é estável em quem chama (`DealsKanban` e
+ * `Pipeline` usam `useCallback`), então basta a identidade.
+ */
+export const DealCard = memo(DealCardBase, (antes, depois) =>
+  (Object.keys({ ...antes, ...depois }) as (keyof Props)[]).every((chave) =>
+    chave === "lock" ? mesmaTrava(antes.lock, depois.lock) : Object.is(antes[chave], depois[chave])));

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -9,31 +9,62 @@ import { UpdateNotifier } from "@/components/UpdateNotifier";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
-const DashboardSwitcher = lazy(() => import("@/pages/DashboardSwitcher"));
-const Pipeline = lazy(() => import("@/pages/Pipeline"));
-const Leads = lazy(() => import("@/pages/Leads"));
-const Activities = lazy(() => import("@/pages/Activities"));
-
-const Equipes = lazy(() => import("@/pages/Equipes"));
-const Marketing = lazy(() => import("@/pages/Marketing"));
-const DataManagement = lazy(() => import("@/pages/DataManagement"));
-const SettingsPage = lazy(() => import("@/pages/Settings"));
-const Resultados = lazy(() => import("@/pages/Resultados"));
-const Links = lazy(() => import("@/pages/Links"));
-const CcaPipeline = lazy(() => import("@/pages/CcaPipeline"));
-const AdminPermissions = lazy(() => import("@/pages/AdminPermissions"));
-const AdminIntegrations = lazy(() => import("@/pages/AdminIntegrations"));
-const AdminDevelopers = lazy(() => import("@/pages/AdminDevelopers"));
-const Gamification = lazy(() => import("@/pages/Gamification"));
-const DailyReport = lazy(() => import("@/pages/DailyReport"));
-const Checkpoint = lazy(() => import("@/pages/Checkpoint"));
-const AdminDailyTeams = lazy(() => import("@/pages/AdminDailyTeams"));
-const Checkin = lazy(() => import("@/pages/Checkin"));
-const AdminAllowedIps = lazy(() => import("@/pages/AdminAllowedIps"));
-const MetaAdsSetup = lazy(() => import("@/pages/MetaAdsSetup"));
-const AdminLeadAutomation = lazy(() => import("@/pages/AdminLeadAutomation"));
-const SdrModule = lazy(() => import("@/pages/SdrModule"));
 import NotFound from "./pages/NotFound";
+
+/** Imports das telas logadas, para a pré-carga — o mesmo `import()` do `lazy`. */
+const importsDasTelas: Array<() => Promise<unknown>> = [];
+const tela: typeof lazy = (carregar) => {
+  importsDasTelas.push(carregar);
+  return lazy(carregar);
+};
+
+const DashboardSwitcher = tela(() => import("@/pages/DashboardSwitcher"));
+const Pipeline = tela(() => import("@/pages/Pipeline"));
+const Leads = tela(() => import("@/pages/Leads"));
+const Activities = tela(() => import("@/pages/Activities"));
+
+const Equipes = tela(() => import("@/pages/Equipes"));
+const Marketing = tela(() => import("@/pages/Marketing"));
+const DataManagement = tela(() => import("@/pages/DataManagement"));
+const SettingsPage = tela(() => import("@/pages/Settings"));
+const Resultados = tela(() => import("@/pages/Resultados"));
+const Links = tela(() => import("@/pages/Links"));
+const CcaPipeline = tela(() => import("@/pages/CcaPipeline"));
+const AdminPermissions = tela(() => import("@/pages/AdminPermissions"));
+const AdminIntegrations = tela(() => import("@/pages/AdminIntegrations"));
+const AdminDevelopers = tela(() => import("@/pages/AdminDevelopers"));
+const Gamification = tela(() => import("@/pages/Gamification"));
+// Diário é rota pública: fica fora da pré-carga de quem está logado.
+const DailyReport = lazy(() => import("@/pages/DailyReport"));
+const Checkpoint = tela(() => import("@/pages/Checkpoint"));
+const AdminDailyTeams = tela(() => import("@/pages/AdminDailyTeams"));
+const Checkin = tela(() => import("@/pages/Checkin"));
+const AdminAllowedIps = tela(() => import("@/pages/AdminAllowedIps"));
+const MetaAdsSetup = tela(() => import("@/pages/MetaAdsSetup"));
+const AdminLeadAutomation = tela(() => import("@/pages/AdminLeadAutomation"));
+const SdrModule = tela(() => import("@/pages/SdrModule"));
+
+/**
+ * Baixa as telas logadas depois do login, uma por vez e só com o navegador
+ * ocioso. Sem isto a primeira visita a cada tela esperava o download do chunk
+ * (medido: 1,1 s no Pipeline com CPU 4x e 150 ms de latência).
+ *
+ * ponytail: baixa todas as telas, inclusive as que o papel não abre; filtrar
+ * por `permissionForPath` quando a banda da loja pesar.
+ */
+function preCarregarTelas() {
+  const fila = importsDasTelas.splice(0);
+  const quandoOcioso = (fn: () => void) =>
+    typeof requestIdleCallback === "function" ? requestIdleCallback(fn) : setTimeout(fn, 200);
+  const proxima = () => {
+    const carregar = fila.shift();
+    if (!carregar) return;
+    // Falha na pré-carga não é da pessoa: a navegação refaz o import e, se
+    // falhar de novo, o ErrorBoundary mostra.
+    void carregar().catch(() => undefined).finally(() => quandoOcioso(proxima));
+  };
+  quandoOcioso(proxima);
+}
 
 // `staleTime` de um minuto: sem ele toda volta de aba refazia as consultas do
 // painel inteiro. `retry: 1` porque erro de RLS ou de permissão não melhora na
@@ -51,7 +82,10 @@ const telaDeCarregamento = (
 
 function RequireAuth() {
   const { session, loading } = useAuth();
-  const location = useLocation();
+
+  useEffect(() => {
+    if (bypassAuth || session) preCarregarTelas();
+  }, [session]);
 
   if (bypassAuth) {
     return <AppLayout />;
@@ -63,10 +97,20 @@ function RequireAuth() {
 
   if (session) return <AppLayout />;
 
-  // Guarda o destino no `state` (não na URL: caminho com id de lead ou de
-  // negócio não precisa ficar no histórico do navegador nem em log de acesso).
-  // Sem isto, abrir um link de /pipeline sem sessão levava ao login e depois
-  // jogava na home do papel — o link que a pessoa recebeu se perdia.
+  return <IrParaLogin />;
+}
+
+/**
+ * Único trecho do guard que lê a rota. Com `useLocation` no `RequireAuth`, toda
+ * troca de tela re-renderizava o layout inteiro (menu, cabeçalho, sino).
+ *
+ * Guarda o destino no `state` (não na URL: caminho com id de lead ou de
+ * negócio não precisa ficar no histórico do navegador nem em log de acesso).
+ * Sem isto, abrir um link de /pipeline sem sessão levava ao login e depois
+ * jogava na home do papel — o link que a pessoa recebeu se perdia.
+ */
+function IrParaLogin() {
+  const location = useLocation();
   return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
 }
 

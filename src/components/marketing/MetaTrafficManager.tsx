@@ -83,6 +83,11 @@ type RespostaDecisao =
   | { tipo: "aprendizado"; aviso: Aviso }
   | { tipo: "falha"; mensagem: string };
 
+const FALHOU: Record<Decisao["decisao"], string> = {
+  aprovar: "Não foi possível aprovar a proposta",
+  recusar: "Não foi possível recusar a proposta",
+};
+
 const reais = (v: number | null | undefined) => brl(v, { cents: true });
 const pct = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" });
 
@@ -278,20 +283,20 @@ export function MetaTrafficManager() {
     },
     onSuccess: (run) => {
       if (run.status === "falhou") {
-        toast.error("O gestor falhou", { description: run.erro ?? "Falha sem mensagem." });
+        toast.error("Não foi possível rodar o gestor de tráfego", { description: run.erro ?? "Falha sem mensagem." });
       } else if (run.reused) {
         toast.info("Análise reaproveitada", {
           description: "Já havia uma análise do gestor em andamento ou feita há menos de 10 minutos: nenhuma chamada nova de IA.",
         });
       } else {
-        toast.success("Gestor rodou", {
+        toast.success("Análise do gestor concluída", {
           description: run.propostas === 0
             ? "Nenhuma ação nova na fila de aprovação."
             : `${run.propostas} ${run.propostas === 1 ? "ação nova" : "ações novas"} na fila de aprovação.`,
         });
       }
     },
-    onError: (e) => toast.error("O gestor falhou", { description: e.message }),
+    onError: (e) => toast.error("Não foi possível rodar o gestor de tráfego", { description: e.message }),
     // A falha também fica gravada na execução: a tela relê e a mostra com a data.
     onSettled: () =>
       Promise.all([
@@ -310,21 +315,21 @@ export function MetaTrafficManager() {
       if (r.tipo === "aprendizado") return;
       await recarregar;
       if (r.tipo === "falha") {
-        toast.error("A decisão não foi concluída", { description: r.mensagem });
+        toast.error(FALHOU[pedido.decisao], { description: r.mensagem });
       } else if (r.status === "recusada") {
-        toast.success("Proposta recusada", { description: "Saiu da fila; nada foi feito na Meta." });
+        toast.success("Proposta recusada", { description: "Saiu da fila; nada foi feito na Meta.", duration: 2500 });
       } else if (r.status === "parcial") {
-        toast.warning("Aprovada, mas a verba mudou só em parte", {
+        toast.warning("Proposta aprovada, mas a verba mudou só em parte", {
           description: r.erro ?? "Veja conjunto por conjunto no histórico de ações.",
         });
       } else {
-        toast.success("Aprovada e feita na Meta", { description: "Fica registrado no histórico de ações, com o seu nome." });
+        toast.success("Proposta aprovada", { description: "Executada na Meta e registrada no histórico de ações, com o seu nome." });
       }
     },
-    onError: (e) => {
+    onError: (e, pedido) => {
       setAprovar(null);
       setAprendizado(null);
-      toast.error("A decisão não foi concluída", { description: e.message });
+      toast.error(FALHOU[pedido.decisao], { description: e.message });
     },
   });
 

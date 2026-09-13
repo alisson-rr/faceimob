@@ -4,7 +4,7 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 import { scheduleVisit } from "@/integrations/supabase/activities";
@@ -56,7 +56,10 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
 
   const confirm = async () => {
     if (!date) return;
-    if (!user?.id) return toast({ variant: "destructive", title: "Sessão expirada" });
+    if (!user?.id) {
+      toast.error("Não foi possível agendar a visita", { description: "Sessão expirada. Entre de novo." });
+      return;
+    }
     setSaving(true);
     try {
       await scheduleVisit({ dealId: deal.id, brokerId: user.id, scheduledAt: date.toISOString() });
@@ -72,18 +75,17 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
         }
       }
       const quando = format(date, "dd/MM/yyyy");
-      toast({
-        title: "Visita agendada",
-        description: avisoEtapa
-          ? `${deal.client} em ${quando}. O negócio continua em "${deal.stage_label}": ${avisoEtapa}`
-          : `${deal.client} em ${quando}.`,
-      });
+      if (avisoEtapa) {
+        toast.warning("Visita agendada sem mudar a etapa", {
+          description: `${deal.client} em ${quando}. O negócio continua em "${deal.stage_label}": ${avisoEtapa}`,
+        });
+      } else {
+        toast.success("Visita agendada", { description: `${deal.client} em ${quando}.` });
+      }
       await onScheduled();
       onClose();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível agendar",
+      toast.error("Não foi possível agendar a visita", {
         description: describeError(err, "A visita não foi registrada."),
       });
     } finally {

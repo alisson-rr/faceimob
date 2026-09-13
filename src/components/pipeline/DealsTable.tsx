@@ -78,7 +78,13 @@ export function DealsTable({
   // perguntar "maiores VGV" nem "parados há mais tempo" sem sair da tela.
   const [sort, setSort] = useState<{ key: DealSortKey; asc: boolean }>({ key: "padrao", asc: true });
 
-  const ordenados = useMemo(() => sortDealsBy(deals, sort.key, sort.asc), [deals, sort]);
+  // Na ordem padrão a lista já chega ordenada (`DealsBoard` recebe "já
+  // filtrados e ordenados"): reordenar os 7.579 de novo a cada tecla da busca
+  // era trabalho repetido.
+  const ordenados = useMemo(
+    () => (sort.key === "padrao" ? deals : sortDealsBy(deals, sort.key, sort.asc)),
+    [deals, sort],
+  );
 
   // Filtrar estando na página 3 deixava o operador olhando para a última página
   // de um conjunto que ele acabou de trocar. Ajuste durante a renderização — o

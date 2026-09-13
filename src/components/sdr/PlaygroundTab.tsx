@@ -87,10 +87,10 @@ export function PlaygroundTab({ agents, canWrite, iaConfigurada, onCredencialAce
     setDescartando(true);
     const { data, error } = await supabase.from("sdr_conversations").delete().eq("id", convId).select("id");
     setDescartando(false);
-    if (error) return toast.error(describeError(error, "Não foi possível descartar a simulação."));
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (error) return toast.error("Não foi possível descartar a simulação", { description: describeError(error, "Tente de novo.") });
+    if (!data?.length) return toast.error("Não foi possível descartar a simulação", { description: SEM_PERMISSAO });
     setMessages([]); setConvId("");
-    toast.success("Simulação descartada — ela sai também da aba Conversas.");
+    toast.success("Simulação descartada", { description: "Ela sai também da aba Conversas." });
   }
 
   /** Confere a chave do cofre sem gastar um turno de conversa. */
@@ -100,10 +100,13 @@ export function PlaygroundTab({ agents, canWrite, iaConfigurada, onCredencialAce
       const { data, error } = await supabase.functions.invoke("sdr-agent-chat", { body: { action: "probe" } });
       if (error) throw error;
       onCredencialAceita();
-      toast.success(`Chave da OpenAI aceita (${data.models} modelos disponíveis).`);
+      toast.success("Chave da OpenAI aceita", { description: `${data.models} modelos disponíveis.` });
     } catch (e: unknown) {
-      const msg = await functionErrorMessage(e, "Não foi possível testar a chave da OpenAI");
-      setMessages(m => [...m, { role: "error", content: msg }]);
+      // Testar a chave não é turno de conversa: o erro sai no aviso, como o
+      // sucesso, e não como bolha no log da simulação.
+      toast.error("Não foi possível testar a chave da OpenAI", {
+        description: await functionErrorMessage(e, "Tente de novo."),
+      });
     } finally { setTestando(false); }
   }
 

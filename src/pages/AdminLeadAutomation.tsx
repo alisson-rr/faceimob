@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle, Settings2, FileText, UserCheck, Lock, ArrowUp, ArrowDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -62,6 +62,7 @@ type Group = {
 };
 
 const NO_PERMISSION = "Sem permissão: só o administrador altera a automação.";
+const AVISO_CARGA = "carga-automacao-leads";
 
 /**
  * Piso de cada campo numérico das regras, com o que acontece se ele passar.
@@ -96,25 +97,29 @@ type WriteResult = { data: unknown[] | null; error: { code?: string; message?: s
  * Escrita honesta. RLS que barra um update/delete devolve 0 linhas SEM erro
  * (o `using` filtra antes de o `with check` ser avaliado), e o supabase-js
  * entrega `error: null` — sem `.select()` e contagem, o toast de sucesso mente.
- * `byCode` traduz um código específico do Postgres (ex.: 23505) numa frase que
- * explica a regra em vez do genérico do `describeError`. `semLinha` é a recusa
- * silenciosa: o padrão fala do administrador, mas a filiação à roleta também
- * aceita diretor e precisa dizer a regra dele.
+ * `titulo` é o aviso de falha da ação ("Não foi possível excluir o turno") — era
+ * "Erro ao salvar" para toda escrita, inclusive exclusão. `byCode` traduz um
+ * código específico do Postgres (ex.: 23505) numa frase que explica a regra em
+ * vez do genérico do `describeError`. `semLinhaAviso` troca a recusa silenciosa
+ * por aviso neutro: na filiação à roleta, 0 linhas costuma ser lista velha (e a
+ * tela recarrega logo depois), não falha.
  */
 async function wrote(
   q: PromiseLike<WriteResult>,
-  fallback: string,
+  titulo: string,
   byCode: Record<string, string> = {},
-  semLinha = NO_PERMISSION,
+  semLinhaAviso?: string,
 ) {
   const { data, error } = await q;
   if (error) {
-    const description = (error.code && byCode[error.code]) || describeError(error, fallback);
-    toast({ variant: "destructive", title: "Erro ao salvar", description });
+    toast.error(titulo, {
+      description: (error.code && byCode[error.code]) || describeError(error, "Tente de novo em instantes."),
+    });
     return false;
   }
   if (!data?.length) {
-    toast({ variant: "destructive", title: semLinha });
+    if (semLinhaAviso) toast.warning("Nada mudou", { description: semLinhaAviso });
+    else toast.error(titulo, { description: NO_PERMISSION });
     return false;
   }
   return true;
@@ -234,8 +239,19 @@ export default function AdminLeadAutomation() {
       links.forEach((x) => map.set(x.form_id, x.form_name));
       (lf.data ?? []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, null); });
       setDetectedForms(Array.from(map.entries()).map(([form_id, form_name]) => ({ form_id, form_name })));
+      // Quase toda gravação recarrega: a carga que deu certo tira o aviso fixo de
+      // uma falha anterior, que senão seguiria dizendo que a tela está nos padrões.
+      toast.dismiss(AVISO_CARGA);
     } catch (error) {
-      toast({ variant: "destructive", title: "Erro ao carregar", description: describeError(error, "Não foi possível carregar a automação de leads.") });
+      // Fica até ser fechado: com a carga falha, os campos mostram os padrões e o
+      // Salvar continua habilitado — um aviso que some deixava gravar o padrão
+      // por cima da configuração real sem ninguém perceber. O id fixo impede que
+      // cada recarga falha empilhe mais um.
+      toast.error("Não foi possível carregar a automação de leads", {
+        id: AVISO_CARGA,
+        description: describeError(error, "Os valores na tela podem ser os padrões: recarregue a página antes de salvar."),
+        duration: Infinity,
+      });
     } finally {
       setLoading(false);
     }
@@ -257,9 +273,7 @@ export default function AdminLeadAutomation() {
       return !Number.isFinite(valor) || valor < min;
     });
     if (invalido) {
-      toast({
-        variant: "destructive",
-        title: `"${invalido.rotulo}" precisa ser no mínimo ${invalido.min}`,
+      toast.error(`"${invalido.rotulo}" precisa ser no mínimo ${invalido.min}`, {
         description: invalido.consequencia,
       });
       return;
@@ -279,10 +293,10 @@ export default function AdminLeadAutomation() {
         })
         .eq("id", true)
         .select("id"),
-      "Não foi possível salvar as regras de automação.",
+      "Não foi possível salvar as regras de automação",
     );
     setSavingSettings(false);
-    if (ok) toast({ title: "Automação salva" });
+    if (ok) toast.success("Regras de automação salvas");
   };
 
   const upsertWindow = async (w: Window, idx: number) => {
@@ -301,13 +315,13 @@ export default function AdminLeadAutomation() {
       w.id
         ? supabase.from("work_shifts").update(payload).eq("id", w.id).select("id")
         : supabase.from("work_shifts").insert(payload).select("id"),
-      "Não foi possível salvar a janela de atendimento.",
+      "Não foi possível salvar o turno",
       // `work_shifts_code_key`: dois turnos novos sem editar o Slot caíam aqui
       // com "Já existe um registro com esses dados", sem dizer qual campo.
       { "23505": "Já existe um turno com este Slot. Troque o campo Slot (id interno) antes de salvar." },
     );
     if (!ok) return;
-    toast({ title: "Turno salvo" });
+    toast.success("Turno salvo");
     load();
   };
 
@@ -323,23 +337,29 @@ export default function AdminLeadAutomation() {
     [ordenados[idx], ordenados[destino]] = [ordenados[destino], ordenados[idx]];
     const ids = ordenados.map((w) => w.id);
     if (ids.some((id) => !id)) {
-      return toast({ variant: "destructive", title: "Salve o turno novo antes de reordenar." });
+      return toast.error("Salve o turno novo antes de reordenar");
     }
     setWindows(ordenados.map((w, i) => ({ ...w, position: i })));
+    // Um aviso só no fim do laço: sucesso quando todas as posições gravaram.
+    let gravou = true;
     for (const [i, id] of ids.entries()) {
       if (!id) continue;
-      const ok = await wrote(
+      gravou = await wrote(
         supabase.from("work_shifts").update({ position: i }).eq("id", id).select("id"),
-        "Não foi possível reordenar os turnos.",
+        "Não foi possível reordenar os turnos",
       );
-      if (!ok) break;
+      if (!gravou) break;
     }
+    if (gravou) toast.success("Ordem dos turnos salva", { duration: 2500 });
     load();
   };
 
   const deleteWindow = async (id: string) => {
     setConfirmando(null);
-    if (await wrote(supabase.from("work_shifts").delete().eq("id", id).select("id"), "Não foi possível excluir a janela de atendimento.")) load();
+    if (await wrote(supabase.from("work_shifts").delete().eq("id", id).select("id"), "Não foi possível excluir o turno")) {
+      toast.success("Turno excluído");
+      load();
+    }
   };
 
   const addWindow = () => setWindows(ws => [...ws, {
@@ -359,18 +379,18 @@ export default function AdminLeadAutomation() {
   const createGroup = async (name: string, kind: string) => {
     const ok = await wrote(
       supabase.from("distribution_groups").insert({ name, slug: slugify(name), kind, active: true }).select("id"),
-      "Não foi possível criar o grupo de distribuição.",
+      "Não foi possível criar o grupo",
       { "23505": "Já existe um grupo com esse nome." },
     );
-    if (ok) { setGroupDialog(null); load(); }
+    if (ok) { toast.success("Grupo criado"); setGroupDialog(null); load(); }
   };
   const renameGroup = async (id: string, name: string) => {
     const ok = await wrote(
       supabase.from("distribution_groups").update({ name }).eq("id", id).select("id"),
-      "Não foi possível renomear o grupo.",
+      "Não foi possível renomear o grupo",
       { "23505": "Já existe um grupo com esse nome." },
     );
-    if (ok) { setGroupDialog(null); load(); }
+    if (ok) { toast.success("Grupo renomeado"); setGroupDialog(null); load(); }
   };
   const salvarGrupo = async () => {
     const nome = groupDialog?.name.trim();
@@ -382,25 +402,31 @@ export default function AdminLeadAutomation() {
   const salvarFormManual = async () => {
     const id = formDialog?.form_id.trim();
     if (!formDialog || !id) return;
-    await addGroupForm(formDialog.groupId, id, formDialog.form_name.trim() || null);
-    setFormDialog(null);
+    // Na falha o diálogo fica aberto com o id digitado, para corrigir e repetir.
+    if (await addGroupForm(formDialog.groupId, id, formDialog.form_name.trim() || null)) setFormDialog(null);
   };
   const toggleGroup = async (id: string, active: boolean) => {
-    if (await wrote(supabase.from("distribution_groups").update({ active }).eq("id", id).select("id"), "Não foi possível alterar o grupo.")) load();
+    if (await wrote(supabase.from("distribution_groups").update({ active }).eq("id", id).select("id"), "Não foi possível alterar o grupo")) {
+      toast.success(active ? "Grupo ativado" : "Grupo desativado", { duration: 2500 });
+      load();
+    }
   };
   const deleteGroup = async (id: string) => {
     setConfirmando(null);
     // A última fila geral ativa é recusada pelo banco (trigger da 0064): é para
     // ela que o SDR devolve o lead qualificado e para onde `assign_lead` cai
     // quando o lead não tem grupo. A mensagem do P0001 já explica.
-    if (await wrote(supabase.from("distribution_groups").delete().eq("id", id).select("id"), "Não foi possível excluir o grupo.")) load();
+    if (await wrote(supabase.from("distribution_groups").delete().eq("id", id).select("id"), "Não foi possível excluir o grupo")) {
+      toast.success("Grupo excluído");
+      load();
+    }
   };
   const toggleGroupBroker = async (groupId: string, brokerId: string, on: boolean) => {
-    await wrote(
+    const ok = await wrote(
       on
         ? supabase.from("distribution_group_members").upsert({ group_id: groupId, profile_id: brokerId, active: true }).select("profile_id")
         : supabase.from("distribution_group_members").delete().eq("group_id", groupId).eq("profile_id", brokerId).select("profile_id"),
-      on ? "Não foi possível incluir o corretor no grupo." : "Não foi possível remover o corretor do grupo.",
+      on ? "Não foi possível incluir o corretor na roleta" : "Não foi possível remover o corretor da roleta",
       // A tabela não tem gatilho: 42501 aqui é sempre a recusa crua da RLS, e o
       // "sem permissão" genérico não diz ao diretor qual é a regra. O admin passa
       // na policy por `is_admin()`, então a regra do diretor não vale para ele.
@@ -408,35 +434,42 @@ export default function AdminLeadAutomation() {
       // 0 linhas sem erro: a lista estava velha (outra pessoa já mexeu) ou, para
       // o diretor, o alcance mudou desde o load — o banco não diz qual.
       isAdmin
-        ? "Nada mudou: o corretor já não estava no grupo. Lista recarregada."
-        : "Nada mudou: o corretor já tinha saído ou a roleta saiu do seu alcance. Lista recarregada.",
+        ? "O corretor já não estava no grupo. Lista recarregada."
+        : "O corretor já tinha saído ou a roleta saiu do seu alcance. Lista recarregada.",
     );
+    if (ok) toast.success(on ? "Corretor incluído na roleta" : "Corretor removido da roleta", { duration: 2500 });
     // Recarrega sempre: na recusa, a tela precisa mostrar o estado real.
     load();
   };
   const addGroupForm = async (groupId: string, formId: string, form_name: string | null) => {
     const form_id = formId.trim();
-    if (!form_id) return;
+    if (!form_id) return false;
     const ok = await wrote(
       supabase.from("distribution_group_forms").insert({ group_id: groupId, form_id, form_name }).select("form_id"),
-      "Não foi possível vincular o formulário ao grupo.",
+      "Não foi possível vincular o formulário",
       // Índice único global em form_id (0004): um formulário alimenta uma roleta só.
       { "23505": "Este formulário já pertence a outro grupo. Remova-o de lá antes." },
     );
-    if (ok) load();
+    if (ok) { toast.success("Formulário vinculado", { duration: 2500 }); load(); }
+    return ok;
   };
   const removeGroupForm = async (groupId: string, formId: string) => {
-    if (await wrote(supabase.from("distribution_group_forms").delete().eq("group_id", groupId).eq("form_id", formId).select("form_id"), "Não foi possível desvincular o formulário.")) load();
+    if (await wrote(supabase.from("distribution_group_forms").delete().eq("group_id", groupId).eq("form_id", formId).select("form_id"), "Não foi possível desvincular o formulário")) {
+      toast.success("Formulário desvinculado", { duration: 2500 });
+      load();
+    }
   };
   const togglePause = async (v: boolean) => {
     const previous = settings.leads_paused;
     setSettings((s) => ({ ...s, leads_paused: v }));
     const ok = await wrote(
       supabase.from("automation_settings").update({ leads_paused: v }).eq("id", true).select("id"),
-      v ? "Não foi possível pausar a chegada de leads." : "Não foi possível retomar a chegada de leads.",
+      v ? "Não foi possível pausar a chegada de leads" : "Não foi possível retomar a chegada de leads",
     );
     if (!ok) return setSettings((s) => ({ ...s, leads_paused: previous }));
-    toast({ title: v ? "Chegada de leads pausada" : "Chegada de leads retomada" });
+    // Duração normal de propósito: pausar trava a distribuição da operação
+    // inteira. Não é o switch pequeno e frequente dos 2,5 s.
+    toast.success(v ? "Chegada de leads pausada" : "Chegada de leads retomada");
   };
 
   return (

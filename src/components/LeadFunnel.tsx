@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, LoadingState, StatusBadge } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, Clock, HandMetal, MessageCircle, Timer } from "lucide-react";
+import { AlertTriangle, Clock, HandMetal, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
@@ -16,9 +16,11 @@ import {
   useAutomationSettings, useInvalidateLeads, useLeadsRealtime, useNowTicker,
   useOpenLeads, useTimeoutReleasesToday, waNumber,
 } from "@/components/leads";
+import { AttendCountdown } from "@/components/leads/LeadsTable";
+import { sameLeadProps } from "@/components/leads/sameLeadProps";
 import {
   claimLead, FUNNEL_STAGES, funnelStageLabel, isLeadOverdue,
-  attendSecondsLeft, formatCountdown, canClaim, leadSourceTone,
+  canClaim, leadSourceTone,
   type LeadRecord, type LeadTone,
 } from "@/integrations/supabase/leads";
 
@@ -48,9 +50,10 @@ export default function LeadFunnel({
   const [overdueOpen, setOverdueOpen] = useState(false);
 
   const leads = useMemo(() => leadsQuery.data ?? [], [leadsQuery.data]);
-  // Tique de 1s só enquanto existe trava correndo — o funil fica aberto o dia
-  // inteiro e são até 500 cartões na tela.
-  const now = useNowTicker(leads.some((lead) => lead.status === "assigned" && lead.attend_deadline));
+  // Relógio lento: "atrasado", "inativo" e "novo" andam de 30 em 30 s. O
+  // cronômetro da trava tem o próprio tique de 1 s (`AttendCountdown`): com o
+  // relógio aqui, 1 lead em trava refazia os até 500 cartões a cada segundo.
+  const now = useNowTicker(false);
 
   const grouped = useMemo(() => {
     const groups: Record<string, LeadRecord[]> = {};
@@ -96,19 +99,23 @@ export default function LeadFunnel({
   const attendTimeout = settingsQuery.data?.attend_timeout_seconds ?? 300;
   const timeoutsToday = profileId ? releasesQuery.data?.get(profileId) ?? 0 : 0;
 
+  // Sem aviso de sucesso aqui: "Lead em atendimento" sai do realtime de
+  // `lead_events` no EngagementLayer, com som.
   const attend = async (lead: LeadRecord) => {
     try {
       await claimLead(lead.id);
-      toast({ title: "Lead em atendimento", description: `${lead.name} está travado com você.` });
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível atender",
+      toast.error("Não foi possível atender o lead", {
         description: describeError(err, "outro corretor pode ter assumido antes"),
       });
     }
     await invalidateLeads();
   };
+  // O cartão é memoizado e precisa de handler com identidade estável; `attend`
+  // é recriada a cada render (usa `invalidateLeads`), então entra por ref.
+  const attendRef = useRef(attend);
+  useEffect(() => { attendRef.current = attend; });
+  const onAttend = useCallback((lead: LeadRecord) => { void attendRef.current(lead); }, []);
 
   if (leadsQuery.error) {
     return (
@@ -151,12 +158,16 @@ export default function LeadFunnel({
         )}
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-4">
+      {/* `lead-funnel`: gancho da regra de pintura em `index.css`. */}
+      <div className="lead-funnel flex gap-3 overflow-x-auto pb-4">
         {FUNNEL_STAGES.map((stage) => {
           const items = grouped[stage.key] || [];
           const accent = columnBorder[stage.tone];
           return (
-            <div key={stage.key} className="w-[260px] min-w-[260px] shrink-0">
+            // Coluna em camada própria: o cronômetro da trava muda a cada segundo e
+            // repintava os cartões das oito colunas (trace, CPU 4x: pintura de
+            // ~130 para ~20 ms/s). Isolar só o cronômetro não adiantou.
+            <div key={stage.key} className="w-[260px] min-w-[260px] shrink-0 will-change-transform">
               <div className={cn("flex items-center justify-between rounded-t-xl border-x border-t bg-muted/50 px-3 py-2", accent)}>
                 <span className="text-eyebrow">{stage.label}</span>
                 <Badge variant="outline" className="tabular-nums">{num(items.length)}</Badge>
@@ -172,8 +183,8 @@ export default function LeadFunnel({
                     claimable={canClaim(lead, profileId)}
                     primeiroDaFila={lead.id === primeiroDaFila}
                     overdue={isLeadOverdue(lead, now)}
-                    onOpen={() => setSelectedId(lead.id)}
-                    onAttend={() => attend(lead)}
+                    onOpen={setSelectedId}
+                    onAttend={onAttend}
                   />
                 ))}
                 {items.length === 0 && (
@@ -254,8 +265,12 @@ export default function LeadFunnel({
  * foco nem responde a Enter — o funil era intransitável no teclado (X06). Os
  * botões de WhatsApp e "Atender" ficam FORA do botão do cartão, porque botão
  * dentro de botão é HTML inválido e o navegador desmonta a árvore.
+ *
+ * Memoizado: um evento realtime refaz só o cartão cujo lead mudou, mesmo quando
+ * um lead novo desloca a lista (`sameLeadProps`). `now` continua como prop porque
+ * "novo", "inativo" e o "há X minutos" precisam andar a cada tique de 30 s.
  */
-function LeadCardMini({
+const LeadCardMini = memo(function LeadCardMini({
   lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, onOpen, onAttend,
 }: {
   lead: LeadRecord;
@@ -266,13 +281,10 @@ function LeadCardMini({
   /** O lead aguardando atendimento que vence primeiro: só ele leva o "Atender" âmbar. */
   primeiroDaFila: boolean;
   overdue: boolean;
-  onOpen: () => void;
-  onAttend: () => void;
+  onOpen: (leadId: string) => void;
+  onAttend: (lead: LeadRecord) => void;
 }) {
   const isBrandNew = now - new Date(lead.created_at).getTime() < attendTimeout * 1000;
-  // Cronômetro da trava vem de `attend_deadline`: o banco zera esse campo no
-  // claim, então contar a partir de created_at mostrava prazo em lead já travado.
-  const secondsLeft = attendSecondsLeft(lead, now);
   const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
   const inactive = (now - lastActivity) / 3_600_000 > inactivityHours;
   const number = waNumber(lead.phone);
@@ -287,7 +299,7 @@ function LeadCardMini({
     >
       <button
         type="button"
-        onClick={onOpen}
+        onClick={() => onOpen(lead.id)}
         className="w-full rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <div className="flex items-start gap-2">
@@ -321,18 +333,17 @@ function LeadCardMini({
         <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
         {/* Cronômetro neutro, como o do NewLeadNotifier: o âmbar deste cartão é
             o botão "Atender". No último minuto vira alerta vermelho. */}
-        {secondsLeft !== null && (
-          <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
-            <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>
-          </StatusBadge>
-        )}
+        <AttendCountdown lead={lead} />
         {overdue && <StatusBadge tone="danger" icon={AlertTriangle}>Atrasado</StatusBadge>}
         {inactive && !overdue && <StatusBadge tone="warning" icon={AlertTriangle}>Inativo</StatusBadge>}
         {number && (
           <Button
             variant="ghost" size="icon" className="ml-auto h-7 w-7 text-success hover:text-success"
             aria-label={`Abrir WhatsApp de ${lead.name}`}
-            onClick={() => window.open(`https://wa.me/${number}`, "_blank", "noopener")}
+            onClick={() => {
+              window.open(`https://wa.me/${number}`, "_blank", "noopener");
+              toast("WhatsApp aberto", { description: `Conversa com ${lead.name}.`, duration: 2500 });
+            }}
           >
             <MessageCircle className="h-4 w-4" />
           </Button>
@@ -344,12 +355,12 @@ function LeadCardMini({
           size="sm"
           variant={primeiroDaFila ? "highlight" : "default"}
           className="mt-2 h-8 w-full text-xs"
-          onClick={onAttend}
+          onClick={() => onAttend(lead)}
         >
           <HandMetal className="h-3.5 w-3.5" /> Atender
-          {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
+          <AttendCountdown lead={lead} bare />
         </Button>
       )}
     </div>
   );
-}
+}, sameLeadProps);

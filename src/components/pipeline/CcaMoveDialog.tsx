@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 import { updateDeal, useCanExitStage, useDeals } from "./data";
@@ -111,18 +111,17 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
         }
       }
 
-      toast({
-        title: "Caso movido",
-        description: avisoNegocio
-          ? `${deal.client} → ${stage.name}. O negócio ficou parado no Pipeline: ${avisoNegocio}`
-          : `${deal.client} → ${stage.name}.`,
-      });
+      if (avisoNegocio) {
+        toast.warning(`Caso movido para ${stage.name}`, {
+          description: `${deal.client}. O negócio ficou parado no Pipeline: ${avisoNegocio}`,
+        });
+      } else {
+        toast.success(`Caso movido para ${stage.name}`, { description: `${deal.client}.` });
+      }
       await onMoved();
       onClose();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao mover o caso",
+      toast.error("Não foi possível mover o caso", {
         description: describeError(err, "Nada foi alterado no servidor."),
       });
     } finally {

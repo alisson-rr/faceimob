@@ -9,10 +9,48 @@ import {
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/shared/Logo";
 import { useTheme } from "@/hooks/useTheme";
-import { useCallback, useRef } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { NAV_GROUPS, NAV_ITEMS, type NavItem } from "@/components/layout/navigation";
+
+/** Duração da animação do painel — `duration-500` em `@/components/ui/sidebar`. */
+const ANIMACAO_DO_PAINEL_MS = 500;
+
+/**
+ * Item com `memo`: trocar de rota muda o `active` de dois itens, e sem isto os
+ * 23 re-renderizavam com a árvore de Tooltip do Radix (76% do custo do layout
+ * por navegação). Depende de `NAV_ITEMS` ser constante de módulo.
+ */
+const ItemDoMenu = memo(function ItemDoMenu({ item, active, collapsed }: { item: NavItem; active: boolean; collapsed: boolean }) {
+  return (
+    <SidebarMenuItem>
+      {/* Item ativo (12/09/2026): pílula escura com borda fina e ícone
+          em ouro, sem brilho — era pílula azul cheia com halo azul.
+          A borda é `inset` em `box-shadow` para não mexer 1 px no
+          layout e somar com o anel de foco em vez de trocá-lo.
+          `gold` e não `highlight`: traço e ícone precisam de 3:1
+          também no tema claro (4,3:1 sobre `sidebar-accent`). */}
+      <SidebarMenuButton
+        asChild
+        isActive={active}
+        tooltip={item.title}
+        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--gold))]"
+      >
+        <NavLink to={item.url} end>
+          <item.icon className={cn("h-4 w-4", active && "text-gold")} />
+          {/* Recolhida, a barra esconde o rotulo — mas ele nao pode sair do
+              DOM: o icone nao carrega texto, entao sem o <span> TODO link do
+              menu fica sem nome acessivel. E nao e estado raro: o
+              `handleMouseLeave` do AppSidebar recolhe a barra sozinho 500 ms
+              depois que o ponteiro sai dela. `sr-only` tira da vista sem tirar
+              da arvore de acessibilidade — mesmo pixel, com nome. */}
+          <span className={cn(collapsed && "sr-only")}>{item.title}</span>
+        </NavLink>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+});
 
 export function AppSidebar() {
   const { state, setOpen } = useSidebar();
@@ -25,16 +63,33 @@ export function AppSidebar() {
   const isLight = theme === "light";
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
 
+  /**
+   * Aberto pelo hover, o painel passa POR CIMA do conteúdo: o espaçador fica na
+   * largura do ícone e a página não muda de largura. Antes ele empurrava o
+   * conteúdo animando a largura por 500 ms, e o navegador refazia o layout e
+   * repintava a tela inteira a cada quadro — travava no Pipeline e em Leads.
+   * Fica `true` até o painel terminar de fechar, senão o cabeçalho cobre a
+   * animação.
+   */
+  const [sobreposto, setSobreposto] = useState(false);
+
   const handleMouseEnter = useCallback(() => {
     clearTimeout(hoverTimer.current);
     if (collapsed) {
-      hoverTimer.current = setTimeout(() => setOpen(true), 350);
+      hoverTimer.current = setTimeout(() => {
+        setSobreposto(true);
+        setOpen(true);
+      }, 350);
     }
   }, [collapsed, setOpen]);
 
   const handleMouseLeave = useCallback(() => {
     clearTimeout(hoverTimer.current);
-    hoverTimer.current = setTimeout(() => setOpen(false), 500);
+    hoverTimer.current = setTimeout(() => {
+      setSobreposto(true);
+      setOpen(false);
+      hoverTimer.current = setTimeout(() => setSobreposto(false), ANIMACAO_DO_PAINEL_MS);
+    }, 500);
   }, [setOpen]);
 
   // Sem codigo mapeado a rota e livre — so o que exige permissao esta no mapa.
@@ -50,7 +105,7 @@ export function AppSidebar() {
   })).filter((group) => group.items.length > 0);
 
   return (
-    <Sidebar collapsible="icon" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+    <Sidebar collapsible="icon" overlay={sobreposto} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       <SidebarContent className="gap-0">
         {/* Qual arquivo de logo vale em cada tema e decidido em
             `@/components/shared/Logo` — inclusive o asset que ainda falta. */}
@@ -71,31 +126,7 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
-                  <SidebarMenuItem key={item.url}>
-                    {/* Item ativo (12/09/2026): pílula escura com borda fina e ícone
-                        em ouro, sem brilho — era pílula azul cheia com halo azul.
-                        A borda é `inset` em `box-shadow` para não mexer 1 px no
-                        layout e somar com o anel de foco em vez de trocá-lo.
-                        `gold` e não `highlight`: traço e ícone precisam de 3:1
-                        também no tema claro (4,3:1 sobre `sidebar-accent`). */}
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive(item.url)}
-                      tooltip={item.title}
-                      className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--gold))]"
-                    >
-                      <NavLink to={item.url} end>
-                        <item.icon className={cn("h-4 w-4", isActive(item.url) && "text-gold")} />
-                        {/* Recolhida, a barra esconde o rotulo — mas ele nao pode sair do
-                            DOM: o icone nao carrega texto, entao sem o <span> TODO link do
-                            menu fica sem nome acessivel. E nao e estado raro: o
-                            `handleMouseLeave` acima recolhe a barra sozinho 500 ms depois
-                            que o ponteiro sai dela. `sr-only` tira da vista sem tirar da
-                            arvore de acessibilidade — mesmo pixel, com nome. */}
-                        <span className={cn(collapsed && "sr-only")}>{item.title}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <ItemDoMenu key={item.url} item={item} active={isActive(item.url)} collapsed={collapsed} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { addDays, endOfWeek, format, isValid, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { describeError } from "@/lib/supabaseError";
+import { toast } from "@/components/ui/sonner";
 import { listPeople } from "@/integrations/supabase/newSchema";
 import {
   DirectorFunnelSection, TeamCheckpointCard,
@@ -306,15 +307,20 @@ export default function Checkpoint() {
   );
 
   const exportar = () => {
-    downloadCheckpointCsv(
-      filteredTeams.map((t) => ({
-        equipe: teamNameFor(t),
-        ativa: t.active,
-        aggr: aggregate(t.id),
-        targets: targetsFor(t.id),
-      })),
-      from,
-    );
+    try {
+      downloadCheckpointCsv(
+        filteredTeams.map((t) => ({
+          equipe: teamNameFor(t),
+          ativa: t.active,
+          aggr: aggregate(t.id),
+          targets: targetsFor(t.id),
+        })),
+        from,
+      );
+      toast.success("Checkpoint exportado");
+    } catch (e) {
+      toast.error("Não foi possível exportar o checkpoint", { description: describeError(e, "Tente de novo em instantes.") });
+    }
   };
 
   const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["checkpoint"] }); };

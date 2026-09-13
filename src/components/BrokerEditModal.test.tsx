@@ -148,8 +148,8 @@ const travado = (el: HTMLElement) => el.hasAttribute("disabled") || el.hasAttrib
  */
 const chamada = { fn: vi.fn() };
 
-const respostaDaFuncao = (body: unknown, ok = true) => {
-  chamada.fn = vi.fn(async () => ({ ok, status: ok ? 200 : 409, json: async () => body }));
+const respostaDaFuncao = (body: unknown, ok = true, status = ok ? 200 : 409) => {
+  chamada.fn = vi.fn(async () => ({ ok, status, json: async () => body }));
   vi.stubGlobal("fetch", chamada.fn);
 };
 
@@ -338,6 +338,7 @@ describe("BrokerEditModal: o que a ficha mostra é o que o banco aceita", () => 
     expect(aviso?.description, "prometer o código sem SMTP é fingir sucesso")
       .not.toContain("volta a receber o código");
     expect(aviso?.description).toContain("SMTP");
+    expect(aviso?.variant, "gravou, mas ele ainda não entra: nada de verde com som").toBe("default");
 
     await fechar();
   });
@@ -401,7 +402,7 @@ describe("BrokerEditModal: o que a ficha mostra é o que o banco aceita", () => 
     await clicar(botao("Salvar"));
 
     expect(salvo, "ficha meia salva não pode fechar como sucesso").not.toHaveBeenCalled();
-    expect(toasts.lista.at(-1)?.title).toBe("Erro ao salvar");
+    expect(toasts.lista.at(-1)?.title).toBe("Não foi possível salvar o colaborador");
     expect(toasts.lista.at(-1)?.description).toContain("Já foi gravado: dados do perfil, funções");
 
     await fechar();
@@ -431,6 +432,7 @@ describe("BrokerEditModal: trocar o e-mail de acesso", () => {
     expect(document.body.textContent, "prometer o código sem SMTP é fingir sucesso")
       .toContain("ainda NÃO sai");
     expect(toasts.lista.at(-1)?.description).toContain("só chega quando o SMTP for configurado");
+    expect(toasts.lista.at(-1)?.variant, "o login mudou, mas o código não sai: aviso neutro").toBe("default");
 
     await fechar();
   });
@@ -450,7 +452,7 @@ describe("BrokerEditModal: trocar o e-mail de acesso", () => {
     expect(erro?.title).toBe("E-mail de acesso trocado, mas a ficha não foi salva");
     expect(erro?.description).toContain("O login JÁ é");
     expect(erro?.title, "dizer só 'Falha' afirma o contrário do que aconteceu")
-      .not.toBe("Falha ao atualizar o acesso");
+      .not.toBe("Não foi possível atualizar o e-mail de acesso");
 
     await fechar();
   });
@@ -463,9 +465,23 @@ describe("BrokerEditModal: trocar o e-mail de acesso", () => {
     await clicar(botao(/Atualizar e-mail de acesso/));
 
     expect(document.body.textContent).not.toContain("Acesso do colaborador:");
-    expect(toasts.lista.at(-1)?.title).toBe("Falha ao atualizar o acesso");
+    expect(toasts.lista.at(-1)?.title).toBe("Não foi possível atualizar o e-mail de acesso");
     expect(toasts.lista.at(-1)?.description).toContain("Já existe um acesso com esse e-mail");
     expect(salvar.fn, "acesso recusado não pode gravar o resto da ficha").not.toHaveBeenCalled();
+
+    await fechar();
+  });
+
+  it("500 da função não põe o texto cru do GoTrue no aviso", async () => {
+    // O catch genérico da função devolve `error.message` do GoTrue/Postgres.
+    respostaDaFuncao({ error: "Database error updating user" }, false, 500);
+    const { fechar } = await abrir();
+
+    await clicar(botao("Confirmar"));
+    await clicar(botao(/Atualizar e-mail de acesso/));
+
+    expect(toasts.lista.at(-1)?.title).toBe("Não foi possível atualizar o e-mail de acesso");
+    expect(toasts.lista.at(-1)?.description).toBe("A função de acesso falhou. Tente de novo em instantes.");
 
     await fechar();
   });

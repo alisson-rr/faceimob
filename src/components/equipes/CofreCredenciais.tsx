@@ -93,8 +93,8 @@ export function CofreCredenciais() {
     } catch (falha: unknown) {
       toast({
         variant: "destructive",
-        title: "Não foi possível revelar",
-        description: describeError(falha, "Falha ao ler a credencial no cofre."),
+        title: "Não foi possível revelar a credencial",
+        description: describeError(falha, "Tente de novo em instantes."),
       });
     } finally {
       setRevelando(null);
@@ -120,8 +120,8 @@ export function CofreCredenciais() {
     } catch (falha: unknown) {
       toast({
         variant: "destructive",
-        title: "Não foi possível apagar",
-        description: describeError(falha, "Falha ao apagar a credencial."),
+        title: "Não foi possível apagar a credencial",
+        description: describeError(falha, "Tente de novo em instantes."),
       });
     } finally {
       setApagandoAgora(false);
@@ -138,8 +138,8 @@ export function CofreCredenciais() {
     } catch (falha: unknown) {
       toast({
         variant: "destructive",
-        title: "Não foi possível ler a trilha",
-        description: describeError(falha, "Falha ao ler quem revelou credenciais."),
+        title: "Não foi possível ler a trilha de revelações",
+        description: describeError(falha, "Tente de novo em instantes."),
       });
     }
   };
@@ -377,13 +377,13 @@ function CredencialDialog({
         secret,
         link: link.trim() || null,
       });
-      toast({ title: editando ? "Acesso atualizado" : "Acesso guardado no cofre", variant: "success" });
+      toast({ title: editando ? "Acesso atualizado" : "Acesso salvo no cofre", variant: "success" });
       onSalvo();
     } catch (falha: unknown) {
       toast({
         variant: "destructive",
-        title: "Não foi possível salvar",
-        description: describeError(falha, "Falha ao gravar a credencial no cofre."),
+        title: "Não foi possível salvar o acesso",
+        description: describeError(falha, "Tente de novo em instantes."),
       });
     } finally {
       setSalvando(false);

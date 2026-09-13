@@ -160,12 +160,20 @@ export function MetaAdsAccountsCard() {
   const salvar = useMutation({
     mutationFn: (actIds: string[]) => conectar<Salvo>({ action: "salvar", act_ids: actIds }),
     onSuccess: async (r, actIds) => {
-      toast.success(r.salvas === 1 ? "1 conta ligada" : `${r.salvas} contas ligadas`, {
-        description:
-          r.salvas < actIds.length
-            ? `${actIds.length - r.salvas} das marcadas o token não alcança mais e ficaram de fora.`
-            : "As desmarcadas saem da sincronização; o histórico fica.",
-      });
+      const ligadas = r.salvas === 1 ? "1 conta ligada" : `${r.salvas} contas ligadas`;
+      const foraDoAlcance = actIds.length - r.salvas;
+      // Marcada que o token não alcança não foi salva: resultado parcial, sem o som de sucesso.
+      if (foraDoAlcance > 0) {
+        toast.warning("Contas salvas em parte", {
+          description: `${ligadas}; ${foraDoAlcance} das marcadas o token não alcança mais e ficaram de fora.`,
+        });
+      } else {
+        toast.success("Contas salvas", {
+          description: r.salvas === 0
+            ? "Nenhuma conta ligada: a sincronização com a Meta fica parada."
+            : `${ligadas}. As desmarcadas saem da sincronização; o histórico fica.`,
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ["marketing"] });
     },
     onError: (e) => toast.error("Não foi possível salvar as contas", { description: e.message }),

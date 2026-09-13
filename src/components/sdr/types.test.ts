@@ -75,6 +75,8 @@ describe("resumoDisparo", () => {
   it("lote cheio avisa que sobrou fila", () => {
     const r = resumoDisparo({ sent: 500, failed: 0, remaining: 130 });
     expect(r.tom).toBe("success");
+    expect(r.titulo).toBe("Disparo concluído");
+    expect(r.descricao).toContain("500 mensagens enviadas");
     expect(r.descricao).toContain("130");
   });
 

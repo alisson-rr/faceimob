@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CalendarCheck, CalendarClock, CalendarDays, CalendarX2, Check, Inbox, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -70,9 +70,23 @@ export default function Activities() {
     try {
       await setTaskStatus(task.id, status);
       await queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      toast.success(status === "done" ? "Atividade concluída" : "Atividade cancelada");
+      const relida = queryClient.getQueryState<TaskWithAssignee[]>(QUERY_KEY);
+      // Se a releitura falhou, a tela já mostra o erro dela.
+      if (relida?.status === "error") return;
+      // Update barrado pelo RLS volta sem erro e sem linha (o sócio vê a
+      // atividade, mas `tasks_write` não o deixa alterar): se ela continua na
+      // lista de abertas, nada foi gravado.
+      if (relida?.data?.some((t) => t.id === task.id)) {
+        toast.error(status === "done" ? "Não foi possível concluir a atividade" : "Não foi possível cancelar a atividade", {
+          description: "a alteração não foi gravada, provavelmente por falta de permissão",
+        });
+        return;
+      }
+      toast.success(status === "done" ? "Atividade concluída" : "Atividade cancelada", { duration: 2500 });
     } catch (error) {
-      toast.error(describeError(error, "Não foi possível atualizar a atividade."));
+      toast.error(status === "done" ? "Não foi possível concluir a atividade" : "Não foi possível cancelar a atividade", {
+        description: describeError(error, "tente de novo"),
+      });
     } finally {
       setBusy(null);
     }

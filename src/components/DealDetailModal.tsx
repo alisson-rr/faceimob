@@ -6,12 +6,15 @@ import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 import type { DealStage } from "@/types/crm";
 import { toast } from "@/hooks/use-toast";
-import { primaryRole, type PersonRecord, type SaveLegacyDealInput } from "@/integrations/supabase/newSchema";
+import {
+  dealStageCodeFor, primaryRole, type PersonRecord, type SaveLegacyDealInput,
+} from "@/integrations/supabase/newSchema";
 import {
   DealCcaPanel, DealCommentsPanel, DealForm, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
 import { countDealComments } from "@/components/pipeline/DealCommentsPanel";
+import { vendaTemCard } from "@/components/pipeline/useDealActions";
 import DealDocumentUpload from "@/components/DealDocumentUpload";
 import DealHistoryPanel from "@/components/DealHistoryPanel";
 import TaskPanel from "@/components/TaskPanel";
@@ -30,6 +33,9 @@ interface Props {
   stages: PipelineStage[];
   /** Mês-base sugerido para um negócio novo (o do ciclo aberto do game). */
   defaultMonth?: string;
+  /** Fecha o modal só depois de TODAS as gravações (negócio e análise do CCA).
+   *  Fechar dentro de `onSave` apagava a análise digitada quando só ela falhava. */
+  closeOnSave?: boolean;
 }
 
 type TabKey = "detalhes" | "comentarios" | "anexos" | "agenda" | "historico" | "cca";
@@ -75,7 +81,7 @@ const emptyDeal = (stageCode: string, month?: string, selfBrokerId?: string): Sa
  * abrem depois de salvar — antes elas consultavam com um id inexistente.
  */
 export default function DealDetailModal({
-  deal, open, onClose, onSave, onReviewChanged, people, developers, stages, defaultMonth,
+  deal, open, onClose, onSave, onReviewChanged, people, developers, stages, defaultMonth, closeOnSave,
 }: Props) {
   const { user } = useAuth();
   const id = useId();
@@ -160,16 +166,31 @@ export default function DealDetailModal({
       return;
     }
     setSaving(true);
+    // São duas escritas: se só a análise do CCA falhar, o negócio JÁ foi gravado
+    // e o aviso não pode dizer que nada foi salvo.
+    let negocioGravado = false;
+    // Negócio que passa a "Fechado" com corretor no rateio vira venda com card
+    // próprio do `EngagementLayer`: o sucesso daqui sairia em cima dele.
+    const virouVenda = dealStageCodeFor(form) === "closed" && (!deal || dealStageCodeFor(deal) !== "closed")
+      && vendaTemCard(form);
     try {
       await onSave(form);
+      negocioGravado = true;
       if (dealId && Object.keys(cca).length > 0) await saveCcaAnalysis(dealId, cca);
-      toast({ title: isNew ? "Negócio criado" : "Alterações salvas" });
+      if (!virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado" : "Negócio atualizado" });
+      if (closeOnSave) onClose();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao salvar",
-        description: describeError(err, "As alterações não foram gravadas."),
-      });
+      toast(negocioGravado
+        ? {
+          variant: "destructive",
+          title: "Não foi possível salvar a análise do CCA",
+          description: `O negócio foi atualizado. ${describeError(err, "A análise não foi gravada.")}`,
+        }
+        : {
+          variant: "destructive",
+          title: isNew ? "Não foi possível criar o negócio" : "Não foi possível salvar o negócio",
+          description: describeError(err, isNew ? "O negócio não foi gravado." : "As alterações não foram gravadas."),
+        });
     } finally {
       setSaving(false);
     }

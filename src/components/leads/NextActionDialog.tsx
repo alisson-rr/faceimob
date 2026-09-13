@@ -55,6 +55,7 @@ export function NextActionDialog({
     try {
       await updateLead(lead.id, { next_action_at: parsed.toISOString() });
       toast({
+        variant: "success",
         title: "Próxima ação marcada",
         description: `${lead.name}: ${dateTime(parsed.toISOString())}.`,
       });
@@ -65,7 +66,7 @@ export function NextActionDialog({
       toast({
         variant: "destructive",
         title: "Não foi possível marcar a próxima ação",
-        description: describeError(err, "Você não tem permissão para editar este lead."),
+        description: describeError(err, "tente de novo"),
       });
     } finally {
       setSaving(false);

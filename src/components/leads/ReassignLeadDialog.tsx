@@ -28,14 +28,21 @@ export function ReassignLeadDialog({
     setSaving(true);
     try {
       await reassignLead(lead.id, broker);
-      toast({ title: "Lead realocado", description: "A trava de atendimento reiniciou." });
+      const nome = brokers.find((person) => person.id === broker)?.name;
+      toast({
+        variant: "success",
+        title: "Lead realocado",
+        description: nome
+          ? `Agora com ${nome}. A trava de atendimento reiniciou.`
+          : "A trava de atendimento reiniciou.",
+      });
       await invalidateLeads();
       onClose();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Erro ao realocar",
-        description: describeError(err, "sem permissão ou corretor inválido"),
+        title: "Não foi possível realocar o lead",
+        description: describeError(err, "tente de novo"),
       });
     } finally {
       setSaving(false);

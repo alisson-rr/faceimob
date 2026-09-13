@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -75,6 +76,60 @@ type MeuAcesso = {
 };
 
 /**
+ * Equipe, gerente e diretor da própria pessoa.
+ *
+ * Ninguém conseguia ver isso da própria conta: para saber quem é o seu
+ * gerente era preciso abrir **Equipes**, que é tela de administração e que o
+ * corretor nem sempre enxerga.
+ *
+ * O nome de quem lidera NÃO sai de `profiles`: `auth_visible_profiles()` não
+ * sobe a hierarquia, e abrir a linha do gerente entregaria CPF e endereço
+ * junto. Vem da view `team_leader_names` (migration 0079), que expõe só id,
+ * nome e avatar de quem lidera equipe ativa.
+ */
+async function lerMeuAcesso(profileId: string): Promise<MeuAcesso> {
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('teams(name,manager_id,director_id)')
+    .eq('profile_id', profileId)
+    .is('left_at', null);
+  if (error) throw dbError('minha equipe', error);
+
+  type EquipeRow = { name: string; manager_id: string | null; director_id: string | null };
+  const equipes = (data ?? [])
+    .map((row) => {
+      // O PostgREST devolve o embed "muitos-para-um" como objeto, mas a
+      // forma muda com a relação que ele resolve: aceitar as duas custa
+      // uma linha e evita um bloco em branco sem erro nenhum.
+      const bruto = row.teams as EquipeRow | EquipeRow[] | null;
+      return Array.isArray(bruto) ? bruto[0] ?? null : bruto;
+    })
+    .filter((t): t is EquipeRow => !!t);
+  if (!equipes.length) return { equipe: null, gerente: null, diretor: null, semNomes: false };
+
+  // ponytail: a pessoa pode estar em mais de uma equipe ativa; aqui vale
+  // a primeira. Vira lista quando o cadastro passar a permitir isso de
+  // propósito — hoje é acidente de dado, não caso de uso.
+  const equipe = equipes[0];
+  const precisaDeNomes = !!(equipe.manager_id || equipe.director_id);
+  let lideres: { id: string; full_name: string }[] = [];
+  let semNomes = false;
+  if (precisaDeNomes) {
+    // Falha só nos NOMES não pode apagar o nome da equipe, que já veio.
+    // E não pode virar "Sem gerente definido": isso é uma afirmação, e
+    // seria falsa.
+    try {
+      lideres = await listTeamLeaderNames();
+    } catch (err) {
+      console.error('Falha ao ler os nomes de quem lidera a equipe:', err);
+      semNomes = true;
+    }
+  }
+  const nome = (id: string | null) => lideres.find((l) => l.id === id)?.full_name ?? null;
+  return { equipe: equipe.name, gerente: nome(equipe.manager_id), diretor: nome(equipe.director_id), semNomes };
+}
+
+/**
  * Conta do usuário: o próprio perfil e a segurança do acesso.
  *
  * Antes daqui só havia segurança, e o corretor precisava abrir **Equipes** —
@@ -117,85 +172,23 @@ export default function Settings() {
   const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   // ── meu acesso ────────────────────────────────────────────────────────────
-  const [acesso, setAcesso] = useState<MeuAcesso | null>(null);
-  const [acessoErro, setAcessoErro] = useState<string | null>(null);
-
   /**
-   * Equipe, gerente e diretor da própria pessoa.
+   * Equipe, gerente e diretor da própria pessoa (ver `lerMeuAcesso`).
    *
-   * Ninguém conseguia ver isso da própria conta: para saber quem é o seu
-   * gerente era preciso abrir **Equipes**, que é tela de administração e que o
-   * corretor nem sempre enxerga.
-   *
-   * O nome de quem lidera NÃO sai de `profiles`: `auth_visible_profiles()` não
-   * sobe a hierarquia, e abrir a linha do gerente entregaria CPF e endereço
-   * junto. Vem da view `team_leader_names` (migration 0079), que expõe só id,
-   * nome e avatar de quem lidera equipe ativa.
+   * Cache do TanStack Query: voltar à tela mostra o que já estava aqui em vez de
+   * "Carregando..." de novo. Sem releitura ao focar a aba — a carga manual nunca
+   * releu assim.
    */
-  useEffect(() => {
-    if (!user?.id) return;
-    let cancelado = false;
-
-    void (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('team_members')
-          .select('teams(name,manager_id,director_id)')
-          .eq('profile_id', user.id)
-          .is('left_at', null);
-        if (error) throw dbError('minha equipe', error);
-
-        type EquipeRow = { name: string; manager_id: string | null; director_id: string | null };
-        const equipes = (data ?? [])
-          .map((row) => {
-            // O PostgREST devolve o embed "muitos-para-um" como objeto, mas a
-            // forma muda com a relação que ele resolve: aceitar as duas custa
-            // uma linha e evita um bloco em branco sem erro nenhum.
-            const bruto = row.teams as EquipeRow | EquipeRow[] | null;
-            return Array.isArray(bruto) ? bruto[0] ?? null : bruto;
-          })
-          .filter((t): t is EquipeRow => !!t);
-        if (!equipes.length) {
-          if (!cancelado) setAcesso({ equipe: null, gerente: null, diretor: null, semNomes: false });
-          return;
-        }
-
-        // ponytail: a pessoa pode estar em mais de uma equipe ativa; aqui vale
-        // a primeira. Vira lista quando o cadastro passar a permitir isso de
-        // propósito — hoje é acidente de dado, não caso de uso.
-        const equipe = equipes[0];
-        const precisaDeNomes = !!(equipe.manager_id || equipe.director_id);
-        let lideres: { id: string; full_name: string }[] = [];
-        let semNomes = false;
-        if (precisaDeNomes) {
-          // Falha só nos NOMES não pode apagar o nome da equipe, que já veio.
-          // E não pode virar "Sem gerente definido": isso é uma afirmação, e
-          // seria falsa.
-          try {
-            lideres = await listTeamLeaderNames();
-          } catch (err) {
-            console.error('Falha ao ler os nomes de quem lidera a equipe:', err);
-            semNomes = true;
-          }
-        }
-        const nome = (id: string | null) => lideres.find((l) => l.id === id)?.full_name ?? null;
-        if (!cancelado) {
-          setAcesso({
-            equipe: equipe.name,
-            gerente: nome(equipe.manager_id),
-            diretor: nome(equipe.director_id),
-            semNomes,
-          });
-        }
-      } catch (err) {
-        // Silêncio aqui viraria "Sem equipe" para quem tem equipe — a mesma
-        // mentira que este bloco existe para corrigir.
-        if (!cancelado) setAcessoErro(describeError(err, 'Não foi possível carregar sua equipe.'));
-      }
-    })();
-
-    return () => { cancelado = true; };
-  }, [user?.id]);
+  const userId = user?.id;
+  const acessoQuery = useQuery({
+    queryKey: ['settings', 'meu-acesso', userId],
+    queryFn: userId ? () => lerMeuAcesso(userId) : skipToken,
+    refetchOnWindowFocus: false,
+  });
+  const acesso = acessoQuery.data ?? null;
+  // Silêncio aqui viraria "Sem equipe" para quem tem equipe — a mesma
+  // mentira que este bloco existe para corrigir.
+  const acessoErro = acessoQuery.error ? describeError(acessoQuery.error, 'Não foi possível carregar sua equipe.') : null;
 
   // O perfil chega depois da sessão; sem isto os campos abriam vazios e um
   // "Salvar" apressado apagaria o nome de quem já tinha.
@@ -256,6 +249,7 @@ export default function Settings() {
         description: releu
           ? 'Seu nome e telefone foram atualizados.'
           : 'Recarregue a página para ver os dados novos no cabeçalho.',
+        variant: 'success',
       });
     } catch (error) {
       toast({
@@ -311,6 +305,7 @@ export default function Settings() {
       toast({
         title: 'Foto atualizada',
         description: releu ? undefined : 'Recarregue a página para ver a foto nova no cabeçalho.',
+        variant: 'success',
       });
     } catch (error) {
       toast({
@@ -398,6 +393,7 @@ export default function Settings() {
               : {
                   title: 'Senha salva',
                   description: 'Encerramos as sessões abertas. Entre de novo com a senha nova.',
+                  variant: 'success',
                 },
         );
         return;
@@ -458,7 +454,7 @@ export default function Settings() {
       });
     }
     // O onAuthStateChange do AuthContext derruba a sessão local e o guard leva ao /login.
-    toast({ title: 'Sessões encerradas', description: 'Entre novamente para continuar.' });
+    toast({ title: 'Sessões encerradas', description: 'Entre novamente para continuar.', variant: 'success' });
   };
 
   const iniciais = (profile?.name ?? '?')

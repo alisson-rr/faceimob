@@ -111,7 +111,7 @@ test("assumir a conversa tira o robô e devolver traz de volta", async ({ page }
   await painel.getByRole("button").filter({ hasText: NOME_LEAD }).click();
 
   await painel.getByRole("button", { name: /assumir conversa/i }).click();
-  await expect(page.getByText(/você assumiu a conversa/i)).toBeVisible();
+  await expect(page.getByText(/conversa assumida/i)).toBeVisible();
   // O que faz o robô calar é o status: o whatsapp-inbound-webhook só atende
   // conversa 'active'. Toast sem linha gravada seria a tela mentindo.
   await expect(async () => {
@@ -215,7 +215,7 @@ test("a data da linha acompanha o selo de parada, mesmo depois de assumir", asyn
 
   await linha.click();
   await painel.getByRole("button", { name: /assumir conversa/i }).click();
-  await expect(page.getByText(/você assumiu a conversa/i)).toBeVisible();
+  await expect(page.getByText(/conversa assumida/i)).toBeVisible();
 
   // A lista é relida depois de gravar: a data não pode virar "agora".
   await expect(

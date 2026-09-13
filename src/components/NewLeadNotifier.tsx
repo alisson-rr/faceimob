@@ -83,10 +83,18 @@ export default function NewLeadNotifier() {
   const [now, setNow] = useState(() => Date.now());
   const [claiming, setClaiming] = useState(false);
   const navigate = useNavigate();
+  // Mesmo padrão do NotificationBell: `useNavigate` muda a cada troca de rota,
+  // e com ele nas dependências do `announce` o canal abaixo era removido e
+  // reassinado a cada clique no menu — lead atribuído no intervalo se perdia.
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
   // Evita repetir o mesmo aviso quando o lead sofre outros UPDATEs na sequência.
   const notified = useRef<Set<string>>(new Set());
   // Grupos de distribuição em que a equipe visível do gestor está inscrita.
   const meusGrupos = useRef<Set<string> | null>(null);
+  // Espelho síncrono de `lead`: dois eventos do realtime podem chegar antes de
+  // o React aplicar o primeiro `setLead`.
+  const leadNoDialogo = useRef<IncomingLead | null>(null);
 
   /**
    * DIÁLOGO SÓ PARA O QUE TEM PRAZO.
@@ -116,22 +124,33 @@ export default function NewLeadNotifier() {
     if (notified.current.has(key)) return;
     notified.current.add(key);
 
-    if (nextKind === "assigned") {
+    celebrate("lead_new");
+    // O diálogo mostra um lead só. Com outro lead ainda no prazo nele, trocar
+    // em silêncio sumia com aquele (a roleta entrega vários seguidos ao mesmo
+    // corretor): o que está aberto fica, com o prazo mais curto, e o novo vai
+    // em toast. Diálogo livre, mesmo lead reatribuído ou prazo já vencido: o
+    // diálogo é o aviso, e um toast junto repetiria a frase por cima dele.
+    const aberto = leadNoDialogo.current;
+    const dialogoLivre = !aberto
+      || aberto.id === row.id
+      || (!!aberto.attend_deadline && new Date(aberto.attend_deadline).getTime() <= Date.now());
+    if (nextKind === "assigned" && dialogoLivre) {
+      leadNoDialogo.current = row;
       setLead(row);
       setKind(nextKind);
+      return;
     }
-    celebrate("lead_new");
     toast({
-      title: nextKind === "assigned" ? "🔔 Lead atribuído a você!" : "🔔 Novo lead na fila",
+      title: nextKind === "assigned" ? "Lead atribuído a você" : "Novo lead na fila",
       description: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
       // O destino que o diálogo oferecia, sem o diálogo. Só quando a pessoa
       // pode mesmo abrir a tela: `menu.leads` não é dado ao marketing, e o
       // botão levava direto ao "Acesso não liberado" do guard de rota.
-      action: nextKind === "queued" && podeAbrirLeads
-        ? { label: "Abrir leads", onClick: () => navigate("/leads") }
+      action: podeAbrirLeads
+        ? { label: "Abrir leads", onClick: () => navigateRef.current("/leads") }
         : undefined,
     });
-  }, [celebrate, navigate, podeAbrirLeads]);
+  }, [celebrate, podeAbrirLeads]);
 
   /**
    * Carrega os grupos do gestor uma vez. `profiles` já é filtrada pelo RLS
@@ -209,6 +228,9 @@ export default function NewLeadNotifier() {
     return () => { supabase.removeChannel(channel); };
   }, [profileId, isGestor, veFilaInteira, announce]);
 
+  // Todo fechamento passa por `setLead(null)`; o ref acompanha depois do commit.
+  useEffect(() => { if (!lead) leadNoDialogo.current = null; }, [lead]);
+
   useEffect(() => {
     if (!lead) return;
     const ticker = setInterval(() => setNow(Date.now()), 1000);
@@ -233,7 +255,7 @@ export default function NewLeadNotifier() {
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Não foi possível atender",
+        title: "Não foi possível atender o lead",
         description: describeError(err, "o lead pode ter voltado à fila ou outro corretor assumiu antes"),
       });
       setLead(null);

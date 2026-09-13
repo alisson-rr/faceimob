@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Database, Download, FileSpreadsheet, Inbox, Pencil, Save, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,8 @@ const FORM_VAZIO = { amount: "", developer_id: "", notes: "" };
  *  `describeError` devolve a paráfrase do título e a tela repete a mesma frase
  *  duas vezes sem dizer o que fazer. */
 const TENTE_DE_NOVO = 'A consulta não respondeu. Verifique a conexão e use "Tentar de novo".';
+const SEM_APORTES: Aporte[] = [];
+const SEM_DEVS: Developer[] = [];
 
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 /** "Setembro/2026" a partir de `YYYY-MM-01`. */
@@ -128,7 +130,7 @@ export function rowsToAportes(rows: string[][], devs: Developer[]): SheetParse {
  * (10/09/2026) e os leads chegam pelas integrações (formulário da Meta).
  */
 export default function DataManagement() {
-  const { isAdmin, roles } = useAuth();
+  const { isAdmin, roles, user } = useAuth();
   // Espelha a policy de aporte: escreve admin/marketing.
   // `roles` (N:N) e não `role`: diretor que também é marketing tem `role = director`.
   const canEditAporte = isAdmin || roles.includes("marketing");
@@ -143,11 +145,6 @@ export default function DataManagement() {
   );
 
   const [period, setPeriod] = useState(() => monthStart());
-  const [devs, setDevs] = useState<Developer[]>([]);
-  const [devsError, setDevsError] = useState<string | null>(null);
-  const [aportes, setAportes] = useState<Aporte[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState(FORM_VAZIO);
   /** Id do aporte trazido pelo botão Editar — só ele autoriza apagar a nota. */
   const [editing, setEditing] = useState<string | null>(null);
@@ -156,20 +153,28 @@ export default function DataManagement() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
-  const loadAportes = useCallback(async (month: string) => {
-    setLoading(true);
-    setLoadError(null);
-    const { data, error } = await supabase
-      .from("marketing_investments")
-      .select("*")
-      .eq("period", month)
-      .order("amount", { ascending: false });
-    setLoading(false);
-    if (error) return setLoadError(describeError(error, TENTE_DE_NOVO));
-    setAportes((data as Aporte[]) ?? []);
-  }, []);
-
-  useEffect(() => { void loadAportes(period); }, [period, loadAportes]);
+  // Cache do TanStack Query, uma leitura por mês: voltar à tela (ou ao mês)
+  // mostra o que já estava aqui e relê por trás, em vez de "Carregando aportes…"
+  // de novo. Sem releitura ao focar a aba — a carga manual nunca releu assim.
+  // O usuário fecha as chaves (e `loadAportes` casa pelo prefixo) para quem
+  // entra depois no mesmo navegador não herdar a leitura de quem saiu.
+  const aportesQuery = useQuery({
+    queryKey: ["dados", "aportes", period, user?.id ?? null],
+    refetchOnWindowFocus: false,
+    queryFn: async (): Promise<Aporte[]> => {
+      const { data, error } = await supabase
+        .from("marketing_investments")
+        .select("*")
+        .eq("period", period)
+        .order("amount", { ascending: false });
+      if (error) throw error;
+      return (data as Aporte[]) ?? [];
+    },
+  });
+  const aportes = aportesQuery.data ?? SEM_APORTES;
+  const loading = aportesQuery.data === undefined && aportesQuery.isFetching;
+  const loadError = aportesQuery.error ? describeError(aportesQuery.error, TENTE_DE_NOVO) : null;
+  const loadAportes = (month: string) => qc.invalidateQueries({ queryKey: ["dados", "aportes", month] });
 
   /**
    * Sem a lista de construtoras NADA desta aba funciona: o nome de cada aporte
@@ -178,16 +183,20 @@ export default function DataManagement() {
    * como "construtora não cadastrada". Por isso o erro vira estado, como
    * `loadError` — o toast some em segundos e a tela mentida fica.
    */
-  const loadDevs = useCallback(async () => {
-    setDevsError(null);
-    // Sem filtro de `active`: a construtora desativada continua dona de aporte
-    // histórico (a FK é RESTRICT) e o nome dela sumia da lista do mês.
-    const { data, error } = await supabase.from("developers").select("id,name,active").order("name");
-    if (error) return setDevsError(describeError(error, TENTE_DE_NOVO));
-    setDevs(data ?? []);
-  }, []);
-
-  useEffect(() => { void loadDevs(); }, [loadDevs]);
+  const devsQuery = useQuery({
+    queryKey: ["dados", "construtoras", user?.id ?? null],
+    refetchOnWindowFocus: false,
+    queryFn: async (): Promise<Developer[]> => {
+      // Sem filtro de `active`: a construtora desativada continua dona de aporte
+      // histórico (a FK é RESTRICT) e o nome dela sumia da lista do mês.
+      const { data, error } = await supabase.from("developers").select("id,name,active").order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const devs = devsQuery.data ?? SEM_DEVS;
+  const devsError = devsQuery.error ? describeError(devsQuery.error, TENTE_DE_NOVO) : null;
+  const loadDevs = () => devsQuery.refetch();
 
   const monthTotal = useMemo(() => aportes.reduce((sum, r) => sum + Number(r.amount || 0), 0), [aportes]);
   // Com a lista fora do ar o travessão dizia "aporte sem construtora", que é
@@ -228,16 +237,17 @@ export default function DataManagement() {
       ? await supabase.from("marketing_investments").update(payload).eq("id", editing).select("id")
       : await supabase.from("marketing_investments").upsert(payload, { onConflict: "developer_id,period" }).select("id");
     setSaving(false);
-    if (error) return toast({ title: "Falha ao salvar o aporte", description: describeError(error, "Confira valor e construtora e tente de novo."), variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível salvar o aporte", description: describeError(error, "Confira valor e construtora e tente de novo."), variant: "destructive" });
     if (!data?.length) {
       return toast({
-        title: editing
-          ? "O aporte não foi alterado: ou alguém já o excluiu, ou seu papel não pode lançar aporte (apenas admin e marketing)."
+        title: "Não foi possível salvar o aporte",
+        description: editing
+          ? "Ou alguém já o excluiu, ou seu papel não pode lançar aporte (apenas admin e marketing)."
           : "Sem permissão para lançar aporte (apenas admin e marketing).",
         variant: "destructive",
       });
     }
-    toast({ title: "Aporte salvo" });
+    toast({ title: "Aporte salvo", variant: "success" });
     cancelEdit();
     void loadAportes(period);
     invalidarResumo();
@@ -248,10 +258,10 @@ export default function DataManagement() {
     // `select("id")` porque o RLS não erra ao recusar: filtra a linha e o
     // PostgREST devolve 204 — a linha só reaparecia depois do reload.
     const { data, error } = await supabase.from("marketing_investments").delete().eq("id", row.id).select("id");
-    if (error) return toast({ title: "Falha ao excluir o aporte", description: describeError(error, "Não foi possível excluir o aporte."), variant: "destructive" });
-    if (!data?.length) return toast({ title: "Sem permissão para excluir aporte (apenas admin e marketing).", variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível excluir o aporte", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível excluir o aporte", description: "Sem permissão para excluir aporte (apenas admin e marketing).", variant: "destructive" });
     if (editing === row.id) cancelEdit();
-    toast({ title: "Aporte excluído" });
+    toast({ title: "Aporte excluído", variant: "success" });
     void loadAportes(period);
     invalidarResumo();
   };
@@ -308,9 +318,14 @@ export default function DataManagement() {
       .upsert(payload, { onConflict: "developer_id,period" })
       .select("id");
     setImporting(false);
-    if (error) return toast({ title: "Falha ao importar os aportes", description: describeError(error, "Não foi possível gravar os aportes."), variant: "destructive" });
-    if (!data?.length) return toast({ title: "Sem permissão para importar aportes (apenas admin e marketing).", variant: "destructive" });
-    toast({ title: `${num(payload.length)} ${payload.length === 1 ? "aporte importado" : "aportes importados"}` });
+    if (error) return toast({ title: "Não foi possível importar os aportes", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível importar os aportes", description: "Sem permissão para importar aportes (apenas admin e marketing).", variant: "destructive" });
+    // A contagem é a do banco (`data`), não a do payload enviado.
+    toast({
+      title: "Aportes importados",
+      description: `${num(data.length)} ${data.length === 1 ? "aporte gravado" : "aportes gravados"}`,
+      variant: "success",
+    });
     setSheet(null);
     void loadAportes(period);
     invalidarResumo();
@@ -325,6 +340,7 @@ export default function DataManagement() {
     a.download = "modelo-aportes-marketing.csv";
     a.click();
     URL.revokeObjectURL(url);
+    toast({ title: "Modelo baixado", variant: "success" });
   };
 
   return (

@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
-import { listLegacyDeals } from "@/integrations/supabase/newSchema";
+import { useAuth } from "@/contexts/AuthContext";
+import { allRows, listLegacyDeals, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { CcaCaseStatus } from "./ccaStage";
+import { dealsQuery } from "./data";
 
 export interface CcaStage {
   id: string;
@@ -76,24 +78,43 @@ export async function saveCcaAnalysis(dealId: string, analysis: CcaAnalysis): Pr
 }
 
 /**
- * Esteira inteira numa consulta só.
+ * Esteira inteira: estágios, casos e os negócios que dão nome a cada caso.
  *
  * O `stage_id` do caso pode estar nulo (o estágio foi excluído, ou o caso nasceu
  * antes de `cca_stages` existir): cai no estágio de mesmo desfecho e, em último
  * caso, no primeiro da esteira — nunca some da tela em silêncio.
+ *
+ * Os casos vêm paginados: sem `range` o PostgREST devolve só as primeiras 1.000
+ * linhas, sem aviso — a esteira mostrava 1.000 dos 7.560 casos da homologação e
+ * os contadores por estágio somavam só esses. As páginas saem por criação, que
+ * não muda entre uma página e outra; a tela recebe primeiro o caso mexido por
+ * último. O `CcaBoard` desenha 200 cartões por coluna, e o caso recém-movido
+ * precisa voltar à vista no topo da coluna de destino, não atrás do "Mostrar
+ * mais" (a coluna tem ~1.500 casos na homologação).
+ *
+ * `loadDeals` é a lista de negócios do cache (`useCcaBoard` passa a MESMA
+ * consulta do Pipeline): a esteira baixava a base inteira duas vezes na mesma
+ * abertura, uma aqui e outra no `useDeals` da tela.
  */
-export async function loadCcaBoard(): Promise<{ stages: CcaStage[]; deals: CcaDeal[] }> {
+export async function loadCcaBoard(
+  loadDeals: () => Promise<LegacyDealRecord[]> = () => listLegacyDeals(),
+): Promise<{ stages: CcaStage[]; deals: CcaDeal[] }> {
   const [stagesResponse, casesResponse, dealRows] = await Promise.all([
     supabase.from("cca_stages").select("id,name,color,position,status,active").eq("active", true).order("position"),
-    supabase.from("cca_cases").select("id,deal_id,status,stage_id,decision_notes"),
-    listLegacyDeals(),
+    allRows((from, to, count) => supabase.from("cca_cases")
+      .select("id,deal_id,status,stage_id,decision_notes,updated_at", { count })
+      .order("created_at").order("id").range(from, to)),
+    loadDeals(),
   ]);
   if (stagesResponse.error) throw stagesResponse.error;
   if (casesResponse.error) throw casesResponse.error;
 
   const stages = (stagesResponse.data || []) as CcaStage[];
-  const deals = (casesResponse.data || []).map((row) => {
-    const deal = dealRows.find((item) => item.id === row.deal_id);
+  // Um `find` por caso varria a lista inteira: ~28 milhões de comparações.
+  const dealById = new Map(dealRows.map((deal) => [deal.id, deal]));
+  const recentes = casesResponse.data.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+  const deals = recentes.map((row) => {
+    const deal = dealById.get(row.deal_id);
     const stage = stages.find((item) => item.id === row.stage_id)
       || stages.find((item) => item.status === row.status)
       || stages[0];
@@ -114,7 +135,17 @@ export async function loadCcaBoard(): Promise<{ stages: CcaStage[]; deals: CcaDe
   return { stages, deals };
 }
 
-export const useCcaBoard = () => useQuery({ queryKey: ccaKeys.board, queryFn: loadCcaBoard });
+export function useCcaBoard() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+  return useQuery({
+    queryKey: ccaKeys.board,
+    // `fetchQuery` serve o cache fresco ou pega carona na carga em voo do
+    // `useDeals` que a tela monta junto; só vai à rede se a lista estiver velha.
+    queryFn: () => loadCcaBoard(() => queryClient.fetchQuery(dealsQuery(profileId))),
+  });
+}
 
 export function useInvalidateCcaBoard() {
   const queryClient = useQueryClient();

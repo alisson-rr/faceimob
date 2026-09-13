@@ -69,7 +69,9 @@ export function DefinirSenhaCard({ onDefinida }: { onDefinida: () => void }) {
       setRecemDefinida({ nome, valor: senha });
       setSenha("");
       toast({
-        title: "Senha definida",
+        // Título próprio no caso parcial: "Senha definida" em vermelho se lia
+        // como sucesso e falha ao mesmo tempo.
+        title: guardadaNoCofre ? "Senha definida" : "Senha definida, mas fora do cofre",
         description: guardadaNoCofre
           ? `${nome} já entra com a senha nova, e ela fica consultável no cofre.`
           : `${nome} já entra com a senha nova, mas ela NÃO foi guardada no cofre. Anote agora: ela não aparecerá na lista.`,
@@ -80,9 +82,11 @@ export function DefinirSenhaCard({ onDefinida }: { onDefinida: () => void }) {
       toast({
         variant: "destructive",
         title: "Não foi possível definir a senha",
+        // `Error` comum é a frase da própria função (cofre.ts); o erro do cliente
+        // de functions (`FunctionsHttpError` e afins) vem em inglês e não passa.
         description: describeError(
           erro,
-          erro instanceof Error ? erro.message : "Falha ao definir a senha de acesso.",
+          erro instanceof Error && erro.name === "Error" ? erro.message : "Tente de novo em instantes.",
         ),
       });
     } finally {

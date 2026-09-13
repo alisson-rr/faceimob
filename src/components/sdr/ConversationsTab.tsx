@@ -162,7 +162,10 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
    * desfecho que chegou no meio. Zero linha é recusa da policy ou conversa que
    * mudou — nos dois casos nada foi gravado, e a lista é relida.
    */
-  async function gravar(patch: Record<string, unknown>, deStatus: string[], sucesso: string, conferirDono = false) {
+  async function gravar(
+    patch: Record<string, unknown>, deStatus: string[],
+    aviso: { sucesso: string; detalhe?: string; falha: string }, conferirDono = false,
+  ) {
     if (!atual) return false;
     setSalvando(true);
     let consulta = untyped.from("sdr_conversations").update(patch).eq("id", atual.id).in("status", deStatus);
@@ -173,26 +176,33 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
     const { data, error } = await consulta.select("id");
     setSalvando(false);
     if (error) {
-      toast.error(describeError(error, "Não foi possível mudar a conversa."));
+      toast.error(aviso.falha, { description: describeError(error, "Tente de novo.") });
       return false;
     }
     if (!data?.length) {
-      toast.error("Nada foi gravado: a conversa mudou enquanto você olhava ou seu papel não pode alterá-la.");
+      toast.error(aviso.falha, { description: "A conversa mudou enquanto você olhava ou seu papel não pode alterá-la." });
       void recarregar();
       return false;
     }
-    toast.success(sucesso);
+    toast.success(aviso.sucesso, { description: aviso.detalhe, duration: 2500 });
     await recarregar();
     return true;
   }
 
   const assumir = () => atual && gravar(
     { status: "human", assumed_by: eu }, [atual.status],
-    "Você assumiu a conversa — o robô não responde mais nela.", true,
+    { sucesso: "Conversa assumida", detalhe: "O robô não responde mais nela.", falha: "Não foi possível assumir a conversa" },
+    true,
   );
-  const devolver = () => gravar({ status: "active" }, ["human"], "Conversa devolvida ao robô.");
+  const devolver = () => gravar(
+    { status: "active" }, ["human"],
+    { sucesso: "Conversa devolvida ao robô", falha: "Não foi possível devolver a conversa ao robô" },
+  );
   async function resolver() {
-    const ok = await gravar({ status: "resolved" }, ["active", "human"], "Conversa marcada como resolvida.");
+    const ok = await gravar(
+      { status: "resolved" }, ["active", "human"],
+      { sucesso: "Conversa resolvida", falha: "Não foi possível resolver a conversa" },
+    );
     // Com o filtro que esconde a resolvida, a seleção apontaria para uma linha
     // que saiu da lista: o cabeçalho sumiria e as mensagens ficariam na tela.
     if (ok && situacao !== FILTRO_TODAS && situacao !== "resolved") setSel("");
@@ -220,12 +230,12 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
       // `persisted: false` = a mensagem saiu e o histórico não gravou. Verde
       // puro esconderia que a conversa na tela está incompleta.
       if (data?.persisted === false) toast.warning(String(data.warning ?? "Mensagem enviada, histórico incompleto."));
-      else toast.success("Mensagem enviada ao lead pelo WhatsApp.");
+      else toast.success("Mensagem enviada", { description: "O lead recebe pelo WhatsApp." });
       // A lista também: `last_message_at` acabou de andar (trigger
       // `sdr_messages_touch`), e o selo "parada há X h" tem de sair.
       await Promise.all([qc.invalidateQueries({ queryKey: ["sdr", "mensagens", atual.id] }), recarregar()]);
     } catch (e) {
-      toast.error(await functionErrorMessage(e, "Não foi possível enviar a mensagem."));
+      toast.error("Não foi possível enviar a mensagem", { description: await functionErrorMessage(e, "Tente de novo.") });
     } finally {
       setEnviando(false);
     }

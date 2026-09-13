@@ -328,10 +328,10 @@ test.describe("diário público", () => {
     await campo(page, "vendas").fill("0,5");
 
     await page.getByRole("button", { name: /salvar checkpoint/i }).click();
-    await expect(page.getByText(/checkpoint concluído/i)).toBeVisible();
-    // O toast diz "pontos no placar do dia", não "+XP": o ranking da temporada
+    await expect(page.getByText(/checkpoint salvo/i)).toBeVisible();
+    // O toast diz "pontos do Diário no dia", não "+XP": o ranking da temporada
     // é alimentado por negócio fechado, não pelo diário.
-    await expect(page.getByText(/pontos no placar do dia/i)).toBeVisible();
+    await expect(page.getByText(/pontos do diário no dia/i)).toBeVisible();
 
     // A auditoria já pegou tela que dizia "salvo" sem gravar nada: a asserção
     // que vale é a do banco.
@@ -427,7 +427,7 @@ test.describe("diário público", () => {
     await campo(page, "leads").fill("6");
     await page.getByPlaceholder("Seu nome").fill(`Gerente correcao ${tag}`);
     await page.getByRole("button", { name: /salvar checkpoint/i }).click();
-    await expect(page.getByText(/checkpoint concluído/i)).toBeVisible();
+    await expect(page.getByText(/checkpoint salvo/i)).toBeVisible();
     await expect(page.getByText(new RegExp(`correção gravada no dia ${ontem.slice(8, 10)}/${ontem.slice(5, 7)}`, "i"))).toBeVisible();
 
     await expect(async () => {

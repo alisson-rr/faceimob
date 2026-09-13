@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -23,6 +24,13 @@ const YEARS = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2, c
 const key = (y: number, m: number) => `${y}-${m}`;
 
 type Draft = { sales: string; vgv: string };
+
+const RESULTADOS_KEY = ["resultados", "anual"] as const;
+const SEM_RESULTADOS: AnnualResultRow[] = [];
+
+/** Os campos de cada mês, a partir do que está gravado. */
+const draftsDe = (rows: AnnualResultRow[]): Record<string, Draft> =>
+  Object.fromEntries(rows.map((r) => [key(r.year, r.month), { sales: String(r.sales_count), vgv: String(r.vgv) }]));
 
 /** Um mês que o recálculo vai reescrever, com o antes e o depois. */
 type Change = { month: number; fromSales: number; toSales: number; fromVgv: number; toVgv: number };
@@ -53,11 +61,37 @@ function validate(draft: Draft): string | null {
  */
 export default function Resultados() {
   const { toast } = useToast();
-  const { isAdmin, roles } = useAuth();
-  const [rows, setRows] = useState<AnnualResultRow[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<unknown>(null);
+  const { isAdmin, roles, user } = useAuth();
+  const queryClient = useQueryClient();
+  // Cache do TanStack Query: voltar à tela mostra o consolidado que já estava
+  // aqui e relê por trás, em vez de repetir o "Carregando…" a cada entrada. Sem
+  // releitura ao focar a aba: a carga manual nunca releu assim, e uma releitura
+  // com o ano aberto reescreveria os campos que a pessoa está digitando. O
+  // usuário entra na chave para quem entra depois no mesmo navegador não herdar
+  // a leitura de quem saiu.
+  const resultados = useQuery({
+    queryKey: [...RESULTADOS_KEY, user?.id ?? null],
+    // O aviso sai da leitura, uma vez por carga, como na carga manual — e sem
+    // `retry`, que o repetiria.
+    queryFn: () => listAnnualResults().catch((e: unknown) => {
+      toast({ title: "Não foi possível carregar o consolidado", description: describeError(e, "Verifique a conexão e tente de novo."), variant: "destructive" });
+      throw e;
+    }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const rows = resultados.data ?? SEM_RESULTADOS;
+  const loading = resultados.data === undefined && resultados.isFetching;
+  const loadError = resultados.error;
+  const load = () => queryClient.invalidateQueries({ queryKey: RESULTADOS_KEY });
+  const [drafts, setDrafts] = useState<Record<string, Draft>>(() => draftsDe(rows));
+  // Cada leitura nova do banco reescreve os rascunhos, como o `load()` fazia:
+  // salvar recarrega e alinha os campos ao que ficou gravado.
+  const [leituraDosRascunhos, setLeituraDosRascunhos] = useState(resultados.data);
+  if (resultados.data !== leituraDosRascunhos) {
+    setLeituraDosRascunhos(resultados.data);
+    if (resultados.data) setDrafts(draftsDe(resultados.data));
+  }
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
 
@@ -78,29 +112,6 @@ export default function Resultados() {
    * conhece, em vez de deixar a conta sair de um recorte que ele não vê.
    */
   const podeRecalcular = isAdmin;
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await listAnnualResults();
-      setRows(data);
-      setLoadError(null);
-      setDrafts(Object.fromEntries(
-        data.map((r) => [key(r.year, r.month), { sales: String(r.sales_count), vgv: String(r.vgv) }]),
-      ));
-    } catch (e) {
-      setLoadError(e);
-      toast({
-        title: "Falha ao carregar o consolidado",
-        description: describeError(e, "Não foi possível carregar o consolidado."),
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => { void load(); }, [load]);
 
   const byMonthKey = useMemo(
     () => new Map(rows.map((r) => [key(r.year, r.month), r])),
@@ -148,11 +159,11 @@ export default function Resultados() {
     try {
       await gravar(y, m, Number(d.sales || 0), Number(d.vgv || 0));
       await load();
-      toast({ title: `${MONTHS[m - 1]}/${y} atualizado` });
+      toast({ title: `Resultado de ${MONTHS[m - 1]}/${y} salvo`, variant: "success" });
     } catch (e) {
       toast({
-        title: "Não foi possível salvar",
-        description: describeError(e, "Não foi possível salvar o resultado do mês."),
+        title: `Não foi possível salvar o resultado de ${MONTHS[m - 1]}/${y}`,
+        description: describeError(e, "Tente de novo em instantes."),
         variant: "destructive",
       });
     } finally {
@@ -202,8 +213,8 @@ export default function Resultados() {
       setPreview({ year: y, changes, base: ganhos.length });
     } catch (e) {
       toast({
-        title: "Falha ao ler o pipeline",
-        description: describeError(e, "Não foi possível ler os negócios para recalcular."),
+        title: "Não foi possível ler o pipeline",
+        description: describeError(e, "Os negócios não carregaram para o recálculo. Tente de novo."),
         variant: "destructive",
       });
     } finally {
@@ -234,15 +245,16 @@ export default function Resultados() {
       await load();
       setPreview(null);
       toast({
-        title: `${year} recalculado a partir do pipeline`,
-        description: `${changes.length} mês(es) atualizado(s).`,
+        title: `${year} recalculado`,
+        description: `${changes.length} mês(es) atualizado(s) a partir do pipeline.`,
+        variant: "success",
       });
     } catch (e) {
       await load();
       setPreview(null);
       toast({
-        title: "Falha ao recalcular",
-        description: `${gravados} de ${changes.length} mês(es) já foram gravados antes da falha. ${describeError(e, "Não foi possível recalcular o ano a partir do pipeline.")}`,
+        title: `Não foi possível recalcular ${year}`,
+        description: `${gravados} de ${changes.length} mês(es) já foram gravados antes da falha. ${describeError(e, "Tente de novo em instantes.")}`,
         variant: "destructive",
       });
     } finally {

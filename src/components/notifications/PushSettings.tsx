@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
 import {
   PUSH_CATEGORIES,
@@ -108,7 +108,7 @@ export default function PushSettings() {
       const next = await enablePush();
       setStatus(next);
       if (next === "on" || next === "local_on") {
-        toast({ title: "Avisos ativados neste aparelho", description: "Use “Enviar teste” para ver como eles chegam." });
+        toast.success("Avisos ativados neste aparelho", { description: "Use “Enviar teste” para ver como eles chegam." });
       }
     } catch (err) {
       setErro(describePushError(err, "Não foi possível ativar os avisos. Tente de novo."));
@@ -123,6 +123,7 @@ export default function PushSettings() {
     setErro(null);
     try {
       setStatus(await disablePush());
+      toast.success("Avisos desativados neste aparelho");
     } catch (err) {
       setErro(describePushError(err, "Não foi possível desligar os avisos. Tente de novo."));
       await lerStatus();
@@ -135,14 +136,11 @@ export default function PushSettings() {
     setTestando(true);
     try {
       await sendTestPush();
-      toast({
-        title: "Teste enviado",
+      toast.success("Teste enviado", {
         description: "O aviso deve aparecer neste aparelho em alguns segundos. Se não aparecer, confira se o sistema permite notificações do navegador.",
       });
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível enviar o teste",
+      toast.error("Não foi possível enviar o teste", {
         description: describeError(err, "Tente de novo em instantes."),
       });
     } finally {
@@ -156,12 +154,11 @@ export default function PushSettings() {
     try {
       await savePushPreference(user.id, category, enabled);
       setPrefs((atual) => new Map(atual).set(category, enabled));
+      toast.success("Preferência de aviso salva", { duration: 2500 });
     } catch (err) {
       // O interruptor só muda depois de o banco confirmar: nada de pintar
       // escolha que não foi gravada.
-      toast({
-        variant: "destructive",
-        title: "Não foi possível salvar",
+      toast.error("Não foi possível salvar a preferência de aviso", {
         description: describeError(err, "A escolha anterior continua valendo. Tente de novo."),
       });
     } finally {

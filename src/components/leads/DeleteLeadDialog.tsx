@@ -30,15 +30,15 @@ export function DeleteLeadDialog({
     setRemoving(true);
     try {
       await deleteLead(lead.id);
-      toast({ title: "Lead excluído", description: `${lead.name} saiu da base.` });
+      toast({ variant: "success", title: "Lead excluído", description: `${lead.name} saiu da base.` });
       await invalidateLeads();
       onDeleted?.();
       onClose();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Não foi possível excluir",
-        description: describeError(err, "Você não tem permissão para excluir este lead."),
+        title: "Não foi possível excluir o lead",
+        description: describeError(err, "tente de novo"),
       });
     } finally {
       setRemoving(false);

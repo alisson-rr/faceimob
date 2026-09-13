@@ -109,13 +109,14 @@ export default function AdminAllowedIps() {
       supabase.from("allowed_ips").select("*, team:teams(name)").order("created_at", { ascending: false }),
       supabase.from("teams").select("id,name").eq("active", true).order("name"),
     ]);
+    // O toast fica: o EmptyState de erro da lista não traz o motivo.
     if (ips.error) {
       setEstado("erro");
-      return toast.error(describeError(ips.error, "Não foi possível carregar os IPs."));
+      return toast.error("Não foi possível carregar os IPs", { description: describeError(ips.error, "Recarregue a página para tentar de novo.") });
     }
     if (teamRows.error) {
       setEstado("erro");
-      return toast.error(describeError(teamRows.error, "Não foi possível carregar as equipes."));
+      return toast.error("Não foi possível carregar as equipes", { description: describeError(teamRows.error, "Recarregue a página para tentar de novo.") });
     }
     setRows((ips.data ?? []).map((row) => ({ ...row, ip_range: String(row.ip_range) })));
     setTeams(teamRows.data ?? []);
@@ -138,12 +139,12 @@ export default function AdminAllowedIps() {
       setEstadoBypass("pronto");
     } else {
       setEstadoBypass("erro");
-      toast.error(describeError(isentos.reason, "Não foi possível carregar as liberações individuais."));
+      toast.error("Não foi possível carregar as liberações de IP", { description: describeError(isentos.reason, "Recarregue a página para tentar de novo.") });
     }
     if (pessoas.status === "fulfilled") {
       setPeople(pessoas.value.filter((p) => p.active));
     } else {
-      toast.error(describeError(pessoas.reason, "Não foi possível carregar as pessoas para liberar."));
+      toast.error("Não foi possível carregar as pessoas para liberar", { description: describeError(pessoas.reason, "Recarregue a página para tentar de novo.") });
     }
   };
 
@@ -174,7 +175,7 @@ export default function AdminAllowedIps() {
       setEstadoObservados("pronto");
     } catch (e) {
       setEstadoObservados("erro");
-      toast.error(describeError(e, "Não foi possível ler os endereços dos check-ins."));
+      toast.error("Não foi possível ler os endereços dos check-ins", { description: describeError(e, "Recarregue a página para tentar de novo.") });
     }
   };
 
@@ -188,7 +189,7 @@ export default function AdminAllowedIps() {
   const add = async () => {
     // Clique sem IP era um nada silencioso — numa tela de segurança o admin
     // sai achando que cadastrou.
-    if (!ip.trim()) return toast.error("Informe o IP ou a faixa CIDR (ex: 200.150.10.0/24).");
+    if (!ip.trim()) return toast.error("Informe o IP ou a faixa CIDR", { description: "Ex.: 200.150.10.0/24" });
     // Host sem máscara vira /32 em IPv4 e /128 em IPv6 — sem isso, um endereço
     // v6 digitado sem "/" virava `.../32`, que em IPv6 é um bloco gigantesco.
     const bruto = ip.trim();
@@ -206,15 +207,15 @@ export default function AdminAllowedIps() {
         team_id: teamId === ALL_TEAMS ? null : teamId,
       });
       if (error) {
-        return toast.error(
-          error.code === "22P02" ? FORMATO_INVALIDO
+        return toast.error("Não foi possível autorizar o IP", {
+          description: error.code === "22P02" ? FORMATO_INVALIDO
           // `allowed_ips_range_team_uidx` (0075): a mesma faixa entrava duas
           // vezes e desativar uma delas não desativava a gêmea.
           : error.code === "23505" ? "Esta faixa já está cadastrada para esta equipe. Procure-a na lista abaixo em vez de criar outra."
-          : describeError(error, "Não foi possível autorizar o IP."),
-        );
+          : describeError(error, "Tente de novo em instantes."),
+        });
       }
-      toast.success("IP autorizado.");
+      toast.success("IP autorizado");
       setIp(""); setLabel(""); setTeamId(ALL_TEAMS);
       await load();
     } finally {
@@ -226,14 +227,22 @@ export default function AdminAllowedIps() {
     if (!myIp || !user?.id) { setMyIpCoverage(null); return; }
     checkIpAllowed(myIp, user.id).then(setMyIpCoverage).catch((e) => {
       setMyIpCoverage(null);
-      toast.error(describeError(e, "Não foi possível conferir se o seu IP está coberto."));
+      // `id` fixo: esta checagem roda a cada recarga da lista, e sem ele a mesma
+      // falha empilhava um aviso por recarga.
+      toast.error("Não foi possível conferir se o seu IP está coberto", {
+        id: "cobertura-do-meu-ip",
+        description: describeError(e, "Tente de novo em instantes."),
+      });
     });
   }, [myIp, user?.id, rows]);
 
   const remove = async (id: string) => {
     if (!confirm("Remover este IP?")) return;
-    const { error } = await supabase.from("allowed_ips").delete().eq("id", id);
-    if (error) return toast.error(describeError(error, "Não foi possível remover o IP."));
+    // `select` para contar: delete barrado pela RLS volta sem erro e sem linha.
+    const { data, error } = await supabase.from("allowed_ips").delete().eq("id", id).select("id");
+    if (error) return toast.error("Não foi possível remover o IP", { description: describeError(error, "Tente de novo em instantes.") });
+    if (!data?.length) return toast.error("Não foi possível remover o IP", { description: "O banco não removeu a linha: só administradores removem IPs." });
+    toast.success("IP removido");
     load();
   };
   /**
@@ -248,7 +257,9 @@ export default function AdminAllowedIps() {
     setBypassSalvando(true);
     try {
       await setIpBypass(profileId, enabled);
-      toast.success(enabled ? `${nome} liberado da validação de IP.` : `${nome} voltou a depender das faixas cadastradas.`);
+      toast.success(enabled ? "Liberação de IP concedida" : "Liberação de IP revogada", {
+        description: enabled ? `${nome} pode bater ponto de qualquer endereço.` : `${nome} volta a depender das faixas cadastradas.`,
+      });
       setBypassAlvo("");
       await loadBypass();
       // A cobertura do próprio IP muda se o admin mexeu no próprio bypass.
@@ -256,7 +267,7 @@ export default function AdminAllowedIps() {
         await checkIpAllowed(myIp, profileId).then(setMyIpCoverage).catch(() => setMyIpCoverage(null));
       }
     } catch (e) {
-      toast.error(describeError(e, "Não foi possível alterar a liberação individual."));
+      toast.error("Não foi possível alterar a liberação de IP", { description: describeError(e, "Tente de novo em instantes.") });
     } finally {
       setBypassSalvando(false);
     }
@@ -275,8 +286,11 @@ export default function AdminAllowedIps() {
     if (ativando && faixaLarga(row.ip_range) && !confirm(
       `Reativar ${row.ip_range}? É uma faixa larga: o check-in volta a ser liberado para muitos endereços, inclusive fora da unidade.`,
     )) return;
-    const { error } = await supabase.from("allowed_ips").update({ active: ativando }).eq("id", row.id);
-    if (error) return toast.error(describeError(error, "Não foi possível alterar o status do IP."));
+    // `select` para contar: update barrado pela RLS volta sem erro e sem linha.
+    const { data, error } = await supabase.from("allowed_ips").update({ active: ativando }).eq("id", row.id).select("id");
+    if (error) return toast.error("Não foi possível alterar o IP", { description: describeError(error, "Tente de novo em instantes.") });
+    if (!data?.length) return toast.error("Não foi possível alterar o IP", { description: "O banco não alterou a linha: só administradores ativam ou desativam IPs." });
+    toast.success(ativando ? "IP ativado" : "IP desativado");
     load();
   };
 
@@ -305,9 +319,10 @@ export default function AdminAllowedIps() {
               const detectado = await detectarIp();
               if (detectado) {
                 setIp(detectado);
-                toast.success(`Seu IP: ${detectado}`);
+                // Neutro: só preenche o campo, não grava nada.
+                toast("IP detectado", { description: detectado });
               } else {
-                toast.error("Não foi possível detectar o IP — o serviço externo não respondeu.");
+                toast.error("Não foi possível detectar o IP", { description: "O serviço externo não respondeu. Digite o endereço manualmente." });
               }
             }}>
               <Globe className="h-4 w-4 mr-1" /> Descobrir meu IP
@@ -496,7 +511,8 @@ export default function AdminAllowedIps() {
                   aria-label={`Usar ${o.ip} no formulário`}
                   onClick={() => {
                     setIp(o.ip);
-                    toast.success(`${o.ip} copiado para o formulário. Ajuste a máscara se quiser cobrir a rede inteira.`);
+                    // Neutro: só preenche o formulário, não grava nada.
+                    toast("IP levado ao formulário", { description: `${o.ip} — ajuste a máscara se quiser cobrir a rede inteira.` });
                   }}
                 >
                   Usar no cadastro

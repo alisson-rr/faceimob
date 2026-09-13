@@ -10,10 +10,9 @@ import { StatusBadge } from "@/components/shared";
 import { brl, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
-import type { PipelineDeal } from "@/types/crm";
 import { useCurrentSeasonId, useGameRanking, useSeasonRanking } from "@/hooks/useGameRanking";
 
-type Props = { deals: PipelineDeal[]; onAbrirPainel: () => void };
+type Props = { onAbrirPainel: () => void };
 
 /**
  * O mês da meta da faixa do corretor, no formato que `useGoal` espera.
@@ -67,14 +66,11 @@ export function intervaloDoMes(hoje: Date = new Date()): WeekRange {
  * O RECORTE DOS DADOS continua sendo do servidor (`visible_game_ranking`): esta
  * tela escolhe o que MOSTRA do que já chegou, e nunca o contrário.
  */
-export default function PipelineTopRanking({ deals, onAbrirPainel }: Props) {
-  const dealsForHook = deals.map((d) => ({
-    broker1_name: d.broker1,
-    broker2_name: d.broker2,
-    stage: d.stage,
-    active: d.active,
-  }));
-  const { scoped, meuScore, recorte, seasonId } = useGameRanking(dealsForHook);
+export default function PipelineTopRanking({ onAbrirPainel }: Props) {
+  // Sem os negócios, como o `AppLayout`: eles só alimentavam `ScoreRow.leads`,
+  // que ninguém lê, e custavam 287 corretores × 7.579 negócios em comparação
+  // de nome a cada render do Pipeline (cada tecla da busca, cada modal).
+  const { scoped, meuScore, recorte, seasonId } = useGameRanking();
   const { profile, user } = useAuth();
 
   const { soMinhaPosicao, escopo } = recorte;

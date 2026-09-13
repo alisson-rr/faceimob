@@ -113,9 +113,11 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
       // que não diz qual campo repetiu — ao contrário do AgentsTab e do
       // SourcesTab, que já nomeavam a coluna duplicada.
       const duplicado = (error as { code?: string }).code === "23505";
-      return toast.error(duplicado
-        ? `Já existe um template chamado "${payload.name}". Abra o existente na lista ao lado em vez de criar outro — o nome é o que a Meta usa para casar o template no disparo.`
-        : describeError(error, "Não foi possível salvar o template."));
+      return toast.error("Não foi possível salvar o template", {
+        description: duplicado
+          ? `Já existe um template chamado "${payload.name}". Abra o existente na lista ao lado em vez de criar outro — o nome é o que a Meta usa para casar o template no disparo.`
+          : describeError(error, "Tente de novo."),
+      });
     }
     // Recusa da RLS não é erro: o `using` de `whatsapp_templates_write` faz o
     // UPDATE casar ZERO linhas e o PostgREST responde 200. Sem este ramo a tela
@@ -123,7 +125,7 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
     // ter o botão escondido para quem não escreve: o papel só-leitura é barrado
     // aqui também, e é o que `e2e/sdr/origens-e-templates.spec.ts` cobra pelas
     // duas vias (tela sem Salvar e UPDATE do diretor casando 0 linhas).
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (!data?.length) return toast.error("Não foi possível salvar o template", { description: SEM_PERMISSAO });
     toast.success(c.id ? "Template atualizado" : "Template cadastrado");
     salvoAgora.current = gravavel({ ...c, ...payload });
     // Mantém o template recém-gravado selecionado; sem o id, um segundo Salvar
@@ -137,8 +139,8 @@ export function WhatsAppTab({ templates, sources, lists, canWrite, reload }: {
   // falha, ela desliga em silêncio as boas-vindas e o disparo de quem usava.
   async function remove(template: WhatsAppTemplate) {
     const { data, error } = await supabase.from("whatsapp_templates").delete().eq("id", template.id).select("id");
-    if (error) return toast.error(describeError(error, "Não foi possível excluir o template."));
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (error) return toast.error("Não foi possível excluir o template", { description: describeError(error, "Tente de novo.") });
+    if (!data?.length) return toast.error("Não foi possível excluir o template", { description: SEM_PERMISSAO });
     setExcluindo(null);
     toast.success("Template excluído");
     // Formulário limpo, e não `null`: cair em `templates[0]` repovoava o painel

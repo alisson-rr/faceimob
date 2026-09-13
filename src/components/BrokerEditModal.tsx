@@ -113,9 +113,30 @@ async function chamarProvisionamento(body: Record<string, unknown>): Promise<Res
   });
 
   const data = (await response.json().catch(() => ({}))) as RespostaAcesso;
-  if (!response.ok) throw new ErroDeAcesso(authErrorMessage(data.error || `Falha na função (${response.status})`), data);
+  if (!response.ok) {
+    const bruta = data.error || `Falha na função (${response.status})`;
+    const traduzida = authErrorMessage(bruta);
+    // O 401 da função é "unauthorized" e o 500 repassa o texto cru do GoTrue ou
+    // do Postgres: em inglês, só vai para a tela a frase que a tradução reconheceu.
+    const mensagem = response.status === 401
+      ? "Sessão expirada. Faça login novamente."
+      : response.status >= 500 && traduzida === bruta
+        ? "A função de acesso falhou. Tente de novo em instantes."
+        : traduzida;
+    throw new ErroDeAcesso(mensagem, data);
+  }
   if (data.error) throw new ErroDeAcesso(authErrorMessage(data.error), data);
   return data;
+}
+
+/**
+ * Motivo que pode ir para o aviso. As frases escritas por nós (erro comum deste
+ * arquivo, `ErroDeAcesso` já traduzido, `SavePersonError`) passam; erro de
+ * storage, de rede ou do Postgres chega em inglês e vai para o `describeError`.
+ */
+function motivoDoErro(error: unknown, fallback: string): string {
+  if (error instanceof Error && ["Error", "ErroDeAcesso", "SavePersonError"].includes(error.name)) return error.message;
+  return describeError(error, fallback);
 }
 
 export function BrokerEditModal({
@@ -239,7 +260,7 @@ export function BrokerEditModal({
       .catch((error: unknown) => {
         if (!alive) return;
         setDetails("failed");
-        toast({ title: "Erro ao carregar a ficha", description: describeError(error, "Não foi possível carregar os dados do colaborador."), variant: "destructive" });
+        toast({ title: "Não foi possível carregar a ficha", description: describeError(error, "Feche e abra a ficha de novo."), variant: "destructive" });
       });
     return () => { alive = false; };
   }, [broker, open, criando]);
@@ -423,7 +444,7 @@ export function BrokerEditModal({
           ? "Ficha salva, acesso não"
           : desligar
             ? "Colaborador desligado"
-            : "Dados atualizados",
+            : "Colaborador atualizado",
         description: avisoAcesso
           ?? (desligar
             ? "A entrada foi bloqueada no login. Reativar o colaborador devolve o acesso — nada foi apagado."
@@ -432,17 +453,19 @@ export function BrokerEditModal({
                 ? "O bloqueio de entrada foi removido: ele volta a receber o código em /login."
                 : "O bloqueio de entrada foi removido. O código de 6 dígitos só chega quando o SMTP (Brevo) for configurado — até lá ele ainda não consegue entrar.")
               : undefined),
-        variant: avisoAcesso ? "destructive" : undefined,
+        // Reativado sem SMTP gravou, mas ele ainda não entra: aviso neutro, sem o
+        // verde e o som de "pronto".
+        variant: avisoAcesso ? "destructive" : reativando && !desligar && !entradaPronta ? "default" : "success",
       });
       if (!avisoAcesso) onSaved();
     } catch (error: unknown) {
       // `SavePersonError` já traz a frase pronta (qual etapa falhou e o que já
       // ficou gravado); `describeError` cuidaria só do erro cru do Postgres.
       toast({
-        title: "Erro ao salvar",
+        title: desligar ? "Não foi possível desligar o colaborador" : "Não foi possível salvar o colaborador",
         description: error instanceof Error && error.name === "SavePersonError"
           ? error.message
-          : describeError(error, "Não foi possível salvar os dados do colaborador."),
+          : describeError(error, "Tente de novo em instantes."),
         variant: "destructive",
       });
     } finally {
@@ -483,7 +506,7 @@ export function BrokerEditModal({
       descartarFoto();
       toast({
         title: "Colaborador cadastrado",
-        variant: "success",
+        variant: criado.login_ready === true ? "success" : "default",
         // Só `true` explícito promete o código: campo ausente (função antiga no
         // ar) tem de cair no aviso, nunca no silêncio otimista.
         description: criado.login_ready === true
@@ -501,11 +524,9 @@ export function BrokerEditModal({
         });
         return onDuplicado(corpo.existing_profile_id, nome);
       }
-      const motivo = error instanceof Error
-        ? authErrorMessage(error.message)
-        : "Não foi possível cadastrar o colaborador.";
+      const motivo = motivoDoErro(error, "Tente de novo em instantes.");
       toast({
-        title: idCriado ? "Conta criada, ficha não" : "Falha ao cadastrar",
+        title: idCriado ? "Conta criada, ficha não" : "Não foi possível cadastrar o colaborador",
         description: idCriado
           ? `A conta com o e-mail ${input.profile.email} JÁ existe — o que falhou foi a ficha: ${motivo} Clique em Cadastrar de novo: a tela abre a ficha dele para você concluir.`
           : motivo,
@@ -552,16 +573,16 @@ export function BrokerEditModal({
 
       toast({
         title: "E-mail de acesso atualizado",
-        variant: "success",
+        variant: data.login_ready === true ? "success" : "default",
         description: data.login_ready === true
           ? "O colaborador entra em /login com esse e-mail e recebe o código."
           : "O endereço mudou no login. O código de 6 dígitos só chega quando o SMTP for configurado.",
       });
       // Do NOT call onSaved() here — that would close the modal and hide the e-mail.
     } catch (error: unknown) {
-      const motivo = error instanceof Error ? authErrorMessage(error.message) : "Não foi possível atualizar o acesso.";
+      const motivo = motivoDoErro(error, "Tente de novo em instantes.");
       toast({
-        title: acessoTrocado ? "E-mail de acesso trocado, mas a ficha não foi salva" : "Falha ao atualizar o acesso",
+        title: acessoTrocado ? "E-mail de acesso trocado, mas a ficha não foi salva" : "Não foi possível atualizar o e-mail de acesso",
         description: acessoTrocado
           ? `O login JÁ é ${form.login_email || form.email} — o que falhou foi o resto da ficha: ${motivo} Corrija e clique em Salvar.`
           : motivo,
@@ -582,9 +603,10 @@ export function BrokerEditModal({
       await navigator.clipboard.writeText(val);
       setCopied(label);
       setTimeout(() => setCopied(null), 1500);
+      toast({ title: "E-mail copiado", variant: "success" });
     } catch (error: unknown) {
       toast({
-        title: "Não foi possível copiar",
+        title: "Não foi possível copiar o e-mail",
         description: describeError(error, "Copie o endereço manualmente."),
         variant: "destructive",
       });

@@ -64,7 +64,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
     const { data, error } = await supabase.from("marketing_investments").select("amount").eq("period", monthStart());
     if (error) {
       setCurrentTotal(null);
-      return toast({ title: "Falha ao carregar os aportes", description: describeError(error, "O total do mês não pôde ser somado; recarregue a tela."), variant: "destructive" });
+      return toast({ title: "Não foi possível carregar os aportes", description: describeError(error, "O total do mês não pôde ser somado; recarregue a tela."), variant: "destructive" });
     }
     setCurrentTotal((data ?? []).reduce((sum, row) => sum + Number(row.amount || 0), 0));
   }, []);
@@ -106,17 +106,18 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
       ? await supabase.from("marketing_investments").update(payload).eq("id", editing).select("id")
       : await supabase.from("marketing_investments").upsert(payload, { onConflict: "developer_id,period" }).select("id");
     setSaving(false);
-    if (error) return toast({ title: "Falha ao salvar o aporte", description: describeError(error, "Confira valor e construtora e tente de novo."), variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível salvar o aporte", description: describeError(error, "Confira valor e construtora e tente de novo."), variant: "destructive" });
     // O RLS não erra ao recusar: filtra a linha e o PostgREST devolve 204.
     if (!data?.length) {
       return toast({
-        title: editing
-          ? "O aporte não foi alterado: ou alguém já o excluiu, ou seu papel não pode lançar aporte (apenas admin e marketing)."
-          : "Sem permissão para lançar aporte (apenas admin e marketing).",
+        title: "Não foi possível salvar o aporte",
+        description: editing
+          ? "Ou alguém já o excluiu, ou seu papel não pode lançar aporte (apenas admin e marketing)."
+          : "Seu papel não pode lançar aporte (apenas admin e marketing).",
         variant: "destructive",
       });
     }
-    toast({ title: "Aporte salvo" });
+    toast({ title: "Aporte salvo", variant: "success" });
     setForm(VAZIO);
     setEditing(null);
     void load(period);
@@ -132,10 +133,10 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
   const remove = async (row: Investment) => {
     if (!confirm(`Excluir o aporte de ${devName(row.developer_id)} em ${monthLabel(row.period)}?`)) return;
     const { data, error } = await supabase.from("marketing_investments").delete().eq("id", row.id).select("id");
-    if (error) return toast({ title: "Falha ao excluir o aporte", description: describeError(error, "Não foi possível excluir o aporte."), variant: "destructive" });
-    if (!data?.length) return toast({ title: "Sem permissão para excluir aporte (apenas admin e marketing).", variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível excluir o aporte", description: describeError(error, "Tente de novo."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível excluir o aporte", description: "Seu papel não pode excluir aporte (apenas admin e marketing).", variant: "destructive" });
     if (editing === row.id) { setEditing(null); setForm(VAZIO); }
-    toast({ title: "Aporte excluído" });
+    toast({ title: "Aporte excluído", variant: "success" });
     void load(period);
     void loadCurrentTotal();
     void qc.invalidateQueries({ queryKey: ["marketing", "por-construtora"] });

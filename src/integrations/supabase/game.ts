@@ -419,9 +419,11 @@ export function weeksInRange(startIso: string, endIso: string): WeekRange[] {
 }
 
 /**
- * Chaves do cache. Todas sob `["game", …]` para que uma invalidação só —
- * a que o `EngagementLayer` dispara a cada INSERT em `game_events` — atualize
- * placar, temporada e regras de uma vez.
+ * Chaves do cache. Todas sob `["game", …]`, para que uma invalidação por
+ * prefixo alcance o placar inteiro. O `EngagementLayer` não recarrega tudo a
+ * cada INSERT em `game_events`: agrupa a rajada numa janela (`PLACAR_MS`) e
+ * refaz só ranking, temporada e lista de temporadas; a chave `["game"]`
+ * inteira só é invalidada quando o canal realtime volta de uma queda.
  */
 export const gameKeys = {
   all: ["game"] as const,

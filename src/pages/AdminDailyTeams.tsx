@@ -331,19 +331,19 @@ export default function AdminDailyTeams() {
       .select("id");
     setBusy(false);
     if (error) {
-      return toast({ title: "Erro ao criar equipe", description: describeError(error, "Não foi possível criar a equipe."), variant: "destructive" });
+      return toast({ title: "Não foi possível criar a equipe", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
     }
     // Update/insert barrado por RLS volta 200 sem linha: comemorar aqui seria
     // afirmar um cadastro que não existe.
     if (!data?.length) {
       return toast({
-        title: "A equipe não foi criada",
+        title: "Não foi possível criar a equipe",
         description: "O banco aceitou a chamada e não gravou linha nenhuma — seu papel não tem permissão de escrita em equipes.",
         variant: "destructive",
       });
     }
     setNewTeam(""); setNewDirector(""); setNewManager(""); setTeamOpen(false);
-    toast({ title: "Equipe criada", description: newManager ? undefined : "Sem gerente: as pendências do checkpoint vão mostrar “—”." });
+    toast({ title: "Equipe criada", description: newManager ? undefined : "Sem gerente: as pendências do checkpoint vão mostrar “—”.", variant: "success" });
     refresh();
   };
 
@@ -371,12 +371,20 @@ export default function AdminDailyTeams() {
           p_director_id: owner.kind === "director_checkpoint" ? owner.directorId : null,
         })).error;
     setBusy(false);
-    if (failure) return toast({ title: "Erro ao gerar PIN", description: describeError(failure, "Não foi possível gerar o PIN do link."), variant: "destructive" });
+    if (failure) {
+      return toast({
+        title: link ? "Não foi possível gerar o PIN" : "Não foi possível criar o link",
+        description: describeError(failure, "Tente de novo em instantes."),
+        variant: "destructive",
+      });
+    }
 
     setGeneratedPins(prev => ({ ...prev, [rowKey]: pin }));
     setRevealed(prev => ({ ...prev, [rowKey]: true }));
     toast({
-      title: "PIN gerado",
+      // Sem link, a mesma ação cria o link: "PIN gerado" escondia isso.
+      title: link ? "PIN gerado" : "Link criado",
+      variant: "success",
       // "Revalidado" seria falso sucesso: `create_public_link` e
       // `set_public_link_pin` (0062) só repõem os 90 dias quando o link JÁ
       // estava vencido — um link que vence em três dias continua vencendo em
@@ -428,14 +436,14 @@ export default function AdminDailyTeams() {
     setBusy(false);
     if (error) {
       return toast({
-        title: suspender ? "Erro ao suspender o link" : "Erro ao renovar a validade",
-        description: describeError(error, "Não foi possível alterar a validade."),
+        title: suspender ? "Não foi possível suspender o link" : "Não foi possível renovar a validade",
+        description: describeError(error, "Tente de novo em instantes."),
         variant: "destructive",
       });
     }
     if (!data?.length) {
       return toast({
-        title: suspender ? "O link não foi suspenso" : "A validade não foi renovada",
+        title: suspender ? "Não foi possível suspender o link" : "Não foi possível renovar a validade",
         description: "O banco não devolveu a linha: este link é de outro diretor.",
         variant: "destructive",
       });
@@ -444,6 +452,7 @@ export default function AdminDailyTeams() {
       ? {
           title: "Link suspenso",
           description: "Ele venceu agora e para de abrir imediatamente. A URL e o PIN continuam os mesmos — clique na validade do link e escolha um prazo para reativá-lo.",
+          variant: "success",
         }
       : {
           // O prazo padrão mantém a frase que a tela sempre deu: é o caminho de
@@ -453,6 +462,7 @@ export default function AdminDailyTeams() {
             ? "Validade renovada e link destravado"
             : `Validade renovada por ${days} dias — link destravado`,
           description: `O link vale até ${fmtDate(next)} e volta a aceitar o PIN atual agora.`,
+          variant: "success",
         });
     setValidityFor(null);
     refresh();
@@ -464,15 +474,15 @@ export default function AdminDailyTeams() {
     const { data, error } = await supabase.from("public_links")
       .update({ active: false }).eq("id", linkId).select("id");
     setBusy(false);
-    if (error) return toast({ title: "Erro ao desativar o link", description: describeError(error, "Não foi possível desativar."), variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível desativar o link", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
     if (!data?.length) {
       return toast({
-        title: "O link não foi desativado",
+        title: "Não foi possível desativar o link",
         description: "O banco não devolveu a linha: este link é de outro diretor.",
         variant: "destructive",
       });
     }
-    toast({ title: "Link desativado", description: "A URL antiga não abre mais. Clique em “Criar link” para emitir outra." });
+    toast({ title: "Link desativado", description: "A URL antiga não abre mais. Clique em “Criar link” para emitir outra.", variant: "success" });
     refresh();
   };
 
@@ -491,11 +501,11 @@ export default function AdminDailyTeams() {
   const copy = async (text: string, label = "Link") => {
     try {
       await navigator.clipboard.writeText(text);
-      toast({ title: `${label} copiado` });
+      toast({ title: `${label} copiado`, variant: "success" });
     } catch (e) {
       console.error("admin daily: falha ao copiar", e);
       toast({
-        title: `Não consegui copiar o ${label.toLowerCase()}`,
+        title: `Não foi possível copiar o ${label.toLowerCase()}`,
         description: describeError(e, "Selecione o texto ao lado e copie manualmente."),
         variant: "destructive",
       });

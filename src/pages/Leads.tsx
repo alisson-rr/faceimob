@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, BarChart3, Inbox, Plus, Upload, Users, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState, PageHeader, SectionCard } from "@/components/shared";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth, type AppRole } from "@/contexts/AuthContext";
@@ -88,17 +88,18 @@ export default function Leads() {
   const base = useMemo(() => baseQuery.data ?? [], [baseQuery.data]);
   const sources = useMemo(() => sourcesQuery.data ?? [], [sourcesQuery.data]);
 
-  // O tique de 1s só vale enquanto existe trava correndo; fora disso um passo
-  // lento basta para "atrasado" e "inativo". Olha as duas listas: com uma busca
-  // ativa o cronômetro pode estar num lead que só o recorte trouxe.
-  const temTrava = (lista: LeadRecord[]) =>
-    lista.some((lead) => lead.status === "assigned" && lead.attend_deadline);
-  const now = useNowTicker(temTrava(leads) || temTrava(base));
+  // Relógio lento: métricas e "atrasado" andam de 30 em 30 s. O cronômetro da
+  // trava tem o próprio tique de 1 s dentro da linha (`AttendCountdown`): com o
+  // relógio aqui, 1 lead em trava refazia as 1.000 linhas a cada segundo.
+  const now = useNowTicker(false);
 
   const [showSources, setShowSources] = useState(false);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
   const [dialogs, setDialogs] = useState<LeadDialogState>(noLeadDialogs);
-  const openDialog = (patch: Partial<LeadDialogState>) => setDialogs((prev) => ({ ...prev, ...patch }));
+  const openDialog = useCallback(
+    (patch: Partial<LeadDialogState>) => setDialogs((prev) => ({ ...prev, ...patch })),
+    [],
+  );
 
   const [searchParams, setSearchParams] = useSearchParams();
   const focusLeadId = searchParams.get("lead");
@@ -166,8 +167,7 @@ export default function Leads() {
     if (base.some((lead) => lead.id === focusLeadId) || leads.some((lead) => lead.id === focusLeadId)) {
       setDetailLeadId(focusLeadId);
     } else {
-      toast({
-        title: "Lead indisponível",
+      toast("Lead indisponível", {
         description: "Ele pode ter voltado para a fila ou sido realocado para outro corretor.",
       });
     }
@@ -196,17 +196,23 @@ export default function Leads() {
         .filter((lead) => lead.status === "assigned" && lead.assigned_to === profileId)
         .map((lead) => [lead.id, lead.name] as const),
     );
+    const saiu: string[] = [];
     for (const [id, nome] of meusNaTrava.current) {
       if (atuais.has(id)) continue;
       const agora = base.find((lead) => lead.id === id);
       if (agora && agora.assigned_to === profileId) continue;
-      toast({
-        variant: "destructive",
-        title: "Lead fora da sua mão",
-        description: `${nome}: o prazo de atendimento venceu ou o lead foi realocado. Ele voltou para a roleta.`,
-      });
+      saiu.push(nome);
     }
     meusNaTrava.current = atuais;
+    if (saiu.length === 0) return;
+    // Um aviso só: o cron solta vários leads na mesma passada, e um toast por
+    // lead empilhava a tela.
+    const nomes = saiu.length <= 3
+      ? saiu.join(", ")
+      : `${saiu.slice(0, 3).join(", ")} e mais ${num(saiu.length - 3)}`;
+    toast.error(saiu.length === 1 ? "Lead fora da sua mão" : `${num(saiu.length)} leads fora da sua mão`, {
+      description: `${nomes}: o prazo de atendimento venceu ou houve realocação.`,
+    });
   }, [base, profileId]);
 
   // Deriva da lista para o modal acompanhar o realtime em vez de congelar uma
@@ -233,13 +239,10 @@ export default function Leads() {
     try {
       await claimLead(lead.id);
       travado = true;
-      toast({ title: "Lead em atendimento", description: `${lead.name} está travado com você.` });
     } catch (err) {
       // Caso comum: outro corretor assumiu antes, ou o prazo estourou e o lead
       // voltou à fila.
-      toast({
-        variant: "destructive",
-        title: "Não foi possível atender",
+      toast.error("Não foi possível atender o lead", {
         description: describeError(err, "outro corretor pode ter assumido antes; a lista já foi atualizada"),
       });
     }
@@ -266,18 +269,15 @@ export default function Leads() {
     try {
       const alvo = await distributeQueuedLead(lead.id);
       if (alvo) {
-        toast({ title: "Lead distribuído", description: `${lead.name} foi para o primeiro da fila.` });
+        toast.success("Lead distribuído", { description: `${lead.name} foi para o primeiro da fila.` });
       } else {
-        toast({
-          variant: "destructive",
-          title: "Ninguém para receber agora",
+        // Resposta válida do banco, não falha: aviso sem o som de erro.
+        toast.warning("Ninguém para receber agora", {
           description: "A fila do grupo está vazia: ninguém com check-in aberto dentro do horário de distribuição, ou todos bloqueados por leads atrasados. O lead continua esperando.",
         });
       }
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível distribuir",
+      toast.error("Não foi possível distribuir o lead", {
         description: describeError(err, "o lead pode já ter saído da fila"),
       });
     } finally {
@@ -287,9 +287,14 @@ export default function Leads() {
     void queuesQuery.refetch();
   };
 
-  const actions: LeadRowActions = {
+  // A linha da tabela é memoizada: `actions` precisa manter a identidade entre
+  // renders, senão as 1.000 linhas são refeitas a cada tique e evento realtime.
+  // `attend` é recriada a cada render (usa `invalidateLeads`), então entra por ref.
+  const attendRef = useRef(attend);
+  useEffect(() => { attendRef.current = attend; });
+  const actions = useMemo<LeadRowActions>(() => ({
     onOpen: (lead) => setDetailLeadId(lead.id),
-    onAttend: attend,
+    onAttend: (lead) => { void attendRef.current(lead); },
     onEdit: (lead) => openDialog({ form: { open: true, lead } }),
     onReassign: (lead) => openDialog({ reassign: lead }),
     onConvert: (lead) => openDialog({ convert: lead }),
@@ -297,7 +302,7 @@ export default function Leads() {
     onEmail: (lead) => openDialog({ email: lead }),
     onCloseLead: (lead) => openDialog({ close: lead }),
     onDelete: (lead) => openDialog({ remove: lead }),
-  };
+  }), [openDialog]);
 
   // A lista busca no máximo `LEADS_PAGE_SIZE` linhas. Bateu no teto, há mais
   // leads no banco do que na tela — e filtrar aqui filtraria só o que veio. Vale

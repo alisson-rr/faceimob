@@ -121,7 +121,8 @@ export function LeadImportDialog({
     try {
       const count = await createLeads(novos, (done) => setProgress(done));
       toast({
-        title: `${num(count)} leads importados`,
+        variant: "success",
+        title: count === 1 ? "1 lead importado" : `${num(count)} leads importados`,
         description: repetidos.length
           ? `Entraram na fila; ${num(repetidos.length)} linha(s) repetida(s) foram puladas.`
           : "Entraram na fila; a roleta distribui conforme o check-in.",
@@ -131,7 +132,7 @@ export function LeadImportDialog({
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Erro na importação",
+        title: "Não foi possível importar os leads",
         description: describeError(err, "não foi possível salvar os leads"),
       });
       // `createLeads` grava em lotes e para no primeiro que falha: os lotes

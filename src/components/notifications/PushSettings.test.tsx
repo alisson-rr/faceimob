@@ -27,7 +27,7 @@ const aparelho = vi.hoisted(() => ({
   disablePush: vi.fn(),
   confirmPushSubscription: vi.fn(),
 }));
-const toast = vi.hoisted(() => vi.fn());
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 
 vi.mock("@/integrations/supabase/push", () => api);
 vi.mock("@/lib/push", async (importOriginal) => ({
@@ -35,7 +35,7 @@ vi.mock("@/lib/push", async (importOriginal) => ({
   ...aparelho,
 }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
-vi.mock("@/hooks/use-toast", () => ({ toast }));
+vi.mock("@/components/ui/sonner", () => ({ toast }));
 
 const { default: PushSettings } = await import("./PushSettings");
 
@@ -80,11 +80,13 @@ describe("PushSettings", () => {
     await act(async () => { interruptor("outros")?.click(); });
     await act(async () => {});
     expect(interruptor("outros")?.getAttribute("aria-checked")).toBe("false");
-    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" }));
+    expect(toast.error).toHaveBeenCalledWith("Não foi possível salvar a preferência de aviso", expect.anything());
+    expect(toast.success, "falha não pode confirmar a gravação").not.toHaveBeenCalled();
 
     api.setPushPreference.mockResolvedValueOnce(undefined);
     await act(async () => { interruptor("outros")?.click(); });
     await act(async () => {});
+    expect(toast.success).toHaveBeenCalledWith("Preferência de aviso salva", expect.anything());
     expect(api.setPushPreference).toHaveBeenLastCalledWith("u1", "outros", true);
     expect(interruptor("outros")?.getAttribute("aria-checked")).toBe("true");
   });

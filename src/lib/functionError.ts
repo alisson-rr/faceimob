@@ -1,4 +1,5 @@
 type FunctionError = {
+  name?: string;
   message?: string;
   context?: Response;
 };
@@ -12,8 +13,12 @@ export async function functionErrorMessage(error: unknown, fallback: string): Pr
     if (typeof body?.error === "string" && body.error.trim()) return body.error;
     if (typeof body?.message === "string" && body.message.trim()) return body.message;
   } catch {
-    // A resposta pode não ser JSON; nesse caso usamos a mensagem do SDK.
+    // A resposta pode não ser JSON; aí vale o que vem abaixo.
   }
 
+  // Erro do próprio SDK de functions (FunctionsHttpError/FetchError/RelayError)
+  // traz frase em inglês ("Edge Function returned a non-2xx status code"), que
+  // chegava crua ao toast. Nesse caso a frase de quem chamou, em pt-BR, é melhor.
+  if (functionError.name?.startsWith("Functions")) return fallback;
   return functionError.message || fallback;
 }

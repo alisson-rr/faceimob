@@ -1,10 +1,11 @@
 import { useCallback } from "react";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
-import { isLossStatus, normalizeStatus } from "@/lib/dealStatus";
+import { bareStatus, isLossStatus, normalizeStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import type { PipelineDeal } from "@/types/crm";
 import { updateDeal, useCanExitStage, useInvalidateDeals } from "./data";
 import { blockedMoveReason } from "./guards";
 import type { PipelineStage } from "./stages";
@@ -38,6 +39,17 @@ export const offDistratoBlocked = (
     ? null
     : "Só administrador e sócio marcam OFF e distrato.";
 };
+
+/**
+ * Negócio que, ao chegar em "Fechado", ganha o card de venda do `EngagementLayer`.
+ *
+ * O card nasce da linha `venda` em `game_events`, e o banco só a lança para
+ * corretor do rateio (0142): negócio só com gerente fecha sem card, e é nele que
+ * o toast de sucesso local precisa continuar. Venda que já pontuou numa temporada
+ * fechada também fica sem card, e isso a tela não tem como saber.
+ */
+export const vendaTemCard = (deal: Pick<PipelineDeal, "broker1_id" | "broker2_id" | "broker3_id">): boolean =>
+  Boolean(deal.broker1_id || deal.broker2_id || deal.broker3_id);
 
 /**
  * Escritas do Pipeline: mover de etapa e trocar o Status 2.
@@ -78,19 +90,19 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
       isAdmin, canEnterStage, canExitStage, closedMonths,
     });
     if (blocked) {
-      toast({ variant: "destructive", title: "Movimentação não permitida", description: blocked });
+      toast.error("Não foi possível mover o negócio", { description: blocked });
       return;
     }
 
+    // Entrar em análise passa pela conferência do gerente: o card só anda
+    // depois que os documentos forem aprovados.
+    const conferencia = stage.code === "under_analysis" && deal.stage !== "under_analysis"
+      && deal.document_review_status !== "approved";
     try {
-      // Entrar em análise passa pela conferência do gerente: o card só anda
-      // depois que os documentos forem aprovados.
-      if (stage.code === "under_analysis" && deal.stage !== "under_analysis"
-          && deal.document_review_status !== "approved") {
+      if (conferencia) {
         await submitDealForManagerReview(deal.id);
         await invalidateDeals();
-        toast({
-          title: "Enviado para conferência do gerente",
+        toast.success("Negócio enviado para conferência", {
           description: "O negócio segue para Em análise quando os documentos forem aprovados.",
         });
         return;
@@ -101,13 +113,20 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
       // estado real até o próximo reload.
       await updateDeal(deal.id, { stage_id: stage.id });
       await invalidateDeals();
-      toast({ title: `Negócio movido para ${stage.label}` });
+      // "Fechado" vira venda, e a venda com corretor já tem o card do `EngagementLayer`.
+      if (stage.code !== "closed" || !vendaTemCard(deal)) {
+        toast.success(`Negócio movido para ${stage.label}`, { duration: 2500 });
+      }
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível mover o negócio",
-        description: describeError(err, "A etapa não foi atualizada no servidor."),
-      });
+      toast.error(
+        conferencia ? "Não foi possível enviar o negócio para conferência" : "Não foi possível mover o negócio",
+        {
+          description: describeError(
+            err,
+            conferencia ? "O negócio continua na etapa atual." : "A etapa não foi atualizada no servidor.",
+          ),
+        },
+      );
     }
   }, [canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin]);
 
@@ -119,11 +138,7 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
     // perda, senão o diálogo abre para quem não pode marcar OFF nem distrato.
     const semPermissao = offDistratoBlocked(can, status);
     if (semPermissao) {
-      toast({
-        variant: "destructive",
-        title: "Alteração não permitida",
-        description: semPermissao,
-      });
+      toast.error("Não foi possível alterar o status", { description: semPermissao });
       return;
     }
 
@@ -145,7 +160,7 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
       const blocked = closedStage
         && blockedMoveReason(deal, closedStage, { isAdmin, canEnterStage, canExitStage, closedMonths });
       if (blocked) {
-        toast({ variant: "destructive", title: "Movimentação não permitida", description: blocked });
+        toast.error("Não foi possível alterar o status", { description: blocked });
         return;
       }
 
@@ -155,10 +170,12 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
         ...(closedStage ? { stage_id: closedStage.id } : {}),
       });
       await invalidateDeals();
+      // VENDA leva a "Fechado": com corretor, quem confirma é o card de venda do `EngagementLayer`.
+      if (!closedStage || !vendaTemCard(deal)) {
+        toast.success("Status atualizado", { description: bareStatus(status), duration: 2500 });
+      }
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao salvar o status",
+      toast.error("Não foi possível alterar o status", {
         description: describeError(err, "O status não foi atualizado no servidor."),
       });
     }

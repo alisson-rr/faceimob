@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
@@ -88,31 +88,23 @@ export function ReopenDealDialog({ deal, stages, onClose, onReopened }: Props) {
       // negócio aberto que ninguém rotulou à mão.
       await updateDeal(deal.id, { stage_id: target.id, lost_reason: null, status_detail: null });
       const nota = reason.trim();
-      if (nota) {
-        const { error } = await supabase.rpc("add_deal_comment", {
-          p_deal_id: deal.id,
-          p_body: `Negócio reaberto: ${nota}`,
+      const voltou = `${deal.client} voltou para ${target.label}.`;
+      const { error } = nota
+        ? await supabase.rpc("add_deal_comment", { p_deal_id: deal.id, p_body: `Negócio reaberto: ${nota}` })
+        : { error: null };
+      // O negócio JÁ voltou; falhar o comentário não desfaz nada. Um aviso só,
+      // em vez do vermelho seguido do sucesso para a mesma ação.
+      if (error) {
+        toast.warning("Negócio reaberto, sem registro no histórico", {
+          description: `${voltou} ${describeError(error, "O comentário não foi gravado.")}`,
         });
-        // O negócio JÁ voltou; falhar o comentário não desfaz nada. Avisa em
-        // separado em vez de dizer que a reabertura não aconteceu.
-        if (error) {
-          toast({
-            variant: "destructive",
-            title: "Negócio reaberto, mas sem registro no histórico",
-            description: describeError(error, "O comentário não foi gravado."),
-          });
-        }
+      } else {
+        toast.success("Negócio reaberto", { description: voltou });
       }
-      toast({
-        title: "Negócio reaberto",
-        description: `${deal.client} voltou para ${target.label}.`,
-      });
       await onReopened();
       onClose();
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível reabrir o negócio",
+      toast.error("Não foi possível reabrir o negócio", {
         description: describeError(err, "O negócio continua encerrado no servidor."),
       });
     } finally {

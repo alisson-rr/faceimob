@@ -283,7 +283,7 @@ describe("MetaAdScores (tela)", () => {
 
     await vi.waitFor(() => expect(m.toastError).toHaveBeenCalled());
     expect(m.invoke).toHaveBeenCalledWith("meta-ad-scores", { body: { account_id: "c1", dias: 30 } });
-    expect(m.toastError).toHaveBeenCalledWith("A análise falhou", { description: "A Meta não respondeu em 30 s." });
+    expect(m.toastError).toHaveBeenCalledWith("Não foi possível rodar a análise", { description: "A Meta não respondeu em 30 s." });
   });
 
   it("sem 'Gerenciar campanhas na Meta': Analisar desligado, e a análise continua visível", async () => {

@@ -53,6 +53,7 @@ export function CloseLeadDialog({
       const texto = notes.trim() ? `${reason} — ${notes.trim()}` : reason;
       await closeLead(lead.id, status, texto);
       toast({
+        variant: "success",
         title: status === "lost" ? "Lead marcado como perdido" : "Lead descartado",
         description: `${lead.name} — ${reason}. Ele sai da contagem de leads atrasados.`,
       });

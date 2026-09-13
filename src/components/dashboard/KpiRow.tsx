@@ -21,6 +21,12 @@ export interface KpiRowProps {
   /** Total de leads na base, sem recorte de período. */
   leadsNaBase: number;
   /**
+   * O que a lista de leads cobre quando veio cortada ("últimos 1.000 leads").
+   * O cartão "Leads" sai dessa lista e precisa dizer isso; "Base de leads" é
+   * contagem exata e não.
+   */
+  leadsAmostra?: string | null;
+  /**
    * De quem são os NEGÓCIOS e de quem são os LEADS desta régua.
    *
    * Os dois recortes são diferentes e ficam lado a lado: `deals_select` chega em
@@ -78,6 +84,7 @@ export function KpiRow({
   leadsError = false,
   onLeadsRetry,
   leadsNaBase,
+  leadsAmostra = null,
   dealsLabel = "toda a operação",
   leadsLabel = "toda a base",
   month,
@@ -109,7 +116,7 @@ export function KpiRow({
               )}
             </span>
           ) : (
-            `recebidos em ${periodo} · ${leadsLabel}`
+            `recebidos em ${periodo} · ${leadsLabel}${leadsAmostra ? ` · entre os ${leadsAmostra}` : ""}`
           )
         }
       />

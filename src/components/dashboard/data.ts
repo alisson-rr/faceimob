@@ -13,7 +13,8 @@
  * `useMemo` em volta delas: e o que permite testar a conta sem montar React.
  */
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { dealsQuery } from "@/components/pipeline/data";
 import { format, parseISO } from "date-fns";
 import {
   compareMonth,
@@ -113,13 +114,23 @@ export const defaultMonthOf = (deals: DealRow[], closedMonths: string[]): string
 export function useDashboardPayload() {
   const { user } = useAuth();
   const profileId = user?.id ?? null;
+  const queryClient = useQueryClient();
+  const queryKey = ["dashboard", "payload", profileId];
 
   const query = useQuery({
     // O usuario entra na chave porque o payload sai recortado pela RLS: sem
     // isso a segunda conta a entrar no mesmo navegador (troca de sessao) lia o
     // cache da primeira — negocio de outra equipe pintado como se fosse dela.
-    queryKey: ["dashboard", "payload", profileId],
-    queryFn: loadDashboardPayload,
+    queryKey,
+    // Os negocios saem do MESMO cache do Pipeline e da esteira (`dealsQuery`,
+    // tambem por perfil): voltar do Pipeline nao baixa a base de novo. O
+    // "Recarregar o painel" invalida o prefixo "dashboard" — ai o cache dos
+    // negocios nao serve e a lista e relida, como antes.
+    queryFn: () => {
+      const recarregando = queryClient.getQueryState(queryKey)?.isInvalidated;
+      return loadDashboardPayload(() =>
+        queryClient.fetchQuery({ ...dealsQuery(profileId), ...(recarregando ? { staleTime: 0 } : {}) }));
+    },
     enabled: !!profileId,
   });
 

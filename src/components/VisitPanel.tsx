@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MapPin, Loader2, Plus } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   listVisitsFor,
@@ -26,7 +26,6 @@ const formatWhen = (v: string) => new Date(v).toLocaleString("pt-BR", { dateStyl
 
 /** Visitas do lead/negócio — o elo entre atendimento e proposta. */
 export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
-  const { toast } = useToast();
   const { user } = useAuth();
   const [visits, setVisits] = useState<VisitRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,36 +35,40 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setVisits(await listVisitsFor({ leadId, dealId }));
+      const lista = await listVisitsFor({ leadId, dealId });
+      setVisits(lista);
+      return lista;
     } catch (e) {
-      toast({
-        title: "Falha ao carregar visitas",
-        description: describeError(e, "Não foi possível carregar as visitas."),
-        variant: "destructive",
+      toast.error("Não foi possível carregar as visitas", {
+        description: describeError(e, "tente de novo"),
       });
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [leadId, dealId, toast]);
+  }, [leadId, dealId]);
 
   useEffect(() => { void load(); }, [load]);
 
   const add = async () => {
-    if (!when) return toast({ title: "Escolha data e hora", variant: "destructive" });
+    // Sem data o botão fica desabilitado: campo vazio não é falha e não merece
+    // o som de erro.
+    if (!when) return;
     const broker = brokerId || user?.id;
-    if (!broker) return toast({ title: "Sem corretor responsável", variant: "destructive" });
+    if (!broker) {
+      toast.warning("Sem corretor responsável");
+      return;
+    }
 
     setBusy("new");
     try {
       await scheduleVisit({ leadId, dealId, brokerId: broker, scheduledAt: new Date(when).toISOString() });
       setWhen("");
       await load();
-      toast({ title: "Visita agendada" });
+      toast.success("Visita agendada");
     } catch (e) {
-      toast({
-        title: "Não foi possível agendar",
-        description: describeError(e, "Não foi possível agendar a visita."),
-        variant: "destructive",
+      toast.error("Não foi possível agendar a visita", {
+        description: describeError(e, "tente de novo"),
       });
     } finally {
       setBusy(null);
@@ -76,12 +79,25 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
     setBusy(id);
     try {
       await setVisitResult(id, result);
-      await load();
+      const lista = await load();
+      // Se a releitura falhou, o aviso dela já saiu.
+      if (!lista) return;
+      // Update barrado pelo RLS volta sem erro e sem linha (CCA e sócio veem a
+      // visita, mas `visits_write` só aceita o corretor dela e o gestor): só a
+      // lista relida prova que gravou.
+      if (lista.find((v) => v.id === id)?.result !== result) {
+        toast.error("Não foi possível registrar o resultado da visita", {
+          description: "a alteração não foi gravada, provavelmente por falta de permissão",
+        });
+        return;
+      }
+      toast.success("Resultado da visita registrado", {
+        description: VISIT_RESULT_LABEL[result],
+        duration: 2500,
+      });
     } catch (e) {
-      toast({
-        title: "Não foi possível atualizar",
-        description: describeError(e, "Não foi possível registrar o resultado da visita."),
-        variant: "destructive",
+      toast.error("Não foi possível registrar o resultado da visita", {
+        description: describeError(e, "tente de novo"),
       });
     } finally {
       setBusy(null);
@@ -103,7 +119,7 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
           className="h-8 text-xs md:w-56"
           aria-label="Data e hora da visita"
         />
-        <Button size="sm" onClick={add} disabled={busy === "new"} className="h-8 text-xs gap-1">
+        <Button size="sm" onClick={add} disabled={busy === "new" || !when} className="h-8 text-xs gap-1">
           {busy === "new" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Agendar
         </Button>
       </div>

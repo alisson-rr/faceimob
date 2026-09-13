@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { resolveLink } from "@/lib/notificationLink";
@@ -187,9 +187,7 @@ export default function NotificationBell() {
       } catch (err) {
         // Continua navegando: o destino é o que a pessoa pediu. O que não pode
         // é pintar como lido o que o banco recusou.
-        toast({
-          variant: "destructive",
-          title: "Não foi possível marcar como lida",
+        toast.error("Não foi possível marcar o aviso como lido", {
           description: describeError(err, "O aviso continua não lido. Tente de novo."),
         });
       }
@@ -205,10 +203,9 @@ export default function NotificationBell() {
       await deleteNotification(item.id);
       setItems((prev) => prev.filter((i) => i.id !== item.id));
       if (!item.read_at) setUnread((n) => Math.max(0, n - 1));
+      toast.success("Aviso apagado", { duration: 2500 });
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível apagar o aviso",
+      toast.error("Não foi possível apagar o aviso", {
         description: describeError(err, "O aviso continua na lista. Tente de novo."),
       });
     }
@@ -223,10 +220,9 @@ export default function NotificationBell() {
         throw new Error("nenhuma notificação foi marcada");
       }
       await load();
+      toast.success(atualizadas === 1 ? "1 aviso marcado como lido" : `${num(atualizadas)} avisos marcados como lidos`);
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "Não foi possível marcar todas como lidas",
+      toast.error("Não foi possível marcar os avisos como lidos", {
         description: describeError(err, "Os avisos continuam não lidos. Tente de novo."),
       });
     } finally {

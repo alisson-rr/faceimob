@@ -356,6 +356,10 @@ export interface CampaignPerformancePanelProps {
  */
 export default function CampaignPerformancePanel({ rows, allRows, developers, leadSources, loading, error, onReload }: CampaignPerformancePanelProps) {
   const { toast } = useToast();
+  /** Motivo da falha: a recusa nossa (validação, sem permissão) já vem em
+   *  pt-BR; a do banco (`dbError`) passa pelo describeError e nunca sai crua. */
+  const motivo = (e: unknown, dica: string) =>
+    describeError(e, e instanceof Error && !("db" in e) ? e.message : dica);
   const { isAdmin, roles, previewRole, can } = useAuth();
   const queryClient = useQueryClient();
   const cadastradas = allRows ?? rows;
@@ -435,26 +439,30 @@ export default function CampaignPerformancePanel({ rows, allRows, developers, le
     onSuccess: (r) => {
       const falhas = r.contas.filter((c) => c.status !== "ok");
       if (falhas.length > 0) {
+        // Outra sincronização rodando não é falha: aviso neutro, sem o som de erro.
+        const emAndamento = falhas.every((c) => c.status === "em_andamento");
         toast({
-          title: falhas.every((c) => c.status === "em_andamento")
+          title: emAndamento
             ? "Já havia uma sincronização em andamento"
             : falhas.length === r.contas.length
-              ? "A sincronização falhou"
+              ? "Não foi possível sincronizar com a Meta"
               : `A sincronização falhou em ${falhas.length} de ${r.contas.length} contas`,
           description: falhas[0].erro ?? "O motivo fica ao lado de cada conta.",
-          variant: "destructive",
+          variant: emAndamento ? "default" : "destructive",
         });
         return;
       }
       const conflitos = r.contas.flatMap((c) => c.conflitos ?? []);
       toast({
-        title: "Sincronizado com a Meta",
+        title: "Campanhas sincronizadas com a Meta",
         description: conflitos.length > 0
           ? `${num(conflitos.length)} ${conflitos.length === 1 ? "campanha ficou" : "campanhas ficaram"} de fora: ${conflitos[0]}`
           : "Gasto, verba, status e resultados atualizados.",
+        // Campanha que ficou de fora pede atenção, não o som de sucesso.
+        variant: conflitos.length > 0 ? "default" : "success",
       });
     },
-    onError: (e) => toast({ title: "A sincronização não rodou", description: e.message, variant: "destructive" }),
+    onError: (e) => toast({ title: "Não foi possível sincronizar com a Meta", description: e.message, variant: "destructive" }),
     // Em qualquer desfecho a execução ficou registrada ('ok' ou 'falhou', com a
     // frase) e o livro pode ter mudado: tudo de /marketing relê.
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["marketing"] }),
@@ -577,6 +585,7 @@ export default function CampaignPerformancePanel({ rows, allRows, developers, le
       cancelEdit();
       onReload();
       toast({
+        variant: "success",
         title: editing ? "Campanha atualizada" : eraCopia ? "Cópia registrada" : "Campanha registrada",
         ...(nasceuPausada
           ? { description: "Nasceu pausada: confira a verba e o período antes de ativar." }
@@ -586,8 +595,8 @@ export default function CampaignPerformancePanel({ rows, allRows, developers, le
       });
     } catch (e) {
       toast({
-        title: "Não foi possível salvar",
-        description: describeError(e, e instanceof Error ? e.message : "Não foi possível registrar a campanha."),
+        title: "Não foi possível salvar a campanha",
+        description: motivo(e, "Confira os campos e tente de novo."),
         variant: "destructive",
       });
     } finally {
@@ -611,14 +620,15 @@ export default function CampaignPerformancePanel({ rows, allRows, developers, le
       if (editing === row.id) setForm((p) => ({ ...p, status: proximo }));
       onReload();
       toast({
-        title: proximo === "PAUSED" ? "Campanha pausada no CRM" : "Campanha reativada no CRM",
+        variant: "success",
+        title: proximo === "PAUSED" ? "Campanha pausada no CRM" : "Campanha ativada no CRM",
         // Sem esta frase, pausar aqui passa por ter pausado o gasto na Meta.
         description: "Registro local: a Meta não é alterada por aqui.",
       });
     } catch (e) {
       toast({
-        title: "Não foi possível alterar o status",
-        description: describeError(e, e instanceof Error ? e.message : "Não foi possível alterar o status."),
+        title: "Não foi possível alterar o status da campanha",
+        description: motivo(e, "Tente de novo."),
         variant: "destructive",
       });
     } finally {
@@ -633,11 +643,11 @@ export default function CampaignPerformancePanel({ rows, allRows, developers, le
     try {
       await vincularConstrutora(row.id, construtora.id);
       onReload();
-      toast({ title: "Construtora vinculada", description: `${row.name} → ${construtora.name}` });
+      toast({ variant: "success", title: "Construtora vinculada", description: `${row.name} → ${construtora.name}` });
     } catch (e) {
       toast({
-        title: "Não foi possível vincular",
-        description: describeError(e, e instanceof Error ? e.message : "Não foi possível vincular a construtora."),
+        title: "Não foi possível vincular a construtora",
+        description: motivo(e, "Tente de novo."),
         variant: "destructive",
       });
     } finally {
@@ -652,11 +662,11 @@ export default function CampaignPerformancePanel({ rows, allRows, developers, le
       await deleteAdCampaign(row.id);
       if (editing === row.id) cancelEdit();
       onReload();
-      toast({ title: "Campanha excluída" });
+      toast({ variant: "success", title: "Campanha excluída" });
     } catch (e) {
       toast({
-        title: "Não foi possível excluir",
-        description: describeError(e, e instanceof Error ? e.message : "Não foi possível excluir a campanha."),
+        title: "Não foi possível excluir a campanha",
+        description: motivo(e, "Tente de novo."),
         variant: "destructive",
       });
     } finally {

@@ -66,16 +66,16 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
       ? supabase.from("sdr_agents").update(payload).eq("id", editing.id)
       : supabase.from("sdr_agents").insert(payload);
     const { data, error } = await q.select("id");
-    if (error) return toast.error(describeError(error, "Não foi possível salvar o agente."));
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (error) return toast.error("Não foi possível salvar o agente", { description: describeError(error, "Tente de novo.") });
+    if (!data?.length) return toast.error("Não foi possível salvar o agente", { description: SEM_PERMISSAO });
     toast.success("Agente salvo");
     setEditing(null); reload();
   }
 
   async function remove(agent: Agent) {
     const { data, error } = await supabase.from("sdr_agents").delete().eq("id", agent.id).select("id");
-    if (error) return toast.error(describeError(error, "Não foi possível excluir o agente."));
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (error) return toast.error("Não foi possível excluir o agente", { description: describeError(error, "Tente de novo.") });
+    if (!data?.length) return toast.error("Não foi possível excluir o agente", { description: SEM_PERMISSAO });
     if (editing?.id === agent.id) setEditing(null);
     setExcluindo(null);
     toast.success("Agente excluído");

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, Clock, ListChecks, LogIn, LogOut, Rocket, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
@@ -156,8 +156,9 @@ export default function Checkin() {
     || (Boolean(userId) && today.isPending);
 
   const action = async (act: "checkin" | "checkout") => {
+    const falha = act === "checkin" ? "Não foi possível fazer o check-in" : "Não foi possível fazer o check-out";
     if (act === "checkin" && blocked) {
-      toast.error(eligibility.data?.reason || "Check-in bloqueado.");
+      toast.error(falha, { description: eligibility.data?.reason || "Check-in bloqueado." });
       return;
     }
     setPendingAction(act);
@@ -167,22 +168,25 @@ export default function Checkin() {
       const { data, error } = await supabase.functions.invoke("broker-checkin", { body: { action: act } });
       // A mensagem útil vem no corpo da resposta da function, não no error.message.
       if (error) {
-        throw new Error(translateFunctionError(
-          await functionErrorMessage(error, "Não foi possível falar com o servidor de check-in."),
-        ));
+        const semResposta = "O servidor de check-in não respondeu. Tente de novo em instantes.";
+        const mensagem = await functionErrorMessage(error, semResposta);
+        // Sem corpo JSON, `functionErrorMessage` devolve a mensagem do SDK, em
+        // inglês ("Failed to send a request to the Edge Function").
+        throw new Error(translateFunctionError(mensagem === error.message ? semResposta : mensagem));
       }
       const returned = (data as { error?: string } | null)?.error;
       if (returned) throw new Error(translateFunctionError(returned));
       if (act === "checkin") {
+        // Sem toast de sucesso: o `EngagementLayer` já avisa o check-in pelo realtime.
         setIncentive(incentives[Math.floor(Math.random() * incentives.length)]);
         setConfirmOpen(true);
       } else {
-        toast.success("Check-out realizado!");
+        toast.success("Check-out realizado");
       }
       await queryClient.invalidateQueries({ queryKey: ["checkin"] });
     } catch (err) {
       // Tudo que chega aqui já é texto nosso em pt-BR (function ou RPC).
-      toast.error(err instanceof Error ? err.message : "Não foi possível concluir a ação.");
+      toast.error(falha, { description: err instanceof Error ? err.message : "Tente de novo em instantes." });
     } finally {
       setPendingAction(null);
     }

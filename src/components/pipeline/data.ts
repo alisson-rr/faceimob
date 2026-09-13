@@ -9,7 +9,7 @@
  * erro com "Tentar de novo". `staleTime: 60_000` vem do `App.tsx`.
  */
 import { useCallback, useEffect, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,7 +58,8 @@ export async function updateDeal(
 
 export const pipelineKeys = {
   root: ["pipeline"] as const,
-  /** A lista de negócios é compartilhada com o Dashboard: chave curta e estável. */
+  /** PREFIXO da lista de negócios — a chave completa leva o perfil (`dealsQuery`).
+   *  É por ele que as invalidações alcançam a lista. */
   deals: ["deals"] as const,
   stages: ["pipeline", "stages"] as const,
   people: ["pipeline", "people"] as const,
@@ -70,8 +71,28 @@ export const pipelineKeys = {
   openSeason: ["pipeline", "open-season"] as const,
 };
 
-export const useDeals = () =>
-  useQuery({ queryKey: pipelineKeys.deals, queryFn: listLegacyDeals });
+/**
+ * A lista de negócios, uma entrada de cache por pessoa.
+ *
+ * Pipeline, esteira CCA e Dashboard leem DAQUI (os dois últimos por
+ * `fetchQuery`): abrir uma tela depois da outra não baixa a base de novo. Cada
+ * um tinha a própria carga, e a esteira baixava duas vezes na mesma abertura.
+ *
+ * O perfil entra na chave porque a lista sai recortada pela RLS: sem ele, a
+ * segunda conta a entrar no mesmo navegador leria o cache da primeira — o
+ * Dashboard já fechava isso na chave dele, e agora que ele lê daqui a trava
+ * precisa morar aqui.
+ */
+export const dealsQuery = (profileId: string | null) =>
+  queryOptions({
+    queryKey: [...pipelineKeys.deals, profileId] as const,
+    queryFn: ({ signal }) => listLegacyDeals(signal),
+  });
+
+export const useDeals = () => {
+  const { user } = useAuth();
+  return useQuery(dealsQuery(user?.id ?? null));
+};
 
 /** Catálogo de etapas — fonte única do rótulo e dono do `id` que o RLS autoriza. */
 export const usePipelineStages = () =>
@@ -283,11 +304,23 @@ export function useCheckinQueue() {
 export function usePipelineRealtime() {
   const queryClient = useQueryClient();
   useEffect(() => {
+    // Uma rajada em `deals` vira UMA recarga. Fechar o mês move N negócios, e
+    // salvar um negócio já recarrega pelo `invalidateDeals` explícito e de novo
+    // pelo eco do próprio evento: cada evento recomeçava a carga inteira da
+    // lista. O primeiro evento agenda; os que chegam na janela entram na mesma
+    // recarga. Mudança feita por outra pessoa aparece em até 1,5 s; a escrita
+    // local continua imediata, pelo `invalidateDeals` de quem gravou.
+    let agendada: ReturnType<typeof setTimeout> | undefined;
+    const recarregarNegocios = () => {
+      if (agendada) return;
+      agendada = setTimeout(() => {
+        agendada = undefined;
+        void queryClient.invalidateQueries({ queryKey: pipelineKeys.deals });
+      }, 1500);
+    };
     const channel = supabase
       .channel("pipeline-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "deals" }, () => {
-        void queryClient.invalidateQueries({ queryKey: pipelineKeys.deals });
-      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "deals" }, recarregarNegocios)
       .on("postgres_changes", { event: "*", schema: "public", table: "stage_permissions" }, () => {
         void queryClient.invalidateQueries({ queryKey: pipelineKeys.stagePermissions });
       })
@@ -295,11 +328,20 @@ export function usePipelineRealtime() {
         void queryClient.invalidateQueries({ queryKey: pipelineKeys.closedMonths });
       })
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => {
+      clearTimeout(agendada);
+      void supabase.removeChannel(channel);
+    };
   }, [queryClient]);
 }
 
+/** Estável: é dependência do `moveDeal`/`changeStatus` (`useDealActions`), que
+ *  descem até o `DealCard` memoizado. Um fecho novo por render refazia os 2.288
+ *  cartões do kanban a cada tecla na busca ou modal aberto no Pipeline. */
 export function useInvalidateDeals() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: pipelineKeys.deals });
+  return useCallback(
+    () => queryClient.invalidateQueries({ queryKey: pipelineKeys.deals }),
+    [queryClient],
+  );
 }

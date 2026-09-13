@@ -164,10 +164,17 @@ export function applyDealFilters(
   });
 }
 
+/**
+ * Um comparador só para o módulo. `localeCompare(b, "pt-BR")` monta a regra de
+ * ordenação a cada comparação, e a busca do Pipeline ordena os 7.579 negócios
+ * a cada tecla. `Intl.Collator` com o mesmo locale dá exatamente a mesma ordem.
+ */
+const ordemPtBr = new Intl.Collator("pt-BR").compare;
+
 /** Construtora primeiro, depois a ordem do catálogo de Status 2. */
 export const sortDeals = (deals: LegacyDealRecord[]): LegacyDealRecord[] =>
   [...deals].sort((a, b) => {
-    const byDeveloper = (a.developer || "").localeCompare(b.developer || "", "pt-BR");
+    const byDeveloper = ordemPtBr(a.developer || "", b.developer || "");
     if (byDeveloper !== 0) return byDeveloper;
     return faceimobStatusRank(a.status) - faceimobStatusRank(b.status);
   });
@@ -211,7 +218,7 @@ export function sortDealsBy(
     const left = value(a);
     const right = value(b);
     const compared = typeof left === "string" && typeof right === "string"
-      ? left.localeCompare(right as string, "pt-BR")
+      ? ordemPtBr(left, right)
       : Number(left) - Number(right);
     return compared * direction;
   });

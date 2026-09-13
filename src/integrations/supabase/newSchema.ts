@@ -276,20 +276,43 @@ const PAGE_SIZE = 1000;
  *
  * A ordem precisa ser estável entre as páginas — daí o desempate por `id` em
  * quem usa isto.
+ *
+ * A 1ª página pede `count` e as demais faixas saem JUNTAS. Uma de cada vez,
+ * participantes e nomes eram cadeias de 21 idas e voltas e o Pipeline esperava
+ * 21 × a latência. Se a última faixa ainda vier cheia (a tabela cresceu entre a
+ * contagem e a leitura, ou a contagem não veio), o laço segue de uma em uma
+ * como antes: "até o fim" continua garantido.
  */
-async function allRows<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
+type Page<T> = PromiseLike<{ data: T[] | null; error: { message?: string } | null; count?: number | null }>;
+
+export async function allRows<T>(
+  page: (from: number, to: number, count?: "exact") => Page<T>,
 ): Promise<{ data: T[]; error: { message?: string } | null }> {
-  const rows: T[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await page(from, from + PAGE_SIZE - 1);
-    if (error) return { data: rows, error };
-    rows.push(...(data ?? []));
-    if ((data?.length ?? 0) < PAGE_SIZE) return { data: rows, error: null };
+  let last = await page(0, PAGE_SIZE - 1, "exact");
+  if (last.error) return { data: [], error: last.error };
+  const rows: T[] = [...(last.data ?? [])];
+
+  const starts: number[] = [];
+  for (let from = PAGE_SIZE; from < (last.count ?? 0); from += PAGE_SIZE) starts.push(from);
+  for (const result of await Promise.all(starts.map((from) => page(from, from + PAGE_SIZE - 1)))) {
+    if (result.error) return { data: rows, error: result.error };
+    rows.push(...(result.data ?? []));
+    last = result;
   }
+
+  for (let from = PAGE_SIZE * (starts.length + 1); (last.data?.length ?? 0) === PAGE_SIZE; from += PAGE_SIZE) {
+    last = await page(from, from + PAGE_SIZE - 1);
+    if (last.error) return { data: rows, error: last.error };
+    rows.push(...(last.data ?? []));
+  }
+  return { data: rows, error: null };
 }
 
-export async function listLegacyDeals(): Promise<LegacyDealRecord[]> {
+export async function listLegacyDeals(signal?: AbortSignal): Promise<LegacyDealRecord[]> {
+  // O `signal` do React Query chega até a rede: sem ele, uma recarga cancelada
+  // (evento realtime, `invalidateDeals`) continuava baixando as dezenas de
+  // páginas enquanto a próxima já começava.
+  const sinal = signal ?? new AbortController().signal;
   const [
     dealsRes,
     stagesRes,
@@ -300,21 +323,26 @@ export async function listLegacyDeals(): Promise<LegacyDealRecord[]> {
     participantNamesRes,
     visitsRes,
   ] = await Promise.all([
-    allRows((from, to) => db.from("deals").select("*")
-      .order("created_at", { ascending: false }).order("id").range(from, to)),
-    db.from("pipeline_stages").select("id,code,label,position"),
-    db.from("developers").select("id,name"),
-    db.from("developer_projects").select("id,name"),
-    allRows((from, to) => db.from("deal_clients").select("*").order("id").range(from, to)),
-    allRows((from, to) => db.from("deal_participants").select("*")
-      .order("ordinal").order("created_at").order("id").range(from, to)),
-    allRows((from, to) => db.rpc("deal_participant_names").range(from, to)),
+    allRows((from, to, count) => db.from("deals").select("*", { count })
+      .order("created_at", { ascending: false }).order("id").range(from, to).abortSignal(sinal)),
+    db.from("pipeline_stages").select("id,code,label,position").abortSignal(sinal),
+    db.from("developers").select("id,name").abortSignal(sinal),
+    db.from("developer_projects").select("id,name").abortSignal(sinal),
+    allRows((from, to, count) => db.from("deal_clients").select("*", { count })
+      .order("id").range(from, to).abortSignal(sinal)),
+    allRows((from, to, count) => db.from("deal_participants").select("*", { count })
+      .order("ordinal").order("created_at").order("id").range(from, to).abortSignal(sinal)),
+    // `undefined as never`: a função não tem argumento (`Args: never` nos tipos
+    // gerados) e o `count` só entra pelo 3º parâmetro; em runtime o `rpc` troca
+    // `undefined` pelo `{}` padrão, a mesma chamada de antes.
+    allRows((from, to, count) => db.rpc("deal_participant_names", undefined as never, { count })
+      .range(from, to).abortSignal(sinal)),
     // `visits` entra aqui porque `deals` não tem mais coluna de visita: o schema
     // novo guarda o agendamento na própria tabela. Sem esta consulta,
     // `visit_date` nascia `undefined` para todo negócio e o indicador de visita
     // da tabela e do cartão ficava apagado mesmo depois de agendar.
-    allRows((from, to) => db.from("visits").select("deal_id,scheduled_at,result")
-      .not("deal_id", "is", null).order("id").range(from, to)),
+    allRows((from, to, count) => db.from("visits").select("deal_id,scheduled_at,result", { count })
+      .not("deal_id", "is", null).order("id").range(from, to).abortSignal(sinal)),
   ]);
 
   throwIfError("deals", dealsRes);
@@ -479,7 +507,9 @@ export async function listLegacyDeals(): Promise<LegacyDealRecord[]> {
   });
 }
 
-const legacyLeadStatus = (lead: Database["public"]["Tables"]["leads"]["Row"]): LeadStatus => {
+const legacyLeadStatus = (
+  lead: Pick<Database["public"]["Tables"]["leads"]["Row"], "status" | "funnel_stage">,
+): LeadStatus => {
   if (lead.status === "converted") return "converted";
   if (lead.status === "lost" || lead.status === "discarded") return "lost";
   if (lead.funnel_stage === "qualified") return "qualified";
@@ -494,7 +524,19 @@ export async function listLegacyLeads(): Promise<Lead[]> {
     // `.order("id")` desempata: com `created_at` igual (importação em lote, rajada
     // do webhook da Meta) o Postgres pode devolver as linhas em ordem diferente a
     // cada consulta, e a tela trocava de posição sozinha. Mesmo par de `listLegacyDeals`.
-    db.from("leads").select("*").order("created_at", { ascending: false }).order("id"),
+    //
+    // Só as colunas que o mapeamento abaixo lê: `select("*")` trazia as 40
+    // colunas da tabela (~1,2 kB por linha, medido na homologação) para usar 11.
+    //
+    // ponytail: sem `range`, a lista para no `max-rows` do PostgREST (1.000
+    // linhas) — com 102.799 leads o Dashboard conta só os 1.000 mais recentes.
+    // Paginar até o fim seriam ~100 páginas com OFFSET sob RLS a cada abertura;
+    // evoluir para contagem agrupada no banco (por mês, origem, situação e
+    // corretor) quando o Dashboard tiver essa RPC. O total da base já é exato
+    // em `loadDashboardPayload`.
+    db.from("leads")
+      .select("id,full_name,phone,email,source_id,utm_source,assigned_to,created_at,status,funnel_stage,notes")
+      .order("created_at", { ascending: false }).order("id"),
     db.from("lead_sources").select("id,label"),
     db.from("profiles").select("id,full_name"),
   ]);
@@ -526,7 +568,7 @@ export async function listLegacyLeads(): Promise<Lead[]> {
 
 export type DashboardPayload = {
   deals: LegacyDealRecord[];
-  leadsBySource: { name: string; v: number }[];
+  /** Total de leads que a RLS deixa ver — contagem exata, sem baixar a lista. */
   leadsCount: number;
   ccaCounts: Record<string, number>;
   staff: {
@@ -538,33 +580,33 @@ export type DashboardPayload = {
   closedMonths: string[];
 };
 
-export async function loadDashboardPayload(): Promise<DashboardPayload> {
-  const [deals, leads, people, ccaRes, closedRes] = await Promise.all([
-    listLegacyDeals(),
-    listLegacyLeads(),
+export async function loadDashboardPayload(
+  loadDeals: () => Promise<LegacyDealRecord[]> = () => listLegacyDeals(),
+): Promise<DashboardPayload> {
+  const [deals, leadsRes, people, ccaRes, closedRes] = await Promise.all([
+    loadDeals(),
+    // Só a contagem. A lista inteira vinha aqui E de novo em `useDashboardLeads`
+    // na mesma abertura, e o total dela parava nas 1.000 linhas do `max-rows`.
+    db.from("leads").select("id", { count: "exact", head: true }),
     listPeople(),
-    db.from("cca_cases").select("status"),
+    // Paginado: sem `range`, a esteira do Dashboard somava só 1.000 dos 7.560 casos.
+    allRows((from, to, count) => db.from("cca_cases").select("status", { count })
+      .order("id").range(from, to)),
     db.from("closed_months").select("period"),
   ]);
+  if (leadsRes.error) throw dbError("leads", leadsRes.error);
   if (ccaRes.error) throw dbError("cca_cases", ccaRes.error);
   if (closedRes.error) throw dbError("closed_months", closedRes.error);
 
-  const sourceCounts = new Map<string, number>();
-  for (const lead of leads) {
-    const source = lead.source || "Sem origem";
-    sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
-  }
-
   const ccaCounts: Record<string, number> = {};
-  for (const row of ccaRes.data || []) {
+  for (const row of ccaRes.data) {
     const label = ccaStatusLabel(row.status);
     ccaCounts[label] = (ccaCounts[label] || 0) + 1;
   }
 
   return {
     deals,
-    leadsBySource: Array.from(sourceCounts, ([name, v]) => ({ name, v })),
-    leadsCount: leads.length,
+    leadsCount: leadsRes.count ?? 0,
     ccaCounts,
     staff: {
       brokersTotal: people.filter((person) => person.roles.includes("broker")).length,

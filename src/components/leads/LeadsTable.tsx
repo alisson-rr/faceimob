@@ -1,3 +1,4 @@
+import { memo, startTransition, useEffect, useState } from "react";
 import {
   ArrowRightCircle, HandMetal, Mail, MessageCircle, Pencil, RefreshCcw, Timer, Trash2, UserPlus,
   XCircle,
@@ -12,6 +13,8 @@ import {
   isLeadOverdue, isLeadUnattended, leadStatusLabel, leadStatusTone, leadSourceTone,
   type LeadRecord,
 } from "@/integrations/supabase/leads";
+import { useNowTicker } from "./data";
+import { sameLeadProps } from "./sameLeadProps";
 
 export type LeadRowActions = {
   onOpen: (lead: LeadRecord) => void;
@@ -41,6 +44,38 @@ export type LeadPermissions = {
   canDelete: boolean;
 };
 
+type AttendCountdownProps = {
+  lead: Pick<LeadRecord, "status" | "attend_deadline">;
+  /** Só o tempo, sem badge — para o botão "Atender". */
+  bare?: boolean;
+};
+
+/**
+ * Cronômetro da trava de atendimento, com o próprio relógio de 1 s.
+ *
+ * O relógio morava na página e descia como `now` para a lista inteira: bastava
+ * 1 lead em trava para as 1.000 linhas re-renderizarem a cada segundo (6,2 s
+ * bloqueados a cada 20 s, medido em produção). Aqui só esta folha assina o
+ * tique. A guarda vem antes do hook: lead sem trava não monta relógio nenhum.
+ */
+export function AttendCountdown(props: AttendCountdownProps) {
+  return attendSecondsLeft(props.lead) === null ? null : <AttendCountdownTick {...props} />;
+}
+
+function AttendCountdownTick({ lead, bare = false }: AttendCountdownProps) {
+  const now = useNowTicker(true);
+  const secondsLeft = attendSecondsLeft(lead, now);
+  if (secondsLeft === null) return null;
+  const tempo = <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>;
+  if (bare) return tempo;
+  return (
+    <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>{tempo}</StatusBadge>
+  );
+}
+
+/** Linhas por lote na montagem da lista (ver `LeadsTable`). */
+const LOTE_DE_LINHAS = 100;
+
 /**
  * Lista de leads.
  *
@@ -60,8 +95,27 @@ export function LeadsTable({
   /** `automation_settings.roulette_max_rounds` — o teto de voltas da roleta. */
   maxRounds?: number;
 }) {
+  // Montar as 1.000 linhas de uma vez era uma tarefa só de ~3 s em CPU 4x na
+  // primeira abertura (React, estilo e layout de todas). O primeiro lote sai na
+  // hora e o resto entra em lotes, cada um na sua tarefa; em poucos instantes a
+  // lista está inteira e o Ctrl+F acha tudo. O limite só cresce: filtrar e
+  // limpar o filtro não recomeça a conta.
+  // ponytail: com `table-layout: auto` as colunas se ajustam a cada lote, e o
+  // topo pode pular de lado enquanto a lista enche (medido: até 90 px quando o
+  // conteúdo largo só vem depois da linha 100, 1 a 4 px com dados misturados;
+  // ~1 s em CPU normal, ~2 s em CPU 4x). Fixar larguras tira o salto, mas muda o
+  // visual final da tabela (até 108 px); fixar se o salto incomodar de verdade.
+  const [limite, setLimite] = useState(LOTE_DE_LINHAS);
+  const faltam = limite < leads.length;
+  useEffect(() => {
+    if (!faltam) return;
+    const lote = setTimeout(() => startTransition(() => setLimite((atual) => atual + LOTE_DE_LINHAS)), 0);
+    return () => clearTimeout(lote);
+  }, [faltam, limite]);
+
   return (
-    <Table>
+    // `leads-table`: gancho da regra de pintura em `index.css`.
+    <Table className="leads-table">
       <TableHeader>
         <TableRow>
           <TableHead className="min-w-[200px]">Cliente</TableHead>
@@ -73,11 +127,10 @@ export function LeadsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {leads.map((lead) => (
+        {leads.slice(0, limite).map((lead) => (
           <LeadRow
             key={lead.id}
             lead={lead}
-            now={now}
             claimable={canClaim(lead, profileId)}
             overdue={isLeadOverdue(lead, now)}
             writable={permissions.canWrite(lead)}
@@ -91,11 +144,15 @@ export function LeadsTable({
   );
 }
 
-function LeadRow({
-  lead, now, claimable, overdue, writable, unattended, permissions, actions,
+/**
+ * Memoizada: a página re-renderiza a cada 30 s (atrasados) e a cada evento
+ * realtime, e só a linha cujo lead mudou é refeita (`sameLeadProps`) — por isso
+ * `actions` e `permissions` precisam chegar estáveis da página.
+ */
+const LeadRow = memo(function LeadRow({
+  lead, claimable, overdue, writable, unattended, permissions, actions,
 }: {
   lead: LeadRecord;
-  now: number;
   claimable: boolean;
   overdue: boolean;
   writable: boolean;
@@ -104,7 +161,6 @@ function LeadRow({
   permissions: LeadPermissions;
   actions: LeadRowActions;
 }) {
-  const secondsLeft = attendSecondsLeft(lead, now);
   const convertible = lead.status !== "converted" && !lead.converted_deal_id;
   const encerravel = !["converted", "lost", "discarded"].includes(lead.status)
     && !lead.converted_deal_id;
@@ -129,11 +185,7 @@ function LeadRow({
           </StatusBadge>
           {/* Cronômetro neutro, igual ao funil e ao aviso de lead (lá o âmbar é
               o botão "Atender"). No último minuto vira alerta vermelho. */}
-          {secondsLeft !== null && (
-            <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
-              <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>
-            </StatusBadge>
-          )}
+          <AttendCountdown lead={lead} />
           {overdue && <StatusBadge tone="danger">Atrasado</StatusBadge>}
           {/* Um lead na 19ª volta era indistinguível de um lead novo: as duas
               linhas diziam só "Na fila". A volta é o que separa "acabou de
@@ -229,4 +281,4 @@ function LeadRow({
       </TableCell>
     </TableRow>
   );
-}
+}, sameLeadProps);

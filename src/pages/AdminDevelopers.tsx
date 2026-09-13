@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertTriangle, Building2, Inbox, Pencil, Plus, Trash2 } from "lucide-react";
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
 import { toast } from "@/hooks/use-toast";
+import { toast as sonner } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isEmail } from "@/integrations/supabase/developerSubmissions";
 import { slugify } from "@/lib/utils";
@@ -125,14 +126,15 @@ export default function AdminDevelopers() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const update = async (id: string, patch: Partial<DeveloperRow>) => {
+  /** `falhou` é o título do aviso de erro — cada chamador diz o que não gravou. */
+  const update = async (id: string, patch: Partial<DeveloperRow>, falhou: string) => {
     const { data, error } = await supabase.from("developers").update(patch).eq("id", id).select("id");
     if (error) {
-      toast({ title: "Erro ao atualizar", description: describeError(error, "Não foi possível atualizar a construtora."), variant: "destructive" });
+      toast({ title: falhou, description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
       return false;
     }
     if (!data?.length) {
-      toast({ title: NO_PERMISSION, variant: "destructive" });
+      toast({ title: falhou, description: NO_PERMISSION, variant: "destructive" });
       return false;
     }
     setDevelopers(prev => prev.map(d => (d.id === id ? { ...d, ...patch } : d)));
@@ -148,16 +150,23 @@ export default function AdminDevelopers() {
         variant: "destructive",
       });
     }
-    if (await update(dev.id, { flow })) toast({ title: "Configuração atualizada" });
+    if (await update(dev.id, { flow }, "Não foi possível alterar o fluxo de crédito")) {
+      toast({
+        title: "Fluxo de crédito atualizado",
+        description: flow === "internal" ? "CCA interno" : "Fluxo externo: os documentos vão por e-mail à construtora.",
+        variant: "success",
+      });
+    }
   };
 
   const toggleActive = async (dev: DeveloperRow) => {
-    if (await update(dev.id, { active: !dev.active })) {
+    if (await update(dev.id, { active: !dev.active }, "Não foi possível alterar a construtora")) {
       toast({
         title: dev.active ? "Construtora desativada" : "Construtora reativada",
         description: dev.active
           ? "Ela some das listas de escolha, mas o histórico de aportes e negócios continua no lugar."
           : undefined,
+        variant: "success",
       });
     }
   };
@@ -170,8 +179,8 @@ export default function AdminDevelopers() {
    */
   const saveEmail = async (dev: DeveloperRow, email: string) => {
     // Constraint do banco: fluxo externo exige e-mail — o erro volta no toast.
-    const ok = await update(dev.id, { submission_email: email || null });
-    if (ok) toast({ title: email ? "E-mail de envio salvo" : "E-mail de envio removido" });
+    const ok = await update(dev.id, { submission_email: email || null }, "Não foi possível salvar o e-mail de envio");
+    if (ok) toast({ title: email ? "E-mail de envio salvo" : "E-mail de envio removido", variant: "success" });
     return ok;
   };
 
@@ -197,12 +206,12 @@ export default function AdminDevelopers() {
     });
     setSaving(false);
     if (error) {
-      return toast({ title: "Erro ao adicionar construtora", description: describeError(error, "Não foi possível adicionar a construtora."), variant: "destructive" });
+      return toast({ title: "Não foi possível adicionar a construtora", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
     }
     setNewDev("");
     setNewEmail("");
     setNewFlow("internal");
-    toast({ title: "Construtora adicionada" });
+    toast({ title: "Construtora adicionada", variant: "success" });
     await load();
   };
 
@@ -211,14 +220,14 @@ export default function AdminDevelopers() {
     const { data, error } = await supabase.from("developers").delete().eq("id", dev.id).select("id");
     if (error) {
       return toast({
-        title: "Não foi possível remover",
-        description: `${describeError(error, "Não foi possível remover a construtora.")} Se houver negócios vinculados, desative a construtora em vez de removê-la.`,
+        title: "Não foi possível remover a construtora",
+        description: `${describeError(error, "O banco recusou a remoção.")} Se houver negócios vinculados, desative a construtora em vez de removê-la.`,
         variant: "destructive",
       });
     }
-    if (!data?.length) return toast({ title: NO_PERMISSION, variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível remover a construtora", description: NO_PERMISSION, variant: "destructive" });
     setDevelopers(prev => prev.filter(d => d.id !== dev.id));
-    toast({ title: "Construtora removida" });
+    toast({ title: "Construtora removida", variant: "success" });
   };
 
   return (
@@ -406,9 +415,9 @@ function DeveloperEditDialog({
     setSaving(true);
     const { data, error } = await supabase.from("developers").update(patch).eq("id", dev.id).select("id");
     setSaving(false);
-    if (error) return toast({ title: "Erro ao salvar", description: describeError(error, "Não foi possível salvar a construtora."), variant: "destructive" });
-    if (!data?.length) return toast({ title: NO_PERMISSION, variant: "destructive" });
-    toast({ title: "Construtora salva" });
+    if (error) return toast({ title: "Não foi possível salvar a construtora", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível salvar a construtora", description: NO_PERMISSION, variant: "destructive" });
+    toast({ title: "Construtora salva", variant: "success" });
     onSaved(patch);
   };
 
@@ -424,11 +433,11 @@ function DeveloperEditDialog({
       .from("developer_projects")
       .insert({ developer_id: dev.id, name, city: newProject.city.trim() || null, state: uf || null })
       .select("id,developer_id,name,city,state,active");
-    if (error) return toast({ title: "Erro ao adicionar empreendimento", description: describeError(error, "Não foi possível adicionar o empreendimento."), variant: "destructive" });
-    if (!data?.length) return toast({ title: NO_PERMISSION, variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível adicionar o empreendimento", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível adicionar o empreendimento", description: NO_PERMISSION, variant: "destructive" });
     setProjects(prev => [...prev, ...(data as ProjectRow[])].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
     setNewProject({ name: "", city: "", state: "" });
-    toast({ title: "Empreendimento adicionado" });
+    toast({ title: "Empreendimento adicionado", variant: "success" });
   };
 
   /**
@@ -449,15 +458,15 @@ function DeveloperEditDialog({
       .eq("id", project.id)
       .select("id");
     if (error) {
-      toast({ title: "Erro ao renomear", description: describeError(error, "Não foi possível renomear o empreendimento."), variant: "destructive" });
+      toast({ title: "Não foi possível renomear o empreendimento", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
       return false;
     }
     if (!data?.length) {
-      toast({ title: NO_PERMISSION, variant: "destructive" });
+      toast({ title: "Não foi possível renomear o empreendimento", description: NO_PERMISSION, variant: "destructive" });
       return false;
     }
     setProjects(prev => prev.map(p => (p.id === project.id ? { ...p, name: limpo } : p)).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
-    toast({ title: "Empreendimento renomeado" });
+    toast({ title: "Empreendimento renomeado", variant: "success" });
     return true;
   };
 
@@ -468,14 +477,14 @@ function DeveloperEditDialog({
     setRemovingProject(null);
     if (error) {
       return toast({
-        title: "Não foi possível excluir",
-        description: `${describeError(error, "Não foi possível excluir o empreendimento.")} Se houver lead ou negócio vinculado, desative em vez de excluir.`,
+        title: "Não foi possível excluir o empreendimento",
+        description: `${describeError(error, "O banco recusou a exclusão.")} Se houver lead ou negócio vinculado, desative em vez de excluir.`,
         variant: "destructive",
       });
     }
-    if (!data?.length) return toast({ title: NO_PERMISSION, variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível excluir o empreendimento", description: NO_PERMISSION, variant: "destructive" });
     setProjects(prev => prev.filter(p => p.id !== project.id));
-    toast({ title: "Empreendimento excluído" });
+    toast({ title: "Empreendimento excluído", variant: "success" });
   };
 
   const toggleProject = async (project: ProjectRow) => {
@@ -484,9 +493,10 @@ function DeveloperEditDialog({
       .update({ active: !project.active })
       .eq("id", project.id)
       .select("id");
-    if (error) return toast({ title: "Erro ao atualizar", description: describeError(error, "Não foi possível atualizar o empreendimento."), variant: "destructive" });
-    if (!data?.length) return toast({ title: NO_PERMISSION, variant: "destructive" });
+    if (error) return toast({ title: "Não foi possível alterar o empreendimento", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
+    if (!data?.length) return toast({ title: "Não foi possível alterar o empreendimento", description: NO_PERMISSION, variant: "destructive" });
     setProjects(prev => prev.map(p => (p.id === project.id ? { ...p, active: !p.active } : p)));
+    sonner.success(project.active ? "Empreendimento desativado" : "Empreendimento reativado", { duration: 2500 });
   };
 
   return (

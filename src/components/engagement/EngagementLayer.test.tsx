@@ -299,6 +299,71 @@ describe("EngagementLayer · realtime", () => {
   });
 });
 
+/**
+ * O trigger grava uma linha por corretor do rateio e por regra, e cada aba logada
+ * recebe todas. Invalidar `["game"]` a cada linha refazia temporada e ranking uma
+ * vez por linha, em todas as abas — o servidor executa tudo, mesmo o que o
+ * cliente cancela. O placar agora é refeito uma vez por rajada, e só o ranking.
+ */
+describe("EngagementLayer · placar", () => {
+  /** As chaves `["game", …]` que a tela real mantém em cache. */
+  const CHAVES = {
+    temporada: ["game", "season"],
+    // A TV escolhe a temporada exibida nesta lista: sem ela, a temporada nova
+    // não está lá e a tela cai na primeira da lista, a encerrada.
+    temporadas: ["game", "seasons"],
+    ranking: ["game", "ranking", "temporada-1", null, null],
+    rankingDoMes: ["game", "ranking", "temporada-1", "2026-09-01", "2026-09-30"],
+    regras: ["game", "rules", "temporada-1"],
+    resultados: ["game", "results", "temporada-0"],
+  };
+  const invalidada = (chave: unknown[]) => client.getQueryState(chave)?.isInvalidated ?? false;
+
+  it("rajada de 10 eventos em 1 s refaz o placar uma vez, e só ranking e temporadas", async () => {
+    await montar();
+    Object.values(CHAVES).forEach((chave) => client.setQueryData(chave, []));
+    const spy = vi.spyOn(client, "invalidateQueries");
+
+    for (let i = 0; i < 10; i += 1) {
+      await act(async () => { handlerDe("game_events")(evento({ id: `r${i}`, event_code: "esteira" })); });
+      await act(async () => { vi.advanceTimersByTime(100); });
+    }
+    await act(async () => { vi.advanceTimersByTime(2000); });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(invalidada(CHAVES.ranking)).toBe(true);
+    expect(invalidada(CHAVES.rankingDoMes)).toBe(true);
+    // A temporada entra: o primeiro evento de uma temporada recém-aberta é o
+    // que tira a TV da loja do placar encerrado.
+    expect(invalidada(CHAVES.temporada)).toBe(true);
+    expect(invalidada(CHAVES.temporadas)).toBe(true);
+    expect(invalidada(CHAVES.regras)).toBe(false);
+    expect(invalidada(CHAVES.resultados)).toBe(false);
+  });
+
+  /**
+   * O nome do card sai do ranking. Com o placar em cache e ainda fresco, só o
+   * agrupamento faria o card ler a foto de antes da venda — e quem vendeu pela
+   * primeira vez viraria "Equipe".
+   */
+  it("venda a três mãos: uma invalidação, e o nome sai do placar já refeito", async () => {
+    await montar();
+    client.setQueryData(["game", "ranking", "temporada-1"], [{ profile_id: "p1", full_name: "Ana Lima" }]);
+    const spy = vi.spyOn(client, "invalidateQueries");
+
+    await act(async () => {
+      handlerDe("game_events")(evento({ id: "m1", profile_id: "p1" }));
+      handlerDe("game_events")(evento({ id: "m2", profile_id: "p2" }));
+      handlerDe("game_events")(evento({ id: "m3", profile_id: "p1", event_code: "esteira" }));
+    });
+    await passarJanela();
+    await act(async () => { vi.advanceTimersByTime(2000); });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("[data-testid=venda]")?.textContent).toBe("Ana Lima e Bruno Reis");
+  });
+});
+
 describe("EngagementLayer · queda do canal", () => {
   it("avisa na tela enquanto está fora do ar e some ao voltar", async () => {
     await montar();

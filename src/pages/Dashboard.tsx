@@ -31,6 +31,7 @@ import {
 } from "@/components/dashboard";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
+import { num } from "@/lib/format";
 
 /**
  * Primeira tela depois do login: a leitura do mes em indicadores, graficos e
@@ -85,6 +86,14 @@ export default function Dashboard() {
     () => (leadsQuery.data ? leadsInMonth(leadsQuery.data, activeMonth).length : null),
     [leadsQuery.data, activeMonth],
   );
+  // A lista de leads para no `max-rows` do PostgREST (1.000 linhas), e a base
+  // passa de 100 mil; `payload.leadsCount` e contagem exata. Lista menor que a
+  // contagem = lista cortada, e o numero que sai dela diz sobre o que foi
+  // calculado em vez de se passar pelo total.
+  const amostraDeLeads =
+    leadsQuery.data && payload && leadsQuery.data.length < payload.leadsCount
+      ? `últimos ${num(leadsQuery.data.length)} leads`
+      : null;
 
   const isClosed = activeMonth !== ALL_MONTHS && closedMonths.includes(activeMonth);
   const periodo = activeMonth === ALL_MONTHS ? "todos os meses" : activeMonth;
@@ -226,11 +235,11 @@ export default function Dashboard() {
           leadsNoPeriodo={leadsNoPeriodo}
           leadsError={!!leadsQuery.error}
           onLeadsRetry={() => void leadsQuery.refetch()}
-          // A LISTA, nao o `payload.leadsCount`: as duas contagens saem da mesma
-          // `listLegacyLeads`, mas de consultas diferentes — se uma atualiza e a
-          // outra ainda serve cache, o cartao "Base de leads" do topo diverge do
-          // cartao de mesmo nome dentro da aba Leads.
-          leadsNaBase={leadsQuery.data?.length ?? payload?.leadsCount ?? 0}
+          // A contagem exata, nao o tamanho da lista: a lista para em 1.000 e o
+          // cartao dizia "1.000" para uma base de 102.799. A aba Leads nao repete
+          // mais este cartao, entao nao ha outro numero de mesmo nome a divergir.
+          leadsNaBase={payload?.leadsCount ?? 0}
+          leadsAmostra={amostraDeLeads}
           dealsLabel={recorte.dealsLabel}
           leadsLabel={recorte.leadsLabel}
           month={activeMonth}
@@ -315,7 +324,12 @@ export default function Dashboard() {
                 mas nao tem `leads.view_queue`, e a `leads_select` esconde dele o
                 lead sem dono — com `toda` ligado ele lia "A base tem 69 leads"
                 para uma base de 74, ao lado do rotulo que dizia o contrario. */}
-            <LeadsPanel month={activeMonth} scopeLabel={recorte.leadsLabel} toda={leadsIsWholeBase} />
+            <LeadsPanel
+              month={activeMonth}
+              scopeLabel={recorte.leadsLabel}
+              toda={leadsIsWholeBase}
+              amostra={amostraDeLeads}
+            />
           </TabsContent>
 
           <TabsContent value="metas" className="mt-0">
@@ -332,6 +346,7 @@ export default function Dashboard() {
                 deals={deals}
                 leads={leadsQuery}
                 escopo={isDirector ? "diretoria" : "equipe"}
+                amostra={amostraDeLeads}
               />
             </TabsContent>
           )}

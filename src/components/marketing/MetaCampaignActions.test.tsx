@@ -269,7 +269,7 @@ describe("MetaCampaignActions", () => {
     clicar(botao(dialogo()!, "Ativar na Meta"));
 
     await vi.waitFor(() => expect(m.toast.error).toHaveBeenCalledTimes(1));
-    expect(m.toast.error).toHaveBeenCalledWith("A ação não foi concluída", {
+    expect(m.toast.error).toHaveBeenCalledWith("Não foi possível ativar a campanha na Meta", {
       description: expect.stringContaining("Token sem permissão para anúncios"),
     });
     expect(m.toast.success).not.toHaveBeenCalled();

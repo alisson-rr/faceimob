@@ -121,22 +121,34 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
       // A RPC não recebe o grupo de handoff, e é ele que o
       // `whatsapp-inbound-webhook` usa para decidir a roleta do lead criado a
       // partir de uma resposta — sem ele o lead nasce sem grupo nenhum.
+      let semRoleta = false;
       if (groupId && listId) {
-        const { error: groupError } = await supabase
+        const { data: comRoleta, error: groupError } = await supabase
           .from("remarketing_lists").update({ handoff_group_id: groupId }).eq("id", listId as string).select("id");
-        if (groupError) toast.error(describeError(groupError, "Lista criada, mas sem a roleta de destino."));
+        // Zero linha é a RLS recusando em silêncio: a lista existe, a roleta não.
+        semRoleta = !!groupError || !comRoleta?.length;
       }
-      toast.success(`Lista "${newName.trim()}" criada com ${contatos.length} contatos`, {
-        description: repetidos > 0
-          ? `${repetidos} linha(s) repetiam um telefone já lido na planilha e ficaram de fora.`
-          : undefined,
-      });
+      const foraDaLista = repetidos > 0
+        ? ` ${repetidos} linha(s) repetiam um telefone já lido na planilha e ficaram de fora.`
+        : "";
+      // Um aviso só: o erro da roleta seguido de "Lista criada" eram dois recados contraditórios.
+      if (semRoleta) {
+        toast.warning(`Lista "${newName.trim()}" criada sem a roleta de destino`, {
+          description: `${contatos.length} contatos importados. Escolha a roleta na engrenagem da lista.${foraDaLista}`,
+        });
+      } else {
+        toast.success(`Lista "${newName.trim()}" criada com ${contatos.length} contatos`, {
+          description: foraDaLista.trim() || undefined,
+        });
+      }
       setNewName(""); setTemplateId(""); setGroupId(""); setAgentId("");
       reload();
     } catch (err: unknown) {
       // A planilha recusada já explica o motivo em pt-BR; o resto é erro do
       // banco vindo da RPC de importação, e aí quem traduz é o describeError.
-      toast.error(err instanceof ImportError ? err.message : describeError(err, "Falha ao importar a lista."));
+      toast.error("Não foi possível importar a lista", {
+        description: err instanceof ImportError ? err.message : describeError(err, "Tente de novo."),
+      });
     } finally { setUploading(false); }
   }
 
@@ -154,7 +166,9 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
       // perdeu a fila e reimportar a planilha em cima.
       // Sem credencial o painel acima carrega a explicação inteira e fica na
       // tela; repeti-la no toast faria o leitor de tela ouvir tudo duas vezes.
-      return toast.error(falha.credencialAusente ? "Nada foi enviado." : falha.mensagem);
+      return toast.error("Não foi possível disparar a lista", {
+        description: falha.credencialAusente ? "Nada foi enviado." : falha.mensagem,
+      });
     }
     setSemCredencial(null);
     // Verde SÓ quando saiu alguma coisa: a function conta falha por contato e
@@ -180,10 +194,13 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
     if (error) {
       const falha = await falhaDoDisparo(error, "Falha no envio de teste");
       setSemCredencial(falha.credencialAusente);
-      return toast.error(falha.mensagem);
+      // Como no disparo: sem credencial, a explicação inteira já está no painel fixo.
+      return toast.error("Não foi possível enviar o teste", {
+        description: falha.credencialAusente ? "Nada foi enviado." : falha.mensagem,
+      });
     }
     setSemCredencial(null);
-    toast.success(data?.destino ? `Teste enviado para o seu telefone (${data.destino}).` : "Teste enviado para o seu telefone.");
+    toast.success("Teste enviado", { description: data?.destino ? `Para o seu telefone (${data.destino}).` : "Para o seu telefone." });
   }
 
   async function salvarEdicao() {
@@ -204,8 +221,8 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
       throttle_per_minute: ritmo,
     }).eq("id", editando.id).select("id");
     setOcupado(false);
-    if (error) return toast.error(describeError(error, "Não foi possível salvar a lista."));
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (error) return toast.error("Não foi possível salvar a lista", { description: describeError(error, "Tente de novo.") });
+    if (!data?.length) return toast.error("Não foi possível salvar a lista", { description: SEM_PERMISSAO });
     toast.success("Lista atualizada");
     setEditando(null);
     reload();
@@ -214,8 +231,8 @@ export function RemarketingTab({ lists, agents, groups, templates, canWrite, rel
   async function removeList(id: string) {
     setConfirmando(null);
     const { data, error } = await supabase.from("remarketing_lists").delete().eq("id", id).select("id");
-    if (error) return toast.error(describeError(error, "Não foi possível excluir a lista."));
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (error) return toast.error("Não foi possível excluir a lista", { description: describeError(error, "Tente de novo.") });
+    if (!data?.length) return toast.error("Não foi possível excluir a lista", { description: SEM_PERMISSAO });
     if (editando?.id === id) setEditando(null);
     if (contatosDe === id) setContatosDe(null);
     toast.success("Lista excluída");

@@ -53,7 +53,7 @@ export function LeadFormDialog({
           source_id: form.source_id || null,
           notes: form.notes || null,
         });
-        toast({ title: "Lead atualizado" });
+        toast({ variant: "success", title: "Lead atualizado" });
       } else {
         await createLead({
           full_name: form.full_name,
@@ -63,15 +63,19 @@ export function LeadFormDialog({
           source_id: form.source_id || null,
           notes: form.notes,
         });
-        toast({ title: "Lead criado", description: "Entrou na fila de distribuição. A roleta atribui o corretor." });
+        toast({
+          variant: "success",
+          title: "Lead criado",
+          description: "Entrou na fila de distribuição. A roleta atribui o corretor.",
+        });
       }
       await invalidateLeads();
       onClose();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Erro ao salvar",
-        description: describeError(err, "não foi possível gravar o lead"),
+        title: lead ? "Não foi possível salvar o lead" : "Não foi possível criar o lead",
+        description: describeError(err, "tente de novo"),
       });
     } finally {
       setSaving(false);

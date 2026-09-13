@@ -83,6 +83,7 @@ export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, o
         queryClient.invalidateQueries({ queryKey: gameKeys.all }),
       ]);
       toast({
+        variant: "success",
         title: `Mês ${period} fechado`,
         description: `Temporada encerrada e ${result.moved_deals} proposta(s) movida(s) para ${next}.`,
       });
@@ -90,7 +91,7 @@ export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, o
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Erro ao fechar o mês",
+        title: "Não foi possível fechar o mês",
         description: describeError(err, "Nada foi congelado; tente de novo."),
       });
     } finally {

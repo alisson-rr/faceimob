@@ -271,7 +271,11 @@ export function resumoDisparo(r: { sent: number; failed: number; remaining: numb
   if (r.sent === 0) {
     return { tom: "warning", titulo: "Nada foi enviado", descricao: "Nenhum contato pendente para disparar nesta lista." };
   }
-  return { tom: "success", titulo: `Enviados: ${r.sent}`, descricao: fila };
+  return {
+    tom: "success",
+    titulo: "Disparo concluído",
+    descricao: `${r.sent} ${r.sent === 1 ? "mensagem enviada" : "mensagens enviadas"}. ${fila}`,
+  };
 }
 
 /**

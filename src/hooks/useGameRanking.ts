@@ -71,8 +71,9 @@ export function useCurrentSeasonId() {
  *
  * Era um `useEffect` com `useState` que buscava uma vez e nunca mais: uma venda
  * fechada com a tela aberta não mexia o placar. Agora é cache do TanStack Query,
- * e o `EngagementLayer` invalida a chave `["game"]` a cada INSERT em
- * `game_events` — o placar acompanha o realtime sem cada tela assinar um canal.
+ * e o `EngagementLayer` refaz o ranking depois de cada rajada de INSERTs em
+ * `game_events` (uma releitura por janela de `PLACAR_MS`, não uma por linha) —
+ * o placar acompanha o realtime sem cada tela assinar um canal.
  *
  * `week` recorta a MESMA pontuação num intervalo de dias (premiação semanal,
  * pedido de 10/09/2026). É filtro de leitura: a temporada continua sendo o

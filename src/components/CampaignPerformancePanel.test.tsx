@@ -299,7 +299,7 @@ describe("CampaignPerformancePanel · Meta", () => {
 
     await vi.waitFor(() => expect(m.sincronizar).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Sincronizado com a Meta" })),
+      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "Campanhas sincronizadas com a Meta", variant: "success" })),
     );
   });
 

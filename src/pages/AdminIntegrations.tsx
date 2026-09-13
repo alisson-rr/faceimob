@@ -283,11 +283,12 @@ export default function AdminIntegrations() {
       toast({
         title: "Credencial salva no cofre",
         description: "As functions passam a usar este valor sem redeploy.",
+        variant: "success",
       });
     } catch (e) {
       toast({
-        title: "Não foi possível salvar",
-        description: describeError(e, "Não foi possível salvar a credencial no cofre."),
+        title: "Não foi possível salvar a credencial",
+        description: describeError(e, "Tente de novo em instantes."),
         variant: "destructive",
       });
     } finally {
@@ -318,6 +319,7 @@ export default function AdminIntegrations() {
         toast({
           title: "Credencial revogada",
           description: "O valor foi apagado e a linha está inativa. Instâncias já aquecidas podem levar alguns minutos para parar de usá-la.",
+          variant: "success",
         });
       }
       setTestes((prev) => { const p = { ...prev }; delete p[slotKey(slot.provider, slot.label)]; return p; });
@@ -326,8 +328,8 @@ export default function AdminIntegrations() {
     } catch (e) {
       toast({
         variant: "destructive",
-        title: "Não foi possível revogar",
-        description: describeError(e, "Falha ao revogar a credencial no cofre."),
+        title: "Não foi possível revogar a credencial",
+        description: describeError(e, "Tente de novo em instantes."),
       });
     } finally {
       setRevogandoAgora(false);

@@ -239,7 +239,17 @@ describe("MetaCampaignPlanner", () => {
     m.tentativas = 20;
     botao("Gerar plano")!.click();
 
-    await vi.waitFor(() => expect(el.querySelector('[role="alert"]')?.textContent).toBe(FRASE_LIMITE_PLANOS));
+    const { toast } = await import("sonner");
+    await vi.waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Não foi possível gerar o plano", { description: FRASE_LIMITE_PLANOS }),
+    );
+    // O toast anuncia; a frase fica na tela sem role="alert", senão o leitor de tela lê duas vezes.
+    await vi.waitFor(() =>
+      expect(
+        Array.from(el.querySelectorAll("p")).some((p) => !p.hasAttribute("role") && p.textContent === FRASE_LIMITE_PLANOS),
+      ).toBe(true),
+    );
+    expect(el.querySelector('[role="alert"]')).toBeNull();
     await vi.waitFor(() => expect(el.textContent).toContain("Hoje: 20 de 20 tentativas"));
     expect(botao("Gerar plano")?.disabled).toBe(true);
     expect(m.invoke).toHaveBeenCalledTimes(1);

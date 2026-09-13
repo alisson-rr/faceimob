@@ -51,6 +51,14 @@ import { MotivationalPopup } from "@/components/MotivationalPopup";
 const SALE_WINDOW_MS = 500;
 
 /**
+ * Janela de agrupamento do placar. O trigger grava uma linha de `game_events`
+ * por corretor do rateio e por regra, e toda aba logada recebe todas: refazer o
+ * ranking a cada linha repetia no servidor a mesma leitura cara N vezes por aba
+ * (o cancelamento do TanStack Query só vale no cliente).
+ */
+const PLACAR_MS = 1500;
+
+/**
  * Tempo do card de venda na tela: o trecho inteiro da música. Aviso permanente
  * não é aviso, é ruído — mas card mais curto que o trecho (eram 6 s contra 7 s)
  * fazia a venda seguinte entrar com a faixa ainda na trava de não empilhar, e
@@ -196,11 +204,33 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
   const pending = useRef<PendingSale[]>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout>>();
   const seen = useRef<Set<string>>(new Set());
+  const placarTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  /**
+   * Refaz o placar: o ranking (todos os recortes), a temporada e a lista de
+   * temporadas — o primeiro evento de uma temporada recém-aberta é o que tira a
+   * TV da loja do placar encerrado, e a TV escolhe a temporada exibida naquela
+   * lista. Regras e resultados congelados não mudam com INSERT em `game_events`
+   * e ficam fora.
+   */
+  const atualizarPlacar = useCallback(() => {
+    clearTimeout(placarTimer.current);
+    placarTimer.current = undefined;
+    return queryClient.invalidateQueries({
+      predicate: ({ queryKey }) =>
+        queryKey[0] === "game" && (queryKey[1] === "ranking" || queryKey[1] === "season" || queryKey[1] === "seasons"),
+    });
+  }, [queryClient]);
 
   const flushSales = useCallback(async () => {
     const events = pending.current;
     pending.current = [];
     if (!events.length) return;
+
+    // O nome do card sai do ranking, e antes do agrupamento ele chegava aqui já
+    // refeito. A invalidação pendente roda agora: o `fetchQuery` abaixo reusa a
+    // leitura em voo em vez de devolver a foto de antes da venda.
+    if (placarTimer.current) void atualizarPlacar();
 
     for (const batch of groupSaleEvents(events)) {
       const seasonId = events.find((event) => batch.eventIds.includes(event.id))?.seasonId;
@@ -223,7 +253,7 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
       }
       celebrate("sale", { id: batch.key, title: joinNames(names) });
     }
-  }, [celebrate, queryClient]);
+  }, [atualizarPlacar, celebrate, queryClient]);
 
   // ── realtime ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -314,8 +344,9 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
         (payload) => {
           const row = payload.new as GameEventRow;
           // Qualquer pontuação mexe no placar — o ranking deixa de ser a foto do
-          // momento em que a tela abriu.
-          void queryClient.invalidateQueries({ queryKey: gameKeys.all });
+          // momento em que a tela abriu. Uma releitura por rajada (`PLACAR_MS`),
+          // não uma por linha: a venda sozinha já grava várias.
+          if (!placarTimer.current) placarTimer.current = setTimeout(() => void atualizarPlacar(), PLACAR_MS);
           if (row.event_code !== "venda") return;
           if (seen.current.has(row.id)) return;
           if (seen.current.size >= SEEN_LIMIT) seen.current.clear();
@@ -408,9 +439,11 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
       disposed = true;
       clearTimeout(retry);
       clearTimeout(flushTimer.current);
+      clearTimeout(placarTimer.current);
+      placarTimer.current = undefined;
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [profileId, celebrate, flushSales, queryClient]);
+  }, [profileId, celebrate, flushSales, queryClient, atualizarPlacar]);
 
   // ── subida no ranking: só o próprio usuário, só quando sobe ───────────────
   const { data: seasonId } = useCurrentSeasonId();

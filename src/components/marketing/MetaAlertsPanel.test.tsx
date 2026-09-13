@@ -184,6 +184,20 @@ describe("MetaAlertsPanel", () => {
     expect(m.rpc).not.toHaveBeenCalled();
   });
 
+  it("recusa escrita pela própria RPC (22023) mostra o motivo dela, não a frase genérica", async () => {
+    m.contas = [conta()];
+    m.rpc.mockResolvedValue({ data: null, error: { code: "22023", message: "Conta de anúncios não encontrada." } });
+    const el = await montar();
+    botao(el, "Salvar limites")!.click();
+
+    const { toast } = await import("sonner");
+    await vi.waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Não foi possível salvar os limites", {
+        description: "Conta de anúncios não encontrada.",
+      }),
+    );
+  });
+
   it("separa alertas abertos dos resolvidos, com o nome da conta", async () => {
     m.contas = [conta()];
     m.alertas = [

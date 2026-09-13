@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Download, Filter, GitBranch, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
-import { dbError } from "@/lib/supabaseError";
+import { dbError, describeError } from "@/lib/supabaseError";
 import { toast } from "@/hooks/use-toast";
 import { closableMonths, compareMonth, currentMonthBase } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
@@ -131,6 +131,9 @@ export default function Pipeline() {
     (deal: LegacyDealRecord, preset?: string) => setLosing({ deal, preset }),
     [],
   );
+  /** Estável para o `memo` do cartão do kanban: um fecho novo a cada render do
+   *  Pipeline refazia os 2.288 cartões ativos (ver `DealsKanban`). */
+  const abrirNegocio = useCallback((deal: LegacyDealRecord) => setEditor({ deal }), []);
   const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
   const { moveDeal, changeStatus } = useDealActions({
     stages, closedMonths: closed, onNeedsLossConfirmation: abrirPerda,
@@ -169,9 +172,13 @@ export default function Pipeline() {
     [deals],
   );
 
+  // A lista segue o filtro ADIADO: a tecla aparece no campo na hora, e o filtro
+  // com as duas ordenações sobre os 7.579 negócios roda num render que a
+  // próxima tecla pode interromper, em vez de travar a digitação.
+  const filtrosAdiados = useDeferredValue(filters);
   const visible = useMemo(
-    () => sortDeals(applyDealFilters(deals, filters, myTeam)),
-    [deals, filters, myTeam],
+    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam)),
+    [deals, filtrosAdiados, myTeam],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
@@ -185,11 +192,14 @@ export default function Pipeline() {
     setExtraindo(true);
     try {
       await baixarPlanilhaDeNegocios(visible);
+      toast({ variant: "success", title: "Planilha gerada", description: `${visible.length} negócio(s).` });
     } catch (erro) {
+      // `describeError`, e não `erro.message`: a falha vem da biblioteca do
+      // `.xlsx` ou do `import()` dinâmico, em inglês.
       toast({
         variant: "destructive",
-        title: "Não consegui gerar a planilha",
-        description: erro instanceof Error ? erro.message : "Tente de novo em instantes.",
+        title: "Não foi possível gerar a planilha",
+        description: describeError(erro, "Tente de novo em instantes."),
       });
     } finally {
       setExtraindo(false);
@@ -228,7 +238,7 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-6">
-      <PipelineTopRanking deals={deals} onAbrirPainel={painel.abrir} />
+      <PipelineTopRanking onAbrirPainel={painel.abrir} />
 
       <PageHeader
         title="Pipeline"
@@ -390,7 +400,7 @@ export default function Pipeline() {
               }}
               onClearFilters={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
               onNewDeal={() => setEditor({ deal: null })}
-              onOpen={(deal) => setEditor({ deal })}
+              onOpen={abrirNegocio}
               onMove={moveDeal}
               onStatusChange={changeStatus}
               onScheduleVisit={setVisitDeal}
@@ -416,6 +426,7 @@ export default function Pipeline() {
           developers={developers}
           defaultMonth={seasonMonth ?? undefined}
           onClose={() => setEditor(null)}
+          closeOnSave
           onReviewChanged={invalidateDeals}
           onSave={async (updated) => {
             // VGV negativo e desconto fora de 0–100 chegavam ao banco e voltavam
@@ -450,7 +461,6 @@ export default function Pipeline() {
             }
             await saveLegacyDeal(updated);
             await invalidateDeals();
-            setEditor(null);
           }}
         />
       )}

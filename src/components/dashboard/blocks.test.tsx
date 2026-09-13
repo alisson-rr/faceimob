@@ -105,6 +105,25 @@ describe("KpiRow", () => {
     await cleanup();
   });
 
+  it("com a lista de leads cortada, o cartao de leads diz sobre o que contou", async () => {
+    // A lista para nas 1.000 linhas do PostgREST e a base tem 102.799: sem a
+    // legenda, "1.000 recebidos em todos os meses" se passava pelo total.
+    const { text, cleanup } = await render(
+      <KpiRow
+        stats={stats()}
+        leadsNoPeriodo={1000}
+        leadsNaBase={102_799}
+        leadsAmostra="últimos 1.000 leads"
+        month="all"
+        previous={null}
+        previousLabel={null}
+      />,
+    );
+    expect(text).toContain("recebidos em todos os meses · toda a base · entre os últimos 1.000 leads");
+    expect(text).toContain("102.799");
+    await cleanup();
+  });
+
   it("cada cartao diz de QUEM e o numero: negocio e lead nao tem o mesmo recorte", async () => {
     // `deals_select` chega em `can_read_all()` e `leads_select` recorta por
     // `auth_visible_profiles()`: para o diretor a mesma regua somava 35
@@ -535,6 +554,20 @@ describe("LeadsPanel", () => {
     await cleanup();
   });
 
+  it("lista cortada: a aba diz que calcula sobre os últimos N, e o vazio não afirma o tamanho da base", async () => {
+    const amostra = "últimos 1.000 leads";
+    const cheio = await renderComCache(<LeadsPanel month="08/2026" amostra={amostra} />, semearLeads(rows));
+    expect(cheio.text).toContain("Calculado sobre os últimos 1.000 leads");
+    await cheio.cleanup();
+
+    // Mês mais antigo que o corte: "A base tem 3 leads, mas nenhum neste
+    // período" seria falso duas vezes.
+    const vazio = await renderComCache(<LeadsPanel month="07/2026" amostra={amostra} />, semearLeads(rows));
+    expect(vazio.text).toContain("Nenhum lead de 07/2026 nos últimos 1.000 leads");
+    expect(vazio.text).not.toContain("A base tem");
+    await vazio.cleanup();
+  });
+
   it("com base cheia, quem não lê a fila não lê 'a base tem N'", async () => {
     // O sócio passa em `auth_visible_profiles()` mas não tem `leads.view_queue`:
     // a `leads_select` esconde dele o lead sem dono (69 de 74 medidos na
@@ -673,6 +706,25 @@ describe("DirectorPanel", () => {
     );
     expect(text).toContain("Declarado × medido");
     await cleanup();
+  });
+
+  it("lista de leads cortada: o comparativo diz sobre o que mediu os leads", async () => {
+    // O "medido" de leads sai da lista que para em 1.000; num mês anterior ao
+    // corte a tela apontava divergência entre declarado e medido que o banco
+    // não tem.
+    const cortada = await renderComCache(
+      <DirectorPanel month="08/2026" deals={[]} leads={leadsOk} amostra="últimos 1.000 leads" />,
+      semearDiretoria,
+    );
+    expect(cortada.text).toContain("Leads medidos sobre os últimos 1.000 leads");
+    await cortada.cleanup();
+
+    const inteira = await renderComCache(
+      <DirectorPanel month="08/2026" deals={[]} leads={leadsOk} />,
+      semearDiretoria,
+    );
+    expect(inteira.text).not.toContain("Leads medidos sobre");
+    await inteira.cleanup();
   });
 
   it("a venda do mes conta como analise e aprovacao MEDIDAS, nao como zero", async () => {

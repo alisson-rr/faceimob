@@ -67,7 +67,13 @@ const CONFIRMA: Record<Acao, { titulo: (nome: string) => string; texto: string; 
 const FEITO: Record<Acao, string> = {
   pausar: "Campanha pausada na Meta",
   ativar: "Campanha ativada na Meta",
-  verba: "Verba diária mudada na Meta",
+  verba: "Verba diária alterada na Meta",
+};
+
+const FALHOU: Record<Acao, string> = {
+  pausar: "Não foi possível pausar a campanha na Meta",
+  ativar: "Não foi possível ativar a campanha na Meta",
+  verba: "Não foi possível alterar a verba na Meta",
 };
 
 const SEM_STATUS = "A ação respondeu sem dizer o que a Meta fez: confira o histórico de ações.";
@@ -99,7 +105,7 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
       if (r.tipo === "aprendizado") return;
       await recarregar;
       if (r.tipo === "falha") {
-        toast.error("A ação não foi concluída", { description: r.mensagem });
+        toast.error(FALHOU[pedido.acao], { description: r.mensagem });
         return;
       }
       if (r.status === "parcial") {
@@ -115,10 +121,10 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
       }
       onDone();
     },
-    onError: (e) => {
+    onError: (e, pedido) => {
       setAberta(null);
       setAprendizado(null);
-      toast.error("A ação não foi concluída", { description: e.message });
+      toast.error(FALHOU[pedido.acao], { description: e.message });
     },
   });
 

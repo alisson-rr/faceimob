@@ -50,7 +50,7 @@ function CopyField({ label, value, hint }: { label: string; value: string; hint?
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      toast.success(`${label} copiado`);
+      toast.success("Copiado", { description: label, duration: 2500 });
       setTimeout(() => setCopied(false), 1500);
     } catch {
       toast.error("Não foi possível copiar", { description: "Selecione o campo e copie manualmente." });
@@ -105,7 +105,7 @@ function SecretField({ slot, configured, podeGravar, onSaved }: {
       await onSaved();
       toast.success("Credencial salva no cofre", { description: "As functions passam a usar este valor sem redeploy." });
     } catch (e) {
-      toast.error("Não foi possível salvar", { description: describeError(e, "Falha ao gravar no cofre.") });
+      toast.error("Não foi possível salvar a credencial", { description: describeError(e, "Falha ao gravar no cofre.") });
     } finally {
       setSalvando(false);
     }

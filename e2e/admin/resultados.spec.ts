@@ -60,7 +60,7 @@ test.describe("resultados anuais", () => {
     await page.getByLabel(`Vendas de Maio de ${ANO}`).fill(String(VENDAS_EDITADO));
     await page.getByRole("button", { name: `Salvar Maio de ${ANO}` }).click();
 
-    await expect(page.getByText(`Maio/${ANO} atualizado`)).toBeVisible();
+    await expect(page.getByText(`Resultado de Maio/${ANO} salvo`)).toBeVisible();
 
     // A prova é o banco, não o toast.
     await expect

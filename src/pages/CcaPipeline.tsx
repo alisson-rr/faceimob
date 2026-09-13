@@ -8,7 +8,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { dbError, describeError } from "@/lib/supabaseError";
-import { toast, useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import DealDetailModal from "@/components/DealDetailModal";
@@ -41,7 +41,6 @@ const fold = (value: string) =>
  * saída — some da tela do corretor e mantém o histórico de pé.
  */
 function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
-  const { toast } = useToast();
   const fieldId = useId();
   const [rows, setRows] = useState<DocumentTypeAdminRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,14 +50,12 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
     let vivo = true;
     listDocumentTypesForAdmin()
       .then((data) => { if (vivo) setRows(data); })
-      .catch((e) => toast({
-        title: "Falha ao carregar o catálogo",
+      .catch((e) => toast.error("Não foi possível carregar o catálogo", {
         description: describeError(e, "Não foi possível ler os tipos de documento."),
-        variant: "destructive",
       }))
       .finally(() => { if (vivo) setLoading(false); });
     return () => { vivo = false; };
-  }, [toast]);
+  }, []);
 
   const salvar = async (row: DocumentTypeAdminRecord, patch: Partial<DocumentTypeAdminRecord>) => {
     setBusy(row.id);
@@ -71,18 +68,19 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
       // dossiê passa a poder ir ao gerente sem ele. Dizer isso na hora é mais
       // barato que descobrir depois num negócio sem documento.
       const desligouObrigatorio = patch.active === false && row.required_for_conversion;
-      toast({
-        title: "Catálogo atualizado",
-        description: desligouObrigatorio
-          ? `${row.label} era obrigatório: sai da aba Anexos e deixa de travar o envio ao gerente.`
-          : row.label,
-      });
+      // Caixa marcada é gesto pequeno e repetido: aviso curto. O efeito colateral
+      // do obrigatório desligado precisa de tempo para ser lido.
+      if (desligouObrigatorio) {
+        toast.success("Tipo de documento atualizado", {
+          description: `${row.label} era obrigatório: sai da aba Anexos e deixa de travar o envio ao gerente.`,
+        });
+      } else {
+        toast.success("Tipo de documento atualizado", { description: row.label, duration: 2500 });
+      }
     } catch (e) {
       setRows(anterior);
-      toast({
-        title: "Não foi possível salvar",
+      toast.error("Não foi possível salvar o tipo de documento", {
         description: describeError(e, "O catálogo continua como estava."),
-        variant: "destructive",
       });
     } finally {
       setBusy(null);
@@ -353,9 +351,7 @@ export default function CcaPipeline() {
             // isso é melhor que um clique que não abre nada.
             const registro = dealsQuery.data?.find((row) => row.id === deal.dealId);
             if (!registro) {
-              toast({
-                variant: "destructive",
-                title: "Não consegui abrir este negócio",
+              toast.error("Não foi possível abrir o negócio", {
                 description: "O caso está na esteira, mas o negócio não aparece na sua "
                   + "visibilidade. Recarregue a página; se continuar, fale com o administrador.",
               });

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { getCurrentProfile } from "@/integrations/supabase/newSchema";
@@ -28,6 +29,17 @@ const temPoderDeAdmin = (papeis: AppRole[]) =>
 
 /** Prévia de papel guardada por ABA (some ao fechar), nunca entre sessões. */
 const PREVIEW_KEY = 'faceimob-preview-role';
+
+/**
+ * Atualizador que mantém a referência quando o conteúdo não mudou.
+ *
+ * O auth-js 2.110 emite `SIGNED_IN` a cada volta de aba com a sessão relida do
+ * storage (objeto novo, mesmo conteúdo), e a releitura de perfil e matriz
+ * também devolve objetos novos. Gravar esses objetos re-renderizava toda tela
+ * que chama `useAuth`, duas vezes, sem nada ter mudado.
+ */
+const manter = <T,>(novo: T) => (atual: T) =>
+  JSON.stringify(atual) === JSON.stringify(novo) ? atual : novo;
 
 interface AuthContextType {
   user: User | null;
@@ -114,6 +126,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [previewRoleState, setPreviewRoleState] = useState<AppRole | null>(null);
   /** Último usuário cuja matriz de permissões já foi carregada. */
   const loadedForUser = useRef<string | null>(null);
+  const queryClient = useQueryClient();
+  /**
+   * Dono do cache do React Query. Separado de `loadedForUser`, que só é gravado
+   * no fim da leitura assíncrona: um segundo evento do MESMO usuário novo
+   * chegando antes disso limparia de novo o que ele acabou de carregar.
+   */
+  const donoDoCache = useRef<string | null>(null);
 
   const realIsAdmin = temPoderDeAdmin(roles);
 
@@ -158,8 +177,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [realIsAdmin]);
 
   const applySession = useCallback(async (nextSession: Session | null) => {
-    setSession(nextSession);
-    setUser(nextSession?.user ?? null);
+    // Nem toda chave do cache leva o id do usuário (o placar é
+    // `["game","ranking",temporada]`): sem isto, quem entra depois no mesmo
+    // navegador vê por um instante os dados de quem saiu. Só limpa quando o
+    // dono MUDA — token renovado e volta de aba do mesmo usuário não refazem
+    // todas as consultas da tela.
+    const proximoDono = nextSession?.user?.id ?? null;
+    if (donoDoCache.current && donoDoCache.current !== proximoDono) queryClient.clear();
+    donoDoCache.current = proximoDono;
+
+    setSession(manter(nextSession));
+    setUser(manter(nextSession?.user ?? null));
 
     if (!nextSession?.user) {
       setProfile(null);
@@ -190,17 +218,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         listRolePermissions(),
         listStagePermissions(),
       ]);
-      setProfile({
+      setProfile(manter({
         name: current.profile?.full_name || nextSession.user.email || "Usuário",
         email: current.profile?.email || nextSession.user.email || null,
         phone: current.profile?.phone || null,
         avatar_url: current.profile?.avatar_url || null,
-      });
+      }));
       setRole(current.role as AppRole);
-      setRoles(current.roles as AppRole[]);
+      setRoles(manter(current.roles as AppRole[]));
       setPerfilFalhou(false);
-      setRolePerms(rp);
-      setStagePerms(sp);
+      setRolePerms(manter(rp));
+      setStagePerms(manter(sp));
     } catch (error) {
       console.error("Falha ao carregar perfil autenticado:", error);
       const metadata = nextSession.user.user_metadata || {};
@@ -225,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loadedForUser.current = nextSession.user.id;
       setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   /**
    * Relê só o perfil. `applySession` recarregaria também a matriz de permissões
@@ -323,11 +351,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    *
    * No sucesso não é preciso limpar nada aqui: o `SIGNED_OUT` do
    * `onAuthStateChange` chama `applySession(null)`, que zera também perfil,
-   * papéis, matriz e a prévia de papel.
+   * papéis, matriz, a prévia de papel e o cache do React Query.
    *
    * O erro não sobe: o chamador (`AppSidebar`) não trata rejeição.
    */
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     // O push deste aparelho é desligado ANTES: depois do signOut não há sessão
     // para a RPC, e aparelho compartilhado não pode seguir recebendo lead.
     const { error } = await signOutWithPush(() => supabase.auth.signOut());
@@ -339,15 +367,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       description:
         "A sessão continua aberta neste aparelho. Verifique a conexão e tente de novo.",
     });
-  };
+  }, []);
+
+  // Objeto literal a cada render mudaria o valor do contexto e re-renderizaria
+  // todas as telas mesmo quando nenhum campo mudou.
+  const value = useMemo<AuthContextType>(() => ({
+    user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
+    role: effectiveRole, roles: effectiveRoles, realRole: role, realRoles: roles, realIsAdmin,
+    previewRole: previewRoleState, setPreviewRole,
+    can, canEnterStage, signOut,
+  }), [
+    user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
+    effectiveRole, effectiveRoles, role, roles, realIsAdmin,
+    previewRoleState, setPreviewRole, can, canEnterStage, signOut,
+  ]);
 
   return (
-    <AuthContext.Provider value={{
-      user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
-      role: effectiveRole, roles: effectiveRoles, realRole: role, realRoles: roles, realIsAdmin,
-      previewRole: previewRoleState, setPreviewRole,
-      can, canEnterStage, signOut,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

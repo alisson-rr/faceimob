@@ -84,7 +84,7 @@ export function ConvertLeadDialog({
       // lead já convertido ou falta de permissão sobre ele.
       toast({
         variant: "destructive",
-        title: "Não foi possível converter",
+        title: "Não foi possível converter o lead",
         description: describeError(err, "verifique os dados do negócio"),
       });
       setConverting(false);
@@ -110,6 +110,7 @@ export function ConvertLeadDialog({
     try {
       await promoteLeadAttachments(lead.id);
       toast({
+        variant: "success",
         title: "Lead convertido em negócio",
         description: doc
           ? `${lead.name} entrou no Pipeline com o documento anexado.`

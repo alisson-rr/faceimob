@@ -1,6 +1,7 @@
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { pageTitleFor } from "@/components/layout/navigation";
+import { Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { MotionConfig } from "framer-motion";
 import { EngagementLayer, SoundToggle } from "@/components/engagement";
@@ -14,9 +15,13 @@ import { useGameRanking } from "@/hooks/useGameRanking";
 import { cn } from "@/lib/utils";
 import { podiumTextClass } from "@/lib/tone";
 
+/** Só o rótulo lê a rota: no corpo do layout, cada troca de tela re-renderizava menu, cabeçalho e sino. */
+function TituloDaPagina() {
+  const { pathname } = useLocation();
+  return <>{pageTitleFor(pathname)}</>;
+}
+
 export default function AppLayout() {
-  const location = useLocation();
-  const pageTitle = pageTitleFor(location.pathname);
   const { user, profile } = useAuth();
   const { scoped, meuScore, minhaPosicao, recorte } = useGameRanking();
 
@@ -72,7 +77,7 @@ export default function AppLayout() {
                 silencio — sem barra de rolagem para denunciar (handoff-J §3.4).
                 Titulo maior, como "Esteira CCA", cortava mais. */}
             <p className="relative min-w-0 truncate text-sm font-semibold tracking-tight text-foreground">
-              {pageTitle}
+              <TituloDaPagina />
             </p>
 
             <div className="relative mx-auto hidden items-center gap-2 overflow-hidden lg:flex">
@@ -123,7 +128,18 @@ export default function AppLayout() {
           <div className="gradient-premium flex-1">
             <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
               <div className="animate-fade-in">
-                <Outlet />
+                {/* Suspense aqui, e não só no App: na primeira visita a uma tela o
+                    React escondia o app inteiro, menu e cabeçalho, até o chunk
+                    chegar. Agora só o miolo espera. */}
+                <Suspense
+                  fallback={
+                    <div role="status" className="grid place-items-center py-24 text-sm text-muted-foreground">
+                      Carregando...
+                    </div>
+                  }
+                >
+                  <Outlet />
+                </Suspense>
               </div>
             </div>
           </div>

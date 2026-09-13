@@ -75,7 +75,7 @@ test.describe("check-in do corretor", () => {
     await expect(botao, "botão clicável durante a gravação é um segundo check-out").toBeDisabled();
 
     liberar();
-    await expect(page.getByText("Check-out realizado!")).toBeVisible();
+    await expect(page.getByText("Check-out realizado")).toBeVisible();
 
     const [depois] = await db.select<Presenca>(
       `checkins?id=eq.${presenca.id}&select=id,checked_out_at,auto_checkout`,
@@ -323,7 +323,7 @@ test.describe("check-in do corretor", () => {
     ).toHaveAttribute("aria-busy", "false");
 
     liberar();
-    await expect(page.getByText("Check-out realizado!")).toBeVisible();
+    await expect(page.getByText("Check-out realizado")).toBeVisible();
   });
 });
 

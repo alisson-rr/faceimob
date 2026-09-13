@@ -78,18 +78,20 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
       // form_id fariam o `.maybeSingle()` do webhook devolver erro e o lead
       // cairia na roleta sem passar pela IA — em silêncio.
       const duplicado = (error as { code?: string }).code === "23505";
-      return toast.error(duplicado
-        ? "Já existe uma origem com este form_id ou código. Edite a existente em vez de criar outra."
-        : describeError(error, "Não foi possível salvar a origem."));
+      return toast.error("Não foi possível salvar a origem", {
+        description: duplicado
+          ? "Já existe uma origem com este form_id ou código. Edite a existente em vez de criar outra."
+          : describeError(error, "Tente de novo."),
+      });
     }
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (!data?.length) return toast.error("Não foi possível salvar a origem", { description: SEM_PERMISSAO });
     toast.success(row.id ? "Origem atualizada" : "Origem cadastrada");
     setRow(VAZIO); reload();
   }
   async function remove(origem: Source) {
     const { data, error } = await supabase.from("lead_sources").delete().eq("id", origem.id).select("id");
-    if (error) return toast.error(describeError(error, "Não foi possível excluir a origem."));
-    if (!data?.length) return toast.error(SEM_PERMISSAO);
+    if (error) return toast.error("Não foi possível excluir a origem", { description: describeError(error, "Tente de novo.") });
+    if (!data?.length) return toast.error("Não foi possível excluir a origem", { description: SEM_PERMISSAO });
     if (row.id === origem.id) setRow(VAZIO);
     setExcluindo(null);
     toast.success("Origem excluída");

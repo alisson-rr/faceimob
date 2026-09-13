@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   EDITABLE_ROLES,
@@ -46,50 +47,78 @@ function EnforcementCell({ code }: { code: string }) {
   );
 }
 
+const MATRIZ_KEY = ["permissoes", "matriz"] as const;
+
+type Matriz = {
+  catalog: PermissionRecord[];
+  stages: PipelineStageRecord[];
+  /** role::permission → allowed */
+  grants: Record<string, boolean>;
+  /** role::stage_id → { enter, exit } */
+  stageGrants: Record<string, { enter: boolean; exit: boolean }>;
+};
+
+const MATRIZ_VAZIA: Matriz = { catalog: [], stages: [], grants: {}, stageGrants: {} };
+
+async function lerMatriz(): Promise<Matriz> {
+  const [catalog, rolePerms, stages, stagePerms] = await Promise.all([
+    listPermissionCatalog(),
+    listRolePermissions(),
+    listPipelineStages(),
+    listStagePermissions(),
+  ]);
+  return {
+    catalog,
+    stages,
+    grants: Object.fromEntries(rolePerms.map((r) => [key(r.role, r.permission), r.allowed])),
+    stageGrants: Object.fromEntries(
+      stagePerms.map((s) => [key(s.role, s.stage_id), { enter: s.can_enter, exit: s.can_exit }]),
+    ),
+  };
+}
+
 export default function AdminPermissions() {
-  const { toast } = useToast();
-  const { isAdmin } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { isAdmin, user } = useAuth();
+  const queryClient = useQueryClient();
+  // Cache do TanStack Query: voltar à tela mostra a matriz que já estava aqui e
+  // relê por trás. Sem releitura ao focar a aba: a carga manual nunca releu
+  // assim. O usuário entra na chave para quem entra depois no mesmo navegador
+  // não herdar a leitura de quem saiu.
+  const matrizKey = [...MATRIZ_KEY, user?.id ?? null] as const;
+  const matriz = useQuery({
+    queryKey: matrizKey,
+    // O aviso sai da leitura, uma vez por carga, como na carga manual — e sem
+    // `retry`, que o repetiria.
+    queryFn: () => lerMatriz().catch((e: unknown) => {
+      toast.error("Não foi possível carregar as permissões", { description: describeError(e, "Verifique a conexão e tente de novo.") });
+      throw e;
+    }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const { catalog, stages, grants, stageGrants } = matriz.data ?? MATRIZ_VAZIA;
+  const loading = matriz.data === undefined && matriz.isFetching;
   /** Falha de carga renderizava tabela vazia só com cabeçalho — nem estado
    *  vazio, nem botão de tentar de novo; o único sinal era um toast que sumia. */
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadError = matriz.error ? describeError(matriz.error, "Não foi possível carregar a matriz de permissões.") : null;
+  const load = () => matriz.refetch();
+  /** Otimista e desfazível: mexe só no cache, a gravação vai logo depois. */
+  const setGrants = (atualizar: (prev: Matriz["grants"]) => Matriz["grants"]) =>
+    queryClient.setQueryData<Matriz>(matrizKey, (d) => d && { ...d, grants: atualizar(d.grants) });
+  const setStageGrants = (atualizar: (prev: Matriz["stageGrants"]) => Matriz["stageGrants"]) =>
+    queryClient.setQueryData<Matriz>(matrizKey, (d) => d && { ...d, stageGrants: atualizar(d.stageGrants) });
+  /**
+   * A leitura em voo saiu antes do clique e, ao chegar, desfaria o switch:
+   * cancela antes do otimista. Devolve se havia leitura, para relê-la depois da
+   * gravação.
+   */
+  const pararLeitura = async () => {
+    const relendo = queryClient.isFetching({ queryKey: matrizKey }) > 0;
+    await queryClient.cancelQueries({ queryKey: matrizKey });
+    return relendo;
+  };
   const [saving, setSaving] = useState<string | null>(null);
-  const [catalog, setCatalog] = useState<PermissionRecord[]>([]);
-  const [stages, setStages] = useState<PipelineStageRecord[]>([]);
-  /** role::permission → allowed */
-  const [grants, setGrants] = useState<Record<string, boolean>>({});
-  /** role::stage_id → { enter, exit } */
-  const [stageGrants, setStageGrants] = useState<Record<string, { enter: boolean; exit: boolean }>>({});
   const [selectedRole, setSelectedRole] = useState<NewAppRole>("broker");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [cat, rolePerms, pipelineStages, stagePerms] = await Promise.all([
-        listPermissionCatalog(),
-        listRolePermissions(),
-        listPipelineStages(),
-        listStagePermissions(),
-      ]);
-      setCatalog(cat);
-      setStages(pipelineStages);
-      setGrants(Object.fromEntries(rolePerms.map((r) => [key(r.role, r.permission), r.allowed])));
-      setStageGrants(
-        Object.fromEntries(
-          stagePerms.map((s) => [key(s.role, s.stage_id), { enter: s.can_enter, exit: s.can_exit }]),
-        ),
-      );
-    } catch (e) {
-      const motivo = describeError(e, "Não foi possível carregar a matriz de permissões.");
-      setLoadError(motivo);
-      toast({ title: "Falha ao carregar permissões", description: motivo, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => { void load(); }, [load]);
 
   const menuPermissions = useMemo(() => catalog.filter((p) => p.category === "menu"), [catalog]);
   const featurePermissions = useMemo(() => {
@@ -107,18 +136,19 @@ export default function AdminPermissions() {
     const k = key(role, code);
     const next = !(grants[k] ?? false);
     setSaving(k);
+    const relendo = await pararLeitura();
     setGrants((prev) => ({ ...prev, [k]: next })); // otimista
     try {
       await setRolePermission(role, code, next);
+      toast.success("Permissão atualizada", { duration: 2500 });
     } catch (e) {
       setGrants((prev) => ({ ...prev, [k]: !next })); // desfaz
-      toast({
-        title: "Não foi possível salvar",
-        description: describeError(e, "Não foi possível salvar a permissão."),
-        variant: "destructive",
+      toast.error("Não foi possível salvar a permissão", {
+        description: describeError(e, "A permissão voltou ao valor anterior."),
       });
     } finally {
       setSaving(null);
+      if (relendo) void load();
     }
   };
 
@@ -136,18 +166,19 @@ export default function AdminPermissions() {
     const currentValue = stageGrants[k] ?? { enter: false, exit: false };
     const next = { ...currentValue, [field]: !currentValue[field] };
     setSaving(k + field);
+    const relendo = await pararLeitura();
     setStageGrants((prev) => ({ ...prev, [k]: next }));
     try {
       await setStagePermission(stageId, role, { can_enter: next.enter, can_exit: next.exit });
+      toast.success("Permissão da etapa atualizada", { duration: 2500 });
     } catch (e) {
       setStageGrants((prev) => ({ ...prev, [k]: currentValue }));
-      toast({
-        title: "Não foi possível salvar",
-        description: describeError(e, "Não foi possível salvar a permissão da etapa."),
-        variant: "destructive",
+      toast.error("Não foi possível salvar a permissão da etapa", {
+        description: describeError(e, "A permissão voltou ao valor anterior."),
       });
     } finally {
       setSaving(null);
+      if (relendo) void load();
     }
   };
 

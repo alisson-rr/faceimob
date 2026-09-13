@@ -90,11 +90,21 @@ export async function createTask(input: CreateTaskInput): Promise<TaskRecord> {
  * juntos — mudar só um dos dois derruba a constraint.
  */
 export async function setTaskStatus(id: string, status: TaskStatus): Promise<void> {
-  const { error } = await supabase
+  // `select("id")`: UPDATE barrado pela RLS volta 204 sem erro e sem linha. Quem
+  // vê a atividade mas não pode alterá-la (sócio, CCA) recebia "Atividade
+  // concluída" e ela continuava aberta.
+  const { data, error } = await supabase
     .from("tasks")
     .update({ status, completed_at: status === "done" ? new Date().toISOString() : null })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) throw dbError("atualizar atividade", error);
+  if (!data?.length) {
+    throw dbError("atualizar atividade", {
+      code: "42501",
+      message: "nenhuma linha atualizada (sem permissão ou atividade removida)",
+    });
+  }
 }
 
 export const isTaskOverdue = (task: TaskRecord, now: Date = new Date()) =>
@@ -222,13 +232,21 @@ export async function scheduleVisit(input: {
 
 /** Fecha a visita. `performed_at` só faz sentido quando ela aconteceu. */
 export async function setVisitResult(id: string, result: VisitResult, notes?: string): Promise<void> {
-  const { error } = await supabase
+  // Mesmo motivo de `setTaskStatus`: sem a linha de volta, recusa da RLS parecia sucesso.
+  const { data, error } = await supabase
     .from("visits")
     .update({
       result,
       performed_at: result === "completed" ? new Date().toISOString() : null,
       ...(notes !== undefined ? { notes: notes || null } : {}),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) throw dbError("atualizar visita", error);
+  if (!data?.length) {
+    throw dbError("atualizar visita", {
+      code: "42501",
+      message: "nenhuma linha atualizada (sem permissão ou visita removida)",
+    });
+  }
 }

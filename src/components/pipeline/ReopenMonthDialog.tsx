@@ -71,6 +71,7 @@ export function ReopenMonthDialog({ closedMonths, deals, onClose }: Props) {
         queryClient.invalidateQueries({ queryKey: pipelineKeys.deals }),
       ]);
       toast({
+        variant: "success",
         title: `Mês ${period} reaberto`,
         description: `${doMes.length} negócio(s) de ${period} voltam a aceitar edição. `
           + "As propostas que já migraram continuam no mês seguinte.",
@@ -79,7 +80,7 @@ export function ReopenMonthDialog({ closedMonths, deals, onClose }: Props) {
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Erro ao reabrir o mês",
+        title: "Não foi possível reabrir o mês",
         description: describeError(err, "O período continua fechado; tente de novo."),
       });
     } finally {

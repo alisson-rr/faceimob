@@ -210,6 +210,8 @@ export default function DealDocumentUpload({
     // `stored_name`, que é o nome do anexo no e-mail da construtora: dois anexos
     // homônimos e indistinguíveis. Só vale nos tipos que aceitam vários.
     const usedNames = (byType.get(type.id) ?? []).map((d) => d.stored_name);
+    // Só há "versão anterior" a manter quando o tipo já tinha arquivo.
+    const substituiu = !type.allows_multiple && usedNames.length > 0;
     try {
       for (const file of chosen) {
         const criado = await uploadDealDocument({
@@ -219,12 +221,13 @@ export default function DealDocumentUpload({
         enviados += 1;
       }
       toast({
-        title: chosen.length > 1 ? `${chosen.length} arquivos enviados` : "Documento enviado",
-        description: type.allows_multiple ? undefined : "A versão anterior foi mantida no histórico.",
+        variant: "success",
+        title: chosen.length > 1 ? `${chosen.length} documentos enviados` : "Documento enviado",
+        description: substituiu ? "A versão anterior foi mantida no histórico." : undefined,
       });
     } catch (e) {
       toast({
-        title: "Falha no envio",
+        title: chosen.length > 1 ? "Não foi possível enviar os documentos" : "Não foi possível enviar o documento",
         // Falha no MEIO de um lote não é "nada subiu": dizer quantos entraram
         // evita o reenvio do lote inteiro, que duplicaria o que já está lá.
         description: enviados > 0
@@ -260,7 +263,7 @@ export default function DealDocumentUpload({
     } catch (e) {
       janela?.close();
       toast({
-        title: "Não foi possível baixar",
+        title: "Não foi possível baixar o documento",
         description: describeError(
           e,
           "O arquivo não está no armazenamento, ou está fora do seu acesso a este negócio. Anexe o documento de novo.",
@@ -281,16 +284,17 @@ export default function DealDocumentUpload({
   const saveAlias = async (doc: DealDocumentRecord, alias: string) => {
     const rejected = validateDocumentAlias(alias);
     if (rejected) {
-      return toast({ title: "Apelido não salvo", description: rejected, variant: "destructive" });
+      return toast({ title: "Não foi possível salvar o apelido", description: rejected, variant: "destructive" });
     }
     setBusy(doc.id);
     try {
       const atualizado = await renameDealDocument(doc.id, alias);
       setDocs((prev) => prev.map((d) => (d.id === atualizado.id ? atualizado : d)));
       setRenaming(null);
+      toast({ variant: "success", title: "Apelido salvo" });
     } catch (e) {
       toast({
-        title: "Apelido não salvo",
+        title: "Não foi possível salvar o apelido",
         description: describeError(e, "O nome deste anexo continua como estava."),
         variant: "destructive",
       });
@@ -304,10 +308,10 @@ export default function DealDocumentUpload({
     try {
       await deleteDealDocument(doc);
       await load();
-      toast({ title: "Documento excluído", description: documentDisplayName(doc) });
+      toast({ variant: "success", title: "Documento excluído", description: documentDisplayName(doc) });
     } catch (e) {
       toast({
-        title: "Não foi possível excluir",
+        title: "Não foi possível excluir o documento",
         description: describeError(e, "O documento continua no dossiê."),
         variant: "destructive",
       });
@@ -323,13 +327,14 @@ export default function DealDocumentUpload({
       await load();
       await onReviewChanged?.();
       toast({
-        title: "Documentos enviados para conferência",
+        variant: "success",
+        title: "Documentos enviados ao gerente",
         description: "Os gerentes vinculados foram notificados.",
       });
     } catch (e) {
       toast({
-        title: "Não foi possível enviar",
-        description: describeError(e, "Não foi possível enviar os documentos ao gerente."),
+        title: "Não foi possível enviar os documentos ao gerente",
+        description: describeError(e, "O dossiê continua com você."),
         variant: "destructive",
       });
     } finally {
@@ -345,18 +350,14 @@ export default function DealDocumentUpload({
       await load();
       await onReviewChanged?.();
       toast({
+        variant: "success",
         title: approve ? "Documentos aprovados" : "Documentos devolvidos ao corretor",
         description: approve ? "O negócio seguiu para a esteira de análise." : "O corretor recebeu o motivo da devolução.",
       });
     } catch (e) {
       toast({
-        title: approve ? "Não foi possível aprovar" : "Não foi possível devolver",
-        description: describeError(
-          e,
-          approve
-            ? "Não foi possível aprovar os documentos."
-            : "Não foi possível devolver os documentos ao corretor.",
-        ),
+        title: approve ? "Não foi possível aprovar os documentos" : "Não foi possível devolver os documentos",
+        description: describeError(e, "O dossiê continua em conferência."),
         variant: "destructive",
       });
     } finally {

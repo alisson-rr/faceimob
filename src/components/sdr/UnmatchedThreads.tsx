@@ -56,10 +56,10 @@ export function UnmatchedThreads({ canWrite }: { canWrite: boolean }) {
       // Zero é alguém ter resolvido antes: um "resolvido" verde esconderia que
       // este clique não mudou nada.
       if (marcadas === 0) toast.warning(`As mensagens de ${telefone} já tinham sido resolvidas.`);
-      else toast.success(`${telefone}: ${marcadas} ${marcadas === 1 ? "mensagem resolvida" : "mensagens resolvidas"}.`);
+      else toast.success(marcadas === 1 ? "Mensagem resolvida" : `${marcadas} mensagens resolvidas`, { description: telefone, duration: 2500 });
       return qc.invalidateQueries({ queryKey: CHAVE });
     },
-    onError: (e) => toast.error(describeError(e, "Não foi possível marcar como resolvido.")),
+    onError: (e) => toast.error("Não foi possível marcar como resolvido", { description: describeError(e, "Tente de novo.") }),
   });
 
   const telefones = lista.data ?? [];

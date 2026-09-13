@@ -342,8 +342,9 @@ export function MetaCampaignPlanner() {
     mutationFn: gerarPlano,
     onSuccess: (planId) => {
       setEscolhido(planId);
-      toast.success("Plano gerado e salvo", { description: "Revise os textos antes de subir na Meta." });
+      toast.success("Plano gerado", { description: "Revise os textos antes de subir na Meta." });
     },
+    onError: (e) => toast.error("Não foi possível gerar o plano", { description: e.message }),
     // Também no erro: a tentativa que falha conta no teto. O prefixo relê o contador junto.
     onSettled: () => queryClient.invalidateQueries({ queryKey: PLANOS_KEY }),
   });
@@ -377,7 +378,6 @@ export function MetaCampaignPlanner() {
   const exibido = escolhido
     ? planos.data?.find((p) => p.id === escolhido) ?? null
     : planos.data?.[0] ?? null;
-  const erro = erroForm ?? gerar.error?.message ?? null;
 
   let corpoDoPlano: ReactNode;
   if (exibido) corpoDoPlano = <PlanoDetalhe linha={exibido} />;
@@ -504,11 +504,14 @@ export function MetaCampaignPlanner() {
               <p className="text-xs text-muted-foreground">{form.observacoes.length} de 1.000 caracteres</p>
             </Campo>
 
-            {erro && (
+            {erroForm && (
               <p role="alert" className="text-sm text-destructive">
-                {erro}
+                {erroForm}
               </p>
             )}
+            {/* A falha do servidor já é anunciada pelo toast; a frase fica na tela sem
+                role="alert" para o leitor de tela não ouvir o motivo duas vezes. */}
+            {!erroForm && gerar.error && <p className="text-sm text-destructive">{gerar.error.message}</p>}
             {noTeto && (
               <p role="status" className="text-sm text-warning">
                 {FRASE_LIMITE_PLANOS}

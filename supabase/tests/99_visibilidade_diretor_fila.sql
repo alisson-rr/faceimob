@@ -618,3 +618,30 @@ end
 $$;
 
 \echo 'visibilidade diretor e fila ok'
+
+-- -----------------------------------------------------------------------------
+-- 0148 · O motor da roleta não depende de quem o acionou
+-- -----------------------------------------------------------------------------
+\echo '== 7. o motor distribui igual com a sessão de alguém sem alcance na conexão =='
+
+do $$
+declare
+  beto uuid := '00000000-0000-0000-0000-000000014107';
+  v_lead uuid;
+begin
+  select id into v_lead from public.leads where full_name = 'Fila B 0141';
+
+  -- Sessão do gerente da Equipe A ainda na conexão (como no sdr_handoff chamado
+  -- por quem não alcança a roleta B): a fila da TELA recorta, o motor não.
+  perform pg_temp.como('00000000-0000-0000-0000-000000014104');
+  perform pg_temp.assert_eq((select count(*)::int from public.distribution_queue('00000000-0000-0000-0000-0000000141b2')), 0,
+    'a fila da tela continua recortada para quem não alcança a roleta');
+  perform pg_temp.assert_eq(public.assign_lead(v_lead), beto,
+    'o motor atribui o lead da roleta B mesmo acionado com a sessão de quem não a alcança');
+  perform pg_temp.assert_eq(
+    has_function_privilege('authenticated', 'public.distribution_queue_interna(uuid)', 'execute'), false,
+    'a fila interna não é chamável pela API');
+end
+$$;
+
+select set_config('request.jwt.claims', '', false);

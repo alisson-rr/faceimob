@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,20 @@ interface BrokerRow {
   roles: string[];
 }
 
+/** Equipe ATIVA de cada gerente — a primeira pela ordem da consulta. */
+type EquipesPorGerente = Record<string, { id: string; display_name: string | null }>;
+
+/** O que a carga da tela devolve, guardado no cache do TanStack Query. */
+type Quadro = {
+  rows: BrokerRow[];
+  teamsByMgr: EquipesPorGerente;
+  /** Quem lidera equipe ativa (view `team_leader_names`, 0079). */
+  leaders: Awaited<ReturnType<typeof listTeamLeaderNames>>;
+};
+
+const EQUIPES_KEY = ["equipes", "quadro"] as const;
+const QUADRO_VAZIO: Quadro = { rows: [], teamsByMgr: {}, leaders: [] };
+
 /**
  * O cartão de pessoa mostra só nome e foto (`PessoaCard`), por pedido do
  * cliente em 10/09/2026. O que estava nele — selo de situação, papéis extras,
@@ -102,15 +117,12 @@ export default function Equipes() {
   const canManageMembers = isAdmin
     || ((roles.includes("director") || roles.includes("manager")) && can("teams.manage"));
 
-  const [rows, setRows] = useState<BrokerRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  /** Falha de carga é diferente de "não há ninguém visível" — a tela dizia a segunda. */
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [teamsByMgr, setTeamsByMgr] = useState<Record<string, { id: string; display_name: string | null }>>({});
+  /**
+   * Só o que a pessoa DIGITOU no nome de cada equipe; sem rascunho o campo
+   * mostra o nome gravado. `load()` limpa, como a carga manual fazia.
+   */
   const [teamNameDrafts, setTeamNameDrafts] = useState<Record<string, string>>({});
-  /** id → nome de quem lidera equipe ativa (view `team_leader_names`, 0079). */
-  const [leaderNames, setLeaderNames] = useState<Map<string, string>>(new Map());
   /** Equipe marcada para desativação, à espera da confirmação. */
   const [desativar, setDesativar] = useState<{ teamId: string; managerName: string; membros: number } | null>(null);
 
@@ -127,95 +139,120 @@ export default function Equipes() {
   const [confirmarSaida, setConfirmarSaida] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
-    setLoadError(null);
+  const lerQuadro = async (): Promise<Quadro> => {
+    const periods = goalPeriods();
+    // Uma consulta para todas as metas do mês e do ano — a alternativa seria
+    // uma por pessoa. A RLS `goals_select` já recorta pelos perfis visíveis.
+    // Sem filtro de métrica: filtrar em `vgv` escondia as metas de vendas e
+    // visitas que existem de verdade, e a tela escrevia R$ 0,00 por cima.
+    const [people, goalsRes, teamsRes] = await Promise.all([
+      listPeople(),
+      supabase
+        .from("goals")
+        .select("profile_id,period_type,period,target,metric")
+        .eq("scope", "profile")
+        .in("period", [periods.month, periods.year]),
+      // Ordem explícita: `teams` só tem índice NÃO único por `manager_id`, e
+      // o mapa abaixo guarda UMA equipe por gerente. Sem ordenar, o campo
+      // "Equipe" renomeava a última linha que o PostgREST devolvesse — sem
+      // critério nenhum. Ativa primeiro, mais antiga primeiro, primeira vence.
+      // ponytail: gerente com duas equipes ativas edita só o nome da primeira
+      // aqui (o vínculo em massa recusa e diz o motivo); evoluir para uma
+      // lista por gerente quando o banco passar a permitir isso de propósito.
+      supabase.from("teams").select("id,manager_id,name,active")
+        .order("active", { ascending: false }).order("created_at", { ascending: true }),
+    ]);
+    if (goalsRes.error) throw dbError("goals", goalsRes.error);
+    if (teamsRes.error) throw dbError("teams", teamsRes.error);
+
+    const goalByProfile = goalsByProfile(goalsRes.data ?? [], periods);
+    const outrasMetas = otherMetricsByProfile(goalsRes.data ?? [], periods);
+
+    const rows: BrokerRow[] = people.map((person) => ({
+      id: person.id,
+      name: person.name,
+      role: person.role,
+      manager_id: person.manager_id,
+      director_id: person.director_id,
+      active: person.active,
+      status: person.status,
+      roles: person.roles,
+      user_id: person.user_id,
+      email: person.email,
+      avatar_url: person.avatar_url,
+      monthly_goal: goalByProfile.get(person.id)?.monthly ?? 0,
+      yearly_goal: goalByProfile.get(person.id)?.yearly ?? 0,
+      other_goals: outrasMetas.get(person.id) ?? null,
+    }));
+
+    // Nome de quem lidera, para a hierarquia parar de mentir.
+    //
+    // `auth_visible_profiles()` NÃO sobe: o corretor lê `teams` (policy
+    // aberta) e conhece o id do gerente, mas não a linha de `profiles` dele —
+    // e o card dele escrevia "Sem gerente", que é falso. A view
+    // `team_leader_names` (0079) entrega só id, nome e avatar de quem lidera.
+    //
+    // Falha aqui NÃO derruba a tela: a view pode ainda não estar aplicada no
+    // alvo, e nesse caso o rótulo volta a ser o de antes em vez de a página
+    // inteira sumir.
+    let leaders: Quadro["leaders"] = [];
     try {
-      const periods = goalPeriods();
-      // Uma consulta para todas as metas do mês e do ano — a alternativa seria
-      // uma por pessoa. A RLS `goals_select` já recorta pelos perfis visíveis.
-      // Sem filtro de métrica: filtrar em `vgv` escondia as metas de vendas e
-      // visitas que existem de verdade, e a tela escrevia R$ 0,00 por cima.
-      const [people, goalsRes, teamsRes] = await Promise.all([
-        listPeople(),
-        supabase
-          .from("goals")
-          .select("profile_id,period_type,period,target,metric")
-          .eq("scope", "profile")
-          .in("period", [periods.month, periods.year]),
-        // Ordem explícita: `teams` só tem índice NÃO único por `manager_id`, e
-        // o mapa abaixo guarda UMA equipe por gerente. Sem ordenar, o campo
-        // "Equipe" renomeava a última linha que o PostgREST devolvesse — sem
-        // critério nenhum. Ativa primeiro, mais antiga primeiro, primeira vence.
-        // ponytail: gerente com duas equipes ativas edita só o nome da primeira
-        // aqui (o vínculo em massa recusa e diz o motivo); evoluir para uma
-        // lista por gerente quando o banco passar a permitir isso de propósito.
-        supabase.from("teams").select("id,manager_id,name,active")
-          .order("active", { ascending: false }).order("created_at", { ascending: true }),
-      ]);
-      if (goalsRes.error) throw dbError("goals", goalsRes.error);
-      if (teamsRes.error) throw dbError("teams", teamsRes.error);
-
-      const goalByProfile = goalsByProfile(goalsRes.data ?? [], periods);
-      const outrasMetas = otherMetricsByProfile(goalsRes.data ?? [], periods);
-
-      setRows(people.map((person) => ({
-        id: person.id,
-        name: person.name,
-        role: person.role,
-        manager_id: person.manager_id,
-        director_id: person.director_id,
-        active: person.active,
-        status: person.status,
-        roles: person.roles,
-        user_id: person.user_id,
-        email: person.email,
-        avatar_url: person.avatar_url,
-        monthly_goal: goalByProfile.get(person.id)?.monthly ?? 0,
-        yearly_goal: goalByProfile.get(person.id)?.yearly ?? 0,
-        other_goals: outrasMetas.get(person.id) ?? null,
-      })));
-
-      // Nome de quem lidera, para a hierarquia parar de mentir.
-      //
-      // `auth_visible_profiles()` NÃO sobe: o corretor lê `teams` (policy
-      // aberta) e conhece o id do gerente, mas não a linha de `profiles` dele —
-      // e o card dele escrevia "Sem gerente", que é falso. A view
-      // `team_leader_names` (0079) entrega só id, nome e avatar de quem lidera.
-      //
-      // Falha aqui NÃO derruba a tela: a view pode ainda não estar aplicada no
-      // alvo, e nesse caso o rótulo volta a ser o de antes em vez de a página
-      // inteira sumir.
-      try {
-        const leaders = await listTeamLeaderNames();
-        setLeaderNames(new Map(leaders.map((l) => [l.id, l.full_name])));
-      } catch (error: unknown) {
-        console.warn("team_leader_names indisponível; nomes de gerente/diretor podem faltar", error);
-        setLeaderNames(new Map());
-      }
-
-      const map: Record<string, { id: string; display_name: string | null }> = {};
-      const drafts: Record<string, string> = {};
-      (teamsRes.data ?? []).forEach((t) => {
-        // Só equipe ATIVA entra no mapa. A inativa não pode aparecer no campo
-        // "Equipe" (renomeá-la não devolve ninguém à hierarquia, porque
-        // `auth_led_team_ids()` exige `active`) nem ganhar o botão "Desativar",
-        // que a desativaria de novo. Gerente sem equipe ativa vê o campo vazio,
-        // e digitar um nome ali CRIA a equipe nova — que é a recuperação certa.
-        if (t.manager_id && t.active && !map[t.manager_id]) {
-          map[t.manager_id] = { id: t.id, display_name: t.name };
-          drafts[t.manager_id] = t.name ?? "";
-        }
-      });
-      setTeamsByMgr(map);
-      setTeamNameDrafts(drafts);
+      leaders = await listTeamLeaderNames();
     } catch (error: unknown) {
-      const motivo = describeError(error, "Não foi possível carregar a equipe.");
-      setLoadError(motivo);
-      toast({ title: "Erro ao carregar equipe", description: motivo, variant: "destructive" });
-    } finally {
-      setLoading(false);
+      console.warn("team_leader_names indisponível; nomes de gerente/diretor podem faltar", error);
     }
+
+    const teamsByMgr: EquipesPorGerente = {};
+    (teamsRes.data ?? []).forEach((t) => {
+      // Só equipe ATIVA entra no mapa. A inativa não pode aparecer no campo
+      // "Equipe" (renomeá-la não devolve ninguém à hierarquia, porque
+      // `auth_led_team_ids()` exige `active`) nem ganhar o botão "Desativar",
+      // que a desativaria de novo. Gerente sem equipe ativa vê o campo vazio,
+      // e digitar um nome ali CRIA a equipe nova — que é a recuperação certa.
+      if (t.manager_id && t.active && !teamsByMgr[t.manager_id]) {
+        teamsByMgr[t.manager_id] = { id: t.id, display_name: t.name };
+      }
+    });
+    return { rows, teamsByMgr, leaders };
+  };
+
+  const queryClient = useQueryClient();
+  // Cache do TanStack Query: voltar à tela mostra o quadro que já estava aqui e
+  // relê por trás, em vez de repetir "Carregando equipes…" a cada entrada. Sem
+  // releitura ao focar a aba — a carga manual nunca releu assim.
+  // O usuário entra na chave: o quadro sai recortado pela RLS, e sem ele quem
+  // entrasse depois no mesmo navegador veria o quadro de quem saiu.
+  const quadroKey = [...EQUIPES_KEY, user?.id ?? null] as const;
+  const quadro = useQuery({
+    queryKey: quadroKey,
+    // O aviso sai da leitura, uma vez por carga, como na carga manual — e sem
+    // `retry`, que o repetiria.
+    queryFn: () => lerQuadro().catch((error: unknown) => {
+      toast({ title: "Não foi possível carregar a equipe", description: describeError(error, "Verifique a conexão e tente de novo."), variant: "destructive" });
+      throw error;
+    }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const { rows, teamsByMgr, leaders } = quadro.data ?? QUADRO_VAZIO;
+  const loading = quadro.data === undefined && quadro.isFetching;
+  // Falha de carga é diferente de "não há ninguém visível" — a tela dizia a segunda.
+  const loadError = quadro.error ? describeError(quadro.error, "Não foi possível carregar a equipe.") : null;
+  /** id → nome de quem lidera equipe ativa. */
+  const leaderNames = useMemo(() => new Map<string, string>(leaders.map((l) => [l.id, l.full_name])), [leaders]);
+  const load = () => {
+    setTeamNameDrafts({});
+    return queryClient.invalidateQueries({ queryKey: EQUIPES_KEY });
+  };
+  /**
+   * Ajuste local depois de uma gravação que o banco já confirmou. Uma leitura
+   * ainda em voo saiu antes da gravação e, ao chegar, apagaria a equipe recém
+   * criada — e o próximo blur criaria outra: ela recomeça (o `invalidate`
+   * cancela a velha).
+   */
+  const setTeamsByMgr = (atualizar: (prev: EquipesPorGerente) => EquipesPorGerente) => {
+    queryClient.setQueryData<Quadro>(quadroKey, (d) => d && { ...d, teamsByMgr: atualizar(d.teamsByMgr) });
+    if (queryClient.isFetching({ queryKey: quadroKey })) void queryClient.invalidateQueries({ queryKey: quadroKey });
   };
 
   const saveTeamName = async (manager: BrokerRow) => {
@@ -236,9 +273,9 @@ export default function Equipes() {
         .select("id");
       if (error || !data?.length) {
         return toast({
-          title: "Falha ao salvar",
+          title: "Não foi possível salvar o nome da equipe",
           description: error
-            ? describeError(error, "Não foi possível salvar o nome da equipe.")
+            ? describeError(error, "Tente de novo em instantes.")
             : "Nenhuma linha foi alterada — a equipe pode pertencer a outra diretoria.",
           variant: "destructive",
         });
@@ -259,7 +296,7 @@ export default function Equipes() {
         const id = await createTeamForManager(managerId, teamName, slugify(teamName), directorId);
         setTeamsByMgr(p => ({ ...p, [managerId]: { id, display_name: name || null } }));
       } catch (error: unknown) {
-        return toast({ title: "Falha ao criar equipe", description: describeError(error, "Não foi possível criar a equipe."), variant: "destructive" });
+        return toast({ title: "Não foi possível criar a equipe", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" });
       }
       if (!directorId) {
         return toast({
@@ -267,11 +304,10 @@ export default function Equipes() {
           description: `Vincule ${managerName} a um diretor em "Vincular em massa" na coluna Gerentes — sem isso a equipe fica fora de qualquer diretoria.`,
         });
       }
+      return toast({ title: "Equipe criada", variant: "success" });
     }
     toast({ title: "Nome da equipe salvo", variant: "success" });
   };
-
-  useEffect(() => { load(); }, []);
 
 
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
@@ -433,7 +469,7 @@ export default function Equipes() {
         targetTeamId = await activeTeamIdOfManager(bulkTarget);
       } catch (error: unknown) {
         setSaving(false);
-        return toast({ title: "Falha ao vincular", description: describeError(error, "Não foi possível carregar a equipe do gerente."), variant: "destructive" });
+        return toast({ title: "Não foi possível vincular os corretores", description: describeError(error, "Não foi possível carregar a equipe do gerente."), variant: "destructive" });
       }
       // Desligar é parte do "marque quem deve pertencer a ele": quem estava na
       // equipe e foi DESMARCADO sai. Antes o diálogo só inseria, então tirar
@@ -456,7 +492,7 @@ export default function Equipes() {
           .is("left_at", null)
           .select("id");
         if (saida.error) {
-          return falha("Falha ao desligar", describeError(saida.error, "Não foi possível desligar o corretor da equipe."));
+          return falha("Não foi possível desligar os corretores da equipe", describeError(saida.error, "Tente de novo em instantes."));
         }
         saiu = saida.data?.length ?? 0;
         if (saiu < desligar.length) {
@@ -467,6 +503,8 @@ export default function Equipes() {
         }
       }
 
+      // Conta só quem entrou de fato: `ids` inclui quem já era da equipe e é pulado.
+      let vinculou = 0;
       for (const profileId of ids) {
         if (membrosAtuais.includes(profileId)) continue; // já está nesta equipe
         // Fecha o vínculo anterior em QUALQUER equipe, inclusive uma que este
@@ -480,12 +518,12 @@ export default function Equipes() {
           .is("left_at", null)
           .select("id");
         if (fecha.error) {
-          return falha("Falha ao vincular", describeError(fecha.error, "Não foi possível encerrar o vínculo anterior."));
+          return falha("Não foi possível vincular os corretores", describeError(fecha.error, "Não foi possível encerrar o vínculo anterior."));
         }
         const jaTinhaEquipe = brokers.some(b => b.id === profileId && b.manager_id);
         if (jaTinhaEquipe && !fecha.data?.length) {
           return falha(
-            "Falha ao vincular",
+            "Não foi possível vincular os corretores",
             `${brokers.find(b => b.id === profileId)?.name ?? "O corretor"} pertence a uma equipe que você não administra — peça ao administrador para transferi-lo.`,
           );
         }
@@ -493,17 +531,21 @@ export default function Equipes() {
           .from("team_members")
           .insert({ team_id: targetTeamId, profile_id: profileId });
         if (error) {
-          return falha("Falha ao vincular", describeError(error, "Não foi possível vincular o corretor à equipe."));
+          return falha("Não foi possível vincular os corretores", describeError(error, "Tente de novo em instantes."));
         }
+        vinculou++;
       }
 
       setSaving(false);
-      toast({
-        title: saiu
-          ? `${ids.length} vínculo(s) e ${saiu} desligamento(s) aplicados`
-          : `${ids.length} vínculo(s) atualizados`,
-        variant: "success",
-      });
+      toast(vinculou || saiu
+        ? {
+            title: "Vínculos atualizados",
+            description: saiu
+              ? `${vinculou} vínculo(s) e ${saiu} desligamento(s) aplicados`
+              : `${vinculou} vínculo(s) aplicados`,
+            variant: "success",
+          }
+        : { title: "Nenhum vínculo alterado", description: "A equipe já estava com essa seleção." });
       setBulk(null);
       load();
       return;
@@ -521,7 +563,7 @@ export default function Equipes() {
         // `setDirectorOfManagedTeams` já fechou na ficha.
         .eq("active", true)
         .select("manager_id");
-      if (error) { setSaving(false); return toast({ title: "Falha ao vincular", description: describeError(error, "Não foi possível vincular o gerente à diretoria."), variant: "destructive" }); }
+      if (error) { setSaving(false); return toast({ title: "Não foi possível vincular os gerentes à diretoria", description: describeError(error, "Tente de novo em instantes."), variant: "destructive" }); }
       const updated = new Set((data ?? []).map(row => row.manager_id));
       const missing = ids.filter(id => !updated.has(id));
       if (missing.length) {
@@ -531,7 +573,7 @@ export default function Equipes() {
         load();
         return toast({
           title: missing.length === ids.length
-            ? "Nenhum vínculo gravado"
+            ? "Não foi possível vincular os gerentes à diretoria"
             : `${ids.length - missing.length} de ${ids.length} vínculo(s) atualizados`,
           description: `Não gravou para: ${names}. Ou o gerente ainda não tem equipe — preencha o campo "Equipe" dele na coluna Gerentes — ou a equipe já pertence a outra diretoria, e só o administrador a transfere.`,
           variant: "destructive",
@@ -539,7 +581,7 @@ export default function Equipes() {
       }
     }
     setSaving(false);
-    toast({ title: `${ids.length} vínculo(s) atualizados`, variant: "success" });
+    toast({ title: "Vínculos atualizados", description: `${ids.length} gerente(s) vinculado(s) à diretoria`, variant: "success" });
     setBulk(null);
     load();
   };
@@ -841,11 +883,11 @@ export default function Equipes() {
                         <span className="text-eyebrow shrink-0">Equipe</span>
                         <Input
                           aria-label={`Nome da equipe de ${t.manager.name}`}
-                          value={teamNameDrafts[t.manager.id] ?? ""}
+                          value={teamNameDrafts[t.manager.id] ?? equipe?.display_name ?? ""}
                           onChange={(e) => setTeamNameDrafts(p => ({ ...p, [t.manager.id]: e.target.value }))}
                           onBlur={() => {
-                            const current = teamsByMgr[t.manager.id]?.display_name ?? "";
-                            if ((teamNameDrafts[t.manager.id] ?? "") !== current) void saveTeamName(t.manager);
+                            const current = equipe?.display_name ?? "";
+                            if ((teamNameDrafts[t.manager.id] ?? current) !== current) void saveTeamName(t.manager);
                           }}
                           placeholder={`Equipe ${t.manager.name.split(" ")[0]}`}
                           className="h-6 text-xs px-2 min-w-0 flex-1 basis-24"
@@ -1130,8 +1172,8 @@ export default function Equipes() {
                     });
                   } catch (error: unknown) {
                     toast({
-                      title: "Falha ao desativar",
-                      description: describeError(error, "Não foi possível desativar a equipe."),
+                      title: "Não foi possível desativar a equipe",
+                      description: describeError(error, "Tente de novo em instantes."),
                       variant: "destructive",
                     });
                   } finally {

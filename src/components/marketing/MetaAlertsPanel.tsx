@@ -157,10 +157,21 @@ function LimitesForm({ conta, podeGravar }: { conta: Conta; podeGravar: boolean 
       if (error) throw dbError("salvar os limites dos alertas", error);
     },
     onSuccess: async () => {
-      toast.success("Limites salvos", { description: "Os alertas desta conta já foram reavaliados com eles." });
+      toast.success("Limites dos alertas salvos", { description: "Os alertas desta conta já foram reavaliados com eles." });
       await queryClient.invalidateQueries({ queryKey: ["marketing", "meta"] });
     },
-    onError: (e) => toast.error("Não foi possível salvar os limites", { description: e.message }),
+    // Validação de campo é Error nosso, já em pt-BR; o do banco (`dbError`) não pode sair cru.
+    // Exceção: 22023 aqui só sai dos `raise` da própria RPC (0117), em pt-BR, e é o
+    // motivo real ("Conta de anúncios não encontrada.").
+    onError: (e) => {
+      const db = (e as { db?: { code?: string; message?: string } }).db;
+      toast.error("Não foi possível salvar os limites", {
+        description:
+          db?.code === "22023" && db.message
+            ? db.message
+            : describeError(e, db ? "Confira os valores e tente de novo." : e.message),
+      });
+    },
   });
 
   const bloqueado = !podeGravar || salvar.isPending;

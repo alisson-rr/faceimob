@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { describeError } from "@/lib/supabaseError";
+import { dbError, describeError } from "@/lib/supabaseError";
 import { supabase } from "@/integrations/supabase/client";
 import type { StatusTone } from "@/components/shared";
 import {
@@ -48,17 +48,29 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
     try {
       // A coluna guarda a CHAVE semântica, nunca a classe do Tailwind.
       const payload = { name: name.trim(), color: tone, status };
-      const { error } = editing
-        ? await supabase.from("cca_stages").update(payload).eq("id", editing.id)
-        : await supabase.from("cca_stages").insert({ ...payload, position: stages.length + 1 });
-      if (error) throw error;
-      toast({ title: editing ? "Estágio atualizado" : "Estágio criado" });
+      if (editing) {
+        // `.select("id")`: UPDATE recusado pela RLS volta 204 sem erro, e o aviso
+        // diria "Estágio atualizado" sem ter gravado (mesma regra de `updateDeal`).
+        const { data, error } = await supabase
+          .from("cca_stages").update(payload).eq("id", editing.id).select("id");
+        if (error) throw error;
+        if (!data?.length) {
+          throw dbError("cca_stages", {
+            code: "P0001",
+            message: "Ele pode ter sido removido por outra pessoa ou seu perfil não tem permissão. Recarregue a página.",
+          });
+        }
+      } else {
+        const { error } = await supabase.from("cca_stages").insert({ ...payload, position: stages.length + 1 });
+        if (error) throw error;
+      }
+      toast({ variant: "success", title: editing ? "Estágio atualizado" : "Estágio criado" });
       reset();
       await onChanged();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Erro ao salvar o estágio",
+        title: "Não foi possível salvar o estágio",
         description: describeError(err, "Tente de novo."),
       });
     } finally {
@@ -68,15 +80,21 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
 
   const remove = async (stage: CcaStage) => {
     try {
-      const { error } = await supabase.from("cca_stages").delete().eq("id", stage.id);
+      const { data, error } = await supabase.from("cca_stages").delete().eq("id", stage.id).select("id");
       if (error) throw error;
-      toast({ title: "Estágio excluído" });
+      if (!data?.length) {
+        throw dbError("cca_stages", {
+          code: "P0001",
+          message: "Ele pode já ter sido removido por outra pessoa ou seu perfil não tem permissão. Recarregue a página.",
+        });
+      }
+      toast({ variant: "success", title: "Estágio excluído" });
       await onChanged();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Erro ao excluir o estágio",
-        description: describeError(err, "Talvez existam casos nele."),
+        title: "Não foi possível excluir o estágio",
+        description: describeError(err, "O estágio continua na esteira."),
       });
     } finally {
       setRemoving(null);

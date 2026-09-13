@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Star, Megaphone, Save, Trash2, Loader2 } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { describeError } from "@/lib/supabaseError";
 
@@ -34,24 +34,51 @@ export function GamificationAdmin() {
   useEffect(() => { load(); }, []);
 
   const saveTip = async () => {
-    if (!tipDraft.trim()) return;
+    if (!tipDraft.trim()) {
+      toast.error("Escreva a dica antes de publicar");
+      return;
+    }
     setSaving(true);
-    await supabase.from("gold_tips").update({ active: false }).eq("active", true);
-    const { error } = await supabase.from("gold_tips").insert({ title: "Dica de Ouro", body: tipDraft, active: true });
+    // Conferido antes do insert: a falha aqui era engolida e a tela dizia "publicada".
+    const desativar = await supabase.from("gold_tips").update({ active: false }).eq("active", true);
+    const { error } = desativar.error
+      ? desativar
+      : await supabase.from("gold_tips").insert({ title: "Dica de Ouro", body: tipDraft, active: true });
     setSaving(false);
-    if (error) return toast({ title: "Falha ao publicar a dica", description: describeError(error, "Não foi possível publicar a dica de ouro."), variant: "destructive" });
-    toast({ title: "Dica de ouro publicada" });
+    if (error) {
+      toast.error("Não foi possível publicar a dica", { description: describeError(error, "Tente de novo em instantes.") });
+      return;
+    }
+    toast.success("Dica de ouro publicada");
     setTipDraft(""); load();
   };
 
   const toggleTip = async (t: Tip) => {
-    await supabase.from("gold_tips").update({ active: !t.active }).eq("id", t.id);
+    const { error } = await supabase.from("gold_tips").update({ active: !t.active }).eq("id", t.id);
+    if (error) {
+      toast.error(t.active ? "Não foi possível desativar a dica" : "Não foi possível ativar a dica", {
+        description: describeError(error, "Tente de novo em instantes."),
+      });
+      return;
+    }
+    toast.success(t.active ? "Dica desativada" : "Dica ativada", { duration: 2500 });
     load();
   };
-  const removeTip = async (id: string) => { await supabase.from("gold_tips").delete().eq("id", id); load(); };
+  const removeTip = async (id: string) => {
+    const { error } = await supabase.from("gold_tips").delete().eq("id", id);
+    if (error) {
+      toast.error("Não foi possível apagar a dica", { description: describeError(error, "A dica continua na lista. Tente de novo.") });
+      return;
+    }
+    toast.success("Dica apagada");
+    load();
+  };
 
   const saveNotice = async () => {
-    if (!noticeDraft.title.trim() || !noticeDraft.message.trim()) return toast({ title: "Preencha título e mensagem", variant: "destructive" });
+    if (!noticeDraft.title.trim() || !noticeDraft.message.trim()) {
+      toast.error("Preencha título e mensagem");
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("important_notices").insert({
       title: noticeDraft.title,
@@ -60,12 +87,33 @@ export function GamificationAdmin() {
       active: true,
     });
     setSaving(false);
-    if (error) return toast({ title: "Falha ao publicar o recado", description: describeError(error, "Não foi possível publicar o recado."), variant: "destructive" });
-    toast({ title: "Recado publicado" });
+    if (error) {
+      toast.error("Não foi possível publicar o recado", { description: describeError(error, "Tente de novo em instantes.") });
+      return;
+    }
+    toast.success("Recado publicado");
     setNoticeDraft({ title: "", message: "", pinned: false }); load();
   };
-  const toggleNotice = async (n: Notice) => { await supabase.from("important_notices").update({ active: !n.active }).eq("id", n.id); load(); };
-  const removeNotice = async (id: string) => { await supabase.from("important_notices").delete().eq("id", id); load(); };
+  const toggleNotice = async (n: Notice) => {
+    const { error } = await supabase.from("important_notices").update({ active: !n.active }).eq("id", n.id);
+    if (error) {
+      toast.error(n.active ? "Não foi possível desativar o recado" : "Não foi possível ativar o recado", {
+        description: describeError(error, "Tente de novo em instantes."),
+      });
+      return;
+    }
+    toast.success(n.active ? "Recado desativado" : "Recado ativado", { duration: 2500 });
+    load();
+  };
+  const removeNotice = async (id: string) => {
+    const { error } = await supabase.from("important_notices").delete().eq("id", id);
+    if (error) {
+      toast.error("Não foi possível apagar o recado", { description: describeError(error, "O recado continua na lista. Tente de novo.") });
+      return;
+    }
+    toast.success("Recado apagado");
+    load();
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

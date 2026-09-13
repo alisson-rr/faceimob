@@ -130,7 +130,7 @@ export default function DeveloperSubmissionDialog({
       );
     } catch (e) {
       toast({
-        title: "Falha ao carregar o envio",
+        title: "Não foi possível carregar o envio",
         description: describeError(e, "Não foi possível carregar os dados do envio."),
         variant: "destructive",
       });
@@ -229,13 +229,14 @@ export default function DeveloperSubmissionDialog({
       await load();
       await onChanged?.();
       toast({
-        title: "Envio na fila",
+        variant: "success",
+        title: "Envio enfileirado",
         description: "O disparo do e-mail acontece pelo worker; acompanhe o status abaixo.",
       });
     } catch (e) {
       toast({
-        title: "Não foi possível enfileirar",
-        description: describeError(e, "Não foi possível enfileirar o envio para a construtora."),
+        title: "Não foi possível enfileirar o envio",
+        description: describeError(e, "Nada foi enviado à construtora."),
         variant: "destructive",
       });
     } finally {
@@ -259,6 +260,7 @@ export default function DeveloperSubmissionDialog({
     okTitle: string,
     esperado: DeveloperSubmissionRecord["status"],
   ) => {
+    const falhou = esperado === "cancelled" ? "Não foi possível cancelar o envio" : "Não foi possível reenfileirar o envio";
     try {
       await fn(row.id);
       const linhas = await listDealSubmissions(dealId);
@@ -266,24 +268,26 @@ export default function DeveloperSubmissionDialog({
       const atual = linhas.find((h) => h.id === row.id);
       if (atual && atual.status !== esperado) {
         return toast({
-          title: "Ação não registrada",
+          title: falhou,
           description: `O envio continua como "${SUBMISSION_STATUS_LABEL[atual.status]}". Confira sua permissão na esteira e tente de novo.`,
           variant: "destructive",
         });
       }
+      const emVoo = row.status === "sending";
       toast({
-        title: okTitle,
         // Honestidade sobre o que a tela NÃO controla: o worker marca 'sent' ao
         // terminar sem reler o status (submission-dispatch), então cancelar em
-        // pleno voo pode chegar tarde.
-        description: row.status === "sending"
+        // pleno voo pode chegar tarde — por isso sai neutro, sem som de sucesso.
+        variant: emVoo ? "default" : "success",
+        title: okTitle,
+        description: emVoo
           ? "O disparo já estava em andamento: se o worker terminar antes de reler a linha, o e-mail ainda pode sair."
           : undefined,
       });
     } catch (e) {
       toast({
-        title: "Ação não concluída",
-        description: describeError(e, "Não foi possível atualizar o envio à construtora."),
+        title: falhou,
+        description: describeError(e, "O envio continua como estava."),
         variant: "destructive",
       });
     }
@@ -452,7 +456,7 @@ export default function DeveloperSubmissionDialog({
                       </span>
                       <span className="flex items-center gap-1 shrink-0">
                         {h.status === "failed" && (
-                          <button type="button" onClick={() => act(requeueSubmission, h, "Reenfileirado", "queued")} className="text-primary flex items-center gap-1">
+                          <button type="button" onClick={() => act(requeueSubmission, h, "Envio reenfileirado", "queued")} className="text-primary flex items-center gap-1">
                             <RotateCcw className="h-3 w-3" /> Reenviar
                           </button>
                         )}

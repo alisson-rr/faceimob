@@ -16,6 +16,8 @@ import { Label } from '@/components/ui/label';
 import { AlertTriangle, Crown, Lock, Medal, PauseCircle, Play, Plus, Sliders, Star, Target, Trophy, TrendingUp, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+// O adaptador `useToast` não repassa `duration`; o switch de regra precisa dos 2,5 s de ação frequente.
+import { toast as sonnerToast } from '@/components/ui/sonner';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from '@/components/shared';
 import { Podium, SoundPreview, buildFrozenScores, buildScores, type BrokerScore, type PodiumEntry } from '@/components/engagement';
@@ -179,7 +181,7 @@ function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; sea
   const refresh = () => queryClient.invalidateQueries({ queryKey: gameKeys.all });
 
   const fail = (error: unknown, title: string) =>
-    toast({ title, description: describeGameError(error, title), variant: 'destructive' });
+    toast({ title, description: describeGameError(error, 'Tente de novo em instantes.'), variant: 'destructive' });
 
   const saveMutation = useMutation({
     mutationFn: async (input: { rule: ScoringRule; points: number }) =>
@@ -189,7 +191,11 @@ function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; sea
     onSuccess: async (_data, input) => {
       await refresh();
       setDrafts((p) => { const next = { ...p }; delete next[input.rule.id]; return next; });
-      toast({ title: `${input.rule.label}: ${input.points} pts`, description: 'Vale do próximo movimento em diante.' });
+      toast({
+        title: 'Regra de pontuação salva',
+        description: `${input.rule.label}: ${input.points} pts. Vale do próximo movimento em diante.`,
+        variant: 'success',
+      });
     },
     onError: (error) => fail(error, 'Não foi possível salvar a regra'),
   });
@@ -198,9 +204,10 @@ function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; sea
     mutationFn: (input: { rule: ScoringRule; active: boolean }) => setScoringRuleActive(input.rule.id, input.active),
     onSuccess: async (_data, input) => {
       await refresh();
-      toast({ title: input.active ? `${input.rule.label} ativada` : `${input.rule.label} desativada` });
+      sonnerToast.success(input.active ? 'Regra ativada' : 'Regra desativada', { description: input.rule.label, duration: 2500 });
     },
-    onError: (error) => fail(error, 'Não foi possível mudar a regra'),
+    onError: (error, input) =>
+      fail(error, input.active ? 'Não foi possível ativar a regra' : 'Não foi possível desativar a regra'),
   });
 
   const pinMutation = useMutation({
@@ -211,8 +218,9 @@ function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; sea
     onSuccess: async (_data, rule) => {
       await refresh();
       toast({
-        title: `${rule.label} fixada em ${rule.points} pts nesta temporada`,
-        description: 'Agora dá para mudar o peso padrão sem mexer no placar em andamento.',
+        title: 'Regra fixada na temporada',
+        description: `${rule.label}: ${rule.points} pts. Agora dá para mudar o peso padrão sem mexer no placar em andamento.`,
+        variant: 'success',
       });
     },
     onError: (error) => fail(error, 'Não foi possível fixar a regra na temporada'),
@@ -252,6 +260,7 @@ function ScoringRulesPanel({ seasonId, seasons }: { seasonId: string | null; sea
       toast({
         title: 'Regra criada',
         description: 'Ela só pontua quando algo no banco emitir esse código de evento.',
+        variant: 'success',
       });
     },
     onError: (error) => fail(error, 'Não foi possível criar a regra'),
@@ -677,12 +686,13 @@ export default function Gamification() {
         description: result.monthWasClosed
           ? `Ranking congelado e nova temporada aberta. O mês ${month} já estava travado.`
           : `Ranking congelado, mês ${month} travado e ${num(result.moved_deals)} proposta(s) movida(s) para o mês seguinte.`,
+        variant: 'success',
       });
     },
     onError: (error: unknown) => {
       toast({
         title: 'Não foi possível encerrar a temporada',
-        description: describeGameError(error, 'Não foi possível encerrar a temporada.'),
+        description: describeGameError(error, 'O jogo segue aberto. Tente de novo em instantes.'),
         variant: 'destructive',
       });
     },
@@ -693,7 +703,7 @@ export default function Gamification() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: gameKeys.all });
       setSelectedSeasonId(null);
-      toast({ title: 'Temporada aberta', description: 'O jogo voltou a pontuar.' });
+      toast({ title: 'Temporada aberta', description: 'O jogo voltou a pontuar.', variant: 'success' });
     },
     onError: (error: unknown) => {
       // `game_seasons_one_open` é índice único: dois admins abrindo ao mesmo
@@ -704,7 +714,7 @@ export default function Gamification() {
         title: 'Não foi possível abrir a temporada',
         description: code === '23505'
           ? 'Alguém acabou de abrir uma temporada. Recarregue a tela para ver o jogo já rodando.'
-          : describeGameError(error, 'Não foi possível abrir a temporada.'),
+          : describeGameError(error, 'Tente de novo em instantes.'),
         variant: 'destructive',
       });
       void queryClient.invalidateQueries({ queryKey: gameKeys.all });

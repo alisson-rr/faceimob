@@ -122,6 +122,12 @@ begin
   -- As sete tabelas da Meta (0115/0116) são livro, fila e auditoria de dinheiro
   -- real: só RPC definer e edge com service role gravam. INSERT do cliente
   -- permitiria forjar gasto, insight, execução de IA ou ação "aprovada".
+  --
+  -- `push_subscriptions` (0143): o endpoint é para onde a edge `push-dispatch`
+  -- faz POST com a chave VAPID. Aparelho só entra por `register_push_subscription`,
+  -- que aceita apenas https de serviço de push conhecido; INSERT/UPDATE direto
+  -- transformaria a edge em cliente HTTP de uma URL escolhida pelo usuário.
+  -- O dono segue lendo e apagando a própria linha (logout).
   select string_agg(c.relname, ', ' order by c.relname)
     into sem_grant
   from pg_class c
@@ -132,7 +138,7 @@ begin
       has_table_privilege('authenticated', c.oid, 'SELECT')
       and (
         has_table_privilege('authenticated', c.oid, 'INSERT')
-        or c.relname in ('whatsapp_inbound_messages',
+        or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions',
                          'meta_ad_accounts', 'meta_sync_runs', 'meta_campaign_insights_daily',
                          'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts')
       )

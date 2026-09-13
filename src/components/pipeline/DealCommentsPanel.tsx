@@ -92,11 +92,12 @@ export function DealCommentsPanel({ dealId, people }: { dealId: string; people: 
       const { error } = await supabase.rpc("add_deal_comment", { p_deal_id: dealId, p_body: body });
       if (error) throw error;
       setDraft("");
+      toast({ variant: "success", title: "Comentário adicionado" });
       await load();
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Comentário não gravado",
+        title: "Não foi possível adicionar o comentário",
         description: describeError(err, "Tente de novo."),
       });
     } finally {

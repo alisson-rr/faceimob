@@ -287,7 +287,12 @@
   .text-balance { text-wrap: balance; }
 
   .ease-premium { transition-timing-function: cubic-bezier(.22, 1, .36, 1); }
-  .animate-fade-in { animation: fadeIn 0.3s cubic-bezier(.22, 1, .36, 1) both; }
+  /* `backwards`, não `both`: é o invólucro de TODA tela (AppLayout). Com `both` o
+   * `transform` final ficava preso e o Chrome repintava a tela inteira a cada
+   * tique de cronômetro ou quadro do menu (medido em /leads: pintura de ~320 ms/s
+   * para <1 ms/s). A entrada é a mesma; no fim o transform sai. Nenhum descendente
+   * usa `fixed` ou z-index acima do cabeçalho (z-30) dependendo desse contexto. */
+  .animate-fade-in { animation: fadeIn 0.3s cubic-bezier(.22, 1, .36, 1) backwards; }
   .animate-slide-up { animation: slideUp 0.3s cubic-bezier(.22, 1, .36, 1) both; }
   .animate-scale-in { animation: scaleIn 0.2s cubic-bezier(.22, 1, .36, 1) both; }
   .interactive {

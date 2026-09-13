@@ -320,8 +320,8 @@ export default function DailyReport() {
     } catch (e) {
       console.error("daily report: falha ao carregar o mês", e);
       toast({
-        title: "Não consegui carregar o mês",
-        description: describeError(e, "Erro de conexão — tente novamente."),
+        title: "Não foi possível carregar o mês",
+        description: describeError(e, "Verifique a conexão e tente de novo."),
         variant: "destructive",
       });
     } finally {
@@ -364,8 +364,8 @@ export default function DailyReport() {
     } catch (e) {
       console.error("daily report: falha ao carregar o dia", e);
       toast({
-        title: "Não consegui carregar o dia",
-        description: describeError(e, "Erro de conexão — tente novamente."),
+        title: "Não foi possível carregar o dia",
+        description: describeError(e, "Verifique a conexão e tente de novo."),
         variant: "destructive",
       });
     } finally {
@@ -430,6 +430,7 @@ export default function DailyReport() {
       return toast({
         title: "O PIN tem de 6 a 10 dígitos",
         description: "Confira o código entregue pela administração antes de tentar — cada erro conta para o bloqueio de 15 minutos.",
+        variant: "destructive",
       });
     }
     let result;
@@ -438,8 +439,8 @@ export default function DailyReport() {
     } catch (e) {
       console.error("daily report: falha ao abrir a equipe", e);
       return toast({
-        title: "Erro de conexão — tente novamente",
-        description: describeError(e, "Não foi possível falar com o servidor."),
+        title: "Não foi possível abrir a equipe",
+        description: describeError(e, "Verifique a conexão e tente de novo."),
         variant: "destructive",
       });
     }
@@ -543,8 +544,8 @@ export default function DailyReport() {
         });
       }
       return toast({
-        title: "Falha ao enviar o checkpoint",
-        description: describeError(error, "Não foi possível enviar o checkpoint. Tente de novo."),
+        title: "Não foi possível salvar o checkpoint",
+        description: describeError(error, "Tente de novo em instantes."),
         variant: "destructive",
       });
     }
@@ -571,10 +572,11 @@ export default function DailyReport() {
     setXpBurst(xpEarned);
     setDayFilledBy(filledBy.trim());
     toast({
-      title: "🎯 Checkpoint concluído!",
+      title: "Checkpoint salvo",
       description: viewingPastDay
         ? `Correção gravada no dia ${format(parseISO(date), "dd/MM", { locale: ptBR })} — ${num(xpEarned)} pontos do Diário naquele dia.`
         : `${num(xpEarned)} pontos do Diário no dia. Dados da equipe registrados.`,
+      variant: "success",
     });
     setTimeout(() => setXpBurst(0), 3000);
     if (resolvedTeamId) loadMonth();
