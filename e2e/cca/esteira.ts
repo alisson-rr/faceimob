@@ -65,7 +65,9 @@ export async function etapaId(code: string): Promise<string> {
 
 export async function estagioCca(status: string): Promise<{ id: string; name: string }> {
   const [linha] = await db.select<{ id: string; name: string }>(
-    `cca_stages?status=eq.${status}&active=is.true&select=id,name&limit=1`,
+    // Por posição: com as 19 colunas da 0150 há mais de uma por desfecho, e o
+    // caso novo entra na primeira (a mesma ordem de `submit_deal_for_analysis`).
+    `cca_stages?status=eq.${status}&active=is.true&select=id,name&order=position&limit=1`,
   );
   if (!linha) throw new Error(`estágio de CCA com status "${status}" não existe`);
   return linha;

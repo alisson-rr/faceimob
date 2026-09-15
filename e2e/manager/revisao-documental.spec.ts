@@ -71,6 +71,9 @@ test("um gerente vinculado aprova e o negócio entra no CCA", async ({ page }) =
   await modal.getByRole("tab", { name: "Anexos", exact: true }).click();
 
   await expect(modal.getByText("Aguardando gerente", { exact: true })).toBeVisible();
+  // Na aprovação a mensagem é opcional; quando vem, fica no negócio (0150).
+  const mensagemAprovacao = `Dossiê conferido ${tag}`;
+  await modal.getByRole("textbox", { name: "Mensagem da conferência" }).fill(mensagemAprovacao);
   await modal.getByRole("button", { name: /aprovar e enviar ao cca/i }).click();
 
   await expect(modal.getByText("Conferido", { exact: true })).toBeVisible();
@@ -102,6 +105,11 @@ test("um gerente vinculado aprova e o negócio entra no CCA", async ({ page }) =
   const cases = await db.select<{ id: string }>(`cca_cases?deal_id=eq.${dealAprovacao}&select=id`);
   expect(cases).toHaveLength(1);
 
+  const comentario = encodeURIComponent(`APROVADO PELO GERENTE: ${mensagemAprovacao}`);
+  expect(
+    await db.select(`deal_history?deal_id=eq.${dealAprovacao}&kind=eq.comment&to_value=eq.${comentario}&select=id`),
+  ).toHaveLength(1);
+
   // A tabela mostra o rótulo depois de recarregar: é o que o gerente vê ao
   // voltar para a lista, sem ter mexido no Status 2.
   await page.reload();
@@ -119,7 +127,7 @@ test("gerente só devolve com motivo e o corretor é notificado", async ({ page 
 
   const devolver = modal.getByRole("button", { name: "Devolver", exact: true });
   await expect(devolver).toBeDisabled();
-  await modal.getByRole("textbox", { name: "Motivo da devolução" }).fill(motivo);
+  await modal.getByRole("textbox", { name: "Mensagem da conferência" }).fill(motivo);
   await expect(devolver).toBeEnabled();
   await devolver.click();
 
@@ -194,7 +202,7 @@ test("mês fechado desabilita devolver e aprovar, com o motivo escrito", async (
 
     // O motivo preenchido isola a causa: sem ele "Devolver" já nasceria cinza
     // por falta de texto, e o teste passaria pelo motivo errado.
-    await modal.getByRole("textbox", { name: "Motivo da devolução" }).fill(`Mês congelado ${tag}`);
+    await modal.getByRole("textbox", { name: "Mensagem da conferência" }).fill(`Mês congelado ${tag}`);
     await expect(modal.getByRole("button", { name: "Devolver", exact: true })).toBeDisabled();
     await expect(modal.getByRole("button", { name: /aprovar e enviar ao cca/i })).toBeDisabled();
 

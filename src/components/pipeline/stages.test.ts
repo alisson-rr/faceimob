@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEAL_STAGES } from "@/types/crm";
-import { SYSTEM_STATUSES } from "@/lib/dealStatus";
 import { LOST_STAGE_CODE, funnelStages, stageLabelOf, stageSurface, stageTone } from "./stages";
-import { FACEIMOB_STATUSES, faceimobStatusTone, statusChoices } from "./statuses";
+import { catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
+import { faceimobStatusTone, statusChoices } from "./statuses";
 import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
 
 /**
@@ -73,34 +73,32 @@ describe("catálogo de etapas", () => {
 });
 
 describe("catálogo de Status 2", () => {
-  it("não repete rótulo", () => {
-    const labels = FACEIMOB_STATUSES.map((status) => status.label);
-    expect(new Set(labels).size).toBe(labels.length);
-  });
-
-  it('mantém o acento de "08. VIROU NEGÓCIO"', () => {
+  it('o seed mantém o acento de "08. VIROU NEGÓCIO"', () => {
     // O achado F10 nasceu de "VIROU NEGOCIO" sem acento: o valor não batia com
-    // nenhum item e o Select da tabela abria vazio.
-    const label = "08. VIROU NEGÓCIO";
-    expect(FACEIMOB_STATUSES.some((status) => status.label === label)).toBe(true);
-    expect(faceimobStatusTone(label)).not.toBe("neutral");
+    // nenhum item e o Select da tabela abria vazio. O catálogo agora é do banco
+    // (0149), então a trava lê o seed dele.
+    const m0149 = readFileSync(
+      resolve(__dirname, "../../../supabase/migrations/20260915090000_0149_status_catalogo.sql"),
+      "utf8",
+    );
+    expect(m0149).toContain("'08. VIROU NEGÓCIO'");
+    expect(m0149).not.toContain("'08. VIROU NEGOCIO'");
   });
 
   it("o valor gravado sempre aparece nas opções, mesmo fora do catálogo", () => {
-    // Os dois rótulos do sistema (`SYSTEM_STATUSES`) não são opção — a conta
-    // do Select é o catálogo menos eles; `statuses.test.ts` trava os números.
     const desconhecido = "STATUS VINDO DE IMPORTAÇÃO";
-    const opcoes = statusChoices(desconhecido).map((status) => status.label);
+    const opcoes = statusChoices(catalogo, desconhecido).map((status) => status.value);
     expect(opcoes[0]).toBe(desconhecido);
-    expect(opcoes).toHaveLength(FACEIMOB_STATUSES.length - SYSTEM_STATUSES.length + 1);
-
+    expect(opcoes.slice(1)).toEqual(statusChoices(catalogo, "16. PENDENTE").map((status) => status.value));
     // Já um valor conhecido não pode ser duplicado no topo.
-    expect(statusChoices("PROPOSTA")).toHaveLength(FACEIMOB_STATUSES.length - SYSTEM_STATUSES.length);
+    expect(statusChoices(catalogo, "16. PENDENTE").filter((status) => status.value === "16. PENDENTE"))
+      .toHaveLength(1);
   });
 
   it("status desconhecido tem tom neutro em vez de quebrar", () => {
-    expect(faceimobStatusTone("ALGO QUE NÃO EXISTE")).toBe("neutral");
-    expect(faceimobStatusTone(null)).toBe("neutral");
+    expect(faceimobStatusTone(catalogo, "ALGO QUE NÃO EXISTE")).toBe("neutral");
+    expect(faceimobStatusTone(catalogo, null)).toBe("neutral");
+    expect(faceimobStatusTone(catalogo, "08. VIROU NEGÓCIO")).toBe("highlight");
   });
 });
 

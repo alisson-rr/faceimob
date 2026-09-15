@@ -255,7 +255,13 @@ try {
   );
 
   // ── 7. Conferência documental: o corretor manda ao gerente ────────────────
-  const envio = await rpc(tokenCorretor, "submit_deal_for_manager_review", { p_deal_id: dealId });
+  // Com mensagem e esteira (0150): sem a mensagem a recusa viria por ela, e o
+  // passo deixaria de provar a trava do dossiê.
+  const envio = await rpc(tokenCorretor, "submit_deal_for_manager_review", {
+    p_deal_id: dealId,
+    p_message: "Prova da cadeia: envio sem documento obrigatório.",
+    p_esteira: "agil",
+  });
   const [revisao] = await sql(`/rest/v1/deals?id=eq.${dealId}&select=document_review_status`);
   ok(
     "7. sem documento obrigatório, a conferência documental RECUSA o envio",

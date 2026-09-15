@@ -39,6 +39,7 @@ declare
     'import_remarketing_list', 'list_integrations', 'marketing_campaign_stats',
     'reassign_lead', 'remarketing_list_stats',
     'review_deal_documents', 'submit_deal_for_manager_review',
+    'move_cca_case', 'cca_send_counts',
     'set_integration_secret', 'set_public_link_pin'
   ];
 begin

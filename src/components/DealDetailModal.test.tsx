@@ -51,6 +51,13 @@ vi.mock("@/components/pipeline/data", () => ({
 
 vi.mock("@/integrations/supabase/leads", () => ({ listDeveloperProjects: async () => [] }));
 
+// O formulário lê o catálogo de status por `useQuery`, e este teste monta sem
+// `QueryClientProvider`: sem catálogo, o formulário mostra só o valor gravado.
+vi.mock("@/integrations/supabase/dealStatuses", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/integrations/supabase/dealStatuses")>()),
+  useDealStatusCatalog: () => ({ data: undefined, isPending: true, error: null }),
+}));
+
 vi.mock("@/components/pipeline/ccaData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/components/pipeline/ccaData")>()),
   saveCcaAnalysis: vi.fn(),

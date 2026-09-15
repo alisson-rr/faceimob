@@ -7,19 +7,19 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { brl, dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
-import { bareStatus, isLossStatus } from "@/lib/dealStatus";
 import type { DealStage } from "@/types/crm";
 import { useAuth } from "@/contexts/AuthContext";
 import { listDeveloperProjects } from "@/integrations/supabase/leads";
 import {
-  dealStageCodeFor, saleBlockedReason,
+  choosesLoss, dealStageCodeFor, saleBlockedReason,
   type PersonRecord, type SaveLegacyDealInput,
 } from "@/integrations/supabase/newSchema";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
 import { ChoiceField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
 import { projectPlaceholder } from "./guards";
-import { statusChoices } from "./statuses";
+import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
 import { offDistratoBlocked } from "./useDealActions";
 import { funnelStages, type PipelineStage } from "./stages";
 
@@ -121,6 +121,15 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
    *  construtora sem catálogo. */
   const [projectCleared, setProjectCleared] = useState(false);
   const selectableBrokers = useSelectableBrokers();
+  const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
+
+  // Status 1 (0149). O banco o deriva do Status 2 e só aceita troca à mão de
+  // quem tem `deals.edit_status_group`. Sem valor no formulário — negócio novo,
+  // ou o Status 2 acabou de mudar aqui — a tela mostra o grupo que o catálogo
+  // dá ao Status 2 escolhido, e o gravador não manda nada: quem deriva é o
+  // gatilho, com o catálogo do banco.
+  const podeTrocarStatus1 = can("deals.edit_status_group");
+  const status1 = form.status_group_id ?? statusGroupOf(catalog, form.status);
 
   // Duas recusas do banco numa resposta só (`useDealWriteLock`): o papel sem
   // escrita (`can_edit_deal`/`deals_insert`) e o mês congelado
@@ -201,11 +210,10 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
   }, [form.developer, loadProjects]);
 
   // Espelho de `saveLegacyDeal` (newSchema.ts) — a MESMA função, não uma cópia
-  // da regra. Enquanto o aviso usava três constantes e o gravador outras,
-  // "19. REPROVADO" encerrava o negócio pela tabela e não encerrava nada pelo
-  // modal, com este aviso vermelho prometendo o que não acontecia. Dívida
-  // `ponytail` do handoff-R, quitada: hoje os dois leem `isLossStatus`.
-  const willLose = isLossStatus(form.status);
+  // da regra: `choosesLoss` é o que `dealStageCodeFor` lê para mandar a Perdido.
+  // Só o Status 2 trocado aqui encerra: o "19. REPROVADO" que a coluna da CCA já
+  // gravou num negócio aberto não acende este aviso nem encerra ao salvar.
+  const willLose = choosesLoss(form);
 
   return (
     <>
@@ -527,9 +535,9 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         </div>
       </Section>
 
-      <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-3">
         <div>
-          <Label htmlFor={field("stage")} className="text-eyebrow">Etapa (Status 1)</Label>
+          <Label htmlFor={field("stage")} className="text-eyebrow">Etapa</Label>
           <Select
             value={form.stage} disabled={!canLeaveStage}
             onValueChange={(v) => onChange({ stage: v as DealStage })}
@@ -608,8 +616,35 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           )}
         </div>
         <div>
+          <Label htmlFor={field("status1")} className="text-eyebrow">Status 1</Label>
+          {/* Desabilitado, e não escondido, com o motivo em `aria-describedby`
+              — a mesma escolha do mês-base e da etapa acima. */}
+          <Select
+            value={status1 ?? ""}
+            disabled={!podeTrocarStatus1}
+            onValueChange={(v) => onChange({ status_group_id: v })}
+          >
+            <SelectTrigger id={field("status1")} className="mt-1 text-xs" aria-describedby={field("status1-hint")}>
+              <SelectValue placeholder="Sem Status 1" />
+            </SelectTrigger>
+            <SelectContent>
+              {groupChoices(catalog, status1).map((group) => (
+                <SelectItem key={group.id} value={group.id}>{group.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p id={field("status1-hint")} className="mt-1 text-xs text-muted-foreground">
+            {podeTrocarStatus1
+              ? "Acompanha o Status 2. A troca à mão vale até o Status 2 mudar de novo."
+              : "Acompanha o Status 2 sozinho. Trocar à mão é do administrador e do sócio."}
+          </p>
+        </div>
+        <div>
           <Label htmlFor={field("status")} className="text-eyebrow">Status da venda (Status 2)</Label>
-          <Select value={form.status} onValueChange={(v) => onChange({ status: v })}>
+          {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
+              banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
+              antigo junto seria uma troca manual que ninguém pediu. */}
+          <Select value={form.status} onValueChange={(v) => onChange({ status: v, status_group_id: undefined })}>
             <SelectTrigger
               id={field("status")}
               className="mt-1 text-xs"
@@ -624,19 +659,19 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                   todo — trancar o resto tirava do corretor rótulos que sempre
                   foram dele. Os dois saem desabilitados com o motivo, a mesma
                   forma da lista de etapas acima e do Select da tabela. */}
-              {statusChoices(form.status).map((option) => {
+              {statusChoices(catalog, form.status).map((option) => {
                 // O rótulo ATUAL fica de fora: escolher o que já está escolhido
                 // não é escrita, e `<SelectValue/>` espelha os filhos do item —
                 // o sufixo iria parar dentro do próprio gatilho do Select.
-                const semPermissao = option.label === form.status
+                const semPermissao = option.value === form.status
                   ? null
-                  : offDistratoBlocked(can, option.label);
+                  : offDistratoBlocked(can, option.value);
                 return (
-                  <SelectItem key={option.label} value={option.label} disabled={Boolean(semPermissao)}>
-                    {/* O rótulo no próprio `<span>` e o motivo em outro: o texto
-                        exibido continua sendo só `bareStatus(option.label)`, que
-                        é o que o `statusLabels.test.ts` lê daqui. */}
-                    <span>{bareStatus(option.label)}</span>
+                  <SelectItem key={option.value} value={option.value} disabled={Boolean(semPermissao)}>
+                    {/* O nome no próprio `<span>` e o motivo em outro: o texto
+                        exibido continua sendo só `option.label`, que é o que o
+                        `statusLabels.test.ts` lê daqui. */}
+                    <span>{option.label}</span>
                     {semPermissao && (
                       <span className="text-muted-foreground"> (só administrador e sócio)</span>
                     )}

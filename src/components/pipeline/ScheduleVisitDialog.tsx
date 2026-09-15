@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { scheduleVisit } from "@/integrations/supabase/activities";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { updateDeal, useCanExitStage } from "./data";
+import { isBehindStage } from "./guards";
 import type { PipelineStage } from "./stages";
 
 interface Props {
@@ -47,7 +48,7 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
 
   const stage = stages.find((row) => row.code === "visit_scheduled");
   /** O negócio está ATRÁS de "Visita agendada"? Só nesse caso há etapa a mover. */
-  const behind = deal.active && Boolean(stage) && deal.stage_position < (stage?.position ?? 0);
+  const behind = isBehindStage(deal, stage);
   /** Mover exige a matriz inteira — sair da etapa atual e entrar na de destino —,
    *  que é o que o `deals_guard_stage` cobra. Registrar a visita não exige nada:
    *  é linha em `visits`, não mudança de funil. */

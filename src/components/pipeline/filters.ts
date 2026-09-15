@@ -7,6 +7,7 @@
  * negócio sumir do filtro do próprio dono.
  */
 import type { LegacyDealRecord, PersonRecord } from "@/integrations/supabase/newSchema";
+import { EMPTY_STATUS_CATALOG, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { faceimobStatusRank } from "./statuses";
 
 export const ALL = "all";
@@ -39,6 +40,8 @@ export type DealFilterState = {
   /** `ALL` ou `MY_TEAM` — o recorte por equipe. */
   team: string;
   stage: string;
+  /** `deals.status_group_id` ou `ALL`. */
+  status1: string;
   status2: string;
   documentReview: string;
   developerId: string;
@@ -55,6 +58,7 @@ export const EMPTY_FILTERS: DealFilterState = {
   search: "",
   team: ALL,
   stage: ALL,
+  status1: ALL,
   status2: ALL,
   documentReview: ALL,
   developerId: ALL,
@@ -153,6 +157,7 @@ export function applyDealFilters(
     if (filters.brokerId !== ALL && !participantIds(deal).includes(filters.brokerId)) return false;
     if (filters.managerId !== ALL && !managerIds(deal).includes(filters.managerId)) return false;
     if (filters.stage !== ALL && deal.stage !== filters.stage) return false;
+    if (filters.status1 !== ALL && deal.status_group_id !== filters.status1) return false;
     if (filters.status2 !== ALL && deal.status !== filters.status2) return false;
     if (filters.documentReview !== ALL && deal.document_review_status !== filters.documentReview) return false;
     if (filters.month !== ALL && dealMonth(deal) !== filters.month) return false;
@@ -171,13 +176,33 @@ export function applyDealFilters(
  */
 const ordemPtBr = new Intl.Collator("pt-BR").compare;
 
-/** Construtora primeiro, depois a ordem do catálogo de Status 2. */
-export const sortDeals = (deals: LegacyDealRecord[]): LegacyDealRecord[] =>
-  [...deals].sort((a, b) => {
+/**
+ * Construtora primeiro, depois a ordem do catálogo de Status 2.
+ *
+ * A posição de cada status é calculada uma vez por texto, e não por
+ * comparação: são ~40 textos distintos para os 7.579 negócios, e normalizar o
+ * rótulo dentro do comparador repetia o trabalho centenas de milhares de vezes
+ * a cada tecla da busca. Sem catálogo (ainda carregando), fica só a construtora.
+ */
+export const sortDeals = (
+  deals: LegacyDealRecord[],
+  catalog: DealStatusCatalog = EMPTY_STATUS_CATALOG,
+): LegacyDealRecord[] => {
+  const ranks = new Map<string, number>();
+  const rankOf = (status: string) => {
+    let rank = ranks.get(status);
+    if (rank === undefined) {
+      rank = faceimobStatusRank(catalog, status);
+      ranks.set(status, rank);
+    }
+    return rank;
+  };
+  return [...deals].sort((a, b) => {
     const byDeveloper = ordemPtBr(a.developer || "", b.developer || "");
     if (byDeveloper !== 0) return byDeveloper;
-    return faceimobStatusRank(a.status) - faceimobStatusRank(b.status);
+    return rankOf(a.status) - rankOf(b.status);
   });
+};
 
 /** Colunas por onde a tabela aceita ordenar. `padrao` = `sortDeals`. */
 export type DealSortKey = "padrao" | "client" | "developer" | "vgv" | "days" | "month";
@@ -210,11 +235,12 @@ export function sortDealsBy(
   deals: LegacyDealRecord[],
   key: DealSortKey,
   ascending: boolean,
+  catalog: DealStatusCatalog = EMPTY_STATUS_CATALOG,
 ): LegacyDealRecord[] {
-  if (key === "padrao") return sortDeals(deals);
+  if (key === "padrao") return sortDeals(deals, catalog);
   const value = SORT_VALUE[key];
   const direction = ascending ? 1 : -1;
-  return sortDeals(deals).sort((a, b) => {
+  return sortDeals(deals, catalog).sort((a, b) => {
     const left = value(a);
     const right = value(b);
     const compared = typeof left === "string" && typeof right === "string"

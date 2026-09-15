@@ -50,6 +50,9 @@ export type LegacyDealRecord = PipelineDeal & {
    *  desfecho quando é nulo; sem guardar o cru, o gravador não tem como
    *  distinguir "o operador escolheu PROPOSTA" de "a tela deduziu PROPOSTA". */
   status_detail: string | null;
+  /** Status 1 (`deal_status_groups.id`, 0149). O banco o deriva do Status 2;
+   *  `null` = Status 2 fora do catálogo. */
+  status_group_id: string | null;
   /** Motivo da perda gravado no banco. O gravador precisa dele para NÃO
    *  reescrevê-lo a cada salvamento do modal. */
   lost_reason: string | null;
@@ -456,6 +459,7 @@ export async function listLegacyDeals(signal?: AbortSignal): Promise<LegacyDealR
       unit: deal.unit || "",
       status: deal.status_detail || legacyStatus(deal.outcome, deal.lost_reason),
       status_detail: deal.status_detail,
+      status_group_id: deal.status_group_id,
       lost_reason: deal.lost_reason,
       stage: (stage?.code || "incomplete") as PipelineDeal["stage"],
       stage_id: deal.stage_id,
@@ -907,12 +911,28 @@ export type SaveLegacyDealInput =
  * encerrava o negócio pela tabela e não encerrava nada pelo modal — com o aviso
  * vermelho do formulário prometendo o encerramento que o gravador não fazia.
  */
-export const dealStageCodeFor = (form: Pick<SaveLegacyDealInput, "status" | "stage">): string =>
+export const dealStageCodeFor = (
+  form: Pick<SaveLegacyDealInput, "status" | "stage"> & { status_detail?: string | null },
+): string =>
   normalizeStatus(form.status) === "VENDA"
     ? "closed"
-    : isLossStatus(form.status)
+    : choosesLoss(form)
       ? "lost"
       : form.stage || "incomplete";
+
+/**
+ * O Status 2 do formulário encerra o negócio — e foi ESCOLHIDO agora.
+ *
+ * A segunda metade existe desde a 0150: a coluna REPROVADO da CCA grava
+ * "19. REPROVADO" num negócio que continua aberto. Lendo só o texto, qualquer
+ * salvamento do modal (mudar o telefone, preencher a aba CCA) mandava esse
+ * negócio para Perdido e gravava o motivo, sem a confirmação do diálogo de
+ * perda. O valor que já está gravado não encerra nada; encerrar é trocar o
+ * Status 2 aqui ou usar o `LoseDealDialog`.
+ */
+export const choosesLoss = (
+  form: Pick<SaveLegacyDealInput, "status"> & { status_detail?: string | null },
+): boolean => isLossStatus(form.status) && form.status !== form.status_detail;
 
 /**
  * Etapas que o banco só libera com a conferência documental aprovada.
@@ -1021,7 +1041,9 @@ export function legacyDealFields(form: SaveLegacyDealInput) {
   // gravava "PROPOSTA" como se alguém tivesse escolhido. Esse negócio, depois
   // arrastado para "Fechado", exibia "PROPOSTA" no Status 2 de uma venda.
   const untouched = form.status_detail == null && chosen === derived;
-  const losing = isLossStatus(form.status);
+  // `choosesLoss`, e não `isLossStatus`: o motivo que JÁ está gravado (como o
+  // "19. REPROVADO" da coluna da CCA num negócio aberto) não vira `lost_reason`.
+  const losing = choosesLoss(form);
   // `bareStatus` nos dois lados, e não `startsWith` cru: o diálogo de perda
   // concatena "18. QUEDA — cliente desistiu" e um motivo importado pode trazer
   // só "QUEDA — …". Comparando o texto literal, o segundo formato nunca casava
@@ -1045,6 +1067,12 @@ export function legacyDealFields(form: SaveLegacyDealInput) {
     // negócios da homologação, e o único ramo que os testes cobriam era o que
     // já tinha `status_detail` preenchido.
     lost_reason: losing && !untouched && !sameReason ? (chosen ?? undefined) : undefined,
+    // Status 1. Ausente (negócio novo, ou o Status 2 acabou de mudar no
+    // formulário) não vai: o gatilho `deals_sync_status_group` deriva do Status
+    // 2 pelo catálogo do BANCO, que é mais novo que o da tela. Presente, vai
+    // como está — reenviar o mesmo grupo não é troca, e um grupo diferente da
+    // derivação é a troca manual que o banco cobra (`deals.edit_status_group`).
+    status_group_id: form.status_group_id ?? undefined,
   };
 }
 
@@ -1105,13 +1133,27 @@ export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string>
     // modal (o único editor de negócio) toastava "Alterações salvas" sem ter
     // gravado nada. É o mesmo defeito que `updateDeal` (pipeline/data.ts) já
     // corrigia para a tabela e o kanban, e que ficou de fora daqui.
-    const { data, error } = await db.from("deals").update(dealPayload).eq("id", dealId).select("id");
+    const { data, error } = await db
+      .from("deals").update(dealPayload).eq("id", dealId).select("id, status_group_id");
     if (error) throw dbError("deals", error);
     if (!data?.length) {
       throw dbError("deals", {
         code: "P0001",
         message: "Seu perfil não pode alterar este negócio.",
       });
+    }
+    // Status 1 escolhido à mão e descartado pelo gatilho. Acontece quando o
+    // Status 2 muda e o Status 1 escolhido é o MESMO que já estava gravado:
+    // `deals_sync_status_group` (0149) só vê troca manual quando o grupo difere
+    // do antigo, então deriva pelo Status 2 novo e a escolha some sem aviso. A
+    // segunda gravação chega diferente do derivado e passa pela mesma trava de
+    // `deals.edit_status_group`.
+    // ponytail: duas escritas sem transação; se só a segunda falhar, o Status 2
+    // já ficou gravado. Resolver no gatilho quando a 0149 ganhar migration nova.
+    const grupo = dealPayload.status_group_id;
+    if (grupo && data[0].status_group_id !== grupo) {
+      const { error: grupoError } = await db.from("deals").update({ status_group_id: grupo }).eq("id", dealId);
+      if (grupoError) throw dbError("deals", grupoError);
     }
   } else {
     const { data, error } = await db.from("deals").insert(dealPayload).select("id").single();

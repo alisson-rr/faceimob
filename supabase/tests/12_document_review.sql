@@ -92,7 +92,7 @@ begin
   end;
 
   begin
-    perform public.submit_deal_for_manager_review(v_deal.id);
+    perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê completo para conferência');
     raise exception 'FALHOU: enviou revisão sem documentos obrigatórios';
   exception when raise_exception then
     if position('Faltam documentos obrigatórios' in sqlerrm) = 0 then raise; end if;
@@ -133,7 +133,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id);
+  perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê completo para conferência');
   reset role;
 
   perform pg_temp.check12(
@@ -182,7 +182,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id);
+  perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê completo para conferência');
   reset role;
 
   -- O segundo gerente aprova: não há necessidade de unanimidade.
@@ -261,7 +261,7 @@ begin
   set local role authenticated;
 
   begin
-    perform public.submit_deal_for_manager_review(v_deal);
+    perform public.submit_deal_for_manager_review(v_deal, 'Dossiê completo para conferência');
     -- O texto do FALHOU não pode casar com o filtro abaixo, senão a ausência
     -- da guarda passaria como "ok".
     raise exception 'FALHOU: envio ao gerente aceito com developer_id nulo';
@@ -285,7 +285,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal);
+  perform public.submit_deal_for_manager_review(v_deal, 'Dossiê completo para conferência');
   reset role;
 
   perform pg_temp.check12(

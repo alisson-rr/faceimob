@@ -62,6 +62,19 @@ describe("dealStageCodeFor", () => {
     expect(dealStageCodeFor({ status: "05. RP APROVADO", stage: "contract" })).toBe("contract");
     expect(dealStageCodeFor({ status: "PROPOSTA", stage: undefined })).toBe("incomplete");
   });
+
+  it("o motivo de perda que JA esta gravado nao encerra: a coluna REPROVADO da CCA o grava em negocio aberto (0150)", () => {
+    const reprovadoNaCca = form({
+      id: "d1", stage: "under_analysis", outcome: "open",
+      status: "19. REPROVADO", status_detail: "19. REPROVADO",
+    });
+    // Salvar sem mexer no Status 2 (mudar o telefone, preencher a aba CCA)
+    // mantem a etapa e nao inventa motivo de perda.
+    expect(dealStageCodeFor(reprovadoNaCca)).toBe("under_analysis");
+    expect(legacyDealFields(reprovadoNaCca).lost_reason).toBeUndefined();
+    // Escolher o motivo no formulario continua encerrando.
+    expect(dealStageCodeFor({ ...reprovadoNaCca, status_detail: "16. PENDENTE" })).toBe("lost");
+  });
 });
 
 describe("saleBlockedReason", () => {
@@ -160,6 +173,19 @@ describe("legacyDealFields · status_detail", () => {
       id: "d1", status_detail: null, outcome: "won", status: "VENDA",
     }));
     expect(campos.status_detail).toBeNull();
+  });
+});
+
+describe("legacyDealFields · Status 1", () => {
+  it("manda o Status 1 do formulário", () => {
+    expect(legacyDealFields(form({ id: "d1", status_group_id: "g-venda" })).status_group_id).toBe("g-venda");
+  });
+
+  it("sem Status 1 no formulário a chave não vai: o banco deriva do Status 2", () => {
+    // `undefined` é descartado pelo supabase-js. Mandar `null` apagaria o grupo
+    // e, sendo diferente da derivação, cairia na trava de troca manual (42501).
+    expect(legacyDealFields(form({})).status_group_id).toBeUndefined();
+    expect(legacyDealFields(form({ id: "d1", status_group_id: null })).status_group_id).toBeUndefined();
   });
 });
 

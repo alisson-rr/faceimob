@@ -1,5 +1,5 @@
 /**
- * Qual etapa fica CINZA no Select "Etapa (Status 1)" do negócio — e por quê.
+ * Qual etapa fica CINZA no Select "Etapa" do negócio — e por quê.
  *
  * Dois achados, um arquivo, porque é UMA conta só:
  *

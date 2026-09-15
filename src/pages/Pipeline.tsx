@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, Filter, GitBranch, Plus, Target, Unlock, Users } from "lucide-react";
+import { Download, Filter, GitBranch, ListChecks, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
@@ -15,9 +15,10 @@ import PipelineTopRanking from "@/components/PipelineTopRanking";
 import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
 import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
-  CloseMonthDialog, DealFilters, DealsBoard, DealsToolbar,
+  CloseMonthDialog, DealFilters, DealStatusSettingsDialog, DealsBoard, DealsToolbar,
   EMPTY_FILTERS, LoseDealDialog, PipelineAnalytics, ReopenDealDialog, ReopenMonthDialog,
   ScheduleVisitDialog,
   applyDealFilters, canWriteDeals, dealMonth, dealRangeError, dealRequiredError,
@@ -72,6 +73,9 @@ export default function Pipeline() {
    * `can()` curto-circuita em admin igual ao `has_permission()` do banco.
    */
   const podeExtrair = can("pipeline.export");
+  /** Cadastro de Status 1 e Status 2 (0149): a policy de escrita do catálogo
+   *  exige a mesma permissão, então o botão é o espelho dela. */
+  const podeCadastrarStatus = can("deals.manage_statuses");
 
   const [tab, setTab] = useState<"deals" | "leads">("deals");
   const [extraindo, setExtraindo] = useState(false);
@@ -90,6 +94,7 @@ export default function Pipeline() {
   const [reopening, setReopening] = useState<LegacyDealRecord | null>(null);
   const [closeMonthOpen, setCloseMonthOpen] = useState(false);
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
+  const [statusSettingsOpen, setStatusSettingsOpen] = useState(false);
   const [convertingLead, setConvertingLead] = useState<LeadRecord | null>(null);
 
   // Abre sozinho para o corretor toda vez que ele carrega o Pipeline; qualquer
@@ -109,6 +114,10 @@ export default function Pipeline() {
   const openSeason = useOpenSeason();
   const invalidateDeals = useInvalidateDeals();
   usePipelineRealtime();
+  // Nome, cor e ordem do Status 2 e o nome do Status 1 saem daqui. Entra na
+  // espera da listagem: sem ele a coluna Status 1 diria "—" em todo negócio.
+  const statusCatalog = useDealStatusCatalog();
+  const catalog = statusCatalog.data ?? EMPTY_STATUS_CATALOG;
 
   const deals = useMemo(() => dealsQuery.data ?? [], [dealsQuery.data]);
   const stages = useMemo(() => stagesQuery.data ?? [], [stagesQuery.data]);
@@ -177,8 +186,8 @@ export default function Pipeline() {
   // próxima tecla pode interromper, em vez de travar a digitação.
   const filtrosAdiados = useDeferredValue(filters);
   const visible = useMemo(
-    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam)),
-    [deals, filtrosAdiados, myTeam],
+    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam), catalog),
+    [deals, filtrosAdiados, myTeam, catalog],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
@@ -191,7 +200,7 @@ export default function Pipeline() {
   const extrair = useCallback(async () => {
     setExtraindo(true);
     try {
-      await baixarPlanilhaDeNegocios(visible);
+      await baixarPlanilhaDeNegocios(visible, catalog);
       toast({ variant: "success", title: "Planilha gerada", description: `${visible.length} negócio(s).` });
     } catch (erro) {
       // `describeError`, e não `erro.message`: a falha vem da biblioteca do
@@ -204,7 +213,7 @@ export default function Pipeline() {
     } finally {
       setExtraindo(false);
     }
-  }, [visible]);
+  }, [visible, catalog]);
 
   const pendingReviews = deals.filter((deal) => deal.document_review_status === "pending").length;
   // `visible`, e não `deals`: a contagem ao lado, na mesma frase, é filtrada —
@@ -277,6 +286,11 @@ export default function Pipeline() {
                   >
                     <Download className="mr-1 h-4 w-4" />
                     {extraindo ? "Gerando…" : "Extrair planilha"}
+                  </Button>
+                )}
+                {podeCadastrarStatus && (
+                  <Button variant="outline" size="sm" onClick={() => setStatusSettingsOpen(true)}>
+                    <ListChecks className="mr-1 h-4 w-4" /> Status do negócio
                   </Button>
                 )}
                 {/* Discreto de propósito: é ação rara do admin, e o âmbar fica
@@ -385,9 +399,10 @@ export default function Pipeline() {
               // e os Selects do modal abriam vazios, sem erro e sem "Tentar de
               // novo", com a mesma cara de uma base sem cadastro.
               isPending={dealsQuery.isPending || stagesQuery.isPending || stagePerms.isPending
-                || closedMonths.isPending || peopleQuery.isPending || developersQuery.isPending}
+                || closedMonths.isPending || peopleQuery.isPending || developersQuery.isPending
+                || statusCatalog.isPending}
               error={dealsQuery.error ?? stagesQuery.error ?? stagePerms.error
-                ?? closedMonths.error ?? peopleQuery.error ?? developersQuery.error}
+                ?? closedMonths.error ?? peopleQuery.error ?? developersQuery.error ?? statusCatalog.error}
               filtered={hasActiveFilter(filters)}
               canWrite={canWrite}
               onRetry={() => {
@@ -397,6 +412,7 @@ export default function Pipeline() {
                 void closedMonths.refetch();
                 void peopleQuery.refetch();
                 void developersQuery.refetch();
+                void statusCatalog.refetch();
               }}
               onClearFilters={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
               onNewDeal={() => setEditor({ deal: null })}
@@ -509,6 +525,10 @@ export default function Pipeline() {
           deals={deals}
           onClose={() => setReopenMonthOpen(false)}
         />
+      )}
+
+      {statusSettingsOpen && (
+        <DealStatusSettingsDialog onClose={() => setStatusSettingsOpen(false)} />
       )}
 
       {convertingLead && (

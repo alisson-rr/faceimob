@@ -4,6 +4,7 @@ import { listDealHistory, type HistoryEntry } from "@/integrations/supabase/anal
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
+import { REVIEW_ESTEIRA_LABEL } from "@/integrations/supabase/documents";
 
 // Chaves = valores reais de `deal_history.kind` gravados pelos triggers e RPCs.
 const KIND_LABEL: Record<string, string> = {
@@ -15,6 +16,8 @@ const KIND_LABEL: Record<string, string> = {
   document_review_requested: "Enviado para conferência",
   document_review_returned: "Documentos devolvidos",
   document_review_approved: "Documentos aprovados",
+  // Evento que alimenta o contador de envios da CCA (0150).
+  esteira_sent: "Envio para a esteira",
   created: "Negócio criado",
   comment: "Comentário",
 };
@@ -80,6 +83,13 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
                 {e.kind === "comment" ? (
                   <>
                     <span className="text-foreground">{e.to_value}</span>
+                    {" · "}
+                  </>
+                ) : e.kind === "esteira_sent" ? (
+                  <>
+                    <span className="text-foreground">
+                      {e.detail?.esteira === "virar" ? REVIEW_ESTEIRA_LABEL.virar : REVIEW_ESTEIRA_LABEL.agil}
+                    </span>
                     {" · "}
                   </>
                 ) : e.from_value || e.to_value ? (

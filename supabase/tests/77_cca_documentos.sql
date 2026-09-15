@@ -99,7 +99,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id);
+  perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê completo para conferência');
   reset role;
 
   -- ── 4. dossiê enviado não recebe mais arquivo pela mão do corretor ────────
@@ -199,7 +199,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal2.id);
+  perform public.submit_deal_for_manager_review(v_deal2.id, 'Dossiê completo para conferência');
   reset role;
 
   perform set_config('request.jwt.claims',

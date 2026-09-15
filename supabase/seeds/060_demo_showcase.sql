@@ -578,7 +578,8 @@ begin
     select created_by into v_corretor from public.deals where id = v_pendente;
     perform set_config('request.jwt.claims',
       json_build_object('sub', v_corretor::text, 'role', 'authenticated')::text, true);
-    perform public.submit_deal_for_manager_review(v_pendente);
+    perform public.submit_deal_for_manager_review(v_pendente,
+      'Dossiê completo com os três obrigatórios. Pode conferir.', 'agil');
   end if;
 
   -- Devolvido: enviado e devolvido pelo gerente, com o motivo que o corretor lê.
@@ -590,7 +591,8 @@ begin
 
     perform set_config('request.jwt.claims',
       json_build_object('sub', v_corretor::text, 'role', 'authenticated')::text, true);
-    perform public.submit_deal_for_manager_review(v_devolvido);
+    perform public.submit_deal_for_manager_review(v_devolvido,
+      'Segue o dossiê para conferência.', 'agil');
 
     perform set_config('request.jwt.claims',
       json_build_object('sub', v_gerente::text, 'role', 'authenticated')::text, true);

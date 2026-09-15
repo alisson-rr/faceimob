@@ -594,6 +594,7 @@ export type Database = {
           active: boolean
           color: string
           created_at: string
+          deal_status_id: string | null
           id: string
           name: string
           position: number
@@ -604,6 +605,7 @@ export type Database = {
           active?: boolean
           color?: string
           created_at?: string
+          deal_status_id?: string | null
           id?: string
           name: string
           position?: number
@@ -614,13 +616,22 @@ export type Database = {
           active?: boolean
           color?: string
           created_at?: string
+          deal_status_id?: string | null
           id?: string
           name?: string
           position?: number
           status?: Database["public"]["Enums"]["cca_status"]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cca_stages_deal_status_id_fkey"
+            columns: ["deal_status_id"]
+            isOneToOne: false
+            referencedRelation: "deal_statuses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       checkins: {
         Row: {
@@ -1234,6 +1245,83 @@ export type Database = {
           },
         ]
       }
+      deal_status_groups: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          id: string
+          label: string
+          position: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          id?: string
+          label: string
+          position: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          id?: string
+          label?: string
+          position?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      deal_statuses: {
+        Row: {
+          active: boolean
+          created_at: string
+          group_id: string
+          id: string
+          label: string
+          locked: boolean
+          position: number
+          tone: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          group_id: string
+          id?: string
+          label: string
+          locked?: boolean
+          position: number
+          tone?: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          group_id?: string
+          id?: string
+          label?: string
+          locked?: boolean
+          position?: number
+          tone?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_statuses_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "deal_status_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deals: {
         Row: {
           closed_at: string | null
@@ -1256,9 +1344,11 @@ export type Database = {
           notes: string | null
           outcome: Database["public"]["Enums"]["deal_outcome"]
           project_id: string | null
+          review_esteira: string | null
           stage_entered_at: string
           stage_id: string
           status_detail: string | null
+          status_group_id: string | null
           unit: string | null
           updated_at: string
           vgv_gross: number | null
@@ -1285,9 +1375,11 @@ export type Database = {
           notes?: string | null
           outcome?: Database["public"]["Enums"]["deal_outcome"]
           project_id?: string | null
+          review_esteira?: string | null
           stage_entered_at?: string
           stage_id: string
           status_detail?: string | null
+          status_group_id?: string | null
           unit?: string | null
           updated_at?: string
           vgv_gross?: number | null
@@ -1314,9 +1406,11 @@ export type Database = {
           notes?: string | null
           outcome?: Database["public"]["Enums"]["deal_outcome"]
           project_id?: string | null
+          review_esteira?: string | null
           stage_entered_at?: string
           stage_id?: string
           status_detail?: string | null
+          status_group_id?: string | null
           unit?: string | null
           updated_at?: string
           vgv_gross?: number | null
@@ -1412,6 +1506,13 @@ export type Database = {
             columns: ["stage_id"]
             isOneToOne: false
             referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_status_group_id_fkey"
+            columns: ["status_group_id"]
+            isOneToOne: false
+            referencedRelation: "deal_status_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -5234,6 +5335,14 @@ export type Database = {
       can_see_lead: { Args: { p_lead_id: string }; Returns: boolean }
       can_see_profile: { Args: { target: string }; Returns: boolean }
       can_write_lead: { Args: { p_lead_id: string }; Returns: boolean }
+      cca_send_counts: {
+        Args: never
+        Returns: {
+          agil: number
+          deal_id: string
+          virar: number
+        }[]
+      }
       checkin_eligibility: {
         Args: { who?: string }
         Returns: {
@@ -5398,9 +5507,11 @@ export type Database = {
           notes: string | null
           outcome: Database["public"]["Enums"]["deal_outcome"]
           project_id: string | null
+          review_esteira: string | null
           stage_entered_at: string
           stage_id: string
           status_detail: string | null
+          status_group_id: string | null
           unit: string | null
           updated_at: string
           vgv_gross: number | null
@@ -5455,6 +5566,14 @@ export type Database = {
         Returns: string
       }
       deal_status_bare: { Args: { p_label: string }; Returns: string }
+      deal_status_group_for: {
+        Args: {
+          p_lost_reason: string
+          p_outcome: Database["public"]["Enums"]["deal_outcome"]
+          p_status_detail: string
+        }
+        Returns: string
+      }
       delete_operation_credential: { Args: { p_id: string }; Returns: boolean }
       dispatch_meta_gestor: { Args: never; Returns: undefined }
       dispatch_meta_sync: { Args: never; Returns: boolean }
@@ -5464,6 +5583,16 @@ export type Database = {
       dispatch_pending_submissions: { Args: never; Returns: undefined }
       distribute_queued_lead: { Args: { p_lead_id: string }; Returns: string }
       distribution_queue: {
+        Args: { p_group_id: string }
+        Returns: {
+          full_name: string
+          last_assigned_at: string
+          last_turn_at: string
+          profile_id: string
+          queue_position: number
+        }[]
+      }
+      distribution_queue_interna: {
         Args: { p_group_id: string }
         Returns: {
           full_name: string
@@ -5752,6 +5881,10 @@ export type Database = {
         Returns: string
       }
       month_start: { Args: { d: string }; Returns: string }
+      move_cca_case: {
+        Args: { p_case_id: string; p_message: string; p_stage_id: string }
+        Returns: Json
+      }
       normalize_phone: { Args: { raw: string }; Returns: string }
       notification_queue_health: {
         Args: never
@@ -6014,7 +6147,7 @@ export type Database = {
       }
       submit_deal_for_analysis: { Args: { p_deal_id: string }; Returns: Json }
       submit_deal_for_manager_review: {
-        Args: { p_deal_id: string }
+        Args: { p_deal_id: string; p_esteira?: string; p_message: string }
         Returns: Json
       }
       sync_broker_login: {

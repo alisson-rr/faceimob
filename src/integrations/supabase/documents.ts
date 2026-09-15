@@ -102,7 +102,20 @@ export const documentDisplayName = (
 
 export type DocumentReviewStatus = "draft" | "pending" | "returned" | "approved";
 
+/** Esteira do envio ao gerente (0150): 1º envio ou 2º, com crédito aprovado. */
+export type ReviewEsteira = "agil" | "virar";
+
+export const REVIEW_ESTEIRA_LABEL: Record<ReviewEsteira, string> = {
+  agil: "Esteira Ágil",
+  virar: "Análise p/ virar negócio",
+};
+
+/** Teto da mensagem que `submit_deal_for_manager_review` cobra. */
+export const MAX_REVIEW_MESSAGE = 4000;
+
 export type DealDocumentReview = {
+  /** Esteira do último envio; `null` antes do primeiro envio da 0150. */
+  review_esteira: ReviewEsteira | null;
   document_review_status: DocumentReviewStatus;
   document_review_requested_at: string | null;
   document_review_requested_by: string | null;
@@ -152,7 +165,7 @@ export async function listDealDocuments(dealId: string): Promise<DealDocumentRec
 export async function getDealDocumentReview(dealId: string): Promise<DealDocumentReview> {
   const { data, error } = await supabase
     .from("deals")
-    .select("document_review_status,document_review_requested_at,document_review_requested_by,document_reviewed_at,document_reviewed_by,document_review_reason")
+    .select("document_review_status,document_review_requested_at,document_review_requested_by,document_reviewed_at,document_reviewed_by,document_review_reason,review_esteira")
     .eq("id", dealId)
     .single();
   if (error) throw dbError("deals", error);
@@ -567,15 +580,38 @@ export function submitBlockReason(input: {
     : null;
 }
 
-/** Envia o dossiê completo para um dos gerentes participantes conferir. */
-export async function submitDealForManagerReview(dealId: string): Promise<void> {
+/**
+ * Por que o 2º envio (análise p/ virar negócio) ainda não vale — `null` quando
+ * vale. A mesma cláusula de `submit_deal_for_manager_review` (0150): crédito
+ * aprovado na CCA, ou caso devolvido em pendência depois de um 2º envio.
+ */
+export function virarBlockReason(
+  caseStatus: string | null | undefined,
+  reviewEsteira: ReviewEsteira | null | undefined,
+): string | null {
+  if (caseStatus === "approved" || (caseStatus === "pending_documents" && reviewEsteira === "virar")) {
+    return null;
+  }
+  return "A análise p/ virar negócio é o 2º envio: libera quando o crédito estiver aprovado na CCA.";
+}
+
+/** Envia o dossiê ao gerente com a mensagem (obrigatória: vira comentário e
+ *  vai no aviso) pela esteira escolhida. */
+export async function submitDealForManagerReview(
+  dealId: string,
+  message: string,
+  esteira: ReviewEsteira = "agil",
+): Promise<void> {
   const { error } = await supabase.rpc("submit_deal_for_manager_review", {
     p_deal_id: dealId,
+    p_message: message.trim(),
+    p_esteira: esteira,
   });
   if (error) throw dbError("submit_deal_for_manager_review", error);
 }
 
-/** Aprova e segue ao CCA, ou devolve ao corretor com motivo obrigatório. */
+/** Aprova e segue ao CCA (mensagem opcional, registrada no negócio), ou
+ *  devolve ao corretor com motivo obrigatório. */
 export async function reviewDealDocuments(input: {
   dealId: string;
   approve: boolean;

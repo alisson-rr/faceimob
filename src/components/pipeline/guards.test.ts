@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
   blockedMoveReason, dealLock, dealRangeError, dealRequiredError, exitableStages,
-  findDuplicateDeal, projectPlaceholder,
+  findDuplicateDeal, isBehindStage, projectPlaceholder,
 } from "./guards";
 import type { PipelineStage } from "./stages";
 
@@ -149,6 +149,30 @@ describe("blockedMoveReason", () => {
   it("nao barra 'Em analise': ela tem caminho proprio (envia para conferencia)", () => {
     expect(blockedMoveReason(negocio(), etapa("under_analysis", "Em análise"), tudoLiberado))
       .toBeNull();
+  });
+});
+
+describe("isBehindStage", () => {
+  const aprovado = { position: 6 };
+
+  it("negocio aberto antes de 'Aprovado' anda", () => {
+    expect(isBehindStage(negocio({ stage_position: 5 }), aprovado)).toBe(true);
+  });
+
+  it("nunca puxa para tras: ja em 'Aprovado' ou em 'Contrato' fica onde esta", () => {
+    expect(isBehindStage(negocio({ stage_position: 6 }), aprovado)).toBe(false);
+    expect(isBehindStage(negocio({ stage_position: 7 }), aprovado)).toBe(false);
+  });
+
+  it("negocio encerrado nao ressuscita, mesmo em posicao anterior", () => {
+    // O caso da CCA: aprovar o caso de um negocio Fechado/Perdido o devolvia a
+    // "Aprovado" com desfecho aberto.
+    expect(isBehindStage(negocio({ stage_position: 8, active: false }), aprovado)).toBe(false);
+    expect(isBehindStage(negocio({ stage_position: 1, active: false }), aprovado)).toBe(false);
+  });
+
+  it("sem a etapa de destino carregada, nao ha o que mover", () => {
+    expect(isBehindStage(negocio({ stage_position: 1 }), undefined)).toBe(false);
   });
 });
 

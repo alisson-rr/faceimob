@@ -23,10 +23,10 @@ export type Status1 = "VENDA" | "PROPOSTA" | "QUEDA" | "DISTRATO" | "OFF";
  * reescrito por cima e a observação sumia. A normalização é a MESMA que o banco
  * aplica em `deal_status_bare`; ter duas seria ter duas respostas.
  *
- * Desde 10/09/2026 é também o rótulo de TELA do Status 2 (`FaceimobStatus.text`
- * e o Select de motivo): o cliente pediu o catálogo sem o prefixo numerado, sem
- * mexer no valor gravado. Por isso a caixa alta e o `trim` daqui são visíveis
- * ao usuário — mudar qualquer um dos dois muda a comparação com o banco junto.
+ * Desde a 0149 o nome de TELA do Status 2 é o `label` do catálogo; esta função
+ * fica como o nome de reserva do que está fora dele (`statusLabel`) e como a
+ * chave de comparação (`statusKey`). Mudar a caixa alta ou o `trim` daqui muda a
+ * comparação com o banco junto.
  */
 export const bareStatus = (s: string | null | undefined): string =>
   (s ?? "").toString().trim().toUpperCase().replace(/^\d+\.\s*/, "");
@@ -79,8 +79,11 @@ export const isLossStatus = (s: string | null | undefined): boolean => LOSS_LABE
  * (`pending_documents`), e recusa a escrita manual (migration 0037). Aqui eles
  * só saem das opções; continuam no catálogo para exibir, colorir e ordenar.
  * Decisão de 01/09/2026, caminho (a).
+ *
+ * "15. ANÁLISE P/ VIRAR NEGÓCIO" entrou com a 0150: é o rótulo que o banco grava
+ * no 2º envio (esteira "virar"), e escolher à mão diria que o envio aconteceu.
  */
-export const SYSTEM_STATUSES = ["13. ESTEIRA AGIL", "RET. ESTEIRA AGIL"];
+export const SYSTEM_STATUSES = ["13. ESTEIRA AGIL", "RET. ESTEIRA AGIL", "15. ANÁLISE P/ VIRAR NEGÓCIO"];
 
 const SYSTEM_LABELS = new Set(SYSTEM_STATUSES.map(bareStatus));
 

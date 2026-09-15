@@ -94,7 +94,15 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
     enforcedBy: "banco",
   },
   "deals.mark_off_distrato": {
-    where: "Negócio: marcar os desfechos OFF e DISTRATO — os dois rótulos do Status 2 que o cliente reservou ao administrador em 10/09/2026, e que tiram o negócio do funil, do VGV e do ranking (gatilho deals_guard_status_columns). O RESTO do Status 2 continua livre para quem edita o negócio, e a \"Etapa (Status 1)\" não passa por aqui: quem decide etapa é a matriz de etapas (can_enter/can_exit), na aba ao lado",
+    where: "Negócio: marcar os desfechos OFF e DISTRATO — os dois rótulos do Status 2 que o cliente reservou ao administrador em 10/09/2026, e que tiram o negócio do funil, do VGV e do ranking (gatilho deals_guard_status_columns). O RESTO do Status 2 continua livre para quem edita o negócio, e a \"Etapa\" não passa por aqui: quem decide etapa é a matriz de etapas (can_enter/can_exit), na aba ao lado",
+    enforcedBy: "banco",
+  },
+  "deals.manage_statuses": {
+    where: "Pipeline · botão \"Status do negócio\": criar, renomear, reordenar, ativar e desativar o Status 1 e o Status 2 (policies de deal_status_groups e deal_statuses, 0149). Não muda o status de nenhum negócio, e os status usados por regras do sistema não se desativam",
+    enforcedBy: "banco",
+  },
+  "deals.edit_status_group": {
+    where: "Negócio: trocar o Status 1 à mão (gatilho deals_sync_status_group, 0149). Sem ela o Status 1 continua acompanhando o Status 2 sozinho; com ela, a troca vale até o Status 2 mudar de novo",
     enforcedBy: "banco",
   },
   "cca.review": {

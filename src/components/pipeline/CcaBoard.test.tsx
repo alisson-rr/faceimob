@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { CcaBoard } from "./CcaBoard";
-import type { CcaDeal, CcaStage } from "./ccaData";
+import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -37,7 +37,7 @@ const DEAL: CcaDeal = {
   status: "under_review",
 };
 
-async function renderBoard(canAct: boolean) {
+async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCount>) {
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
   const abertos: string[] = [];
@@ -48,6 +48,7 @@ async function renderBoard(canAct: boolean) {
         stages={[STAGE]}
         deals={[DEAL]}
         canAct={canAct}
+        sendCounts={sendCounts}
         onOpen={(deal) => abertos.push(deal.dealId)}
         onMove={() => undefined}
         onSubmitToDeveloper={() => undefined}
@@ -70,6 +71,7 @@ async function renderBoard(canAct: boolean) {
     moverDentroDoCorpo: Boolean(mover && corpo?.contains(mover)),
     enviarDentroDoCorpo: Boolean(enviar && corpo?.contains(enviar)),
     temMover: Boolean(mover),
+    texto: container.textContent ?? "",
     abertos,
     clicar: async () => { await act(async () => { corpo?.click(); }); },
     teclar: async (key: string) => {
@@ -122,6 +124,28 @@ describe("CcaBoard · o cartão abre o negócio", () => {
     expect(board.temMover, "sem cca.review o cartão não oferece mover").toBe(false);
     await board.clicar();
     expect(board.abertos).toEqual(["d1"]);
+    await board.encerrar();
+  });
+});
+
+/**
+ * Quantas vezes o cliente foi enviado por esteira (0150), ao lado do nome.
+ * Selo com zero é ruído; e, dentro do alvo de clique, o texto do selo é
+ * presentacional — a contagem precisa estar no nome acessível do cartão.
+ */
+describe("CcaBoard · envios por esteira", () => {
+  it("mostra só o selo com envio e leva a contagem ao nome acessível", async () => {
+    const board = await renderBoard(true, new Map([["d1", { agil: 2, virar: 0 }]]));
+    expect(board.texto).toContain("Ágil 2");
+    expect(board.texto, "selo de Virar com zero envio").not.toContain("Virar");
+    expect(board.nomeAcessivel).toContain("Enviado 2 vezes pela Esteira Ágil.");
+    await board.encerrar();
+  });
+
+  it("sem contagem o cartão não fala de envio", async () => {
+    const board = await renderBoard(true);
+    expect(board.texto).not.toContain("Ágil");
+    expect(board.nomeAcessivel).not.toContain("Enviado");
     await board.encerrar();
   });
 });

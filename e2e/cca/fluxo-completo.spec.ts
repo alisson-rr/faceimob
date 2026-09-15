@@ -60,12 +60,16 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
     const card = page.getByRole("article").filter({ hasText: cenario.cliente });
     await expect(card).toHaveCount(1);
     await card.getByRole("combobox", { name: `Mover ${cenario.cliente} para outro estágio` }).click();
-    await page.getByRole("option", { name: "Aprovado", exact: true }).click();
-    await page.getByLabel("Observações", { exact: true }).fill("Crédito aprovado no teste E2E");
+    // As 19 colunas da 0150: cada uma grava o próprio Status 2 no negócio.
+    await page.getByRole("option", { name: "APROVADO TOTAL", exact: true }).click();
+    // A mensagem abre VAZIA e é obrigatória: é o aviso que chega à equipe.
+    const mensagem = page.getByLabel("Mensagem para a equipe", { exact: true });
+    const textoMovimento = `Crédito aprovado no teste E2E ${cenario.tag}`;
+    await expect(mensagem).toHaveValue("");
+    await expect(page.getByRole("button", { name: /^confirmar$/i })).toBeDisabled();
+    await mensagem.fill(textoMovimento);
     await page.getByRole("button", { name: /^confirmar$/i }).click();
-    // O aviso passou a ser "Caso movido — <cliente> → <estágio>".
-    await expect(page.getByText("Caso movido", { exact: true })).toBeVisible();
-    await expect(page.getByText(`${cenario.cliente} → Aprovado.`)).toBeVisible();
+    await expect(page.getByText("Caso movido para APROVADO TOTAL", { exact: true })).toBeVisible();
 
     await expect.poll(async () => {
       const [row] = await db.select<{ status: string }>(`cca_cases?id=eq.${casoId}&select=status`);
@@ -78,6 +82,15 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
     expect(deal.pipeline_stages.code).toBe("approved");
     expect(await db.select(`cca_case_events?case_id=eq.${casoId}&kind=eq.status_changed&to_value=eq.approved&select=id`)).toHaveLength(1);
     expect(await db.select(`deal_history?deal_id=eq.${cenario.dealId}&kind=eq.cca_status_changed&to_value=eq.approved&select=id`)).toHaveLength(1);
+    // A coluna gravou o Status 2 dela, e a mensagem virou comentário no negócio.
+    const [rotulo] = await db.select<{ status_detail: string | null }>(
+      `deals?id=eq.${cenario.dealId}&select=status_detail`,
+    );
+    expect(rotulo.status_detail).toBe("09. APROV. TOTAL");
+    const comentario = encodeURIComponent(`STATUS: APROVADO TOTAL — ${textoMovimento}`);
+    expect(
+      await db.select(`deal_history?deal_id=eq.${cenario.dealId}&kind=eq.comment&to_value=eq.${comentario}&select=id`),
+    ).toHaveLength(1);
 
     await card.getByRole("button", { name: /enviar à construtora/i }).click();
     // Este cenário usa construtora de fluxo INTERNO (o padrão de `criarCenario`):
@@ -164,17 +177,19 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
     const card = page.getByRole("article").filter({ hasText: cenario.cliente });
     await expect(card).toHaveCount(1);
     await card.getByRole("combobox", { name: `Mover ${cenario.cliente} para outro estágio` }).click();
-    await page.getByRole("option", { name: "Pendência de Documentos", exact: true }).click();
-    await page.getByLabel("Observações", { exact: true }).fill(motivo);
+    await page.getByRole("option", { name: "PENDENTE", exact: true }).click();
+    await page.getByLabel("Mensagem para a equipe", { exact: true }).fill(motivo);
     await page.getByRole("button", { name: /^confirmar$/i }).click();
-    await expect(page.getByText("Caso movido", { exact: true })).toBeVisible();
+    await expect(page.getByText("Caso movido para PENDENTE", { exact: true })).toBeVisible();
 
+    // Desde a 0150 o rótulo é o Status 2 da coluna ("16. PENDENTE"), não o
+    // "RET. ESTEIRA AGIL", que é o da coluna RETORNO À ESTEIRA ÁGIL.
     await expect.poll(async () => {
       const [row] = await db.select<{ document_review_status: string; status_detail: string | null }>(
         `deals?id=eq.${cenario.dealId}&select=document_review_status,status_detail`,
       );
       return row;
-    }).toEqual({ document_review_status: "returned", status_detail: "RET. ESTEIRA AGIL" });
+    }).toEqual({ document_review_status: "returned", status_detail: "16. PENDENTE" });
 
     const corretor = await db.profileIdOf("broker");
     await expect.poll(async () => {
@@ -214,11 +229,34 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
     await page.goto("/cca");
     await aguardarCarregamento(page);
 
+    const [pendente] = await db.select<{ id: string }>(
+      `deal_statuses?value=eq.${encodeURIComponent("16. PENDENTE")}&select=id`,
+    );
+
     await page.getByRole("button", { name: /gerenciar estágios/i }).click();
     await page.getByLabel("Nome", { exact: true }).fill(nome);
+    // O Status 2 que a coluna grava (0150). Com a lista ABERTA — a ausência só
+    // prova algo depois de uma opção válida aparecer —, rótulo de envio e
+    // desfecho não são oferecidos: o gatilho da esteira os gravaria por cima
+    // das travas. "RET. ESTEIRA AGIL" é oferecido (coluna RETORNO À ESTEIRA
+    // ÁGIL, 15/09), com o nome do catálogo.
+    const [retorno] = await db.select<{ label: string }>(
+      `deal_statuses?value=eq.${encodeURIComponent("RET. ESTEIRA AGIL")}&select=label`,
+    );
+    await page.getByRole("combobox", { name: "Status 2 gravado" }).click();
+    await expect(page.getByRole("option", { name: "PENDENTE", exact: true })).toBeVisible();
+    await expect(page.getByRole("option", { name: retorno.label, exact: true })).toBeVisible();
+    for (const proibido of ["ESTEIRA AGIL", "ANÁLISE P/ VIRAR NEGÓCIO", "OFF", "QUEDA", "DISTRATO"]) {
+      await expect(page.getByRole("option", { name: proibido, exact: true })).toHaveCount(0);
+    }
+    await page.getByRole("option", { name: "PENDENTE", exact: true }).click();
     await page.getByRole("button", { name: /criar estágio/i }).click();
     await expect(page.getByText("Estágio criado", { exact: true })).toBeVisible();
     await expect.poll(() => quantosChamados(nome)).toBe(1);
+    const [criado] = await db.select<{ deal_status_id: string | null }>(
+      `cca_stages?name=eq.${encodeURIComponent(nome)}&select=deal_status_id`,
+    );
+    expect(criado.deal_status_id).toBe(pendente.id);
 
     await page.getByRole("button", { name: `Editar o estágio ${nome}` }).click();
     await page.getByLabel("Nome", { exact: true }).fill(renomeado);

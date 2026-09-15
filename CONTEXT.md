@@ -69,14 +69,32 @@ envia, o gerente aprova ou devolve. Devolução exige motivo.
 Quem aprova é **gerente do rateio daquele negócio** — não necessariamente o
 gerente da equipe do corretor. *(Decisão de 01/09/2026: fica assim.)*
 
-**Esteira Ágil** — o nome que a operação dá à entrada do negócio na análise de
-crédito. É o **mesmo evento** que a aprovação da conferência documental
-dispara: não são dois passos, são dois nomes para a fronteira entre o corretor
-e o crédito.
+**Esteira Ágil** — o nome que a operação dá à **primeira** entrada do negócio na
+análise de crédito. É o **mesmo evento** que a aprovação da conferência
+documental dispara: não são dois passos, são dois nomes para a fronteira entre o
+corretor e o crédito.
+
+**Análise p/ virar negócio** — a **segunda** entrada na análise de crédito:
+depois que o crédito do cliente foi aprovado, o corretor volta com os dados do
+negócio. Passa de novo pela conferência do gerente. Nas duas esteiras, todo
+envio leva uma **mensagem obrigatória**, que fica no negócio e avisa a equipe —
+não vai para o cliente final. *(Decisão de 14/09/2026.)*
 
 **CCA** — a *tela* onde a análise de crédito acontece depois disso. Esteira Ágil
 é o **evento**, CCA é a **tela**; a operação fala "esteira" para as duas coisas.
 Ao escrever na interface, o nome da tela é **CCA**. *(Decisão de 10/09/2026.)*
+
+**Status 2** — a situação detalhada do negócio: "Aprov. cond.", "Ass. banco",
+"Bacen". Na CCA, cada coluna é um Status 2.
+
+**Status 1** — o **grupo** a que o Status 2 pertence: Venda, Proposta, Legado,
+Distrato ou Off. Trocar o Status 2 troca o Status 1 junto; quem tem permissão
+corrige o Status 1 à mão depois. O administrador cadastra, ativa e desativa as
+duas listas.
+
+> **Status 1 não é a etapa do funil** (Proposta, Em análise, Fechado…). A etapa
+> se chama só **Etapa**. Até 14/09/2026 a tela chamava a etapa de "Status 1", e
+> foi essa mistura que confundiu o pedido.
 
 ---
 

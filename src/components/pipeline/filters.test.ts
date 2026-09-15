@@ -4,6 +4,7 @@ import {
   ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealMonth, hasActiveFilter,
   inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds,
 } from "./filters";
+import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 
 /**
  * Trava do participante por `id` (achado F06).
@@ -171,14 +172,31 @@ describe("recorte por equipe", () => {
   });
 });
 
+describe("filtro de Status 1", () => {
+  it("casa pelo id do grupo gravado no negócio, e negócio sem grupo sai do recorte", () => {
+    const linhas = [
+      deal({ id: "venda", status_group_id: GRUPOS.VENDA.id }),
+      deal({ id: "off", status_group_id: GRUPOS.OFF.id }),
+      deal({ id: "sem", status_group_id: null }),
+    ];
+    expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, status1: GRUPOS.VENDA.id }).map((r) => r.id))
+      .toEqual(["venda"]);
+    expect(applyDealFilters(linhas, EMPTY_FILTERS)).toHaveLength(3);
+    expect(hasActiveFilter({ ...EMPTY_FILTERS, status1: GRUPOS.OFF.id })).toBe(true);
+  });
+});
+
 describe("ordenação", () => {
   it("agrupa por construtora e depois pela ordem do catálogo de status", () => {
     const linhas = [
       deal({ id: "a", developer: "Tenda", status: "17. DISTRATO" }),
-      deal({ id: "b", developer: "Cyrela", status: "09. APROV. TOTAL" }),
-      deal({ id: "c", developer: "Cyrela", status: "PROPOSTA" }),
+      deal({ id: "b", developer: "Cyrela", status: "RÓTULO FORA DO CATÁLOGO" }),
+      deal({ id: "c", developer: "Cyrela", status: "16. PENDENTE" }),
+      deal({ id: "d", developer: "Cyrela", status: "02. ASS. BANCO" }),
     ];
-    expect(sortDeals(linhas).map((row) => row.id)).toEqual(["c", "b", "a"]);
+    expect(sortDeals(linhas, catalogo).map((row) => row.id)).toEqual(["d", "c", "b", "a"]);
+    // Sem catálogo carregado, só a construtora ordena — e a ordem é estável.
+    expect(sortDeals(linhas).map((row) => row.id)).toEqual(["b", "c", "d", "a"]);
   });
 
   it("não muda o array recebido", () => {

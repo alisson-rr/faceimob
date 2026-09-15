@@ -3,7 +3,6 @@ import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
 import { bareStatus, isLossStatus, normalizeStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
-import { submitDealForManagerReview } from "@/integrations/supabase/documents";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { PipelineDeal } from "@/types/crm";
 import { updateDeal, useCanExitStage, useInvalidateDeals } from "./data";
@@ -61,7 +60,7 @@ export const vendaTemCard = (deal: Pick<PipelineDeal, "broker1_id" | "broker2_id
  * Quem autoriza cada uma das duas é DIFERENTE, e tratá-las como a mesma coisa
  * foi o defeito da primeira versão da trava de 10/09/2026:
  *
- *   · **Etapa (Status 1)** — a matriz `stage_permissions` (`can_enter`/
+ *   · **Etapa** — a matriz `stage_permissions` (`can_enter`/
  *     `can_exit`), que o admin já administra em Admin · Permissões e que
  *     `deals_guard_stage` cobra no banco. Um código de permissão próprio
  *     (`deals.edit_stage`) passava POR CIMA dela: o admin concedia a etapa na
@@ -94,20 +93,27 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
       return;
     }
 
-    // Entrar em análise passa pela conferência do gerente: o card só anda
-    // depois que os documentos forem aprovados.
-    const conferencia = stage.code === "under_analysis" && deal.stage !== "under_analysis"
-      && deal.document_review_status !== "approved";
-    try {
-      if (conferencia) {
-        await submitDealForManagerReview(deal.id);
-        await invalidateDeals();
-        toast.success("Negócio enviado para conferência", {
-          description: "O negócio segue para Em análise quando os documentos forem aprovados.",
+    // Entrar em análise passa pela conferência do gerente, e o envio exige
+    // mensagem e esteira (0150) — que um arraste não tem como pedir. O card não
+    // anda: a frase leva o corretor ao lugar onde o envio é feito. Com a
+    // conferência já pendente não há envio a fazer (a aba Anexos esconde o
+    // bloco), então a frase diz o que falta: a decisão do gerente.
+    if (stage.code === "under_analysis" && deal.stage !== "under_analysis"
+        && deal.document_review_status !== "approved") {
+      if (deal.document_review_status === "pending") {
+        toast.info("Aguardando o gerente", {
+          description: "A documentação já aguarda conferência do gerente; o negócio entra em Em análise quando ele aprovar.",
         });
-        return;
+      } else {
+        toast.info("Envie pela aba Anexos", {
+          description: "Abra o negócio e use «Enviar ao gerente» na aba Anexos, com a mensagem do envio. "
+            + "Ele entra em Em análise quando o gerente aprovar.",
+        });
       }
+      return;
+    }
 
+    try {
       // Sem atualização otimista de propósito: quando a escrita falhava, o card
       // ficava na coluna nova com o banco recusando — a tela mentia sobre o
       // estado real até o próximo reload.
@@ -118,15 +124,9 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
         toast.success(`Negócio movido para ${stage.label}`, { duration: 2500 });
       }
     } catch (err) {
-      toast.error(
-        conferencia ? "Não foi possível enviar o negócio para conferência" : "Não foi possível mover o negócio",
-        {
-          description: describeError(
-            err,
-            conferencia ? "O negócio continua na etapa atual." : "A etapa não foi atualizada no servidor.",
-          ),
-        },
-      );
+      toast.error("Não foi possível mover o negócio", {
+        description: describeError(err, "A etapa não foi atualizada no servidor."),
+      });
     }
   }, [canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin]);
 

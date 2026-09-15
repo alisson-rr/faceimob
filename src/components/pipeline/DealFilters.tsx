@@ -4,10 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { bareStatus } from "@/lib/dealStatus";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { ALL, MY_TEAM, type DealFilterState } from "./filters";
-import { FACEIMOB_STATUSES } from "./statuses";
 import type { PipelineStage } from "./stages";
 
 interface Props {
@@ -41,6 +40,7 @@ export function DealFilters({
 }: Props) {
   const id = useId();
   const field = (name: string) => `${id}-${name}`;
+  const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 lg:w-[520px] lg:flex-shrink-0">
@@ -85,6 +85,26 @@ export function DealFilters({
           </Select>
         </div>
 
+        {/* Status 1 e Status 2 listam o catálogo INTEIRO, desativados junto:
+            filtrar é ler, e negócio antigo continua com o status que foi
+            desativado depois. O "(inativo)" diz por que ele não aparece nas
+            opções de edição. */}
+        <div>
+          <Label htmlFor={field("status1")}>Status 1</Label>
+          <Select value={filters.status1} onValueChange={(v) => onChange({ status1: v })}>
+            <SelectTrigger id={field("status1")} className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todos os Status 1</SelectItem>
+              {catalog.groups.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  <span>{option.label}</span>
+                  {!option.active && <span className="text-muted-foreground"> (inativo)</span>}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div>
           <Label htmlFor={field("status2")}>Status 2</Label>
           <Select value={filters.status2} onValueChange={(v) => onChange({ status2: v })}>
@@ -92,10 +112,12 @@ export function DealFilters({
             <SelectContent className="max-h-80">
               <SelectItem value={ALL}>Todos os Status 2</SelectItem>
               {/* `value` é o que está gravado em `deals.status_detail` e filtra;
-                  o texto sai sem o prefixo numerado (pedido do cliente em
-                  10/09/2026). O gatilho espelha o filho, então acompanha. */}
-              {FACEIMOB_STATUSES.map((status) => (
-                <SelectItem key={status.label} value={status.label}>{bareStatus(status.label)}</SelectItem>
+                  o texto é o nome exibido do catálogo. */}
+              {catalog.statuses.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <span>{option.label}</span>
+                  {!option.active && <span className="text-muted-foreground"> (inativo)</span>}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>

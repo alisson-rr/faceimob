@@ -23,6 +23,8 @@ import {
   useInvalidateDeals, usePeople, usePipelineStages,
   type CcaDeal, type CcaStage,
 } from "@/components/pipeline";
+import { useCcaSendCounts } from "@/components/pipeline/ccaData";
+import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 
 /** Normaliza para busca: sem acento e em minúscula, como o resto das telas. */
 const fold = (value: string) =>
@@ -217,6 +219,7 @@ export default function CcaPipeline() {
   const dealsQuery = useDeals();
   const peopleQuery = usePeople();
   const developersQuery = useDevelopers();
+  const statusCatalog = useDealStatusCatalog();
   const invalidateDeals = useInvalidateDeals();
   const buscaId = useId();
 
@@ -230,6 +233,8 @@ export default function CcaPipeline() {
   const [openDealId, setOpenDealId] = useState<string | null>(null);
 
   const canAct = can("cca.review");
+  // Fora do gate de espera: o selo é complemento, e sem ele o quadro continua útil.
+  const envios = useCcaSendCounts(canAct);
   const stages = useMemo(() => board.data?.stages ?? [], [board.data]);
   const deals = useMemo(() => board.data?.deals ?? [], [board.data]);
   const openDeal = useMemo(
@@ -247,23 +252,27 @@ export default function CcaPipeline() {
 
   // O catálogo de etapas entra no gate porque `CcaMoveDialog` depende dele para
   // levar o negócio junto ao aprovar: abrir a esteira antes de ele chegar
-  // deixava o diálogo confirmar com `approvedStageId` indefinido.
+  // deixava o diálogo confirmar com `approvedStage` indefinido.
   //
   // Negócios, pessoas e construtoras entram pelo mesmo motivo, agora que o
   // cartão abre o editor: engoli-los com `?? []` daria um clique que não abre
   // nada (o negócio ainda não está na lista) ou um modal com os Selects de
   // corretor e construtora vazios — sem erro e sem "Tentar de novo", com a
   // mesma cara de uma base sem cadastro. É o gate que o Pipeline já faz.
+  //
+  // O catálogo de status também: o editor lê dele os Selects de Status 1 e
+  // Status 2, que abriam vazios e sem explicação quando a leitura falhava.
   if (board.isPending || pipelineStages.isPending
-      || dealsQuery.isPending || peopleQuery.isPending || developersQuery.isPending) {
+      || dealsQuery.isPending || peopleQuery.isPending || developersQuery.isPending
+      || statusCatalog.isPending) {
     return <LoadingState variant="kpi" rows={5} label="Carregando a esteira…" />;
   }
 
   // `pipelineStages` entra aqui, e não só no gate de espera: falhando, ela
   // devolvia `undefined` em silêncio — `CcaMoveDialog` aprovava com
-  // `approvedStageId` indefinido e o editor abriria com a lista de etapas vazia.
+  // `approvedStage` indefinido e o editor abriria com a lista de etapas vazia.
   const cargaFalhou = board.error ?? pipelineStages.error
-    ?? dealsQuery.error ?? peopleQuery.error ?? developersQuery.error;
+    ?? dealsQuery.error ?? peopleQuery.error ?? developersQuery.error ?? statusCatalog.error;
   if (cargaFalhou) {
     return (
       <EmptyState
@@ -279,6 +288,7 @@ export default function CcaPipeline() {
               void dealsQuery.refetch();
               void peopleQuery.refetch();
               void developersQuery.refetch();
+              void statusCatalog.refetch();
             }}
           >
             Tentar de novo
@@ -296,7 +306,8 @@ export default function CcaPipeline() {
         title="Esteira CCA"
         eyebrow="Crédito"
         icon={Landmark}
-        description={`${deals.length} caso(s) em ${stages.length} estágio(s).`}
+        description={`${deals.length} caso(s) em ${stages.length} estágio(s).`
+          + (board.data?.outside ? ` ${board.data.outside} caso(s) fora das colunas ativas (cancelados ou sem coluna).` : "")}
         actions={
           canAct ? (
             <div className="flex flex-wrap gap-2">
@@ -325,6 +336,16 @@ export default function CcaPipeline() {
         />
       </div>
 
+      {envios.isError && (
+        <p role="alert" className="flex flex-wrap items-center gap-2 text-xs text-warning">
+          Os envios por esteira (Ágil e Virar) não carregaram:{" "}
+          {describeError(envios.error, "verifique a conexão.")}
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => void envios.refetch()}>
+            Tentar de novo
+          </Button>
+        </p>
+      )}
+
       {stages.length === 0 ? (
         <EmptyState
           icon={Inbox}
@@ -344,6 +365,7 @@ export default function CcaPipeline() {
           stages={stages}
           deals={visiveis}
           canAct={canAct}
+          sendCounts={envios.data}
           onOpen={(deal) => {
             // O caso existe na esteira mas o negócio pode não estar na
             // visibilidade de quem olha (`can_see_deal`) — é o mesmo motivo
@@ -411,7 +433,7 @@ export default function CcaPipeline() {
         <CcaMoveDialog
           deal={moving.deal}
           stage={moving.stage}
-          approvedStageId={pipelineStages.data?.find((stage) => stage.code === "approved")?.id}
+          approvedStage={pipelineStages.data?.find((stage) => stage.code === "approved")}
           onClose={() => setMoving(null)}
           onMoved={refresh}
         />

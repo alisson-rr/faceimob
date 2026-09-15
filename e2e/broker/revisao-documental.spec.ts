@@ -63,7 +63,12 @@ test("corretor envia os documentos completos para conferência do gerente", asyn
   await modal.getByRole("tab", { name: "Anexos", exact: true }).click();
 
   await expect(modal.getByText("Em preparação", { exact: true })).toBeVisible();
-  await modal.getByRole("button", { name: /enviar ao gerente/i }).click();
+  // A mensagem é obrigatória (0150): com o dossiê completo, é só ela que falta.
+  const enviar = modal.getByRole("button", { name: /enviar ao gerente/i });
+  await expect(enviar).toBeDisabled();
+  const mensagem = `Dossiê completo para conferir ${tag}`;
+  await modal.getByLabel("Mensagem do envio", { exact: true }).fill(mensagem);
+  await enviar.click();
 
   await expect(modal.getByText("Aguardando gerente", { exact: true })).toBeVisible();
   await expect.poll(async () => {
@@ -72,6 +77,16 @@ test("corretor envia os documentos completos para conferência do gerente", asyn
     );
     return deal.document_review_status;
   }).toBe("pending");
+
+  // A mensagem fica no negócio e o envio conta como 1º envio (Esteira Ágil),
+  // que é o evento de onde a CCA tira o "Ágil N" do cartão.
+  const comentario = encodeURIComponent(`ENVIO ESTEIRA ÁGIL: ${mensagem}`);
+  expect(
+    await db.select(`deal_history?deal_id=eq.${dealId}&kind=eq.comment&to_value=eq.${comentario}&select=id`),
+  ).toHaveLength(1);
+  expect(
+    await db.select(`deal_history?deal_id=eq.${dealId}&kind=eq.esteira_sent&detail->>esteira=eq.agil&select=id`),
+  ).toHaveLength(1);
 });
 
 /**
@@ -86,6 +101,8 @@ test("sem gerente vinculado o botão avisa em vez de deixar o banco recusar", as
   await modal.getByRole("tab", { name: "Anexos", exact: true }).click();
 
   await expect(modal.getByText(/vincule ao menos um gerente/i)).toBeVisible();
+  // Com a mensagem escrita, o que trava é só a falta de gerente.
+  await modal.getByLabel("Mensagem do envio", { exact: true }).fill(`Envio sem gerente ${tag}`);
   await expect(modal.getByRole("button", { name: /enviar ao gerente/i })).toBeDisabled();
 
   // E o banco continua intocado: nenhuma tentativa parcial.
@@ -117,6 +134,7 @@ test("anexar os obrigatórios pela tela libera o envio ao gerente", async ({ pag
   }
 
   await expect(modal.getByText(/obrigatórios completos/i)).toBeVisible();
+  await modal.getByLabel("Mensagem do envio", { exact: true }).fill(`Anexado pela tela ${tag}`);
   await modal.getByRole("button", { name: /enviar ao gerente/i }).click();
   await expect(modal.getByText("Aguardando gerente", { exact: true })).toBeVisible();
 

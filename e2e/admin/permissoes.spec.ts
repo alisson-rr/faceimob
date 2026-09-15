@@ -109,6 +109,10 @@ test("a aba Funcionalidades diz onde cada permissão vale", async ({ page }) => 
   await expect(linha("Editar VGV")).toContainText("Aplicada no banco");
   // O alcance real do switch precisa estar escrito ao lado dele.
   await expect(linha("Editar VGV")).toContainText(/VGV bruto e desconto/i);
+  // Os dois códigos da 0149 nasceram com leitor no banco (policies do catálogo
+  // e o gatilho do Status 1): nenhum deles pode entrar na conta dos inertes.
+  await expect(linha("Cadastrar status do negócio")).toContainText("Aplicada no banco");
+  await expect(linha("Trocar o Status 1 à mão")).toContainText("Aplicada no banco");
 });
 
 /**

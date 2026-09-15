@@ -78,9 +78,12 @@ describe("isLossStatus", () => {
 });
 
 describe("isSystemStatus", () => {
-  it("os dois rotulos de esteira sao do sistema", () => {
-    expect(SYSTEM_STATUSES).toEqual(["13. ESTEIRA AGIL", "RET. ESTEIRA AGIL"]);
+  it("os tres rotulos de esteira sao do sistema", () => {
+    expect(SYSTEM_STATUSES).toEqual(["13. ESTEIRA AGIL", "RET. ESTEIRA AGIL", "15. ANÁLISE P/ VIRAR NEGÓCIO"]);
     for (const rotulo of SYSTEM_STATUSES) expect(isSystemStatus(rotulo)).toBe(true);
+    // O outro "15." do catalogo e escolhivel: a comparacao e pelo texto, nao pelo numero.
+    expect(isSystemStatus("15. INTERNALIZADO")).toBe(false);
+    expect(isSystemStatus("análise p/ virar negócio")).toBe(true);
   });
 
   it("compara sem o prefixo numerado, como o trigger do banco", () => {

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX,
@@ -11,8 +13,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
+import { loadCcaCase } from "@/components/pipeline/ccaData";
 import {
   MAX_DOCUMENT_ALIAS,
+  MAX_REVIEW_MESSAGE,
+  REVIEW_ESTEIRA_LABEL,
   canAttachNow,
   canEditDeal,
   countDealManagers,
@@ -33,9 +38,11 @@ import {
   uploadDealDocument,
   validateDocumentAlias,
   validateDocumentFile,
+  virarBlockReason,
   type DealDocumentReview,
   type DealDocumentRecord,
   type DocumentTypeRecord,
+  type ReviewEsteira,
 } from "@/integrations/supabase/documents";
 
 type Props = {
@@ -123,6 +130,11 @@ export default function DealDocumentUpload({
   const [busy, setBusy] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
+  const [envioMensagem, setEnvioMensagem] = useState("");
+  /** Escolha explícita da esteira; `null` enquanto ninguém escolheu. */
+  const [esteira, setEsteira] = useState<ReviewEsteira | null>(null);
+  /** Status do caso na CCA: decide se a análise p/ virar negócio já vale. */
+  const [caseStatus, setCaseStatus] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   /** Linha em edição de apelido (0106). Uma por vez: abrir duas caixas de texto
    *  sobre a mesma lista é convite para salvar na linha errada. */
@@ -133,7 +145,7 @@ export default function DealDocumentUpload({
     setLoading(true);
     setErro(null);
     try {
-      const [t, d, r, roles, managers, podeEditar, participantes] = await Promise.all([
+      const [t, d, r, roles, managers, podeEditar, participantes, caso] = await Promise.all([
         listDocumentTypes(),
         listDealDocuments(dealId),
         getDealDocumentReview(dealId),
@@ -141,8 +153,10 @@ export default function DealDocumentUpload({
         countDealManagers(dealId),
         canEditDeal(dealId),
         dealParticipantNames(dealId),
+        loadCcaCase(dealId),
       ]);
       setTypes(t);
+      setCaseStatus(caso?.status ?? null);
       setDocs(d);
       setReview(r);
       setNomes(participantes);
@@ -320,16 +334,18 @@ export default function DealDocumentUpload({
     }
   };
 
-  const submitForReview = async () => {
+  const submitForReview = async (esteiraEnvio: ReviewEsteira) => {
     setReviewBusy(true);
     try {
-      await submitDealForManagerReview(dealId);
+      await submitDealForManagerReview(dealId, envioMensagem, esteiraEnvio);
+      setEnvioMensagem("");
+      setEsteira(null);
       await load();
       await onReviewChanged?.();
       toast({
         variant: "success",
         title: "Documentos enviados ao gerente",
-        description: "Os gerentes vinculados foram notificados.",
+        description: `${REVIEW_ESTEIRA_LABEL[esteiraEnvio]}: os gerentes vinculados receberam a mensagem.`,
       });
     } catch (e) {
       toast({
@@ -439,6 +455,21 @@ export default function DealDocumentUpload({
   // Não dá para reaproveitar `canSend` aqui: devolver com obrigatório faltando é
   // exatamente o caso de uso do botão, e o banco aceita.
   const monthBlocked = Boolean(closedMonth || unconfirmedMonth);
+  // Esteira do envio (0150). Com a conferência aprovada o banco só aceita o 2º
+  // envio, e o 2º envio só com crédito aprovado na CCA (`virarBlockReason`). A
+  // opção que não vale fica apagada, com a frase ao lado dizendo por quê.
+  const agilBloqueio = status === "approved"
+    ? "A documentação já foi aprovada: o próximo envio é a análise p/ virar negócio."
+    : null;
+  const virarBloqueio = virarBlockReason(caseStatus, review?.review_esteira);
+  // Padrão Ágil, exceto no reenvio de um 2º envio devolvido: ali as duas valem, e
+  // cair em Ágil contaria o reenvio como 1º envio no contador da CCA.
+  const esteiraEnvio: ReviewEsteira = agilBloqueio ? "virar"
+    : virarBloqueio ? "agil"
+    : esteira ?? (review?.review_esteira === "virar" ? "virar" : "agil");
+  const esteiraMotivo = agilBloqueio ?? virarBloqueio;
+  const podeEnviar = canSubmit
+    && (status === "draft" || status === "returned" || (status === "approved" && !virarBloqueio));
 
   return (
     <div className="space-y-3">
@@ -462,6 +493,12 @@ export default function DealDocumentUpload({
                 <dd className="text-foreground">{enviadoPor}</dd>
               </div>
             )}
+            {enviadoPor && review?.review_esteira && (
+              <div className="flex flex-wrap gap-x-1">
+                <dt>Esteira</dt>
+                <dd className="text-foreground">{REVIEW_ESTEIRA_LABEL[review.review_esteira]}</dd>
+              </div>
+            )}
             {decididoPor && (
               <div className="flex flex-wrap gap-x-1">
                 <dt>{status === "returned" ? "Devolvido por" : "Conferido por"}</dt>
@@ -478,23 +515,65 @@ export default function DealDocumentUpload({
           </div>
         )}
 
-        {canSubmit && (status === "draft" || status === "returned") && (
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-xs text-muted-foreground">
-              {submitHint
-                ?? (missing.length > 0
-                  ? `Anexe os ${missing.length} tipo(s) obrigatório(s) antes de enviar.`
-                  : "Dossiê pronto para o gerente conferir.")}
-            </p>
-            <Button
-              size="sm"
-              className="h-8 text-xs gap-1 shrink-0"
-              disabled={reviewBusy || !canSend}
-              onClick={submitForReview}
-            >
-              {reviewBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-              Enviar ao gerente
-            </Button>
+        {podeEnviar && (
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Label htmlFor={`${fieldId}-esteira`} className="text-xs">Esteira do envio</Label>
+              <Select value={esteiraEnvio} onValueChange={(valor) => setEsteira(valor as ReviewEsteira)}>
+                <SelectTrigger
+                  id={`${fieldId}-esteira`}
+                  className="h-8 text-xs"
+                  aria-describedby={esteiraMotivo ? `${fieldId}-esteira-motivo` : undefined}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="agil" disabled={agilBloqueio !== null}>{REVIEW_ESTEIRA_LABEL.agil}</SelectItem>
+                  <SelectItem value="virar" disabled={virarBloqueio !== null}>{REVIEW_ESTEIRA_LABEL.virar}</SelectItem>
+                </SelectContent>
+              </Select>
+              {esteiraMotivo && (
+                <p id={`${fieldId}-esteira-motivo`} className="text-xs text-muted-foreground">{esteiraMotivo}</p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor={`${fieldId}-envio`} className="text-xs">Mensagem do envio</Label>
+              {/* Obrigatória no banco (0150): vira comentário no negócio e vai
+                  no aviso ao gerente. O botão só acende com ela escrita. */}
+              <Textarea
+                id={`${fieldId}-envio`}
+                value={envioMensagem}
+                onChange={(event) => setEnvioMensagem(event.target.value)}
+                rows={2}
+                required
+                maxLength={MAX_REVIEW_MESSAGE}
+                aria-describedby={`${fieldId}-envio-conta`}
+                placeholder="O que o gerente precisa saber sobre este dossiê"
+                className="text-xs"
+              />
+              <p id={`${fieldId}-envio-conta`} className="text-right text-xs tabular-nums text-muted-foreground">
+                Obrigatória · {envioMensagem.length}/{MAX_REVIEW_MESSAGE}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-muted-foreground">
+                {submitHint
+                  ?? (envioMensagem.trim()
+                    ? "Dossiê pronto para o gerente conferir."
+                    : "Escreva a mensagem do envio: ela fica registrada no negócio e avisa o gerente.")}
+              </p>
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1 shrink-0"
+                disabled={reviewBusy || !canSend || !envioMensagem.trim()}
+                onClick={() => void submitForReview(esteiraEnvio)}
+              >
+                {reviewBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                Enviar ao gerente
+              </Button>
+            </div>
           </div>
         )}
 
@@ -509,11 +588,14 @@ export default function DealDocumentUpload({
         {canReview && status === "pending" && (
           <div className="space-y-2">
             {submitHint && <p className="text-xs text-warning">{submitHint}</p>}
+            <Label htmlFor={`${fieldId}-conferencia`} className="text-xs">Mensagem da conferência</Label>
+            {/* Um campo para as duas decisões: motivo obrigatório na devolução;
+                na aprovação é opcional e, quando vem, vira comentário (0150). */}
             <Textarea
-              aria-label="Motivo da devolução"
+              id={`${fieldId}-conferencia`}
               value={reviewReason}
               onChange={(event) => setReviewReason(event.target.value)}
-              placeholder="Motivo obrigatório somente para devolver ao corretor"
+              placeholder="Obrigatória para devolver; ao aprovar é opcional e fica registrada no negócio"
               rows={2}
               maxLength={2000}
               className="text-xs"
@@ -554,7 +636,8 @@ export default function DealDocumentUpload({
           // o nome não aparecia em tela nenhuma: existia só como texto do
           // Status 2, que o corretor não relaciona com o que acabou de acontecer.
           <p className="text-xs text-success">
-            Conferência concluída: o negócio entrou na <strong>Esteira Ágil</strong>, a análise de
+            Conferência concluída: o negócio entrou na{" "}
+            <strong>{REVIEW_ESTEIRA_LABEL[review?.review_esteira ?? "agil"]}</strong>, a análise de
             crédito. O andamento aparece no Status 2 e no histórico do negócio.
           </p>
         )}

@@ -335,7 +335,7 @@ test.describe("gamificação · o gatilho, pela tela", () => {
     await abrirPipeline(page);
     await buscar(page, cliente);
     const modal = await abrirDetalhe(page, cliente);
-    await escolher(seletor(modal, "Etapa (Status 1)"), "Fechado");
+    await escolher(seletor(modal, "Etapa"), "Fechado");
     await confirmarModal(page, modal);
 
     // A prova é a linha no banco, não o toast: o `outcome` mudou e o gatilho
@@ -370,7 +370,7 @@ test.describe("gamificação · o gatilho, pela tela", () => {
     await abrirPipeline(page);
     await buscar(page, cliente);
     const modal = await abrirDetalhe(page, cliente);
-    await escolher(seletor(modal, "Etapa (Status 1)"), "Fechado");
+    await escolher(seletor(modal, "Etapa"), "Fechado");
     await confirmarModal(page, modal);
     await expect.poll(async () => (await eventosDo(negocio.id, "venda")).length).toBe(1);
 

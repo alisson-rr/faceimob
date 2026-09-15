@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { from, remove, createSignedUrls } = vi.hoisted(() => ({
-  from: vi.fn(), remove: vi.fn(), createSignedUrls: vi.fn(),
+const { from, rpc, remove, createSignedUrls } = vi.hoisted(() => ({
+  from: vi.fn(), rpc: vi.fn(), remove: vi.fn(), createSignedUrls: vi.fn(),
 }));
 vi.mock("./client", () => ({
-  supabase: { from, storage: { from: () => ({ remove, createSignedUrls }) } },
+  supabase: { from, rpc, storage: { from: () => ({ remove, createSignedUrls }) } },
 }));
 
 import {
@@ -17,9 +17,11 @@ import {
   missingStoragePaths,
   resolveStoredName,
   submitBlockReason,
+  submitDealForManagerReview,
   updateDocumentType,
   validateDocumentAlias,
   validateDocumentFile,
+  virarBlockReason,
   type DealDocumentRecord,
   type DocumentTypeRecord,
 } from "./documents";
@@ -437,5 +439,53 @@ describe("missingStoragePaths", () => {
     createSignedUrls.mockResolvedValue({ data: null, error: { message: "Bucket not found" } });
 
     await expect(missingStoragePaths(["deal-1/a.pdf"])).rejects.toThrow(/Bucket not found/);
+  });
+});
+
+/**
+ * Envio ao gerente pela assinatura da 0150: mensagem obrigatória e esteira. A
+ * assinatura de um argumento deixou de existir — chamá-la dá PGRST202.
+ */
+describe("submitDealForManagerReview", () => {
+  beforeEach(() => rpc.mockReset());
+
+  it("manda a mensagem aparada e a esteira escolhida", async () => {
+    rpc.mockResolvedValue({ error: null });
+    await submitDealForManagerReview("deal-1", "  Dossiê completo  ", "virar");
+    expect(rpc).toHaveBeenCalledWith("submit_deal_for_manager_review", {
+      p_deal_id: "deal-1", p_message: "Dossiê completo", p_esteira: "virar",
+    });
+  });
+
+  it("sem esteira, vai pela Ágil (1º envio)", async () => {
+    rpc.mockResolvedValue({ error: null });
+    await submitDealForManagerReview("deal-1", "Dossiê completo");
+    expect(rpc).toHaveBeenCalledWith("submit_deal_for_manager_review", {
+      p_deal_id: "deal-1", p_message: "Dossiê completo", p_esteira: "agil",
+    });
+  });
+
+  it("a recusa do banco chega à tela com a frase dele", async () => {
+    rpc.mockResolvedValue({
+      error: { code: "P0001", message: "Escreva a mensagem do envio: ela fica registrada no negócio e avisa a equipe." },
+    });
+    const erro = await submitDealForManagerReview("deal-1", " ").catch((e: unknown) => e);
+    expect(describeError(erro, "falhou")).toMatch(/^Escreva a mensagem do envio/);
+  });
+});
+
+describe("virarBlockReason", () => {
+  it("libera com crédito aprovado, ou devolvido pela CCA depois de um 2º envio", () => {
+    expect(virarBlockReason("approved", null)).toBeNull();
+    expect(virarBlockReason("approved", "agil")).toBeNull();
+    expect(virarBlockReason("pending_documents", "virar")).toBeNull();
+  });
+
+  it("trava o resto com o motivo", () => {
+    for (const [status, esteira] of [
+      [null, null], ["under_review", "virar"], ["pending_documents", "agil"], ["rejected", "virar"],
+    ] as const) {
+      expect(virarBlockReason(status, esteira), `${status}/${esteira}`).toMatch(/2º envio/);
+    }
   });
 });

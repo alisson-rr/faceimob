@@ -12,8 +12,10 @@ import { describeError } from "@/lib/supabaseError";
 import { LOSS_REASONS, bareStatus, isLossStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { updateDeal, useCanExitStage } from "./data";
 import { LOST_STAGE_CODE, type PipelineStage } from "./stages";
+import { statusLabel } from "./statuses";
 
 interface Props {
   deal: LegacyDealRecord;
@@ -65,6 +67,7 @@ export const isOffOrDistrato = (status: string | null | undefined): boolean =>
 export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirmed }: Props) {
   const { can, canEnterStage } = useAuth();
   const canExitStage = useCanExitStage();
+  const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const id = useId();
   const lostStage = stages.find((stage) => stage.code === LOST_STAGE_CODE);
   const podeOffDistrato = can("deals.mark_off_distrato");
@@ -103,7 +106,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
       });
       // `reason` acima é dado gravado e leva o rótulo inteiro; o aviso é tela e
       // segue a mesma regra do Select.
-      toast({ variant: "success", title: "Negócio encerrado", description: `${deal.client} — ${bareStatus(status)}.` });
+      toast({ variant: "success", title: "Negócio encerrado", description: `${deal.client} — ${statusLabel(catalog, status)}.` });
       await onConfirmed();
       onClose();
     } catch (err) {
@@ -140,15 +143,15 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
               </SelectTrigger>
               <SelectContent>
                 {/* O motivo gravado continua sendo o `value` — é ele que vai
-                    para `status_detail` e `lost_reason`. Na tela vai sem o
-                    prefixo numerado, como o resto do Status 2.
+                    para `status_detail` e `lost_reason`. Na tela vai o nome
+                    exibido do catálogo, como o resto do Status 2.
                     OFF e distrato aparecem DESABILITADOS para quem não pode, e
                     não sumidos: opção que some não ensina o motivo. */}
                 {choices.map((option) => {
                   const bloqueado = !podeOffDistrato && isOffOrDistrato(option);
                   return (
                     <SelectItem key={option} value={option} disabled={bloqueado}>
-                      <span>{bareStatus(option)}</span>
+                      <span>{statusLabel(catalog, option)}</span>
                       {bloqueado && (
                         <span className="text-muted-foreground"> — só administrador e sócio</span>
                       )}

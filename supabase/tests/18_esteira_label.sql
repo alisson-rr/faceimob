@@ -142,7 +142,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id);
+  perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê completo para conferência');
   reset role;
 
   perform set_config('request.jwt.claims',
@@ -159,24 +159,21 @@ begin
     'entrar na esteira escreve "13. ESTEIRA AGIL"');
 
   -- ---------------------------------------------------------------------------
-  -- O CCA devolve e reenvia: é o update direto da tela do CCA (CcaMoveDialog),
-  -- feito por um analista que não tem permissão de editar `deals`.
+  -- O CCA devolve e reenvia SEM coluna ligada a Status 2: vale o de-para por
+  -- status. É o update do sistema. Desde a 0150 o analista não muda status por
+  -- update direto (a tela usa `move_cca_case`, e a coluna escolhida grava o
+  -- próprio Status 2 — supabase/tests/99_cca_colunas_e_envio.sql). As claims
+  -- ficam com o analista para a devolução registrar quem devolveu.
   -- ---------------------------------------------------------------------------
   perform set_config('request.jwt.claims',
     json_build_object('sub', cca::text, 'role', 'authenticated')::text, false);
-  set local role authenticated;
   update public.cca_cases set status = 'pending_documents' where deal_id = v_deal.id;
-  reset role;
 
   perform pg_temp.check18(
     (select status_detail from public.deals where id = v_deal.id) = 'RET. ESTEIRA AGIL',
     'CCA devolver para "Aguardando documentos" escreve "RET. ESTEIRA AGIL"');
 
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', cca::text, 'role', 'authenticated')::text, false);
-  set local role authenticated;
   update public.cca_cases set status = 'under_review' where deal_id = v_deal.id;
-  reset role;
 
   perform pg_temp.check18(
     (select status_detail from public.deals where id = v_deal.id) = '13. ESTEIRA AGIL',
@@ -187,11 +184,7 @@ begin
   -- ---------------------------------------------------------------------------
   update public.deals set status_detail = '17. DISTRATO' where id = v_deal.id;
 
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', cca::text, 'role', 'authenticated')::text, false);
-  set local role authenticated;
   update public.cca_cases set status = 'pending_documents' where deal_id = v_deal.id;
-  reset role;
 
   perform pg_temp.check18(
     (select status_detail from public.deals where id = v_deal.id) = '17. DISTRATO',

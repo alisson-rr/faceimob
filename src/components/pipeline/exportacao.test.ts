@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { HEADERS, linhasDeNegocios, shareValue } from "./exportacao";
+import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 
 /**
  * O rateio na planilha, e o TIPO de cada célula.
@@ -22,6 +23,7 @@ const negocio = (patch: Partial<LegacyDealRecord> = {}): LegacyDealRecord => ({
   unit: "101",
   stage_label: "Proposta",
   status: "PROPOSTA",
+  status_group_id: GRUPOS.PROPOSTA.id,
   deal_value: 300_000,
   days_in_pipeline: 4,
   broker1: "Ana",
@@ -40,7 +42,7 @@ const coluna = (titulo: string) => HEADERS.indexOf(titulo);
 
 describe("planilha do pipeline · rateio", () => {
   it("leva percentual e valor de cada corretor", () => {
-    const [linha] = linhasDeNegocios([negocio()]);
+    const [linha] = linhasDeNegocios([negocio()], catalogo);
     expect(linha[coluna("% Corretor 1")]).toEqual({ valor: 50, tipo: "numero" });
     expect(linha[coluna("VGV Corretor 1")]).toEqual({ valor: 150_000, tipo: "dinheiro" });
   });
@@ -48,14 +50,14 @@ describe("planilha do pipeline · rateio", () => {
   it("corretor ausente sai vazio, não em zero", () => {
     // Zero afirmaria que o terceiro corretor existe e não leva nada.
     expect(shareValue(300_000, null)).toBeNull();
-    const [linha] = linhasDeNegocios([negocio()]);
+    const [linha] = linhasDeNegocios([negocio()], catalogo);
     expect(linha[coluna("Corretor 3")].valor).toBeNull();
     expect(linha[coluna("% Corretor 3")].valor).toBeNull();
     expect(linha[coluna("VGV Corretor 3")].valor).toBeNull();
   });
 
   it("dinheiro e dias saem como NÚMERO — era o defeito do CSV", () => {
-    const [linha] = linhasDeNegocios([negocio()]);
+    const [linha] = linhasDeNegocios([negocio()], catalogo);
     expect(linha[coluna("VGV")], "somar a coluna de VGV precisa funcionar").toEqual({
       valor: 300_000,
       tipo: "dinheiro",
@@ -68,12 +70,37 @@ describe("planilha do pipeline · rateio", () => {
 
   it("nome com vírgula deixou de ser um problema de formato", () => {
     // No CSV isto exigia aspas escapadas; na planilha a vírgula é só um caractere.
-    const [linha] = linhasDeNegocios([negocio()]);
+    const [linha] = linhasDeNegocios([negocio()], catalogo);
     expect(linha[coluna("Cliente")].valor).toBe("Cliente, com vírgula");
   });
 
   it("arredonda a fatia para centavos inteiros", () => {
     // 33,334% de 300.000 = 100.002 — a fatia é dinheiro, não pode sair com dízima.
     expect(shareValue(300_000, 33.334)).toBe(100_002);
+  });
+
+  it("cabeçalho e linha têm o mesmo número de colunas", () => {
+    expect(linhasDeNegocios([negocio()], catalogo)[0]).toHaveLength(HEADERS.length);
+  });
+});
+
+describe("planilha do pipeline · Status 1 e Status 2", () => {
+  it("Status 1 antes do Status 2, os dois pelo nome do catálogo", () => {
+    expect(coluna("Status 1")).toBe(coluna("Status 2") - 1);
+    const [linha] = linhasDeNegocios(
+      [negocio({ status: "02. ASS. BANCO", status_group_id: GRUPOS.VENDA.id })],
+      catalogo,
+    );
+    expect(linha[coluna("Status 1")]).toEqual({ valor: "VENDA", tipo: "texto" });
+    expect(linha[coluna("Status 2")]).toEqual({ valor: "Assinado no banco", tipo: "texto" });
+  });
+
+  it("negócio sem Status 1 sai com a célula vazia, e rótulo fora do catálogo sai sem número", () => {
+    const [linha] = linhasDeNegocios(
+      [negocio({ status: "99. RÓTULO ANTIGO", status_group_id: null })],
+      catalogo,
+    );
+    expect(linha[coluna("Status 1")].valor).toBeNull();
+    expect(linha[coluna("Status 2")].valor).toBe("RÓTULO ANTIGO");
   });
 });

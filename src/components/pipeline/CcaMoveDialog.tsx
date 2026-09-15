@@ -8,14 +8,19 @@ import { toast } from "@/components/ui/sonner";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 import { updateDeal, useCanExitStage, useDeals } from "./data";
+import { isBehindStage } from "./guards";
 import { ccaStatusLabel, isDecision } from "./ccaStage";
 import type { CcaDeal, CcaStage } from "./ccaData";
+import type { PipelineStage } from "./stages";
+
+/** Teto que `move_cca_case` cobra (0150). */
+const MAX_MENSAGEM = 4000;
 
 interface Props {
   deal: CcaDeal;
   stage: CcaStage;
-  /** `id` da etapa "Aprovado" do funil comercial, para levar o negócio junto. */
-  approvedStageId?: string;
+  /** Etapa "Aprovado" do funil comercial, para levar o negócio junto. */
+  approvedStage?: PipelineStage;
   onClose: () => void;
   onMoved: () => void | Promise<void>;
 }
@@ -35,66 +40,65 @@ interface Props {
  * e a analista ficava sem caminho nenhum — nem esteira, nem funil. Decidir o
  * caso é o trabalho dela; a etapa que não andou vira aviso no mesmo toast, e o
  * negócio segue movível pelo Pipeline por quem tem a etapa.
+ *
+ * **O negócio só anda para frente e só aberto** (`isBehindStage`). Aprovar o
+ * caso de um negócio já em Contrato, Fechado ou Perdido o puxava de volta para
+ * "Aprovado": a matriz deixa a CCA sair de Fechado, `deals_guard_stage` reabre o
+ * desfecho e a venda saía do VGV (14/09/2026: 926 vendas e 3.036 perdidos
+ * expostos na homologação).
  */
-export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }: Props) {
+export function CcaMoveDialog({ deal, stage, approvedStage, onClose, onMoved }: Props) {
   const { canEnterStage } = useAuth();
   const canExitStage = useCanExitStage();
-  const [notes, setNotes] = useState(deal.notes || "");
+  // Abre VAZIA: a mensagem é o aviso desta movimentação para corretor e gerente,
+  // e semear com a observação antiga (a do Bubble) mandava texto velho como novo.
+  const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
   // `CcaDeal` carrega o estágio da ESTEIRA, não a etapa do negócio no funil
-  // comercial — e sem ela não dá para espelhar a metade "sair" da matriz. A
-  // lista de negócios é cache compartilhado (`["deals"]`), não uma consulta
-  // nova por caso.
+  // comercial — e sem ela não dá para saber se ele está atrás de "Aprovado" nem
+  // espelhar a metade "sair" da matriz. A lista de negócios é cache
+  // compartilhado (`["deals"]`), não uma consulta nova por caso.
   const negocio = useDeals().data?.find((row) => row.id === deal.dealId);
+  const levaAoAprovado = Boolean(negocio && isBehindStage(negocio, approvedStage));
 
   /**
-   * Por que o negócio NÃO vai andar no funil — `""` quando ele anda.
+   * Por que o negócio NÃO vai andar no funil quando deveria — `""` quando ele
+   * anda ou quando não há o que andar (já está em "Aprovado" ou adiante, ou
+   * encerrado: isso não é recusa, é o negócio no lugar certo).
    *
    * As DUAS metades da matriz, como em `ScheduleVisitDialog`: o
    * `deals_guard_stage` cobra `can_exit_stage(etapa atual)` ANTES de olhar o
    * destino, e checar só o "entrar" fazia este diálogo prometer a
    * movimentação para o banco recusá-la depois.
    *
-   * Etapa atual ainda desconhecida (lista não carregou, ou o negócio não está
-   * na visibilidade de quem analisa) não vira promessa nem recusa: o
-   * `updateDeal` tenta e o toast conta o que voltou — é o degradê que este
-   * diálogo já tinha. Negócio JÁ em "Aprovado" também não precisa sair de
-   * lugar nenhum: a 0101 só cobra a matriz quando o `stage_id` muda.
+   * Negócio fora da lista carregada não é movido às cegas: sem a etapa atual não
+   * há como garantir que ele não está em Contrato ou Fechado.
    */
-  const motivoParado = !approvedStageId
+  const motivoParado = !approvedStage
     ? 'a etapa "Aprovado" do funil ainda não carregou.'
-    : !canEnterStage(approvedStageId)
-      ? 'seu perfil não pode mover negócios para "Aprovado" no funil.'
-      : negocio && negocio.stage_id !== approvedStageId && !canExitStage(negocio.stage_id)
-        ? `seu perfil não pode tirar um negócio de "${negocio.stage_label}".`
-        : "";
+    : !negocio
+      ? "o negócio não apareceu na sua lista; mova-o pelo Pipeline."
+      : !levaAoAprovado
+        ? ""
+        : !canEnterStage(approvedStage.id)
+          ? 'seu perfil não pode mover negócios para "Aprovado" no funil.'
+          : !canExitStage(negocio.stage_id)
+            ? `seu perfil não pode tirar um negócio de "${negocio.stage_label}".`
+            : "";
 
   const confirm = async () => {
     setSaving(true);
     try {
-      const decision = isDecision(stage.status);
-
-      // `.select("id")`: `cca_cases_write` exige `has_permission('cca.review')`
-      // e a esteira habilita o botão pelo papel. Sem conferir a linha, a recusa
-      // da RLS voltava 204 sem erro e a tela dizia "Caso movido" sem gravar.
-      const { data: gravado, error } = await supabase
-        .from("cca_cases")
-        .update({
-          stage_id: stage.id,
-          status: stage.status,
-          decision_notes: notes || null,
-          decided_at: decision ? new Date().toISOString() : null,
-        })
-        .eq("id", deal.caseId)
-        .select("id");
-      if (error) throw dbError("cca_cases", error);
-      if (!gravado?.length) {
-        throw dbError("cca_cases", {
-          code: "P0001",
-          message: "Seu perfil não pode mover este caso na esteira.",
-        });
-      }
+      // A única porta desde a 0150: grava coluna, desfecho, Status 2 da coluna,
+      // comentário no negócio e o aviso à equipe numa transação. O PATCH em
+      // `cca_cases` passou a ser recusado (42501).
+      const { error } = await supabase.rpc("move_cca_case", {
+        p_case_id: deal.caseId,
+        p_stage_id: stage.id,
+        p_message: message.trim(),
+      });
+      if (error) throw dbError("move_cca_case", error);
 
       // O caso JÁ está decidido. Uma recusa aqui (matriz de etapas, mês fechado)
       // não desfaz a decisão: avisa e deixa o negócio para quem move o funil.
@@ -102,9 +106,9 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
       if (stage.status === "approved") {
         if (motivoParado) {
           avisoNegocio = motivoParado;
-        } else if (approvedStageId) {
+        } else if (levaAoAprovado && approvedStage) {
           try {
-            await updateDeal(deal.dealId, { stage_id: approvedStageId });
+            await updateDeal(deal.dealId, { stage_id: approvedStage.id });
           } catch (err) {
             avisoNegocio = describeError(err, "o negócio não foi movido no funil.");
           }
@@ -141,11 +145,16 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
         </DialogHeader>
 
         <div>
-          <Label htmlFor="cca-move-notes">Observações</Label>
+          <Label htmlFor="cca-move-message">Mensagem para a equipe</Label>
           <Textarea
-            id="cca-move-notes" rows={3} className="mt-1 text-xs"
-            value={notes} onChange={(event) => setNotes(event.target.value)}
+            id="cca-move-message" rows={3} className="mt-1 text-xs"
+            required maxLength={MAX_MENSAGEM} aria-describedby="cca-move-message-hint"
+            placeholder="O que mudou e o próximo passo. Vai para o corretor e o gerente."
+            value={message} onChange={(event) => setMessage(event.target.value)}
           />
+          <p id="cca-move-message-hint" className="mt-1 text-right text-xs tabular-nums text-muted-foreground">
+            Obrigatória · {message.length}/{MAX_MENSAGEM}
+          </p>
         </div>
 
         {/* Mesma frase do toast, do mesmo `motivoParado`: enquanto o painel e o
@@ -159,7 +168,7 @@ export function CcaMoveDialog({ deal, stage, approvedStageId, onClose, onMoved }
 
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" disabled={saving} onClick={() => void confirm()}>
+          <Button size="sm" disabled={saving || !message.trim()} onClick={() => void confirm()}>
             {saving ? "Movendo…" : "Confirmar"}
           </Button>
         </DialogFooter>

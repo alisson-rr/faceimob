@@ -1,8 +1,9 @@
 import { date as formatDate } from "@/lib/format";
-import { bareStatus } from "@/lib/dealStatus";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import type { DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import type { SheetData } from "write-excel-file/browser";
 import { dealMonth } from "./filters";
+import { statusGroupLabel, statusLabel } from "./statuses";
 
 /**
  * Exportação do recorte filtrado do Pipeline.
@@ -25,6 +26,7 @@ const COLUNAS = [
   { titulo: "Empreendimento", largura: 22 },
   { titulo: "Unidade", largura: 10 },
   { titulo: "Etapa", largura: 18 },
+  { titulo: "Status 1", largura: 14 },
   { titulo: "Status 2", largura: 18 },
   { titulo: "VGV", largura: 14 },
   { titulo: "Dias", largura: 8 },
@@ -69,7 +71,7 @@ const dinheiro = (v: number | null | undefined): Celula =>
  * entra. O que sai daqui é o conteúdo; quem o transforma em arquivo é
  * `baixarPlanilhaDeNegocios`.
  */
-export function linhasDeNegocios(deals: LegacyDealRecord[]): Celula[][] {
+export function linhasDeNegocios(deals: LegacyDealRecord[], catalog: DealStatusCatalog): Celula[][] {
   return deals.map((deal) => [
     texto(deal.code),
     texto(deal.client),
@@ -77,12 +79,14 @@ export function linhasDeNegocios(deals: LegacyDealRecord[]): Celula[][] {
     texto(deal.project),
     texto(deal.unit),
     texto(deal.stage_label),
-    // Sem o prefixo numerado, igual à tela: o cliente tirou os números do
-    // Status 2 em 10/09/2026, e a planilha é o que se confere AO LADO dela —
+    // Negócio sem Status 1 (Status 2 fora do catálogo) sai com a célula vazia,
+    // como toda ausência desta planilha: filtrar "vazias" no Excel funciona, e
+    // um "—" viraria texto a mais para limpar.
+    texto(statusGroupLabel(catalog, deal.status_group_id)),
+    // O nome exibido, igual à tela: a planilha é o que se confere AO LADO dela —
     // "17. DISTRATO" no arquivo e "DISTRATO" no sistema viram dúvida sobre se
-    // são o mesmo status. O valor gravado em `status_detail` continua com o
-    // número; quem tira é `bareStatus`, a mesma função da tabela e do editor.
-    texto(bareStatus(deal.status)),
+    // são o mesmo status. O valor gravado em `status_detail` não muda.
+    texto(statusLabel(catalog, deal.status)),
     dinheiro(deal.deal_value),
     numero(deal.days_in_pipeline),
     texto(deal.broker1),
@@ -106,7 +110,10 @@ export function linhasDeNegocios(deals: LegacyDealRecord[]): Celula[][] {
  * só faz falta no clique de quem exporta — no pacote inicial do Pipeline seria
  * peso morto para todo mundo que só quer ver o quadro.
  */
-export async function baixarPlanilhaDeNegocios(deals: LegacyDealRecord[]): Promise<void> {
+export async function baixarPlanilhaDeNegocios(
+  deals: LegacyDealRecord[],
+  catalog: DealStatusCatalog,
+): Promise<void> {
   // `/browser`: o pacote não tem raiz — só os subcaminhos `node`, `browser`,
   // `universal` e `utility`. Mesmo padrão do `read-excel-file/browser` que a
   // importação de planilha já usa.
@@ -116,7 +123,7 @@ export async function baixarPlanilhaDeNegocios(deals: LegacyDealRecord[]): Promi
   // espera, e é o que mantém a coluna sem "0" inventado.
   const conteudo: SheetData = [
     HEADERS.map((titulo) => ({ value: titulo, fontWeight: "bold" as const })),
-    ...linhasDeNegocios(deals).map((linha) =>
+    ...linhasDeNegocios(deals, catalog).map((linha) =>
       linha.map((celula) => {
         if (celula.valor == null) return null;
         if (celula.tipo === "texto") return { value: celula.valor, type: String };

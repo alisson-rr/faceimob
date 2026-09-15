@@ -358,7 +358,7 @@ begin
     raise exception 'FALHOU: CCA abriu caso com cca.review desligado';
   exception
     when insufficient_privilege then
-      raise notice '  ok  cca.review desligado: cca_cases_write recusa';
+      raise notice '  ok  cca.review desligado: insert direto em cca_cases recusado (só as RPCs criam caso, 0150)';
   end;
 
   perform pg_temp.become21(adm);

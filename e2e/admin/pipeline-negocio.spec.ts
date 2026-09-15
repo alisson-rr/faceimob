@@ -33,6 +33,25 @@ import {
 const marca = runTag();
 const nomeCliente = (prefixo: string) => `${prefixo} ${marca}`;
 
+type LinhaDoStatus = { label: string; group_id: string };
+
+/**
+ * Um Status 2 do catálogo (0149). Os Selects mostram o `label`; o banco grava o
+ * texto com o número, que é o que as asserções de `deals` conferem.
+ */
+async function statusDoCatalogo(value: string): Promise<LinhaDoStatus> {
+  const [linha] = await db.select<LinhaDoStatus>(
+    `deal_statuses?value=eq.${encodeURIComponent(value)}&select=label,group_id`,
+  );
+  if (!linha) throw new Error(`Status 2 "${value}" não está no catálogo`);
+  return linha;
+}
+
+async function status1DoNegocio(id: string): Promise<string | null> {
+  const [linha] = await db.select<{ status_group_id: string | null }>(`deals?id=eq.${id}&select=status_group_id`);
+  return linha.status_group_id;
+}
+
 test.afterAll(async () => {
   await limparNegocios(marca);
 });
@@ -314,12 +333,16 @@ test("salvar pelo modal não inventa Status 2, e o escolhido grava", async ({ pa
   await abrirPipeline(page);
   await buscar(page, cliente);
   modal = await abrirDetalhe(page, cliente);
-  await escolher(seletor(modal, "Status da venda (Status 2)"), "16. PENDENTE");
+  const pendente = await statusDoCatalogo("16. PENDENTE");
+  await escolher(seletor(modal, "Status da venda (Status 2)"), pendente.label);
   await confirmarModal(page, modal);
 
   await expect
     .poll(async () => (await negocioPorCliente(cliente)).status_detail)
     .toBe("16. PENDENTE");
+  // O modal não manda Status 1 quando só o Status 2 mudou: quem deriva é o
+  // banco, e sem permissão de troca manual o salvamento não pode cair em 42501.
+  expect(await status1DoNegocio(negocio.id), "o Status 1 acompanha o Status 2").toBe(pendente.group_id);
 });
 
 test("SDR não cadastra negócio manual: o banco recusa antes de virar Corretor 1", async () => {
@@ -570,10 +593,12 @@ test("Status 2 escolhido na tabela grava em deals.status_detail e volta no reloa
   // verde desligando essa proteção. A regra em si tem spec próprio
   // (`e2e/admin/esteira-label.spec.ts`); aqui basta um rótulo escolhível.
   const rotulo = "16. PENDENTE";
+  // A tela mostra o nome do catálogo (0149); o banco guarda o texto numerado.
+  const { label } = await statusDoCatalogo(rotulo);
 
   await abrirPipeline(page);
   await buscar(page, cliente);
-  await escolher(linhaDoNegocio(page, cliente).getByRole("combobox"), rotulo);
+  await escolher(linhaDoNegocio(page, cliente).getByRole("combobox"), label);
 
   await expect
     .poll(async () => (await negocioPorCliente(cliente)).status_detail, {
@@ -584,7 +609,32 @@ test("Status 2 escolhido na tabela grava em deals.status_detail e volta no reloa
 
   await abrirPipeline(page);
   await buscar(page, cliente);
-  await expect(linhaDoNegocio(page, cliente).getByRole("combobox")).toContainText(rotulo);
+  await expect(linhaDoNegocio(page, cliente).getByRole("combobox")).toContainText(label);
+});
+
+test("Status 1 acompanha o Status 2 escolhido na tabela e aparece na coluna", async ({ page }) => {
+  // 0149: o banco deriva o Status 1 do Status 2 pelo catálogo. O negócio nasce
+  // sem Status 2 (Status 1 PROPOSTA, pelo desfecho aberto) e "02. ASS. BANCO" é
+  // de VENDA: o grupo só muda se a derivação acontecer de fato.
+  const cliente = nomeCliente("Iara Status1");
+  const negocio = await semearNegocio({ cliente });
+  const assinado = await statusDoCatalogo("02. ASS. BANCO");
+  const [grupo] = await db.select<{ label: string }>(
+    `deal_status_groups?id=eq.${assinado.group_id}&select=label`,
+  );
+  expect(await status1DoNegocio(negocio.id), "o cenário começa em outro Status 1").not.toBe(assinado.group_id);
+
+  await abrirPipeline(page);
+  await buscar(page, cliente);
+  await escolher(linhaDoNegocio(page, cliente).getByRole("combobox"), assinado.label);
+
+  await expect
+    .poll(() => status1DoNegocio(negocio.id), { message: "o banco deriva o Status 1 do Status 2" })
+    .toBe(assinado.group_id);
+
+  await abrirPipeline(page);
+  await buscar(page, cliente);
+  await expect(linhaDoNegocio(page, cliente)).toContainText(grupo.label);
 });
 
 test("filtro de mês reduz a tabela ao mês pedido", async ({ page }) => {
@@ -624,9 +674,33 @@ test("filtro de Status 2 reduz a tabela ao rótulo pedido", async ({ page }) => 
   // `exact: true` não é preciosismo: cada linha da tabela tem o próprio Select
   // de Status 2, nomeado "Status 2 de <cliente>" (achado X03), e o casamento por
   // substring do `getByRole` acha os 15 de uma vez.
-  await escolher(page.getByRole("combobox", { name: "Status 2", exact: true }), "13. ESTEIRA AGIL");
+  await escolher(
+    page.getByRole("combobox", { name: "Status 2", exact: true }),
+    (await statusDoCatalogo("13. ESTEIRA AGIL")).label,
+  );
 
   await expect(linhaDoNegocio(page, esteira)).toBeVisible();
+  await expect(linhaDoNegocio(page, pendente)).toHaveCount(0);
+});
+
+test("filtro de Status 1 reduz a tabela ao grupo pedido", async ({ page }) => {
+  const venda = nomeCliente("Gil Venda");
+  const pendente = nomeCliente("Gil Pendente");
+  // service_role semeia; o gatilho da 0149 deriva o Status 1 no INSERT.
+  await semearNegocio({ cliente: venda, statusDetail: "02. ASS. BANCO" });
+  await semearNegocio({ cliente: pendente, statusDetail: "16. PENDENTE" });
+  const [grupo] = await db.select<{ label: string }>(
+    `deal_status_groups?id=eq.${(await statusDoCatalogo("02. ASS. BANCO")).group_id}&select=label`,
+  );
+
+  await abrirPipeline(page);
+  // A busca pela marca deixa só os negócios desta rodada: o grupo pode ter
+  // centenas de negócios, e o semeado não estaria na primeira página.
+  await page.getByPlaceholder(/buscar cliente, empreendimento, corretor/i).fill(marca);
+  await page.getByRole("button", { name: /^filtrar$/i }).click();
+  await escolher(page.getByRole("combobox", { name: "Status 1", exact: true }), grupo.label);
+
+  await expect(linhaDoNegocio(page, venda)).toBeVisible();
   await expect(linhaDoNegocio(page, pendente)).toHaveCount(0);
 });
 

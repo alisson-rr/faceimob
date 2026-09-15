@@ -197,11 +197,17 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
       return row?.status_detail;
     }).toBe("ANÁLISE EXTERNA");
 
-    // O quadro por baixo recarrega: o cartão aparece na coluna nova sem F5.
+    // O quadro por baixo recarrega sem F5. A coluna vem do banco: desde a 0150
+    // "Enviado à Construtora" só fica ativa se já havia construtora externa
+    // ativa quando a migration rodou; sem ela o caso fica na coluna em que
+    // estava, agora com `sent_to_developer` — e não pode sumir do quadro.
     await page.getByRole("dialog").getByRole("button", { name: /^fechar$/i }).first().click();
+    const [{ cca_stages: estagio }] = await db.select<{ cca_stages: { name: string } }>(
+      `cca_cases?id=eq.${casoId}&select=cca_stages(name)`,
+    );
     const coluna = page
       .locator("section")
-      .filter({ has: page.getByRole("heading", { name: "Enviado à Construtora", exact: true }) });
+      .filter({ has: page.getByRole("heading", { name: estagio.name, exact: true }) });
     await expect(coluna.getByRole("article").filter({ hasText: cenario.cliente })).toHaveCount(1);
   });
 });

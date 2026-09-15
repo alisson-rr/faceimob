@@ -245,16 +245,28 @@ declare
   v_stage uuid;
   v_color text;
 begin
-  -- A mesma consulta de `submit_deal_for_analysis` (0077:231-232) e do
-  -- fallback da tela: status + active + menor position.
+  -- Desde a 0150 o estágio fica INATIVO: as 19 colunas do cliente (15/09/2026)
+  -- não têm distrato/queda. Ele continua existindo porque é o estágio gravado
+  -- dos casos cancelados. O contrato com a tela virou o inverso do de antes:
+  -- não há coluna ativa de `cancelled`, então a esteira tira esses casos da
+  -- tela em vez de procurar coluna para eles (o fallback de `loadCcaBoard`
+  -- os jogaria na primeira coluna, EM ANÁLISE).
   select id, color into v_stage, v_color
   from public.cca_stages
-  where status = 'cancelled' and active
+  where status = 'cancelled'
   order by position
   limit 1;
 
   perform pg_temp.check96(v_stage is not null,
-    'existe estágio ativo com desfecho cancelled para os casos de distrato e queda');
+    'existe estágio com desfecho cancelled para os casos de distrato e queda');
+
+  perform pg_temp.check96(
+    not exists (select 1 from public.cca_stages where status = 'cancelled' and active)
+    and not exists (
+      select 1 from public.cca_cases c
+        join public.cca_stages s on s.id = c.stage_id
+       where c.status = 'cancelled' and s.status <> 'cancelled'),
+    'nenhuma coluna ativa é de cancelled, e caso cancelled não fica em coluna de outro desfecho');
 
   -- `ccaStageTone` (ccaStage.ts:63-76) só entende chave semântica, token ou
   -- família de paleta. Hex cai em `neutral` calado — o valor gravado tem de ser

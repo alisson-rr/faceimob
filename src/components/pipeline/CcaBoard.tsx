@@ -6,15 +6,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { brl, num } from "@/lib/format";
 import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
-import type { CcaDeal, CcaStage } from "./ccaData";
+import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
 
 /** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
 const POR_COLUNA = 200;
+
+/** "2 vezes pela Esteira Ágil": a mesma frase no nome acessível e na dica do selo. */
+const vezesPela = (n: number, esteira: string) => `${n} ${n === 1 ? "vez" : "vezes"} pela ${esteira}`;
 
 interface Props {
   stages: CcaStage[];
   deals: CcaDeal[];
   canAct: boolean;
+  /** Envios por esteira, por negócio (`cca_send_counts`). Ausente: sem selos. */
+  sendCounts?: Map<string, CcaSendCount>;
   /** Abre o negócio no `DealDetailModal` — o MESMO editor do Pipeline. */
   onOpen: (deal: CcaDeal) => void;
   onMove: (deal: CcaDeal, stage: CcaStage) => void;
@@ -28,7 +33,7 @@ interface Props {
  * `opacity-0 group-hover:opacity-100` com 8 px de fonte: invisíveis no toque,
  * inalcançáveis pelo teclado e abaixo do piso de tamanho (achados X02 e X07).
  */
-export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeveloper }: Props) {
+export function CcaBoard({ stages, deals, canAct, sendCounts, onOpen, onMove, onSubmitToDeveloper }: Props) {
   /**
    * Quantos cartões cada coluna desenha. Com a esteira inteira (7.560 casos na
    * homologação) eram ~280 mil nós e 15,7 s de montagem no teste; o PostgREST
@@ -71,7 +76,13 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
                 </div>
 
                 <div className="max-h-[calc(100vh-380px)] min-h-[200px] space-y-2 overflow-y-auto p-2">
-                  {stageDeals.slice(0, limite).map((deal) => (
+                  {stageDeals.slice(0, limite).map((deal) => {
+                    const envio = sendCounts?.get(deal.dealId);
+                    const enviado = [
+                      envio?.agil ? vezesPela(envio.agil, "Esteira Ágil") : "",
+                      envio?.virar ? vezesPela(envio.virar, "Análise p/ virar negócio") : "",
+                    ].filter(Boolean).join(" e ");
+                    return (
                     <article key={deal.caseId} className="space-y-2 rounded-xl border border-border bg-card p-3">
                       {/* Mesmo desenho do `DealCard`: o corpo clicável é IRMÃO
                           do rodapé com o Select e o botão, nunca o pai deles —
@@ -91,7 +102,8 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
                         aria-label={`Abrir o negócio de ${deal.client}`
                           + `${deal.developer ? ` — ${deal.developer}` : ""}. `
                           + `Empreendimento ${deal.project || "não informado"}, `
-                          + `corretor ${deal.broker || "não informado"}, VGV ${brl(deal.value)}.`}
+                          + `corretor ${deal.broker || "não informado"}, VGV ${brl(deal.value)}.`
+                          + (enviado ? ` Enviado ${enviado}.` : "")}
                         onClick={() => onOpen(deal)}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter" && event.key !== " ") return;
@@ -101,7 +113,22 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
                         className="block cursor-pointer space-y-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-xs font-semibold">{deal.client}</h3>
+                          {/* Selos por CPF do titular: dentro do `role="button"`
+                              eles são presentacionais, então a contagem também
+                              está no `aria-label` acima. */}
+                          <div className="flex min-w-0 flex-wrap items-center gap-1">
+                            <h3 className="text-xs font-semibold">{deal.client}</h3>
+                            {envio?.agil ? (
+                              <Badge variant="secondary" className="px-1.5 text-xs tabular-nums" title={`Enviado ${vezesPela(envio.agil, "Esteira Ágil")}`}>
+                                Ágil {envio.agil}
+                              </Badge>
+                            ) : null}
+                            {envio?.virar ? (
+                              <Badge variant="secondary" className="px-1.5 text-xs tabular-nums" title={`Enviado ${vezesPela(envio.virar, "Análise p/ virar negócio")}`}>
+                                Virar {envio.virar}
+                              </Badge>
+                            ) : null}
+                          </div>
                           {deal.developer && <Badge variant="outline" className="text-xs">{deal.developer}</Badge>}
                         </div>
 
@@ -137,7 +164,8 @@ export function CcaBoard({ stages, deals, canAct, onOpen, onMove, onSubmitToDeve
                         </>
                       )}
                     </article>
-                  ))}
+                    );
+                  })}
 
                   {stageDeals.length > limite && (
                     <Button

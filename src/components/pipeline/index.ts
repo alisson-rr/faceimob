@@ -17,6 +17,7 @@ export { DealsBoard } from "./DealsBoard";
 export { DealsKanban } from "./DealsKanban";
 export { DealsTable } from "./DealsTable";
 export { DealsToolbar } from "./DealsToolbar";
+export { DealStatusSettingsDialog } from "./DealStatusSettingsDialog";
 export { LoseDealDialog } from "./LoseDealDialog";
 export { PipelineAnalytics } from "./PipelineAnalytics";
 export { ReopenDealDialog } from "./ReopenDealDialog";
@@ -59,7 +60,7 @@ export {
   type PipelineStage,
 } from "./stages";
 export {
-  FACEIMOB_STATUSES, STATUS_TONE_CLASS, faceimobStatusRank, faceimobStatusTone,
-  statusChoices, type FaceimobStatus,
+  STATUS_TONE_CLASS, faceimobStatusRank, faceimobStatusTone, groupChoices, statusChoices,
+  statusGroupCode, statusGroupLabel, statusGroupOf, statusLabel, type StatusOption,
 } from "./statuses";
 export { canWriteDeals } from "./writeAccess";

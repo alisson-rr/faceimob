@@ -48,6 +48,19 @@ const nomeCliente = (prefixo: string) => `${prefixo} ${marca}`;
 /** Status de partida: nenhum dos quatro rótulos de perda. */
 const STATUS_INICIAL = "16. PENDENTE";
 
+/**
+ * Nome exibido de um Status 2. Os Selects mostram o `label` do catálogo (0149);
+ * o banco continua gravando o texto com o número, que é o que as asserções de
+ * `deals` conferem.
+ */
+async function nomeDoStatus(value: string): Promise<string> {
+  const [linha] = await db.select<{ label: string }>(
+    `deal_statuses?value=eq.${encodeURIComponent(value)}&select=label`,
+  );
+  if (!linha) throw new Error(`Status 2 "${value}" não está no catálogo`);
+  return linha.label;
+}
+
 let etapaPerdido = "";
 
 test.beforeAll(async () => {
@@ -132,13 +145,13 @@ test.describe("pipeline · perder negócio", () => {
     const statusDaLinha = linhaDoNegocio(page, cliente).getByRole("combobox");
 
     // Caminho de entrada nº 2: escolher um rótulo de perda no Status 2 da linha.
-    await pedirStatus(statusDaLinha, "18. QUEDA");
-    await expect(seletor(confirmacao(page), "Motivo")).toContainText("18. QUEDA");
+    await pedirStatus(statusDaLinha, await nomeDoStatus("18. QUEDA"));
+    await expect(seletor(confirmacao(page), "Motivo")).toContainText(await nomeDoStatus("18. QUEDA"));
 
     // Mexer no estado local ANTES de cancelar é o caso que costuma escapar.
     // "19. REPROVADO" de propósito: não é o motivo padrão do diálogo, então
     // reencontrá-lo depois provaria estado vazado.
-    await escolher(seletor(confirmacao(page), "Motivo"), "19. REPROVADO");
+    await escolher(seletor(confirmacao(page), "Motivo"), await nomeDoStatus("19. REPROVADO"));
     await campo(confirmacao(page), "Observação (opcional)").fill("mudei de ideia");
     await confirmacao(page).getByRole("button", { name: /^cancelar$/i }).click();
     await expect(confirmacao(page)).toBeHidden();
@@ -148,7 +161,7 @@ test.describe("pipeline · perder negócio", () => {
 
     // O Status 2 da linha volta ao que está no banco: o Select é controlado pelo
     // negócio, então o rótulo de perda que abriu o diálogo não fica na tela.
-    await expect(statusDaLinha).toContainText(STATUS_INICIAL);
+    await expect(statusDaLinha).toContainText(await nomeDoStatus(STATUS_INICIAL));
 
     // E reabrir começa do zero — nada do que foi digitado sobreviveu ao
     // cancelamento. Sem preset o motivo volta a vazio, não ao que foi mexido.
@@ -166,7 +179,7 @@ test.describe("pipeline · perder negócio", () => {
     await buscar(page, cliente);
     await botaoPerder(page, cliente).click();
 
-    await escolher(seletor(confirmacao(page), "Motivo"), "18. QUEDA");
+    await escolher(seletor(confirmacao(page), "Motivo"), await nomeDoStatus("18. QUEDA"));
     await campo(confirmacao(page), "Observação (opcional)").fill(observacao);
     await confirmacao(page).getByRole("button", { name: /encerrar negócio/i }).click();
     await expect(confirmacao(page)).toBeHidden();
@@ -203,12 +216,12 @@ test.describe("pipeline · perder negócio", () => {
 
     await abrirPipeline(page);
     await buscar(page, cliente);
-    await pedirStatus(linhaDoNegocio(page, cliente).getByRole("combobox"), "17. DISTRATO");
+    await pedirStatus(linhaDoNegocio(page, cliente).getByRole("combobox"), await nomeDoStatus("17. DISTRATO"));
 
     // A regressão que este teste guarda: antes da Tarefa H o rótulo de perda
     // escolhido aqui ia direto para `deals`, sem ninguém confirmar nada.
     await expect(confirmacao(page)).toBeVisible();
-    await expect(seletor(confirmacao(page), "Motivo")).toContainText("17. DISTRATO");
+    await expect(seletor(confirmacao(page), "Motivo")).toContainText(await nomeDoStatus("17. DISTRATO"));
     await page.waitForTimeout(JANELA_DE_ESCRITA);
     expect(await estadoDe(cliente)).toEqual(antes);
 
@@ -241,13 +254,13 @@ test.describe("pipeline · perder negócio", () => {
 
     await abrirPipeline(page);
     await buscar(page, cliente);
-    await pedirStatus(linhaDoNegocio(page, cliente).getByRole("combobox"), "19. REPROVADO");
+    await pedirStatus(linhaDoNegocio(page, cliente).getByRole("combobox"), await nomeDoStatus("19. REPROVADO"));
 
     await expect(confirmacao(page)).toBeVisible();
     // E o motivo chega escolhido: quem clicou na tabela já escolheu. Antes o
     // preset era testado com `normalizeStatus`, que devolve null para
     // "REPROVADO" — o diálogo trocaria o motivo por "17. DISTRATO" sem avisar.
-    await expect(seletor(confirmacao(page), "Motivo")).toContainText("19. REPROVADO");
+    await expect(seletor(confirmacao(page), "Motivo")).toContainText(await nomeDoStatus("19. REPROVADO"));
 
     await page.waitForTimeout(JANELA_DE_ESCRITA);
     expect(await estadoDe(cliente), "escolher REPROVADO na tabela não pode gravar nada").toEqual(antes);

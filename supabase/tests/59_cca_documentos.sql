@@ -157,7 +157,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id);
+  perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê completo para conferência');
   reset role;
 
   -- Dossiê enviado deixa de ser editável pelo corretor: apagar não faz nada.
@@ -202,10 +202,15 @@ begin
     'rótulo da esteira não é apagado em análise, e a recusa chega em pt-BR (P0001)');
 
   -- ── 4. o desfecho aprovado escreve Status 2 ──────────────────────────────
+  -- Desde a 0150 o analista move pela RPC, com mensagem (o update direto é
+  -- recusado), e o Status 2 vem da coluna: "APROVADO TOTAL" grava o mesmo
+  -- "09. APROV. TOTAL" que o de-para por status gravava.
   perform set_config('request.jwt.claims',
     json_build_object('sub', ana::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  update public.cca_cases set status = 'approved', decided_at = now() where id = v_case;
+  perform public.move_cca_case(v_case,
+    (select id from public.cca_stages where name = 'APROVADO TOTAL' and active),
+    'Crédito aprovado');
   reset role;
 
   select status_detail into v_label from public.deals where id = v_deal.id;
@@ -225,17 +230,19 @@ begin
   reset role;
 
   -- ── 1. o CCA devolve: a conferência do gerente reabre ─────────────────────
+  -- Pela coluna PENDENTE, que grava "16. PENDENTE" (0150). "RET. ESTEIRA AGIL"
+  -- segue sendo o rótulo da devolução sem coluna ligada, coberto no 18.
   perform set_config('request.jwt.claims',
     json_build_object('sub', ana::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  update public.cca_cases
-     set status = 'pending_documents', decision_notes = 'Falta comprovante legível'
-   where id = v_case;
+  perform public.move_cca_case(v_case,
+    (select id from public.cca_stages where name = 'PENDENTE' and active),
+    'Falta comprovante legível');
   reset role;
 
   select status_detail, document_review_status into v_label, v_status
     from public.deals where id = v_deal.id;
-  perform pg_temp.check59(v_label = 'RET. ESTEIRA AGIL' and v_status = 'returned',
+  perform pg_temp.check59(v_label = '16. PENDENTE' and v_status = 'returned',
     'devolução do CCA reabre a conferência do gerente em vez de travar o corretor');
 
   select count(*) into v_qtd from public.notifications
@@ -251,7 +258,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id);
+  perform public.submit_deal_for_manager_review(v_deal.id, 'Comprovante legível anexado');
   reset role;
 
   select document_review_status into v_status from public.deals where id = v_deal.id;

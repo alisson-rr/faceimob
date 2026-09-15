@@ -128,6 +128,11 @@ begin
   -- que aceita apenas https de serviço de push conhecido; INSERT/UPDATE direto
   -- transformaria a edge em cliente HTTP de uma URL escolhida pelo usuário.
   -- O dono segue lendo e apagando a própria linha (logout).
+  --
+  -- `cca_cases` (0150): caso só nasce por `submit_deal_for_analysis`, depois
+  -- da conferência do gerente. Com INSERT e DELETE, quem tem `cca.review`
+  -- apagava o caso e o recriava já decidido, sem mensagem, sem aviso e sem
+  -- passar pelo gerente. A tela segue lendo e gravando `analysis`.
   select string_agg(c.relname, ', ' order by c.relname)
     into sem_grant
   from pg_class c
@@ -138,7 +143,7 @@ begin
       has_table_privilege('authenticated', c.oid, 'SELECT')
       and (
         has_table_privilege('authenticated', c.oid, 'INSERT')
-        or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions',
+        or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions', 'cca_cases',
                          'meta_ad_accounts', 'meta_sync_runs', 'meta_campaign_insights_daily',
                          'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts')
       )

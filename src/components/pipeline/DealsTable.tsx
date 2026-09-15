@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
 import { brokerTextClass, dealAgeTone, developerColor, type AgeTone, type ChartToken } from "@/lib/tone";
-import { bareStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
+import { StatusBadge } from "@/components/shared";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { DOCUMENT_REVIEW_META } from "./review";
-import { faceimobStatusTone, statusChoices, STATUS_TONE_CLASS } from "./statuses";
+import { faceimobStatusTone, statusChoices, statusGroupLabel, STATUS_TONE_CLASS } from "./statuses";
 import { dealLock } from "./guards";
 import { offDistratoBlocked } from "./useDealActions";
 import { dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
@@ -62,9 +63,10 @@ interface Props {
  *
  * Duas mudanças de fundo em relação ao que existia:
  *
- * 1. A coluna **Status** mostra a etapa de verdade (`deal.stage_label`, vindo de
+ * 1. A coluna **Etapa** mostra a etapa de verdade (`deal.stage_label`, vindo de
  *    `pipeline_stages`). Antes era o literal `PROPOSTA {mês}` para todo negócio,
- *    inclusive para os fechados e perdidos (achado F09).
+ *    inclusive para os fechados e perdidos (achado F09). Chamava-se "Status", e
+ *    com as colunas Status 1 e Status 2 ao lado o nome passou a confundir.
  * 2. **Perder o negócio** deixou de ser um Switch de um clique. Era `scale-75`,
  *    gravava `stage=lost` na hora e a própria tela avisava que não dá para
  *    reabrir (achado F14). Agora é botão nomeado que abre confirmação com motivo.
@@ -73,6 +75,7 @@ export function DealsTable({
   deals, canWrite, closedMonths, onOpen, onStatusChange, onScheduleVisit, onLose, onReopen,
 }: Props) {
   const { isAdmin, can } = useAuth();
+  const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const [page, setPage] = useState(1);
   // A ordem era fixa (construtora, depois catálogo de Status 2): não dava para
   // perguntar "maiores VGV" nem "parados há mais tempo" sem sair da tela.
@@ -82,8 +85,8 @@ export function DealsTable({
   // filtrados e ordenados"): reordenar os 7.579 de novo a cada tecla da busca
   // era trabalho repetido.
   const ordenados = useMemo(
-    () => (sort.key === "padrao" ? deals : sortDealsBy(deals, sort.key, sort.asc)),
-    [deals, sort],
+    () => (sort.key === "padrao" ? deals : sortDealsBy(deals, sort.key, sort.asc, catalog)),
+    [deals, sort, catalog],
   );
 
   // Filtrar estando na página 3 deixava o operador olhando para a última página
@@ -142,11 +145,12 @@ export function DealsTable({
           <thead>
             <tr className="border-b border-border text-muted-foreground">
               <th scope="col" className="w-3 p-0"><span className="sr-only">Idade</span></th>
-              <th scope="col" className="p-2 text-left font-medium">Status</th>
+              <th scope="col" className="p-2 text-left font-medium">Etapa</th>
               {colunaOrdenavel("Construtora", "developer")}
               <th scope="col" className="p-2 text-left font-medium">Empreendimento</th>
               <th scope="col" className="p-2 font-medium">Unidade</th>
               {colunaOrdenavel("Dias", "days", "text-center")}
+              <th scope="col" className="p-2 text-left font-medium">Status 1</th>
               <th scope="col" className="p-2 text-left font-medium">Status 2</th>
               <th scope="col" className="p-2 text-left font-medium">Conferência</th>
               {colunaOrdenavel("Cliente", "client")}
@@ -160,6 +164,7 @@ export function DealsTable({
             {rows.map((deal) => {
               const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
               const status = deal.status || "PROPOSTA";
+              const grupo = statusGroupLabel(catalog, deal.status_group_id);
               // Motivo da trava no NOME acessível, não em `title`: o Button do
               // kit tem `disabled:pointer-events-none`, então a dica nativa
               // nunca abre em botão desabilitado — era explicação morta.
@@ -224,6 +229,12 @@ export function DealsTable({
                       {deal.days_in_pipeline}
                     </span>
                   </td>
+                  {/* Status 1 é leitura aqui: ele acompanha o Status 2 ao lado, e
+                      a troca à mão fica no editor do negócio, onde a permissão
+                      tem frase. Sem grupo = Status 2 fora do catálogo. */}
+                  <td className="whitespace-nowrap p-2">
+                    {grupo ? <StatusBadge>{grupo}</StatusBadge> : <span className="text-muted-foreground">—</span>}
+                  </td>
                   {/* O Select vive dentro da linha clicável: sem barrar a subida
                       do evento, abrir a lista de Status 2 abriria o negócio
                       junto. Vale para a célula toda — o que entrar aqui depois
@@ -242,17 +253,17 @@ export function DealsTable({
                         aria-label={`Status 2 de ${deal.client}${motivo}`}
                         className={cn(
                           "h-7 min-w-[150px] gap-1 whitespace-nowrap rounded border-0 px-2 py-0 text-xs font-bold",
-                          STATUS_TONE_CLASS[faceimobStatusTone(status)],
+                          STATUS_TONE_CLASS[faceimobStatusTone(catalog, status)],
                         )}
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="max-h-80">
                         {/* `value` continua sendo o valor gravado em
-                            `status_detail`; só o texto perde o prefixo numerado.
-                            O badge do gatilho é `<SelectValue/>`, que espelha o
-                            filho do item escolhido — ele vem junto. */}
-                        {statusChoices(status).map((option) => {
+                            `status_detail`; o texto é o nome exibido do
+                            catálogo. O badge do gatilho é `<SelectValue/>`, que
+                            espelha o filho do item escolhido — ele vem junto. */}
+                        {statusChoices(catalog, status).map((option) => {
                           // OFF e distrato são do administrador (10/09/2026), e
                           // o resto do catálogo continua de quem edita o
                           // negócio. Desabilitados COM o motivo no texto, como
@@ -264,20 +275,20 @@ export function DealsTable({
                           // escolhido não é escrita, e `<SelectValue/>` espelha
                           // os filhos do item — o "(só administrador...)" iria
                           // parar dentro do badge colorido da linha.
-                          const semPermissao = option.label === status
+                          const semPermissao = option.value === status
                             ? null
-                            : offDistratoBlocked(can, option.label);
+                            : offDistratoBlocked(can, option.value);
                           return (
                             <SelectItem
-                              key={option.label} value={option.label} className="text-xs"
+                              key={option.value} value={option.value} className="text-xs"
                               disabled={Boolean(semPermissao)}
                             >
-                              {/* O rótulo no próprio `<span>` e o motivo em
-                                  outro: o texto exibido continua sendo só
-                                  `bareStatus(option.label)` — é o que o
+                              {/* O nome no próprio `<span>` e o motivo em outro:
+                                  o texto exibido continua sendo só
+                                  `option.label` — é o que o
                                   `statusLabels.test.ts` lê daqui para garantir
-                                  que o número não volta para a tela. */}
-                              <span>{bareStatus(option.label)}</span>
+                                  que o valor gravado não volta para a tela. */}
+                              <span>{option.label}</span>
                               {semPermissao && (
                                 <span className="text-muted-foreground"> (só administrador e sócio)</span>
                               )}

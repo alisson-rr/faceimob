@@ -15,12 +15,11 @@ import { useDealActions } from "./useDealActions";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@/components/ui/sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ canEnterStage: () => true, isAdmin: true, can: () => true }),
 }));
-vi.mock("@/integrations/supabase/documents", () => ({ submitDealForManagerReview: vi.fn() }));
 vi.mock("./data", () => ({
   updateDeal: vi.fn(),
   useCanExitStage: () => () => true,
@@ -29,6 +28,7 @@ vi.mock("./data", () => ({
 
 const proposta: PipelineStage = { id: "s-proposal", code: "proposal", label: "Proposta", position: 2 };
 const visita: PipelineStage = { id: "s-visit", code: "visit_scheduled", label: "Visita agendada", position: 3 };
+const analise: PipelineStage = { id: "s-analysis", code: "under_analysis", label: "Em análise", position: 4 };
 const fechado: PipelineStage = { id: "s-closed", code: "closed", label: "Fechado", position: 7 };
 
 // Cast: o hook e `blockedMoveReason` só leem estes campos do negócio.
@@ -42,7 +42,7 @@ const soComGerente = { ...negocio, broker1_id: null, manager1_id: "g1" } as Lega
 let actions: ReturnType<typeof useDealActions>;
 function Harness() {
   actions = useDealActions({
-    stages: [proposta, visita, fechado], closedMonths: [], onNeedsLossConfirmation: () => undefined,
+    stages: [proposta, visita, analise, fechado], closedMonths: [], onNeedsLossConfirmation: () => undefined,
   });
   return null;
 }
@@ -54,6 +54,7 @@ describe("useDealActions · avisos de etapa e status", () => {
   beforeEach(async () => {
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.info).mockClear();
     vi.mocked(updateDeal).mockReset();
     container = document.body.appendChild(document.createElement("div"));
     root = createRoot(container);
@@ -88,6 +89,33 @@ describe("useDealActions · avisos de etapa e status", () => {
 
     expect(toast.success, "a venda sem card ficou sem aviso nenhum")
       .toHaveBeenCalledWith("Negócio movido para Fechado", { duration: 2500 });
+  });
+
+  // O envio ao gerente exige mensagem e esteira (0150), que o arraste não pede:
+  // chamar a RPC daqui só produzia a recusa "Escreva a mensagem do envio".
+  it("arrastar para Em análise sem conferência orienta o envio pela aba Anexos e não grava", async () => {
+    const semConferencia = { ...negocio, document_review_status: "draft" } as LegacyDealRecord;
+    await act(async () => { await actions.moveDeal(semConferencia, analise); });
+
+    expect(updateDeal, "o arraste não pode mover nem enviar").not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledWith("Envie pela aba Anexos", {
+      description: expect.stringContaining("«Enviar ao gerente» na aba Anexos, com a mensagem do envio"),
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  // Com a conferência pendente a aba Anexos esconde o envio: mandar o corretor
+  // usar «Enviar ao gerente» apontava para um botão que não está na tela.
+  it("arrastar para Em análise com a conferência pendente diz que falta o gerente, sem mandar reenviar", async () => {
+    const pendente = { ...negocio, document_review_status: "pending" } as LegacyDealRecord;
+    await act(async () => { await actions.moveDeal(pendente, analise); });
+
+    expect(updateDeal).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalledWith("Aguardando o gerente", {
+      description: expect.stringContaining("já aguarda conferência do gerente"),
+    });
+    expect(toast.info).not.toHaveBeenCalledWith("Envie pela aba Anexos", expect.anything());
   });
 
   it("na recusa do banco mostra erro traduzido e nenhum sucesso", async () => {

@@ -53,6 +53,20 @@ export function dealLock(
 }
 
 /**
+ * O negócio está aberto e ATRÁS desta etapa? Só aí um efeito colateral pode
+ * avançá-lo no funil.
+ *
+ * Gravar a etapa sem esta condição anda para trás ou ressuscita: `deals_guard_
+ * stage` põe `outcome = 'open'` ao entrar numa etapa aberta, então um negócio
+ * em Contrato, Fechado ou Perdido voltava para a etapa de destino e a venda
+ * saía do VGV. Vale para agendar visita e para aprovar o caso na CCA.
+ */
+export const isBehindStage = (
+  deal: Pick<LegacyDealRecord, "active" | "stage_position">,
+  stage: Pick<PipelineStage, "position"> | null | undefined,
+): boolean => deal.active && Boolean(stage) && deal.stage_position < (stage?.position ?? 0);
+
+/**
  * Motivo pelo qual a movimentação seria recusada, ou `null` se ela passa.
  *
  * Uma frase só, em pt-BR, para o mesmo toast que já existe — e antes da
