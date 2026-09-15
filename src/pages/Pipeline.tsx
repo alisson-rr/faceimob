@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { toast } from "@/hooks/use-toast";
-import { closableMonths, compareMonth, currentMonthBase } from "@/lib/dealStatus";
+import { compareMonth, currentMonthBase } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader, StatusBadge } from "@/components/shared";
 import DealDetailModal from "@/components/DealDetailModal";
@@ -14,7 +14,7 @@ import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
 import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
-import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { last30DaysRange, saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
@@ -23,13 +23,16 @@ import {
   ScheduleVisitDialog,
   applyDealFilters, canWriteDeals, dealMonth, dealRangeError, dealRequiredError,
   baixarPlanilhaDeNegocios, findDuplicateDeal, hasActiveFilter, sortDeals,
-  useClosedMonths, useDeals, useDevelopers, useInvalidateDeals, usePipelineRealtime,
+  useClosedMonths, useDevelopers, useInvalidateDeals, usePipelineRealtime,
   useOpenSeason, usePeople, usePipelineStages, useStagePermissions,
   type DealFilterState,
 } from "@/components/pipeline";
 // Direto do módulo, e não do barril: o `index.ts` de `components/pipeline` é de
 // outra frente nesta rodada. Mesmo caminho que o `useDealActions` abaixo já usa.
 import { ALL, MY_TEAM, teamProfileIds } from "@/components/pipeline/filters";
+import { listActiveDealsWithUnit, useDealsRange } from "@/components/pipeline/data";
+import { periodoValido } from "@/components/pipeline/ccaData";
+import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
 import { useDealActions } from "@/components/pipeline/useDealActions";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
@@ -101,7 +104,11 @@ export default function Pipeline() {
   // perfil reabre pelo card de game do topo ("Ver mais").
   const painel = usePainelDoCorretor();
 
-  const dealsQuery = useDeals();
+  // `null` = ninguém mexeu no período: valem os últimos 30 dias, recalculados a
+  // cada render para a virada do dia não congelar o "até hoje".
+  const [periodoEscolhido, setPeriodoEscolhido] = useState<DealPeriod | null>(null);
+  const periodo = periodoEscolhido ?? last30DaysRange();
+  const dealsQuery = useDealsRange(periodo.from, periodo.to);
   const stagesQuery = usePipelineStages();
   const peopleQuery = usePeople();
   const developersQuery = useDevelopers();
@@ -173,7 +180,7 @@ export default function Pipeline() {
       && (person.roles.includes("manager") || person.roles.includes("director"))),
     [people],
   );
-  /** Meses presentes nos negócios — o filtro de mês era campo de texto livre. */
+  /** Meses presentes nos negócios do período — o filtro de mês era campo de texto livre. */
   // `compareMonth` e não `sort()` de string: "12/2025" vem depois de "01/2026"
   // na ordem alfabética, e a lista abriria com o mês errado no topo.
   const months = useMemo(
@@ -186,8 +193,8 @@ export default function Pipeline() {
   // próxima tecla pode interromper, em vez de travar a digitação.
   const filtrosAdiados = useDeferredValue(filters);
   const visible = useMemo(
-    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam), catalog),
-    [deals, filtrosAdiados, myTeam, catalog],
+    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam)),
+    [deals, filtrosAdiados, myTeam],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
@@ -226,20 +233,15 @@ export default function Pipeline() {
   const seasonMonth = openSeason.data
     ? `${openSeason.data.period_start.slice(5, 7)}/${openSeason.data.period_start.slice(0, 4)}`
     : null;
-  // O botão só morre quando NÃO SOBRA mês para fechar. Enquanto ele desligava
-  // no "mês da temporada já fechado", 08/2026 — onde estão 26 dos 32 negócios —
-  // não tinha como ser congelado por tela nenhuma.
-  const fechaveis = useMemo(
-    () => closableMonths(months, closed, seasonMonth),
-    [months, closed, seasonMonth],
-  );
-
   // O cabeçalho e a régua de contadores afirmavam sobre o banco ANTES de ler o
   // banco: com as consultas em voo, `visible` é `[]` e o `<h1>` dizia "0
   // negócio(s) ativo(s) · R$ 0 em VGV", a régua "0 ativos" e o botão do admin
   // "Todos os meses fechados" — o oposto do que o fechamento se propôs a
   // consertar. É o mesmo achado A01 que o `DealsBoard` corrigiu, um nível acima.
-  const carregando = dealsQuery.isPending || closedMonths.isPending || openSeason.isPending;
+  // `isPlaceholderData`: trocando o período, a lista anterior fica na tela até a
+  // nova chegar (ou a data ficar completa), e os números dela não são do período novo.
+  const carregando = dealsQuery.isPending || dealsQuery.isPlaceholderData
+    || closedMonths.isPending || openSeason.isPending;
   const falhou = Boolean(dealsQuery.error ?? closedMonths.error);
 
   const patchFilters = (patch: Partial<DealFilterState>) =>
@@ -295,19 +297,16 @@ export default function Pipeline() {
                 )}
                 {/* Discreto de propósito: é ação rara do admin, e o âmbar fica
                     reservado para o botão principal de cada tela. */}
+                {/* Quais meses ainda dá para fechar, o próprio diálogo lê do
+                    banco: a lista desta tela é só o período filtrado, e decidir
+                    por ela esconderia o mês antigo que ficou aberto. */}
                 {isAdmin && (
                   <Button
                     variant="outline" size="sm"
-                    disabled={carregando || falhou || fechaveis.length === 0}
+                    disabled={closedMonths.isPending || openSeason.isPending || Boolean(closedMonths.error)}
                     onClick={() => setCloseMonthOpen(true)}
                   >
-                    <Target className="mr-1 h-4 w-4" />
-                    {/* "Todos os meses fechados" é uma AFIRMAÇÃO sobre o banco:
-                        só depois da resposta. Enquanto as consultas estão em voo
-                        o rótulo continua "Fechar mês", desabilitado. */}
-                    {!carregando && !falhou && fechaveis.length === 0
-                      ? "Todos os meses fechados"
-                      : "Fechar mês"}
+                    <Target className="mr-1 h-4 w-4" /> Fechar mês
                   </Button>
                 )}
                 {/* Reabrir só aparece quando há mês fechado — e só para o admin,
@@ -384,6 +383,10 @@ export default function Pipeline() {
               pendingReviews={pendingReviews}
               onFilterPendingReviews={() => patchFilters({ documentReview: "pending" })}
               countsUnknown={carregando || falhou}
+              period={periodo}
+              onPeriod={setPeriodoEscolhido}
+              onLast30Days={() => setPeriodoEscolhido(null)}
+              periodIncomplete={!periodoValido({ de: periodo.from, ate: periodo.to })}
             />
 
             <DealsBoard
@@ -466,7 +469,11 @@ export default function Pipeline() {
             // aviso: dois negócios, dois rateios e o VGV contado duas vezes.
             // `P0001` porque a mensagem é nossa e em pt-BR — é o contrato que
             // `describeError` usa para os `raise exception` das migrations.
-            const repetido = findDuplicateDeal(deals, updated);
+            // A lista da tela é só o período, e o repetido pode ser mais antigo
+            // que ele: os candidatos (ativos, mesma unidade) vêm do banco.
+            const repetido = !updated.id && updated.unit?.trim()
+              ? findDuplicateDeal(await listActiveDealsWithUnit(updated.unit), updated)
+              : null;
             if (repetido) {
               throw dbError("deals", {
                 code: "P0001",
@@ -512,8 +519,7 @@ export default function Pipeline() {
       {closeMonthOpen && (
         <CloseMonthDialog
           season={openSeason.data ?? null}
-          fallbackMonth={seasonMonth ?? months[0] ?? currentMonthBase()}
-          deals={deals}
+          fallbackMonth={seasonMonth ?? currentMonthBase()}
           closedMonths={closed}
           onClose={() => setCloseMonthOpen(false)}
         />
@@ -522,7 +528,6 @@ export default function Pipeline() {
       {reopenMonthOpen && (
         <ReopenMonthDialog
           closedMonths={closed}
-          deals={deals}
           onClose={() => setReopenMonthOpen(false)}
         />
       )}

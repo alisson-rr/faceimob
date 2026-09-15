@@ -4,7 +4,7 @@ import {
   ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealMonth, hasActiveFilter,
   inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds,
 } from "./filters";
-import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
+import { GRUPOS } from "./statusCatalog.fixture";
 
 /**
  * Trava do participante por `id` (achado F06).
@@ -187,20 +187,23 @@ describe("filtro de Status 1", () => {
 });
 
 describe("ordenação", () => {
-  it("agrupa por construtora e depois pela ordem do catálogo de status", () => {
+  it("o negócio criado por último fica em cima, e o empate sai pelo id", () => {
+    // Pedido do dono em 15/09/2026. O formato do instante varia (o PostgREST
+    // corta os zeros da fração), então a comparação é por instante, não por texto.
     const linhas = [
-      deal({ id: "a", developer: "Tenda", status: "17. DISTRATO" }),
-      deal({ id: "b", developer: "Cyrela", status: "RÓTULO FORA DO CATÁLOGO" }),
-      deal({ id: "c", developer: "Cyrela", status: "16. PENDENTE" }),
-      deal({ id: "d", developer: "Cyrela", status: "02. ASS. BANCO" }),
+      deal({ id: "a", created_at: "2026-08-01T12:00:00+00:00" }),
+      deal({ id: "c", created_at: "2026-09-15T09:00:00.5+00:00" }),
+      deal({ id: "b", created_at: "2026-09-15T09:00:00.500+00:00" }),
+      deal({ id: "d", created_at: "2026-09-15T08:59:59.99+00:00" }),
     ];
-    expect(sortDeals(linhas, catalogo).map((row) => row.id)).toEqual(["d", "c", "b", "a"]);
-    // Sem catálogo carregado, só a construtora ordena — e a ordem é estável.
     expect(sortDeals(linhas).map((row) => row.id)).toEqual(["b", "c", "d", "a"]);
   });
 
   it("não muda o array recebido", () => {
-    const linhas = [deal({ id: "a", developer: "Z" }), deal({ id: "b", developer: "A" })];
+    const linhas = [
+      deal({ id: "a", created_at: "2026-08-01T00:00:00Z" }),
+      deal({ id: "b", created_at: "2026-09-01T00:00:00Z" }),
+    ];
     sortDeals(linhas);
     expect(linhas.map((row) => row.id)).toEqual(["a", "b"]);
   });

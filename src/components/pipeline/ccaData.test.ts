@@ -1,5 +1,47 @@
-import { describe, expect, it } from "vitest";
-import { ccaColumnOf, ccaColumnStatusAllowed, type CcaStage } from "./ccaData";
+import { describe, expect, it, vi } from "vitest";
+import {
+  ccaColumnOf, ccaColumnStatusAllowed, loadCcaBoard, periodoValido, ultimos30Dias, type CcaStage,
+} from "./ccaData";
+
+const h = vi.hoisted(() => ({
+  urls: [] as URL[],
+  listLegacyDeals: vi.fn(async (_signal?: AbortSignal, opts?: { ids?: string[] }) =>
+    (opts?.ids ?? []).map((id) => ({ id, client: `Cliente ${id}`, developer: "", project: "", broker1: "", deal_value: 0, notes: "" }))),
+}));
+
+// Cliente do Supabase de verdade atrás de um `fetch` falso: o que se confere é
+// a URL que iria ao PostgREST.
+vi.mock("@/integrations/supabase/client", async () => {
+  const { createClient } = await import("@supabase/supabase-js");
+  const tabelas: Record<string, unknown[]> = {
+    cca_stages: [{ id: "s1", name: "EM ANÁLISE", color: "info", position: 1, status: "under_review", active: true, deal_status_id: null }],
+    // Como o banco devolve com `submitted_at desc`: o mais recente primeiro.
+    cca_cases: [
+      { id: "k2", deal_id: "d2", status: "under_review", stage_id: "s1", decision_notes: null },
+      { id: "k1", deal_id: "d1", status: "under_review", stage_id: "s1", decision_notes: null },
+    ],
+  };
+  const fetchFalso = async (input: RequestInfo | URL) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    h.urls.push(url);
+    const linhas = tabelas[url.pathname.replace("/rest/v1/", "")] ?? [];
+    return new Response(JSON.stringify(linhas), {
+      status: 200,
+      headers: { "content-type": "application/json", "content-range": `0-${linhas.length - 1}/${linhas.length}` },
+    });
+  };
+  return {
+    supabase: createClient("http://fake.local", "anon", {
+      global: { fetch: fetchFalso },
+      auth: { persistSession: false, autoRefreshToken: false },
+    }),
+  };
+});
+
+vi.mock("@/integrations/supabase/newSchema", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/integrations/supabase/newSchema")>()),
+  listLegacyDeals: h.listLegacyDeals,
+}));
 
 const coluna = (id: string, status: CcaStage["status"], position: number): CcaStage => ({
   id, name: id, color: "info", position, status,
@@ -47,5 +89,37 @@ describe("ccaColumnStatusAllowed · o que a coluna pode gravar", () => {
     ]) {
       expect(ccaColumnStatusAllowed(valor), valor).toBe(true);
     }
+  });
+});
+
+describe("período da esteira", () => {
+  it("abre em hoje-30 até hoje no calendário de São Paulo, não no UTC", () => {
+    // 02:00 UTC do dia 15 ainda é noite do dia 14 em São Paulo.
+    expect(ultimos30Dias(new Date("2026-09-15T02:00:00Z"))).toEqual({ de: "2026-08-15", ate: "2026-09-14" });
+  });
+
+  it("só vale completo e em ordem — o meio da digitação do ano não vira consulta", () => {
+    expect(periodoValido({ de: "2026-09-15", ate: "2026-09-15" })).toBe(true);
+    expect(periodoValido({ de: "2026-09-16", ate: "2026-09-15" }), "início depois do fim").toBe(false);
+    expect(periodoValido({ de: "", ate: "2026-09-15" }), "campo apagado").toBe(false);
+    expect(periodoValido({ de: "0202-08-16", ate: "2026-09-15" }), "ano pela metade").toBe(false);
+  });
+});
+
+describe("loadCcaBoard · só o período, filtrado no banco", () => {
+  it("filtra e ordena os casos na consulta e pede só os negócios deles", async () => {
+    const board = await loadCcaBoard({ de: "2026-08-16", ate: "2026-12-31" });
+
+    const casos = h.urls.find((url) => url.pathname.endsWith("/cca_cases"));
+    // Fim inclusivo: até a meia-noite de São Paulo do dia seguinte, virando o ano.
+    expect(casos?.searchParams.getAll("submitted_at")).toEqual([
+      "gte.2026-08-16T00:00:00-03:00", "lt.2027-01-01T00:00:00-03:00",
+    ]);
+    expect(casos?.searchParams.get("order")).toBe("submitted_at.desc,id.asc");
+    expect(h.listLegacyDeals).toHaveBeenCalledWith(expect.anything(), { ids: ["d2", "d1"] });
+
+    // Mais recentes em cima, com o nome do negócio, e os registros para o editor.
+    expect(board.deals.map((deal) => deal.client)).toEqual(["Cliente d2", "Cliente d1"]);
+    expect(board.negocios.map((deal) => deal.id)).toEqual(["d2", "d1"]);
   });
 });

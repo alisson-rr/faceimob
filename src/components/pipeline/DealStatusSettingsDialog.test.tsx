@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
+import { act, type ComponentPropsWithoutRef, type ElementRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { dealStatusKeys } from "@/integrations/supabase/dealStatuses";
@@ -31,11 +31,35 @@ vi.mock("@/integrations/supabase/dealStatuses", async (importOriginal) => ({
   updateDealStatus: vi.fn(async () => undefined),
 }));
 
+/** Quantas vezes o gatilho e o item do Select renderizaram; o componente real segue desenhando. */
+const renders = vi.hoisted(() => ({ gatilhos: 0, itens: 0 }));
+vi.mock("@/components/ui/select", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/components/ui/select")>();
+  const { createElement, forwardRef } = await import("react");
+  return {
+    ...original,
+    SelectTrigger: forwardRef<ElementRef<typeof original.SelectTrigger>, ComponentPropsWithoutRef<typeof original.SelectTrigger>>(
+      (props, ref) => {
+        renders.gatilhos += 1;
+        return createElement(original.SelectTrigger, { ...props, ref });
+      },
+    ),
+    SelectItem: forwardRef<ElementRef<typeof original.SelectItem>, ComponentPropsWithoutRef<typeof original.SelectItem>>(
+      (props, ref) => {
+        renders.itens += 1;
+        return createElement(original.SelectItem, { ...props, ref });
+      },
+    ),
+  };
+});
+
 let root: Root;
 let container: HTMLElement;
 let queryClient: QueryClient;
 
 beforeEach(async () => {
+  renders.gatilhos = 0;
+  renders.itens = 0;
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(dealStatusKeys.catalog, catalogoDeTeste);
   container = document.body.appendChild(document.createElement("div"));
@@ -77,5 +101,36 @@ describe("DealStatusSettingsDialog · foco ao reordenar", () => {
       .toEqual(["Status 1 OFF", "Status 1 DISTRATO"]);
     expect(botao("Descer DISTRATO").disabled).toBe(true);
     expect(document.activeElement, "o foco caiu no topo do diálogo").toBe(botao("Subir DISTRATO"));
+  });
+});
+
+/**
+ * Peso do cadastro: com o catálogo real (34 Status 2) eram 70 Selects com a
+ * lista montada e cada tecla redesenhava todas as linhas.
+ */
+describe("DealStatusSettingsDialog · peso do cadastro", () => {
+  it("Select fechado mostra o valor atual sem montar a lista de opções", () => {
+    const linha = document.querySelector('[role="group"][aria-label="Status 2 Assinado no banco"]');
+    const valores = [...(linha?.querySelectorAll('button[role="combobox"]') ?? [])].map((gatilho) => gatilho.textContent);
+
+    expect(valores, "o gatilho perdeu o rótulo do valor atual").toEqual(["VENDA", "Azul — em andamento"]);
+    expect(renders.itens, "algum Select montou a lista fechado").toBe(0);
+  });
+
+  it("digitar o Status 2 novo redesenha só o formulário de criação, não as linhas", async () => {
+    const campo = document.querySelector<HTMLInputElement>('input[placeholder="Ex.: AGUARDANDO VISTORIA"]');
+    if (!campo) throw new Error('o campo "Novo Status 2" sumiu do diálogo');
+    const definirValor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    renders.gatilhos = 0;
+
+    await act(async () => {
+      definirValor?.call(campo, "pendente");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    // "pendente" repete "16. PENDENTE": prova que a tecla chegou ao estado.
+    expect(campo.getAttribute("aria-invalid"), "a tecla não chegou ao React: o teste não exercitou nada").toBe("true");
+    // Só os dois Selects do próprio formulário (Status 1 e Cor).
+    expect(renders.gatilhos, "a tecla redesenhou as linhas do cadastro").toBeLessThanOrEqual(2);
   });
 });

@@ -65,14 +65,14 @@ export function DealsBoard({
       <EmptyState
         icon={Search}
         title="Nenhum negócio com esses filtros"
-        description="Tente ampliar o mês ou limpar a construtora e o corretor."
+        description="Tente ampliar o período ou limpar a construtora e o corretor."
         action={<Button variant="outline" onClick={onClearFilters}>Limpar filtros</Button>}
       />
     ) : (
       <EmptyState
         icon={Inbox}
-        title="Nenhum negócio no pipeline"
-        description="Converta um lead do funil ou crie o negócio direto por aqui."
+        title="Nenhum negócio criado no período"
+        description="Amplie as datas do período, converta um lead do funil ou crie o negócio direto por aqui."
         action={canWrite ? <Button onClick={onNewDeal}>Adicionar negócio</Button> : undefined}
       />
     );

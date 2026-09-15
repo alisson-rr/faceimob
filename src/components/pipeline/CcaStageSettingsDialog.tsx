@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -25,7 +27,8 @@ import { ccaKeys, loadCcaStatusOptions, type CcaStage } from "./ccaData";
 const SEM_STATUS = "none";
 
 /**
- * Criar, renomear, recolorir e excluir estágio da esteira.
+ * Criar, renomear, recolorir e excluir estágio da esteira. Só admin e sócio
+ * chegam aqui: `cca_stages_write` é `is_admin()` desde a 0151.
  *
  * Duas correções: o **desfecho** passa a ser escolhido (P10) e a **cor** é
  * gravada como chave semântica, não como classe do Tailwind (T14). Excluir pede
@@ -43,6 +46,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
   onClose: () => void;
   onChanged: () => void | Promise<void>;
 }) {
+  const nomeRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<CcaStage | null>(null);
   const [name, setName] = useState("");
   const [tone, setTone] = useState<StatusTone>("info");
@@ -126,115 +130,130 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
   return (
     <>
       <Dialog open onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editing ? `Editar "${editing.name}"` : "Gerenciar estágios do CCA"}</DialogTitle>
+        {/* Altura e largura cabem na tela pela base do `DialogContent`; aqui só
+            o corpo rola, com cabeçalho e rodapé fixos. Com as 19 colunas a lista
+            passava da altura da tela e o diálogo, fixo e centrado, não rolava. */}
+        <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-lg">
+          <DialogHeader className="shrink-0 border-b border-border p-4 pr-12 sm:p-6 sm:pr-12">
+            <DialogTitle className="break-words leading-tight">
+              {editing ? `Editar "${editing.name}"` : "Gerenciar estágios do CCA"}
+            </DialogTitle>
             <DialogDescription>
               O desfecho liga o estágio ao ciclo fixo do crédito: é ele que decide o caso e move o
               negócio no Pipeline.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Label htmlFor="cca-stage-name">Nome</Label>
-              <Input
-                id="cca-stage-name" className="mt-1" value={name} placeholder="Ex.: Conferência final"
-                onChange={(event) => setName(event.target.value)}
-              />
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Label htmlFor="cca-stage-name">Nome</Label>
+                <Input
+                  ref={nomeRef}
+                  id="cca-stage-name" className="mt-1" value={name} placeholder="Ex.: Conferência final"
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="cca-stage-tone">Cor</Label>
+                <Select value={tone} onValueChange={(value) => setTone(value as StatusTone)}>
+                  <SelectTrigger id="cca-stage-tone" className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CCA_TONE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="cca-stage-status">Desfecho</Label>
+                <Select value={status} onValueChange={(value) => setStatus(value as CcaCaseStatus)}>
+                  <SelectTrigger id="cca-stage-status" className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CCA_STATUS_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="cca-stage-deal-status">Status 2 gravado</Label>
+                <Select value={dealStatusId} onValueChange={setDealStatusId} disabled={catalogo.isPending}>
+                  <SelectTrigger id="cca-stage-deal-status" className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SEM_STATUS}>Nenhum — segue o desfecho</SelectItem>
+                    {opcoes.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label}{option.active ? "" : " (inativo)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {catalogo.isError && (
+                  <p role="alert" className="mt-1 text-xs text-destructive">
+                    {describeError(catalogo.error, "Não consegui carregar o catálogo de Status 2.")}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 sm:col-span-2">
+                <Button size="sm" disabled={saving || !name.trim()} onClick={() => void save()}>
+                  <Plus className="mr-1 h-4 w-4" /> {editing ? "Salvar" : "Criar estágio"}
+                </Button>
+                {editing && <Button size="sm" variant="ghost" onClick={reset}>Cancelar edição</Button>}
+              </div>
             </div>
-            <div>
-              <Label htmlFor="cca-stage-tone">Cor</Label>
-              <Select value={tone} onValueChange={(value) => setTone(value as StatusTone)}>
-                <SelectTrigger id="cca-stage-tone" className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CCA_TONE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="cca-stage-status">Desfecho</Label>
-              <Select value={status} onValueChange={(value) => setStatus(value as CcaCaseStatus)}>
-                <SelectTrigger id="cca-stage-status" className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CCA_STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="cca-stage-deal-status">Status 2 gravado</Label>
-              <Select value={dealStatusId} onValueChange={setDealStatusId} disabled={catalogo.isPending}>
-                <SelectTrigger id="cca-stage-deal-status" className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SEM_STATUS}>Nenhum — segue o desfecho</SelectItem>
-                  {opcoes.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.label}{option.active ? "" : " (inativo)"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {catalogo.isError && (
-                <p role="alert" className="mt-1 text-xs text-destructive">
-                  {describeError(catalogo.error, "Não consegui carregar o catálogo de Status 2.")}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2 sm:col-span-2">
-              <Button size="sm" disabled={saving || !name.trim()} onClick={() => void save()}>
-                <Plus className="mr-1 h-4 w-4" /> {editing ? "Salvar" : "Criar estágio"}
-              </Button>
-              {editing && <Button size="sm" variant="ghost" onClick={reset}>Cancelar edição</Button>}
-            </div>
+
+            <ul className="space-y-2">
+              {stages.map((stage) => {
+                const gravado = rotuloDoStatus(stage.deal_status_id);
+                return (
+                  <li key={stage.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-2">
+                    {/* Nome em linha própria e sem corte: com as 19 colunas da 0150
+                        os nomes são longos e parecidos ("ANÁLISE CEOPF", "INCONFORME
+                        CEOPF"), e é por ele que se escolhe qual editar. */}
+                    <div className="flex min-w-0 items-start gap-2">
+                      <span className={cn("mt-1 h-2 w-2 flex-shrink-0 rounded-full", CCA_TONE_CLASS[ccaStageTone(stage.color)].dot)} aria-hidden />
+                      <div className="min-w-0">
+                        <p className="break-words text-xs font-medium">{stage.name}</p>
+                        <p className="break-words text-xs text-muted-foreground">
+                          {ccaStatusLabel(stage.status)}{gravado && ` · grava ${gravado}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-shrink-0 gap-1">
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7"
+                        aria-label={`Editar o estágio ${stage.name}`}
+                        onClick={() => {
+                          setEditing(stage);
+                          setName(stage.name);
+                          setTone(ccaStageTone(stage.color));
+                          setStatus(stage.status);
+                          setDealStatusId(stage.deal_status_id ?? SEM_STATUS);
+                          // O formulário fica no alto do corpo rolável: editar a
+                          // última coluna o deixava fora de vista. O foco rola até ele.
+                          nomeRef.current?.focus();
+                        }}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                        aria-label={`Excluir o estágio ${stage.name}`}
+                        onClick={() => setRemoving(stage)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
-          <ul className="space-y-2">
-            {stages.map((stage) => {
-              const gravado = rotuloDoStatus(stage.deal_status_id);
-              return (
-              <li key={stage.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-2">
-                {/* Nome em linha própria e sem corte: com as 19 colunas da 0150
-                    os nomes são longos e parecidos ("ANÁLISE CEOPF", "INCONFORME
-                    CEOPF"), e é por ele que se escolhe qual editar. */}
-                <div className="flex min-w-0 items-start gap-2">
-                  <span className={cn("mt-1 h-2 w-2 flex-shrink-0 rounded-full", CCA_TONE_CLASS[ccaStageTone(stage.color)].dot)} aria-hidden />
-                  <div className="min-w-0">
-                    <p className="break-words text-xs font-medium">{stage.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {ccaStatusLabel(stage.status)}{gravado && ` · grava ${gravado}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-shrink-0 gap-1">
-                  <Button
-                    variant="ghost" size="icon" className="h-7 w-7"
-                    aria-label={`Editar o estágio ${stage.name}`}
-                    onClick={() => {
-                      setEditing(stage);
-                      setName(stage.name);
-                      setTone(ccaStageTone(stage.color));
-                      setStatus(stage.status);
-                      setDealStatusId(stage.deal_status_id ?? SEM_STATUS);
-                    }}
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost" size="icon" className="h-7 w-7 text-destructive"
-                    aria-label={`Excluir o estágio ${stage.name}`}
-                    onClick={() => setRemoving(stage)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              </li>
-              );
-            })}
-          </ul>
+          <DialogFooter className="shrink-0 border-t border-border p-4 sm:px-6">
+            <Button variant="outline" onClick={onClose}>Fechar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -649,10 +649,10 @@ export type DocumentTypePatch = Partial<
 /**
  * Grava a mudança do catálogo e confere o retorno.
  *
- * `document_types_write` é `has_permission('cca.review')` desde a 0059 — a mesma
- * permissão que libera o botão na tela. Para quem não a tem o update casa 0
- * linhas e volta 204 sem erro: sem o `select()` a tela diria "salvo" para quem o
- * banco recusou.
+ * `document_types_write` é `is_admin()` (admin e sócio) desde a 0151 — o mesmo
+ * `isAdmin` que mostra o botão na tela. Para quem não é o update casa 0 linhas
+ * e volta 204 sem erro: sem o `select()` a tela diria "salvo" para quem o banco
+ * recusou.
  */
 export async function updateDocumentType(id: string, patch: DocumentTypePatch): Promise<void> {
   const { data, error } = await supabase
@@ -665,7 +665,7 @@ export async function updateDocumentType(id: string, patch: DocumentTypePatch): 
     throw dbError("document_types", {
       code: "P0001",
       message:
-        "O banco recusou a alteração: só quem tem a permissão «cca.review» edita o catálogo de documentos.",
+        "O banco recusou a alteração: só admin e sócio editam o catálogo de documentos.",
     });
   }
 }

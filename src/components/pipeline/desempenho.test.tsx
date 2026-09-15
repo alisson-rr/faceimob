@@ -137,10 +137,10 @@ import { listLegacyDeals, type DashboardPayload, type LegacyDealRecord } from "@
 import { gameKeys } from "@/integrations/supabase/game";
 import { DealsBoard } from "./DealsBoard";
 import { CcaBoard } from "./CcaBoard";
-import { useCcaBoard, type CcaDeal, type CcaStage } from "./ccaData";
+import type { CcaDeal, CcaStage } from "./ccaData";
 import { useDeals, usePipelineRealtime } from "./data";
 import { useDealActions } from "./useDealActions";
-import { EMPTY_FILTERS, applyDealFilters, sortDeals } from "./filters";
+import { EMPTY_FILTERS, applyDealFilters, sortDeals, sortDealsBy } from "./filters";
 import type { PipelineStage } from "./stages";
 import { useDashboardLeads, useDashboardPayload } from "@/components/dashboard/data";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
@@ -285,30 +285,9 @@ describe("desempenho · carga dos negócios", () => {
   }, 60_000);
 });
 
+// A esteira CCA saiu daqui em 15/09/2026: ela não compartilha mais a base de
+// negócios, carrega só o período (filtro no banco) — ver `ccaData.test.ts`.
 describe("desempenho · cache compartilhado", () => {
-  it("a esteira CCA baixa os negócios UMA vez e traz todos os casos", async () => {
-    zerarRede(5);
-    const client = novoCliente();
-    const estado = { board: false, deals: false };
-    function Tela() {
-      estado.board = useCcaBoard().isSuccess;
-      estado.deals = useDeals().isSuccess;
-      return null;
-    }
-    const tela = await montar(<QueryClientProvider client={client}><Tela /></QueryClientProvider>);
-    await ate(() => estado.board && estado.deals);
-    const casos = client.getQueryData<{ deals: CcaDeal[] }>(["cca", "board"])?.deals;
-    log("CCA abrindo", { requisicoes: h.state.requisicoes.length, paginasDeNegocios: doCaminho("deals"), casos: casos?.length });
-
-    expect(doCaminho("deals")).toBe(paginas("deals"));
-    // Sem `range` o PostgREST parava em 1.000 casos.
-    expect(casos).toHaveLength(N_CASOS);
-    // O caso mexido por último abre a lista (e a coluna dele), já com o nome do
-    // negócio: é o que a analista precisa ver depois de mover.
-    expect(casos?.slice(0, 2).map((caso) => caso.client)).toEqual(["Cliente 1", `Cliente ${N_CASOS - 1}`]);
-    await tela.desmontar();
-  }, 60_000);
-
   it("o Dashboard aberto depois do Pipeline não rebaixa os negócios e conta a base inteira", async () => {
     zerarRede(5);
     const client = novoCliente();
@@ -487,7 +466,7 @@ describe("desempenho · render", () => {
     // `localeCompare("pt-BR")` que ele substituiu, com acento ("Ávila", "Érica").
     const porLocaleCompare = negocios.map((deal) => deal.developer || "")
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
-    expect(sortDeals(negocios).map((deal) => deal.developer || "")).toEqual(porLocaleCompare);
+    expect(sortDealsBy(negocios, "developer", true).map((deal) => deal.developer || "")).toEqual(porLocaleCompare);
   });
 
   it("esteira CCA: a coluna desenha 200 cartões e o resto sob pedido", async () => {

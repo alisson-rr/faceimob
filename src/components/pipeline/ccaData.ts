@@ -1,11 +1,10 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { SAO_PAULO_UTC_OFFSET } from "@/integrations/supabase/checkin";
 import { dbError } from "@/lib/supabaseError";
-import { useAuth } from "@/contexts/AuthContext";
-import { allRows, listLegacyDeals, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { allRows, last30DaysRange, listLegacyDeals, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { bareStatus } from "@/lib/dealStatus";
 import type { CcaCaseStatus } from "./ccaStage";
-import { dealsQuery } from "./data";
 
 export interface CcaStage {
   id: string;
@@ -38,13 +37,53 @@ export interface CcaDeal {
 
 export type CcaAnalysis = Record<string, string>;
 
+/** Período do quadro pela entrada do caso na esteira (`submitted_at`): datas
+ *  `AAAA-MM-DD` do calendário de São Paulo, as duas inclusivas. */
+export type CcaPeriodo = { de: string; ate: string };
+
+export interface CcaBoardData {
+  stages: CcaStage[];
+  deals: CcaDeal[];
+  /** Casos do período sem coluna ativa (cancelados ou sem estágio). */
+  outside: number;
+  /** Negócios dos casos carregados: o editor e o `CcaMoveDialog` leem daqui. */
+  negocios: LegacyDealRecord[];
+}
+
 export const ccaKeys = {
+  /** PREFIXO do quadro: `useInvalidateCcaBoard` recarrega o período aberto e os envios juntos. */
   board: ["cca", "board"] as const,
-  // Debaixo de `board`: `useInvalidateCcaBoard` recarrega os envios junto.
-  sendCounts: ["cca", "board", "send-counts"] as const,
+  period: (de: string, ate: string) => ["cca", "board", "period", de, ate] as const,
+  sendCounts: (dealIds: string[]) => ["cca", "board", "send-counts", dealIds] as const,
   statusOptions: ["cca", "status-options"] as const,
   case: (dealId: string) => ["cca", "case", dealId] as const,
 };
+
+const DIA_MS = 86_400_000;
+const somaDias = (dia: string, dias: number) =>
+  new Date(Date.parse(`${dia}T00:00:00Z`) + dias * DIA_MS).toISOString().slice(0, 10);
+
+/** De hoje-30 até hoje no calendário de São Paulo: o período com que a tela abre —
+ *  o mesmo `last30DaysRange` do Pipeline, para as duas telas não divergirem. */
+export function ultimos30Dias(agora: Date = new Date()): CcaPeriodo {
+  const { from, to } = last30DaysRange(agora);
+  return { de: from, ate: to };
+}
+
+const DATA = /^20\d{2}-\d{2}-\d{2}$/;
+
+/**
+ * Período completo e em ordem. O "20" do ano barra o meio da digitação: o campo
+ * de data emite 0002, 0020 e 0202 antes de 2026, e cada um viraria uma consulta
+ * de séculos.
+ */
+export const periodoValido = ({ de, ate }: CcaPeriodo): boolean => DATA.test(de) && DATA.test(ate) && de <= ate;
+
+/** Instantes para o banco: meia-noite de São Paulo do `de` até a do dia seguinte ao `ate`, exclusiva. */
+export const limitesDoPeriodo = ({ de, ate }: CcaPeriodo) => ({
+  desde: `${de}T00:00:00${SAO_PAULO_UTC_OFFSET}`,
+  antesDe: `${somaDias(ate, 1)}T00:00:00${SAO_PAULO_UTC_OFFSET}`,
+});
 
 /**
  * Caso do negócio na esteira, para a aba CCA e para o envio ao gerente (a
@@ -99,23 +138,28 @@ export async function loadCcaStatusOptions(): Promise<CcaStatusOption[]> {
 }
 
 /**
- * Quantas vezes cada cliente foi enviado por esteira. Só as linhas com envio:
- * a contagem começa do zero na 0150 e a função devolve um negócio por caso
- * (~7.500), paginado porque o PostgREST corta em 1.000.
+ * Quantas vezes cada cliente foi enviado por esteira, só para os negócios do
+ * quadro (`p_deal_ids`, 0151) e só as linhas com envio. Paginado porque o
+ * PostgREST corta em 1.000, e um período longo passa disso.
  */
-export async function loadCcaSendCounts(): Promise<Map<string, CcaSendCount>> {
+export async function loadCcaSendCounts(dealIds: string[]): Promise<Map<string, CcaSendCount>> {
   const { data, error } = await allRows((from, to, count) =>
-    // `as never`: função sem argumento tem `Args: never` no tipo gerado, e a
-    // opção `count` só vai no 3º parâmetro — o mesmo de `deal_participant_names`.
-    supabase.rpc("cca_send_counts", undefined as never, { count })
+    // `as never` até o `types.ts` ser regerado com a 0151: o tipo gerado ainda
+    // é o da função sem argumento (`Args: never`). O `count` só vai no 3º
+    // parâmetro — o mesmo de `deal_participant_names`.
+    supabase.rpc("cca_send_counts", { p_deal_ids: dealIds } as never, { count })
       .or("agil.gt.0,virar.gt.0").order("deal_id").range(from, to));
   if (error) throw dbError("cca_send_counts", error);
   return new Map(data.map((row) => [row.deal_id, { agil: row.agil, virar: row.virar }]));
 }
 
 /** `enabled` é `can('cca.review')`: sem ela a função devolve 42501. */
-export const useCcaSendCounts = (enabled: boolean) =>
-  useQuery({ queryKey: ccaKeys.sendCounts, queryFn: loadCcaSendCounts, enabled });
+export const useCcaSendCounts = (dealIds: string[], enabled: boolean) =>
+  useQuery({
+    queryKey: ccaKeys.sendCounts(dealIds),
+    queryFn: () => loadCcaSendCounts(dealIds),
+    enabled: enabled && dealIds.length > 0,
+  });
 
 /**
  * Grava a análise de crédito da aba CCA do negócio.
@@ -147,44 +191,45 @@ export async function saveCcaAnalysis(dealId: string, analysis: CcaAnalysis): Pr
 }
 
 /**
- * Esteira inteira: estágios, casos e os negócios que dão nome a cada caso.
+ * Esteira de um período: estágios, os casos que ENTRARAM nele e os negócios
+ * desses casos.
  *
- * O `stage_id` do caso pode estar nulo ou apontar para estágio desativado: cai
- * na coluna de mesmo desfecho (`ccaColumnOf`). Sem coluna o caso sai do quadro,
- * mas não em silêncio — `outside` conta quantos, e a tela diz.
+ * O período vai para o banco (`submitted_at`), não para o navegador: a tela
+ * baixava os 7.560 casos e os 7.579 negócios da homologação a cada abertura
+ * para mostrar os ~188 dos últimos 30 dias. Os negócios vêm depois, só pelos
+ * ids dos casos carregados.
  *
- * Os casos vêm paginados: sem `range` o PostgREST devolve só as primeiras 1.000
- * linhas, sem aviso — a esteira mostrava 1.000 dos 7.560 casos da homologação e
- * os contadores por estágio somavam só esses. As páginas saem por criação, que
- * não muda entre uma página e outra; a tela recebe primeiro o caso mexido por
- * último. O `CcaBoard` desenha 200 cartões por coluna, e o caso recém-movido
- * precisa voltar à vista no topo da coluna de destino, não atrás do "Mostrar
- * mais" (a coluna tem ~1.500 casos na homologação).
- *
- * `loadDeals` é a lista de negócios do cache (`useCcaBoard` passa a MESMA
- * consulta do Pipeline): a esteira baixava a base inteira duas vezes na mesma
- * abertura, uma aqui e outra no `useDeals` da tela.
+ * Mais recentes em cima (`submitted_at desc`, com `id` de desempate para as
+ * páginas não trocarem linhas). O `stage_id` nulo ou de estágio desativado cai
+ * na coluna de mesmo desfecho (`ccaColumnOf`); sem coluna o caso sai do quadro,
+ * mas `outside` conta quantos, e a tela diz.
  */
 export async function loadCcaBoard(
-  loadDeals: () => Promise<LegacyDealRecord[]> = () => listLegacyDeals(),
-): Promise<{ stages: CcaStage[]; deals: CcaDeal[]; outside: number }> {
-  const [stagesResponse, casesResponse, dealRows] = await Promise.all([
-    supabase.from("cca_stages").select("id,name,color,position,status,active,deal_status_id").eq("active", true).order("position"),
+  periodo: CcaPeriodo,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<CcaBoardData> {
+  const { desde, antesDe } = limitesDoPeriodo(periodo);
+  const [stagesResponse, casesResponse] = await Promise.all([
+    supabase.from("cca_stages").select("id,name,color,position,status,active,deal_status_id")
+      .eq("active", true).order("position").abortSignal(signal),
     allRows((from, to, count) => supabase.from("cca_cases")
-      .select("id,deal_id,status,stage_id,decision_notes,updated_at", { count })
-      .order("created_at").order("id").range(from, to)),
-    loadDeals(),
+      .select("id,deal_id,status,stage_id,decision_notes", { count })
+      .gte("submitted_at", desde).lt("submitted_at", antesDe)
+      .order("submitted_at", { ascending: false }).order("id").range(from, to).abortSignal(signal)),
   ]);
   if (stagesResponse.error) throw stagesResponse.error;
   if (casesResponse.error) throw casesResponse.error;
 
+  // Período sem caso não pede negócio nenhum: lista de ids vazia não vira "todos".
+  const negocios = casesResponse.data.length
+    ? await listLegacyDeals(signal, { ids: casesResponse.data.map((row) => row.deal_id) })
+    : [];
+
   const stages = (stagesResponse.data || []) as CcaStage[];
-  // Um `find` por caso varria a lista inteira: ~28 milhões de comparações.
-  const dealById = new Map(dealRows.map((deal) => [deal.id, deal]));
-  const recentes = casesResponse.data.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+  const dealById = new Map(negocios.map((deal) => [deal.id, deal]));
   const deals: CcaDeal[] = [];
   let outside = 0;
-  for (const row of recentes) {
+  for (const row of casesResponse.data) {
     const stage = ccaColumnOf(stages, row);
     if (!stage) {
       outside += 1;
@@ -205,18 +250,17 @@ export async function loadCcaBoard(
     });
   }
 
-  return { stages, deals, outside };
+  return { stages, deals, outside, negocios };
 }
 
-export function useCcaBoard() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const profileId = user?.id ?? null;
+export function useCcaBoard(periodo: CcaPeriodo, enabled = true) {
   return useQuery({
-    queryKey: ccaKeys.board,
-    // `fetchQuery` serve o cache fresco ou pega carona na carga em voo do
-    // `useDeals` que a tela monta junto; só vai à rede se a lista estiver velha.
-    queryFn: () => loadCcaBoard(() => queryClient.fetchQuery(dealsQuery(profileId))),
+    queryKey: ccaKeys.period(periodo.de, periodo.ate),
+    queryFn: ({ signal }) => loadCcaBoard(periodo, signal),
+    enabled,
+    // Trocar a data mantém o quadro anterior até o novo chegar: cair no
+    // esqueleto desmontaria os campos de data no meio da digitação.
+    placeholderData: keepPreviousData,
   });
 }
 

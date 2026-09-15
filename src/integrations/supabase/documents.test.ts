@@ -384,13 +384,13 @@ describe("recusa do banco chega em pt-BR na tela", () => {
     expect(remove).toHaveBeenCalledTimes(1);
   });
 
-  it("catálogo recusado nomeia a permissão que falta", async () => {
+  it("catálogo recusado diz quem pode editar (admin e sócio, 0151)", async () => {
     tabela({ data: [], error: null });
 
     const erro = await updateDocumentType("t1", { active: false })
       .then(() => null, (e: unknown) => e);
 
-    expect(describeError(erro, "O catálogo continua como estava.")).toContain("cca.review");
+    expect(describeError(erro, "O catálogo continua como estava.")).toContain("só admin e sócio");
   });
 });
 

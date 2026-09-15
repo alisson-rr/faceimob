@@ -7,7 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/sonner";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
-import { updateDeal, useCanExitStage, useDeals } from "./data";
+import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { updateDeal, useCanExitStage } from "./data";
 import { isBehindStage } from "./guards";
 import { ccaStatusLabel, isDecision } from "./ccaStage";
 import type { CcaDeal, CcaStage } from "./ccaData";
@@ -21,6 +22,8 @@ interface Props {
   stage: CcaStage;
   /** Etapa "Aprovado" do funil comercial, para levar o negócio junto. */
   approvedStage?: PipelineStage;
+  /** Negócio do caso, da carga da própria esteira. Ausente: fora da visibilidade de quem move. */
+  negocio?: LegacyDealRecord;
   onClose: () => void;
   onMoved: () => void | Promise<void>;
 }
@@ -47,7 +50,11 @@ interface Props {
  * desfecho e a venda saía do VGV (14/09/2026: 926 vendas e 3.036 perdidos
  * expostos na homologação).
  */
-export function CcaMoveDialog({ deal, stage, approvedStage, onClose, onMoved }: Props) {
+// `negocio` vem por prop porque `CcaDeal` carrega o estágio da ESTEIRA, não a
+// etapa do negócio no funil comercial — e sem ela não dá para saber se ele está
+// atrás de "Aprovado" nem espelhar a metade "sair" da matriz. É o registro que a
+// esteira já carregou para o período, não a base inteira de negócios.
+export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, onMoved }: Props) {
   const { canEnterStage } = useAuth();
   const canExitStage = useCanExitStage();
   // Abre VAZIA: a mensagem é o aviso desta movimentação para corretor e gerente,
@@ -55,11 +62,6 @@ export function CcaMoveDialog({ deal, stage, approvedStage, onClose, onMoved }: 
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // `CcaDeal` carrega o estágio da ESTEIRA, não a etapa do negócio no funil
-  // comercial — e sem ela não dá para saber se ele está atrás de "Aprovado" nem
-  // espelhar a metade "sair" da matriz. A lista de negócios é cache
-  // compartilhado (`["deals"]`), não uma consulta nova por caso.
-  const negocio = useDeals().data?.find((row) => row.id === deal.dealId);
   const levaAoAprovado = Boolean(negocio && isBehindStage(negocio, approvedStage));
 
   /**

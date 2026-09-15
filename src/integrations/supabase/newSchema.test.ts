@@ -11,10 +11,38 @@
  * 3. "19. REPROVADO" encerrava o negócio pelo diálogo e não encerrava nada
  *    pelo modal, com o aviso vermelho do formulário prometendo o contrário.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+/** Banco falso atrás do `fetch`: o cliente é o de verdade, então a URL que sai
+ *  daqui é a que o PostgREST receberia. */
+const rede = vi.hoisted(() => ({
+  tabelas: {} as Record<string, unknown[]>,
+  pedidos: [] as URL[],
+}));
+
+vi.mock("@/integrations/supabase/client", async () => {
+  const { createClient } = await import("@supabase/supabase-js");
+  const fetchFalso = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    rede.pedidos.push(url);
+    const linhas = rede.tabelas[url.pathname.replace("/rest/v1/", "")] ?? [];
+    const faixa = linhas.length ? `0-${linhas.length - 1}` : "*";
+    return new Response(JSON.stringify(linhas), {
+      status: 200,
+      headers: { "content-type": "application/json", "content-range": `${faixa}/${linhas.length}` },
+    });
+  };
+  return {
+    supabase: createClient("http://fake.local", "anon", {
+      global: { fetch: fetchFalso },
+      auth: { persistSession: false, autoRefreshToken: false },
+    }),
+  };
+});
+
 import {
-  dealStageCodeFor, legacyDealFields, saleBlockedReason, STAGES_REQUIRING_REVIEW,
-  toNumberOrNull, type SaveLegacyDealInput,
+  createdAtBounds, dealStageCodeFor, last30DaysRange, legacyDealFields, listLegacyDeals,
+  saleBlockedReason, STAGES_REQUIRING_REVIEW, toNumberOrNull, type SaveLegacyDealInput,
 } from "./newSchema";
 
 const form = (patch: Partial<SaveLegacyDealInput> = {}): SaveLegacyDealInput => ({
@@ -236,5 +264,82 @@ describe("legacyDealFields · numeros e mes", () => {
     const campos = legacyDealFields(form({ vgv_bruto: 500000, deal_value: 1 }));
     expect(campos.vgv_gross).toBe(500000);
     expect(campos).not.toHaveProperty("vgv_net");
+  });
+});
+
+/**
+ * Período do Pipeline (pedido do dono em 15/09/2026): a tela abria baixando os
+ * 7.579 negócios para mostrar os ~190 dos últimos 30 dias. O filtro tem de sair
+ * na URL, e não ser aplicado no navegador depois de baixar tudo.
+ */
+describe("período de criação", () => {
+  it("'hoje' é o dia de São Paulo: 23h de Brasília ainda é o mesmo dia", () => {
+    // 02:00 UTC do dia 16 = 23:00 do dia 15 em Brasília.
+    expect(last30DaysRange(new Date("2026-09-16T02:00:00Z"))).toEqual({ from: "2026-08-16", to: "2026-09-15" });
+    expect(last30DaysRange(new Date("2026-03-01T12:00:00Z"))).toEqual({ from: "2026-01-30", to: "2026-03-01" });
+  });
+
+  it("'até' é inclusivo: vale até a meia-noite de São Paulo do dia seguinte", () => {
+    expect(createdAtBounds("2026-08-16", "2026-12-31")).toEqual({
+      gte: "2026-08-16T00:00:00-03:00",
+      lt: "2027-01-01T00:00:00-03:00",
+    });
+    // Campo limpo = sem limite daquele lado.
+    expect(createdAtBounds("", "2026-09-15")).toEqual({ gte: undefined, lt: "2026-09-16T00:00:00-03:00" });
+  });
+
+  it("data que não existe é recusada, em vez de virar filtro ignorado", () => {
+    expect(() => createdAtBounds("2026-02-30")).toThrow(/data válida/);
+    expect(() => createdAtBounds(undefined, "15/09/2026")).toThrow(/data válida/);
+  });
+});
+
+describe("listLegacyDeals · recorte no banco", () => {
+  beforeEach(() => {
+    rede.pedidos = [];
+    rede.tabelas = {
+      deals: [
+        { id: "d1", created_at: "2026-09-01T12:00:00+00:00", outcome: "open" },
+        { id: "d2", created_at: "2026-09-10T12:00:00+00:00", outcome: "open" },
+      ],
+    };
+  });
+  const doCaminho = (path: string) => rede.pedidos.filter((url) => url.pathname === `/rest/v1/${path}`);
+
+  it("com período, filtra created_at na URL e lê os filhos só dos negócios achados", async () => {
+    await listLegacyDeals(undefined, { createdFrom: "2026-08-16", createdTo: "2026-09-15" });
+
+    expect(doCaminho("deals")[0].searchParams.getAll("created_at")).toEqual([
+      "gte.2026-08-16T00:00:00-03:00",
+      "lt.2026-09-16T00:00:00-03:00",
+    ]);
+    for (const filho of ["deal_clients", "deal_participants", "rpc/deal_participant_names", "visits"]) {
+      expect(doCaminho(filho)[0].searchParams.getAll("deal_id"), filho).toContain("in.(d1,d2)");
+    }
+  });
+
+  it("com ids, pede em lotes que cabem na URL e devolve do mais recente para o mais antigo", async () => {
+    const ids = Array.from({ length: 250 }, (_, i) => `id-${i}`);
+    rede.tabelas.deals = [];
+    expect(await listLegacyDeals(undefined, { ids })).toEqual([]);
+    const lotes = doCaminho("deals").map((url) => url.searchParams.get("id") ?? "");
+    expect(lotes).toHaveLength(3);
+    expect(lotes.every((lote) => lote.split(",").length <= 100)).toBe(true);
+    // Nenhum negócio achado: nenhuma tabela filha é lida.
+    expect(doCaminho("deal_participants")).toHaveLength(0);
+
+    rede.tabelas.deals = [
+      { id: "d1", created_at: "2026-09-01T12:00:00+00:00", outcome: "open" },
+      { id: "d2", created_at: "2026-09-10T12:00:00+00:00", outcome: "open" },
+    ];
+    expect((await listLegacyDeals(undefined, { ids: ["d1", "d2"] })).map((deal) => deal.id)).toEqual(["d2", "d1"]);
+  });
+
+  it("sem opções, continua lendo a base inteira, sem filtro", async () => {
+    await listLegacyDeals();
+    const url = doCaminho("deals")[0];
+    expect(url.searchParams.has("created_at")).toBe(false);
+    expect(url.searchParams.has("id")).toBe(false);
+    expect(doCaminho("deal_clients")[0].searchParams.has("deal_id")).toBe(false);
   });
 });

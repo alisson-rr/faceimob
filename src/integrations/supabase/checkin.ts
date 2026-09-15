@@ -127,7 +127,7 @@ export type LeadCounts = { today: number; week: number; month: number };
  * horário de verão (2019) — o mesmo deslocamento que `current_work_date()`,
  * `current_shift()` e `auto_checkout_expired` usam no banco.
  */
-const SAO_PAULO_UTC_OFFSET = "-03:00";
+export const SAO_PAULO_UTC_OFFSET = "-03:00";
 
 /**
  * Início do dia / da semana / do mês a partir do dia operacional do banco.

@@ -5336,7 +5336,7 @@ export type Database = {
       can_see_profile: { Args: { target: string }; Returns: boolean }
       can_write_lead: { Args: { p_lead_id: string }; Returns: boolean }
       cca_send_counts: {
-        Args: never
+        Args: { p_deal_ids?: string[] }
         Returns: {
           agil: number
           deal_id: string

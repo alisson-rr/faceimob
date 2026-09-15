@@ -13,7 +13,7 @@ import { DealsToolbar } from "./DealsToolbar";
  * gerente", que é uma afirmação, não um estado de espera. É o mesmo achado que
  * o `DealsBoard` corrigiu um nível abaixo: dado ausente vira travessão.
  */
-async function render(countsUnknown: boolean) {
+async function render(countsUnknown: boolean, periodIncomplete = false) {
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
   await act(async () => {
@@ -29,11 +29,16 @@ async function render(countsUnknown: boolean) {
         listedCount={0}
         pendingReviews={0}
         onFilterPendingReviews={() => undefined}
+        period={{ from: "2026-08-16", to: "2026-09-15" }}
+        onPeriod={() => undefined}
+        onLast30Days={() => undefined}
+        periodIncomplete={periodIncomplete}
         countsUnknown={countsUnknown}
       /> as ReactNode,
     );
   });
-  const filtrar = container.querySelector<HTMLButtonElement>("button:not([aria-label])");
+  const filtrar = [...container.querySelectorAll<HTMLButtonElement>("button")]
+    .find((botao) => botao.textContent?.includes("aguardando gerente"));
   const resultado = {
     texto: (container.textContent ?? "").replace(/\s+/g, " "),
     filtroDesabilitado: Boolean(filtrar?.disabled),
@@ -61,5 +66,11 @@ describe("DealsToolbar · contadores antes da resposta", () => {
     const { texto } = await render(false);
     expect(texto).toContain("0 ativos");
     expect(texto).toContain("0 aguardando gerente");
+  });
+
+  it("período incompleto diz por que a lista não recarrega", async () => {
+    const aviso = "Preencha as duas datas, com o início antes do fim.";
+    expect((await render(true, true)).texto).toContain(aviso);
+    expect((await render(false)).texto, "período completo não avisa").not.toContain(aviso);
   });
 });

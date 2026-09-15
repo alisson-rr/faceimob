@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Target } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -12,10 +12,8 @@ import { brl } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { closableMonths, nextMonthBase } from "@/lib/dealStatus";
 import { closeMonthAndSeason, gameKeys, type GameSeason } from "@/integrations/supabase/game";
-import {
-  displayMonthToIso, toDisplayMonth, type LegacyDealRecord,
-} from "@/integrations/supabase/newSchema";
-import { pipelineKeys } from "./data";
+import { displayMonthToIso, toDisplayMonth } from "@/integrations/supabase/newSchema";
+import { listMonthDeals, pipelineKeys } from "./data";
 import { dealMonth, monthClosePreview } from "./filters";
 
 interface Props {
@@ -23,8 +21,6 @@ interface Props {
   season: GameSeason | null;
   /** Mês do calendário — só vale quando não há temporada aberta nem negócio. */
   fallbackMonth: string;
-  /** Todos os negócios: o diálogo conta o que vai migrar e o que vai congelar. */
-  deals: LegacyDealRecord[];
   /** Meses já em `closed_months` — não podem ser oferecidos de novo. */
   closedMonths: string[];
   onClose: () => void;
@@ -44,11 +40,15 @@ interface Props {
  * e agora mostra também **o que vai congelar**: quantas propostas migram e
  * quantos resultados ficam. Sem isso o operador confirmava no escuro.
  *
+ * **Os números vêm do banco, dos meses abertos.** A lista do Pipeline é só o
+ * período filtrado na tela (15/09/2026), e fechar mês é ato sobre o mês
+ * inteiro: contar pela lista da tela prometeria menos propostas do que a RPC move.
+ *
  * A RPC encerra a temporada aberta SEMPRE, qualquer que seja o período. Fechar
  * um mês antigo, portanto, encerra a temporada corrente junto — está escrito no
  * aviso, porque é consequência que ninguém adivinha.
  */
-export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, onClose }: Props) {
+export function CloseMonthDialog({ season, fallbackMonth, closedMonths, onClose }: Props) {
   const queryClient = useQueryClient();
   const id = useId();
   const [saving, setSaving] = useState(false);
@@ -56,20 +56,28 @@ export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, o
   const seasonMonth = season ? toDisplayMonth(`${season.period_start.slice(0, 7)}-01`) : null;
   const seasonClosed = Boolean(seasonMonth && closedMonths.includes(seasonMonth));
 
+  const mesesAbertos = useQuery({
+    queryKey: [...pipelineKeys.deals, "meses-abertos", closedMonths],
+    queryFn: ({ signal }) => listMonthDeals({ exceptMonths: closedMonths }, signal),
+  });
+  const deals = useMemo(() => mesesAbertos.data ?? [], [mesesAbertos.data]);
+
   const options = useMemo(
     () => closableMonths(deals.map(dealMonth), closedMonths, seasonMonth),
     [deals, closedMonths, seasonMonth],
   );
 
-  const [period, setPeriod] = useState(
-    () => (seasonMonth && !seasonClosed ? seasonMonth : options[0] ?? fallbackMonth),
-  );
+  // `null` = ninguém escolheu: o padrão depende dos meses, que chegam do banco
+  // depois da primeira pintura.
+  const [escolhido, setEscolhido] = useState<string | null>(null);
+  const period = escolhido ?? (seasonMonth && !seasonClosed ? seasonMonth : options[0] ?? fallbackMonth);
   const next = nextMonthBase(period);
+  const semMes = mesesAbertos.isSuccess && options.length === 0;
 
-  // O que a RPC vai fazer com o período escolhido, contado na mesma base que a
-  // tela já carregou: propostas abertas migram, resultados ficam congelados.
-  // O predicado é `outcome = 'open'`, o MESMO `where` da RPC — `deal.active`
-  // incluía as vendas e prometia mover negócio que a RPC não move.
+  // O que a RPC vai fazer com o período escolhido: propostas abertas migram,
+  // resultados ficam congelados. O predicado é `outcome = 'open'`, o MESMO
+  // `where` da RPC — `deal.active` incluía as vendas e prometia mover negócio
+  // que a RPC não move.
   const previsao = monthClosePreview(deals, period);
 
   const confirm = async () => {
@@ -116,7 +124,7 @@ export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, o
         <div className="space-y-3">
           <div>
             <Label htmlFor={`${id}-period`}>Período a fechar</Label>
-            <Select value={period} onValueChange={setPeriod}>
+            <Select value={period} onValueChange={setEscolhido}>
               <SelectTrigger id={`${id}-period`} className="mt-1">
                 <SelectValue />
               </SelectTrigger>
@@ -134,8 +142,18 @@ export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, o
           <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs">
             <p className="font-semibold text-foreground">O que acontece com {period}</p>
             <ul className="mt-1 space-y-0.5 text-muted-foreground">
-              <li>{previsao.migram} proposta(s) aberta(s) passam para {next}.</li>
-              <li>{previsao.congelam} resultado(s) ficam congelados em {period} · {brl(previsao.vgvVendido)} de VGV vendido.</li>
+              {mesesAbertos.error ? (
+                <li className="text-destructive">
+                  Não consegui contar os negócios do mês. {describeError(mesesAbertos.error, "Feche e abra de novo.")}
+                </li>
+              ) : mesesAbertos.isPending ? (
+                <li>Contando os negócios de {period}…</li>
+              ) : (
+                <>
+                  <li>{previsao.migram} proposta(s) aberta(s) passam para {next}.</li>
+                  <li>{previsao.congelam} resultado(s) ficam congelados em {period} · {brl(previsao.vgvVendido)} de VGV vendido.</li>
+                </>
+              )}
               <li>
                 {season
                   ? `Ciclo aberto do game: "${season.label}", desde ${season.period_start.split("-").reverse().join("/")} — encerra nesta ação.`
@@ -143,6 +161,12 @@ export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, o
               </li>
             </ul>
           </div>
+
+          {semMes && (
+            <p className="rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              Todos os meses com negócio já estão fechados e não há temporada aberta: não sobra mês para fechar.
+            </p>
+          )}
 
           {seasonMonth && seasonClosed && (
             <p className="rounded-xl border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
@@ -168,8 +192,9 @@ export function CloseMonthDialog({ season, fallbackMonth, deals, closedMonths, o
 
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          {/* Sem a contagem na mão o botão espera: é ato que a tela não desfaz. */}
           <AlertDialogAction
-            disabled={saving}
+            disabled={saving || !mesesAbertos.isSuccess || semMes}
             onClick={(event) => { event.preventDefault(); void confirm(); }}
           >
             {saving ? "Fechando…" : `Fechar ${period}`}

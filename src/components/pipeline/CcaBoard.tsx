@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Building2, DollarSign, Send, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,60 +29,83 @@ interface Props {
 /**
  * Quadro da esteira CCA.
  *
+ * **Uma rolagem só** (pedido de 15/09/2026). A raiz é o único contêiner com
+ * rolagem da tela, na horizontal e na vertical: os indicadores ficam no alto
+ * dela (presos à esquerda ao rolar para o lado), e o cabeçalho de cada coluna
+ * fica preso no topo. As colunas não rolam sozinhas — eram 19 barras de rolagem
+ * dentro de uma página que também rolava. A tela dá a altura (`flex-1 min-h-0`).
+ *
  * "Mover para…" é um `Select` sempre visível. Eram botões em
  * `opacity-0 group-hover:opacity-100` com 8 px de fonte: invisíveis no toque,
  * inalcançáveis pelo teclado e abaixo do piso de tamanho (achados X02 e X07).
+ *
+ * `memo`: abrir um diálogo da tela não redesenha os cartões.
  */
-export function CcaBoard({ stages, deals, canAct, sendCounts, onOpen, onMove, onSubmitToDeveloper }: Props) {
+export const CcaBoard = memo(function CcaBoard({
+  stages, deals, canAct, sendCounts, onOpen, onMove, onSubmitToDeveloper,
+}: Props) {
   /**
    * Quantos cartões cada coluna desenha. Com a esteira inteira (7.560 casos na
-   * homologação) eram ~280 mil nós e 15,7 s de montagem no teste; o PostgREST
-   * cortava a lista em 1.000 casos e escondia o custo. 200 por coluna fica no
-   * volume que a tela já desenhava, os contadores seguem contando todos e a
-   * busca alcança qualquer caso.
+   * homologação) eram ~280 mil nós e 15,7 s de montagem no teste. O período
+   * padrão fica bem abaixo; o teto segura um período longo escolhido à mão.
    */
   const [limites, setLimites] = useState<Record<string, number>>({});
+
+  // Um passe só, na ordem que chegou (mais recentes em cima): indicador e
+  // coluna leem a mesma lista.
+  const porEstagio = new Map<string, CcaDeal[]>();
+  for (const deal of deals) {
+    const lista = porEstagio.get(deal.stageId);
+    if (lista) lista.push(deal);
+    else porEstagio.set(deal.stageId, [deal]);
+  }
+
   return (
-    <>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    // `contain: paint` fecha o transbordo aqui dentro: sem ele a faixa das
+    // colunas chegou a rolar a PÁGINA na horizontal (735 px a 375 px).
+    <div className="min-h-0 flex-1 overflow-auto [contain:paint]">
+      {/* Mesma altura e largura para todos: grade de colunas iguais e o nome
+          em duas linhas de altura fixa, cortado com reticências (o nome
+          inteiro fica no `title`). */}
+      <div className="sticky left-0 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2 pb-3">
         {stages.map((stage) => (
-          <div key={stage.id} className="rounded-2xl border border-border bg-card p-3 text-center">
-            <p className="text-eyebrow">{stage.name}</p>
-            <p className={cn("font-display text-2xl font-bold tabular-nums", CCA_TONE_CLASS[ccaStageTone(stage.color)].text)}>
-              {deals.filter((deal) => deal.stageId === stage.id).length}
+          <div
+            key={stage.id}
+            className="flex h-[4.75rem] flex-col justify-between rounded-2xl border border-border bg-card p-2 text-center"
+          >
+            <p className="text-eyebrow line-clamp-2 h-8 break-words leading-4" title={stage.name}>{stage.name}</p>
+            <p className={cn("font-display text-xl font-bold leading-none tabular-nums", CCA_TONE_CLASS[ccaStageTone(stage.color)].text)}>
+              {porEstagio.get(stage.id)?.length ?? 0}
             </p>
           </div>
         ))}
       </div>
 
-      {/* `contain: paint` fecha a faixa rolável dentro dela mesma. Sem isso o
-          transbordo das colunas escapava do `overflow-x-auto` e passava a rolar
-          a PÁGINA inteira na horizontal — 735 px de deslocamento a 375 px, com
-          o conteúdo real ocupando só a primeira tela. */}
-      <div className="overflow-x-auto [contain:paint]">
-        <div className="flex min-w-max gap-3 pb-4">
-          {stages.map((stage) => {
-            const tone = CCA_TONE_CLASS[ccaStageTone(stage.color)];
-            const stageDeals = deals.filter((deal) => deal.stageId === stage.id);
-            const limite = limites[stage.id] ?? POR_COLUNA;
-            return (
-              <section key={stage.id} className="w-64 flex-shrink-0 rounded-2xl border border-border bg-muted/10">
-                <div className="flex items-center justify-between border-b border-border p-3">
-                  <div className="flex items-center gap-2">
-                    <span className={cn("h-2 w-2 rounded-full", tone.dot)} aria-hidden />
-                    <h2 className="text-xs font-semibold">{stage.name}</h2>
-                  </div>
-                  <Badge variant="secondary" className="h-5 text-xs tabular-nums">{stageDeals.length}</Badge>
+      <div className="flex w-max gap-3 pb-2">
+        {stages.map((stage) => {
+          const tone = CCA_TONE_CLASS[ccaStageTone(stage.color)];
+          const stageDeals = porEstagio.get(stage.id) ?? [];
+          const limite = limites[stage.id] ?? POR_COLUNA;
+          return (
+            // As colunas esticam até a mais alta: o cabeçalho preso vale até o
+            // fim da rolagem em todas, não só na coluna mais cheia.
+            <section key={stage.id} className="w-64 flex-shrink-0 rounded-2xl border border-border bg-muted/10">
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-2xl border-b border-border bg-card p-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={cn("h-2 w-2 flex-shrink-0 rounded-full", tone.dot)} aria-hidden />
+                  <h2 className="text-xs font-semibold">{stage.name}</h2>
                 </div>
+                <Badge variant="secondary" className="h-5 text-xs tabular-nums">{stageDeals.length}</Badge>
+              </div>
 
-                <div className="max-h-[calc(100vh-380px)] min-h-[200px] space-y-2 overflow-y-auto p-2">
-                  {stageDeals.slice(0, limite).map((deal) => {
-                    const envio = sendCounts?.get(deal.dealId);
-                    const enviado = [
-                      envio?.agil ? vezesPela(envio.agil, "Esteira Ágil") : "",
-                      envio?.virar ? vezesPela(envio.virar, "Análise p/ virar negócio") : "",
-                    ].filter(Boolean).join(" e ");
-                    return (
+              <div className="space-y-2 p-2">
+                {stageDeals.slice(0, limite).map((deal) => {
+                  const envio = sendCounts?.get(deal.dealId);
+                  const enviado = [
+                    envio?.agil ? vezesPela(envio.agil, "Esteira Ágil") : "",
+                    envio?.virar ? vezesPela(envio.virar, "Análise p/ virar negócio") : "",
+                  ].filter(Boolean).join(" e ");
+                  return (
                     <article key={deal.caseId} className="space-y-2 rounded-xl border border-border bg-card p-3">
                       {/* Mesmo desenho do `DealCard`: o corpo clicável é IRMÃO
                           do rodapé com o Select e o botão, nunca o pai deles —
@@ -164,30 +187,29 @@ export function CcaBoard({ stages, deals, canAct, sendCounts, onOpen, onMove, on
                         </>
                       )}
                     </article>
-                    );
-                  })}
+                  );
+                })}
 
-                  {stageDeals.length > limite && (
-                    <Button
-                      size="sm" variant="ghost" className="h-7 w-full text-xs"
-                      onClick={() => setLimites((atual) => ({ ...atual, [stage.id]: limite + POR_COLUNA }))}
-                    >
-                      Mostrar mais ({num(stageDeals.length - limite)} restantes)
-                    </Button>
-                  )}
+                {stageDeals.length > limite && (
+                  <Button
+                    size="sm" variant="ghost" className="h-7 w-full text-xs"
+                    onClick={() => setLimites((atual) => ({ ...atual, [stage.id]: limite + POR_COLUNA }))}
+                  >
+                    Mostrar mais ({num(stageDeals.length - limite)} restantes)
+                  </Button>
+                )}
 
-                  {stageDeals.length === 0 && (
-                    <p className="py-8 text-center text-xs text-muted-foreground">Nenhum caso</p>
-                  )}
-                </div>
-                </section>
-              );
-            })}
-        </div>
+                {stageDeals.length === 0 && (
+                  <p className="py-8 text-center text-xs text-muted-foreground">Nenhum caso</p>
+                )}
+              </div>
+            </section>
+          );
+        })}
       </div>
-    </>
+    </div>
   );
-}
+});
 
 /**
  * "Mover para…" com a lista de estágios montada só depois da primeira abertura.

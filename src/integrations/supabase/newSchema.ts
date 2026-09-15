@@ -1,6 +1,6 @@
 import { differenceInDays, format, parseISO } from "date-fns";
 import { supabase } from "./client";
-import { getCurrentWorkDate } from "./checkin";
+import { getCurrentWorkDate, SAO_PAULO_UTC_OFFSET } from "./checkin";
 import { bareStatus, isLossStatus, normalizeStatus } from "@/lib/dealStatus";
 import { ccaStatusLabel } from "@/components/pipeline/ccaStage";
 import { dbError } from "@/lib/supabaseError";
@@ -311,11 +311,111 @@ export async function allRows<T>(
   return { data: rows, error: null };
 }
 
-export async function listLegacyDeals(signal?: AbortSignal): Promise<LegacyDealRecord[]> {
+type PageFn<T> = (from: number, to: number, count?: "exact") => Page<T>;
+type DealRow = Database["public"]["Tables"]["deals"]["Row"];
+
+/** Ids por requisição no `in.(…)`: 100 uuids dão ~4 kB de URL, abaixo do teto do gateway. */
+const IDS_POR_REQUISICAO = 100;
+
+/** `allRows` de cada lote de ids, em paralelo, numa lista só. */
+async function porLotes<T>(ids: string[], page: (lote: string[]) => PageFn<T>) {
+  const lotes: string[][] = [];
+  for (let i = 0; i < ids.length; i += IDS_POR_REQUISICAO) lotes.push(ids.slice(i, i + IDS_POR_REQUISICAO));
+  const results = await Promise.all(lotes.map((lote) => allRows(page(lote))));
+  return {
+    data: results.flatMap((result) => result.data),
+    error: results.find((result) => result.error)?.error ?? null,
+  };
+}
+
+const DIA_MS = 86_400_000;
+
+const somarDias = (dia: string, dias: number) =>
+  new Date(Date.parse(`${dia}T00:00:00Z`) + dias * DIA_MS).toISOString().slice(0, 10);
+
+const diaValido = (dia: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return false;
+  const instante = Date.parse(`${dia}T00:00:00Z`);
+  // "2026-02-30" passa na regex; a volta pelo `Date` mostra que o dia não existe.
+  return !Number.isNaN(instante) && new Date(instante).toISOString().startsWith(dia);
+};
+
+/**
+ * Período padrão do Pipeline e da CCA: de hoje-30 até hoje, com "hoje" contado
+ * em São Paulo. Pelo relógio UTC, às 21h de Brasília o período já andaria um dia.
+ */
+export function last30DaysRange(now: Date = new Date()): { from: string; to: string } {
+  const hoje = new Date(now.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
+  return { from: somarDias(hoje, -30), to: hoje };
+}
+
+/**
+ * Limites de `created_at` para o banco. `from` vale da meia-noite de São Paulo;
+ * `to` é inclusivo, então vira "antes da meia-noite do dia seguinte". Vazio =
+ * sem limite daquele lado (campo de data limpo). Data inválida é recusada: se
+ * fosse ignorada, a tela baixaria a base inteira sem ninguém pedir.
+ */
+export function createdAtBounds(from?: string, to?: string): { gte?: string; lt?: string } {
+  if ((from && !diaValido(from)) || (to && !diaValido(to))) {
+    throw dbError("deals", { code: "P0001", message: "Escolha uma data válida no período." });
+  }
+  return {
+    gte: from ? `${from}T00:00:00${SAO_PAULO_UTC_OFFSET}` : undefined,
+    lt: to ? `${somarDias(to, 1)}T00:00:00${SAO_PAULO_UTC_OFFSET}` : undefined,
+  };
+}
+
+/** Mais recente primeiro; empate pelo id, a mesma ordem do `order` do banco. */
+export const newestFirst = (a: { created_at: string; id: string }, b: { created_at: string; id: string }) =>
+  Date.parse(b.created_at) - Date.parse(a.created_at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+export type LegacyDealsOptions = {
+  /** AAAA-MM-DD (dia de São Paulo). Filtra `deals.created_at` no banco. */
+  createdFrom?: string;
+  /** AAAA-MM-DD, inclusivo até o fim do dia. */
+  createdTo?: string;
+  /** Só estes negócios. */
+  ids?: string[];
+};
+
+/**
+ * Negócios na forma legada, do mais recente para o mais antigo.
+ *
+ * Sem `opts`, a base inteira (Dashboard, Resultados). Com período ou ids, o
+ * filtro vai no banco, e clientes, participantes, nomes e visitas saem só dos
+ * negócios encontrados: o Pipeline abria baixando os 7.579 negócios e ~20 mil
+ * participantes para mostrar os ~190 dos últimos 30 dias.
+ */
+export async function listLegacyDeals(
+  signal?: AbortSignal,
+  opts: LegacyDealsOptions = {},
+): Promise<LegacyDealRecord[]> {
   // O `signal` do React Query chega até a rede: sem ele, uma recarga cancelada
   // (evento realtime, `invalidateDeals`) continuava baixando as dezenas de
   // páginas enquanto a próxima já começava.
   const sinal = signal ?? new AbortController().signal;
+  const faixa = createdAtBounds(opts.createdFrom, opts.createdTo);
+  const recorte = opts.ids !== undefined || Boolean(faixa.gte || faixa.lt);
+
+  const negocios = (lote: string[] | null): PageFn<DealRow> => (from, to, count) => {
+    let query = db.from("deals").select("*", { count });
+    if (lote) query = query.in("id", lote);
+    if (faixa.gte) query = query.gte("created_at", faixa.gte);
+    if (faixa.lt) query = query.lt("created_at", faixa.lt);
+    return query.order("created_at", { ascending: false }).order("id").range(from, to).abortSignal(sinal);
+  };
+
+  // Com recorte os negócios vêm primeiro e o resto só para os ids deles; sem
+  // recorte tudo sai junto, como sempre.
+  const recortados = !recorte ? null
+    : opts.ids ? await porLotes(opts.ids, negocios) : await allRows(negocios(null));
+  if (recortados) throwIfError("deals", recortados);
+  const alvo = recortados ? recortados.data.map((deal) => deal.id) : null;
+  if (alvo?.length === 0) return [];
+  /** Tabela filha do negócio: inteira, ou só os ids do recorte, em lotes. */
+  const filhos = <T>(page: (lote: string[] | null) => PageFn<T>) =>
+    alvo ? porLotes(alvo, page) : allRows(page(null));
+
   const [
     dealsRes,
     stagesRes,
@@ -326,29 +426,40 @@ export async function listLegacyDeals(signal?: AbortSignal): Promise<LegacyDealR
     participantNamesRes,
     visitsRes,
   ] = await Promise.all([
-    allRows((from, to, count) => db.from("deals").select("*", { count })
-      .order("created_at", { ascending: false }).order("id").range(from, to).abortSignal(sinal)),
+    recortados ?? allRows(negocios(null)),
     db.from("pipeline_stages").select("id,code,label,position").abortSignal(sinal),
     db.from("developers").select("id,name").abortSignal(sinal),
     db.from("developer_projects").select("id,name").abortSignal(sinal),
-    allRows((from, to, count) => db.from("deal_clients").select("*", { count })
-      .order("id").range(from, to).abortSignal(sinal)),
-    allRows((from, to, count) => db.from("deal_participants").select("*", { count })
-      .order("ordinal").order("created_at").order("id").range(from, to).abortSignal(sinal)),
+    filhos((lote) => (from, to, count) => {
+      const query = db.from("deal_clients").select("*", { count });
+      return (lote ? query.in("deal_id", lote) : query).order("id").range(from, to).abortSignal(sinal);
+    }),
+    filhos((lote) => (from, to, count) => {
+      const query = db.from("deal_participants").select("*", { count });
+      return (lote ? query.in("deal_id", lote) : query)
+        .order("ordinal").order("created_at").order("id").range(from, to).abortSignal(sinal);
+    }),
     // `undefined as never`: a função não tem argumento (`Args: never` nos tipos
     // gerados) e o `count` só entra pelo 3º parâmetro; em runtime o `rpc` troca
-    // `undefined` pelo `{}` padrão, a mesma chamada de antes.
-    allRows((from, to, count) => db.rpc("deal_participant_names", undefined as never, { count })
-      .range(from, to).abortSignal(sinal)),
+    // `undefined` pelo `{}` padrão, a mesma chamada de antes. Ela devolve
+    // `deal_id`, então o recorte filtra o resultado dela no banco.
+    filhos((lote) => (from, to, count) => {
+      const query = db.rpc("deal_participant_names", undefined as never, { count });
+      return (lote ? query.in("deal_id", lote) : query).range(from, to).abortSignal(sinal);
+    }),
     // `visits` entra aqui porque `deals` não tem mais coluna de visita: o schema
     // novo guarda o agendamento na própria tabela. Sem esta consulta,
     // `visit_date` nascia `undefined` para todo negócio e o indicador de visita
     // da tabela e do cartão ficava apagado mesmo depois de agendar.
-    allRows((from, to, count) => db.from("visits").select("deal_id,scheduled_at,result", { count })
-      .not("deal_id", "is", null).order("id").range(from, to).abortSignal(sinal)),
+    filhos((lote) => (from, to, count) => {
+      const query = db.from("visits").select("deal_id,scheduled_at,result", { count }).not("deal_id", "is", null);
+      return (lote ? query.in("deal_id", lote) : query).order("id").range(from, to).abortSignal(sinal);
+    }),
   ]);
 
   throwIfError("deals", dealsRes);
+  // Os lotes de ids chegam cada um na sua ordem; o período já vem ordenado.
+  if (opts.ids) dealsRes.data.sort(newestFirst);
   throwIfError("pipeline_stages", stagesRes);
   throwIfError("developers", developersRes);
   throwIfError("developer_projects", projectsRes);

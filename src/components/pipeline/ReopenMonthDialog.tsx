@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Unlock } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -10,15 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
 import { compareMonth, nextMonthBase } from "@/lib/dealStatus";
-import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { pipelineKeys, reopenMonth } from "./data";
-import { dealMonth, inconsistentClosedMonths } from "./filters";
+import { listMonthDeals, pipelineKeys, reopenMonth } from "./data";
+import { inconsistentClosedMonths } from "./filters";
 
 interface Props {
   /** Meses em `closed_months` — os únicos que dá para reabrir. */
   closedMonths: string[];
-  /** Todos os negócios: o diálogo conta o que volta a aceitar edição. */
-  deals: LegacyDealRecord[];
   onClose: () => void;
 }
 
@@ -39,11 +36,14 @@ interface Props {
  * a diretoria já leu como fechado. O diálogo diz isso ANTES de confirmar, com o
  * número de negócios que o mês reaberto volta a aceitar editar.
  *
+ * **Os números vêm do banco**, do mês escolhido: a lista do Pipeline é só o
+ * período filtrado na tela, e um mês fechado quase nunca está nele.
+ *
  * A temporada do game **não** volta junto: `close_game_season` congela o placar
  * em `game_season_results` e abre o ciclo seguinte. Reabrir o mês devolve a
  * edição dos negócios, não o pódio — está escrito no aviso.
  */
-export function ReopenMonthDialog({ closedMonths, deals, onClose }: Props) {
+export function ReopenMonthDialog({ closedMonths, onClose }: Props) {
   const queryClient = useQueryClient();
   const id = useId();
   const [saving, setSaving] = useState(false);
@@ -55,11 +55,22 @@ export function ReopenMonthDialog({ closedMonths, deals, onClose }: Props) {
   const [period, setPeriod] = useState(() => options[0] ?? "");
 
   /** Negócios do período — o que volta a aceitar edição de todo mundo. */
-  const doMes = deals.filter((deal) => dealMonth(deal) === period);
+  const doPeriodo = useQuery({
+    queryKey: [...pipelineKeys.deals, "mes", period],
+    queryFn: ({ signal }) => listMonthDeals({ months: [period] }, signal),
+    enabled: Boolean(period),
+  });
+  const abertasEmFechados = useQuery({
+    queryKey: [...pipelineKeys.deals, "abertas-em-meses-fechados", closedMonths],
+    queryFn: ({ signal }) => listMonthDeals({ months: closedMonths, openOnly: true }, signal),
+  });
+  const doMes = doPeriodo.data ?? [];
   const abertos = doMes.filter((deal) => deal.outcome === "open").length;
   const incoerentes = useMemo(
-    () => new Map(inconsistentClosedMonths(deals, closedMonths).map((row) => [row.month, row.abertos])),
-    [deals, closedMonths],
+    () => new Map(
+      inconsistentClosedMonths(abertasEmFechados.data ?? [], closedMonths).map((row) => [row.month, row.abertos]),
+    ),
+    [abertasEmFechados.data, closedMonths],
   );
 
   const confirm = async () => {
@@ -73,7 +84,7 @@ export function ReopenMonthDialog({ closedMonths, deals, onClose }: Props) {
       toast({
         variant: "success",
         title: `Mês ${period} reaberto`,
-        description: `${doMes.length} negócio(s) de ${period} voltam a aceitar edição. `
+        description: `Os negócios de ${period} voltam a aceitar edição. `
           + "As propostas que já migraram continuam no mês seguinte.",
       });
       onClose();
@@ -122,7 +133,13 @@ export function ReopenMonthDialog({ closedMonths, deals, onClose }: Props) {
           <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs">
             <p className="font-semibold text-foreground">O que acontece com {period}</p>
             <ul className="mt-1 space-y-0.5 text-muted-foreground">
-              <li>{doMes.length} negócio(s) de {period} voltam a aceitar edição.</li>
+              <li>
+                {doPeriodo.error
+                  ? `Não consegui contar os negócios de ${period}.`
+                  : doPeriodo.isPending
+                    ? `Contando os negócios de ${period}…`
+                    : `${doMes.length} negócio(s) de ${period} voltam a aceitar edição.`}
+              </li>
               <li>
                 As propostas que o fechamento já moveu para {period ? nextMonthBase(period) : "o mês seguinte"}
                 {" "}continuam lá: não há registro de quais linhas migraram, então nada é revertido.

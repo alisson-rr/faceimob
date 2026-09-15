@@ -85,8 +85,8 @@ export function DealsTable({
   // filtrados e ordenados"): reordenar os 7.579 de novo a cada tecla da busca
   // era trabalho repetido.
   const ordenados = useMemo(
-    () => (sort.key === "padrao" ? deals : sortDealsBy(deals, sort.key, sort.asc, catalog)),
-    [deals, sort, catalog],
+    () => (sort.key === "padrao" ? deals : sortDealsBy(deals, sort.key, sort.asc)),
+    [deals, sort],
   );
 
   // Filtrar estando na página 3 deixava o operador olhando para a última página

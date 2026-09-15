@@ -332,17 +332,16 @@ begin
   select pg_get_expr(p.polqual, p.polrelid) into v_qual
     from pg_policy p where p.polname = 'cca_stages_write'
      and p.polrelid = 'public.cca_stages'::regclass;
-  perform pg_temp.check59(position('has_permission' in coalesce(v_qual, '')) > 0,
-    'gerenciar estágios usa a mesma permissão que mover e enviar (cca.review)');
+  -- Desde a 0151 a configuração da esteira é só de admin e sócio (pedido de
+  -- 15/09/2026); o comportamento é cobrado em 99_cca_config_so_admin.
+  perform pg_temp.check59(position('is_admin' in coalesce(v_qual, '')) > 0,
+    'gerenciar estágios é só de admin e sócio (0151)');
 
-  -- O botão "Tipos de documento" é liberado por `can('cca.review')`; enquanto a
-  -- policy fosse por papel, quem recebesse a permissão via o botão e levava a
-  -- recusa do banco.
   select pg_get_expr(p.polqual, p.polrelid) into v_qual
     from pg_policy p where p.polname = 'document_types_write'
      and p.polrelid = 'public.document_types'::regclass;
-  perform pg_temp.check59(position('has_permission' in coalesce(v_qual, '')) > 0,
-    'o catálogo de tipos de documento usa a mesma permissão do resto da tela');
+  perform pg_temp.check59(position('is_admin' in coalesce(v_qual, '')) > 0,
+    'o catálogo de tipos de documento é só de admin e sócio (0151)');
 
   perform pg_temp.check59(
     public.deal_id_of_object('11111111-2222-3333-4444-555555555555/1-x.pdf')

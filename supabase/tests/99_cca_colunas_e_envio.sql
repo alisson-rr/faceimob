@@ -127,10 +127,10 @@ begin
 
   perform pg_temp.check150(
     not has_function_privilege('anon', 'public.move_cca_case(uuid,uuid,text)', 'execute')
-    and not has_function_privilege('anon', 'public.cca_send_counts()', 'execute')
+    and not has_function_privilege('anon', 'public.cca_send_counts(uuid[])', 'execute')
     and not has_function_privilege('anon', 'public.submit_deal_for_manager_review(uuid,text,text)', 'execute')
     and has_function_privilege('authenticated', 'public.move_cca_case(uuid,uuid,text)', 'execute')
-    and has_function_privilege('authenticated', 'public.cca_send_counts()', 'execute')
+    and has_function_privilege('authenticated', 'public.cca_send_counts(uuid[])', 'execute')
     and has_function_privilege('authenticated', 'public.submit_deal_for_manager_review(uuid,text,text)', 'execute'),
     'anon não executa as RPCs novas; a tela logada executa');
 
@@ -588,6 +588,7 @@ $$;
 
 do $$
 declare
+  adm  uuid := '00000000-0000-0000-0000-000000150001';
   ger  uuid := '00000000-0000-0000-0000-000000150002';
   cor  uuid := '00000000-0000-0000-0000-000000150003';
   ana  uuid := '00000000-0000-0000-0000-000000150004';
@@ -630,9 +631,10 @@ begin
 
   -- ── coluna ligada a desfecho ou a rótulo do sistema ───────────────────────
   -- O gatilho da esteira grava como postgres: a ligação passaria por cima da
-  -- trava de OFF/DISTRATO e da de rótulo do sistema.
+  -- trava de OFF/DISTRATO e da de rótulo do sistema. Desde a 0151 só admin e
+  -- sócio escrevem coluna, e a trava vale para eles também.
   perform set_config('request.jwt.claims',
-    json_build_object('sub', ana::text, 'role', 'authenticated')::text, false);
+    json_build_object('sub', adm::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
   v_state := '';
   begin
@@ -684,13 +686,13 @@ begin
     and (select ds.value from public.cca_stages s
            join public.deal_statuses ds on ds.id = s.deal_status_id
           where s.id = v_repr) = '19. REPROVADO',
-    format('o analista não liga coluna a DISTRATO, QUEDA, "13. ESTEIRA AGIL" nem "15. ANÁLISE P/ VIRAR NEGÓCIO" (%s)', nullif(v_state, '')));
+    format('o administrador não liga coluna a DISTRATO, QUEDA, "13. ESTEIRA AGIL" nem "15. ANÁLISE P/ VIRAR NEGÓCIO" (%s)', nullif(v_state, '')));
   perform pg_temp.check150(
     v_msg is null and v_linhas = 1
     and (select ds.value from public.cca_stages s
            join public.deal_statuses ds on ds.id = s.deal_status_id
           where s.id = v_ret) = 'RET. ESTEIRA AGIL',
-    format('o analista liga coluna a "RET. ESTEIRA AGIL" (%s)', coalesce(v_msg, 'aceito')));
+    format('o administrador liga coluna a "RET. ESTEIRA AGIL" (%s)', coalesce(v_msg, 'aceito')));
 
   -- ── a tela não cria, não apaga e não reescreve a entrada do caso ──────────
   perform set_config('request.jwt.claims',

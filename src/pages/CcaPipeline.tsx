@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { AlertTriangle, FileCog, Inbox, Landmark, Loader2, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { dbError, describeError } from "@/lib/supabaseError";
+import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
@@ -19,11 +20,13 @@ import {
 import { saveLegacyDeal } from "@/integrations/supabase/newSchema";
 import {
   CcaBoard, CcaMoveDialog, CcaStageSettingsDialog,
-  dealRangeError, useCcaBoard, useDeals, useDevelopers, useInvalidateCcaBoard,
+  dealRangeError, useCcaBoard, useDevelopers, useInvalidateCcaBoard,
   useInvalidateDeals, usePeople, usePipelineStages,
   type CcaDeal, type CcaStage,
 } from "@/components/pipeline";
-import { useCcaSendCounts } from "@/components/pipeline/ccaData";
+import {
+  periodoValido, ultimos30Dias, useCcaSendCounts, type CcaPeriodo,
+} from "@/components/pipeline/ccaData";
 import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 
 /** Normaliza para busca: sem acento e em minúscula, como o resto das telas. */
@@ -36,7 +39,8 @@ const fold = (value: string) =>
  * Antes disto, "quais documentos são obrigatórios", "quais aceitam vários" e o
  * `naming_pattern` só mudavam por SQL — `document_types` era lido em
  * `documents.ts` e em lugar nenhum mais. Fica aqui, ao lado de "Gerenciar
- * estágios", porque `document_types_write` é do mesmo público (admin e CCA).
+ * estágios", porque `document_types_write` é do mesmo público: admin e sócio
+ * (`is_admin()`, 0151).
  *
  * Não cria nem apaga tipo: `code` é referência do seed e de `naming_pattern`, e
  * apagar tipo com documento anexado esbarraria na FK. Desligar (`active`) é a
@@ -91,8 +95,12 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
+      {/* Altura e largura cabem na tela pela base do `DialogContent`; aqui o
+          cabeçalho e o rodapé ficam fixos e só a lista rola. Com `90vh` e a
+          rolagem no diálogo inteiro, no celular o rodapé sumia atrás da barra
+          do navegador. */}
+      <DialogContent className="flex max-w-2xl flex-col gap-0 p-0">
+        <DialogHeader className="shrink-0 border-b border-border p-4 pr-12 sm:p-6 sm:pr-12">
           <DialogTitle>Tipos de documento</DialogTitle>
           <DialogDescription>
             Define o que o corretor vê na aba Anexos: obrigatoriedade, múltiplos arquivos e o
@@ -100,89 +108,91 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
           </DialogDescription>
         </DialogHeader>
 
-        {loading ? (
-          <LoadingState variant="list" rows={4} label="Carregando o catálogo…" />
-        ) : (
-          <div className="space-y-2">
-            {rows.map((row) => (
-              // Grupo nomeado: são três caixas e um campo por tipo, com os
-              // mesmos rótulos repetidos linha a linha — sem o nome do grupo
-              // não dá para saber de qual documento é o "Obrigatório" que se
-              // está marcando.
-              <div
-                key={row.id}
-                role="group"
-                aria-label={row.label}
-                className="rounded-lg border border-border/60 p-3 space-y-2"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">
-                    {row.label} <span className="text-xs font-normal text-muted-foreground">({row.code})</span>
-                  </p>
-                  {busy === row.id && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
-                </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          {loading ? (
+            <LoadingState variant="list" rows={4} label="Carregando o catálogo…" />
+          ) : (
+            <div className="space-y-2">
+              {rows.map((row) => (
+                // Grupo nomeado: são três caixas e um campo por tipo, com os
+                // mesmos rótulos repetidos linha a linha — sem o nome do grupo
+                // não dá para saber de qual documento é o "Obrigatório" que se
+                // está marcando.
+                <div
+                  key={row.id}
+                  role="group"
+                  aria-label={row.label}
+                  className="space-y-2 rounded-lg border border-border/60 p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="min-w-0 break-words text-sm font-semibold">
+                      {row.label} <span className="text-xs font-normal text-muted-foreground">({row.code})</span>
+                    </p>
+                    {busy === row.id && <Loader2 className="h-3 w-3 flex-shrink-0 animate-spin" aria-hidden />}
+                  </div>
 
-                <div className="flex flex-wrap items-center gap-4">
-                  <span className="flex items-center gap-2">
-                    <Checkbox
-                      id={`${fieldId}-${row.id}-req`}
-                      checked={row.required_for_conversion}
-                      disabled={busy === row.id}
-                      onCheckedChange={(v) => salvar(row, { required_for_conversion: v === true })}
-                    />
-                    <Label htmlFor={`${fieldId}-${row.id}-req`} className="text-xs">Obrigatório</Label>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <Checkbox
-                      id={`${fieldId}-${row.id}-multi`}
-                      checked={row.allows_multiple}
-                      disabled={busy === row.id}
-                      onCheckedChange={(v) => salvar(row, { allows_multiple: v === true })}
-                    />
-                    <Label htmlFor={`${fieldId}-${row.id}-multi`} className="text-xs">Aceita vários</Label>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <Checkbox
-                      id={`${fieldId}-${row.id}-ativo`}
-                      checked={row.active}
-                      disabled={busy === row.id}
-                      onCheckedChange={(v) => salvar(row, { active: v === true })}
-                    />
-                    <Label htmlFor={`${fieldId}-${row.id}-ativo`} className="text-xs">Ativo</Label>
-                  </span>
-                </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${fieldId}-${row.id}-req`}
+                        checked={row.required_for_conversion}
+                        disabled={busy === row.id}
+                        onCheckedChange={(v) => salvar(row, { required_for_conversion: v === true })}
+                      />
+                      <Label htmlFor={`${fieldId}-${row.id}-req`} className="text-xs">Obrigatório</Label>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${fieldId}-${row.id}-multi`}
+                        checked={row.allows_multiple}
+                        disabled={busy === row.id}
+                        onCheckedChange={(v) => salvar(row, { allows_multiple: v === true })}
+                      />
+                      <Label htmlFor={`${fieldId}-${row.id}-multi`} className="text-xs">Aceita vários</Label>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${fieldId}-${row.id}-ativo`}
+                        checked={row.active}
+                        disabled={busy === row.id}
+                        onCheckedChange={(v) => salvar(row, { active: v === true })}
+                      />
+                      <Label htmlFor={`${fieldId}-${row.id}-ativo`} className="text-xs">Ativo</Label>
+                    </span>
+                  </div>
 
-                <div className="space-y-1">
-                  <Label htmlFor={`${fieldId}-${row.id}-pattern`} className="text-xs">Padrão de nome</Label>
-                  {/* A `key` amarra o campo ao valor que está em `rows`: quando
-                      `salvar` reverte o estado por recusa do banco, o Input
-                      remonta com o padrão real. Sem isso a pessoa lia "Não foi
-                      possível salvar" com o texto novo ainda na caixa — tela e
-                      banco discordando sem sinal nenhum. */}
-                  <Input
-                    key={`${row.id}-${row.naming_pattern ?? ""}`}
-                    id={`${fieldId}-${row.id}-pattern`}
-                    className="h-8 text-xs"
-                    defaultValue={row.naming_pattern ?? ""}
-                    placeholder="{tipo}-{cliente}-{data}"
-                    disabled={busy === row.id}
-                    onBlur={(event) => {
-                      const valor = event.target.value.trim();
-                      // Normaliza o que ficou na tela: sem isto, digitar só
-                      // espaços em volta do mesmo padrão não salva (certo) e
-                      // deixa a caixa diferente do banco (errado).
-                      event.target.value = valor;
-                      if (valor === (row.naming_pattern ?? "")) return;
-                      void salvar(row, { naming_pattern: valor || null });
-                    }}
-                  />
+                  <div className="space-y-1">
+                    <Label htmlFor={`${fieldId}-${row.id}-pattern`} className="text-xs">Padrão de nome</Label>
+                    {/* A `key` amarra o campo ao valor que está em `rows`: quando
+                        `salvar` reverte o estado por recusa do banco, o Input
+                        remonta com o padrão real. Sem isso a pessoa lia "Não foi
+                        possível salvar" com o texto novo ainda na caixa — tela e
+                        banco discordando sem sinal nenhum. */}
+                    <Input
+                      key={`${row.id}-${row.naming_pattern ?? ""}`}
+                      id={`${fieldId}-${row.id}-pattern`}
+                      className="h-8 text-xs"
+                      defaultValue={row.naming_pattern ?? ""}
+                      placeholder="{tipo}-{cliente}-{data}"
+                      disabled={busy === row.id}
+                      onBlur={(event) => {
+                        const valor = event.target.value.trim();
+                        // Normaliza o que ficou na tela: sem isto, digitar só
+                        // espaços em volta do mesmo padrão não salva (certo) e
+                        // deixa a caixa diferente do banco (errado).
+                        event.target.value = valor;
+                        if (valor === (row.naming_pattern ?? "")) return;
+                        void salvar(row, { naming_pattern: valor || null });
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t border-border p-4 sm:px-6">
           <Button variant="outline" onClick={onClose}>Fechar</Button>
         </DialogFooter>
       </DialogContent>
@@ -193,35 +203,43 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
 /**
  * Esteira de crédito (CCA).
  *
- * - **Permissão espelhada** (achado P09). A tela usava papel (`roles.includes
- *   ('cca')`) e o banco usa permissão: `cca_cases_write`, `developer_submissions
- *   _write` e — desde a 0059 — `cca_stages_write` exigem
- *   `has_permission('cca.review')`. Se um admin desligasse `cca.review` na tela
- *   de Permissões, os botões continuavam aparecendo e o banco devolvia 42501.
- *   `can()` já curto-circuita em admin, então o gate é um só.
+ * - **Período no banco** (15/09/2026): abre nos últimos 30 dias pela entrada na
+ *   esteira (`submitted_at`) e só baixa esses casos e os negócios deles. A busca
+ *   procura dentro do que o período trouxe.
+ * - **Uma rolagem só**: a página tem a altura da janela e o `CcaBoard` é o único
+ *   contêiner que rola.
+ * - **Permissão espelhada** (achado P09): mover e enviar seguem `can('cca.review')`,
+ *   como `cca_cases_write` e `developer_submissions_write`. Configurar a esteira
+ *   (estágios e tipos de documento) é de admin e sócio: `isAdmin`, o mesmo
+ *   `is_admin()` de `cca_stages_write` e `document_types_write` desde a 0151.
  * - **Estados de verdade** (A01): a carga vive num `useQuery`, com espera, erro
  *   em pt-BR e "Tentar de novo".
  * - **Mover é um Select visível** (X02) — ver `CcaBoard`.
- * - **Busca** (0059): 12 casos cabem na tela, 200 viram rolagem. O filtro é do
- *   lado do cliente porque a esteira inteira já vem numa consulta só.
  * - **O cartão abre o `DealDetailModal`** (pedido do cliente, 10/09/2026): o
  *   MESMO editor do Pipeline, não uma cópia. Nenhuma regra de permissão nasce
  *   aqui — o modal e o `DealForm` já consultam `can()`, `canEnterStage()` e
  *   `useDealWriteLock()`, e é de lá que sai o que a analista pode tocar.
  */
 export default function CcaPipeline() {
-  const { can } = useAuth();
-  const board = useCcaBoard();
+  const { can, isAdmin } = useAuth();
+  // `null` = ninguém mexeu no período: valem os últimos 30 dias, recalculados a
+  // cada render para a virada do dia não congelar o "até hoje" (como no Pipeline).
+  const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo | null>(null);
+  const periodo = periodoEscolhido ?? ultimos30Dias();
+  const periodoOk = periodoValido(periodo);
+  const board = useCcaBoard(periodo, periodoOk);
   const refresh = useInvalidateCcaBoard();
   const pipelineStages = usePipelineStages();
   // Insumos do editor. São as MESMAS consultas do Pipeline (mesmas chaves do
   // TanStack Query), então abrir as duas telas na sessão não refaz a carga.
-  const dealsQuery = useDeals();
   const peopleQuery = usePeople();
   const developersQuery = useDevelopers();
   const statusCatalog = useDealStatusCatalog();
   const invalidateDeals = useInvalidateDeals();
   const buscaId = useId();
+  const deId = useId();
+  const ateId = useId();
+  const periodoMsgId = useId();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [typesOpen, setTypesOpen] = useState(false);
@@ -229,17 +247,19 @@ export default function CcaPipeline() {
   const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
   const [submissionDeal, setSubmissionDeal] = useState<CcaDeal | null>(null);
   /** Negócio aberto no editor — o `id`, não a linha: assim o modal acompanha o
-   *  refetch de `useDeals` em vez de segurar uma cópia congelada. */
+   *  refetch do quadro em vez de segurar uma cópia congelada. */
   const [openDealId, setOpenDealId] = useState<string | null>(null);
 
   const canAct = can("cca.review");
-  // Fora do gate de espera: o selo é complemento, e sem ele o quadro continua útil.
-  const envios = useCcaSendCounts(canAct);
   const stages = useMemo(() => board.data?.stages ?? [], [board.data]);
   const deals = useMemo(() => board.data?.deals ?? [], [board.data]);
+  const negocios = board.data?.negocios;
+  const dealIds = useMemo(() => deals.map((deal) => deal.dealId), [deals]);
+  // Fora do gate de espera: o selo é complemento, e sem ele o quadro continua útil.
+  const envios = useCcaSendCounts(dealIds, canAct);
   const openDeal = useMemo(
-    () => dealsQuery.data?.find((row) => row.id === openDealId) ?? null,
-    [dealsQuery.data, openDealId],
+    () => negocios?.find((row) => row.id === openDealId) ?? null,
+    [negocios, openDealId],
   );
 
   const visiveis = useMemo(() => {
@@ -250,29 +270,52 @@ export default function CcaPipeline() {
     );
   }, [deals, busca]);
 
+  // Estáveis: o `CcaBoard` é `memo`, e abrir um diálogo não redesenha os cartões.
+  const abrirNegocio = useCallback((deal: CcaDeal) => {
+    // O caso existe na esteira mas o negócio pode não estar na visibilidade de
+    // quem olha (`can_see_deal`) — é o mesmo motivo pelo qual `loadCcaBoard`
+    // cai em "Cliente não informado". Dizer isso é melhor que um clique que
+    // não abre nada.
+    const registro = negocios?.find((row) => row.id === deal.dealId);
+    if (!registro) {
+      toast.error("Não foi possível abrir o negócio", {
+        description: "O caso está na esteira, mas o negócio não aparece na sua "
+          + "visibilidade. Recarregue a página; se continuar, fale com o administrador.",
+      });
+      return;
+    }
+    setOpenDealId(registro.id);
+  }, [negocios]);
+  const moverCaso = useCallback((deal: CcaDeal, stage: CcaStage) => setMoving({ deal, stage }), []);
+
   // O catálogo de etapas entra no gate porque `CcaMoveDialog` depende dele para
   // levar o negócio junto ao aprovar: abrir a esteira antes de ele chegar
   // deixava o diálogo confirmar com `approvedStage` indefinido.
   //
-  // Negócios, pessoas e construtoras entram pelo mesmo motivo, agora que o
-  // cartão abre o editor: engoli-los com `?? []` daria um clique que não abre
-  // nada (o negócio ainda não está na lista) ou um modal com os Selects de
-  // corretor e construtora vazios — sem erro e sem "Tentar de novo", com a
-  // mesma cara de uma base sem cadastro. É o gate que o Pipeline já faz.
+  // Pessoas e construtoras entram pelo mesmo motivo, agora que o cartão abre o
+  // editor: engoli-las com `?? []` daria um modal com os Selects de corretor e
+  // construtora vazios — sem erro e sem "Tentar de novo", com a mesma cara de
+  // uma base sem cadastro. É o gate que o Pipeline já faz.
   //
   // O catálogo de status também: o editor lê dele os Selects de Status 1 e
   // Status 2, que abriam vazios e sem explicação quando a leitura falhava.
+  //
+  // `board.isPending` só vale na primeira carga: trocar o período mantém o
+  // quadro anterior (`placeholderData`) em vez de desmontar os campos de data.
   if (board.isPending || pipelineStages.isPending
-      || dealsQuery.isPending || peopleQuery.isPending || developersQuery.isPending
-      || statusCatalog.isPending) {
+      || peopleQuery.isPending || developersQuery.isPending || statusCatalog.isPending) {
     return <LoadingState variant="kpi" rows={5} label="Carregando a esteira…" />;
   }
 
   // `pipelineStages` entra aqui, e não só no gate de espera: falhando, ela
   // devolvia `undefined` em silêncio — `CcaMoveDialog` aprovava com
   // `approvedStage` indefinido e o editor abriria com a lista de etapas vazia.
-  const cargaFalhou = board.error ?? pipelineStages.error
-    ?? dealsQuery.error ?? peopleQuery.error ?? developersQuery.error ?? statusCatalog.error;
+  //
+  // O erro do quadro NÃO entra aqui: depende do período, e trocar a página
+  // inteira pelo aviso sumia com os campos De/Até — o "Tentar de novo" pedia o
+  // mesmo período que falhou. Ele aparece no lugar do quadro, mais abaixo.
+  const cargaFalhou = pipelineStages.error
+    ?? peopleQuery.error ?? developersQuery.error ?? statusCatalog.error;
   if (cargaFalhou) {
     return (
       <EmptyState
@@ -283,9 +326,7 @@ export default function CcaPipeline() {
         action={
           <Button
             onClick={() => {
-              void board.refetch();
               void pipelineStages.refetch();
-              void dealsQuery.refetch();
               void peopleQuery.refetch();
               void developersQuery.refetch();
               void statusCatalog.refetch();
@@ -299,41 +340,77 @@ export default function CcaPipeline() {
   }
 
   return (
-    // `min-w-0`: sem isso o quadro rolável estoura a largura da página inteira —
-    // o `main` do shell é item de flex e um filho de bloco cresce até o conteúdo.
-    <div className="min-w-0 space-y-5">
+    // A página não rola: tem a altura da janela menos o cabeçalho do `AppLayout`
+    // (h-16) e o respiro vertical dele (py-5 / sm:py-6 / lg:py-8), e o quadro
+    // (`flex-1 min-h-0`) fica com o resto. `min-w-0`: sem isso o quadro estoura
+    // a largura da página — o `main` do shell é item de flex.
+    // ponytail: altura amarrada ao cabeçalho e ao padding do AppLayout; evoluir
+    // para flex no próprio layout quando outra tela precisar de altura cheia.
+    <div className="flex h-[calc(100dvh-6.5rem)] min-w-0 flex-col gap-3 sm:h-[calc(100dvh-7rem)] lg:h-[calc(100dvh-8rem)]">
       <PageHeader
+        className="mb-0 sm:mb-0"
         title="Esteira CCA"
         eyebrow="Crédito"
         icon={Landmark}
-        description={`${deals.length} caso(s) em ${stages.length} estágio(s).`
-          + (board.data?.outside ? ` ${board.data.outside} caso(s) fora das colunas ativas (cancelados ou sem coluna).` : "")}
+        // Sem dados (o período falhou) não há contagem a dizer: "0 caso(s)" seria falso.
+        description={board.data && (`${deals.length} caso(s) no período, em ${stages.length} estágio(s).`
+          + (board.data.outside ? ` ${board.data.outside} caso(s) fora das colunas ativas (cancelados ou sem coluna).` : ""))}
         actions={
-          canAct ? (
-            <div className="flex flex-wrap gap-2">
+          isAdmin ? (
+            <>
               <Button variant="outline" size="sm" onClick={() => setTypesOpen(true)}>
                 <FileCog className="mr-1 h-4 w-4" aria-hidden /> Tipos de documento
               </Button>
               <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
                 <Settings className="mr-1 h-4 w-4" aria-hidden /> Gerenciar estágios
               </Button>
-            </div>
-          ) : (
+            </>
+          ) : !canAct ? (
             <StatusBadge tone="neutral">Somente leitura</StatusBadge>
-          )
+          ) : undefined
         }
       />
 
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-        <Label htmlFor={buscaId} className="sr-only">Buscar caso na esteira</Label>
-        <Input
-          id={buscaId}
-          value={busca}
-          onChange={(event) => setBusca(event.target.value)}
-          placeholder="Buscar cliente, construtora, empreendimento ou corretor"
-          className="h-9 pl-9 text-xs"
-        />
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Label htmlFor={buscaId} className="sr-only">Buscar caso na esteira</Label>
+            <Input
+              id={buscaId}
+              value={busca}
+              onChange={(event) => setBusca(event.target.value)}
+              placeholder="Buscar cliente, construtora, empreendimento ou corretor"
+              className="h-9 pl-9 text-xs"
+            />
+          </div>
+          <Label htmlFor={deId} className="text-xs">De</Label>
+          <Input
+            id={deId} type="date" className="h-9 w-auto text-xs"
+            min="2000-01-01" max={periodo.ate || undefined} value={periodo.de}
+            aria-describedby={periodoMsgId} aria-invalid={!periodoOk || undefined}
+            onChange={(event) => setPeriodoEscolhido({ ...periodo, de: event.target.value })}
+          />
+          <Label htmlFor={ateId} className="text-xs">Até</Label>
+          <Input
+            id={ateId} type="date" className="h-9 w-auto text-xs"
+            min={periodo.de || "2000-01-01"} value={periodo.ate}
+            aria-describedby={periodoMsgId} aria-invalid={!periodoOk || undefined}
+            onChange={(event) => setPeriodoEscolhido({ ...periodo, ate: event.target.value })}
+          />
+          <Button variant="outline" size="sm" className="h-9" onClick={() => setPeriodoEscolhido(null)}>
+            Últimos 30 dias
+          </Button>
+          {/* Sempre montado: `role="status"` só anuncia a mudança de um nó que já existia. */}
+          <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
+            {board.isFetching && <><Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Carregando…</>}
+          </span>
+        </div>
+        <p id={periodoMsgId} aria-live="polite" className={cn("text-xs", periodoOk ? "text-muted-foreground" : "text-destructive")}>
+          {periodoOk
+            ? "Período pela data de entrada na esteira. A busca procura só nos casos deste período."
+            : "Preencha as duas datas, com o início antes do fim."}
+        </p>
       </div>
 
       {envios.isError && (
@@ -346,18 +423,26 @@ export default function CcaPipeline() {
         </p>
       )}
 
-      {stages.length === 0 ? (
+      {board.error ? (
+        <EmptyState
+          icon={AlertTriangle}
+          tone="danger"
+          title="Não consegui carregar a esteira CCA"
+          description={describeError(board.error, "Verifique a conexão e tente de novo.")}
+          action={<Button onClick={() => void board.refetch()}>Tentar de novo</Button>}
+        />
+      ) : stages.length === 0 ? (
         <EmptyState
           icon={Inbox}
           title="Nenhum estágio configurado"
           description="A esteira precisa de pelo menos um estágio para receber casos."
-          action={canAct ? <Button onClick={() => setSettingsOpen(true)}>Criar estágio</Button> : undefined}
+          action={isAdmin ? <Button onClick={() => setSettingsOpen(true)}>Criar estágio</Button> : undefined}
         />
       ) : busca.trim() && visiveis.length === 0 ? (
         <EmptyState
           icon={Search}
           title="Nenhum caso para esta busca"
-          description={`"${busca.trim()}" não aparece em nenhum dos ${deals.length} caso(s) da esteira.`}
+          description={`"${busca.trim()}" não aparece em nenhum dos ${deals.length} caso(s) do período.`}
           action={<Button variant="outline" onClick={() => setBusca("")}>Limpar busca</Button>}
         />
       ) : (
@@ -366,22 +451,8 @@ export default function CcaPipeline() {
           deals={visiveis}
           canAct={canAct}
           sendCounts={envios.data}
-          onOpen={(deal) => {
-            // O caso existe na esteira mas o negócio pode não estar na
-            // visibilidade de quem olha (`can_see_deal`) — é o mesmo motivo
-            // pelo qual `loadCcaBoard` cai em "Cliente não informado". Dizer
-            // isso é melhor que um clique que não abre nada.
-            const registro = dealsQuery.data?.find((row) => row.id === deal.dealId);
-            if (!registro) {
-              toast.error("Não foi possível abrir o negócio", {
-                description: "O caso está na esteira, mas o negócio não aparece na sua "
-                  + "visibilidade. Recarregue a página; se continuar, fale com o administrador.",
-              });
-              return;
-            }
-            setOpenDealId(registro.id);
-          }}
-          onMove={(deal, stage) => setMoving({ deal, stage })}
+          onOpen={abrirNegocio}
+          onMove={moverCaso}
           onSubmitToDeveloper={setSubmissionDeal}
         />
       )}
@@ -419,7 +490,7 @@ export default function CcaPipeline() {
         />
       )}
 
-      {settingsOpen && canAct && (
+      {settingsOpen && isAdmin && (
         <CcaStageSettingsDialog
           stages={stages}
           onClose={() => setSettingsOpen(false)}
@@ -427,13 +498,14 @@ export default function CcaPipeline() {
         />
       )}
 
-      {typesOpen && canAct && <DocumentTypesDialog onClose={() => setTypesOpen(false)} />}
+      {typesOpen && isAdmin && <DocumentTypesDialog onClose={() => setTypesOpen(false)} />}
 
       {moving && (
         <CcaMoveDialog
           deal={moving.deal}
           stage={moving.stage}
           approvedStage={pipelineStages.data?.find((stage) => stage.code === "approved")}
+          negocio={negocios?.find((row) => row.id === moving.deal.dealId)}
           onClose={() => setMoving(null)}
           onMoved={refresh}
         />

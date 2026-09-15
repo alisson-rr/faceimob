@@ -9,7 +9,7 @@
  * erro com "Tentar de novo". `staleTime: 60_000` vem do `App.tsx`.
  */
 import { useCallback, useEffect, useMemo } from "react";
-import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,8 +19,10 @@ import { listPipelineStages, listStagePermissions } from "@/integrations/supabas
 import { exitableStages } from "./guards";
 import { dealMonth } from "./filters";
 import { canWriteDeals } from "./writeAccess";
+import { periodoValido } from "./ccaData";
 import { listSeasons } from "@/integrations/supabase/game";
 import {
+  allRows,
   displayMonthToIso,
   listLegacyDeals,
   listSelectableBrokers,
@@ -61,6 +63,9 @@ export const pipelineKeys = {
   /** PREFIXO da lista de negócios — a chave completa leva o perfil (`dealsQuery`).
    *  É por ele que as invalidações alcançam a lista. */
   deals: ["deals"] as const,
+  /** A lista do Pipeline: o período entra na chave; o perfil, pelo mesmo motivo de `dealsQuery`. */
+  dealsRange: (from: string, to: string, profileId: string | null) =>
+    ["deals", profileId, "periodo", from, to] as const,
   stages: ["pipeline", "stages"] as const,
   people: ["pipeline", "people"] as const,
   developers: ["pipeline", "developers"] as const,
@@ -72,11 +77,10 @@ export const pipelineKeys = {
 };
 
 /**
- * A lista de negócios, uma entrada de cache por pessoa.
- *
- * Pipeline, esteira CCA e Dashboard leem DAQUI (os dois últimos por
- * `fetchQuery`): abrir uma tela depois da outra não baixa a base de novo. Cada
- * um tinha a própria carga, e a esteira baixava duas vezes na mesma abertura.
+ * A base INTEIRA de negócios, uma entrada de cache por pessoa — a do Dashboard
+ * (por `fetchQuery`). Desde 15/09/2026 o Pipeline lê só o período
+ * (`useDealsRange`) e a esteira CCA só os negócios dos casos do período
+ * (`loadCcaBoard`).
  *
  * O perfil entra na chave porque a lista sai recortada pela RLS: sem ele, a
  * segunda conta a entrar no mesmo navegador leria o cache da primeira — o
@@ -93,6 +97,78 @@ export const useDeals = () => {
   const { user } = useAuth();
   return useQuery(dealsQuery(user?.id ?? null));
 };
+
+/**
+ * Os negócios criados no período (AAAA-MM-DD, `to` inclusivo) — a lista do
+ * Pipeline. O filtro vai no banco: a tela abria baixando a base inteira para
+ * mostrar os últimos 30 dias. Mesmo prefixo de `dealsQuery`, então realtime e
+ * `useInvalidateDeals` alcançam esta chave também.
+ *
+ * Período incompleto não consulta — a mesma regra da esteira CCA
+ * (`periodoValido`): campo apagado tiraria o limite e o ano pela metade da
+ * digitação (0002) pediria a base inteira. Enquanto isso fica a lista anterior.
+ */
+export function useDealsRange(from: string, to: string) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: pipelineKeys.dealsRange(from, to, user?.id ?? null),
+    queryFn: ({ signal }) => listLegacyDeals(signal, { createdFrom: from, createdTo: to }),
+    enabled: periodoValido({ de: from, ate: to }),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** O que o fechamento e a reabertura de mês contam de cada negócio. */
+export type MonthDeal = Pick<LegacyDealRecord, "month_base" | "created_at" | "outcome" | "deal_value">;
+
+/**
+ * Mês-base, desfecho e VGV dos negócios, direto do banco.
+ *
+ * Fechar e reabrir mês não podem contar só o período que a tela carregou: são
+ * atos sobre o mês INTEIRO. Três colunas, e só quando o diálogo abre.
+ *
+ * ponytail: `exceptMonths` traz todo negócio de mês aberto (a base inteira, no
+ * pior caso, em 3 colunas); evoluir para contagem agrupada por mês numa RPC se
+ * o diálogo de fechar mês ficar lento.
+ */
+export async function listMonthDeals(
+  filtro: { months?: string[]; exceptMonths?: string[]; openOnly?: boolean },
+  signal?: AbortSignal,
+): Promise<MonthDeal[]> {
+  if (filtro.months?.length === 0) return [];
+  const sinal = signal ?? new AbortController().signal;
+  const { data, error } = await allRows((from, to, count) => {
+    let query = supabase.from("deals").select("month_base,outcome,vgv_net", { count });
+    if (filtro.months) query = query.in("month_base", filtro.months.map(displayMonthToIso));
+    if (filtro.exceptMonths?.length) {
+      query = query.not("month_base", "in", `(${filtro.exceptMonths.map(displayMonthToIso).join(",")})`);
+    }
+    if (filtro.openOnly) query = query.eq("outcome", "open");
+    return query.order("id").range(from, to).abortSignal(sinal);
+  });
+  if (error) throw dbError("deals", error);
+  return data.map((row) => ({
+    month_base: toDisplayMonth(row.month_base) ?? undefined,
+    created_at: "",
+    outcome: row.outcome,
+    deal_value: Number(row.vgv_net || 0),
+  }));
+}
+
+/**
+ * Negócios ativos com esta unidade, direto do banco. O aviso de cadastro
+ * repetido (`findDuplicateDeal`) olhava a lista da tela, que agora é só o
+ * período: o negócio repetido de dois meses atrás passaria sem aviso.
+ */
+export async function listActiveDealsWithUnit(unit: string): Promise<LegacyDealRecord[]> {
+  const { data, error } = await supabase
+    .from("deals")
+    .select("id")
+    .ilike("unit", unit.trim().replace(/[\\%_]/g, "\\$&"))
+    .not("outcome", "in", "(lost,cancelled)");
+  if (error) throw dbError("deals", error);
+  return listLegacyDeals(undefined, { ids: (data ?? []).map((row) => row.id) });
+}
 
 /** Catálogo de etapas — fonte única do rótulo e dono do `id` que o RLS autoriza. */
 export const usePipelineStages = () =>

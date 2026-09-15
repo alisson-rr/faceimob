@@ -6,9 +6,7 @@
  * "João Silva" na base colidiam num filtro só, e renomear o perfil fazia o
  * negócio sumir do filtro do próprio dono.
  */
-import type { LegacyDealRecord, PersonRecord } from "@/integrations/supabase/newSchema";
-import { EMPTY_STATUS_CATALOG, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
-import { faceimobStatusRank } from "./statuses";
+import { newestFirst, type LegacyDealRecord, type PersonRecord } from "@/integrations/supabase/newSchema";
 
 export const ALL = "all";
 
@@ -171,38 +169,17 @@ export function applyDealFilters(
 
 /**
  * Um comparador só para o módulo. `localeCompare(b, "pt-BR")` monta a regra de
- * ordenação a cada comparação, e a busca do Pipeline ordena os 7.579 negócios
- * a cada tecla. `Intl.Collator` com o mesmo locale dá exatamente a mesma ordem.
+ * ordenação a cada comparação, e a tabela ordena por coluna a lista inteira.
+ * `Intl.Collator` com o mesmo locale dá exatamente a mesma ordem.
  */
 const ordemPtBr = new Intl.Collator("pt-BR").compare;
 
 /**
- * Construtora primeiro, depois a ordem do catálogo de Status 2.
- *
- * A posição de cada status é calculada uma vez por texto, e não por
- * comparação: são ~40 textos distintos para os 7.579 negócios, e normalizar o
- * rótulo dentro do comparador repetia o trabalho centenas de milhares de vezes
- * a cada tecla da busca. Sem catálogo (ainda carregando), fica só a construtora.
+ * Ordem padrão do quadro e da tabela: o negócio criado por último em cima
+ * (pedido do dono em 15/09/2026). Era construtora e depois o catálogo de
+ * Status 2, e o negócio de hoje sumia no meio da lista.
  */
-export const sortDeals = (
-  deals: LegacyDealRecord[],
-  catalog: DealStatusCatalog = EMPTY_STATUS_CATALOG,
-): LegacyDealRecord[] => {
-  const ranks = new Map<string, number>();
-  const rankOf = (status: string) => {
-    let rank = ranks.get(status);
-    if (rank === undefined) {
-      rank = faceimobStatusRank(catalog, status);
-      ranks.set(status, rank);
-    }
-    return rank;
-  };
-  return [...deals].sort((a, b) => {
-    const byDeveloper = ordemPtBr(a.developer || "", b.developer || "");
-    if (byDeveloper !== 0) return byDeveloper;
-    return rankOf(a.status) - rankOf(b.status);
-  });
-};
+export const sortDeals = (deals: LegacyDealRecord[]): LegacyDealRecord[] => [...deals].sort(newestFirst);
 
 /** Colunas por onde a tabela aceita ordenar. `padrao` = `sortDeals`. */
 export type DealSortKey = "padrao" | "client" | "developer" | "vgv" | "days" | "month";
@@ -235,12 +212,11 @@ export function sortDealsBy(
   deals: LegacyDealRecord[],
   key: DealSortKey,
   ascending: boolean,
-  catalog: DealStatusCatalog = EMPTY_STATUS_CATALOG,
 ): LegacyDealRecord[] {
-  if (key === "padrao") return sortDeals(deals, catalog);
+  if (key === "padrao") return sortDeals(deals);
   const value = SORT_VALUE[key];
   const direction = ascending ? 1 : -1;
-  return sortDeals(deals, catalog).sort((a, b) => {
+  return sortDeals(deals).sort((a, b) => {
     const left = value(a);
     const right = value(b);
     const compared = typeof left === "string" && typeof right === "string"
@@ -264,7 +240,10 @@ export function sortDealsBy(
  * de 26 negócios. Aqui elas PARTICIONAM o mês — `migram + congelam` é sempre o
  * total do período.
  */
-export function monthClosePreview(deals: LegacyDealRecord[], period: string) {
+export function monthClosePreview(
+  deals: Pick<LegacyDealRecord, "month_base" | "created_at" | "outcome" | "deal_value">[],
+  period: string,
+) {
   const doMes = deals.filter((deal) => dealMonth(deal) === period);
   const migram = doMes.filter((deal) => deal.outcome === "open");
   return {
