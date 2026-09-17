@@ -5,6 +5,20 @@ import { cn } from "@/lib/utils";
 
 const Tabs = TabsPrimitive.Root;
 
+/**
+ * A barra de abas e CENTRADA em toda tela (pedido de 17/09/2026). Centrar aqui
+ * e nao em cada tela: `mx-auto` so centra caixa de nivel de bloco, entao a
+ * lista deixou de ser `inline-flex` (que encostava a esquerda) e virou `flex`
+ * com a largura do conteudo (`w-fit`).
+ *
+ * `w-fit` em vez de largura fixa para a margem automatica ter folga para
+ * dividir; quando a lista nao cabe, a margem zera sozinha e quem rola e o
+ * embrulho com `overflow-x-auto` da tela — centrar DENTRO de um elemento que
+ * rola deixaria o inicio da lista inalcancavel pela rolagem.
+ *
+ * Tela que passa `w-full` (barra segmentada em `grid`) continua mandando: o
+ * `cn` deixa a classe da tela por ultimo.
+ */
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
@@ -12,7 +26,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-full bg-muted p-1 text-muted-foreground",
+      "mx-auto flex h-10 w-fit items-center justify-center rounded-full bg-muted p-1 text-muted-foreground",
       className,
     )}
     {...props}

@@ -285,21 +285,25 @@ export default function Marketing() {
       />
 
       <Tabs value={aba} onValueChange={setAba} className="w-full">
-        {/* Cinco abas não cabem em 375 px: a lista rola dentro dela mesma, em
-            vez de empurrar a página inteira para o lado. */}
-        <TabsList className="bg-transparent border-b border-border/40 rounded-none w-full justify-start gap-4 h-auto p-0 overflow-x-auto">
-          {[
-            ["campanhas", "Campanhas"],
-            ["construtoras", "Por construtora"],
-            ["meta-ia", "Meta · IA"],
-            ["planejador", "Planejador"],
-            ["alertas", "Alertas"],
-          ].map(([v, l]) => (
-            <TabsTrigger key={v} value={v} className="shrink-0 bg-transparent rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent pb-2 font-semibold">
-              {l}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        {/* Cinco abas não cabem em 375 px: quem rola é o embrulho, não a lista
+            — a lista precisa continuar com a largura do conteúdo para a margem
+            automática centrá-la (`ui/tabs.tsx`). O filete fica no embrulho para
+            atravessar a largura toda mesmo com a lista centrada. */}
+        <div className="w-full overflow-x-auto border-b border-border/40">
+          <TabsList className="bg-transparent rounded-none gap-4 h-auto p-0">
+            {[
+              ["campanhas", "Campanhas"],
+              ["construtoras", "Por construtora"],
+              ["meta-ia", "Meta · IA"],
+              ["planejador", "Planejador"],
+              ["alertas", "Alertas"],
+            ].map(([v, l]) => (
+              <TabsTrigger key={v} value={v} className="shrink-0 bg-transparent rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent pb-2 font-semibold">
+                {l}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         <TabsContent value="campanhas" className="mt-5 space-y-5">
           {/* O painel carrega, erra e esvazia junto com o resto da tela: uma consulta só.

@@ -159,7 +159,7 @@ export default function SdrModule() {
       )}
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex flex-wrap">
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="agents"><Bot className="h-4 w-4 mr-2" />Agentes</TabsTrigger>
           <TabsTrigger value="sources">Origens</TabsTrigger>
           <TabsTrigger value="playground"><Sparkles className="h-4 w-4 mr-2" />Playground</TabsTrigger>

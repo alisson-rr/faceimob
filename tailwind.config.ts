@@ -76,15 +76,21 @@ export default {
           destructive: "hsl(var(--sidebar-destructive))",
         },
       },
-      // Com `--radius` de 8 px: 4 · 6 · 8 · 10 · 12 · 16. Degraus em px e nao
-      // em meio rem: com o raio menor (17/09/2026), `radius - 0.5rem` dava 0.
+      // Com `--radius` de 6 px: 3 · 4 · 5 · 6 · 8 · 12. O que o cliente ve e a
+      // hierarquia cartao (`2xl`, 8) > campo e cartao interno (`xl`, 6) > o
+      // resto; por isso o ancoradouro e o `xl` = `--radius`, e nao o `lg`.
+      // Degraus em px e nao em fracao de rem: com o raio ja baixo, um passo de
+      // 0.25rem derruba o `sm` para zero e o canto vira canto vivo. Quem baixar
+      // mais o `--radius` conserta os degraus junto (`radius-scale.test.ts`
+      // reprova) e revisa o recuo do `.gold-hairline` em `index.css`, que
+      // precisa acompanhar o `2xl`.
       borderRadius: {
-        sm: "calc(var(--radius) - 4px)",
+        sm: "calc(var(--radius) - 3px)",
         md: "calc(var(--radius) - 2px)",
-        lg: "var(--radius)",
-        xl: "calc(var(--radius) + 2px)",
-        "2xl": "calc(var(--radius) + 4px)",
-        "3xl": "calc(var(--radius) + 8px)",
+        lg: "calc(var(--radius) - 1px)",
+        xl: "var(--radius)",
+        "2xl": "calc(var(--radius) + 2px)",
+        "3xl": "calc(var(--radius) + 6px)",
       },
       transitionTimingFunction: {
         premium: "cubic-bezier(.22, 1, .36, 1)",

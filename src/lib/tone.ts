@@ -11,7 +11,7 @@ import type { StatusTone } from "@/components/shared";
 export const tone = (token: string, alpha?: number) =>
   alpha === undefined ? `hsl(var(--${token}))` : `hsl(var(--${token}) / ${alpha})`;
 
-/** Series de grafico. Ordem fixa do design system: azul, menta, amarelo, ciano, violeta. */
+/** Series de grafico. Ordem fixa do design system: azul, menta, amarelo, rosa, violeta. */
 export const CHART_SERIES = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"] as const;
 export type ChartToken = (typeof CHART_SERIES)[number];
 
@@ -25,25 +25,36 @@ function nameHash(name: string): number {
   const key = name.trim().toUpperCase();
   let hash = 0;
   for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return hash;
+  // Mistura final. Sem ela o `% 5` de quem chama enxerga so os bits baixos, e
+  // como 31 ≡ 1 (mod 5) o resto vira a SOMA dos caracteres: "Novo", "Contatado"
+  // e "Perdido" saiam da mesma cor e a lista de situacoes ficava quase toda
+  // ambar. A mistura espalha os bits altos e serve a qualquer tamanho de paleta.
+  return Math.imul(hash ^ (hash >>> 16), 2246822507) >>> 0;
 }
 
 /**
- * Cor da construtora — deterministica pelo NOME, nao pela posicao na lista.
+ * Cor de um ROTULO — deterministica pelo nome, nao pela posicao na lista.
  *
  * Era o achado T05: a MRV saia verde no Dashboard e ambar no Pipeline porque
  * cada tela mantinha o seu mapa, e quem caia no `SOURCE_COLORS[i % 5]` trocava
  * de cor toda vez que uma construtora nova entrava e mexia no indice. Hash do
- * nome normalizado resolve os dois: a mesma construtora tem a mesma cor em
- * qualquer tela e em qualquer ordem de consulta.
+ * nome normalizado resolve os dois: o mesmo rotulo tem a mesma cor em qualquer
+ * tela e em qualquer ordem de consulta.
  *
- * Cinco tokens para N construtoras significa que duas podem repetir cor. E
- * aceitavel: em todo grafico daqui o nome esta escrito no eixo ou na legenda —
- * cor nunca e o unico sinal.
+ * Vale para todo eixo de CATEGORIA — construtora, etapa, origem, situacao,
+ * corretor. Filtro, ordenacao e etapa nova mexem no indice do array, nunca no
+ * nome: e por isso que a cor sai do nome.
+ *
+ * Cinco tokens para N rotulos significa que dois podem repetir cor. E
+ * aceitavel: em todo grafico daqui o nome esta escrito no eixo ou ao lado da
+ * barra — cor nunca e o unico sinal.
  */
-export function developerColor(name: string): ChartToken {
+export function labelToken(name: string): ChartToken {
   return CHART_SERIES[nameHash(name) % CHART_SERIES.length];
 }
+
+/** A mesma regra, com o nome do caso que a originou (bolinha da construtora). */
+export const developerColor = labelToken;
 
 /** O formato que `developers.color` aceita (0152) e que `<input type="color">` devolve. */
 export const isDeveloperColor = (value: string | null | undefined): value is string =>
@@ -173,12 +184,19 @@ export const chartAxis = {
 
 export const chartGrid = tone("border");
 
-/** Fundo `popover` porque o tooltip flutua sobre o card — igual a select e dropdown. */
+/**
+ * Fundo `popover` porque o tooltip flutua sobre o card — igual a select e
+ * dropdown, e por isso o raio tambem sai do `--radius` (o mesmo de
+ * `rounded-xl`) em vez de um numero solto: com o raio literal de 12 px, o
+ * pedido de 17/09/2026 baixou cartao para 8 px e campo para 6 px e o tooltip
+ * ficou a superficie MAIS arredondada do app. `radius-scale.test.ts` reprova
+ * quem escrever numero aqui de novo.
+ */
 export const chartTooltip = {
   contentStyle: {
     background: tone("popover"),
     border: `1px solid ${tone("border")}`,
-    borderRadius: "0.75rem",
+    borderRadius: "var(--radius)",
     color: tone("popover-foreground"),
     fontSize: 12,
   },

@@ -51,6 +51,15 @@ const luminancia = (hsl: string): number => {
 
 const razao = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 
+/** Matiz de um token HSL no formato "H S% L%". */
+const matiz = (hsl: string): number => Number.parseFloat(hsl);
+
+/** Distancia de matiz no circulo: 350 e 10 estao a 20 graus, nao a 340. */
+const distanciaDeMatiz = (a: number, b: number) => {
+  const bruta = Math.abs(a - b) % 360;
+  return Math.min(bruta, 360 - bruta);
+};
+
 /** [frente, fundo, minimo] — 4,5 para texto, 3 para elemento de interface. */
 const PARES: [string, string, number][] = [
   ["foreground", "background", 4.5],
@@ -123,6 +132,34 @@ describe.each([
     expect(base[fundo], `token --${fundo} ausente`).toBeDefined();
     const valor = razao(luminancia(base[frente]), luminancia(base[fundo]));
     expect(Number(valor.toFixed(2))).toBeGreaterThanOrEqual(minimo);
+  });
+});
+
+/**
+ * Serie de grafico so cumpre o papel se as cinco forem distinguiveis ENTRE SI.
+ * O contraste sobre o fundo nao ve isso: `chart-1` (213) e o antigo `chart-4`
+ * (196) passavam folgado em 3:1 sobre o cartao e, com 17 graus de matiz e a
+ * mesma luminancia, saiam da mesma cor lado a lado na mesma barra. 40 graus e o
+ * piso que separa os cinco matizes do circulo sem apertar nenhum par.
+ */
+describe.each([
+  ["escuro", ":root"],
+  ["claro", ".light"],
+])("series de grafico — tema %s", (_nome, seletor) => {
+  const base = seletor === ".light" ? { ...tokens(":root"), ...tokens(seletor) } : tokens(seletor);
+  const serie = [1, 2, 3, 4, 5].map((n) => [`chart-${n}`, matiz(base[`chart-${n}`])] as const);
+
+  // Sem isto o teste passa a vazio: token que o regex nao achou vira `NaN`, e
+  // toda comparacao com `NaN` e falsa.
+  it("le os cinco matizes", () => {
+    expect(serie.filter(([, h]) => Number.isFinite(h)).length).toBe(5);
+  });
+
+  it("mantem pelo menos 40 graus de matiz entre duas series quaisquer", () => {
+    const juntos = serie.flatMap(([a, ha], i) =>
+      serie.slice(i + 1).filter(([, hb]) => distanciaDeMatiz(ha, hb) < 40).map(([b]) => `${a}/${b}`),
+    );
+    expect(juntos).toEqual([]);
   });
 });
 

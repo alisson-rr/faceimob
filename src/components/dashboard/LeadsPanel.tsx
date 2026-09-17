@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, KpiCard, KpiGrid, LoadingState, SectionCard } from "@/components/shared";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
-import { chartAxis, chartGrid, chartStill, chartTooltip, tone } from "@/lib/tone";
+import { chartAxis, chartGrid, chartStill, chartTooltip, seriesToken, tone } from "@/lib/tone";
 import { LEAD_STATUSES } from "@/types/crm";
 import { BarList } from "./BarList";
 import { ChartData } from "./ChartData";
@@ -14,6 +14,18 @@ import { ALL_MONTHS, leadsInMonth, useDashboardLeads } from "./data";
 
 const statusLabel = (value: string) =>
   LEAD_STATUSES.find((status) => status.value === value)?.label ?? value;
+
+/**
+ * Cor da situacao pela POSICAO no catalogo — o unico grafico daqui em que o
+ * catalogo e fixo e do tamanho da paleta: cinco situacoes, cinco tokens, nenhum
+ * repetido. A posicao e tao estavel quanto o nome (filtro e ordenacao nao mexem
+ * no `LEAD_STATUSES`), e o hash do rotulo dava a MESMA cor a "Novo" e
+ * "Qualificado" e deixava um token sem uso. Fora do catalogo, cor do rotulo.
+ */
+const situacaoToken = (label: string): string | undefined => {
+  const posicao = LEAD_STATUSES.findIndex((status) => status.label === label);
+  return posicao < 0 ? undefined : seriesToken(posicao);
+};
 
 const DIAS = 14;
 
@@ -138,7 +150,7 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
       // e recuaria o rótulo um dia em Brasília.
       porDia: Array.from(porDia, ([iso, value]) => ({ name: format(parseISO(iso), "dd/MM"), value })),
       porOrigem: ordenar(porOrigem),
-      porSituacao: ordenar(porSituacao),
+      porSituacao: ordenar(porSituacao).map((row) => ({ ...row, token: situacaoToken(row.label) })),
       porCorretor: ordenar(porCorretor).slice(0, 10),
     };
   }, [leads, month]);
@@ -268,12 +280,12 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
           <BarList rows={view.porOrigem} share />
         </SectionCard>
         <SectionCard title="Por situação" description={`Estágio atual do lead · ${periodo}`} icon={Inbox}>
-          <BarList rows={view.porSituacao} token="chart-2" share />
+          <BarList rows={view.porSituacao} share />
         </SectionCard>
       </div>
 
       <SectionCard title="Top corretores por leads" description={`Os dez com mais leads recebidos · ${periodo}`} icon={Users}>
-        <BarList rows={view.porCorretor} token="chart-5" />
+        <BarList rows={view.porCorretor} />
       </SectionCard>
     </div>
   );

@@ -333,7 +333,11 @@ export default function Pipeline() {
         }
       />
 
-      <div className="flex w-fit rounded-full border border-border p-0.5" role="tablist" aria-label="Seções do pipeline">
+      {/* Barra de abas centrada como a das demais telas (pedido de 17/09/2026).
+          Esta nao usa o `TabsList` compartilhado — e um `role=tablist` proprio,
+          entao o `mx-auto` precisa vir aqui; sem ele a barra ficava encostada a
+          esquerda enquanto Dashboard, Marketing e Gamificacao ja centravam. */}
+      <div className="mx-auto flex w-fit rounded-full border border-border p-0.5" role="tablist" aria-label="Seções do pipeline">
         {([["deals", "Negócios"], ["leads", "Leads"]] as const).map(([key, label]) => (
           <button
             key={key}

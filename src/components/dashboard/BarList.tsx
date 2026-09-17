@@ -1,12 +1,19 @@
 import { num } from "@/lib/format";
-import { tone } from "@/lib/tone";
+import { labelToken, tone } from "@/lib/tone";
 
-export type BarListRow = { label: string; value: number };
+export type BarListRow = {
+  label: string;
+  value: number;
+  /**
+   * Cor desta linha, quando a tela tem um catalogo FIXO para mandar nela (as
+   * cinco situacoes do lead). Sem ela a cor sai do rotulo (`labelToken`), que
+   * com cinco tokens para N nomes pode repetir.
+   */
+  token?: string;
+};
 
 export interface BarListProps {
   rows: BarListRow[];
-  /** Token da barra. Uma cor so: quem separa as linhas e o rotulo escrito. */
-  token?: string;
   /** Mostra a fatia de cada linha no total, a partir de `sm`. */
   share?: boolean;
   /** Texto quando nao ha linha nenhuma. */
@@ -20,8 +27,14 @@ export interface BarListProps {
  * rotulo do eixo de categoria ("Meta Ads (Instagram)" virava "Meta Ad…") e nao
  * ha largura de eixo que resolva isso a 375 px. Aqui o rotulo e texto normal,
  * quebra e trunca com CSS, e a barra ocupa o que sobra.
+ *
+ * A cor sai do ROTULO (`labelToken`), nao da posicao: a lista e reordenada por
+ * valor e recortada por periodo, entao cor por indice fazia "Meta Ads" mudar de
+ * cor entre dois meses. O rotulo esta escrito ao lado de cada barra — cor aqui
+ * e ritmo visual, nunca o unico sinal. Quem tem catalogo fixo manda na cor pelo
+ * `token` da linha.
  */
-export function BarList({ rows, token = "chart-1", share = false, emptyLabel }: BarListProps) {
+export function BarList({ rows, share = false, emptyLabel }: BarListProps) {
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyLabel ?? "Nada para mostrar neste recorte."}</p>;
   }
@@ -39,7 +52,7 @@ export function BarList({ rows, token = "chart-1", share = false, emptyLabel }: 
           <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
             <span
               className="ease-premium block h-full rounded-full transition-[width] duration-500"
-              style={{ width: `${(row.value / maior) * 100}%`, background: tone(token) }}
+              style={{ width: `${(row.value / maior) * 100}%`, background: tone(row.token ?? labelToken(row.label)) }}
             />
           </span>
           <span className="w-8 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">

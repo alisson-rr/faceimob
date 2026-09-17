@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { CalendarRange } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { EmptyState, SectionCard } from "@/components/shared";
 import { brl, num } from "@/lib/format";
-import { chartAxis, chartGrid, chartStill, chartTooltip, tone } from "@/lib/tone";
+import { chartAxis, chartGrid, chartStill, chartTooltip, seriesToken, tone } from "@/lib/tone";
 import { MESES, gradeAnual, type GradeMetric } from "./gradeAnual";
 import { dealCategory, type DealRow } from "./data";
 
@@ -47,7 +47,14 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
     .flatMap((row) => row.cells)
     .filter((cell) => cell.value !== null)
     .slice(-12)
-    .map((cell) => ({ label: cell.label, value: cell.value as number }));
+    // `mes` so para a cor: o numero do mes e fixo no calendario, entao Janeiro
+    // sai da mesma cor em todo ano e a janela de 12 barras nunca repete cor em
+    // barras vizinhas — o que o hash do rotulo nao garantiria.
+    .map((cell) => ({
+      label: cell.label,
+      value: cell.value as number,
+      mes: Number(cell.month.slice(0, 2)),
+    }));
 
   // Pergunta se ha VENDA, nao se a soma zerou: em "Faturamento", uma venda
   // registrada sem valor faria o total dar 0 e o bloco dizer que nao ha venda
@@ -101,15 +108,17 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
                 <Tooltip {...chartTooltip} formatter={(value: number) => [fmt(value), rotulo]} />
                 {/* Barra vazada, como na referencia: o preenchimento translucido
                     guarda a leitura de area e o contorno mantem o contraste do
-                    objeto grafico (3:1) nos dois temas. */}
-                <Bar
-                  dataKey="value"
-                  fill={tone("chart-1", 0.18)}
-                  stroke={tone("chart-1")}
-                  strokeWidth={1.5}
-                  radius={[6, 6, 0, 0]}
-                  {...chartStill}
-                />
+                    objeto grafico (3:1) nos dois temas. Uma cor por mes — o mes
+                    continua escrito no eixo e na grade logo abaixo. */}
+                <Bar dataKey="value" strokeWidth={1.5} radius={[6, 6, 0, 0]} {...chartStill}>
+                  {barras.map((bar) => (
+                    <Cell
+                      key={bar.label}
+                      fill={tone(seriesToken(bar.mes - 1), 0.18)}
+                      stroke={tone(seriesToken(bar.mes - 1))}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

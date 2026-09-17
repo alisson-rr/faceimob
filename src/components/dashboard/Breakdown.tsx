@@ -1,7 +1,7 @@
 import { Layers, UserCog } from "lucide-react";
 import { EmptyState, KpiGrid, SectionCard } from "@/components/shared";
 import { num } from "@/lib/format";
-import { seriesToken, tone } from "@/lib/tone";
+import { labelToken, tone } from "@/lib/tone";
 import type { DashboardPayload } from "@/integrations/supabase/newSchema";
 
 type CountItem = { label: string; value: number; token: string };
@@ -30,12 +30,16 @@ function CountGrid({ items }: { items: CountItem[] }) {
  * Situação dos processos na esteira de crédito. O rotulo ja vem traduzido de
  * `loadDashboardPayload`, que hoje usa o mesmo `ccaStatusLabel` da tela do CCA —
  * as chaves aqui seguem esse vocabulario. Antes divergiam ("Análise de
- * Viabilidade", "Assinatura no Banco") e a cor semantica caia no `seriesToken`.
+ * Viabilidade", "Assinatura no Banco") e a cor semantica caia no fallback.
  */
 const CCA_TOKEN: Record<string, string> = {
   "Aguardando documentos": "warning",
-  "Em análise": "chart-4",
-  "Enviado à construtora": "chart-4",
+  // As tres situacoes em andamento sao FRIAS de proposito: so o desfecho pinta
+  // verde ou vermelho. `chart-4` saiu daqui quando virou rosa (17/09/2026) — em
+  // grade tingida a 10%, "Em análise" rosa ao lado de "Reprovado" vermelho
+  // anunciava dois problemas onde ha um.
+  "Em análise": "chart-5",
+  "Enviado à construtora": "info",
   "Enviado à agência": "chart-1",
   Aprovado: "success",
   Reprovado: "destructive",
@@ -55,10 +59,13 @@ export function CcaStatusCard({
   counts: Record<string, number>;
   toda: boolean;
 }) {
-  const items = Object.entries(counts).map(([label, value], index) => ({
+  // Fora do mapa semantico a cor sai do ROTULO, nao do indice: `Object.entries`
+  // segue a ordem de chegada da contagem, entao uma situacao nova no meio
+  // repintava todas as seguintes.
+  const items = Object.entries(counts).map(([label, value]) => ({
     label,
     value,
-    token: CCA_TOKEN[label] ?? seriesToken(index),
+    token: CCA_TOKEN[label] ?? labelToken(label),
   }));
 
   return (

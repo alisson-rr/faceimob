@@ -222,36 +222,44 @@ export default function DealDetailModal({
 
         {/* `pr-12` reserva o canto para o X do próprio `DialogContent` (fixo em
             `right-4 top-4`): como aqui o conteúdo é `p-0`, sem essa folga as abas
-            passam por baixo dele. O X daqui era um segundo botão empilhado. */}
-        <div
-          className="flex gap-4 overflow-x-auto border-b border-border pl-4 pr-12 pt-4"
-          role="tablist"
-          aria-label="Seções do negócio"
-        >
-          {tabs.map((item) => {
-            const enabled = item.key === "detalhes" || !isNew;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={tab === item.key}
-                disabled={!enabled}
-                title={enabled ? undefined : "Disponível depois de salvar o negócio"}
-                onClick={() => setTab(item.key)}
-                className={cn(
-                  "whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  "disabled:cursor-not-allowed disabled:opacity-40",
-                  tab === item.key
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {item.label}
-              </button>
-            );
-          })}
+            passam por baixo dele. O X daqui era um segundo botão empilhado.
+
+            Barra centrada como a das demais telas (pedido de 17/09/2026). Quem
+            rola é o embrulho e quem centra é a lista (`mx-auto w-fit`), igual ao
+            `TabsList` e ao Pipeline: `justify-center` no próprio elemento que
+            rola deixaria a primeira aba inalcançável quando as seis não cabem.
+            A borda fica no embrulho para continuar atravessando o diálogo. */}
+        <div className="overflow-x-auto border-b border-border pl-4 pr-12 pt-4">
+          <div
+            className="mx-auto flex w-fit gap-4"
+            role="tablist"
+            aria-label="Seções do negócio"
+          >
+            {tabs.map((item) => {
+              const enabled = item.key === "detalhes" || !isNew;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === item.key}
+                  disabled={!enabled}
+                  title={enabled ? undefined : "Disponível depois de salvar o negócio"}
+                  onClick={() => setTab(item.key)}
+                  className={cn(
+                    "whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "disabled:cursor-not-allowed disabled:opacity-40",
+                    tab === item.key
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="space-y-4 p-4">

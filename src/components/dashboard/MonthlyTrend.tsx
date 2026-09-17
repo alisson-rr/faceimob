@@ -45,12 +45,15 @@ export function MonthlyTrend({ series }: { series: MonthlySeries }) {
               <YAxis {...chartAxis} allowDecimals={false} />
               <Tooltip {...chartTooltip} labelFormatter={(mes: string) => monthLabel(mes)} />
               <Legend wrapperStyle={chartLegend} />
-              {series.years.map((year, index) => (
+              {/* Cor pelo ANO, nao pela posicao: a lista cresce por cima quando
+                  entra um ano novo, e com cor por indice 2025 trocava de cor de
+                  um dia para o outro. O ano tambem esta escrito na legenda. */}
+              {series.years.map((year) => (
                 <Line
                   key={year}
                   type="monotone"
                   dataKey={year}
-                  stroke={tone(seriesToken(index))}
+                  stroke={tone(seriesToken(Number(year)))}
                   strokeWidth={2.5}
                   dot={{ r: 3 }}
                   activeDot={{ r: 5 }}

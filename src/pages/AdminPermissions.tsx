@@ -245,11 +245,17 @@ export default function AdminPermissions() {
       </div>
 
       <Tabs defaultValue="menu">
-        <TabsList>
-          <TabsTrigger value="menu" className="text-xs">Acesso ao Menu</TabsTrigger>
-          <TabsTrigger value="general" className="text-xs">Funcionalidades</TabsTrigger>
-          <TabsTrigger value="stages" className="text-xs">Etapas do Pipeline</TabsTrigger>
-        </TabsList>
+        {/* As tres abas nao cabem em 375 px: quem rola e o embrulho, senao a
+            pagina inteira anda para o lado. Mesmo embrulho do Dashboard — o
+            `-mx-1 px-1 pb-1` devolve o espaco da sombra da aba ativa, que o
+            recorte da rolagem cortaria. */}
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <TabsList>
+            <TabsTrigger value="menu" className="text-xs">Acesso ao Menu</TabsTrigger>
+            <TabsTrigger value="general" className="text-xs">Funcionalidades</TabsTrigger>
+            <TabsTrigger value="stages" className="text-xs">Etapas do Pipeline</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="menu" className="space-y-4 mt-4">
           <Card className="border-border/50">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHART_SERIES, developerColor, podiumRingClass, podiumTextClass, podiumToken, seriesToken, tone } from "./tone";
+import { CHART_SERIES, developerColor, labelToken, podiumRingClass, podiumTextClass, podiumToken, seriesToken, tone } from "./tone";
 
 describe("developerColor", () => {
   it("da sempre a mesma cor para o mesmo nome, independente de caixa e espaco", () => {
@@ -20,6 +20,22 @@ describe("developerColor", () => {
     for (const name of ["", "MRV", "Melnick", "Construtora com nome bem longo"]) {
       expect(CHART_SERIES).toContain(developerColor(name));
     }
+  });
+});
+
+describe("labelToken", () => {
+  it("a mesma etapa fica com a mesma cor quando a lista muda de ordem", () => {
+    // O contrato de que `BarList` e o `CcaStatusCard` dependem: as duas listas
+    // sao ordenadas por VALOR e recortadas por periodo, entao cor por indice
+    // repintava a lista inteira a cada mes.
+    const etapas = ["Qualificação", "Proposta", "Fechado"];
+    expect([...etapas].reverse().map(labelToken).reverse()).toEqual(etapas.map(labelToken));
+  });
+
+  it("um funil inteiro nao sai de uma cor so", () => {
+    // O pedido do cliente em 17/09/2026: "Negócios por etapa" era todo azul.
+    const cores = new Set(["Qualificação", "Proposta", "Fechado"].map(labelToken));
+    expect(cores.size).toBeGreaterThan(1);
   });
 });
 
