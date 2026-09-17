@@ -40,6 +40,9 @@ export type PersonRecord = {
 };
 
 export type LegacyDealRecord = PipelineDeal & {
+  /** `developers.color` (0152): cor escolhida no cadastro da construtora, em
+   *  `#RRGGBB`. `null` = sem cor escolhida. */
+  developer_color: string | null;
   stage_id: string;
   /** `pipeline_stages.label` — o rótulo já vinha na consulta e ninguém lia (F11). */
   stage_label: string;
@@ -428,7 +431,11 @@ export async function listLegacyDeals(
   ] = await Promise.all([
     recortados ?? allRows(negocios(null)),
     db.from("pipeline_stages").select("id,code,label,position").abortSignal(sinal),
-    db.from("developers").select("id,name").abortSignal(sinal),
+    // Só as três colunas que a tela usa. O `*` da rodada anterior existia para
+    // o front não quebrar num banco sem a 0152; com ela aplicada (17/09/2026),
+    // pedir tudo mandava e-mail de envio, telefone e observações de TODAS as
+    // construtoras para o navegador de qualquer corretor, sem uso na tela.
+    db.from("developers").select("id,name,color").abortSignal(sinal),
     db.from("developer_projects").select("id,name").abortSignal(sinal),
     filhos((lote) => (from, to, count) => {
       const query = db.from("deal_clients").select("*", { count });
@@ -470,7 +477,7 @@ export async function listLegacyDeals(
 
   const stageById = new Map((stagesRes.data || []).map((row) => [row.id, row]));
   const developerById = new Map(
-    (developersRes.data || []).map((row) => [row.id, row.name]),
+    (developersRes.data || []).map((row) => [row.id, row]),
   );
   const projectById = new Map(
     (projectsRes.data || []).map((row) => [row.id, row.name]),
@@ -563,7 +570,8 @@ export async function listLegacyDeals(
           ? undefined
           : String(primary.monthly_income),
       observacoes_renda: primary?.income_notes || undefined,
-      developer: developerById.get(deal.developer_id) || "",
+      developer: developerById.get(deal.developer_id)?.name || "",
+      developer_color: developerById.get(deal.developer_id)?.color ?? null,
       developer_id: deal.developer_id,
       project: projectById.get(deal.project_id) || "",
       project_id: deal.project_id,

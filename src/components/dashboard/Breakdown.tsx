@@ -1,5 +1,5 @@
 import { Layers, UserCog } from "lucide-react";
-import { EmptyState, SectionCard } from "@/components/shared";
+import { EmptyState, KpiGrid, SectionCard } from "@/components/shared";
 import { num } from "@/lib/format";
 import { seriesToken, tone } from "@/lib/tone";
 import type { DashboardPayload } from "@/integrations/supabase/newSchema";
@@ -9,7 +9,7 @@ type CountItem = { label: string; value: number; token: string };
 /** Grade de contagem: rotulo escrito em cima, numero grande embaixo. */
 function CountGrid({ items }: { items: CountItem[] }) {
   return (
-    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <KpiGrid as="ul" cols="contagem">
       {items.map((item) => (
         <li
           key={item.label}
@@ -22,7 +22,7 @@ function CountGrid({ items }: { items: CountItem[] }) {
           </p>
         </li>
       ))}
-    </ul>
+    </KpiGrid>
   );
 }
 

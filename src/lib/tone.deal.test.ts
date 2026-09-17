@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS } from "./tone";
+import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS, developerColor, developerDot, isDeveloperColor } from "./tone";
 
 /**
  * Cores do Pipeline que o cliente definiu em 10/09/2026 — as duas telas
@@ -36,5 +36,29 @@ describe("brokerTextClass", () => {
     const cores = ["Ana", "Bruno", "Carla", "Diego", "Eva", "Fabio", "Gil", "Hugo"].map(brokerTextClass);
     expect(cores).not.toContain("text-chart-3");
     expect(new Set(cores).size).toBeGreaterThan(1);
+  });
+});
+
+/** Cor da construtora escolhida no cadastro (17/09/2026). */
+describe("developerDot", () => {
+  it("a cor escolhida manda, com anel para não sumir no fundo", () => {
+    expect(developerDot("MRV", "#1a2B3c")).toEqual({
+      className: "ring-1 ring-border",
+      style: { backgroundColor: "#1a2B3c" },
+    });
+  });
+
+  it("sem cor, ou com texto fora do formato, fica a cor do nome", () => {
+    const doNome = { className: `bg-${developerColor("MRV")}` };
+    expect(developerDot("MRV")).toEqual(doNome);
+    expect(developerDot("MRV", null)).toEqual(doNome);
+    // O banco recusa, mas o valor vai para `style`: a tela não confia nele.
+    expect(developerDot("MRV", "url(https://x.test/a.png)")).toEqual(doNome);
+    expect(developerDot("MRV", "#12345")).toEqual(doNome);
+  });
+
+  it("isDeveloperColor aceita só #RRGGBB", () => {
+    expect(["#000000", "#abcdef", "#ABCDEF"].every(isDeveloperColor)).toBe(true);
+    expect(["", "red", "#abc", "#abcdefa", " #abcdef", "#gggggg"].some(isDeveloperColor)).toBe(false);
   });
 });

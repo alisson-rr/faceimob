@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, HandMetal, Inbox, Timer, Users } from "lucide-react";
-import { KpiCard } from "@/components/shared";
+import { KpiCard, KpiGrid } from "@/components/shared";
 import { num } from "@/lib/format";
 import type { LeadMetrics } from "./model";
 
@@ -18,7 +18,7 @@ import type { LeadMetrics } from "./model";
  */
 export function LeadsSummary({ metrics, canViewQueue }: { metrics: LeadMetrics; canViewQueue: boolean }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <KpiGrid cols={5}>
       <KpiCard label="Total" value={num(metrics.total)} icon={Users} />
       {canViewQueue ? (
         <KpiCard label="Na fila" value={num(metrics.queued)} icon={Inbox} hint="aguardando a roleta" />
@@ -39,6 +39,6 @@ export function LeadsSummary({ metrics, canViewQueue }: { metrics: LeadMetrics; 
         hint={metrics.overdue > 0 ? "próxima ação vencida" : "nenhuma ação vencida"}
         delta={metrics.overdue > 0 ? { label: `${num(metrics.overdue)} para tratar`, direction: "up", tone: "danger" } : undefined}
       />
-    </div>
+    </KpiGrid>
   );
 }

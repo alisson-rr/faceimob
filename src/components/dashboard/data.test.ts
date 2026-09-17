@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   dashboardScope,
   dealCategory,
-  defaultMonthOf,
   funnelRows,
   leadsInMonth,
   monthOptions,
@@ -12,13 +14,17 @@ import {
   perdaIds,
   pickSalesGoal,
   rankBy,
+  useDashboardPayload,
   vazioTotal,
   type DashboardScope,
   type DealRow,
 } from "./data";
-import { currentMonthBase } from "@/lib/dealStatus";
 import type { Lead } from "@/types/crm";
-import type { MonthlyGoalRow } from "@/integrations/supabase/newSchema";
+import type { DashboardPayload, MonthlyGoalRow } from "@/integrations/supabase/newSchema";
+
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" }, roles: [] }) }));
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /**
  * As contas do painel que discordavam do banco.
@@ -199,28 +205,102 @@ describe("monthlySeries — o comparativo anual", () => {
   });
 });
 
-describe("monthOptions e defaultMonthOf — o filtro de período", () => {
+describe("monthOptions e o mês padrão — o filtro de período", () => {
   const rows = [venda({ id: "a", month_base: "08/2026" }), venda({ id: "b", month_base: "07/2026" })];
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("o mês corrente entra na lista mesmo sem negócio", () => {
     // A meta de 09/2026 estava gravada e 09/2026 não aparecia no filtro, porque
     // não havia negócio no mês: quem cadastrava a meta não conseguia vê-la.
     expect(monthOptions(rows, "09/2026")).toEqual(["09/2026", "08/2026", "07/2026"]);
-  });
-
-  it("mas não muda o mês que abre por padrão", () => {
-    // Senão o painel abriria vazio todo dia 1º.
-    expect(defaultMonthOf(rows, [])).toBe("08/2026");
-    expect(defaultMonthOf(rows, ["08/2026"])).toBe("07/2026");
-  });
-
-  it("com todos os meses fechados, cai no mês com negócio mais recente", () => {
-    expect(defaultMonthOf(rows, ["08/2026", "07/2026"])).toBe("08/2026");
-  });
-
-  it("sem negócio nenhum, o padrão é o mês corrente", () => {
-    expect(defaultMonthOf([], [])).toBe(currentMonthBase());
     expect(monthOptions([], "09/2026")).toEqual(["09/2026"]);
+  });
+
+  /**
+   * Pedido do dono, 17/09/2026: o painel abre SEMPRE no mês corrente. Na
+   * homologação um único negócio com mês-base 02/2027 fazia o Dashboard abrir
+   * em 02/2027, porque o padrão era o mês aberto mais recente com negócio.
+   */
+  it("abre no mês corrente, mesmo com negócio em mês futuro e o mês corrente vazio", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 17, 10));
+
+    const payload: DashboardPayload = {
+      deals: [
+        venda({ id: "futuro", month_base: "02/2027" }),
+        venda({ id: "dezembro", month_base: "12/2026" }),
+        venda({ id: "agosto", month_base: "08/2026" }),
+      ],
+      leadsCount: 0,
+      ccaCounts: {},
+      staff: { brokersTotal: 0, active: 0, managers: 0, directors: 0 },
+      closedMonths: ["08/2026"],
+    };
+    // Cache já preenchido e sem prazo de validade: o hook lê daqui e não vai à rede.
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
+    client.setQueryData(["dashboard", "payload", "u1"], payload);
+
+    let lido: ReturnType<typeof useDashboardPayload> | null = null;
+    function Painel() {
+      lido = useDashboardPayload();
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => {
+      root.render(createElement(QueryClientProvider, { client }, createElement(Painel)));
+    });
+
+    expect(lido?.defaultMonth).toBe("09/2026");
+    expect(lido?.monthsWithDeals.has("09/2026")).toBe(false);
+    expect(lido?.months).toEqual(["02/2027", "12/2026", "09/2026", "08/2026"]);
+
+    await act(async () => root.unmount());
+  });
+
+  /**
+   * Aba aberta na virada do mês: os negócios não mudam (o TanStack devolve a
+   * mesma referência), então a lista de meses só refaz se o mês corrente for
+   * dependência dela. Sem isso o padrão virava 10/2026 e a lista continuava em
+   * 09/2026 — o seletor ficava sem rótulo, mostrando um mês que ninguém pediu.
+   */
+  it("na virada do mês, a lista acompanha o mês padrão", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 8, 30, 23, 59));
+
+    const payload: DashboardPayload = {
+      deals: [venda({ id: "agosto", month_base: "08/2026" })],
+      leadsCount: 0,
+      ccaCounts: {},
+      staff: { brokersTotal: 0, active: 0, managers: 0, directors: 0 },
+      closedMonths: [],
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
+    client.setQueryData(["dashboard", "payload", "u1"], payload);
+
+    let lido: ReturnType<typeof useDashboardPayload> | null = null;
+    function Painel() {
+      lido = useDashboardPayload();
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => {
+      root.render(createElement(QueryClientProvider, { client }, createElement(Painel)));
+    });
+    expect(lido?.months).toEqual(["09/2026", "08/2026"]);
+
+    // Passou da meia-noite e a tela repinta (trocar de aba, clicar em Recarregar).
+    vi.setSystemTime(new Date(2026, 9, 1, 0, 1));
+    await act(async () => {
+      root.render(createElement(QueryClientProvider, { client }, createElement(Painel)));
+    });
+
+    expect(lido?.defaultMonth).toBe("10/2026");
+    expect(lido?.months).toContain("10/2026");
+
+    await act(async () => root.unmount());
   });
 });
 

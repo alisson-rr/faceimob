@@ -14,8 +14,7 @@ import type { Page } from "@playwright/test";
  * número inventado no lugar de "não sei" é pior do que espaço em branco, porque
  * a diretoria decide em cima dele.
  *
- * Mês escolhido: 01/2026 é passado, está aberto e não tem meta no seed. Usar um
- * mês futuro faria `pickOpenMonth` mudar o padrão do dashboard de todo mundo.
+ * Mês escolhido: 01/2026 é passado, está aberto e não tem meta no seed.
  */
 const tag = runTag();
 const MES = "01/2026";

@@ -1,6 +1,6 @@
 import { CheckCircle2, Database, DollarSign, FileText, TrendingUp, Users, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { KpiCard } from "@/components/shared";
+import { KpiCard, KpiGrid } from "@/components/shared";
 import { brl, num } from "@/lib/format";
 import { ALL_MONTHS, type MonthStats } from "./data";
 
@@ -96,7 +96,7 @@ export function KpiRow({
   const vgvPct = vgvGoal && vgvGoal > 0 ? Math.round((stats.vgv / vgvGoal) * 100) : null;
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <KpiGrid cols={4}>
       <KpiCard
         label="Leads"
         // O traco marca "ainda carregando", nao "zero": afirmar zero antes da
@@ -162,6 +162,6 @@ export function KpiRow({
         delta={delta(stats.vgv, previous?.vgv, previousLabel, { format: (value) => brl(value) })}
         hint={vgvPct === null ? "valor das vendas" : `${num(vgvPct)}% da meta de ${brl(vgvGoal ?? 0)}`}
       />
-    </div>
+    </KpiGrid>
   );
 }

@@ -17,7 +17,7 @@ import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
  * tela. Este teste fixa as duas metades: o selo acende com `visit_date` e fica
  * fora do botão, que é o motivo de o E2E ancorar no `<article>`.
  */
-const deal = (visitDate?: string, share?: number | null): LegacyDealRecord =>
+const deal = (visitDate?: string, share?: number | null, extra: Partial<LegacyDealRecord> = {}): LegacyDealRecord =>
   ({
     id: "d1",
     client: "Cliente Teste",
@@ -35,6 +35,7 @@ const deal = (visitDate?: string, share?: number | null): LegacyDealRecord =>
     document_review_status: "draft",
     visit_date: visitDate,
     broker1_share: share ?? null,
+    ...extra,
   }) as unknown as LegacyDealRecord;
 
 const PROXIMA: PipelineStage = { id: "s2", code: "approved", label: "Aprovado", position: 2 };
@@ -46,6 +47,7 @@ async function renderCard(
     share?: number | null;
     /** Motivo devolvido por `blockedMove` — `null` libera o destino. */
     recusa?: string | null;
+    extra?: Partial<LegacyDealRecord>;
   } = {},
 ) {
   const container = document.body.appendChild(document.createElement("div"));
@@ -56,7 +58,7 @@ async function renderCard(
   await act(async () => {
     root.render(
       <DealCard
-        deal={deal(visitDate, opcoes.share)}
+        deal={deal(visitDate, opcoes.share, opcoes.extra)}
         onOpen={() => undefined}
         onMove={(_alvo, stage) => movidos.push(stage.label)}
         onLose={(alvo) => perdidos.push(alvo.id)}
@@ -95,6 +97,10 @@ async function renderCard(
     // O cartão já mostra a probabilidade em "%": contar é o que separa
     // "tem rateio" de "só tem a probabilidade".
     percentuais: (container.textContent ?? "").match(/%/g)?.length ?? 0,
+    corretores: Array.from(container.querySelectorAll("article > div:last-child .truncate"))
+      .map((nome) => nome.textContent),
+    bolinha: container.querySelector<HTMLElement>('[role="button"] span.rounded-full[aria-hidden]')?.style
+      .backgroundColor ?? null,
   };
   await act(async () => { root.unmount(); });
   container.remove();
@@ -169,5 +175,29 @@ describe("DealCard · Shift+seta", () => {
     const { movidos, recusas } = await renderCard(undefined, { recusa: motivo });
     expect(movidos, "gesto recusado não vira escrita").toEqual([]);
     expect(recusas, "e não vira silêncio").toEqual([motivo]);
+  });
+});
+
+/** Pedido de 17/09/2026: corretor 2 no cartão e a cor escolhida da construtora. */
+describe("DealCard · corretor 2 e cor da construtora", () => {
+  it("mostra os dois corretores, cada um com a sua fatia", async () => {
+    const { corretores, texto } = await renderCard(undefined, {
+      share: 60,
+      extra: { broker2: "Segundo Corretor", broker2_share: 40 },
+    });
+    expect(corretores).toEqual(["Corretor", "Segundo Corretor"]);
+    expect(texto).toContain("60%");
+    expect(texto).toContain("40%");
+  });
+
+  it("pinta a bolinha com a cor escolhida no cadastro", async () => {
+    const { bolinha } = await renderCard(undefined, { extra: { developer_color: "#1a2b3c" } });
+    expect(bolinha).toBe("rgb(26, 43, 60)");
+  });
+
+  it("sem cor escolhida o cartão fica como era, só com o nome", async () => {
+    const { bolinha, texto } = await renderCard(undefined, { extra: { developer_color: null } });
+    expect(bolinha).toBeNull();
+    expect(texto).toContain("Construtora");
   });
 });

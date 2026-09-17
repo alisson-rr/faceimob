@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Building2, DollarSign, Facebook, Globe, Megaphone, Plug, Target, TrendingUp, Users } from "lucide-react";
-import { EmptyState, KpiCard, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
+import { EmptyState, KpiCard, KpiGrid, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { MarketingInvestmentPopup } from "@/components/MarketingInvestmentPopup";
@@ -171,7 +171,8 @@ export default function Marketing() {
   const canConnectMeta = !META_ADS_PERMISSION || can(META_ADS_PERMISSION);
   const [channel, setChannel] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
-  const [periodo, setPeriodo] = useState<string>(PERIODO_TUDO);
+  // Abre no mês corrente, como todo seletor de mês do app (pedido de 17/09/2026).
+  const [periodo, setPeriodo] = useState<string>(() => monthOptions()[0]);
   const [aba, setAba] = useState("campanhas");
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -337,75 +338,62 @@ export default function Marketing() {
               tracejadas iguais, uma embaixo da outra, com descrições diferentes. */}
           {campaigns.length > 0 && (
             <>
-              {/* KPIs */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <Card className="glass">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">Gasto em campanhas</p>
-                      <DollarSign className="h-4 w-4 text-success" />
-                    </div>
-                    <p className="text-2xl font-bold mt-1">{brl(totals.spend)}</p>
-                    {/* Não é a mesma verba do aporte: aporte é o que a construtora
-                        põe no mês; isto é o que as campanhas gastaram.
-                        Com gasto vindo do livro (relatório importado ou
-                        sincronização da Meta) ele vale pelo RECORTE de cada
-                        campanha — dizer "acumulado" aí seria afirmar que a soma
-                        cobre a vida inteira da campanha, e o CPL sairia menor do
-                        que o real sem nenhum aviso. */}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {temGastoDoLivro
-                        ? "inclui gasto da Meta (relatório ou sincronização), pelo período de cada campanha"
-                        : "acumulado, não é o aporte do mês"}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card className="glass">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">Leads Gerados</p>
-                      <Users className="h-4 w-4 text-primary" />
-                    </div>
-                    <p className="text-2xl font-bold mt-1">{num(totals.leads)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{num(totals.conversions)} convertidos em negócio</p>
-                  </CardContent>
-                </Card>
-                <Card className="glass">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">CPL Médio</p>
-                      <Target className="h-4 w-4 text-warning" />
-                    </div>
-                    <p className="text-2xl font-bold mt-1">{brl(totals.cpl)}</p>
-                    {/* O CPL do CRM não muda de conta: `total_spend` (a soma do
-                        livro da campanha) ÷ leads do CRM, os dois sem recorte de
-                        mês. O custo do PERÍODO existe, mas é outro número — o
-                        custo por resultado segundo a Meta, rotulado assim no
-                        painel acima — e trocar um pelo outro aqui mudaria a
-                        definição de um KPI que a operação já lê. */}
-                    <p className="text-xs text-muted-foreground mt-1">gasto ÷ leads do CRM, acumulados; o custo por resultado do período, segundo a Meta, fica no painel acima</p>
-                  </CardContent>
-                </Card>
-                <Card className="glass">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">Campanhas Ativas</p>
-                      <Megaphone className="h-4 w-4 text-chart-5" />
-                    </div>
-                    <p className="text-2xl font-bold mt-1">{num(totals.active)}</p>
-                    {/* O status tem duas origens, e a legenda diz qual vale no
-                        recorte: na campanha sincronizada ele vem da Meta (e só
-                        muda por lá, pelas ações do painel); na cadastrada à mão
-                        é digitado — e ler um digitado como o estado real da
-                        campanha é o engano que esta frase evita. */}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      de {num(filtered.length)} no filtro · {temSincronizada
-                        ? "status da Meta nas sincronizadas, digitado nas demais"
-                        : "status digitado; a Meta não é consultada"}
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* KPIs — a grade do app (`KpiGrid`): mesma largura de cartao e a
+                  ultima linha incompleta centralizada, como nas outras telas.
+                  Eram quatro Cards montados a mao, que abriam em DUAS colunas a
+                  375 px enquanto o resto do app abre em uma. */}
+              <KpiGrid cols={4}>
+                {([
+                  {
+                    label: "Gasto em campanhas",
+                    value: brl(totals.spend),
+                    icon: DollarSign,
+                    /* Não é a mesma verba do aporte: aporte é o que a construtora
+                       põe no mês; isto é o que as campanhas gastaram.
+                       Com gasto vindo do livro (relatório importado ou
+                       sincronização da Meta) ele vale pelo RECORTE de cada
+                       campanha — dizer "acumulado" aí seria afirmar que a soma
+                       cobre a vida inteira da campanha, e o CPL sairia menor do
+                       que o real sem nenhum aviso. */
+                    hint: temGastoDoLivro
+                      ? "inclui gasto da Meta (relatório ou sincronização), pelo período de cada campanha"
+                      : "acumulado, não é o aporte do mês",
+                  },
+                  {
+                    label: "Leads Gerados",
+                    value: num(totals.leads),
+                    icon: Users,
+                    hint: `${num(totals.conversions)} convertidos em negócio`,
+                  },
+                  {
+                    label: "CPL Médio",
+                    value: brl(totals.cpl),
+                    icon: Target,
+                    /* O CPL do CRM não muda de conta: `total_spend` (a soma do
+                       livro da campanha) ÷ leads do CRM, os dois sem recorte de
+                       mês. O custo do PERÍODO existe, mas é outro número — o
+                       custo por resultado segundo a Meta, rotulado assim no
+                       painel acima — e trocar um pelo outro aqui mudaria a
+                       definição de um KPI que a operação já lê. */
+                    hint: "gasto ÷ leads do CRM, acumulados; o custo por resultado do período, segundo a Meta, fica no painel acima",
+                  },
+                  {
+                    label: "Campanhas Ativas",
+                    value: num(totals.active),
+                    icon: Megaphone,
+                    /* O status tem duas origens, e a legenda diz qual vale no
+                       recorte: na campanha sincronizada ele vem da Meta (e só
+                       muda por lá, pelas ações do painel); na cadastrada à mão
+                       é digitado — e ler um digitado como o estado real da
+                       campanha é o engano que esta frase evita. */
+                    hint: `de ${num(filtered.length)} no filtro · ${temSincronizada
+                      ? "status da Meta nas sincronizadas, digitado nas demais"
+                      : "status digitado; a Meta não é consultada"}`,
+                  },
+                ] as const).map(({ label, value, icon, hint }) => (
+                  <KpiCard key={label} label={label} value={value} icon={icon} hint={hint} />
+                ))}
+              </KpiGrid>
 
               {/* Channel breakdown */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -624,12 +612,15 @@ function DeveloperSummaryPanel({
 
   return (
     <Card className="glass">
-      <CardHeader className="py-3 px-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* O seletor fica centralizado no topo do painel que ele filtra — a mesma
+          regra do `period` do PageHeader, que aqui não cabe: o período só vale
+          para este painel, não para a tela inteira. */}
+      <CardHeader className="py-3 px-4 grid gap-2 space-y-0 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
         <CardTitle className="text-sm flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" /> Investimento e retorno por construtora
         </CardTitle>
         <Select value={periodo} onValueChange={onPeriodo}>
-          <SelectTrigger className="w-44 h-8 text-xs" aria-label="Período do resumo"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-44 h-8 text-xs justify-self-center" aria-label="Período do resumo"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={PERIODO_TUDO}>Todo o período</SelectItem>
             {monthOptions().map((m) => (
@@ -651,11 +642,11 @@ function DeveloperSummaryPanel({
             {comparacao.carregando && " — carregando…"}
             {comparacao.erro && " — não consegui ler o mês anterior; a variação fica de fora."}
           </p>
-          {/* Uma coluna a 375 px, como todo KpiCard do repositório: em duas, o
-              cartão sobra ~109 px úteis e "R$ 1.250.000" é um token
-              inquebrável (o pt-BR usa NBSP depois do "R$") que o
-              `overflow-hidden` do KpiCard CORTA em vez de quebrar. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* A grade do app (`KpiGrid`): uma coluna a 375 px — em duas, o cartão
+              sobra ~109 px úteis e "R$ 1.250.000" é um token inquebrável (o
+              pt-BR usa NBSP depois do "R$") que o `overflow-hidden` do KpiCard
+              CORTA em vez de quebrar. */}
+          <KpiGrid cols={4}>
             {([
               { label: "Aporte do mês", icon: DollarSign, atual: total.investment, antes: totalAnterior?.investment, fmt: brl },
               { label: "Leads", icon: Users, atual: total.leads, antes: totalAnterior?.leads, fmt: num },
@@ -673,7 +664,7 @@ function DeveloperSummaryPanel({
                 hint={antes === undefined ? undefined : `${comparacao.label}: ${fmt(antes)}`}
               />
             ))}
-          </div>
+          </KpiGrid>
         </div>
       )}
 

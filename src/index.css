@@ -19,29 +19,31 @@
  */
 @layer base {
   :root {
-    /* Superficies em camadas — navy da marca */
-    --background: 222 38% 10%;
+    /* Superficies em camadas — painel azul-marinho (17/09/2026): fundo azul
+       bem escuro e cartao um degrau mais claro, no matiz da marca (213-218).
+       Era 222 38% 10%, que o dono leu como quase preto. */
+    --background: 217 54% 14%;
     --foreground: 210 30% 96%;
-    --card: 222 32% 14%;
+    --card: 216 48% 19%;
     --card-foreground: 210 30% 96%;
-    --popover: 222 34% 16%;
+    --popover: 216 46% 22%;
     --popover-foreground: 210 30% 96%;
-    --secondary: 222 26% 20%;
+    --secondary: 216 40% 27%;
     --secondary-foreground: 210 30% 96%;
-    --muted: 222 24% 18%;
-    --muted-foreground: 214 18% 72%;
-    --accent: 222 30% 22%;
+    --muted: 216 40% 24%;
+    --muted-foreground: 214 30% 78%;
+    --accent: 216 42% 29%;
     --accent-foreground: 210 30% 96%;
-    --border: 222 22% 24%;
-    --input: 220 14% 44%;
+    --border: 216 36% 30%;
+    --input: 215 26% 54%;
 
-    /* Marca */
-    --primary: 214 72% 62%;
+    /* Marca — subiu junto com o fundo para manter 4,5:1 sobre o cartao */
+    --primary: 213 80% 68%;
     --primary-foreground: 222 45% 10%;
-    --ring: 214 72% 62%;
+    --ring: 213 80% 68%;
 
     /* Semanticos */
-    --destructive: 358 72% 62%;
+    --destructive: 358 80% 68%;
     --destructive-foreground: 222 45% 10%;
     --success: 156 46% 62%;
     --success-foreground: 222 45% 10%;
@@ -52,14 +54,15 @@
     --highlight: 46 96% 58%;
     --highlight-foreground: 222 45% 10%;
 
-    /* Cores literais do simbolo — so decoracao (motivo da marca), nunca texto */
-    --brand-blue: 216 60% 41%;
-    --brand-blue-light: 215 47% 60%;
-    --brand-mint: 153 35% 75%;
-    --brand-yellow: 50 80% 55%;
+    /* Cores literais do simbolo, lidas dos pixels do logo (#215FAA, #608DC4,
+       #A7D5B9, #E5CC34) — so decoracao (BrandMotif), nunca texto */
+    --brand-blue: 213 67% 40%;
+    --brand-blue-light: 213 46% 57%;
+    --brand-mint: 143 35% 75%;
+    --brand-yellow: 52 77% 55%;
 
     /* Graficos (Recharts) */
-    --chart-1: 214 72% 62%;
+    --chart-1: 213 80% 68%;
     --chart-2: 156 46% 62%;
     --chart-3: 47 88% 58%;
     --chart-4: 196 78% 60%;
@@ -70,20 +73,27 @@
     --gold-foreground: 222 45% 10%;
     --silver: 214 18% 76%;
     --silver-foreground: 222 45% 10%;
-    --bronze: 25 68% 58%;
+    --bronze: 25 72% 62%;
     --bronze-foreground: 222 45% 10%;
 
-    /* Barra lateral — uma camada mais funda que o canvas */
-    --sidebar-background: 222 42% 8%;
+    /* Barra lateral — uma camada mais funda que o canvas. Tem superficie
+       propria (no claro e o azul da marca), entao rotulo, destaque do item
+       ativo e "Sair" tem tokens proprios em vez de `muted-foreground`,
+       `gold` e `destructive`, que sao medidos contra `card`. */
+    --sidebar-background: 218 58% 11%;
     --sidebar-foreground: 210 25% 88%;
-    --sidebar-primary: 214 72% 62%;
+    --sidebar-muted-foreground: 214 30% 76%;
+    --sidebar-primary: 213 80% 68%;
     --sidebar-primary-foreground: 222 45% 10%;
-    --sidebar-accent: 222 30% 16%;
+    --sidebar-accent: 216 48% 20%;
     --sidebar-accent-foreground: 210 30% 96%;
-    --sidebar-border: 222 28% 16%;
-    --sidebar-ring: 214 72% 62%;
+    --sidebar-border: 216 44% 20%;
+    --sidebar-ring: 213 80% 68%;
+    --sidebar-highlight: 45 96% 62%;
+    --sidebar-destructive: 358 80% 68%;
 
-    --radius: 1rem;
+    /* 8 px. Cartao = `rounded-2xl` = 12 px (era 24 px; pedido de 17/09/2026). */
+    --radius: 0.5rem;
   }
 
   .light {
@@ -98,13 +108,13 @@
     --muted: 214 28% 94%;
     --muted-foreground: 218 20% 40%;
     --accent: 214 42% 90%;
-    --accent-foreground: 216 62% 30%;
-    --border: 214 22% 82%;
+    --accent-foreground: 213 67% 30%;
+    --border: 214 24% 87%;
     --input: 214 16% 54%;
 
-    --primary: 216 62% 40%;
+    --primary: 213 67% 40%;
     --primary-foreground: 0 0% 100%;
-    --ring: 216 62% 40%;
+    --ring: 213 67% 40%;
 
     --destructive: 358 66% 48%;
     --destructive-foreground: 0 0% 100%;
@@ -117,7 +127,7 @@
     --highlight: 46 92% 52%;
     --highlight-foreground: 40 80% 12%;
 
-    --chart-1: 216 62% 42%;
+    --chart-1: 213 67% 42%;
     --chart-2: 158 52% 34%;
     --chart-3: 38 92% 36%;
     --chart-4: 200 78% 36%;
@@ -135,14 +145,20 @@
     --bronze: 22 62% 36%;
     --bronze-foreground: 0 0% 100%;
 
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 222 45% 16%;
-    --sidebar-primary: 216 62% 40%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 214 40% 95%;
-    --sidebar-accent-foreground: 216 62% 30%;
-    --sidebar-border: 214 22% 86%;
-    --sidebar-ring: 216 62% 40%;
+    /* CRM branco com a barra no azul da marca (#215FAA): texto branco da
+       6,4:1, e as duas artes do logo tem letra branca. */
+    --sidebar-background: 213 67% 40%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-muted-foreground: 213 70% 90%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 213 67% 40%;
+    --sidebar-accent: 214 72% 29%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 213 50% 52%;
+    --sidebar-ring: 0 0% 100%;
+    /* O `gold` do claro (42 95% 30%) some no azul; aqui vale o ambar cheio. */
+    --sidebar-highlight: 46 96% 58%;
+    --sidebar-destructive: 0 100% 92%;
   }
 }
 
@@ -179,6 +195,30 @@
                 color 150ms ease,
                 padding 200ms ease,
                 opacity 200ms ease;
+  }
+}
+
+/*
+ * Grade de indicadores (`KpiGrid`). Flex, e nao grid, porque so assim a ultima
+ * linha incompleta fica CENTRALIZADA (7 cartoes a 4 por linha = 4 + 3 no
+ * meio). A largura e (100% - folgas) / colunas, entao todo cartao tem a mesma
+ * largura em qualquer linha. `--kpi-cols` vem das classes do componente, por
+ * faixa de tela — e nao e declarado aqui: este bloco nao pode vencer delas.
+ * `min-width: 0` deixa o `overflow-hidden` do cartao cortar valor longo em vez
+ * de alargar a coluna.
+ */
+@layer components {
+  .kpi-grid {
+    --kpi-gap: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--kpi-gap);
+  }
+  .kpi-grid > * {
+    flex: none;
+    width: calc((100% - (var(--kpi-cols, 1) - 1) * var(--kpi-gap)) / var(--kpi-cols, 1));
+    min-width: 0;
   }
 }
 
@@ -221,13 +261,14 @@
   /*
    * Filete dourado no topo do cartão em destaque (turno ativo, card do game,
    * venda fechada). É traço, então usa `--gold` (3:1 nos dois temas), não o
-   * `--highlight`, que no claro some no branco. Recua 1rem de cada lado para
-   * não passar por cima da curva do canto. O elemento precisa de `relative`.
+   * `--highlight`, que no claro some no branco. Recua o raio do `rounded-2xl`
+   * de cada lado para não passar por cima da curva do canto. O elemento
+   * precisa de `relative`.
    */
   .gold-hairline::before {
     content: "";
     position: absolute;
-    inset: 0 1rem auto;
+    inset: 0 calc(var(--radius) + 4px) auto;
     height: 2px;
     background: linear-gradient(90deg, transparent, hsl(var(--gold)) 20%, hsl(var(--gold)) 80%, transparent);
     pointer-events: none;

@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { KpiGrid } from "./KpiGrid";
 import { cn } from "@/lib/utils";
 
 export interface LoadingStateProps {
@@ -23,10 +24,12 @@ export function LoadingState({ variant = "block", rows = 3, label = "Carregandoâ
     <div role="status" aria-busy="true" aria-live="polite" className={cn("w-full", className)}>
       <span className="sr-only">{label}</span>
 
-      {/* A folga do esqueleto acompanha a do `KpiCard`: padding diferente do
-          cartao real faz a regua saltar quando o dado chega. */}
+      {/* A folga e a grade do esqueleto acompanham as do `KpiCard` real, senao
+          a regua salta quando o dado chega. Colunas pela mesma regra das
+          telas: ate cinco cartoes cabem numa linha; mais que isso, a regua
+          de quatro (a do Dashboard). */}
       {variant === "kpi" && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiGrid cols={(count <= 5 ? count : 4) as 1 | 2 | 3 | 4 | 5}>
           {Array.from({ length: count }, (_, i) => (
             <div key={i} className="rounded-2xl border border-border bg-card p-4 sm:p-5">
               <Skeleton className="h-3 w-20 rounded-full" />
@@ -34,7 +37,7 @@ export function LoadingState({ variant = "block", rows = 3, label = "Carregandoâ
               <Skeleton className="mt-3 h-3 w-16 rounded-full" />
             </div>
           ))}
-        </div>
+        </KpiGrid>
       )}
 
       {variant === "list" && (

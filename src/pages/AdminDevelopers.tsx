@@ -13,7 +13,8 @@ import { toast } from "@/hooks/use-toast";
 import { toast as sonner } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isEmail } from "@/integrations/supabase/developerSubmissions";
-import { slugify } from "@/lib/utils";
+import { cn, slugify } from "@/lib/utils";
+import { developerDot, isDeveloperColor } from "@/lib/tone";
 import { describeError } from "@/lib/supabaseError";
 
 type DeveloperFlow = "internal" | "external";
@@ -27,6 +28,8 @@ type DeveloperRow = {
   contact_phone: string | null;
   notes: string | null;
   active: boolean;
+  /** `#RRGGBB` (0152). `null` = sem cor: o Pipeline usa a cor do nome. */
+  color: string | null;
 };
 
 type ProjectRow = { id: string; developer_id: string; name: string; city: string | null; state: string | null; active: boolean };
@@ -35,7 +38,11 @@ type ProjectRow = { id: string; developer_id: string; name: string; city: string
  *  `describeError` devolve a paráfrase do título e a tela repete a frase. */
 const TENTE_DE_NOVO = 'A consulta não respondeu. Verifique a conexão e use "Tentar de novo".';
 
-const COLUNAS = "id,name,flow,submission_email,contact_name,contact_phone,notes,active";
+// `*` e não a lista de colunas: pedir `color` a um banco sem a 0152 derruba a
+// leitura inteira (PostgREST 400). Até a 0152 chegar, `color` vem `undefined`.
+// ponytail: aqui a tela usa mesmo a ficha inteira (é a tela de cadastro), então
+// o `*` só perde o "diga o que lê" — trocar pela lista quando a 0152 for aplicada.
+const COLUNAS = "*";
 
 /** RLS de update/delete não erra: só não casa linha. Sem linha = sem permissão. */
 const NO_PERMISSION = "Sem permissão para alterar construtoras (apenas admin/CCA).";
@@ -69,6 +76,37 @@ function EmailCell({ dev, onSave }: { dev: DeveloperRow; onSave: (email: string)
       className="h-7 text-xs"
       aria-label={`E-mail de envio de ${dev.name}`}
     />
+  );
+}
+
+/**
+ * Cor da construtora no Pipeline (0152). O mesmo campo no cadastro e na edição:
+ * o dono pediu a cor "no cadastro da construtora", e ter só na edição obrigava a
+ * criar a construtora e reabri-la para pintá-la.
+ *
+ * O seletor nativo não tem "vazio" (mostra preto): o texto ao lado diz o estado,
+ * e "Sem cor" grava `null` — a bolinha volta à cor derivada do nome.
+ */
+function ColorField({ id, value, onChange }: { id: string; value: string; onChange: (color: string) => void }) {
+  return (
+    <div className="flex h-8 items-center gap-2">
+      <input
+        id={id}
+        type="color"
+        value={value || "#000000"}
+        onChange={e => onChange(e.target.value)}
+        aria-describedby={`${id}-estado`}
+        className="h-8 w-10 shrink-0 cursor-pointer rounded-md border border-input bg-background p-0.5"
+      />
+      <span id={`${id}-estado`} className="min-w-0 truncate text-xs text-muted-foreground">
+        {value ? value.toUpperCase() : "Sem cor (automática)"}
+      </span>
+      {value && (
+        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onChange("")}>
+          Sem cor
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -110,6 +148,8 @@ export default function AdminDevelopers() {
   const [newDev, setNewDev] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newFlow, setNewFlow] = useState<DeveloperFlow>("internal");
+  /** `""` = sem cor escolhida (o Pipeline usa a cor do nome). */
+  const [newColor, setNewColor] = useState("");
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<DeveloperRow | null>(null);
 
@@ -121,7 +161,7 @@ export default function AdminDevelopers() {
     // Sem este `return`, a falha caía em `developers = []` e a tela afirmava
     // "nenhuma construtora cadastrada" — o toast some e a mentira fica.
     if (error) return setLoadError(describeError(error, TENTE_DE_NOVO));
-    setDevelopers((data ?? []) as DeveloperRow[]);
+    setDevelopers((data ?? []).map(dev => ({ ...dev, color: dev.color ?? null })) as DeveloperRow[]);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -197,12 +237,18 @@ export default function AdminDevelopers() {
         variant: "destructive",
       });
     }
+    if (newColor && !isDeveloperColor(newColor)) {
+      return toast({ title: "Cor inválida", description: "Escolha a cor pelo seletor ou use \"Sem cor\".", variant: "destructive" });
+    }
     setSaving(true);
     const { error } = await supabase.from("developers").insert({
       name,
       slug: slugify(name),
       flow: newFlow,
       submission_email: email || null,
+      // Só vai quando o admin escolheu: mandar `color` a um banco sem a 0152
+      // derrubaria o cadastro inteiro (PostgREST 400), e não só a cor.
+      ...(newColor && { color: newColor }),
     });
     setSaving(false);
     if (error) {
@@ -211,6 +257,7 @@ export default function AdminDevelopers() {
     setNewDev("");
     setNewEmail("");
     setNewFlow("internal");
+    setNewColor("");
     toast({ title: "Construtora adicionada", variant: "success" });
     await load();
   };
@@ -259,6 +306,10 @@ export default function AdminDevelopers() {
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <Label htmlFor="dev-cor" className="text-xs">Cor no Pipeline</Label>
+            <ColorField id="dev-cor" value={newColor} onChange={setNewColor} />
+          </div>
           <div className="flex items-end">
             <Button size="sm" onClick={addDev} disabled={saving} className="h-8 gap-1 text-xs">
               <Plus className="h-4 w-4" /> {saving ? "Adicionando…" : "Adicionar"}
@@ -298,36 +349,43 @@ export default function AdminDevelopers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {developers.map(dev => (
-                    <tr key={dev.id} className="border-b border-border/10 hover:bg-primary/5">
-                      <td className="p-3 font-medium">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          {dev.name}
-                          <StatusBadge tone={dev.flow === "internal" ? "warning" : "neutral"}>
-                            {dev.flow === "internal" ? "CCA Ativo" : "Fluxo externo"}
-                          </StatusBadge>
-                        </span>
-                        {dev.contact_name && <span className="block text-muted-foreground">{dev.contact_name}{dev.contact_phone ? ` · ${dev.contact_phone}` : ""}</span>}
-                      </td>
-                      <td className="p-3 text-center">
-                        <Switch checked={dev.flow === "internal"} onCheckedChange={() => toggleCca(dev)} aria-label={`CCA interno de ${dev.name}`} />
-                      </td>
-                      <td className="p-3 min-w-48">
-                        <EmailCell key={`${dev.id}-${dev.submission_email ?? ""}`} dev={dev} onSave={email => saveEmail(dev, email)} />
-                      </td>
-                      <td className="p-3 text-center">
-                        <Switch checked={dev.active} onCheckedChange={() => toggleActive(dev)} aria-label={`Construtora ${dev.name} ativa`} />
-                      </td>
-                      <td className="p-3 text-right whitespace-nowrap">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(dev)} aria-label={`Editar ${dev.name}`}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeDev(dev)} aria-label={`Remover ${dev.name}`}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                  {developers.map(dev => {
+                    // Só com cor escolhida: sem ela a lista fica como era.
+                    const bolinha = developerDot(dev.name, dev.color);
+                    return (
+                      <tr key={dev.id} className="border-b border-border/10 hover:bg-primary/5">
+                        <td className="p-3 font-medium">
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            {bolinha.style && (
+                              <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} />
+                            )}
+                            {dev.name}
+                            <StatusBadge tone={dev.flow === "internal" ? "warning" : "neutral"}>
+                              {dev.flow === "internal" ? "CCA Ativo" : "Fluxo externo"}
+                            </StatusBadge>
+                          </span>
+                          {dev.contact_name && <span className="block text-muted-foreground">{dev.contact_name}{dev.contact_phone ? ` · ${dev.contact_phone}` : ""}</span>}
+                        </td>
+                        <td className="p-3 text-center">
+                          <Switch checked={dev.flow === "internal"} onCheckedChange={() => toggleCca(dev)} aria-label={`CCA interno de ${dev.name}`} />
+                        </td>
+                        <td className="p-3 min-w-48">
+                          <EmailCell key={`${dev.id}-${dev.submission_email ?? ""}`} dev={dev} onSave={email => saveEmail(dev, email)} />
+                        </td>
+                        <td className="p-3 text-center">
+                          <Switch checked={dev.active} onCheckedChange={() => toggleActive(dev)} aria-label={`Construtora ${dev.name} ativa`} />
+                        </td>
+                        <td className="p-3 text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(dev)} aria-label={`Editar ${dev.name}`}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeDev(dev)} aria-label={`Remover ${dev.name}`}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -373,6 +431,7 @@ function DeveloperEditDialog({
     contact_phone: dev.contact_phone ?? "",
     notes: dev.notes ?? "",
     flow: dev.flow,
+    color: dev.color ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
@@ -404,13 +463,19 @@ function DeveloperEditDialog({
     if (form.flow === "external" && !email) {
       return toast({ title: "Fluxo externo exige e-mail", description: "É por ele que os documentos vão para a construtora.", variant: "destructive" });
     }
-    const patch = {
+    if (form.color && !isDeveloperColor(form.color)) {
+      return toast({ title: "Cor inválida", description: "Escolha a cor pelo seletor ou use \"Sem cor\".", variant: "destructive" });
+    }
+    const color = form.color || null;
+    const patch: Partial<DeveloperRow> = {
       name,
       submission_email: email || null,
       contact_name: form.contact_name.trim() || null,
       contact_phone: form.contact_phone.trim() || null,
       notes: form.notes.trim() || null,
       flow: form.flow,
+      // Só vai quando mudou: salvar o resto da ficha não depende da coluna nova.
+      ...(color !== dev.color && { color }),
     };
     setSaving(true);
     const { data, error } = await supabase.from("developers").update(patch).eq("id", dev.id).select("id");
@@ -530,6 +595,10 @@ function DeveloperEditDialog({
                 <SelectItem value="external">Fluxo externo (e-mail)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <Label htmlFor="edit-cor" className="text-xs">Cor no Pipeline</Label>
+            <ColorField id="edit-cor" value={form.color} onChange={color => setForm(p => ({ ...p, color }))} />
           </div>
           <div className="sm:col-span-2">
             <Label htmlFor="edit-notas" className="text-xs">Observações</Label>

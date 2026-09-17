@@ -126,24 +126,25 @@ export function GlobalGoalCard({ mesInicial }: GlobalGoalCardProps = {}) {
       title="Meta global do mês"
       description="É a meta que o Dashboard mostra para toda a operação. Sem cadastro, o painel exibe —."
       icon={Target}
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Label htmlFor="meta-global-mes" className="text-xs">Mês</Label>
-          <Input
-            id="meta-global-mes"
-            type="month"
-            value={month}
-            onChange={(e) => { setMonth(e.target.value); setEdits({}); }}
-            className="h-9 w-44"
-            aria-invalid={periodIso === null}
-            aria-describedby={periodIso === null ? "meta-global-mes-erro" : undefined}
-          />
-          {periodIso === null && (
-            <p id="meta-global-mes-erro" className="text-xs text-destructive">Informe um mês válido</p>
-          )}
-        </div>
-      }
     >
+      {/* Centralizado no topo do cartão, como todo seletor de mês do app
+          (17/09/2026): empilhado, como no `period` do PageHeader — lado a lado,
+          o rótulo "Mês" empurrava o campo 15 px para a direita do centro. */}
+      <div className="mb-4 flex flex-col items-center gap-1.5">
+        <Label htmlFor="meta-global-mes" className="text-xs">Mês</Label>
+        <Input
+          id="meta-global-mes"
+          type="month"
+          value={month}
+          onChange={(e) => { setMonth(e.target.value); setEdits({}); }}
+          className="h-9 w-44"
+          aria-invalid={periodIso === null}
+          aria-describedby={periodIso === null ? "meta-global-mes-erro" : undefined}
+        />
+        {periodIso === null && (
+          <p id="meta-global-mes-erro" className="text-xs text-destructive">Informe um mês válido</p>
+        )}
+      </div>
       {goals.isError ? (
         <EmptyState
           icon={AlertTriangle}

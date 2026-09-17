@@ -193,8 +193,8 @@ export default function Pipeline() {
   // próxima tecla pode interromper, em vez de travar a digitação.
   const filtrosAdiados = useDeferredValue(filters);
   const visible = useMemo(
-    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam)),
-    [deals, filtrosAdiados, myTeam],
+    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam), catalog),
+    [deals, filtrosAdiados, myTeam, catalog],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 

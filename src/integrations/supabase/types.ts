@@ -1651,6 +1651,7 @@ export type Database = {
       developers: {
         Row: {
           active: boolean
+          color: string | null
           contact_name: string | null
           contact_phone: string | null
           created_at: string
@@ -1664,6 +1665,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          color?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -1677,6 +1679,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          color?: string | null
           contact_name?: string | null
           contact_phone?: string | null
           created_at?: string

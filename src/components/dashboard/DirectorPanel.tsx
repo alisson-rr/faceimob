@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, KpiCard, LoadingState, SectionCard } from "@/components/shared";
+import { EmptyState, KpiCard, KpiGrid, LoadingState, SectionCard } from "@/components/shared";
 import ComparativeFunnel from "@/components/ComparativeFunnel";
 import { num } from "@/lib/format";
 import { DAILY_FIELDS, type DailyFieldKey } from "@/lib/dailyFunnel";
@@ -305,7 +305,7 @@ export function DirectorPanel({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <KpiGrid cols={5}>
         {KPIS.map(({ key, icon, hint }) => (
           <KpiCard
             key={key}
@@ -315,7 +315,7 @@ export function DirectorPanel({
             hint={hint ?? "declarado no diário"}
           />
         ))}
-      </div>
+      </KpiGrid>
 
       <ComparativeFunnel
         daily={{

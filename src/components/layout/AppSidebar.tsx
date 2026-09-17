@@ -26,19 +26,19 @@ const ItemDoMenu = memo(function ItemDoMenu({ item, active, collapsed }: { item:
   return (
     <SidebarMenuItem>
       {/* Item ativo (12/09/2026): pílula escura com borda fina e ícone
-          em ouro, sem brilho — era pílula azul cheia com halo azul.
+          em âmbar, sem brilho — era pílula azul cheia com halo azul.
           A borda é `inset` em `box-shadow` para não mexer 1 px no
           layout e somar com o anel de foco em vez de trocá-lo.
-          `gold` e não `highlight`: traço e ícone precisam de 3:1
-          também no tema claro (4,3:1 sobre `sidebar-accent`). */}
+          `sidebar-highlight` e não `gold`: no claro a barra é azul e o
+          `gold` de lá (feito para texto sobre branco) dava 1,4:1. */}
       <SidebarMenuButton
         asChild
         isActive={active}
         tooltip={item.title}
-        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--gold))]"
+        className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-highlight))]"
       >
         <NavLink to={item.url} end>
-          <item.icon className={cn("h-4 w-4", active && "text-gold")} />
+          <item.icon className={cn("h-4 w-4", active && "text-sidebar-highlight")} />
           {/* Recolhida, a barra esconde o rotulo — mas ele nao pode sair do
               DOM: o icone nao carrega texto, entao sem o <span> TODO link do
               menu fica sem nome acessivel. E nao e estado raro: o
@@ -148,7 +148,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="text-sidebar-destructive hover:text-sidebar-destructive"
               onClick={async () => {
                 await signOut();
                 navigate("/login");

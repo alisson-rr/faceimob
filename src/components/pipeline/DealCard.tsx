@@ -6,10 +6,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
-import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS } from "@/lib/tone";
+import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS, developerDot } from "@/lib/tone";
 import { calcDealProbability } from "@/lib/aiAnalytics";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { dealMonth, pct } from "./filters";
+import { dealBrokers, dealMonth, pct } from "./filters";
 import type { DealLock } from "./guards";
 import { DOCUMENT_REVIEW_META } from "./review";
 import type { PipelineStage } from "./stages";
@@ -81,6 +81,8 @@ function DealCardBase({
   const idade = dealAgeTone(deal.days_in_pipeline);
   const movable = !lock.locked && canExit;
   const mes = dealMonth(deal);
+  const corretores = dealBrokers(deal);
+  const bolinha = developerDot(deal.developer, deal.developer_color);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -184,7 +186,14 @@ function DealCardBase({
           </span>
         </div>
         <p className="text-xs text-muted-foreground">{deal.project || "Sem empreendimento"} · {deal.unit || "—"}</p>
-        <p className="mb-2 text-xs text-muted-foreground">{deal.developer || "Sem construtora"}</p>
+        <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          {/* Bolinha só com a cor escolhida no cadastro: sem ela o cartão fica
+              como sempre foi, só com o nome. */}
+          {bolinha.style && (
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} aria-hidden />
+          )}
+          {deal.developer || "Sem construtora"}
+        </p>
 
         <Badge variant="outline" className={cn("mb-2 h-5 px-1.5 text-xs", review.className)}>
           {review.label}
@@ -216,23 +225,28 @@ function DealCardBase({
       <div className="mt-2 flex items-center gap-2 border-t border-border/20 pt-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <User className="h-3 w-3 flex-shrink-0 text-muted-foreground" aria-hidden />
-          {/* Nome do corretor colorido por pessoa, igual à tabela: no quadro a
-              coluna é uma pilha de cartões e o nome era mais um cinza entre
-              cinzas. A cor acompanha o nome escrito — nunca é o único sinal. */}
-          <span
-            className={cn(
-              "truncate text-xs",
-              deal.broker1 ? `font-medium ${brokerTextClass(deal.broker1)}` : "text-muted-foreground",
-            )}
-          >
-            {deal.broker1 || "Sem corretor"}
-          </span>
-          {/* Fatia do corretor no VGV — o número que define comissão e que só
-              existia dentro do modal, na aba Detalhes. */}
-          {deal.broker1_share != null && (
-            <span className="flex-shrink-0 text-xs tabular-nums text-muted-foreground">
-              · {pct(deal.broker1_share)}
-            </span>
+          {/* Corretor 1 e 2, cada um com a fatia no VGV — o número que define
+              comissão e que só existia dentro do modal. Nome colorido por
+              pessoa, igual à tabela: no quadro a coluna é uma pilha de cartões
+              e o nome era mais um cinza entre cinzas. A cor acompanha o nome
+              escrito — nunca é o único sinal. */}
+          {corretores.length ? (
+            <div className="min-w-0 flex-1">
+              {corretores.map((corretor, posicao) => (
+                <span key={posicao} className="flex min-w-0 items-center gap-1 text-xs">
+                  <span className={cn("truncate font-medium", brokerTextClass(corretor.name))} title={corretor.name}>
+                    {corretor.name}
+                  </span>
+                  {corretor.share != null && (
+                    <span className="flex-shrink-0 tabular-nums text-muted-foreground">
+                      · {pct(corretor.share)}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="truncate text-xs text-muted-foreground">Sem corretor</span>
           )}
         </div>
         <div className="flex items-center gap-1">

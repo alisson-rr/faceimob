@@ -20,7 +20,6 @@ export {
   GOAL_SCOPE_LABEL,
   dashboardScope,
   dealCategory,
-  defaultMonthOf,
   funnelRows,
   leadsInMonth,
   monthOptions,

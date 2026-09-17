@@ -6,7 +6,7 @@ import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, KpiCard, LoadingState, PageHeader, SectionCard } from "@/components/shared";
+import { EmptyState, KpiCard, KpiGrid, LoadingState, PageHeader, SectionCard } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { dateTime, num } from "@/lib/format";
 import { resolveLink } from "@/lib/notificationLink";
@@ -132,7 +132,7 @@ export default function Activities() {
         <LoadingState variant="kpi" rows={3} label="Carregando atividades…" />
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <KpiGrid cols={3}>
             <KpiCard
               label="Atrasadas"
               value={num(groups.atrasadas.length)}
@@ -141,7 +141,7 @@ export default function Activities() {
             />
             <KpiCard label="Vencem hoje" value={num(groups.hoje.length)} icon={CalendarCheck} />
             <KpiCard label="Próximos 7 dias" value={num(groups.semana.length)} icon={CalendarDays} />
-          </div>
+          </KpiGrid>
 
           {tasks.length === 0 ? (
             <EmptyState

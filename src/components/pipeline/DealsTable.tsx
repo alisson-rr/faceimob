@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
-import { brokerTextClass, dealAgeTone, developerColor, type AgeTone, type ChartToken } from "@/lib/tone";
+import { brokerTextClass, dealAgeTone, developerDot, type AgeTone } from "@/lib/tone";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusBadge } from "@/components/shared";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
@@ -17,20 +17,9 @@ import { DOCUMENT_REVIEW_META } from "./review";
 import { faceimobStatusTone, statusChoices, statusGroupLabel, STATUS_TONE_CLASS } from "./statuses";
 import { dealLock } from "./guards";
 import { offDistratoBlocked } from "./useDealActions";
-import { dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
+import { dealBrokers, dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
 
 const PER_PAGE = 15;
-
-/** Cor da construtora como bolinha. O nome fica em `foreground`: `chart-*` é
- *  token de objeto gráfico (3:1), não de texto — pintar o nome com ele
- *  reprovaria no contraste que o resto da tela cumpre. */
-const DEVELOPER_DOT: Record<ChartToken, string> = {
-  "chart-1": "bg-chart-1",
-  "chart-2": "bg-chart-2",
-  "chart-3": "bg-chart-3",
-  "chart-4": "bg-chart-4",
-  "chart-5": "bg-chart-5",
-};
 
 /** Faixa vertical da linha: a mesma cor do número, em preenchimento sólido.
  *  Cor + número: a cor não é o único sinal. */
@@ -85,8 +74,8 @@ export function DealsTable({
   // filtrados e ordenados"): reordenar os 7.579 de novo a cada tecla da busca
   // era trabalho repetido.
   const ordenados = useMemo(
-    () => (sort.key === "padrao" ? deals : sortDealsBy(deals, sort.key, sort.asc)),
-    [deals, sort],
+    () => (sort.key === "padrao" ? deals : sortDealsBy(deals, sort.key, sort.asc, catalog)),
+    [deals, sort, catalog],
   );
 
   // Filtrar estando na página 3 deixava o operador olhando para a última página
@@ -136,7 +125,10 @@ export function DealsTable({
 
   return (
     <>
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+      {/* `relative`: sem ele o bloco de contenção dos `sr-only` dos cabeçalhos
+          (position: absolute) é o `main`, eles escapam do `overflow-x-auto` e a
+          página inteira rolava de lado no celular (1034 px a 375 px). */}
+      <div className="relative overflow-x-auto rounded-2xl border border-border bg-card">
         <table className="w-full text-xs">
           <caption className="sr-only">
             Negócios do pipeline. Clicar na linha abre o detalhe do negócio; por teclado,
@@ -155,7 +147,7 @@ export function DealsTable({
               <th scope="col" className="p-2 text-left font-medium">Conferência</th>
               {colunaOrdenavel("Cliente", "client")}
               {colunaOrdenavel("VGV", "vgv")}
-              <th scope="col" className="p-2 text-left font-medium">Corretor 1</th>
+              <th scope="col" className="p-2 text-left font-medium">Corretores</th>
               <th scope="col" className="p-2 text-left font-medium">Gerente 1</th>
               <th scope="col" className="p-2 font-medium">Ações</th>
             </tr>
@@ -165,6 +157,8 @@ export function DealsTable({
               const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
               const status = deal.status || "PROPOSTA";
               const grupo = statusGroupLabel(catalog, deal.status_group_id);
+              const bolinha = developerDot(deal.developer, deal.developer_color);
+              const corretores = dealBrokers(deal);
               // Motivo da trava no NOME acessível, não em `title`: o Button do
               // kit tem `disabled:pointer-events-none`, então a dica nativa
               // nunca abre em botão desabilitado — era explicação morta.
@@ -212,8 +206,10 @@ export function DealsTable({
                     )}
                   </td>
                   <td className="whitespace-nowrap p-2">
+                    {/* O nome fica em `foreground`: a cor é de objeto gráfico
+                        (3:1), não de texto. */}
                     <span className="inline-flex items-center gap-1.5">
-                      <span className={cn("h-2 w-2 rounded-full", DEVELOPER_DOT[developerColor(deal.developer)])} aria-hidden />
+                      <span className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} aria-hidden />
                       {deal.developer || "—"}
                     </span>
                   </td>
@@ -317,21 +313,28 @@ export function DealsTable({
                     </button>
                   </td>
                   <td className="whitespace-nowrap p-2 tabular-nums">{brl(deal.deal_value)}</td>
-                  {/* O rateio (`deal_participants.share_pct`) só aparecia dentro
-                      do modal: conferir a comissão do mês exigia abrir negócio
-                      por negócio. Aqui ele fica ao lado do dono da fatia. */}
-                  <td className="max-w-[110px] p-2">
-                    {/* Nome do corretor colorido por pessoa (`brokerTextClass`):
-                        com dezenas de linhas na tela, achar as suas era ler nome
-                        por nome. A cor acompanha o nome escrito — nunca é o
-                        único sinal. */}
-                    <span className={cn("block truncate font-medium", deal.broker1 && brokerTextClass(deal.broker1))}>
-                      {deal.broker1 || "—"}
-                    </span>
-                    {deal.broker1_share != null && (
-                      <span className="block text-xs tabular-nums text-muted-foreground">
-                        {pct(deal.broker1_share)} do VGV
-                      </span>
+                  {/* Corretor 1 e 2 com a fatia de cada um no VGV
+                      (`deal_participants.share_pct`), que só aparecia dentro do
+                      modal. Nome colorido por pessoa (`brokerTextClass`): com
+                      dezenas de linhas na tela, achar as suas era ler nome por
+                      nome. A cor acompanha o nome escrito — nunca é o único
+                      sinal. */}
+                  <td className="whitespace-nowrap p-2">
+                    {corretores.length ? (
+                      corretores.map((corretor, posicao) => (
+                        <span key={posicao} className="flex items-center gap-1">
+                          <span className={cn("font-medium", brokerTextClass(corretor.name))}>
+                            {corretor.name}
+                          </span>
+                          {corretor.share != null && (
+                            <span className="shrink-0 tabular-nums text-muted-foreground">
+                              · {pct(corretor.share)}
+                            </span>
+                          )}
+                        </span>
+                      ))
+                    ) : (
+                      "—"
                     )}
                   </td>
                   <td className="max-w-[110px] truncate p-2">{deal.manager1 || "—"}</td>

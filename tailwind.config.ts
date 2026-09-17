@@ -71,15 +71,20 @@ export default {
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
+          "muted-foreground": "hsl(var(--sidebar-muted-foreground))",
+          highlight: "hsl(var(--sidebar-highlight))",
+          destructive: "hsl(var(--sidebar-destructive))",
         },
       },
+      // Com `--radius` de 8 px: 4 · 6 · 8 · 10 · 12 · 16. Degraus em px e nao
+      // em meio rem: com o raio menor (17/09/2026), `radius - 0.5rem` dava 0.
       borderRadius: {
-        sm: "calc(var(--radius) - 0.5rem)",
-        md: "calc(var(--radius) - 0.25rem)",
+        sm: "calc(var(--radius) - 4px)",
+        md: "calc(var(--radius) - 2px)",
         lg: "var(--radius)",
-        xl: "calc(var(--radius) + 0.25rem)",
-        "2xl": "calc(var(--radius) + 0.5rem)",
-        "3xl": "calc(var(--radius) + 1rem)",
+        xl: "calc(var(--radius) + 2px)",
+        "2xl": "calc(var(--radius) + 4px)",
+        "3xl": "calc(var(--radius) + 8px)",
       },
       transitionTimingFunction: {
         premium: "cubic-bezier(.22, 1, .36, 1)",

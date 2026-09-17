@@ -7,6 +7,8 @@
  * negócio sumir do filtro do próprio dono.
  */
 import { newestFirst, type LegacyDealRecord, type PersonRecord } from "@/integrations/supabase/newSchema";
+import { EMPTY_STATUS_CATALOG, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import { faceimobStatusRank } from "./statuses";
 
 export const ALL = "all";
 
@@ -87,6 +89,16 @@ const digits = (value: string | null | undefined) => (value || "").replace(/\D/g
  *  satisfazer a assinatura seria cast na fronteira errada. */
 export const dealMonth = (deal: Pick<LegacyDealRecord, "month_base" | "created_at">): string =>
   deal.month_base || (deal.created_at ? `${deal.created_at.slice(5, 7)}/${deal.created_at.slice(0, 4)}` : "");
+
+/** Corretor 1 e 2 do negócio com a fatia de cada um — o que o cartão e a
+ *  tabela mostram. Slot sem nome fica de fora. */
+export const dealBrokers = (
+  deal: Pick<LegacyDealRecord, "broker1" | "broker1_share" | "broker2" | "broker2_share">,
+): { name: string; share: number | null }[] =>
+  [
+    { name: deal.broker1, share: deal.broker1_share },
+    { name: deal.broker2 ?? "", share: deal.broker2_share },
+  ].filter((corretor) => Boolean(corretor.name));
 
 /** Participante do negócio em qualquer slot — o filtro não pergunta "é o 1?". */
 const participantIds = (deal: LegacyDealRecord) => [
@@ -169,17 +181,48 @@ export function applyDealFilters(
 
 /**
  * Um comparador só para o módulo. `localeCompare(b, "pt-BR")` monta a regra de
- * ordenação a cada comparação, e a tabela ordena por coluna a lista inteira.
- * `Intl.Collator` com o mesmo locale dá exatamente a mesma ordem.
+ * ordenação a cada comparação, e a busca do Pipeline ordena a lista inteira a
+ * cada tecla. `Intl.Collator` com o mesmo locale dá exatamente a mesma ordem.
  */
 const ordemPtBr = new Intl.Collator("pt-BR").compare;
 
 /**
- * Ordem padrão do quadro e da tabela: o negócio criado por último em cima
- * (pedido do dono em 15/09/2026). Era construtora e depois o catálogo de
- * Status 2, e o negócio de hoje sumia no meio da lista.
+ * Ordem padrão do quadro e da tabela (pedido do dono em 17/09/2026, no lugar
+ * da ordem só por data de 15/09): construtora, depois a ordem do catálogo de
+ * Status 2 e, no mesmo status, o negócio criado por último em cima.
+ *
+ * Status fora do catálogo empatam na mesma posição (o fim); o texto deles
+ * desempata antes da data, para status iguais continuarem juntos. Sem
+ * catálogo (ainda carregando), todos caem nesse caso.
+ *
+ * A posição de cada status é calculada uma vez por texto, e não por
+ * comparação: são ~40 textos para milhares de negócios, e normalizar o rótulo
+ * dentro do comparador repetia o trabalho a cada tecla da busca.
  */
-export const sortDeals = (deals: LegacyDealRecord[]): LegacyDealRecord[] => [...deals].sort(newestFirst);
+export const sortDeals = (
+  deals: LegacyDealRecord[],
+  catalog: DealStatusCatalog = EMPTY_STATUS_CATALOG,
+): LegacyDealRecord[] => {
+  const fora = catalog.statuses.length;
+  const ranks = new Map<string, number>();
+  const rankOf = (status: string) => {
+    let rank = ranks.get(status);
+    if (rank === undefined) {
+      rank = faceimobStatusRank(catalog, status);
+      ranks.set(status, rank);
+    }
+    return rank;
+  };
+  return [...deals].sort((a, b) => {
+    const byDeveloper = ordemPtBr(a.developer || "", b.developer || "");
+    if (byDeveloper !== 0) return byDeveloper;
+    const rankA = rankOf(a.status);
+    const byStatus = rankA - rankOf(b.status);
+    if (byStatus !== 0) return byStatus;
+    const byText = rankA === fora ? ordemPtBr(a.status || "", b.status || "") : 0;
+    return byText || newestFirst(a, b);
+  });
+};
 
 /** Colunas por onde a tabela aceita ordenar. `padrao` = `sortDeals`. */
 export type DealSortKey = "padrao" | "client" | "developer" | "vgv" | "days" | "month";
@@ -212,11 +255,12 @@ export function sortDealsBy(
   deals: LegacyDealRecord[],
   key: DealSortKey,
   ascending: boolean,
+  catalog: DealStatusCatalog = EMPTY_STATUS_CATALOG,
 ): LegacyDealRecord[] {
-  if (key === "padrao") return sortDeals(deals);
+  if (key === "padrao") return sortDeals(deals, catalog);
   const value = SORT_VALUE[key];
   const direction = ascending ? 1 : -1;
-  return sortDeals(deals).sort((a, b) => {
+  return sortDeals(deals, catalog).sort((a, b) => {
     const left = value(a);
     const right = value(b);
     const compared = typeof left === "string" && typeof right === "string"

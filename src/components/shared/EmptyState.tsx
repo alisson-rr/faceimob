@@ -26,7 +26,7 @@ export function EmptyState({ icon: Icon, title, description, action, tone = "neu
         className,
       )}
     >
-      <BrandMotif className="opacity-40" />
+      <BrandMotif />
       <div className="relative flex flex-col items-center gap-3">
         {Icon && (
           <span

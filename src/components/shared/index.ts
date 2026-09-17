@@ -4,6 +4,7 @@
  */
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { KpiCard, type KpiCardProps, type KpiDelta } from "./KpiCard";
+export { KpiGrid, type KpiGridProps, type KpiGridCols } from "./KpiGrid";
 export { SectionCard, type SectionCardProps } from "./SectionCard";
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from "./StatusBadge";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";

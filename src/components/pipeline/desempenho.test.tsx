@@ -141,6 +141,7 @@ import type { CcaDeal, CcaStage } from "./ccaData";
 import { useDeals, usePipelineRealtime } from "./data";
 import { useDealActions } from "./useDealActions";
 import { EMPTY_FILTERS, applyDealFilters, sortDeals, sortDealsBy } from "./filters";
+import { catalogoDeTeste } from "./statusCatalog.fixture";
 import type { PipelineStage } from "./stages";
 import { useDashboardLeads, useDashboardPayload } from "@/components/dashboard/data";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
@@ -458,7 +459,7 @@ describe("desempenho · render", () => {
     const termos = ["c", "cl", "cli", "clie", "cliente 1"];
     const inicio = performance.now();
     for (let rodada = 0; rodada < 3; rodada += 1) {
-      for (const search of termos) sortDeals(applyDealFilters(negocios, { ...EMPTY_FILTERS, search }));
+      for (const search of termos) sortDeals(applyDealFilters(negocios, { ...EMPTY_FILTERS, search }), catalogoDeTeste);
     }
     log("busca por tecla", { listaMs: +((performance.now() - inicio) / (termos.length * 3)).toFixed(1) });
 

@@ -74,7 +74,7 @@ export default function Dashboard() {
   const { query, deals, months, monthsWithDeals, closedMonths, defaultMonth, payload } =
     useDashboardPayload();
   // Derivado, nao sincronizado: enquanto o usuario nao escolhe, vale o mes
-  // aberto mais recente — e ele ja esta certo na primeira pintura.
+  // corrente — e ele ja esta certo na primeira pintura.
   const activeMonth = month ?? defaultMonth;
 
   const view = useMonthView(deals, activeMonth);
@@ -148,6 +148,10 @@ export default function Dashboard() {
           >
             <RefreshCw className={`h-4 w-4 ${atualizando ? "animate-spin" : ""}`} aria-hidden />
           </Button>
+        </>
+      }
+      period={
+        <>
           {activeMonth !== ALL_MONTHS && (
             <StatusBadge tone={isClosed ? "neutral" : "success"}>
               {isClosed ? "Mês fechado" : "Mês aberto"}
@@ -183,7 +187,7 @@ export default function Dashboard() {
       <>
         {header}
         <div className="flex flex-col gap-5">
-          <LoadingState variant="kpi" rows={6} label="Carregando os indicadores do painel…" />
+          <LoadingState variant="kpi" rows={7} label="Carregando os indicadores do painel…" />
           <LoadingState variant="block" />
         </div>
       </>

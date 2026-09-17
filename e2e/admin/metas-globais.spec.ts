@@ -10,8 +10,8 @@ import type { Page } from "@playwright/test";
  * mentindo — por isso a asserção final é sempre `db.select`.
  *
  * Mês escolhido: 12/2099, longe de qualquer meta real da homologação. A linha
- * de `goals` não influencia o seletor de mês do Dashboard (que sai de deals e
- * closed_months), então um mês futuro aqui não muda o padrão de ninguém.
+ * de `goals` não influencia o seletor de mês do Dashboard (que abre sempre no
+ * mês corrente), então um mês futuro aqui não muda o padrão de ninguém.
  */
 type Meta = { id: string; target: number };
 

@@ -80,17 +80,25 @@ const PARES: [string, string, number][] = [
   ["highlight-foreground", "highlight", 4.5],
   ["gold", "card", 4.5],
   // Ouro como objeto grafico (3:1): barra da meta sobre a trilha `muted` (faixa
-  // do game no Pipeline) e borda/icone do item ativo do menu lateral.
+  // do game no Pipeline).
   ["gold", "muted", 3],
-  ["gold", "sidebar-accent", 3],
   ["silver", "card", 4.5],
   ["bronze", "card", 4.5],
   ["gold-foreground", "gold", 4.5],
   ["silver-foreground", "silver", 4.5],
   ["bronze-foreground", "bronze", 4.5],
+  // A barra lateral tem superficie propria (azul da marca no claro): rotulo,
+  // destaque do item ativo e "Sair" sao medidos contra ela, nao contra `card`.
   ["sidebar-foreground", "sidebar-background", 4.5],
+  ["sidebar-muted-foreground", "sidebar-background", 4.5],
   ["sidebar-primary-foreground", "sidebar-primary", 4.5],
   ["sidebar-accent-foreground", "sidebar-accent", 4.5],
+  // Borda e icone do item ativo.
+  ["sidebar-highlight", "sidebar-accent", 3],
+  // "Sair" parado e sob o hover padrao do menu.
+  ["sidebar-destructive", "sidebar-background", 4.5],
+  ["sidebar-destructive", "sidebar-accent", 4.5],
+  ["sidebar-ring", "sidebar-background", 3],
   // Contorno de campo precisa ser identificavel (WCAG 1.4.11).
   ["input", "card", 3],
   ["input", "background", 3],

@@ -21,7 +21,6 @@ import {
   currentMonthBase,
   isLossStatus,
   normalizeStatus,
-  pickOpenMonth,
 } from "@/lib/dealStatus";
 import { developerColor, type ChartToken } from "@/lib/tone";
 import { useAuth } from "@/contexts/AuthContext";
@@ -94,20 +93,6 @@ export const monthOptions = (deals: DealRow[], hoje: string = currentMonthBase()
 };
 
 /**
- * O mes que abre por padrao: o mes ABERTO mais recente **com negocio**.
- *
- * Sai dos meses com negocio, nao de `monthOptions`: incluir o mes corrente na
- * lista nao pode mudar o padrao de quem tem negocio no mes passado, senao o
- * painel abriria vazio todo dia 1º.
- */
-export const defaultMonthOf = (deals: DealRow[], closedMonths: string[]): string => {
-  const comNegocio = monthsWithDealsOf(deals);
-  if (!comNegocio.length) return currentMonthBase();
-  const preferido = pickOpenMonth(comNegocio, closedMonths);
-  return comNegocio.includes(preferido) ? preferido : comNegocio[0];
-};
-
-/**
  * Carga unica do painel: negocios, leads por canal, CCA, staff e meses
  * fechados. `loadDashboardPayload` ja resolve tudo em paralelo no Supabase.
  */
@@ -148,9 +133,18 @@ export function useDashboardPayload() {
   );
 
   const closedMonths = useMemo(() => payload?.closedMonths ?? [], [payload?.closedMonths]);
-  const months = useMemo(() => monthOptions(deals), [deals]);
+  // O painel abre SEMPRE no mes corrente (pedido do dono, 17/09/2026). Antes
+  // abria no mes aberto mais recente com negocio, e um unico negocio com
+  // mes-base 02/2027 levava todo mundo para 02/2027. Consequencia aceita: no
+  // dia 1º o painel abre no mes novo, possivelmente vazio — o `monthOptions`
+  // rotula esse mes como "sem negocio".
+  const defaultMonth = currentMonthBase();
+  // O MESMO mes alimenta a lista: `months` so recalcula quando `deals` muda, e
+  // `deals` fica identico por horas (o TanStack devolve a mesma referencia). Com
+  // aba aberta na virada do mes, o padrao virava o mes novo e a lista continuava
+  // sem ele — o seletor ficava sem rotulo. Aqui os dois viram no mesmo render.
+  const months = useMemo(() => monthOptions(deals, defaultMonth), [deals, defaultMonth]);
   const monthsWithDeals = useMemo(() => new Set(monthsWithDealsOf(deals)), [deals]);
-  const defaultMonth = useMemo(() => defaultMonthOf(deals, closedMonths), [deals, closedMonths]);
 
   return { query, deals, months, monthsWithDeals, closedMonths, defaultMonth, payload };
 }

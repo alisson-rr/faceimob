@@ -3,6 +3,7 @@ import { Building2, DollarSign, Send, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { KpiGrid } from "@/components/shared";
 import { cn } from "@/lib/utils";
 import { brl, num } from "@/lib/format";
 import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
@@ -64,10 +65,10 @@ export const CcaBoard = memo(function CcaBoard({
     // `contain: paint` fecha o transbordo aqui dentro: sem ele a faixa das
     // colunas chegou a rolar a PÁGINA na horizontal (735 px a 375 px).
     <div className="min-h-0 flex-1 overflow-auto [contain:paint]">
-      {/* Mesma altura e largura para todos: grade de colunas iguais e o nome
-          em duas linhas de altura fixa, cortado com reticências (o nome
-          inteiro fica no `title`). */}
-      <div className="sticky left-0 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2 pb-3">
+      {/* Mesma altura e largura para todos: a grade de indicadores do app
+          (última linha centralizada) e o nome em duas linhas de altura fixa,
+          cortado com reticências (o nome inteiro fica no `title`). */}
+      <KpiGrid cols="faixa" className="sticky left-0 pb-3">
         {stages.map((stage) => (
           <div
             key={stage.id}
@@ -79,7 +80,7 @@ export const CcaBoard = memo(function CcaBoard({
             </p>
           </div>
         ))}
-      </div>
+      </KpiGrid>
 
       <div className="flex w-max gap-3 pb-2">
         {stages.map((stage) => {

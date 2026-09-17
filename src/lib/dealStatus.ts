@@ -136,19 +136,3 @@ export const closableMonths = (
   if (seasonMonth) all.add(seasonMonth);
   return [...all].filter((month) => !closed.has(month)).sort((a, b) => compareMonth(b, a));
 };
-
-/**
- * Escolhe o "mês aberto" a exibir por padrão no dashboard:
- * o mais recente presente nos deals que NÃO esteja fechado.
- * Se todos estiverem fechados, volta para o mês corrente do calendário.
- */
-export const pickOpenMonth = (
-  availableMonths: string[],
-  closedMonths: string[]
-): string => {
-  const closed = new Set(closedMonths);
-  const open = [...availableMonths].filter((m) => !closed.has(m));
-  if (open.length === 0) return currentMonthBase();
-  open.sort((a, b) => compareMonth(b, a)); // desc
-  return open[0];
-};

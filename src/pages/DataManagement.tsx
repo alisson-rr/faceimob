@@ -350,6 +350,20 @@ export default function DataManagement() {
         eyebrow="Sistema"
         icon={Database}
         description="Aportes de mídia por construtora."
+        // O mês comanda o lançamento e a lista "Aportes de <mês>": é o período
+        // da tela, e fica no mesmo lugar que nas outras telas por mês.
+        period={
+          <>
+            <Label htmlFor="aporte-mes" className="text-xs">Mês</Label>
+            <Input
+              id="aporte-mes"
+              type="month"
+              value={period.slice(0, 7)}
+              onChange={(e) => { if (e.target.value) setPeriod(`${e.target.value}-01`); }}
+              className="h-8 w-40 text-xs"
+            />
+          </>
+        }
       />
 
       <div className="mt-6 space-y-4">
@@ -360,18 +374,6 @@ export default function DataManagement() {
             description={canEditAporte
               ? "Um aporte por construtora e mês: salvar de novo corrige o valor. A nota em branco preserva a que já está gravada — use Editar para trocá-la."
               : "Lançamento e correção de aporte são do marketing e do administrador."}
-            actions={
-              <>
-                <Label htmlFor="aporte-mes" className="text-xs">Mês</Label>
-                <Input
-                  id="aporte-mes"
-                  type="month"
-                  value={period.slice(0, 7)}
-                  onChange={(e) => { if (e.target.value) setPeriod(`${e.target.value}-01`); }}
-                  className="h-8 w-40 text-xs"
-                />
-              </>
-            }
           >
             <p className="text-sm mb-3">Total do mês: <strong className="text-success">{brl(monthTotal)}</strong></p>
             {canEditAporte && (devsError ? (

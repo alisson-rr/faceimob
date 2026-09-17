@@ -191,7 +191,7 @@ export function MarketingInvestmentPopup({ canEdit }: { canEdit: boolean }) {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center gap-2">
             <Label htmlFor="aporte-mes" className="text-xs">Mês</Label>
             <Input
               id="aporte-mes"

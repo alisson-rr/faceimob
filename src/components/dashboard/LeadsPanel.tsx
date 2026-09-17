@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Flame, Inbox, Percent, TrendingUp, Users }
 import { format, parseISO } from "date-fns";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
-import { EmptyState, KpiCard, LoadingState, SectionCard } from "@/components/shared";
+import { EmptyState, KpiCard, KpiGrid, LoadingState, SectionCard } from "@/components/shared";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { chartAxis, chartGrid, chartStill, chartTooltip, tone } from "@/lib/tone";
@@ -162,7 +162,7 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
   if (isPending) {
     return (
       <div className="flex flex-col gap-5">
-        <LoadingState variant="kpi" rows={4} label="Carregando os leads…" />
+        <LoadingState variant="kpi" rows={3} label="Carregando os leads…" />
         <LoadingState variant="block" />
       </div>
     );
@@ -222,7 +222,7 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
           diferença entre dois números que sempre foram um só. O total da base
           continua dito aqui quando ele é a informação que falta: nos vazios
           ("A base tem N leads, mas nenhum foi criado neste período"). */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <KpiGrid cols={3}>
         <KpiCard label="Leads no período" value={num(view.total)} icon={Users} hint={periodo} />
         <KpiCard
           label="Convertidos"
@@ -231,7 +231,7 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
           hint={`no período · ${num(view.conversao)}% dos leads`}
         />
         <KpiCard label="Taxa de conversão" value={`${num(view.conversao)}%`} icon={Percent} hint="convertidos ÷ leads do período" />
-      </div>
+      </KpiGrid>
 
       <SectionCard
         title="Leads por dia"

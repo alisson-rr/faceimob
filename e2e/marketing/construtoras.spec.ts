@@ -49,6 +49,16 @@ const abrirResumo = async (page: Page) => {
   await page.getByRole("tab", { name: "Por construtora" }).click();
   const tabela = page.locator("table").filter({ has: page.getByRole("columnheader", { name: "ROAS" }) });
   await expect(tabela).toBeVisible();
+
+  // Desde 17/09 todo seletor de mês abre no mês corrente. Os cenários daqui
+  // partem de "Todo o período", então a troca é explícita.
+  const seletor = page.getByLabel("Período do resumo");
+  const hoje = new Date();
+  const mes = hoje.toLocaleString("pt-BR", { month: "long" });
+  await expect(seletor).toHaveText(new RegExp(`^${mes}/${hoje.getFullYear()}$`, "i"));
+  await seletor.click();
+  await page.getByRole("option", { name: "Todo o período" }).click();
+  await expect(seletor).toHaveText("Todo o período");
   return tabela;
 };
 

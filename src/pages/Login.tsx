@@ -280,7 +280,7 @@ export default function Login() {
     <div className="grid min-h-[100svh] w-full lg:grid-cols-[1.1fr_1fr]">
       {/* Painel de marca — o motivo do simbolo em escala grande */}
       <aside className="relative hidden overflow-hidden bg-brand-blue lg:flex lg:flex-col lg:justify-between lg:p-12">
-        <BrandMotif className="opacity-70" />
+        <BrandMotif className="opacity-30" />
         {/* `onDark` porque este painel e `bg-brand-blue` nos dois temas. */}
         <Logo onDark className="relative h-11 w-auto self-start" />
         <div className="relative max-w-md">
@@ -297,7 +297,7 @@ export default function Login() {
 
       {/* Cartao de acesso */}
       <main className="relative flex items-center justify-center overflow-hidden bg-background p-5 sm:p-8">
-        <BrandMotif className="opacity-30 lg:hidden" />
+        <BrandMotif className="opacity-20 lg:hidden" />
 
         <div className="animate-slide-up relative w-full max-w-md">
           {/* Unico logo abaixo de 1024 px — o painel da esquerda e `lg:flex`.

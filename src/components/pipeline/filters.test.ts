@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
-  ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealMonth, hasActiveFilter,
+  ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealBrokers, dealMonth, hasActiveFilter,
   inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds,
 } from "./filters";
-import { GRUPOS } from "./statusCatalog.fixture";
+import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 
 /**
  * Trava do participante por `id` (achado F06).
@@ -187,25 +187,48 @@ describe("filtro de Status 1", () => {
 });
 
 describe("ordenação", () => {
-  it("o negócio criado por último fica em cima, e o empate sai pelo id", () => {
-    // Pedido do dono em 15/09/2026. O formato do instante varia (o PostgREST
-    // corta os zeros da fração), então a comparação é por instante, não por texto.
+  it("construtora, depois a ordem do catálogo de Status 2, depois o mais recente", () => {
+    // Pedido do dono em 17/09/2026, no lugar da ordem só por data de 15/09.
+    const linhas = [
+      deal({ id: "a", developer: "Tenda", status: "17. DISTRATO" }),
+      deal({ id: "b", developer: "Cyrela", status: "RÓTULO FORA DO CATÁLOGO" }),
+      deal({ id: "c", developer: "Cyrela", status: "16. PENDENTE", created_at: "2026-08-01T12:00:00Z" }),
+      deal({ id: "d", developer: "Cyrela", status: "02. ASS. BANCO" }),
+      deal({ id: "e", developer: "Cyrela", status: "16. PENDENTE", created_at: "2026-09-15T09:00:00.5+00:00" }),
+      deal({ id: "f", developer: "Cyrela", status: "OUTRO RÓTULO FORA" }),
+      deal({ id: "g", developer: "Cyrela", status: "RÓTULO FORA DO CATÁLOGO", created_at: "2026-09-01T00:00:00Z" }),
+    ];
+    // Status fora do catálogo vão para o fim, e os iguais ficam juntos.
+    expect(sortDeals(linhas, catalogo).map((row) => row.id)).toEqual(["d", "e", "c", "f", "g", "b", "a"]);
+  });
+
+  it("no mesmo status o criado por último fica em cima, e o empate sai pelo id", () => {
+    // O formato do instante varia (o PostgREST corta os zeros da fração), então
+    // a comparação é por instante, não por texto.
     const linhas = [
       deal({ id: "a", created_at: "2026-08-01T12:00:00+00:00" }),
       deal({ id: "c", created_at: "2026-09-15T09:00:00.5+00:00" }),
       deal({ id: "b", created_at: "2026-09-15T09:00:00.500+00:00" }),
       deal({ id: "d", created_at: "2026-09-15T08:59:59.99+00:00" }),
     ];
+    expect(sortDeals(linhas, catalogo).map((row) => row.id)).toEqual(["b", "c", "d", "a"]);
+    // Sem catálogo carregado, a construtora e o texto do status ainda ordenam.
     expect(sortDeals(linhas).map((row) => row.id)).toEqual(["b", "c", "d", "a"]);
   });
 
   it("não muda o array recebido", () => {
-    const linhas = [
-      deal({ id: "a", created_at: "2026-08-01T00:00:00Z" }),
-      deal({ id: "b", created_at: "2026-09-01T00:00:00Z" }),
-    ];
-    sortDeals(linhas);
+    const linhas = [deal({ id: "a", developer: "Z" }), deal({ id: "b", developer: "A" })];
+    sortDeals(linhas, catalogo);
     expect(linhas.map((row) => row.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("dealBrokers", () => {
+  it("corretor 1 e 2 com a fatia de cada um; slot vazio fica de fora", () => {
+    expect(dealBrokers(deal({ broker1: "Ana", broker1_share: 60, broker2: "Bruno", broker2_share: 40 })))
+      .toEqual([{ name: "Ana", share: 60 }, { name: "Bruno", share: 40 }]);
+    expect(dealBrokers(deal({ broker1: "Ana", broker1_share: null }))).toEqual([{ name: "Ana", share: null }]);
+    expect(dealBrokers(deal({ broker1: "" }))).toEqual([]);
   });
 });
 
@@ -290,8 +313,8 @@ describe("sortDealsBy", () => {
 
   it("`padrao` é a ordem de sempre e não altera a lista recebida", () => {
     const original = [...lista];
-    expect(sortDealsBy(lista, "padrao", true).map((row) => row.id)).toEqual(
-      sortDeals(lista).map((row) => row.id),
+    expect(sortDealsBy(lista, "padrao", true, catalogo).map((row) => row.id)).toEqual(
+      sortDeals(lista, catalogo).map((row) => row.id),
     );
     expect(lista).toEqual(original);
   });

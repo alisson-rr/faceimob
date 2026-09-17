@@ -1,6 +1,6 @@
 # Design system Faceimob
 
-Atualizado em 21/08/2026. **Este é o único arquivo que você precisa ler para montar uma tela.**
+Atualizado em 17/09/2026. **Este é o único arquivo que você precisa ler para montar uma tela.**
 Capturas em `docs/design-system/` (login, shell e 404, em 1280 px e 375 px, claro e escuro).
 
 ---
@@ -59,9 +59,23 @@ em silêncio** — foi o achado T01. Mexeu em um, mexa no outro; o teste cobre i
 
 - `chart-1` … `chart-5` — séries de gráfico (Recharts). Ordem fixa: azul, menta, amarelo, ciano, violeta.
 - `gold`, `silver`, `bronze` (+ `-foreground`) — pódio.
-- `brand-blue`, `brand-blue-light`, `brand-mint`, `brand-yellow` — cores literais do símbolo.
+- `brand-blue`, `brand-blue-light`, `brand-mint`, `brand-yellow` — cores literais do símbolo, lidas
+  dos pixels do logo (#215FAA, #608DC4, #A7D5B9, #E5CC34).
   **Só decoração** (o `BrandMotif`). Nunca texto, nunca estado.
-- `sidebar-*` — exclusivo da barra lateral.
+- `sidebar-*` — exclusivo da barra lateral. A barra tem superfície própria: no escuro é a camada
+  mais funda do azul-marinho; no claro é o **azul da marca** com texto branco. Por isso rótulo de
+  grupo, destaque do item ativo e "Sair" usam `sidebar-muted-foreground`, `sidebar-highlight` e
+  `sidebar-destructive` — `muted-foreground`, `gold` e `destructive` são medidos contra `card` e
+  somem no azul.
+
+### Os dois temas (17/09/2026)
+
+- **Escuro:** painel azul-marinho — fundo azul bem escuro (`217 54% 14%`), cartão um degrau mais
+  claro (`216 48% 19%`). Nada de preto nem cinza-chumbo.
+- **Claro:** CRM branco — fundo cinza bem claro, cartão branco com borda suave, barra lateral no
+  azul da marca, destaque azul (`primary` = azul da marca).
+- O âmbar continua a única cor de destaque (decisão de 12/09): `highlight` como fundo, `gold` como
+  texto e traço.
 
 ### Por que os pares parecem invertidos entre os temas
 
@@ -89,8 +103,11 @@ No **escuro** a cor de marca é a **clara** e o `-foreground` é a tinta navy �
   utilities geradas, então um `text-warning` ao lado não vence).
   **`src/lib/type-scale.test.ts` reprova as duas metades:** literal solto em `src/**` e regra de
   `index.css` abaixo de `0.75rem` sem `text-transform: uppercase` e `letter-spacing >= 0.1em`.
-- **Raio:** `--radius: 1rem`. Card = `rounded-2xl` · campo e caixa menor = `rounded-xl` ·
-  badge, filtro e botão = `rounded-full` (o `Button` já é pílula).
+- **Raio:** `--radius: 0.5rem` (8 px), escala em `tailwind.config.ts`: `sm` 4 · `md` 6 · `lg` 8 ·
+  `xl` 10 · `2xl` 12 · `3xl` 16 px. Card = `rounded-2xl` (12 px) · campo e caixa menor =
+  `rounded-xl` (10 px) · badge, filtro e botão = `rounded-full` (o `Button` já é pílula).
+  Cantos menos redondos desde 17/09/2026 (card era 24 px). Nada de `rounded-[Npx]`: todo raio
+  passa pela escala, então mudar `--radius` muda o app inteiro.
 - **Ícone:** `h-4 w-4` no corpo, `h-5 w-5` em destaque. Dentro do `Button` o tamanho é forçado
   para 16 px — não tente sobrescrever com `h-3`.
 - **Movimento:** 150–300 ms com `ease-premium` (`cubic-bezier(.22,1,.36,1)`). Hover de card/CTA
@@ -117,6 +134,11 @@ Importe pelo barril: `import { PageHeader, KpiCard } from "@/components/shared";
 />
 ```
 
+Tela que filtra por mês passa o seletor em `period` — ele fica **centralizado** no topo,
+no mesmo lugar em toda tela (pedido do dono, 17/09/2026). O que vier junto (rótulo "Mês",
+selo "Mês aberto") entra **empilhado** acima do controle: lado a lado, é o seletor que sai
+do centro. O mês padrão é sempre o **corrente**, nunca o mais recente com registro.
+
 ### `KpiCard` — indicador
 
 ```tsx
@@ -129,6 +151,27 @@ Importe pelo barril: `import { PageHeader, KpiCard } from "@/components/shared";
 
 `direction` escolhe a seta, `tone` escolhe a cor. Subir nem sempre é bom — em perda/distrato
 passe `tone: "danger"` explicitamente.
+
+### `KpiGrid` — grade de indicadores
+
+**Toda** fileira de indicadores usa esta grade, nunca `grid grid-cols-*` na mão. Os cartões têm a
+mesma largura e a última linha incompleta fica **centralizada** (7 cartões a 4 por linha = 4 em cima
+e 3 no meio embaixo).
+
+```tsx
+<KpiGrid cols={4}>{/* 1 · sm 2 · lg 3 · xl 4 — a régua de 7 do Dashboard */}
+  <KpiCard … />
+</KpiGrid>
+<KpiGrid cols={5}>…</KpiGrid>              {/* 1 · sm 2 · lg 5 */}
+<KpiGrid cols={3}>…</KpiGrid>              {/* 1 · sm 2 · lg 3 */}
+<KpiGrid as="ul" cols="contagem">…</KpiGrid> {/* 2 · sm 3 · lg 4, itens <li> */}
+<KpiGrid cols="faixa">…</KpiGrid>          {/* faixa de estágios da CCA */}
+```
+
+`cols` é o máximo no desktop; o celular começa em uma coluna. O desenho está em `.kpi-grid`
+(`index.css`): flex com quebra e largura `(100% − folgas) / colunas`. O `LoadingState variant="kpi"`
+usa a mesma grade (até 5 cartões numa linha; mais que isso, a régua de 4), então o esqueleto não
+salta quando o dado chega.
 
 ### `SectionCard` — bloco de conteúdo (`<h2>` + ações)
 
@@ -183,14 +226,17 @@ if (isLoading) return <LoadingState variant="kpi" rows={4} label="Carregando ind
 
 Já traz `role="status"` + `aria-busy` — a espera existe para quem não vê o esqueleto.
 
-### `BrandMotif` — fundo decorativo
+### `BrandMotif` — marca d'água
 
-Os retângulos rotacionados do símbolo. Precisa de pai `relative`. `aria-hidden` por dentro.
-Já está no Login, no header e no `EmptyState`; use em capa e tela pública.
+O símbolo Faceimob de verdade (SVG com as cores `brand-*`), grande e preso ao canto superior
+direito, com uma parte para fora: o cliente reconhece o logo sem ele aparecer inteiro. O tamanho
+segue o container, então a mesma regra serve para o cabeçalho, o `EmptyState`, o Login e o 404.
+Opacidade padrão de marca d'água (15%); troque por `className` só se a superfície pedir.
+Precisa de pai `relative`. `aria-hidden` por dentro.
 
 ```tsx
 <div className="relative overflow-hidden">
-  <BrandMotif className="opacity-40" />
+  <BrandMotif />
   <div className="relative">…</div>
 </div>
 ```
@@ -250,6 +296,6 @@ estiver prestes a fazer o mesmo, é `size="sm"` que você quer.
 - [ ] Um `<h1>`, via `PageHeader`
 - [ ] Carregando, vazio e erro têm tela própria (`LoadingState` / `EmptyState`)
 - [ ] `size="icon"`, `Switch` e campo sem rótulo visível têm `aria-label` (ou `htmlFor`)
-- [ ] Abre em 375 px sem barra horizontal; grade é `grid-cols-1 sm:grid-cols-N`
+- [ ] Abre em 375 px sem barra horizontal; grade é `grid-cols-1 sm:grid-cols-N` (indicador: `KpiGrid`)
 - [ ] Trocou para o tema claro e voltou, e continua legível
 - [ ] `npm run typecheck && npm run lint && npx vitest run && npm run build`

@@ -45,6 +45,36 @@ export function developerColor(name: string): ChartToken {
   return CHART_SERIES[nameHash(name) % CHART_SERIES.length];
 }
 
+/** O formato que `developers.color` aceita (0152) e que `<input type="color">` devolve. */
+export const isDeveloperColor = (value: string | null | undefined): value is string =>
+  typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+
+/** Classes literais, para o Tailwind enxergar na varredura. */
+const DEVELOPER_DOT: Record<ChartToken, string> = {
+  "chart-1": "bg-chart-1",
+  "chart-2": "bg-chart-2",
+  "chart-3": "bg-chart-3",
+  "chart-4": "bg-chart-4",
+  "chart-5": "bg-chart-5",
+};
+
+/**
+ * Bolinha da construtora no Pipeline (tabela e cartao). A cor escolhida no
+ * cadastro manda; sem ela, a cor do nome (`developerColor`).
+ *
+ * A cor livre do admin pode sumir contra o fundo de um dos temas: o anel
+ * `ring-border` segura o contorno. O nome continua escrito ao lado, entao a
+ * cor nunca e o unico sinal.
+ */
+export function developerDot(
+  name: string,
+  color?: string | null,
+): { className: string; style?: { backgroundColor: string } } {
+  return isDeveloperColor(color)
+    ? { className: "ring-1 ring-border", style: { backgroundColor: color } }
+    : { className: DEVELOPER_DOT[developerColor(name)] };
+}
+
 /**
  * Cor do CORRETOR, para escrever o nome dele colorido no Pipeline (pedido do
  * cliente em 10/09/2026: a cor do corretor precisa ser visivel, por corretor).
