@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Send, Loader2, RotateCcw, XCircle } from "lucide-react";
 import { LoadingState } from "@/components/shared";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   cancelSubmission,
@@ -39,10 +40,7 @@ type Props = {
   onChanged?: () => void | Promise<void>;
 };
 
-type Construtora = {
-  flow: "internal" | "external";
-  submission_email: string | null;
-};
+type Construtora = { submission_email: string | null };
 
 const formatDate = (v: string | null) => (v ? new Date(v).toLocaleString("pt-BR") : "—");
 
@@ -57,13 +55,16 @@ export default function DeveloperSubmissionDialog({
   open, onClose, dealId, clientName, developerName, onChanged,
 }: Props) {
   const { toast } = useToast();
+  // Reenviar e cancelar gravam na tabela, e `developer_submissions_write` é
+  // `cca.review`: o gerente enfileira pela RPC (0154), mas não mexe na linha.
+  // Botão que o banco recusa não aparece.
+  const podeMexerNaFila = useAuth().can("cca.review");
   const campo = useId();
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [docs, setDocs] = useState<DealDocumentRecord[]>([]);
   const [history, setHistory] = useState<DeveloperSubmissionRecord[]>([]);
   const [developerId, setDeveloperId] = useState<string | null>(null);
-  const [construtora, setConstrutora] = useState<Construtora | null>(null);
   const [toEmail, setToEmail] = useState("");
   const [ccRaw, setCcRaw] = useState("");
   const [subject, setSubject] = useState("");
@@ -80,21 +81,20 @@ export default function DeveloperSubmissionDialog({
         listDealSubmissions(dealId),
         // O cadastro da construtora vem junto: `submission_email` é o
         // destinatário oficial do dossiê (é o que `submit_deal_for_analysis`
-        // copia para `developer_submissions.to_email`) e `flow` diz se esta
-        // construtora recebe dossiê ou se a análise é interna. Sem os dois, o
-        // campo "Para" nascia vazio e o analista redigitava o endereço a cada
-        // envio — errar uma letra ali não dá erro em lugar nenhum: o dossiê
-        // simplesmente não chega.
+        // copia para `developer_submissions.to_email`). Sem ele, o campo "Para"
+        // nascia vazio e quem envia redigitava o endereço a cada envio — errar
+        // uma letra ali não dá erro em lugar nenhum: o dossiê simplesmente não
+        // chega.
         supabase
           .from("deals")
-          .select("developer_id,developers(flow,submission_email)")
+          .select("developer_id,developers(submission_email)")
           .eq("id", dealId)
           .maybeSingle(),
       ]);
       // O builder do PostgREST resolve com `{data, error}` em vez de lançar: sem
       // esta linha uma falha de RLS, de rede ou uma mudança no embed deixava
-      // `deal` nulo em SILÊNCIO — o campo "Para" nascia vazio sem explicação, os
-      // dois avisos de cadastro sumiam e "Enfileirar envio" acusava "Negócio sem
+      // `deal` nulo em SILÊNCIO — o campo "Para" nascia vazio sem explicação e
+      // "Enfileirar envio" acusava "Negócio sem
       // construtora" num negócio que TEM construtora. Os outros dois itens do
       // `Promise.all` já lançam por `dbError`; este era o único que engolia.
       if (dealRow.error) throw dbError("deals", dealRow.error);
@@ -106,7 +106,6 @@ export default function DeveloperSubmissionDialog({
       setDocs(current);
       setHistory(submissions);
       setDeveloperId(deal?.developer_id ?? null);
-      setConstrutora(deal?.developers ?? null);
       // Só preenche o que está vazio: reabrir o diálogo depois de o analista
       // digitar outro destinatário não pode desfazer a escolha dele.
       setToEmail((atual) => atual || deal?.developers?.submission_email || "");
@@ -219,7 +218,6 @@ export default function DeveloperSubmissionDialog({
 
       await createDeveloperSubmission({
         dealId,
-        developerId,
         toEmail: toEmail.trim(),
         ccEmails: cc,
         subject: subject.trim() || `Dossiê — ${clientName}`,
@@ -307,29 +305,11 @@ export default function DeveloperSubmissionDialog({
           <LoadingState variant="list" rows={3} label="Carregando o envio…" />
         ) : (
           <div className="space-y-4">
-            {/* O cartão da esteira oferece "Enviar à construtora" em TODO caso,
-                inclusive nos de fluxo interno — onde a análise é do próprio CCA
-                e não existe endereço cadastrado. Em vez de deixar o analista
-                descobrir isso digitando um e-mail de memória, o diálogo diz o
-                que o cadastro da construtora afirma. Continua sendo possível
-                enviar: há caso legítimo de mandar o dossiê para um contato
-                pontual — o que não pode é o envio parecer o caminho normal. */}
-            {construtora?.flow === "internal" && (
-              <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
-                <strong>{developerName || "Esta construtora"}</strong> está cadastrada como fluxo
-                interno: a análise de crédito é feita aqui e não há e-mail de envio no cadastro.
-                Confirme o destinatário antes de enfileirar, ou cadastre o e-mail em Construtoras.
-                Este envio <strong>não move o caso</strong> na esteira — a análise continua onde
-                está, e o Status 2 do negócio não vira “ANÁLISE EXTERNA”.
-              </p>
-            )}
-            {construtora?.flow === "external" && !construtora.submission_email && (
-              <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
-                Construtora de fluxo externo sem e-mail de envio cadastrado. O endereço digitado
-                aqui vale só para este envio.
-              </p>
-            )}
-
+            {/* Só abre pela conferência do gerente (DealDocumentUpload): documentação
+                aprovada e construtora externa COM e-mail — o mesmo recorte que
+                `enqueue_developer_submission` cobra do gerente (0154). Os avisos
+                de fluxo interno e de externa sem e-mail saíram com o botão do
+                cartão da CCA: não havia mais caminho que os mostrasse. */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor={`${campo}-to`} className="text-xs">Destinatário</Label>
@@ -359,12 +339,12 @@ export default function DeveloperSubmissionDialog({
 
             <div className="space-y-1">
               <Label htmlFor={`${campo}-subject`} className="text-xs">Assunto</Label>
-              <Input id={`${campo}-subject`} value={subject} onChange={(e) => setSubject(e.target.value)} className="h-9 text-xs" />
+              <Input id={`${campo}-subject`} maxLength={300} value={subject} onChange={(e) => setSubject(e.target.value)} className="h-9 text-xs" />
             </div>
 
             <div className="space-y-1">
               <Label htmlFor={`${campo}-body`} className="text-xs">Mensagem</Label>
-              <Textarea id={`${campo}-body`} value={body} onChange={(e) => setBody(e.target.value)} rows={3} className="text-xs" />
+              <Textarea id={`${campo}-body`} maxLength={10000} value={body} onChange={(e) => setBody(e.target.value)} rows={3} className="text-xs" />
             </div>
 
             <div className="space-y-2">
@@ -455,7 +435,7 @@ export default function DeveloperSubmissionDialog({
                         )}
                       </span>
                       <span className="flex items-center gap-1 shrink-0">
-                        {h.status === "failed" && (
+                        {podeMexerNaFila && h.status === "failed" && (
                           <button type="button" onClick={() => act(requeueSubmission, h, "Envio reenfileirado", "queued")} className="text-primary flex items-center gap-1">
                             <RotateCcw className="h-3 w-3" /> Reenviar
                           </button>
@@ -463,7 +443,7 @@ export default function DeveloperSubmissionDialog({
                         {h.status === "sending" && (
                           <span className="text-muted-foreground">repescado em ~10 min</span>
                         )}
-                        {(h.status === "queued" || h.status === "failed" || h.status === "sending") && (
+                        {podeMexerNaFila && (h.status === "queued" || h.status === "failed" || h.status === "sending") && (
                           <button type="button" onClick={() => act(cancelSubmission, h, "Envio cancelado", "cancelled")} className="text-muted-foreground flex items-center gap-1">
                             <XCircle className="h-3 w-3" /> Cancelar
                           </button>

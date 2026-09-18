@@ -178,7 +178,9 @@ test.describe("Admin · construtoras", () => {
     expect(await construtoraPorNome(nome), "a construtora foi criada com e-mail torto").toHaveLength(0);
   });
 
-  test("fluxo externo escolhido no cadastro exige e-mail e grava o fluxo", async ({ page }) => {
+  // E-mail opcional no fluxo externo desde a 0154 (pedido de 17/09/2026): sem
+  // ele a construtora nasce externa e o dossiê só não sai pelo sistema.
+  test("fluxo externo escolhido no cadastro grava sem e-mail", async ({ page }) => {
     await page.goto("/admin/developers");
     await aguardarCarregamento(page);
 
@@ -187,19 +189,13 @@ test.describe("Admin · construtoras", () => {
     await page.getByLabel("Fluxo de crédito").click();
     await page.getByRole("option", { name: /fluxo externo/i }).click();
     await page.getByRole("button", { name: /adicionar/i }).click();
-    await expect(page.getByText(/fluxo externo exige e-mail/i)).toBeVisible();
-
-    // Com o e-mail, a construtora nasce já no fluxo externo — antes era
-    // preciso cadastrar, salvar o e-mail e só então alternar o switch.
-    await page.getByLabel("E-mail de envio", { exact: true }).fill(`credito+${tag}@construtora.test`);
-    await page.getByRole("button", { name: /adicionar/i }).click();
     await expect(page.getByText(/construtora adicionada/i)).toBeVisible({ timeout: 15_000 });
 
     await expect(async () => {
       const [criada] = await construtoraPorNome(nome);
       expect(criada, "construtora não chegou em developers").toBeTruthy();
       expect(criada.flow).toBe("external");
-      expect(criada.submission_email).toBe(`credito+${tag}@construtora.test`);
+      expect(criada.submission_email).toBeNull();
     }).toPass({ timeout: 10_000 });
   });
 
@@ -250,7 +246,7 @@ test.describe("Admin · construtoras", () => {
  * eram indistinguíveis antes desta conferência.
  */
 test.describe("Admin · construtoras: switches e remoção", () => {
-  test("o switch de fluxo exige e-mail para sair do CCA interno, e volta sozinho", async ({ page }) => {
+  test("o switch de fluxo passa a externo sem e-mail e avisa que nada sai pelo sistema", async ({ page }) => {
     const nome = `Construtora Switch ${tag}`;
     await db.insert("developers", { name: nome, slug: `construtora-switch-${tag}`, flow: "internal" });
 
@@ -260,19 +256,9 @@ test.describe("Admin · construtoras: switches e remoção", () => {
     const fluxo = page.getByRole("switch", { name: `CCA interno de ${nome}` });
     await expect(fluxo).toBeChecked();
 
-    // Sem e-mail cadastrado, a troca é barrada ANTES do banco: a constraint
-    // `developers_external_requires_email` diria o mesmo, com erro genérico.
+    // Sem e-mail a troca passa (0154); o aviso diz a consequência.
     await fluxo.click();
-    await expect(page.getByText(/cadastre o e-mail de envio antes/i)).toBeVisible();
-    await expect(fluxo, "o switch mudou de posição sem o banco ter mudado").toBeChecked();
-
-    // Com o e-mail, a mesma troca passa e o banco confirma.
-    await page.getByLabel(`E-mail de envio de ${nome}`).fill(`credito+switch${tag}@construtora.test`);
-    await page.getByLabel(`E-mail de envio de ${nome}`).blur();
-    await expect(page.getByText(/e-mail de envio salvo/i)).toBeVisible({ timeout: 15_000 });
-
-    await page.getByRole("switch", { name: `CCA interno de ${nome}` }).click();
-    await expect(page.getByText(/configuração atualizada/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/fluxo externo sem e-mail/i)).toBeVisible({ timeout: 15_000 });
     await expect(async () => {
       const [dev] = await construtoraPorNome(nome);
       expect(dev.flow, "o fluxo não chegou em developers").toBe("external");

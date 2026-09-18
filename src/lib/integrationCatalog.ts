@@ -172,7 +172,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     title: "Brevo — chave de API",
     envName: "BREVO_API_KEY",
     usedBy: "_shared/brevo.ts",
-    help: "E-mails transacionais, incluindo o envio do dossiê à construtora.",
+    help: "E-mails transacionais: o envio do dossiê à construtora e o e-mail das movimentações da CCA.",
   },
   {
     provider: "supabase",

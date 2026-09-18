@@ -52,7 +52,6 @@ export async function listDealSubmissions(dealId: string): Promise<DeveloperSubm
 
 export type CreateSubmissionInput = {
   dealId: string;
-  developerId: string;
   toEmail: string;
   ccEmails: string[];
   subject: string;
@@ -60,24 +59,24 @@ export type CreateSubmissionInput = {
   documentIds: string[];
 };
 
-export async function createDeveloperSubmission(input: CreateSubmissionInput): Promise<DeveloperSubmissionRecord> {
-  const { data: auth } = await supabase.auth.getUser();
-  const { data, error } = await supabase
-    .from("developer_submissions")
-    .insert({
-      deal_id: input.dealId,
-      developer_id: input.developerId,
-      to_email: input.toEmail,
-      cc_emails: input.ccEmails.length > 0 ? input.ccEmails : null,
-      subject: input.subject,
-      body: input.body || null,
-      document_ids: input.documentIds,
-      requested_by: auth.user?.id ?? null,
-    })
-    .select("id,deal_id,developer_id,to_email,cc_emails,subject,body,document_ids,status,attempts,last_error,sent_at,created_at")
-    .single();
+/**
+ * Enfileira pela RPC `enqueue_developer_submission` (0154), não por insert na
+ * tabela: o gerente envia o dossiê na conferência e não tem `cca.review`, que é
+ * o que a policy da tabela cobra. A RPC cobra o gerente do negócio e confere
+ * que cada documento é vigente e deste negócio. A construtora sai do próprio
+ * negócio, no banco. Devolve o id da linha.
+ */
+export async function createDeveloperSubmission(input: CreateSubmissionInput): Promise<string> {
+  const { data, error } = await supabase.rpc("enqueue_developer_submission", {
+    p_deal_id: input.dealId,
+    p_to_email: input.toEmail,
+    p_cc_emails: input.ccEmails,
+    p_subject: input.subject,
+    p_body: input.body,
+    p_document_ids: input.documentIds,
+  });
   if (error) throw dbError("criar envio à construtora", error);
-  return data as DeveloperSubmissionRecord;
+  return data ?? "";
 }
 
 /**

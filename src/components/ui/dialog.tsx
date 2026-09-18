@@ -80,7 +80,9 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("font-display text-lg font-bold leading-none tracking-tight", className)}
+    // `pr-6`: o X de fechar (`right-4 top-4`) invade 8 px da área do conteúdo,
+    // e um título longo no celular passava por baixo dele.
+    className={cn("pr-6 font-display text-lg font-bold leading-none tracking-tight", className)}
     {...props}
   />
 ));

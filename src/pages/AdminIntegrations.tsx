@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -25,7 +27,7 @@ import {
 } from "@/lib/integrationCatalog";
 import { supabase } from "@/integrations/supabase/client";
 import { dateTime } from "@/lib/format";
-import { describeError } from "@/lib/supabaseError";
+import { dbError, describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
 
 /**
@@ -153,12 +155,90 @@ const revogarCredencial = (provider: string, label: string) =>
     { p_provider: provider, p_label: label },
   );
 
+/**
+ * Interruptor do e-mail de movimento da CCA (0155): `automation_settings.cca_move_email`,
+ * o singleton dos avisos globais. Nasce desligado — o banco tem corretores
+ * reais — e, desligado, `move_cca_case` não enfileira nada: ligar não dispara
+ * fila velha. Escrita só `is_admin()` (policy da 0004).
+ */
+function EmailDaCcaSwitch({ podeLigar, brevoPronta }: { podeLigar: boolean; brevoPronta: boolean }) {
+  const { toast } = useToast();
+  const [ligado, setLigado] = useState<boolean | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const semCredencial = podeLigar && !brevoPronta && ligado !== true;
+
+  useEffect(() => {
+    let vivo = true;
+    void supabase.from("automation_settings").select("cca_move_email").maybeSingle().then(({ data, error }) => {
+      if (!vivo) return;
+      if (error) return setErro(describeError(error, "Não consegui ler se o envio está ligado."));
+      setLigado(data?.cca_move_email === true);
+    });
+    return () => { vivo = false; };
+  }, []);
+
+  const trocar = async (valor: boolean) => {
+    setSalvando(true);
+    try {
+      const { data, error } = await supabase.from("automation_settings")
+        .update({ cca_move_email: valor }).eq("id", true).select("id");
+      if (error) throw error;
+      // UPDATE que a RLS recusa volta 204 sem erro (mesma regra de `updateDeal`).
+      if (!data?.length) {
+        throw dbError("automation_settings", { code: "42501", message: "Só o administrador liga ou desliga este envio." });
+      }
+      setLigado(valor);
+      toast({
+        variant: "success",
+        title: valor ? "E-mail das movimentações ligado" : "E-mail das movimentações desligado",
+        description: valor
+          ? "A partir do próximo movimento da CCA que avisa o comercial."
+          : "Nenhum e-mail novo entra na fila.",
+      });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Não foi possível trocar o envio", description: describeError(e, "Tente de novo.") });
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-xl border border-border/50 p-3">
+      <div className="min-w-0">
+        <Label htmlFor="cca-move-email">Enviar e-mail nas movimentações da CCA</Label>
+        <p id="cca-move-email-help" className="mt-0.5 text-xs text-muted-foreground">
+          Ligado: cada movimento da esteira que avisa o comercial manda também um e-mail de verdade ao corretor e
+          ao gerente do negócio, por este remetente. Desligado: nenhum e-mail entra na fila. Teste a conexão antes
+          de ligar.
+        </p>
+        {erro && <p role="alert" className="mt-1 text-xs text-destructive">{erro}</p>}
+        {!podeLigar && <p className="mt-1 text-xs text-warning">Só o administrador liga ou desliga este envio.</p>}
+        {/* Ligar sem chave ou sem remetente enche a fila de falhas. Desligar
+            continua livre: a credencial pode ter sido revogada com ele ligado. */}
+        {semCredencial && (
+          <p id="cca-move-email-motivo" className="mt-1 text-xs text-warning">
+            Cadastre a chave de API e o remetente da Brevo antes de ligar.
+          </p>
+        )}
+      </div>
+      <Switch
+        id="cca-move-email"
+        aria-describedby={semCredencial ? "cca-move-email-help cca-move-email-motivo" : "cca-move-email-help"}
+        checked={ligado === true}
+        disabled={!podeLigar || ligado === null || salvando || (!brevoPronta && ligado !== true)}
+        onCheckedChange={(valor) => void trocar(valor)}
+      />
+    </div>
+  );
+}
+
 export default function AdminIntegrations() {
   const { toast } = useToast();
   // Mesma regra do banco: `list_integrations`/`set_integration_secret` guardam
   // por `has_permission('settings.integrations')`, e `can()` já embute o admin.
   // Gatear por `isAdmin` escondia o campo de quem o banco deixaria gravar.
-  const { can } = useAuth();
+  const { can, isAdmin } = useAuth();
   const podeGravar = can("settings.integrations");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -632,6 +712,14 @@ export default function AdminIntegrations() {
                         </p>
                       )}
                     </div>
+                  )}
+                  {/* O remetente é o cartão que "manda" os e-mails: o interruptor
+                      do envio automático fica junto dele. */}
+                  {k === "brevo::sender_email" && (
+                    <EmailDaCcaSwitch
+                      podeLigar={isAdmin}
+                      brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret}
+                    />
                   )}
                 </CardContent>
               </Card>

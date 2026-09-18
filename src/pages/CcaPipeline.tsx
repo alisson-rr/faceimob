@@ -13,7 +13,6 @@ import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import DealDetailModal from "@/components/DealDetailModal";
-import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
 import {
   listDocumentTypesForAdmin, updateDocumentType, type DocumentTypeAdminRecord,
 } from "@/integrations/supabase/documents";
@@ -208,8 +207,9 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
  *   procura dentro do que o período trouxe.
  * - **Uma rolagem só**: a página tem a altura da janela e o `CcaBoard` é o único
  *   contêiner que rola.
- * - **Permissão espelhada** (achado P09): mover e enviar seguem `can('cca.review')`,
- *   como `cca_cases_write` e `developer_submissions_write`. Configurar a esteira
+ * - **Permissão espelhada** (achado P09): mover segue `can('cca.review')`, como
+ *   `cca_cases_write`. O envio à construtora saiu do cartão (17/09/2026) e é do
+ *   gerente, na conferência de documentos. Configurar a esteira
  *   (estágios e tipos de documento) é de admin e sócio: `isAdmin`, o mesmo
  *   `is_admin()` de `cca_stages_write` e `document_types_write` desde a 0151.
  * - **Estados de verdade** (A01): a carga vive num `useQuery`, com espera, erro
@@ -245,7 +245,6 @@ export default function CcaPipeline() {
   const [typesOpen, setTypesOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
-  const [submissionDeal, setSubmissionDeal] = useState<CcaDeal | null>(null);
   /** Negócio aberto no editor — o `id`, não a linha: assim o modal acompanha o
    *  refetch do quadro em vez de segurar uma cópia congelada. */
   const [openDealId, setOpenDealId] = useState<string | null>(null);
@@ -453,7 +452,6 @@ export default function CcaPipeline() {
           sendCounts={envios.data}
           onOpen={abrirNegocio}
           onMove={moverCaso}
-          onSubmitToDeveloper={setSubmissionDeal}
         />
       )}
 
@@ -508,21 +506,6 @@ export default function CcaPipeline() {
           negocio={negocios?.find((row) => row.id === moving.deal.dealId)}
           onClose={() => setMoving(null)}
           onMoved={refresh}
-        />
-      )}
-
-      {submissionDeal && (
-        <DeveloperSubmissionDialog
-          open
-          onClose={() => setSubmissionDeal(null)}
-          dealId={submissionDeal.dealId}
-          clientName={submissionDeal.client}
-          developerName={submissionDeal.developer}
-          // Enfileirar move o caso para "Enviado à Construtora" (gatilho
-          // `developer_submissions_advance_case`, 0077): sem recarregar, o
-          // cartão ficava na coluna antiga até alguém dar F5 — o mesmo cuidado
-          // que `CcaMoveDialog` e `CcaStageSettingsDialog` já tomavam.
-          onChanged={refresh}
         />
       )}
     </div>

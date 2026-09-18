@@ -577,10 +577,12 @@ begin
      set status = 'failed', attempts = 5, last_error = 'Brevo respondeu 400'
    where id = v_sub;
 
+  -- `/pipeline` desde a 0154: o envio saiu do cartão da CCA e mora na
+  -- conferência do negócio.
   perform pg_temp.check83(
     exists (select 1 from public.notifications
              where profile_id = cor and kind = 'submission_failed'
-               and link = '/cca' and body like '%Brevo respondeu 400%'),
+               and link = '/pipeline' and body like '%Brevo respondeu 400%'),
     'quem pediu o envio descobre que o dossiê não saiu, e por quê');
   perform pg_temp.check83(
     exists (select 1 from public.notifications

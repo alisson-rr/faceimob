@@ -3,9 +3,10 @@ import { getSecret } from "./secrets.ts";
 /**
  * Envio transacional pelo Brevo (ata 14/07).
  *
- * Escopo mínimo de propósito: um `sendEmail` que a fila de envio à construtora
- * consome. Sem template engine, sem fila própria — `developer_submissions` já é
- * a fila, com status e contador de tentativas.
+ * Escopo mínimo de propósito: um `sendEmail` que as filas consomem — o dossiê à
+ * construtora (`developer_submissions`, `submission-dispatch`) e o e-mail de
+ * movimento da CCA (`cca_move_emails`, `cca-email-dispatch`, 0155). Sem
+ * template engine: cada fila guarda status e contador de tentativas.
  */
 
 export type BrevoAttachment = {

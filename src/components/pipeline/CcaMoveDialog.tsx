@@ -11,7 +11,7 @@ import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { updateDeal, useCanExitStage } from "./data";
 import { isBehindStage } from "./guards";
 import { ccaStatusLabel, isDecision } from "./ccaStage";
-import type { CcaDeal, CcaStage } from "./ccaData";
+import { ccaStageNotifiesSales, type CcaDeal, type CcaStage } from "./ccaData";
 import type { PipelineStage } from "./stages";
 
 /** Teto que `move_cca_case` cobra (0150). */
@@ -146,12 +146,34 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
           </DialogDescription>
         </DialogHeader>
 
+        {/* O efeito da coluna antes de confirmar (0155): quem é avisado e o que
+            acontece com o status do negócio. */}
+        <p className="rounded-xl border border-border bg-muted/30 p-2 text-xs">
+          {ccaStageNotifiesSales(stage)
+            ? "O corretor e o gerente do negócio recebem o aviso com a sua mensagem."
+            : stage.status === "pending_documents"
+              // A devolução do dossiê (0077) avisa o corretor por conta própria.
+              ? "Movimento interno: sem aviso da movimentação, mas o corretor pode receber o aviso de que o dossiê voltou para ele."
+              : "Movimento interno: o comercial não é avisado. A mensagem fica só no histórico do negócio."}{" "}
+          {stage.deal_status_id
+            ? <>O status do negócio passa a ser <strong className="text-foreground">{stage.deal_status?.label ?? "o Status 2 da coluna"}</strong>.</>
+            : "O status do negócio não muda."}
+          {/* A etapa do funil é outra coisa que o Status 2, e aprovar leva o
+              negócio a "Aprovado" mesmo numa coluna interna: o comercial vê
+              o negócio andar, então a tela diz antes de confirmar. */}
+          {stage.status === "approved" && levaAoAprovado && !motivoParado && (
+            <> O negócio vai para a etapa <strong className="text-foreground">{approvedStage?.label ?? "Aprovado"}</strong> do funil do Pipeline.</>
+          )}
+        </p>
+
         <div>
           <Label htmlFor="cca-move-message">Mensagem para a equipe</Label>
           <Textarea
             id="cca-move-message" rows={3} className="mt-1 text-xs"
             required maxLength={MAX_MENSAGEM} aria-describedby="cca-move-message-hint"
-            placeholder="O que mudou e o próximo passo. Vai para o corretor e o gerente."
+            placeholder={ccaStageNotifiesSales(stage)
+              ? "O que mudou e o próximo passo. Vai para o corretor e o gerente."
+              : "O que mudou e o próximo passo. Fica no histórico do negócio."}
             value={message} onChange={(event) => setMessage(event.target.value)}
           />
           <p id="cca-move-message-hint" className="mt-1 text-right text-xs tabular-nums text-muted-foreground">

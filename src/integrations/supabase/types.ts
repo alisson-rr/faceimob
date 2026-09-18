@@ -380,6 +380,7 @@ export type Database = {
         Row: {
           attend_timeout_seconds: number
           auto_first_contact: boolean
+          cca_move_email: boolean
           id: boolean
           inactivity_alert_hours: number
           leads_paused: boolean
@@ -394,6 +395,7 @@ export type Database = {
         Insert: {
           attend_timeout_seconds?: number
           auto_first_contact?: boolean
+          cca_move_email?: boolean
           id?: boolean
           inactivity_alert_hours?: number
           leads_paused?: boolean
@@ -408,6 +410,7 @@ export type Database = {
         Update: {
           attend_timeout_seconds?: number
           auto_first_contact?: boolean
+          cca_move_email?: boolean
           id?: boolean
           inactivity_alert_hours?: number
           leads_paused?: boolean
@@ -589,6 +592,89 @@ export type Database = {
           },
         ]
       }
+      cca_move_emails: {
+        Row: {
+          actor_name: string | null
+          attempts: number
+          client_name: string | null
+          created_at: string
+          deal_code: string | null
+          deal_id: string
+          id: string
+          last_error: string | null
+          message: string
+          profile_id: string | null
+          sent_at: string | null
+          stage_name: string
+          status: string
+          to_email: string
+          updated_at: string
+        }
+        Insert: {
+          actor_name?: string | null
+          attempts?: number
+          client_name?: string | null
+          created_at?: string
+          deal_code?: string | null
+          deal_id: string
+          id?: string
+          last_error?: string | null
+          message: string
+          profile_id?: string | null
+          sent_at?: string | null
+          stage_name: string
+          status?: string
+          to_email: string
+          updated_at?: string
+        }
+        Update: {
+          actor_name?: string | null
+          attempts?: number
+          client_name?: string | null
+          created_at?: string
+          deal_code?: string | null
+          deal_id?: string
+          id?: string
+          last_error?: string | null
+          message?: string
+          profile_id?: string | null
+          sent_at?: string | null
+          stage_name?: string
+          status?: string
+          to_email?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cca_move_emails_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cca_move_emails_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cca_move_emails_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "sdr_operator_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cca_move_emails_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "team_leader_names"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cca_stages: {
         Row: {
           active: boolean
@@ -597,6 +683,7 @@ export type Database = {
           deal_status_id: string | null
           id: string
           name: string
+          notify_sales: boolean
           position: number
           status: Database["public"]["Enums"]["cca_status"]
           updated_at: string
@@ -608,6 +695,7 @@ export type Database = {
           deal_status_id?: string | null
           id?: string
           name: string
+          notify_sales?: boolean
           position?: number
           status?: Database["public"]["Enums"]["cca_status"]
           updated_at?: string
@@ -619,6 +707,7 @@ export type Database = {
           deal_status_id?: string | null
           id?: string
           name?: string
+          notify_sales?: boolean
           position?: number
           status?: Database["public"]["Enums"]["cca_status"]
           updated_at?: string
@@ -5581,6 +5670,7 @@ export type Database = {
       dispatch_meta_gestor: { Args: never; Returns: undefined }
       dispatch_meta_sync: { Args: never; Returns: boolean }
       dispatch_meta_sync_modo: { Args: { p_modo: string }; Returns: boolean }
+      dispatch_pending_cca_emails: { Args: never; Returns: undefined }
       dispatch_pending_notifications: { Args: never; Returns: undefined }
       dispatch_pending_push: { Args: never; Returns: boolean }
       dispatch_pending_submissions: { Args: never; Returns: undefined }
@@ -5606,6 +5696,17 @@ export type Database = {
         }[]
       }
       effective_attend_timeout: { Args: { group_id: string }; Returns: number }
+      enqueue_developer_submission: {
+        Args: {
+          p_body: string
+          p_cc_emails: string[]
+          p_deal_id: string
+          p_document_ids: string[]
+          p_subject: string
+          p_to_email: string
+        }
+        Returns: string
+      }
       existing_lead_phones: {
         Args: { p_phones: string[] }
         Returns: {

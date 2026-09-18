@@ -1,7 +1,10 @@
+import type { Page } from "@playwright/test";
 import { test, expect, db, aguardarCarregamento } from "../support/fixtures";
 import { subirArquivo } from "../helpers/negocio";
 import { resolveTarget } from "../support/target";
 import {
+  abaDoModal,
+  abrirNegocio,
   apagarDoBucket,
   comSessao,
   criarCenario,
@@ -23,18 +26,20 @@ const escapar = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *
  * 1. **Modo leitura sem prova.** A 0059 abriu `menu.cca` para diretoria e
  *    gerência mantendo a escrita fechada em `cca.review`. Nada garantia que a
- *    tela realmente escondesse "Mover para…" e "Enviar à construtora" para eles
- *    — e botão que o banco recusa é exatamente o defeito que a permissão
- *    espelhada existe para evitar.
+ *    tela realmente escondesse "Mover para…" para eles — e botão que o banco
+ *    recusa é exatamente o defeito que a permissão espelhada existe para evitar.
+ *    "Enviar à construtora" saiu do cartão em 17/09/2026: não aparece para
+ *    ninguém, nem para o CCA.
  * 2. **375 px sem cobertura.** O quadro é uma faixa rolável de colunas de 264 px;
  *    sem `contain: paint` o transbordo escapa e passa a rolar a PÁGINA inteira.
- * 3. **O envio à construtora nunca foi exercitado no fluxo certo.** O único
- *    teste do envio rodava sobre construtora de fluxo INTERNO (o padrão de
- *    `criarCenario`), que não tem e-mail cadastrado: ele codificava o defeito
- *    em vez de pegá-lo. Aqui a construtora é externa, o campo "Para" tem de
- *    nascer preenchido com `developers.submission_email`, e enfileirar tem de
- *    mover o caso sozinho (gatilho `developer_submissions_advance_case`, 0077)
- *    em vez de exigir um segundo "Mover para…" à mão.
+ * 3. **O envio à construtora no fluxo certo.** Desde a 0154 o envio é do
+ *    GERENTE do negócio, na aba Anexos, depois da conferência aprovada e só para
+ *    construtora de fluxo externo; o corretor não vê o botão. Aqui a construtora
+ *    é externa, o campo "Para" tem de nascer com `developers.submission_email`,
+ *    a gravação passa por `enqueue_developer_submission` (o gerente não tem
+ *    `cca.review`, que é o que a tabela cobra) e enfileirar tem de mover o caso
+ *    sozinho (gatilho `developer_submissions_advance_case`, 0077) em vez de
+ *    exigir um "Mover para…" à mão.
  */
 test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
   let cenario: Cenario;
@@ -66,7 +71,30 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
     await limparCenario(cenario);
   });
 
-  test("diretoria e gerência abrem a esteira em modo leitura", async ({ page }) => {
+  /**
+   * O gerente abre o negócio pelo cartão da esteira (o mesmo `DealDetailModal`
+   * do Pipeline), aba Anexos, "Enviar à construtora". Pela esteira e não pelo
+   * Pipeline para o último teste conferir o quadro que fica por baixo.
+   */
+  async function abrirEnvioComoGerente(page: Page) {
+    await comSessao(page, "manager");
+    await page.goto("/cca");
+    await aguardarCarregamento(page);
+    await page
+      .getByRole("article")
+      .filter({ hasText: cenario.cliente })
+      .getByRole("button", { name: /^abrir o negócio de/i })
+      .click();
+    await abaDoModal(page, /^anexos$/i).click();
+    const enviar = page.getByRole("dialog").getByRole("button", { name: /enviar à construtora/i });
+    // Externa COM e-mail: sem o motivo de cadastro torto e sem botão cinza.
+    await expect(enviar).toBeEnabled();
+    await expect(page.getByText(/construtora sem e-mail cadastrado/i)).toHaveCount(0);
+    await enviar.click();
+    return page.getByRole("dialog", { name: "Enviar dossiê para a construtora" });
+  }
+
+  test("diretoria e gerência abrem a esteira em modo leitura; o cartão não envia à construtora", async ({ page }) => {
     for (const papel of ["director", "manager"] as const) {
       await comSessao(page, papel);
       await page.goto("/cca");
@@ -80,6 +108,16 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
       await expect(page.getByRole("button", { name: /gerenciar estágios/i })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /tipos de documento/i })).toHaveCount(0);
     }
+
+    // Nem quem decide a esteira tem o envio no cartão (0154). O "Mover para…"
+    // presente é o que faz a ausência provar algo: o cartão desenhou os
+    // controles de escrita, e o envio não está entre eles.
+    await comSessao(page, "cca");
+    await page.goto("/cca");
+    await aguardarCarregamento(page);
+    const card = page.getByRole("article").filter({ hasText: cenario.cliente });
+    await expect(card.getByRole("combobox", { name: `Mover ${cenario.cliente} para outro estágio` })).toBeVisible();
+    await expect(card.getByRole("button", { name: /enviar à construtora/i })).toHaveCount(0);
   });
 
   test("o quadro cabe em 375 px sem rolar a página na horizontal", async ({ page }) => {
@@ -97,27 +135,34 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
 
   /**
    * A conferência da carga é um RETRATO: o arquivo pode sumir enquanto o
-   * analista redige a mensagem. Sem a reconferência no clique, a submission
+   * gerente redige a mensagem. Sem a reconferência no clique, a submission
    * entrava na fila e `submission-dispatch` fazia `throw` no anexo inexistente —
    * envio "Falhou", uma das 5 tentativas gasta e a mensagem crua do Storage no
    * histórico. E com TODO documento sem arquivo o botão precisa travar: não há
    * uma caixa sequer clicável para cumprir "selecione ao menos um documento".
    */
+  /**
+   * Na conferência aprovada o botão é de quem confere. A ausência só prova algo
+   * com a aba já carregada no estado em que o gerente VÊ o botão ("Conferido",
+   * construtora externa com e-mail) — e o gerente vê, nos dois testes abaixo.
+   */
+  test("na conferência aprovada o corretor não vê o envio à construtora", async ({ page }) => {
+    await comSessao(page, "broker");
+    await abrirNegocio(page, cenario.cliente);
+    await abaDoModal(page, /^anexos$/i).click();
+
+    await expect(page.getByRole("dialog").getByText("Conferido", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /enviar à construtora/i })).toHaveCount(0);
+  });
+
   test("arquivo apagado com o diálogo aberto é barrado no clique, e o dossiê vazio trava o botão", async ({ page }) => {
-    await comSessao(page, "cca");
-    await page.goto("/cca");
-    await aguardarCarregamento(page);
-
-    const card = page.getByRole("article").filter({ hasText: cenario.cliente });
-    await card.getByRole("button", { name: /enviar à construtora/i }).click();
-
-    const dialogo = page.getByRole("dialog");
+    const dialogo = await abrirEnvioComoGerente(page);
     await expect(dialogo.getByText("Documentos (1 de 2)", { exact: true })).toBeVisible();
 
     // O arquivo do documento BOM some depois de a seleção já estar montada.
     await apagarDoBucket("deal-documents", docComArquivo.storage_path);
     try {
-      await page.getByRole("button", { name: /enfileirar envio/i }).click();
+      await dialogo.getByRole("button", { name: /enfileirar envio/i }).click();
 
       await expect(page.getByText("Documento sem arquivo", { exact: true })).toBeVisible();
       // Nada foi enfileirado: é o que separa a recusa de um envio condenado.
@@ -126,39 +171,29 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
       ).toHaveLength(0);
 
       // A tela passa a mostrar o que a reconferência descobriu — senão o
-      // analista clicaria de novo na mesma seleção — e o botão trava, porque
+      // gerente clicaria de novo na mesma seleção — e o botão trava, porque
       // agora não há caixa clicável nenhuma.
       await expect(dialogo.getByText("Documentos (0 de 2)", { exact: true })).toBeVisible();
       await expect(
         dialogo.getByRole("checkbox", { name: new RegExp(escapar(docComArquivo.stored_name)) }),
       ).toBeDisabled();
-      await expect(page.getByRole("button", { name: /enfileirar envio/i })).toBeDisabled();
+      await expect(dialogo.getByRole("button", { name: /enfileirar envio/i })).toBeDisabled();
     } finally {
       await subirArquivo(docComArquivo.storage_path, `dossie ${cenario.tag}`);
     }
   });
 
-  test("o envio à construtora nasce com o e-mail do cadastro e move o caso", async ({ page }) => {
-    await comSessao(page, "cca");
-    await page.goto("/cca");
-    await aguardarCarregamento(page);
+  test("o gerente envia pela conferência: nasce com o e-mail do cadastro e move o caso", async ({ page }) => {
+    const dialogo = await abrirEnvioComoGerente(page);
 
-    const card = page.getByRole("article").filter({ hasText: cenario.cliente });
-    await expect(card).toHaveCount(1);
-    await card.getByRole("button", { name: /enviar à construtora/i }).click();
-
-    // O analista redigitava o endereço a cada envio, e errar uma letra ali não
+    // Quem envia redigitava o endereço a cada envio, e errar uma letra ali não
     // dá erro em lugar nenhum: o dossiê simplesmente não chega.
-    const destinatario = page.getByRole("dialog").getByLabel("Destinatário", { exact: true });
+    const destinatario = dialogo.getByLabel("Destinatário", { exact: true });
     await expect(destinatario).toHaveValue(`dossie-${cenario.tag}@construtora.test`);
-    // Construtora externa COM e-mail: nenhum dos dois avisos de cadastro torto.
-    await expect(page.getByText(/fluxo interno/i)).toHaveCount(0);
-    await expect(page.getByText(/sem e-mail de envio cadastrado/i)).toHaveCount(0);
 
     // `submission-dispatch` assina cada documento e faz `throw` no primeiro que
     // não existe: um registro sem arquivo derruba o envio INTEIRO e gasta uma
     // das 5 tentativas. O diálogo pré-selecionava TUDO, inclusive esse.
-    const dialogo = page.getByRole("dialog");
     await expect(
       dialogo.getByRole("checkbox", { name: new RegExp(escapar(docComArquivo.stored_name)) }),
     ).toBeChecked();
@@ -171,16 +206,27 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
     await expect(dialogo.getByText(/o arquivo não está no armazenamento/i)).toBeVisible();
     await expect(dialogo.getByText("Documentos (1 de 2)", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: /enfileirar envio/i }).click();
-    await expect(page.getByText("Envio na fila", { exact: true })).toBeVisible();
+    await dialogo.getByRole("button", { name: /enfileirar envio/i }).click();
+    await expect(page.getByText("Envio enfileirado", { exact: true })).toBeVisible();
 
-    const [envio] = await db.select<{ to_email: string; status: string; document_ids: string[] }>(
-      `developer_submissions?deal_id=eq.${cenario.dealId}&select=to_email,status,document_ids`,
-    );
+    const [envio] = await db.select<{
+      to_email: string;
+      status: string;
+      document_ids: string[];
+      requested_by: string;
+    }>(`developer_submissions?deal_id=eq.${cenario.dealId}&select=to_email,status,document_ids,requested_by`);
     expect(envio.to_email).toBe(`dossie-${cenario.tag}@construtora.test`);
     expect(envio.status).toBe("queued");
     // Só o documento que existe entrou no envio gravado.
     expect(envio.document_ids).toEqual([docComArquivo.id]);
+    // Gravado pela RPC na sessão do gerente, não por quem tem `cca.review`.
+    expect(envio.requested_by).toBe(await db.profileIdOf("manager"));
+
+    // Reenviar e cancelar gravam na tabela, que é `cca.review`: o gerente vê o
+    // envio na fila, mas não o botão que o banco recusaria.
+    const historico = dialogo.getByRole("group", { name: "Envios anteriores" });
+    await expect(historico.getByText("Na fila", { exact: true })).toBeVisible();
+    await expect(historico.getByRole("button")).toHaveCount(0);
 
     // Enfileirar move o caso: sem o gatilho o analista precisava de um segundo
     // "Mover para… → Enviado à Construtora" e nada ligava um ao outro.
@@ -201,7 +247,12 @@ test.describe.serial("CCA · leitura, 375 px e envio externo", () => {
     // "Enviado à Construtora" só fica ativa se já havia construtora externa
     // ativa quando a migration rodou; sem ela o caso fica na coluna em que
     // estava, agora com `sent_to_developer` — e não pode sumir do quadro.
-    await page.getByRole("dialog").getByRole("button", { name: /^fechar$/i }).first().click();
+    // Fecha o envio e depois o negócio: com o modal aberto o quadro fica
+    // `aria-hidden` e nenhuma busca por papel o enxerga.
+    await dialogo.getByRole("button", { name: /^fechar$/i }).first().click();
+    await expect(dialogo).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     const [{ cca_stages: estagio }] = await db.select<{ cca_stages: { name: string } }>(
       `cca_cases?id=eq.${casoId}&select=cca_stages(name)`,
     );

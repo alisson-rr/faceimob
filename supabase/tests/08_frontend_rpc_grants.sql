@@ -39,7 +39,7 @@ declare
     'import_remarketing_list', 'list_integrations', 'marketing_campaign_stats',
     'reassign_lead', 'remarketing_list_stats',
     'review_deal_documents', 'submit_deal_for_manager_review',
-    'move_cca_case', 'cca_send_counts',
+    'move_cca_case', 'cca_send_counts', 'enqueue_developer_submission',
     'set_integration_secret', 'set_public_link_pin'
   ];
 begin
@@ -72,7 +72,7 @@ declare
     'assign_lead', 'release_expired_leads', 'auto_checkout_expired',
     'award_game_points', 'assign_queued_leads', 'recalc_deal_shares',
     'dispatch_pending_notifications', 'dispatch_pending_submissions',
-    'submit_deal_for_analysis'
+    'dispatch_pending_cca_emails', 'submit_deal_for_analysis'
   ];
 begin
   foreach alvo in array internas loop

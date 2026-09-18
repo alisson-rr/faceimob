@@ -28,14 +28,28 @@ vi.mock("@/integrations/supabase/integrations", () => cofre);
 const cliente = vi.hoisted(() => ({
   invoke: vi.fn(),
   rpc: vi.fn(),
+  // Interruptor do e-mail da CCA (`automation_settings.cca_move_email`, 0155).
+  update: vi.fn(),
+  emailLigado: false,
 }));
 vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { functions: { invoke: cliente.invoke }, rpc: cliente.rpc },
+  supabase: {
+    functions: { invoke: cliente.invoke },
+    rpc: cliente.rpc,
+    from: () => ({
+      select: () => ({ maybeSingle: async () => ({ data: { cca_move_email: cliente.emailLigado }, error: null }) }),
+      update: (valores: unknown) => {
+        cliente.update(valores);
+        return { eq: () => ({ select: async () => ({ data: [{ id: true }], error: null }) }) };
+      },
+    }),
+  },
 }));
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+const auth = vi.hoisted(() => ({ isAdmin: false }));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ can: (codigo: string) => codigo === "settings.integrations" }),
+  useAuth: () => ({ can: (codigo: string) => codigo === "settings.integrations", isAdmin: auth.isAdmin }),
 }));
 
 import AdminIntegrations from "./AdminIntegrations";
@@ -68,8 +82,8 @@ const registro = (label: string): IntegrationRecord => ({
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-async function montar() {
-  cofre.listIntegrations.mockResolvedValue([registro("api_key"), registro("sender_email")]);
+async function montar(cofreGravado: IntegrationRecord[] = [registro("api_key"), registro("sender_email")]) {
+  cofre.listIntegrations.mockResolvedValue(cofreGravado);
   cofre.listCronJobsHealth.mockResolvedValue([]);
   cliente.rpc.mockResolvedValue({ data: [], error: null });
   // `supabase.functions.invoke` transforma não-2xx em erro e ZERA `data`: o
@@ -119,6 +133,54 @@ afterEach(() => {
   root = null;
   container = null;
   vi.clearAllMocks();
+  auth.isAdmin = false;
+  cliente.emailLigado = false;
+});
+
+describe("AdminIntegrations · e-mail das movimentações da CCA", () => {
+  const interruptor = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('[id="cca-move-email"]')!;
+
+  it("fica no cartão do remetente, nasce desligado e só o admin liga", async () => {
+    const el = await montar();
+    const brevo = cartao(el, "Brevo — remetente");
+
+    await vi.waitFor(() => expect(interruptor(brevo)).not.toBeNull());
+    expect(interruptor(brevo).getAttribute("aria-checked")).toBe("false");
+    expect(interruptor(brevo).disabled).toBe(true);
+    expect(brevo.textContent).toContain("Só o administrador liga ou desliga este envio.");
+  });
+
+  it("o admin liga e a tela grava cca_move_email", async () => {
+    auth.isAdmin = true;
+    const el = await montar();
+    const brevo = cartao(el, "Brevo — remetente");
+
+    await vi.waitFor(() => expect(interruptor(brevo)?.disabled).toBe(false));
+    interruptor(brevo).click();
+
+    await vi.waitFor(() => expect(interruptor(brevo).getAttribute("aria-checked")).toBe("true"));
+    expect(cliente.update).toHaveBeenCalledWith({ cca_move_email: true });
+  });
+
+  it("sem a chave da Brevo no cofre, nem o admin liga — e a tela diz por quê", async () => {
+    auth.isAdmin = true;
+    const el = await montar([registro("sender_email")]);
+    const brevo = cartao(el, "Brevo — remetente");
+
+    await vi.waitFor(() => expect(interruptor(brevo)).not.toBeNull());
+    await vi.waitFor(() => expect(brevo.textContent).toContain("Cadastre a chave de API e o remetente da Brevo antes de ligar."));
+    expect(interruptor(brevo).disabled).toBe(true);
+  });
+
+  it("ligado e sem credencial, desligar continua possível", async () => {
+    auth.isAdmin = true;
+    cliente.emailLigado = true;
+    const el = await montar([]);
+    const brevo = cartao(el, "Brevo — remetente");
+
+    await vi.waitFor(() => expect(interruptor(brevo)?.getAttribute("aria-checked")).toBe("true"));
+    expect(interruptor(brevo).disabled).toBe(false);
+  });
 });
 
 describe("AdminIntegrations · sonda do Brevo", () => {

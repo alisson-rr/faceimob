@@ -133,6 +133,10 @@ begin
   -- da conferência do gerente. Com INSERT e DELETE, quem tem `cca.review`
   -- apagava o caso e o recriava já decidido, sem mensagem, sem aviso e sem
   -- passar pelo gerente. A tela segue lendo e gravando `analysis`.
+  --
+  -- `cca_move_emails` (0155): fila de e-mail real para corretor e gerente. Só
+  -- `move_cca_case` (definer) enfileira e só a edge com service role entrega;
+  -- INSERT do cliente mandaria e-mail do remetente da empresa com texto livre.
   select string_agg(c.relname, ', ' order by c.relname)
     into sem_grant
   from pg_class c
@@ -143,7 +147,7 @@ begin
       has_table_privilege('authenticated', c.oid, 'SELECT')
       and (
         has_table_privilege('authenticated', c.oid, 'INSERT')
-        or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions', 'cca_cases',
+        or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions', 'cca_cases', 'cca_move_emails',
                          'meta_ad_accounts', 'meta_sync_runs', 'meta_campaign_insights_daily',
                          'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts')
       )

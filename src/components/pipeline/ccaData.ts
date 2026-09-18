@@ -15,7 +15,15 @@ export interface CcaStage {
   /** Status 2 que a coluna grava no negócio ao receber o caso (0150). Nulo:
    *  a coluna segue o de-para antigo por desfecho. */
   deal_status_id?: string | null;
+  /** Mover para a coluna avisa corretor e gerente (0155). `false` = movimento
+   *  interno da CCA. Ausente vale `true`, o padrão do banco. */
+  notify_sales?: boolean;
+  /** Nome do Status 2 de `deal_status_id`, para o diálogo de mover dizer qual grava. */
+  deal_status?: { label: string } | null;
 }
+
+/** A coluna avisa o comercial? Ausente é o padrão do banco: avisa. */
+export const ccaStageNotifiesSales = (stage: Pick<CcaStage, "notify_sales">) => stage.notify_sales !== false;
 
 /** Envios ao gerente somados por CPF do titular (`cca_send_counts`, 0150). */
 export type CcaSendCount = { agil: number; virar: number };
@@ -210,7 +218,8 @@ export async function loadCcaBoard(
 ): Promise<CcaBoardData> {
   const { desde, antesDe } = limitesDoPeriodo(periodo);
   const [stagesResponse, casesResponse] = await Promise.all([
-    supabase.from("cca_stages").select("id,name,color,position,status,active,deal_status_id")
+    supabase.from("cca_stages")
+      .select("id,name,color,position,status,active,deal_status_id,notify_sales,deal_status:deal_statuses(label)")
       .eq("active", true).order("position").abortSignal(signal),
     allRows((from, to, count) => supabase.from("cca_cases")
       .select("id,deal_id,status,stage_id,decision_notes", { count })
@@ -225,7 +234,7 @@ export async function loadCcaBoard(
     ? await listLegacyDeals(signal, { ids: casesResponse.data.map((row) => row.deal_id) })
     : [];
 
-  const stages = (stagesResponse.data || []) as CcaStage[];
+  const stages: CcaStage[] = stagesResponse.data || [];
   const dealById = new Map(negocios.map((deal) => [deal.id, deal]));
   const deals: CcaDeal[] = [];
   let outside = 0;

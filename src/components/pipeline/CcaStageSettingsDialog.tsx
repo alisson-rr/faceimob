@@ -12,16 +12,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { supabase } from "@/integrations/supabase/client";
 import { ColorField } from "@/components/shared";
 import { TONE_HEX } from "@/lib/tone";
 import { CCA_STATUS_OPTIONS, ccaStageColor, ccaStatusLabel, type CcaCaseStatus } from "./ccaStage";
-import { ccaKeys, loadCcaStatusOptions, type CcaStage } from "./ccaData";
+import { ccaKeys, ccaStageNotifiesSales, loadCcaStatusOptions, type CcaStage } from "./ccaData";
 
-/** Valor do item "nenhum": o Select do Radix não aceita `""` como item. */
-const SEM_STATUS = "none";
+/** Selo da lista: raio da escala (`rounded-md`), sem pílula. */
+const SELO = "rounded-md border border-border px-1.5 py-0.5 text-xs leading-none";
 
 /** Cor de estágio novo: um azul, "em andamento". */
 const COR_INICIAL = TONE_HEX.info;
@@ -41,6 +42,12 @@ const COR_INICIAL = TONE_HEX.info;
  * "15. ANÁLISE P/ VIRAR NEGÓCIO"), OFF, QUEDA e DISTRATO (`ccaColumnStatusAllowed`);
  * "RET. ESTEIRA AGIL" fica, porque é o da coluna RETORNO À ESTEIRA ÁGIL. Se
  * mesmo assim o banco recusar (P0001), a frase dele vai ao toast.
+ *
+ * **Avisa ou não, muda ou não o status** (0155, pedido do cliente de 18/09):
+ * "Avisar o comercial" é `notify_sales` — desligado, a coluna é movimento
+ * interno da CCA e só o histórico do negócio registra. "Muda o status do
+ * negócio" é `deal_status_id` preenchido; desligado grava `null`, e mover pela
+ * esteira não toca o Status 2.
  */
 export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
   stages: CcaStage[];
@@ -52,7 +59,10 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
   const [name, setName] = useState("");
   const [color, setColor] = useState(COR_INICIAL);
   const [status, setStatus] = useState<CcaCaseStatus>("under_review");
-  const [dealStatusId, setDealStatusId] = useState(SEM_STATUS);
+  const [notifySales, setNotifySales] = useState(true);
+  const [mudaStatus, setMudaStatus] = useState(false);
+  // `""` = nenhum escolhido: o Select volta ao placeholder.
+  const [dealStatusId, setDealStatusId] = useState("");
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<CcaStage | null>(null);
   const catalogo = useQuery({ queryKey: ccaKeys.statusOptions, queryFn: loadCcaStatusOptions });
@@ -63,18 +73,23 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
     catalogo.data?.find((option) => option.id === id)?.label;
 
   const reset = () => {
-    setEditing(null); setName(""); setColor(COR_INICIAL); setStatus("under_review"); setDealStatusId(SEM_STATUS);
+    setEditing(null); setName(""); setColor(COR_INICIAL); setStatus("under_review");
+    setNotifySales(true); setMudaStatus(false); setDealStatusId("");
   };
 
+  // "Muda o status" ligado sem escolher qual gravaria `null` calado.
+  const faltaStatus = mudaStatus && !dealStatusId;
+
   const save = async () => {
-    if (!name.trim()) return;
+    if (!name.trim() || faltaStatus) return;
     setSaving(true);
     try {
       // Sempre `#RRGGBB` (ver o `ColorField` abaixo): o CHECK da 0153 recusa
       // qualquer formato fora do hex e das chaves antigas.
       const payload = {
         name: name.trim(), color, status,
-        deal_status_id: dealStatusId === SEM_STATUS ? null : dealStatusId,
+        deal_status_id: mudaStatus ? dealStatusId : null,
+        notify_sales: notifySales,
       };
       if (editing) {
         // `.select("id")`: UPDATE recusado pela RLS volta 204 sem erro, e o aviso
@@ -142,7 +157,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
             </DialogTitle>
             <DialogDescription>
               O desfecho liga o estágio ao ciclo fixo do crédito: é ele que decide o caso e move o
-              negócio no Pipeline.
+              negócio no Pipeline. Cada coluna diz se avisa o comercial e se muda o status do negócio.
             </DialogDescription>
           </DialogHeader>
 
@@ -176,27 +191,75 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="cca-stage-deal-status">Status 2 gravado</Label>
-                <Select value={dealStatusId} onValueChange={setDealStatusId} disabled={catalogo.isPending}>
-                  <SelectTrigger id="cca-stage-deal-status" className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={SEM_STATUS}>Nenhum — segue o desfecho</SelectItem>
-                    {opcoes.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.label}{option.active ? "" : " (inativo)"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {catalogo.isError && (
-                  <p role="alert" className="mt-1 text-xs text-destructive">
-                    {describeError(catalogo.error, "Não consegui carregar o catálogo de Status 2.")}
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-border p-3 sm:col-span-2">
+                <div className="min-w-0">
+                  <Label htmlFor="cca-stage-notify">Avisar o comercial</Label>
+                  <p id="cca-stage-notify-help" className="mt-0.5 text-xs text-muted-foreground">
+                    Ligado: o corretor e o gerente do negócio recebem a mensagem de quem moveu, no app, no
+                    celular e por e-mail (quando o envio estiver ligado em Integrações). Desligado: movimento
+                    interno da CCA, a mensagem fica só no histórico do negócio.
                   </p>
+                  {!notifySales && status === "pending_documents" && (
+                    <p className="mt-1 text-xs text-warning">
+                      Com o desfecho “Aguardando documentos” o dossiê pode voltar ao corretor, e o aviso de
+                      devolução chega a ele mesmo em movimento interno.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  id="cca-stage-notify" aria-describedby="cca-stage-notify-help"
+                  checked={notifySales} onCheckedChange={setNotifySales}
+                />
+              </div>
+              <div className="space-y-2 rounded-xl border border-border p-3 sm:col-span-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Label htmlFor="cca-stage-muda-status">Muda o status do negócio</Label>
+                    <p id="cca-stage-muda-status-help" className="mt-0.5 text-xs text-muted-foreground">
+                      Ligado: grava o Status 2 escolhido no negócio, que aparece no Pipeline, nos filtros e na
+                      planilha. Desligado: o status do negócio fica como está.
+                    </p>
+                  </div>
+                  <Switch
+                    id="cca-stage-muda-status" aria-describedby="cca-stage-muda-status-help"
+                    checked={mudaStatus} onCheckedChange={setMudaStatus}
+                  />
+                </div>
+                {mudaStatus && (
+                  <div>
+                    <Label htmlFor="cca-stage-deal-status">Status 2 que a coluna grava</Label>
+                    <Select value={dealStatusId} onValueChange={setDealStatusId} disabled={catalogo.isPending}>
+                      <SelectTrigger id="cca-stage-deal-status" className="mt-1" aria-describedby="cca-stage-deal-status-help">
+                        <SelectValue placeholder="Escolha o status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {opcoes.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}{option.active ? "" : " (inativo)"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {/* A lista sai sem os status que o banco recusa na coluna
+                        (`cca_stages_guard_deal_status`): sem a frase, a ausência
+                        de "13. ESTEIRA AGIL" ou de OFF parece defeito. */}
+                    <p id="cca-stage-deal-status-help" className="mt-1 text-xs text-muted-foreground">
+                      Os status de envio (esteira ágil, análise p/ virar negócio) e de encerramento (OFF,
+                      distrato, queda) não aparecem: quem grava é o sistema.
+                    </p>
+                    {faltaStatus && (
+                      <p className="mt-1 text-xs text-warning">Escolha o status ou desligue a opção.</p>
+                    )}
+                    {catalogo.isError && (
+                      <p role="alert" className="mt-1 text-xs text-destructive">
+                        {describeError(catalogo.error, "Não consegui carregar o catálogo de Status 2.")}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="flex flex-wrap gap-2 sm:col-span-2">
-                <Button size="sm" disabled={saving || !name.trim()} onClick={() => void save()}>
+                <Button size="sm" disabled={saving || !name.trim() || faltaStatus} onClick={() => void save()}>
                   <Plus className="mr-1 h-4 w-4" /> {editing ? "Salvar" : "Criar estágio"}
                 </Button>
                 {editing && <Button size="sm" variant="ghost" onClick={reset}>Cancelar edição</Button>}
@@ -205,7 +268,9 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
 
             <ul className="space-y-2">
               {stages.map((stage) => {
-                const gravado = rotuloDoStatus(stage.deal_status_id);
+                // Reserva: o rótulo que o quadro já carrega (0155). O catálogo é
+                // filtrado e pode falhar; sem ela o selo ficava em "…" para sempre.
+                const gravado = rotuloDoStatus(stage.deal_status_id) ?? stage.deal_status?.label;
                 return (
                   <li key={stage.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-2">
                     {/* Nome em linha própria e sem corte: com as 19 colunas da 0150
@@ -215,9 +280,15 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                       <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: ccaStageColor(stage.color) }} aria-hidden />
                       <div className="min-w-0">
                         <p className="break-words text-xs font-medium">{stage.name}</p>
-                        <p className="break-words text-xs text-muted-foreground">
-                          {ccaStatusLabel(stage.status)}{gravado && ` · grava ${gravado}`}
-                        </p>
+                        <p className="break-words text-xs text-muted-foreground">{ccaStatusLabel(stage.status)}</p>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {ccaStageNotifiesSales(stage)
+                            ? <span className={`${SELO} text-foreground`}>Avisa o comercial</span>
+                            : <span className={`${SELO} bg-muted text-muted-foreground`}>Movimento interno</span>}
+                          <span className={`${SELO} text-muted-foreground`}>
+                            {stage.deal_status_id ? `Grava: ${gravado ?? "…"}` : "Não muda o status"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-shrink-0 gap-1">
@@ -230,7 +301,9 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                           // Chave antiga abre com o hex dela: salvar grava hex.
                           setColor(ccaStageColor(stage.color));
                           setStatus(stage.status);
-                          setDealStatusId(stage.deal_status_id ?? SEM_STATUS);
+                          setNotifySales(ccaStageNotifiesSales(stage));
+                          setMudaStatus(Boolean(stage.deal_status_id));
+                          setDealStatusId(stage.deal_status_id ?? "");
                           // O formulário fica no alto do corpo rolável: editar a
                           // última coluna o deixava fora de vista. O foco rola até ele.
                           nomeRef.current?.focus();

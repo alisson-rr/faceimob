@@ -1,5 +1,5 @@
-import { memo, useState } from "react";
-import { Building2, DollarSign, Send, User } from "lucide-react";
+import { memo, useId, useState } from "react";
+import { Building2, ChevronDown, ChevronUp, DollarSign, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,6 +11,22 @@ import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
 
 /** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
 const POR_COLUNA = 200;
+
+/** Faixa de indicadores aberta ou fechada, por navegador: "aberto" | "fechado". */
+const CHAVE_INDICADORES = "faceimob-cca-indicadores";
+
+/**
+ * Escolha salva; sem ela, aberta a partir de 640 px. No celular a faixa ocupava
+ * ~970 px antes do quadro, e o cabeçalho de cada coluna já diz quantidade e
+ * total. Sem storage (janela anônima, site bloqueado) vale só o padrão.
+ */
+function indicadoresAbertosNoInicio(): boolean {
+  try {
+    const salvo = localStorage.getItem(CHAVE_INDICADORES);
+    if (salvo === "aberto" || salvo === "fechado") return salvo === "aberto";
+  } catch { /* segue para o padrão */ }
+  return window.matchMedia?.("(min-width: 640px)").matches ?? true;
+}
 
 /** "2 vezes pela Esteira Ágil": a mesma frase no nome acessível e na dica do selo. */
 const vezesPela = (n: number, esteira: string) => `${n} ${n === 1 ? "vez" : "vezes"} pela ${esteira}`;
@@ -24,7 +40,6 @@ interface Props {
   /** Abre o negócio no `DealDetailModal` — o MESMO editor do Pipeline. */
   onOpen: (deal: CcaDeal) => void;
   onMove: (deal: CcaDeal, stage: CcaStage) => void;
-  onSubmitToDeveloper: (deal: CcaDeal) => void;
 }
 
 /**
@@ -40,11 +55,24 @@ interface Props {
  * `opacity-0 group-hover:opacity-100` com 8 px de fonte: invisíveis no toque,
  * inalcançáveis pelo teclado e abaixo do piso de tamanho (achados X02 e X07).
  *
+ * "Enviar à construtora" saiu do cartão (pedido de 17/09/2026): o envio passou
+ * para o gerente, na conferência de documentos.
+ *
  * `memo`: abrir um diálogo da tela não redesenha os cartões.
  */
 export const CcaBoard = memo(function CcaBoard({
-  stages, deals, canAct, sendCounts, onOpen, onMove, onSubmitToDeveloper,
+  stages, deals, canAct, sendCounts, onOpen, onMove,
 }: Props) {
+  const faixaId = useId();
+  const [indicadoresAbertos, setIndicadoresAbertos] = useState(indicadoresAbertosNoInicio);
+  const alternarIndicadores = () => {
+    const aberto = !indicadoresAbertos;
+    setIndicadoresAbertos(aberto);
+    try {
+      localStorage.setItem(CHAVE_INDICADORES, aberto ? "aberto" : "fechado");
+    } catch { /* sem storage, a escolha vale até recarregar a página */ }
+  };
+
   /**
    * Quantos cartões cada coluna desenha. Com a esteira inteira (7.560 casos na
    * homologação) eram ~280 mil nós e 15,7 s de montagem no teste. O período
@@ -70,20 +98,41 @@ export const CcaBoard = memo(function CcaBoard({
           cortado com reticências (o nome inteiro fica no `title`). A cor da
           coluna vai na faixa do topo, não no número: com a cor livre, número
           colorido podia sumir no fundo de um dos temas. */}
-      <KpiGrid cols="faixa" className="sticky left-0 pb-3">
-        {stages.map((stage) => (
-          <div
-            key={stage.id}
-            className="relative flex h-[4.75rem] flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-2 text-center"
+      {/* O botão fica ACIMA da faixa: recolher não o tira do lugar, e o quadro
+          sobe. Fechada, a faixa continua no DOM (`hidden`) para o
+          `aria-controls` apontar para um elemento que existe. */}
+      <div className="sticky left-0 pb-3">
+        <div className="flex justify-center">
+          <Button
+            size="sm" variant="ghost" className="h-8 text-xs"
+            aria-expanded={indicadoresAbertos}
+            aria-controls={faixaId}
+            onClick={alternarIndicadores}
           >
-            <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: ccaStageColor(stage.color) }} aria-hidden />
-            <p className="text-eyebrow line-clamp-2 h-8 break-words leading-4" title={stage.name}>{stage.name}</p>
-            <p className="font-display text-xl font-bold leading-none tabular-nums text-foreground">
-              {porEstagio.get(stage.id)?.length ?? 0}
-            </p>
-          </div>
-        ))}
-      </KpiGrid>
+            {indicadoresAbertos
+              ? <><ChevronUp aria-hidden /> Recolher indicadores</>
+              : <><ChevronDown aria-hidden /> Mostrar indicadores</>}
+          </Button>
+        </div>
+        <div id={faixaId} hidden={!indicadoresAbertos} className="pt-2">
+          <KpiGrid cols="faixa">
+            {stages.map((stage) => (
+              // `rounded-none`: o cliente pediu os indicadores "sem os cantos
+              // arredondados" (17/09/2026) — é a exceção pedida à escala do app.
+              <div
+                key={stage.id}
+                className="relative flex h-[4.75rem] flex-col justify-between overflow-hidden rounded-none border border-border bg-card p-2 text-center"
+              >
+                <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: ccaStageColor(stage.color) }} aria-hidden />
+                <p className="text-eyebrow line-clamp-2 h-8 break-words leading-4" title={stage.name}>{stage.name}</p>
+                <p className="font-display text-xl font-bold leading-none tabular-nums text-foreground">
+                  {porEstagio.get(stage.id)?.length ?? 0}
+                </p>
+              </div>
+            ))}
+          </KpiGrid>
+        </div>
+      </div>
 
       <div className="flex w-max gap-3 pb-2">
         {stages.map((stage) => {
@@ -123,7 +172,7 @@ export const CcaBoard = memo(function CcaBoard({
                       style={{ borderLeftColor: cor }}
                     >
                       {/* Mesmo desenho do `DealCard`: o corpo clicável é IRMÃO
-                          do rodapé com o Select e o botão, nunca o pai deles —
+                          do rodapé com o Select, nunca o pai dele —
                           controle dentro de controle é `nested-interactive`, e
                           o leitor de tela pode não expor "Mover para…".
                           `role="button"` em vez de `<button>` porque o conteúdo
@@ -189,18 +238,7 @@ export const CcaBoard = memo(function CcaBoard({
                         </dl>
                       </div>
 
-                      {canAct && (
-                        <>
-                          <Button
-                            size="sm" variant="outline" className="h-7 w-full gap-1 text-xs"
-                            onClick={() => onSubmitToDeveloper(deal)}
-                          >
-                            <Send className="h-3 w-3" aria-hidden /> Enviar à construtora
-                          </Button>
-
-                          <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />
-                        </>
-                      )}
+                      {canAct && <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />}
                     </article>
                   );
                 })}

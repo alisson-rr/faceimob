@@ -625,6 +625,28 @@ export async function reviewDealDocuments(input: {
   if (error) throw dbError("review_deal_documents", error);
 }
 
+/** Construtora do negócio, no que decide o "Enviar à construtora" do gerente:
+ *  o botão só existe no fluxo externo, e sem e-mail nada sai pelo sistema. */
+export type DealDeveloper = { name: string; flow: "internal" | "external"; hasEmail: boolean };
+
+export async function getDealDeveloper(dealId: string): Promise<DealDeveloper | null> {
+  const { data, error } = await supabase
+    .from("deals")
+    .select("developers(name,flow,submission_email)")
+    .eq("id", dealId)
+    .maybeSingle();
+  if (error) throw dbError("deals", error);
+  const dev = data?.developers as
+    | { name: string; flow: DealDeveloper["flow"]; submission_email: string | null }
+    | null
+    | undefined;
+  return dev ? { name: dev.name, flow: dev.flow, hasEmail: Boolean(dev.submission_email) } : null;
+}
+
+/** Motivo do "Enviar à construtora" desabilitado: externa sem e-mail (0154). */
+export const DEVELOPER_WITHOUT_EMAIL =
+  "Construtora sem e-mail cadastrado. Cadastre em Construtoras para enviar pelo sistema.";
+
 // ── Catálogo de tipos de documento ───────────────────────────────────────────
 
 export type DocumentTypeAdminRecord = DocumentTypeRecord & { active: boolean };

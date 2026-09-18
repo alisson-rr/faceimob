@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { CcaBoard } from "./CcaBoard";
@@ -11,12 +11,12 @@ import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
  *
  * Pedido do cliente em 10/09/2026: clicar no cartão do CCA abre o MESMO
  * `DealDetailModal` do Pipeline. O que este teste fixa é o desenho que faz isso
- * conviver com "Enviar à construtora" e "Mover para…" no mesmo cartão: o corpo
- * clicável é IRMÃO dos dois controles, nunca o pai deles.
+ * conviver com "Mover para…" no mesmo cartão: o corpo clicável é IRMÃO do
+ * controle, nunca o pai dele.
  *
  * Se algum dia alguém envolver o cartão inteiro no `role="button"`, duas coisas
  * quebram de uma vez — todo clique em "Mover para…" passa a abrir o modal por
- * borbulhamento, e o leitor de tela deixa de anunciar os dois controles, porque
+ * borbulhamento, e o leitor de tela deixa de anunciar o controle, porque
  * descendente de botão é presentacional na especificação ARIA (a mesma regra
  * `nested-interactive` que o `DealCard` já respeita).
  */
@@ -51,7 +51,6 @@ async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCoun
         sendCounts={sendCounts}
         onOpen={(deal) => abertos.push(deal.dealId)}
         onMove={() => undefined}
-        onSubmitToDeveloper={() => undefined}
       /> as ReactNode,
     );
   });
@@ -59,7 +58,7 @@ async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCoun
   const corpo = container.querySelector<HTMLElement>('[aria-label^="Abrir o negócio de Cliente Teste"]');
   const mover = container.querySelector<HTMLElement>('[aria-label="Mover Cliente Teste para outro estágio"]');
   const enviar = [...container.querySelectorAll("button")]
-    .find((botao) => botao.textContent?.includes("Enviar à construtora")) ?? null;
+    .some((botao) => botao.textContent?.includes("Enviar à construtora"));
 
   const resultado = {
     temCorpo: Boolean(corpo),
@@ -69,7 +68,7 @@ async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCoun
     nomeAcessivel: corpo?.getAttribute("aria-label") ?? "",
     // A pergunta que importa: o controle está DENTRO do alvo de clique?
     moverDentroDoCorpo: Boolean(mover && corpo?.contains(mover)),
-    enviarDentroDoCorpo: Boolean(enviar && corpo?.contains(enviar)),
+    temEnviar: enviar,
     temMover: Boolean(mover),
     texto: container.textContent ?? "",
     abertos,
@@ -111,11 +110,16 @@ describe("CcaBoard · o cartão abre o negócio", () => {
     await board.encerrar();
   });
 
-  it("não engole os controles: mover e enviar ficam FORA do alvo de clique", async () => {
+  it("não engole o controle: mover fica FORA do alvo de clique", async () => {
     const board = await renderBoard(true);
     expect(board.temMover, "com permissão o Select de mover existe").toBe(true);
     expect(board.moverDentroDoCorpo, '"Mover para…" dentro do alvo abriria o modal a cada uso').toBe(false);
-    expect(board.enviarDentroDoCorpo, '"Enviar à construtora" dentro do alvo faria o mesmo').toBe(false);
+    await board.encerrar();
+  });
+
+  it("não oferece enviar à construtora: o envio é do gerente (17/09/2026)", async () => {
+    const board = await renderBoard(true);
+    expect(board.temEnviar, "o cartão voltou a ter o botão de envio").toBe(false);
     await board.encerrar();
   });
 
@@ -178,7 +182,6 @@ describe("CcaBoard · mover para outro estágio", () => {
           canAct
           onOpen={() => undefined}
           onMove={(_caso, stage) => movidos.push(stage.id)}
-          onSubmitToDeveloper={() => undefined}
         /> as ReactNode,
       );
     });
@@ -225,7 +228,6 @@ describe("CcaBoard · kanban colorido", () => {
           canAct={false}
           onOpen={() => undefined}
           onMove={() => undefined}
-          onSubmitToDeveloper={() => undefined}
         /> as ReactNode,
       );
     });
@@ -261,7 +263,6 @@ describe("CcaBoard · kanban colorido", () => {
           canAct={false}
           onOpen={() => undefined}
           onMove={() => undefined}
-          onSubmitToDeveloper={() => undefined}
         /> as ReactNode,
       );
     });
@@ -271,5 +272,94 @@ describe("CcaBoard · kanban colorido", () => {
     expect(cabecalho?.textContent).toMatch(/R\$\s0 · 0 casos$/);
     await act(async () => { root.unmount(); });
     container.remove();
+  });
+});
+
+/**
+ * Faixa de indicadores recolhível (pedido de 17/09/2026). O botão fica no
+ * lugar e anuncia o estado; a escolha fica no navegador, e sem ela a faixa abre
+ * na tela larga e fecha abaixo de 640 px — no celular ela empurrava o quadro
+ * ~970 px para baixo.
+ */
+describe("CcaBoard · recolher indicadores", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function montar() {
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[STAGE]}
+          deals={[DEAL]}
+          canAct={false}
+          onOpen={() => undefined}
+          onMove={() => undefined}
+        /> as ReactNode,
+      );
+    });
+    const botao = () => container.querySelector<HTMLButtonElement>("button[aria-controls]");
+    const faixa = () => document.getElementById(botao()?.getAttribute("aria-controls") ?? "");
+    return {
+      botao,
+      aberta: () => botao()?.getAttribute("aria-expanded") === "true" && faixa()?.hidden === false,
+      fechada: () => botao()?.getAttribute("aria-expanded") === "false" && faixa()?.hidden === true,
+      clicar: async () => { await act(async () => { botao()?.click(); }); },
+      encerrar: async () => {
+        await act(async () => { root.unmount(); });
+        container.remove();
+      },
+    };
+  }
+
+  const largura = (px: number) => vi.stubGlobal("matchMedia", (consulta: string) => ({
+    matches: px >= Number(/min-width:\s*(\d+)px/.exec(consulta)?.[1] ?? Infinity),
+  }));
+
+  it("abre na tela larga e fecha abaixo de 640 px", async () => {
+    largura(1280);
+    const larga = await montar();
+    expect(larga.aberta(), "a 1280 px a faixa abre").toBe(true);
+    await larga.encerrar();
+
+    largura(375);
+    const celular = await montar();
+    expect(celular.fechada(), "a 375 px a faixa começa fechada").toBe(true);
+    expect(celular.botao()?.textContent).toContain("Mostrar indicadores");
+    await celular.encerrar();
+  });
+
+  it("recolhe e expande, anuncia o estado e lembra a escolha", async () => {
+    largura(1280);
+    const board = await montar();
+    expect(board.botao()?.textContent).toContain("Recolher indicadores");
+
+    await board.clicar();
+    expect(board.fechada(), "recolher esconde a faixa e diz aria-expanded=false").toBe(true);
+    expect(board.botao()?.textContent).toContain("Mostrar indicadores");
+    await board.encerrar();
+
+    // Recarregar a tela na mesma largura respeita a escolha, não o padrão.
+    const depois = await montar();
+    expect(depois.fechada(), "a escolha não ficou no navegador").toBe(true);
+    await depois.clicar();
+    expect(depois.aberta()).toBe(true);
+    expect(localStorage.getItem("faceimob-cca-indicadores")).toBe("aberto");
+    await depois.encerrar();
+  });
+
+  it("sem storage a tela funciona e o botão continua alternando", async () => {
+    largura(1280);
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("bloqueado"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("bloqueado"); });
+    const board = await montar();
+    expect(board.aberta()).toBe(true);
+    await board.clicar();
+    expect(board.fechada()).toBe(true);
+    await board.encerrar();
   });
 });

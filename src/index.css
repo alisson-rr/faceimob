@@ -371,10 +371,25 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: hsl(var(--background)); }
-::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
+/*
+ * Barras de rolagem de 12 px, a de baixo e a da lateral (pedido de 17/09/2026:
+ * as de 6 px eram dificeis de pegar com o mouse). Polegar `--input` sobre
+ * trilho `--muted` da 3,1:1 no escuro e 3,2:1 no claro, o piso de contraste de
+ * controle; era `--border` sobre `--background`, com 1,75:1 e 1,28:1. Raio do
+ * selo (`rounded-md`, 4 px). O `ScrollArea` do Radix repete cor e medida.
+ *
+ * O Firefox nao le `::-webkit-scrollbar`: recebe as mesmas cores por
+ * `scrollbar-color` (herdada) e fica com a espessura `auto`, a grossa. O
+ * `@supports` segura o Chrome 121+, que entende `scrollbar-color` e, com ela
+ * declarada, ignora todo o `::-webkit-scrollbar` (voltaria a barra do sistema).
+ */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: hsl(var(--muted)); }
+::-webkit-scrollbar-thumb { background: hsl(var(--input)); border-radius: calc(var(--radius) - 2px); }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+@supports not selector(::-webkit-scrollbar) {
+  html { scrollbar-color: hsl(var(--input)) hsl(var(--muted)); }
+}
 
 /*
  * Quem pediu menos movimento recebe menos movimento — inclusive as animacoes

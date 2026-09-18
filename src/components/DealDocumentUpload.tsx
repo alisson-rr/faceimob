@@ -14,7 +14,9 @@ import { describeError } from "@/lib/supabaseError";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import { loadCcaCase } from "@/components/pipeline/ccaData";
+import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
 import {
+  DEVELOPER_WITHOUT_EMAIL,
   MAX_DOCUMENT_ALIAS,
   MAX_REVIEW_MESSAGE,
   REVIEW_ESTEIRA_LABEL,
@@ -24,6 +26,7 @@ import {
   dealParticipantNames,
   deleteDealDocument,
   documentDisplayName,
+  getDealDeveloper,
   getDealDocumentReview,
   listDealDocuments,
   listDocumentTypes,
@@ -39,6 +42,7 @@ import {
   validateDocumentAlias,
   validateDocumentFile,
   virarBlockReason,
+  type DealDeveloper,
   type DealDocumentReview,
   type DealDocumentRecord,
   type DocumentTypeRecord,
@@ -135,6 +139,9 @@ export default function DealDocumentUpload({
   const [esteira, setEsteira] = useState<ReviewEsteira | null>(null);
   /** Status do caso na CCA: decide se a análise p/ virar negócio já vale. */
   const [caseStatus, setCaseStatus] = useState<string | null>(null);
+  /** Construtora do negócio: decide o "Enviar à construtora" do gerente. */
+  const [developer, setDeveloper] = useState<DealDeveloper | null>(null);
+  const [envioAberto, setEnvioAberto] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   /** Linha em edição de apelido (0106). Uma por vez: abrir duas caixas de texto
    *  sobre a mesma lista é convite para salvar na linha errada. */
@@ -145,7 +152,7 @@ export default function DealDocumentUpload({
     setLoading(true);
     setErro(null);
     try {
-      const [t, d, r, roles, managers, podeEditar, participantes, caso] = await Promise.all([
+      const [t, d, r, roles, managers, podeEditar, participantes, caso, construtora] = await Promise.all([
         listDocumentTypes(),
         listDealDocuments(dealId),
         getDealDocumentReview(dealId),
@@ -154,8 +161,10 @@ export default function DealDocumentUpload({
         canEditDeal(dealId),
         dealParticipantNames(dealId),
         loadCcaCase(dealId),
+        getDealDeveloper(dealId),
       ]);
       setTypes(t);
+      setDeveloper(construtora);
       setCaseStatus(caso?.status ?? null);
       setDocs(d);
       setReview(r);
@@ -641,6 +650,33 @@ export default function DealDocumentUpload({
             crédito. O andamento aparece no Status 2 e no histórico do negócio.
           </p>
         )}
+
+        {/* Envio do dossiê à construtora (17/09/2026): saiu do cartão da CCA e é
+            do gerente, depois de conferir. Só no fluxo externo — na interna a
+            análise é da casa. Com e-mail a aprovação já enfileirou o dossiê, e
+            o botão reenvia e mostra o status; sem e-mail nada sai pelo sistema
+            (0154), e o botão diz por quê em vez de sumir. Só depois da
+            aprovação: antes dela, enviar à mão e depois aprovar mandaria o
+            dossiê duas vezes. */}
+        {status === "approved" && canReview && developer?.flow === "external" && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {!developer.hasEmail && (
+              <p id={`${fieldId}-construtora-motivo`} className="text-xs text-warning">
+                {DEVELOPER_WITHOUT_EMAIL}
+              </p>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto h-8 shrink-0 gap-1 text-xs"
+              disabled={!developer.hasEmail}
+              aria-describedby={developer.hasEmail ? undefined : `${fieldId}-construtora-motivo`}
+              onClick={() => setEnvioAberto(true)}
+            >
+              <Send className="h-3 w-3" /> Enviar à construtora
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -938,6 +974,19 @@ export default function DealDocumentUpload({
           );
         })}
       </div>
+
+      {envioAberto && developer && (
+        <DeveloperSubmissionDialog
+          open
+          onClose={() => setEnvioAberto(false)}
+          dealId={dealId}
+          clientName={clientName}
+          developerName={developer.name}
+          // Enfileirar pode mover o caso para "Enviado à Construtora" (gatilho
+          // da 0077), e o modal por baixo precisa reler o negócio.
+          onChanged={onReviewChanged}
+        />
+      )}
     </div>
   );
 }

@@ -477,7 +477,7 @@ describe("desempenho · render", () => {
       broker: "Ana", value: 1000, stageId: `cs${i % 5}`, notes: "", status: "under_review",
     }));
     const tela = await montar(
-      <CcaBoard stages={CCA_STAGES} deals={casos} canAct onOpen={noop} onMove={noop} onSubmitToDeveloper={noop} />,
+      <CcaBoard stages={CCA_STAGES} deals={casos} canAct onOpen={noop} onMove={noop} />,
     );
     const cartoes = () => tela.container.querySelectorAll("article").length;
     const porColuna = Math.ceil(N_CASOS / 5);

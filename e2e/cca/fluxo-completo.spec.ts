@@ -22,7 +22,13 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
   let documento: DocumentoDoNegocio;
 
   test.beforeAll(async () => {
-    cenario = await criarCenario({ dono: "broker", etapa: "under_analysis", apelido: "Credito" });
+    // Externa: desde a 0154 o envio à construtora só tem tela para fluxo externo.
+    cenario = await criarCenario({
+      dono: "broker",
+      fluxo: "external",
+      etapa: "under_analysis",
+      apelido: "Credito",
+    });
     await db.update(`deals?id=eq.${cenario.dealId}`, { document_review_status: "approved" });
     const etapa = await estagioCca("under_review");
     const [caso] = await semearCasoCca(cenario, "under_review", etapa.id);
@@ -34,7 +40,7 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
     await limparCenario(cenario);
   });
 
-  test("registra análise, aprova com histórico e reprocessa o dossiê", async ({ page }) => {
+  test("registra análise e aprova com histórico", async ({ page }) => {
     await comSessao(page, "cca");
 
     await abrirNegocio(page, cenario.cliente);
@@ -91,18 +97,31 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
     expect(
       await db.select(`deal_history?deal_id=eq.${cenario.dealId}&kind=eq.comment&to_value=eq.${comentario}&select=id`),
     ).toHaveLength(1);
+  });
 
-    await card.getByRole("button", { name: /enviar à construtora/i }).click();
-    // Este cenário usa construtora de fluxo INTERNO (o padrão de `criarCenario`):
-    // a análise é do próprio CCA e não há e-mail no cadastro. O cartão oferece o
-    // botão assim mesmo, então o diálogo tem de dizer o que o cadastro afirma —
-    // em vez de o analista descobrir digitando um endereço de memória. O envio
-    // com construtora externa, que é o caminho normal, está em
-    // `leitura-e-envio.spec.ts`.
-    await expect(page.getByText(/cadastrada como fluxo interno/i)).toBeVisible();
-    await page.getByPlaceholder("analise@construtora.com.br").fill("credito@construtora.test");
-    await page.getByRole("button", { name: /enfileirar envio/i }).click();
-    await expect(page.getByText("Envio na fila", { exact: true })).toBeVisible();
+  /**
+   * O envio saiu do cartão da esteira em 17/09/2026 (0154): mora na aba Anexos
+   * do negócio, depois da conferência aprovada, e só para construtora EXTERNA —
+   * por isso o cenário nasce externo. Até ali ele era interno e provava o aviso
+   * de "fluxo interno" do diálogo; o aviso saiu junto com o botão, e o envio
+   * avulso a construtora interna (que a RPC ainda aceita de quem tem
+   * `cca.review`) ficou sem tela — só o assert SQL
+   * `99_envio_construtora_pelo_gerente.sql` o cobre.
+   *
+   * Admin, e não gerente: "Reenviar" grava direto na tabela, cuja policy é
+   * `cca.review`, e o diálogo só o mostra para quem a tem. O envio pelo gerente,
+   * com o e-mail do cadastro no "Para", está em `leitura-e-envio.spec.ts`.
+   */
+  test("o admin envia o dossiê pela conferência e reprocessa o envio que falhou", async ({ page }) => {
+    await comSessao(page, "admin");
+    await abrirNegocio(page, cenario.cliente);
+    await abaDoModal(page, /^anexos$/i).click();
+    const enviar = page.getByRole("dialog").getByRole("button", { name: /enviar à construtora/i });
+    await enviar.click();
+
+    const dialogo = page.getByRole("dialog", { name: "Enviar dossiê para a construtora" });
+    await dialogo.getByRole("button", { name: /enfileirar envio/i }).click();
+    await expect(page.getByText("Envio enfileirado", { exact: true })).toBeVisible();
 
     const [submission] = await db.select<{
       id: string;
@@ -118,13 +137,16 @@ test.describe.serial("CCA · análise, decisão e envio", () => {
       attempts: 3,
       last_error: "SMTP indisponível",
     });
-    // Dois "Fechar" na página: o do rodapé do diálogo e o "×" do primitivo
-    // `dialog.tsx`, que ganhou `sr-only` "Fechar" (achado X03). Ancorar no
-    // diálogo aberto resolve sem depender de qual dos dois vem primeiro.
-    await page.getByRole("dialog").getByRole("button", { name: /^fechar$/i }).first().click();
-    await card.getByRole("button", { name: /enviar à construtora/i }).click();
-    await page.getByRole("button", { name: /reenviar/i }).click();
-    await expect(page.getByText("Reenfileirado", { exact: true })).toBeVisible();
+    // Dois "Fechar" no diálogo: o do rodapé e o "×" do primitivo `dialog.tsx`,
+    // que ganhou `sr-only` "Fechar" (achado X03). Ancorar no diálogo do envio
+    // resolve sem depender de qual dos dois vem primeiro. Reabrir relê a fila.
+    await dialogo.getByRole("button", { name: /^fechar$/i }).first().click();
+    await enviar.click();
+    await dialogo
+      .getByRole("group", { name: "Envios anteriores" })
+      .getByRole("button", { name: /reenviar/i })
+      .click();
+    await expect(page.getByText("Envio reenfileirado", { exact: true })).toBeVisible();
 
     await expect.poll(async () => {
       const [row] = await db.select<{ status: string; attempts: number; last_error: string | null }>(

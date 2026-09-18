@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertTriangle, Building2, Inbox, Pencil, Plus, Trash2 } from "lucide-react";
 import { ColorField, EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
 import { toast } from "@/hooks/use-toast";
@@ -152,17 +152,13 @@ export default function AdminDevelopers() {
 
   const toggleCca = async (dev: DeveloperRow) => {
     const flow: DeveloperFlow = dev.flow === "internal" ? "external" : "internal";
-    if (flow === "external" && !dev.submission_email) {
-      return toast({
-        title: "Cadastre o e-mail de envio antes",
-        description: "O fluxo externo envia os documentos por e-mail à construtora.",
-        variant: "destructive",
-      });
-    }
     if (await update(dev.id, { flow }, "Não foi possível alterar o fluxo de crédito")) {
       toast({
         title: "Fluxo de crédito atualizado",
-        description: flow === "internal" ? "CCA interno" : "Fluxo externo: os documentos vão por e-mail à construtora.",
+        // E-mail opcional no externo desde a 0154: a tela avisa em vez de recusar.
+        description: flow === "internal" ? "CCA interno"
+          : dev.submission_email ? "Fluxo externo: os documentos vão por e-mail à construtora."
+          : "Fluxo externo sem e-mail: o dossiê não sai pelo sistema até o e-mail ser cadastrado.",
         variant: "success",
       });
     }
@@ -187,7 +183,7 @@ export default function AdminDevelopers() {
    * dossiê. Os dois switches da mesma linha já confirmam; este era o único mudo.
    */
   const saveEmail = async (dev: DeveloperRow, email: string) => {
-    // Constraint do banco: fluxo externo exige e-mail — o erro volta no toast.
+    // Vazio vale também no fluxo externo (0154): o dossiê só não sai pelo sistema.
     const ok = await update(dev.id, { submission_email: email || null }, "Não foi possível salvar o e-mail de envio");
     if (ok) toast({ title: email ? "E-mail de envio salvo" : "E-mail de envio removido", variant: "success" });
     return ok;
@@ -199,13 +195,6 @@ export default function AdminDevelopers() {
     // Clicar e a tela não responder era o comportamento anterior (`if (!name) return`).
     if (!name) return toast({ title: "Informe o nome da construtora", variant: "destructive" });
     if (email && !isEmail(email)) return toast({ title: "E-mail inválido", description: EMAIL_INVALIDO, variant: "destructive" });
-    if (newFlow === "external" && !email) {
-      return toast({
-        title: "Fluxo externo exige e-mail",
-        description: "É por ele que os documentos vão para a construtora.",
-        variant: "destructive",
-      });
-    }
     if (newColor && !isDeveloperColor(newColor)) {
       return toast({ title: "Cor inválida", description: "Escolha a cor pelo seletor ou use \"Sem cor\".", variant: "destructive" });
     }
@@ -255,7 +244,7 @@ export default function AdminDevelopers() {
         description="Quais construtoras usam o CCA interno para aprovação de crédito. No fluxo externo, os documentos vão por e-mail à construtora."
       />
 
-      <SectionCard title="Adicionar construtora" icon={Plus} description="O fluxo pode ser escolhido já no cadastro; o externo exige e-mail.">
+      <SectionCard title="Adicionar construtora" icon={Plus} description="O fluxo pode ser escolhido já no cadastro. No externo, o e-mail é opcional: sem ele o dossiê não sai pelo sistema.">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <div>
             <Label htmlFor="dev-nome" className="text-xs">Nome</Label>
@@ -271,7 +260,7 @@ export default function AdminDevelopers() {
               <SelectTrigger id="dev-fluxo" className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="internal">CCA interno</SelectItem>
-                <SelectItem value="external">Fluxo externo (e-mail)</SelectItem>
+                <SelectItem value="external">Fluxo externo</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -332,6 +321,11 @@ export default function AdminDevelopers() {
                             <StatusBadge tone={dev.flow === "internal" ? "warning" : "neutral"}>
                               {dev.flow === "internal" ? "CCA Ativo" : "Fluxo externo"}
                             </StatusBadge>
+                            {/* Sem e-mail o dossiê não sai pelo sistema (0154): a
+                                linha diz, em vez de só o toast na hora de salvar. */}
+                            {dev.flow === "external" && !dev.submission_email && (
+                              <StatusBadge tone="warning">sem e-mail · envio manual</StatusBadge>
+                            )}
                           </span>
                           {dev.contact_name && <span className="block text-muted-foreground">{dev.contact_name}{dev.contact_phone ? ` · ${dev.contact_phone}` : ""}</span>}
                         </td>
@@ -429,9 +423,6 @@ function DeveloperEditDialog({
     const email = form.submission_email.trim();
     if (!name) return toast({ title: "O nome não pode ficar vazio", variant: "destructive" });
     if (email && !isEmail(email)) return toast({ title: "E-mail inválido", description: EMAIL_INVALIDO, variant: "destructive" });
-    if (form.flow === "external" && !email) {
-      return toast({ title: "Fluxo externo exige e-mail", description: "É por ele que os documentos vão para a construtora.", variant: "destructive" });
-    }
     if (form.color && !isDeveloperColor(form.color)) {
       return toast({ title: "Cor inválida", description: "Escolha a cor pelo seletor ou use \"Sem cor\".", variant: "destructive" });
     }
@@ -536,7 +527,10 @@ function DeveloperEditDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Editar {dev.name}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Editar {dev.name}</DialogTitle>
+          <DialogDescription>Cadastro, fluxo de crédito e empreendimentos da construtora.</DialogDescription>
+        </DialogHeader>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
@@ -561,7 +555,7 @@ function DeveloperEditDialog({
               <SelectTrigger id="edit-fluxo" className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="internal">CCA interno</SelectItem>
-                <SelectItem value="external">Fluxo externo (e-mail)</SelectItem>
+                <SelectItem value="external">Fluxo externo</SelectItem>
               </SelectContent>
             </Select>
           </div>
