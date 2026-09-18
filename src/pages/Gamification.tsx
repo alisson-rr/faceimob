@@ -817,7 +817,7 @@ export default function Gamification() {
         <SectionCard title="Pontuação por movimento" icon={Star} description="Pesos vigentes em game_scoring_rules.">
           {rulesQuery.isPending ? (
             <div className="flex flex-wrap gap-2" aria-hidden>
-              {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-6 w-32 rounded-full" />)}
+              {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-6 w-32" />)}
             </div>
           ) : rulesQuery.error ? (
             <p className="text-sm text-destructive">

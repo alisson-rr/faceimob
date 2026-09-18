@@ -34,6 +34,9 @@ export type PipelineStageRecord = {
   code: string;
   label: string;
   position: number;
+  /** `#RRGGBB` do cabeçalho da coluna no kanban. Opcional: quem não pinta
+   *  (matriz de permissões, funil do Dashboard) e as fixtures não precisam. */
+  color?: string | null;
 };
 
 export type StagePermissionRecord = {
@@ -135,7 +138,7 @@ export async function setRolePermission(
 export async function listPipelineStages(): Promise<PipelineStageRecord[]> {
   const { data, error } = await supabase
     .from("pipeline_stages")
-    .select("id,code,label,position")
+    .select("id,code,label,position,color")
     .eq("active", true)
     .order("position");
   if (error) throw dbError("etapas do pipeline", error);

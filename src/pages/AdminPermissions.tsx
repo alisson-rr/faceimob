@@ -376,7 +376,7 @@ export default function AdminPermissions() {
                 key={r.value}
                 type="button"
                 aria-pressed={selectedRole === r.value}
-                className="rounded-full"
+                className="rounded-md"
                 onClick={() => setSelectedRole(r.value)}
               >
                 <Badge

@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertTriangle, Building2, Inbox, Pencil, Plus, Trash2 } from "lucide-react";
-import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
+import { ColorField, EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
 import { toast } from "@/hooks/use-toast";
 import { toast as sonner } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -76,37 +76,6 @@ function EmailCell({ dev, onSave }: { dev: DeveloperRow; onSave: (email: string)
       className="h-7 text-xs"
       aria-label={`E-mail de envio de ${dev.name}`}
     />
-  );
-}
-
-/**
- * Cor da construtora no Pipeline (0152). O mesmo campo no cadastro e na edição:
- * o dono pediu a cor "no cadastro da construtora", e ter só na edição obrigava a
- * criar a construtora e reabri-la para pintá-la.
- *
- * O seletor nativo não tem "vazio" (mostra preto): o texto ao lado diz o estado,
- * e "Sem cor" grava `null` — a bolinha volta à cor derivada do nome.
- */
-function ColorField({ id, value, onChange }: { id: string; value: string; onChange: (color: string) => void }) {
-  return (
-    <div className="flex h-8 items-center gap-2">
-      <input
-        id={id}
-        type="color"
-        value={value || "#000000"}
-        onChange={e => onChange(e.target.value)}
-        aria-describedby={`${id}-estado`}
-        className="h-8 w-10 shrink-0 cursor-pointer rounded-md border border-input bg-background p-0.5"
-      />
-      <span id={`${id}-estado`} className="min-w-0 truncate text-xs text-muted-foreground">
-        {value ? value.toUpperCase() : "Sem cor (automática)"}
-      </span>
-      {value && (
-        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onChange("")}>
-          Sem cor
-        </Button>
-      )}
-    </div>
   );
 }
 

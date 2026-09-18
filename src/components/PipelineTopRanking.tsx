@@ -118,7 +118,7 @@ export default function PipelineTopRanking({ onAbrirPainel }: Props) {
       <button
         type="button"
         onClick={onAbrirPainel}
-        className="rounded-full px-1 text-xs text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="rounded-sm px-1 text-xs text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         Ver mais
       </button>
@@ -369,11 +369,11 @@ function BarraDaMeta({ pct, realizado, alvo }: { pct: number; realizado: number;
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`Meta de VGV do mês: ${brl(realizado)} de ${brl(alvo)}`}
-        className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-full border border-border bg-muted"
+        className="absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 overflow-hidden rounded-sm border border-border bg-muted"
       >
         {/* `gold`: âmbar vivo no escuro, ouro fundo no claro — a barra sobre a
             trilha `muted` precisa de 3:1 e o `highlight` não passa no claro. */}
-        <div className="h-full rounded-full bg-gold transition-[width]" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-sm bg-gold transition-[width]" style={{ width: `${pct}%` }} />
       </div>
       <span
         aria-hidden
@@ -396,7 +396,7 @@ function BarraDaMeta({ pct, realizado, alvo }: { pct: number; realizado: number;
       >
         <span
           className={cn(
-            "whitespace-nowrap rounded-full bg-card px-1.5 text-xs font-semibold tabular-nums text-gold",
+            "whitespace-nowrap rounded-md bg-card px-1.5 text-xs font-semibold tabular-nums text-gold",
             aEsquerda ? "mr-5" : "ml-5",
           )}
         >

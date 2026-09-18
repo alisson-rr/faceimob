@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -78,5 +78,30 @@ describe("escala de raio", () => {
     const filete = /\.gold-hairline::before\s*\{[\s\S]*?inset:\s*0\s+([^;]+?)\s+auto;/.exec(css);
     if (!filete) throw new Error(".gold-hairline::before sem inset em index.css");
     expect(emPx(filete[1])).toBe(Object.fromEntries(escala)["2xl"]);
+  });
+});
+
+/**
+ * Sem pilula (pedido de 18/09/2026: "nenhum item com o arredondamento grande",
+ * com o menu lateral, a barra de abas e o botao "Ultimos 30 dias" de exemplo). Os primitivos
+ * sao travados um a um porque um `rounded-full` neles volta a espalhar a
+ * pilula por todas as telas de uma vez. `rounded-full` segue valendo para
+ * circulo de verdade (avatar, bolinha), por isso a varredura geral e so do
+ * `rounded-3xl`, que nao tem uso legitimo na escala.
+ */
+describe("sem arredondamento grande", () => {
+  const src = resolve(__dirname, "..");
+
+  it.each(["button", "badge", "tabs", "switch", "sidebar"])("ui/%s.tsx nao volta a ser pilula", (nome) => {
+    const fonte = readFileSync(join(src, "components/ui", `${nome}.tsx`), "utf8");
+    expect(fonte).not.toMatch(/\brounded-full\b/);
+  });
+
+  it("nenhum componente usa rounded-3xl", () => {
+    const tsx = readdirSync(src, { recursive: true, encoding: "utf8" }).filter((arquivo) => arquivo.endsWith(".tsx"));
+    // Sem este piso, um caminho errado passaria o teste sem olhar arquivo nenhum.
+    expect(tsx.length).toBeGreaterThan(50);
+    const comTresXl = tsx.filter((arquivo) => /\brounded-3xl\b/.test(readFileSync(join(src, arquivo), "utf8")));
+    expect(comTresXl).toEqual([]);
   });
 });

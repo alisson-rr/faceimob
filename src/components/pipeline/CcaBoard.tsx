@@ -4,9 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { KpiGrid } from "@/components/shared";
-import { cn } from "@/lib/utils";
 import { brl, num } from "@/lib/format";
-import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
+import { ccaStageColor } from "./ccaStage";
+import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
 
 /** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
@@ -67,15 +67,18 @@ export const CcaBoard = memo(function CcaBoard({
     <div className="min-h-0 flex-1 overflow-auto [contain:paint]">
       {/* Mesma altura e largura para todos: a grade de indicadores do app
           (última linha centralizada) e o nome em duas linhas de altura fixa,
-          cortado com reticências (o nome inteiro fica no `title`). */}
+          cortado com reticências (o nome inteiro fica no `title`). A cor da
+          coluna vai na faixa do topo, não no número: com a cor livre, número
+          colorido podia sumir no fundo de um dos temas. */}
       <KpiGrid cols="faixa" className="sticky left-0 pb-3">
         {stages.map((stage) => (
           <div
             key={stage.id}
-            className="flex h-[4.75rem] flex-col justify-between rounded-2xl border border-border bg-card p-2 text-center"
+            className="relative flex h-[4.75rem] flex-col justify-between overflow-hidden rounded-2xl border border-border bg-card p-2 text-center"
           >
+            <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: ccaStageColor(stage.color) }} aria-hidden />
             <p className="text-eyebrow line-clamp-2 h-8 break-words leading-4" title={stage.name}>{stage.name}</p>
-            <p className={cn("font-display text-xl font-bold leading-none tabular-nums", CCA_TONE_CLASS[ccaStageTone(stage.color)].text)}>
+            <p className="font-display text-xl font-bold leading-none tabular-nums text-foreground">
               {porEstagio.get(stage.id)?.length ?? 0}
             </p>
           </div>
@@ -84,22 +87,29 @@ export const CcaBoard = memo(function CcaBoard({
 
       <div className="flex w-max gap-3 pb-2">
         {stages.map((stage) => {
-          const tone = CCA_TONE_CLASS[ccaStageTone(stage.color)];
+          const cor = ccaStageColor(stage.color);
           const stageDeals = porEstagio.get(stage.id) ?? [];
           const limite = limites[stage.id] ?? POR_COLUNA;
           return (
             // As colunas esticam até a mais alta: o cabeçalho preso vale até o
-            // fim da rolagem em todas, não só na coluna mais cheia.
-            <section key={stage.id} className="w-64 flex-shrink-0 rounded-2xl border border-border bg-muted/10">
-              <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-t-2xl border-b border-border bg-card p-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className={cn("h-2 w-2 flex-shrink-0 rounded-full", tone.dot)} aria-hidden />
-                  <h2 className="text-xs font-semibold">{stage.name}</h2>
-                </div>
-                <Badge variant="secondary" className="h-5 text-xs tabular-nums">{stageDeals.length}</Badge>
+            // fim da rolagem em todas, não só na coluna mais cheia. O fundo
+            // cinza é do corpo e não da coluna: atrás do entalhe da seta tem de
+            // aparecer a página. Por isso quem prende é um invólucro com o fundo
+            // da página — preso o próprio cabeçalho, os cartões rolando por baixo
+            // apareciam pelo entalhe e pela ponta.
+            <section key={stage.id} className="flex w-64 flex-shrink-0 flex-col">
+              <div className="sticky top-0 z-10 bg-background">
+                <KanbanColumnHeader
+                  as="h2"
+                  name={stage.name}
+                  color={cor}
+                  total={stageDeals.reduce((soma, deal) => soma + (deal.value || 0), 0)}
+                  count={stageDeals.length}
+                  noun="caso"
+                />
               </div>
 
-              <div className="space-y-2 p-2">
+              <div className="flex-1 space-y-2 rounded-b-2xl bg-muted/50 p-2">
                 {stageDeals.slice(0, limite).map((deal) => {
                   const envio = sendCounts?.get(deal.dealId);
                   const enviado = [
@@ -107,7 +117,11 @@ export const CcaBoard = memo(function CcaBoard({
                     envio?.virar ? vezesPela(envio.virar, "Análise p/ virar negócio") : "",
                   ].filter(Boolean).join(" e ");
                   return (
-                    <article key={deal.caseId} className="space-y-2 rounded-xl border border-border bg-card p-3">
+                    <article
+                      key={deal.caseId}
+                      className="space-y-2 rounded-xl border border-l-4 border-border bg-card p-3"
+                      style={{ borderLeftColor: cor }}
+                    >
                       {/* Mesmo desenho do `DealCard`: o corpo clicável é IRMÃO
                           do rodapé com o Select e o botão, nunca o pai deles —
                           controle dentro de controle é `nested-interactive`, e

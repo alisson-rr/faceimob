@@ -5,10 +5,14 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 /**
- * Botao em pilula (`rounded-full`) — e a forma da linguagem visual, junto com o
- * card de raio grande. `default` e `highlight` sao os CTAs: ganham sombra da
- * propria cor e sobem 2px no hover; os demais ficam quietos porque aparecem em
- * tabela e barra de filtro, onde o pulo vira ruido.
+ * Botao com o raio de campo (`rounded-xl`, 6 px), o mesmo do input e da barra de
+ * abas. Deixou de ser pilula a pedido do cliente (18/09/2026: "nenhum item com
+ * o arredondamento grande") — o "Ultimos 30 dias" em pilula foi o exemplo dele.
+ * A trava esta em `radius-scale.test.ts`.
+ *
+ * `default` e `highlight` sao os CTAs: ganham sombra da propria cor e sobem 2px
+ * no hover; os demais ficam quietos porque aparecem em tabela e barra de
+ * filtro, onde o pulo vira ruido.
  *
  * `highlight` e O botao da tela (um por tela: "Atender agora", "Fazer check-in",
  * "Entrar"): ambar com luz de cima, texto escuro e o brilho parado de
@@ -16,7 +20,7 @@ import { cn } from "@/lib/utils";
  * vem depois do brilho no CSS e o substitui enquanto o botao esta focado.
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {

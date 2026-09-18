@@ -205,3 +205,71 @@ describe("CcaBoard · mover para outro estágio", () => {
     if (semScroll) delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
 });
+
+/**
+ * Kanban colorido (pedido de 18/09/2026, no desenho do CV CRM): o cabeçalho é
+ * sólido na cor da coluna e diz quanto a coluna soma, e cada cartão repete a
+ * cor na borda esquerda. A quantidade não pode sumir para o leitor de tela —
+ * ela saiu do selo e foi para a linha do total.
+ */
+describe("CcaBoard · kanban colorido", () => {
+  it("cabeçalho na cor da coluna com total e quantidade; cartões com a mesma cor", async () => {
+    const outro: CcaDeal = { ...DEAL, caseId: "c2", dealId: "d2", client: "Outro Cliente", value: 338_000 };
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[STAGE]}
+          deals={[DEAL, outro]}
+          canAct={false}
+          onOpen={() => undefined}
+          onMove={() => undefined}
+          onSubmitToDeveloper={() => undefined}
+        /> as ReactNode,
+      );
+    });
+
+    const cabecalho = container.querySelector("h2")?.parentElement;
+    expect(container.querySelector("h2")?.textContent).toBe("Em análise");
+    // #0ea5e9: fundo da coluna, e texto preto (dá mais contraste que o branco).
+    expect(cabecalho?.style.backgroundColor).toBe("rgb(14, 165, 233)");
+    expect(cabecalho?.style.color).toBe("rgb(0, 0, 0)");
+    // 100.000 + 338.000. O substantivo é só do leitor de tela.
+    expect(cabecalho?.textContent).toMatch(/R\$\s438\.000 · 2 casos$/);
+
+    const cartoes = [...container.querySelectorAll<HTMLElement>("article")];
+    expect(cartoes).toHaveLength(2);
+    // O jsdom devolve a borda como foi escrita (e o fundo em rgb()).
+    expect(cartoes.map((cartao) => cartao.style.borderLeftColor)).toEqual(["#0ea5e9", "#0ea5e9"]);
+
+    // Indicador do topo: a cor vai na faixa, o número fica na cor do texto.
+    expect(container.querySelector<HTMLElement>("span.h-1")?.style.backgroundColor).toBe("rgb(14, 165, 233)");
+
+    await act(async () => { root.unmount(); });
+    container.remove();
+  });
+
+  it("coluna com chave antiga pinta com o hex do tom", async () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[{ ...STAGE, color: "success" }]}
+          deals={[]}
+          canAct={false}
+          onOpen={() => undefined}
+          onMove={() => undefined}
+          onSubmitToDeveloper={() => undefined}
+        /> as ReactNode,
+      );
+    });
+    const cabecalho = container.querySelector("h2")?.parentElement;
+    // TONE_HEX.success = #16A34A.
+    expect(cabecalho?.style.backgroundColor).toBe("rgb(22, 163, 74)");
+    expect(cabecalho?.textContent).toMatch(/R\$\s0 · 0 casos$/);
+    await act(async () => { root.unmount(); });
+    container.remove();
+  });
+});

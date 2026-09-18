@@ -921,7 +921,7 @@ export default function Equipes() {
                     )}
                     <div className="flex flex-wrap gap-1">
                       {t.brokers.map(b => (
-                        <span key={b.id} className="text-xs px-2 py-0.5 rounded-full bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
+                        <span key={b.id} className="text-xs px-2 py-0.5 rounded-md bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
                       ))}
                       {t.brokers.length === 0 && <span className="text-xs text-muted-foreground">Sem corretores</span>}
                     </div>

@@ -12,26 +12,27 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { supabase } from "@/integrations/supabase/client";
-import type { StatusTone } from "@/components/shared";
-import {
-  CCA_STATUS_OPTIONS, CCA_TONE_CLASS, CCA_TONE_OPTIONS, ccaStageTone, ccaStatusLabel,
-  type CcaCaseStatus,
-} from "./ccaStage";
+import { ColorField } from "@/components/shared";
+import { TONE_HEX } from "@/lib/tone";
+import { CCA_STATUS_OPTIONS, ccaStageColor, ccaStatusLabel, type CcaCaseStatus } from "./ccaStage";
 import { ccaKeys, loadCcaStatusOptions, type CcaStage } from "./ccaData";
 
 /** Valor do item "nenhum": o Select do Radix não aceita `""` como item. */
 const SEM_STATUS = "none";
+
+/** Cor de estágio novo: um azul, "em andamento". */
+const COR_INICIAL = TONE_HEX.info;
 
 /**
  * Criar, renomear, recolorir e excluir estágio da esteira. Só admin e sócio
  * chegam aqui: `cca_stages_write` é `is_admin()` desde a 0151.
  *
  * Duas correções: o **desfecho** passa a ser escolhido (P10) e a **cor** é
- * gravada como chave semântica, não como classe do Tailwind (T14). Excluir pede
+ * gravada como `#RRGGBB` pelo seletor nativo (0153) — era classe do Tailwind
+ * (T14), depois uma de seis chaves, e as 19 colunas repetiam cor. Excluir pede
  * confirmação em `AlertDialog` — era `window.confirm`, que alguns navegadores
  * suprimem e que não é estilizável nem anunciável.
  *
@@ -49,7 +50,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
   const nomeRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<CcaStage | null>(null);
   const [name, setName] = useState("");
-  const [tone, setTone] = useState<StatusTone>("info");
+  const [color, setColor] = useState(COR_INICIAL);
   const [status, setStatus] = useState<CcaCaseStatus>("under_review");
   const [dealStatusId, setDealStatusId] = useState(SEM_STATUS);
   const [saving, setSaving] = useState(false);
@@ -62,16 +63,17 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
     catalogo.data?.find((option) => option.id === id)?.label;
 
   const reset = () => {
-    setEditing(null); setName(""); setTone("info"); setStatus("under_review"); setDealStatusId(SEM_STATUS);
+    setEditing(null); setName(""); setColor(COR_INICIAL); setStatus("under_review"); setDealStatusId(SEM_STATUS);
   };
 
   const save = async () => {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      // A coluna guarda a CHAVE semântica, nunca a classe do Tailwind.
+      // Sempre `#RRGGBB` (ver o `ColorField` abaixo): o CHECK da 0153 recusa
+      // qualquer formato fora do hex e das chaves antigas.
       const payload = {
-        name: name.trim(), color: tone, status,
+        name: name.trim(), color, status,
         deal_status_id: dealStatusId === SEM_STATUS ? null : dealStatusId,
       };
       if (editing) {
@@ -155,15 +157,13 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                 />
               </div>
               <div>
-                <Label htmlFor="cca-stage-tone">Cor</Label>
-                <Select value={tone} onValueChange={(value) => setTone(value as StatusTone)}>
-                  <SelectTrigger id="cca-stage-tone" className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CCA_TONE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="cca-stage-color">Cor</Label>
+                <div className="mt-1">
+                  {/* Toda coluna tem cor: "Sem cor" vira o cinza de verdade, e o
+                      seletor mostra esse cinza — o vazio do `ColorField` aparece
+                      como preto, que a coluna nunca teria. */}
+                  <ColorField id="cca-stage-color" value={color} onChange={(c) => setColor(c || TONE_HEX.neutral)} />
+                </div>
               </div>
               <div>
                 <Label htmlFor="cca-stage-status">Desfecho</Label>
@@ -212,7 +212,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                         os nomes são longos e parecidos ("ANÁLISE CEOPF", "INCONFORME
                         CEOPF"), e é por ele que se escolhe qual editar. */}
                     <div className="flex min-w-0 items-start gap-2">
-                      <span className={cn("mt-1 h-2 w-2 flex-shrink-0 rounded-full", CCA_TONE_CLASS[ccaStageTone(stage.color)].dot)} aria-hidden />
+                      <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: ccaStageColor(stage.color) }} aria-hidden />
                       <div className="min-w-0">
                         <p className="break-words text-xs font-medium">{stage.name}</p>
                         <p className="break-words text-xs text-muted-foreground">
@@ -227,7 +227,8 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                         onClick={() => {
                           setEditing(stage);
                           setName(stage.name);
-                          setTone(ccaStageTone(stage.color));
+                          // Chave antiga abre com o hex dela: salvar grava hex.
+                          setColor(ccaStageColor(stage.color));
                           setStatus(stage.status);
                           setDealStatusId(stage.deal_status_id ?? SEM_STATUS);
                           // O formulário fica no alto do corpo rolável: editar a

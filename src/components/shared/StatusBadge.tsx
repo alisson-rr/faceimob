@@ -44,7 +44,7 @@ export function StatusBadge({ tone = "neutral", children, icon: Icon, className 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold leading-5",
+        "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 text-xs font-semibold leading-5",
         toneClass[tone],
         className,
       )}

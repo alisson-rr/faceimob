@@ -16,6 +16,10 @@ import type { PipelineStage } from "./stages";
 
 interface Props {
   deal: LegacyDealRecord;
+  /** `#RRGGBB` da coluna, na borda esquerda do cartão. String e não objeto de
+   *  estilo: o `memo` compara por identidade, e objeto novo por render refazia
+   *  todos os cartões. */
+  color: string;
   onOpen: (deal: LegacyDealRecord) => void;
   onMove: (deal: LegacyDealRecord, stage: PipelineStage) => void;
   /** A MESMA trava da tabela (`dealLock`): escrita, negócio encerrado e mês
@@ -73,7 +77,7 @@ interface Props {
  * único de abrir/arrastar/Shift+seta; o rodapé com os dois botões é irmão dele.
  */
 function DealCardBase({
-  deal, onOpen, onMove, onLose, lock, canExit, blockedMove, onBlockedMove,
+  deal, color, onOpen, onMove, onLose, lock, canExit, blockedMove, onBlockedMove,
   previousStage, nextStage, dragging, onDragStart, onDragEnd,
 }: Props) {
   const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
@@ -148,10 +152,11 @@ function DealCardBase({
   return (
     <article
       className={cn(
-        "rounded-xl border border-border/40 bg-card p-3 text-left transition-all",
+        "rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
         "hover:border-primary/30 hover:shadow-lg",
         dragging && "scale-95 opacity-40",
       )}
+      style={{ borderLeftColor: color }}
     >
       <div
         role="button"

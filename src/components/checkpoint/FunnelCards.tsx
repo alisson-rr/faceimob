@@ -77,7 +77,7 @@ export function TeamCheckpointCard({
                   <span className={cn("text-lg font-black leading-none", ok ? "text-success" : below ? "text-destructive" : "text-foreground")}>{s.value}</span>
                   <span className={cn("text-xs font-semibold", ok ? "text-success" : below ? "text-destructive" : "text-muted-foreground")}>{s.pct.toFixed(0)}%</span>
                 </div>
-                <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
+                <div className="h-0.5 rounded-sm bg-border/50 overflow-hidden">
                   <div className={cn("h-full", below ? "bg-destructive" : ok ? "bg-success" : "bg-border")} style={{ width: `${semBase ? 0 : Math.min(100, s.pct)}%` }} />
                 </div>
               </div>
@@ -283,7 +283,7 @@ export function DirectorFunnelCard({
                     <span className={cn("text-lg font-black leading-none", below ? "text-destructive" : above ? "text-success" : "text-foreground")}>{r.value}</span>
                     <span className={cn("text-xs font-semibold", below ? "text-destructive" : above ? "text-success" : "text-muted-foreground")}>{r.pct.toFixed(0)}%</span>
                   </div>
-                  <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mt-1">
+                  <div className="h-0.5 rounded-sm bg-border/50 overflow-hidden mt-1">
                     <div className={cn("h-full", below ? "bg-destructive" : semBase ? "bg-border" : "bg-success")} style={{ width: `${semBase ? 0 : Math.min(100, r.pct)}%` }} />
                   </div>
                 </div>

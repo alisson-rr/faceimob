@@ -1,19 +1,21 @@
 /**
  * Estágio da esteira CCA — cor e desfecho.
  *
- * **Cor (achado T14).** `cca_stages.color` guardava uma CLASSE do Tailwind
- * (`text-amber-400`, depois `text-warning`): o banco passava a depender do nome
- * de uma classe de front, a classe montada em runtime não entrava no bundle
- * sem safelist, e um literal de paleta não acompanha a troca de tema. Agora a
- * coluna guarda uma CHAVE SEMÂNTICA (`warning`, `success`…) e a leitura tolera
- * os dois formatos antigos — não dá para migrar as linhas existentes daqui, e
- * uma tela que só entende o formato novo apagaria a cor de todas elas.
+ * **Cor (achado T14, depois 0153).** `cca_stages.color` guardava uma CLASSE
+ * do Tailwind (`text-amber-400`, depois `text-warning`), e virou CHAVE
+ * SEMÂNTICA (`warning`, `success`…). Desde o kanban colorido (18/09/2026) a
+ * coluna guarda `#RRGGBB`, que é o que o seletor de cor devolve e o que pinta
+ * o cabeçalho sólido. A leitura continua tolerando os formatos antigos
+ * (`ccaStageColor` traduz a chave para um hex fixo): uma tela que só
+ * entendesse o formato novo apagaria a cor da linha que ainda não foi
+ * recolorida.
  *
  * **Desfecho (achado P10).** `cca_stages.status` mapeia o estágio para o enum
  * `cca_status`. Todo estágio criado pela tela nascia `under_review`, então um
  * "Aprovado" criado pelo usuário não aprovava nada nem movia o negócio.
  */
 import type { StatusTone } from "@/components/shared";
+import { TONE_HEX, isHexColor } from "@/lib/tone";
 
 export type CcaCaseStatus =
   | "pending_documents" | "under_review" | "sent_to_developer"
@@ -75,12 +77,10 @@ export function ccaStageTone(color: string | null | undefined): StatusTone {
   return "neutral";
 }
 
-/** Classes literais — o Tailwind não enxerga classe montada em runtime. */
-export const CCA_TONE_CLASS: Record<StatusTone, { text: string; dot: string }> = {
-  success: { text: "text-success", dot: "bg-success" },
-  warning: { text: "text-warning", dot: "bg-warning" },
-  info: { text: "text-info", dot: "bg-info" },
-  danger: { text: "text-destructive", dot: "bg-destructive" },
-  neutral: { text: "text-muted-foreground", dot: "bg-muted-foreground" },
-  highlight: { text: "text-primary", dot: "bg-primary" },
-};
+/**
+ * Cor da coluna como `#RRGGBB`, pronta para o `style`: o hex gravado, ou o hex
+ * fixo do tom quando a linha ainda guarda chave ou classe antiga. Nulo, vazio
+ * ou lixo viram o cinza neutro — nunca uma coluna sem cor.
+ */
+export const ccaStageColor = (color: string | null | undefined): string =>
+  isHexColor(color) ? color : TONE_HEX[ccaStageTone(color)];

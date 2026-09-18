@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEAL_STAGES } from "@/types/crm";
-import { LOST_STAGE_CODE, funnelStages, stageLabelOf, stageSurface, stageTone } from "./stages";
+import { isHexColor } from "@/lib/tone";
+import { LOST_STAGE_CODE, funnelStages, pipelineStageColor, stageLabelOf, stageTone } from "./stages";
 import { catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 import { faceimobStatusTone, statusChoices } from "./statuses";
-import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
+import { ccaStageColor, ccaStageTone } from "./ccaStage";
 
 /**
  * Trava da fonte única de etapa (achados F10 e F11).
@@ -19,14 +20,15 @@ import { CCA_TONE_CLASS, ccaStageTone } from "./ccaStage";
  */
 const seed = readFileSync(resolve(__dirname, "../../../supabase/seed.sql"), "utf8");
 
-/** `('closed', 'Fechado', 8, 'won', …)` → { code, label, position }. */
+/** `('closed', 'Fechado', 8, 'won', '#facc15', …)` → { code, label, position, color }. */
 const seededStages = (() => {
   const block = /insert into public\.pipeline_stages[^;]+;/i.exec(seed);
   if (!block) throw new Error("bloco de pipeline_stages não encontrado em supabase/seed.sql");
-  return [...block[0].matchAll(/\('([a-z_]+)',\s*'([^']+)',\s*(\d+),/g)].map((row) => ({
+  return [...block[0].matchAll(/\('([a-z_]+)',\s*'([^']+)',\s*(\d+),\s*'[a-z]+',\s*'([^']*)'/g)].map((row) => ({
     code: row[1],
     label: row[2],
     position: Number(row[3]),
+    color: row[4],
   }));
 })();
 
@@ -49,11 +51,12 @@ describe("catálogo de etapas", () => {
     expect(semTom.map((stage) => stage.code)).toEqual(["lead"]);
   });
 
-  it("todo tom tem classe literal, senão o Tailwind não compila a regra", () => {
+  it("toda coluna pinta com a cor gravada no banco", () => {
+    // O cabeçalho do kanban é sólido na cor da etapa (18/09/2026). Se o seed
+    // trocar o hex por outra coisa, a coluna cai no tom de reserva sem aviso.
     for (const stage of seededStages) {
-      const surface = stageSurface(stage.code);
-      expect(surface.dot.startsWith("bg-"), stage.code).toBe(true);
-      expect(surface.border.startsWith("border-"), stage.code).toBe(true);
+      expect(isHexColor(stage.color), stage.code).toBe(true);
+      expect(pipelineStageColor(stage), stage.code).toBe(stage.color);
     }
   });
 
@@ -114,10 +117,9 @@ describe("cor do estágio CCA (T14)", () => {
     expect(ccaStageTone("text-destructive")).toBe("danger");
   });
 
-  it("cor vazia ou desconhecida não deixa o estágio sem classe", () => {
-    for (const valor of [null, undefined, "", "#94a3b8", "cor-inventada"]) {
-      const tom = ccaStageTone(valor);
-      expect(CCA_TONE_CLASS[tom]).toBeDefined();
+  it("cor vazia ou desconhecida não deixa o estágio sem cor", () => {
+    for (const valor of [null, undefined, "", "#94a3b8", "cor-inventada", "text-amber-400"]) {
+      expect(isHexColor(ccaStageColor(valor)), String(valor)).toBe(true);
     }
   });
 });

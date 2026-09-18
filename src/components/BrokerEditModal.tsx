@@ -673,7 +673,7 @@ export function BrokerEditModal({
               type="button"
               aria-label="Trocar foto"
               onClick={() => fileRef.current?.click()}
-              className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-1.5 border-2 border-background"
+              className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-xl p-1.5 border-2 border-background"
             >
               {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
             </button>

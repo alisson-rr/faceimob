@@ -6,13 +6,17 @@
  * discordando (`DEAL_STAGES` em `types/crm.ts`, `tableStageLabels` no Pipeline e
  * a coluna `label`, que ninguém lia — achados F10/F11). Agora o rótulo vem do
  * banco (`listPipelineStages` para as colunas, `deal.stage_label` para a linha)
- * e este módulo devolve apenas o TOM de cada etapa.
+ * e este módulo devolve apenas a COR de cada etapa.
  *
- * `pipeline_stages.color` existe no banco e é hex (`#94a3b8`) — não pode ser
- * usado: hex não acompanha a troca de tema. Por isso o tom é mapeado por `code`.
+ * A cor é `pipeline_stages.color` (hex, `#94a3b8`). Antes ela não podia ser
+ * usada porque a coluna era tingida por token e o texto por cima tinha cor
+ * fixa; desde o kanban colorido (18/09/2026) o cabeçalho é SÓLIDO e o texto
+ * escolhe preto ou branco sozinho (`textOn`), então o hex vale nos dois temas.
+ * O tom por `code` fica de reserva para etapa sem hex válido.
  */
 import type { StatusTone } from "@/components/shared";
 import type { PipelineStageRecord } from "@/integrations/supabase/permissions";
+import { TONE_HEX, isHexColor } from "@/lib/tone";
 
 export type PipelineStage = PipelineStageRecord;
 
@@ -34,20 +38,9 @@ const TONE_BY_CODE: Record<string, StatusTone> = {
 /** Etapa criada pelo admin depois do seed cai em `neutral` — nunca sem cor. */
 export const stageTone = (code: string): StatusTone => TONE_BY_CODE[code] ?? "neutral";
 
-/**
- * Classes da coluna do kanban. Escritas por extenso de propósito: classe
- * montada em runtime (`bg-${tom}/15`) não entra no bundle do Tailwind.
- */
-export const STAGE_SURFACE: Record<StatusTone, { border: string; header: string; dot: string; body: string }> = {
-  success: { border: "border-success/25", header: "bg-success/15", dot: "bg-success", body: "bg-success/5" },
-  warning: { border: "border-warning/25", header: "bg-warning/15", dot: "bg-warning", body: "bg-warning/5" },
-  info: { border: "border-info/25", header: "bg-info/15", dot: "bg-info", body: "bg-info/5" },
-  danger: { border: "border-destructive/25", header: "bg-destructive/15", dot: "bg-destructive", body: "bg-destructive/5" },
-  neutral: { border: "border-border", header: "bg-muted/40", dot: "bg-muted-foreground", body: "bg-muted/20" },
-  highlight: { border: "border-highlight/30", header: "bg-highlight/20", dot: "bg-highlight", body: "bg-highlight/5" },
-};
-
-export const stageSurface = (code: string) => STAGE_SURFACE[stageTone(code)];
+/** Cor da coluna como `#RRGGBB`: a do banco, ou a do tom da etapa. */
+export const pipelineStageColor = (stage: Pick<PipelineStage, "code" | "color">): string =>
+  isHexColor(stage.color) ? stage.color : TONE_HEX[stageTone(stage.code)];
 
 /** Colunas do funil: tudo que não é desfecho, na ordem do catálogo. */
 export const funnelStages = (stages: PipelineStage[]): PipelineStage[] =>

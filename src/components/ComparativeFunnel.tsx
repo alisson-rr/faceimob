@@ -152,7 +152,7 @@ export function CompactFunnel({
               <span className="w-8 shrink-0 text-right font-bold tabular-nums text-foreground">
                 {num(step.value)}
               </span>
-              <span className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+              <span className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted">
                 {index > 0 && (
                   <span
                     aria-hidden
@@ -161,7 +161,7 @@ export function CompactFunnel({
                   />
                 )}
                 <span
-                  className={cn("block h-full rounded-full", index === 0 ? "" : noAlvo ? "bg-success" : "bg-destructive")}
+                  className={cn("block h-full rounded-sm", index === 0 ? "" : noAlvo ? "bg-success" : "bg-destructive")}
                   style={{ width: `${barPct}%`, background: index === 0 ? accent : undefined }}
                 />
               </span>
@@ -199,14 +199,14 @@ export function StageComparisonList({ steps }: { steps: FunnelStep[] }) {
             </span>
             {/* A 375 px a barra fica com 20 px e nao informa nada; o numero ao
                 lado e o rotulo do estado continuam contando a mesma historia. */}
-            <span className="relative hidden h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted sm:block">
+            <span className="relative hidden h-2 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted sm:block">
               <span
                 aria-hidden
                 className="absolute inset-y-0 left-0 border-r-2 border-dashed border-primary/70"
                 style={{ width: `${Math.min(100, step.targetPct)}%` }}
               />
               <span
-                className={cn("block h-full rounded-full", stagePct >= step.targetPct ? "bg-success" : "bg-destructive")}
+                className={cn("block h-full rounded-sm", stagePct >= step.targetPct ? "bg-success" : "bg-destructive")}
                 style={{ width: `${Math.min(100, stagePct)}%` }}
               />
             </span>
@@ -311,11 +311,11 @@ export default function ComparativeFunnel({
                   {num(step.value)} <span className="text-xs font-medium text-muted-foreground">vs</span>{" "}
                   {num(medido)}
                 </p>
-                <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted">
+                <span className="mt-2 block h-1.5 overflow-hidden rounded-sm bg-muted">
                   {pct !== null && (
                     <span
                       className={cn(
-                        "block h-full rounded-full",
+                        "block h-full rounded-sm",
                         pct >= 90 ? "bg-success" : pct >= 60 ? "bg-warning" : "bg-destructive",
                       )}
                       style={{ width: `${pct}%` }}

@@ -49,9 +49,9 @@ export function BarList({ rows, share = false, emptyLabel }: BarListProps) {
           <span className="w-28 shrink-0 truncate text-xs font-semibold text-foreground sm:w-40 sm:text-sm">
             {row.label}
           </span>
-          <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+          <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted">
             <span
-              className="ease-premium block h-full rounded-full transition-[width] duration-500"
+              className="ease-premium block h-full rounded-sm transition-[width] duration-500"
               style={{ width: `${(row.value / maior) * 100}%`, background: tone(row.token ?? labelToken(row.label)) }}
             />
           </span>

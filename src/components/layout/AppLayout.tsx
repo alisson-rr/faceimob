@@ -84,7 +84,7 @@ export default function AppLayout() {
               {headerScores.map((s) => (
                 <div
                   key={s.broker.id}
-                  className="interactive ease-premium flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1.5 hover:border-primary/40"
+                  className="interactive ease-premium flex items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 hover:border-primary/40"
                 >
                   <span className="text-xs font-bold tabular-nums text-primary">{s.rank}º</span>
                   {/* `rank` da tira é 1º, 2º, 3º; o pódio de `@/lib/tone` é base 0. */}

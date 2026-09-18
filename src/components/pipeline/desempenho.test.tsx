@@ -145,6 +145,7 @@ import { catalogoDeTeste } from "./statusCatalog.fixture";
 import type { PipelineStage } from "./stages";
 import { useDashboardLeads, useDashboardPayload } from "@/components/dashboard/data";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
+import { brl, num } from "@/lib/format";
 
 const CODIGOS = ["lead", "docs", "analysis", "sent", "approved", "proposal", "contract", "won", "lost"];
 const STAGES: PipelineStage[] = CODIGOS.map((code, i) => ({ id: `st${i}`, code, label: code.toUpperCase(), position: i + 1 }));
@@ -483,8 +484,10 @@ describe("desempenho · render", () => {
     log("CcaBoard", { casos: N_CASOS, montarMs: tela.ms, cartoes: cartoes(), nos: tela.container.querySelectorAll("*").length });
 
     expect(cartoes()).toBe(5 * Math.min(200, porColuna));
-    // O contador da coluna segue contando TODOS os casos dela.
-    expect(tela.container.querySelector("section .tabular-nums")?.textContent).toBe(String(porColuna));
+    // O cabeçalho da coluna segue contando e somando TODOS os casos dela, não
+    // só os 200 desenhados.
+    expect(tela.container.querySelector("section h2 + p")?.textContent)
+      .toBe(`${brl(porColuna * 1000)} · ${num(porColuna)} casos`);
 
     const mais = [...tela.container.querySelectorAll("button")].find((botao) => botao.textContent?.startsWith("Mostrar mais"));
     expect(mais, "coluna com mais de 200 casos oferece o resto").toBeTruthy();

@@ -53,7 +53,7 @@ export function DealsToolbar({
           />
         </div>
 
-        <div className="flex flex-shrink-0 overflow-hidden rounded-full border border-border">
+        <div className="flex flex-shrink-0 overflow-hidden rounded-xl border border-border">
           <Button
             variant="ghost" size="icon" aria-label="Ver em tabela" aria-pressed={view === "table"}
             className={cn("h-9 w-9 rounded-none", view === "table" && "bg-primary text-primary-foreground")}

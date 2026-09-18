@@ -633,7 +633,7 @@ export default function DailyReport() {
           <div>
             <Logo className="h-12 mx-auto" />
           </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/10 text-xs uppercase tracking-widest">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-primary/30 bg-primary/10 text-xs uppercase tracking-widest">
             <Swords className="h-3 w-3 text-primary" /> Checkpoint Diário
           </div>
           <h1 className="text-4xl font-black bg-gradient-to-r from-primary via-info to-chart-5 bg-clip-text text-transparent">

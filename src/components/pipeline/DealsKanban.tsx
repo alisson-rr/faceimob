@@ -1,13 +1,13 @@
 import { useCallback, useState } from "react";
 import { Inbox } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { DealCard } from "./DealCard";
+import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import { useCanExitStage } from "./data";
 import { blockedMoveReason, dealLock } from "./guards";
-import { funnelStages, stageSurface, type PipelineStage } from "./stages";
+import { funnelStages, pipelineStageColor, type PipelineStage } from "./stages";
 
 interface Props {
   stages: PipelineStage[];
@@ -110,28 +110,27 @@ export function DealsKanban({ stages, deals, onOpen, onMove, onLose, canWrite, c
       <p role="status" aria-live="polite" className="sr-only">{announcement}</p>
       <div className="flex min-w-max gap-3 pb-4">
         {columns.map((stage, index) => {
-          const surface = stageSurface(stage.code);
+          const cor = pipelineStageColor(stage);
           const stageDeals = deals.filter((deal) => deal.stage === stage.code);
           const recusa = recusaDoDestino(stage);
           return (
             <div
               key={stage.id}
               className={cn(
-                "w-60 flex-shrink-0 rounded-2xl border transition-all",
-                surface.border,
+                "flex w-60 flex-shrink-0 flex-col transition-all",
                 dragOver === stage.id && (recusa ? "ring-2 ring-destructive" : "ring-2 ring-ring"),
               )}
               onDragOver={(event) => { event.preventDefault(); setDragOver(stage.id); }}
               onDragLeave={() => setDragOver(null)}
               onDrop={() => drop(stage)}
             >
-              <div className={cn("flex items-center justify-between rounded-t-2xl p-3", surface.header)}>
-                <div className="flex items-center gap-2">
-                  <span className={cn("h-2.5 w-2.5 rounded-full", surface.dot)} aria-hidden />
-                  <h3 className="text-xs font-semibold">{stage.label}</h3>
-                </div>
-                <Badge variant="secondary" className="h-5 px-1.5 text-xs tabular-nums">{stageDeals.length}</Badge>
-              </div>
+              <KanbanColumnHeader
+                name={stage.label}
+                color={cor}
+                total={stageDeals.reduce((soma, deal) => soma + (deal.deal_value || 0), 0)}
+                count={stageDeals.length}
+                noun="negócio"
+              />
               {/* A recusa do destino aparece durante o arraste, não depois do
                   solte: era só o toast vermelho que contava. */}
               {dragOver === stage.id && recusa && (
@@ -140,11 +139,14 @@ export function DealsKanban({ stages, deals, onOpen, onMove, onLose, canWrite, c
                 </p>
               )}
 
-              <div className={cn("max-h-[calc(100vh-420px)] min-h-[180px] space-y-2 overflow-y-auto p-2", surface.body)}>
+              {/* Corpo neutro: a cor da coluna fica no cabeçalho e na borda
+                  de cada cartão, como no CV CRM. */}
+              <div className="max-h-[calc(100vh-420px)] min-h-[180px] flex-1 space-y-2 overflow-y-auto rounded-b-2xl bg-muted/50 p-2">
                 {stageDeals.map((deal) => (
                   <DealCard
                     key={deal.id}
                     deal={deal}
+                    color={cor}
                     onOpen={onOpen}
                     onMove={move}
                     lock={dealLock(deal, { canWrite, isAdmin, closedMonths })}

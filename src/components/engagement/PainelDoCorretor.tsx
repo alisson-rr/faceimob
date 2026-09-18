@@ -202,11 +202,11 @@ function Pontuacao() {
               <div className="flex items-center gap-2">
                 <div
                   aria-hidden
-                  className="h-3 min-w-0 flex-1 overflow-hidden rounded-full border border-border bg-muted"
+                  className="h-3 min-w-0 flex-1 overflow-hidden rounded-sm border border-border bg-muted"
                 >
                   <div
                     className={cn(
-                      "h-full rounded-full transition-[width]",
+                      "h-full rounded-sm transition-[width]",
                       item.code === "venda" ? "bg-success" : "bg-primary",
                     )}
                     style={{ width: `${pct}%` }}

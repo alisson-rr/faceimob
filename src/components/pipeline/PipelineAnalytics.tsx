@@ -1,9 +1,8 @@
 import { ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { brl, num } from "@/lib/format";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { pct } from "./filters";
-import { funnelStages, stageSurface, type PipelineStage } from "./stages";
+import { funnelStages, pipelineStageColor, type PipelineStage } from "./stages";
 
 interface Props {
   deals: LegacyDealRecord[];
@@ -52,7 +51,7 @@ export function PipelineAnalytics({ deals, stages }: Props) {
           const rate = current > 0 ? Math.round((next / current) * 100) : 0;
           return (
             <div key={stage.id} className="flex items-center gap-2">
-              <span className={cn("h-2 w-2 rounded-full", stageSurface(stage.code).dot)} aria-hidden />
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: pipelineStageColor(stage) }} aria-hidden />
               <span className="flex-1 truncate text-xs">{stage.label}</span>
               <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden />
               <span className="text-xs tabular-nums text-muted-foreground">{rate}%</span>

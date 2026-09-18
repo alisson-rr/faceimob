@@ -59,6 +59,7 @@ async function renderCard(
     root.render(
       <DealCard
         deal={deal(visitDate, opcoes.share, opcoes.extra)}
+        color="#34d399"
         onOpen={() => undefined}
         onMove={(_alvo, stage) => movidos.push(stage.label)}
         onLose={(alvo) => perdidos.push(alvo.id)}
@@ -101,6 +102,7 @@ async function renderCard(
       .map((nome) => nome.textContent),
     bolinha: container.querySelector<HTMLElement>('[role="button"] span.rounded-full[aria-hidden]')?.style
       .backgroundColor ?? null,
+    borda: container.querySelector<HTMLElement>("article")?.style.borderLeftColor ?? null,
   };
   await act(async () => { root.unmount(); });
   container.remove();
@@ -199,5 +201,13 @@ describe("DealCard · corretor 2 e cor da construtora", () => {
     const { bolinha, texto } = await renderCard(undefined, { extra: { developer_color: null } });
     expect(bolinha).toBeNull();
     expect(texto).toContain("Construtora");
+  });
+});
+
+/** Kanban colorido (18/09/2026): o cartão repete a cor da coluna na borda. */
+describe("DealCard · cor da coluna", () => {
+  it("pinta a borda esquerda com a cor que a coluna passou", async () => {
+    // O jsdom devolve a cor como foi escrita.
+    expect((await renderCard()).borda).toBe("#34d399");
   });
 });

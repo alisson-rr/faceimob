@@ -211,7 +211,7 @@ export function GoalCard({ month, vendas, goal, scope, canManage, isLoading, err
 
         <div>
           <div
-            className="h-3 w-full overflow-hidden rounded-full bg-muted"
+            className="h-3 w-full overflow-hidden rounded-sm bg-muted"
             role="progressbar"
             aria-valuenow={Math.min(100, pct)}
             aria-valuemin={0}
@@ -219,7 +219,7 @@ export function GoalCard({ month, vendas, goal, scope, canManage, isLoading, err
             aria-label={`${capitalize(escopo)} de vendas de ${periodo}: ${vendas} de ${goal}`}
           >
             <div
-              className={`h-full rounded-full transition-[width] duration-500 ease-premium ${status.bar}`}
+              className={`h-full rounded-sm transition-[width] duration-500 ease-premium ${status.bar}`}
               style={{ width: `${Math.min(100, Math.max(pct, pct > 0 ? 3 : 0))}%` }}
             />
           </div>

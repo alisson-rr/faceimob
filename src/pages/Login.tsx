@@ -365,7 +365,7 @@ export default function Login() {
                       type="button"
                       onClick={() => setShowHelp((v) => !v)}
                       aria-expanded={showHelp}
-                      className="rounded-full px-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="rounded-sm px-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Esqueci minha senha
                     </button>
@@ -460,7 +460,7 @@ export default function Login() {
                     <button
                       type="button"
                       onClick={backToEmail}
-                      className="inline-flex items-center gap-1 rounded-full px-1 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="inline-flex items-center gap-1 rounded-sm px-1 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Trocar e-mail
                     </button>
@@ -468,7 +468,7 @@ export default function Login() {
                       type="button"
                       onClick={() => sendCode()}
                       disabled={cooldown > 0 || loading}
-                      className="rounded-full px-1 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      className="rounded-sm px-1 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                     >
                       {cooldown > 0 ? `Reenviar em ${cooldown}s` : "Reenviar"}
                     </button>

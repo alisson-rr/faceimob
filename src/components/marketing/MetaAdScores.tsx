@@ -343,7 +343,7 @@ export function MetaAdScores() {
               </SelectContent>
             </Select>
           )}
-          <div role="group" aria-label="Período da análise" className="flex rounded-full border border-border p-0.5">
+          <div role="group" aria-label="Período da análise" className="flex rounded-xl border border-border p-0.5">
             {PERIODOS.map((d) => (
               <Button
                 key={d}

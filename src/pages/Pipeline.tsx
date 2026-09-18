@@ -337,7 +337,7 @@ export default function Pipeline() {
           Esta nao usa o `TabsList` compartilhado — e um `role=tablist` proprio,
           entao o `mx-auto` precisa vir aqui; sem ele a barra ficava encostada a
           esquerda enquanto Dashboard, Marketing e Gamificacao ja centravam. */}
-      <div className="mx-auto flex w-fit rounded-full border border-border p-0.5" role="tablist" aria-label="Seções do pipeline">
+      <div className="mx-auto flex w-fit rounded-xl border border-border p-0.5" role="tablist" aria-label="Seções do pipeline">
         {([["deals", "Negócios"], ["leads", "Leads"]] as const).map(([key, label]) => (
           <button
             key={key}
@@ -346,7 +346,7 @@ export default function Pipeline() {
             aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={cn(
-              "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+              "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               tab === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
             )}

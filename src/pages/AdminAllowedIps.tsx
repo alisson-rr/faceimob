@@ -426,7 +426,7 @@ export default function AdminAllowedIps() {
                 <span className="text-xs text-muted-foreground">{r.team ? `só ${r.team.name}` : "todas as equipes"}</span>
                 <button
                   type="button"
-                  className="rounded-full disabled:cursor-not-allowed"
+                  className="rounded-md disabled:cursor-not-allowed"
                   onClick={() => toggle(r)}
                   disabled={!isAdmin}
                   aria-label={`${r.active ? "Desativar" : "Ativar"} ${r.ip_range}`}

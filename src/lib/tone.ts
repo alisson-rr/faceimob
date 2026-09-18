@@ -56,9 +56,54 @@ export function labelToken(name: string): ChartToken {
 /** A mesma regra, com o nome do caso que a originou (bolinha da construtora). */
 export const developerColor = labelToken;
 
-/** O formato que `developers.color` aceita (0152) e que `<input type="color">` devolve. */
-export const isDeveloperColor = (value: string | null | undefined): value is string =>
+/**
+ * `#RRGGBB`: o que `<input type="color">` devolve e o formato que o banco aceita
+ * em `developers.color` (0152) e `cca_stages.color` (0153).
+ */
+export const isHexColor = (value: string | null | undefined): value is string =>
   typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+
+/** A mesma regra, com o nome do caso que a originou (cor da construtora). */
+export const isDeveloperColor = isHexColor;
+
+/**
+ * Um hex fixo por tom semântico, para onde a cor precisa ser SÓLIDA: o
+ * cabeçalho das colunas do kanban (pedido de 18/09/2026). Serve à coluna que
+ * ainda guarda uma chave (`warning`…) em vez de um hex.
+ *
+ * Hex e não token porque o texto por cima é calculado (`textOn`) e o token muda
+ * de claridade com o tema — o fundo sólido fica igual nos dois.
+ */
+export const TONE_HEX: Record<StatusTone, string> = {
+  info: "#0284C7",
+  warning: "#F59E0B",
+  success: "#16A34A",
+  danger: "#DC2626",
+  highlight: "#F5C114",
+  neutral: "#64748B",
+};
+
+/** Luminância relativa (WCAG 2.x) de `#RRGGBB`. */
+const luminance = (hex: string): number => {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+/**
+ * Cor do texto sobre um fundo `#RRGGBB`: preto ou branco, o de MAIOR contraste.
+ *
+ * A cor da coluna é livre (o admin escolhe no seletor), então o texto não pode
+ * ser fixado por cor. Um dos dois sempre passa de 4,58:1 — o pior caso é o
+ * cinza médio em que os dois empatam —, então 4,5:1 fica garantido para
+ * qualquer escolha.
+ */
+export const textOn = (hex: string): "#000000" | "#FFFFFF" => {
+  const l = luminance(hex) + 0.05;
+  return l / 0.05 >= 1.05 / l ? "#000000" : "#FFFFFF";
+};
 
 /** Classes literais, para o Tailwind enxergar na varredura. */
 const DEVELOPER_DOT: Record<ChartToken, string> = {
@@ -81,7 +126,7 @@ export function developerDot(
   name: string,
   color?: string | null,
 ): { className: string; style?: { backgroundColor: string } } {
-  return isDeveloperColor(color)
+  return isHexColor(color)
     ? { className: "ring-1 ring-border", style: { backgroundColor: color } }
     : { className: DEVELOPER_DOT[developerColor(name)] };
 }

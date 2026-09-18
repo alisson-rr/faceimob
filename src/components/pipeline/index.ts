@@ -34,7 +34,7 @@ export {
   type CcaAnalysis, type CcaDeal, type CcaStage,
 } from "./ccaData";
 export {
-  CCA_STATUS_OPTIONS, CCA_TONE_CLASS, CCA_TONE_OPTIONS, ccaStageTone,
+  CCA_STATUS_OPTIONS, CCA_TONE_OPTIONS, ccaStageColor, ccaStageTone,
   ccaStatusLabel, isDecision, type CcaCaseStatus,
 } from "./ccaStage";
 
@@ -56,7 +56,7 @@ export {
 } from "./filters";
 export { DOCUMENT_REVIEW_META } from "./review";
 export {
-  LOST_STAGE_CODE, funnelStages, stageLabelOf, stageSurface, stageTone,
+  LOST_STAGE_CODE, funnelStages, pipelineStageColor, stageLabelOf, stageTone,
   type PipelineStage,
 } from "./stages";
 export {

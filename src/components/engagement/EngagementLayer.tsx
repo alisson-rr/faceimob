@@ -552,7 +552,7 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-4 left-4 z-[60] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning shadow-sm"
+          className="fixed bottom-4 left-4 z-[60] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning shadow-sm"
         >
           <WifiOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Sem conexão ao vivo — venda fechada agora não vai tocar. Reconectando…

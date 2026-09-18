@@ -10,4 +10,5 @@ export { StatusBadge, type StatusBadgeProps, type StatusTone } from "./StatusBad
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { LoadingState, type LoadingStateProps } from "./LoadingState";
 export { BrandMotif } from "./BrandMotif";
+export { ColorField } from "./ColorField";
 export { Logo, type LogoProps } from "./Logo";
