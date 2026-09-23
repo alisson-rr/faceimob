@@ -21,7 +21,7 @@ const CATALOGO = [
   "leads.view_queue", "leads.reassign", "leads.delete",
   "deals.view_all", "deals.edit_value", "deals.delete",
   "deals.mark_off_distrato",
-  "deals.manage_statuses", "deals.edit_status_group",
+  "deals.manage_statuses", "deals.edit_status_group", "deals.edit_status_detail",
   "cca.review", "reports.view_finance", "teams.manage",
   "users.manage_roles", "settings.integrations", "game.close_season",
   "pipeline.export",

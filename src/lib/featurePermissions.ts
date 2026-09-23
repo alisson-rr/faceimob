@@ -73,6 +73,10 @@ const none = (where: string): PermissionEnforcement => ({ where, enforcedBy: nul
 
 /** Códigos fora de `menu.*` do catálogo (migrations 0044, 0045 e 0061). */
 export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
+  "deals.edit_status_detail": {
+    where: "Pipeline: alterar manualmente o Status 2 na tabela e no editor. Desligar mantém a leitura. Movimentos da CCA continuam pela permissão cca.review; OFF e DISTRATO também exigem a permissão própria",
+    enforcedBy: "banco",
+  },
   "leads.view_queue": {
     where: "Leads: enxergar, editar, anexar, distribuir e realocar leads ainda sem corretor (policies leads_select e leads_update, 0141). Marketing, administrador e sócio alcançam a fila inteira; gerente, diretor e qualquer outro papel com o switch ligado, só a fila geral e a dos grupos de distribuição em que está alguém da equipe dele",
     enforcedBy: "banco",
@@ -94,7 +98,7 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
     enforcedBy: "banco",
   },
   "deals.mark_off_distrato": {
-    where: "Negócio: marcar os desfechos OFF e DISTRATO — os dois rótulos do Status 2 que o cliente reservou ao administrador em 10/09/2026, e que tiram o negócio do funil, do VGV e do ranking (gatilho deals_guard_status_columns). O RESTO do Status 2 continua livre para quem edita o negócio, e a \"Etapa\" não passa por aqui: quem decide etapa é a matriz de etapas (can_enter/can_exit), na aba ao lado",
+    where: "Negócio: marcar os desfechos OFF e DISTRATO, que tiram o negócio do funil, do VGV e do ranking (gatilho deals_guard_status_columns). Também exige Alterar Status 2. A Etapa segue a matriz de etapas (can_enter/can_exit), na aba ao lado",
     enforcedBy: "banco",
   },
   "deals.manage_statuses": {

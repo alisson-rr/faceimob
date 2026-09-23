@@ -1,4 +1,4 @@
-import { memo, useId, useState } from "react";
+import { memo, useEffect, useId, useState } from "react";
 import { Building2, ChevronDown, ChevronUp, DollarSign, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { brl, num } from "@/lib/format";
 import { ccaStageColor } from "./ccaStage";
 import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
+import { elapsedDays, elapsedLabel } from "./ccaTime";
 
 /** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
 const POR_COLUNA = 200;
@@ -64,6 +65,11 @@ export const CcaBoard = memo(function CcaBoard({
   stages, deals, canAct, sendCounts, onOpen, onMove,
 }: Props) {
   const faixaId = useId();
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [indicadoresAbertos, setIndicadoresAbertos] = useState(indicadoresAbertosNoInicio);
   const alternarIndicadores = () => {
     const aberto = !indicadoresAbertos;
@@ -80,7 +86,7 @@ export const CcaBoard = memo(function CcaBoard({
    */
   const [limites, setLimites] = useState<Record<string, number>>({});
 
-  // Um passe só, na ordem que chegou (mais recentes em cima): indicador e
+  // Um passe só, na ordem de chegada (mais antigos em cima): indicador e
   // coluna leem a mesma lista.
   const porEstagio = new Map<string, CcaDeal[]>();
   for (const deal of deals) {
@@ -88,6 +94,11 @@ export const CcaBoard = memo(function CcaBoard({
     if (lista) lista.push(deal);
     else porEstagio.set(deal.stageId, [deal]);
   }
+  const agile = deals.filter((deal) => deal.agile);
+  const agileAges = agile.flatMap((deal) => {
+    const days = elapsedDays(deal.stageEnteredAt ?? deal.submittedAt, now);
+    return days === null ? [] : [days];
+  });
 
   return (
     // `contain: paint` fecha o transbordo aqui dentro: sem ele a faixa das
@@ -116,6 +127,11 @@ export const CcaBoard = memo(function CcaBoard({
         </div>
         <div id={faixaId} hidden={!indicadoresAbertos} className="pt-2">
           <KpiGrid cols="faixa">
+            <div className="relative flex min-h-[4.75rem] flex-col justify-between border border-info/50 border-t-4 bg-info/10 p-2 text-center">
+              <p className="text-eyebrow">Esteira Ágil</p>
+              <p className="font-display text-xl font-bold tabular-nums">{agile.length}</p>
+              <p className="text-xs text-muted-foreground">{agileAges.length ? `Mais antigo: ${elapsedLabel(Math.max(...agileAges))}` : "Sem espera registrada"}</p>
+            </div>
             {stages.map((stage) => (
               // `rounded-none`: o cliente pediu os indicadores "sem os cantos
               // arredondados" (17/09/2026) — é a exceção pedida à escala do app.
@@ -187,10 +203,12 @@ export const CcaBoard = memo(function CcaBoard({
                         // deixariam de ser anunciados assim que entraram aqui.
                         // Mesma solução do `DealCard`.
                         aria-label={`Abrir o negócio de ${deal.client}`
+                          + (deal.cpf ? `, CPF ${deal.cpf}` : "")
                           + `${deal.developer ? ` — ${deal.developer}` : ""}. `
                           + `Empreendimento ${deal.project || "não informado"}, `
                           + `corretor ${deal.broker || "não informado"}, VGV ${brl(deal.value)}.`
-                          + (enviado ? ` Enviado ${enviado}.` : "")}
+                          + (enviado ? ` Enviado ${enviado}.` : "")
+                          + ` ${elapsedLabel(elapsedDays(deal.stageEnteredAt ?? deal.submittedAt, now))}${deal.stageEnteredAt ? " no status" : deal.submittedAt ? " na esteira" : ""}.`}
                         onClick={() => onOpen(deal)}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter" && event.key !== " ") return;
@@ -205,6 +223,7 @@ export const CcaBoard = memo(function CcaBoard({
                               está no `aria-label` acima. */}
                           <div className="flex min-w-0 flex-wrap items-center gap-1">
                             <h3 className="text-xs font-semibold">{deal.client}</h3>
+                            {deal.cpf && <span className="text-xs tabular-nums text-muted-foreground">CPF {deal.cpf}</span>}
                             {envio?.agil ? (
                               <Badge variant="secondary" className="px-1.5 text-xs tabular-nums" title={`Enviado ${vezesPela(envio.agil, "Esteira Ágil")}`}>
                                 Ágil {envio.agil}
@@ -218,6 +237,11 @@ export const CcaBoard = memo(function CcaBoard({
                           </div>
                           {deal.developer && <Badge variant="outline" className="text-xs">{deal.developer}</Badge>}
                         </div>
+
+                        <p className="w-fit rounded-md border border-info/30 bg-info/10 px-2 py-1 text-xs font-semibold tabular-nums"
+                          title={deal.stageEnteredAt ? "Tempo desde a última entrada neste status" : "Caso anterior ao contador: tempo desde a entrada na esteira; o próximo movimento inicia o tempo por status"}>
+                          {elapsedLabel(elapsedDays(deal.stageEnteredAt ?? deal.submittedAt, now))}{deal.stageEnteredAt ? " no status" : deal.submittedAt ? " na esteira" : ""}
+                        </p>
 
                         <dl className="space-y-1 text-xs text-muted-foreground">
                           <div className="flex items-center gap-1">

@@ -1,6 +1,7 @@
 import { ArrowDownRight, ArrowRight, ArrowUpRight, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { labelToken, tone as colorTone } from "@/lib/tone";
 
 type DeltaTone = "success" | "danger" | "neutral";
 
@@ -67,8 +68,9 @@ export function KpiCard({ label, value, delta, icon: Icon, variant = "default", 
 
   return (
     <div
+      style={{ borderTopColor: colorTone(isHighlight ? "gold" : labelToken(label)), backgroundImage: `linear-gradient(135deg, ${colorTone(isHighlight ? "gold" : labelToken(label), 0.12)}, transparent 80%)` }}
       className={cn(
-        "group relative overflow-hidden rounded-2xl border bg-card p-4 transition-colors duration-200 sm:p-5",
+        "group relative overflow-hidden rounded-2xl border border-t-4 bg-card p-4 shadow-sm transition-colors duration-200 sm:p-5",
         isHighlight ? "border-highlight/50" : "border-border hover:border-border/80",
         className,
       )}

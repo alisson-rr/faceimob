@@ -17,10 +17,8 @@ import type { PodiumEntry } from "./Podium";
  * que lá são o assunto da tela.
  *
  * Troféu igual ao do ranking do cabeçalho (pedido de 17/09/2026): a colocação
- * em `primary` e o `Trophy` na cor do pódio (`podiumTextClass`). O cartão é
- * neutro (`card`) porque a medalha pintada de ouro sobre cartão de ouro sumia —
- * sobrava só a fita. Ouro, prata e bronze sobre `card` passam 4,5:1 nos dois
- * temas (par travado no theme-contrast).
+ * em `primary` e o `Trophy` na cor do pódio (`podiumTextClass`). O gradiente
+ * parte de `card` e usa os tons existentes, preservando o contraste dos nomes.
  */
 
 /**
@@ -31,6 +29,11 @@ import type { PodiumEntry } from "./Podium";
  * ordem. Só a grade de três colunas reordena.
  */
 const ORDEM = ["sm:order-2", "sm:order-1", "sm:order-3"];
+const DESTAQUE = [
+  "border-gold/70 bg-gradient-to-b from-card to-gold/25 shadow-[0_0_12px_hsl(var(--gold)/0.18)]",
+  "border-silver/70 bg-gradient-to-b from-card to-silver/25 shadow-[0_0_10px_hsl(var(--silver)/0.14)]",
+  "border-bronze/70 bg-gradient-to-b from-card to-bronze/25 shadow-[0_0_10px_hsl(var(--bronze)/0.14)]",
+];
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
@@ -58,8 +61,9 @@ export function PodiumCards({ entries, className }: PodiumCardsProps) {
           <li key={entry.id} className={cn("min-w-0", ORDEM[index])}>
             <div
               className={cn(
-                "flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5 text-card-foreground shadow-sm",
-                primeiro && "sm:gap-3 sm:px-3.5 sm:py-3.5 sm:shadow-md",
+                "flex min-h-24 items-center gap-3 rounded-xl border-2 bg-card px-4 py-4 text-card-foreground",
+                DESTAQUE[lugar - 1] ?? "border-border",
+                primeiro && "sm:min-h-28 sm:gap-4 sm:px-5 sm:py-5",
               )}
             >
               {/* Decorativo: quem anuncia a colocação é o `sr-only` do nome. */}
@@ -92,7 +96,7 @@ export function PodiumCards({ entries, className }: PodiumCardsProps) {
                 {entry.detail && <p className="truncate text-xs text-muted-foreground">{entry.detail}</p>}
                 {/* No print os pontos têm quase o corpo do nome; quem separa os
                     dois é o corpo da letra, não a cor. */}
-                <p className={cn("text-sm font-bold tabular-nums", primeiro && "sm:text-base")}>
+                <p className={cn("mt-1 text-base font-bold tabular-nums", primeiro && "sm:text-lg")}>
                   {num(entry.points)} pontos
                 </p>
               </div>

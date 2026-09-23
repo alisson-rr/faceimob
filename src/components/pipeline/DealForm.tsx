@@ -644,7 +644,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
               banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
               antigo junto seria uma troca manual que ninguém pediu. */}
-          <Select value={form.status} onValueChange={(v) => onChange({ status: v, status_group_id: undefined })}>
+          <Select value={form.status} disabled={!can("deals.edit_status_detail")} onValueChange={(v) => onChange({ status: v, status_group_id: undefined })}>
             <SelectTrigger
               id={field("status")}
               className="mt-1 text-xs"
@@ -680,6 +680,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
               })}
             </SelectContent>
           </Select>
+          {!can("deals.edit_status_detail") && <p className="mt-1 text-xs text-muted-foreground">Seu perfil pode consultar o Status 2. A edição depende da permissão “Alterar Status 2”.</p>}
           {vendaBloqueada && (
             <p id={field("status-hint")} className="mt-1 text-xs text-muted-foreground">
               {vendaBloqueada}

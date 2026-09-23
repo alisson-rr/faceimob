@@ -10,6 +10,12 @@ const base = {
 };
 
 describe("montarEmailDeMovimento", () => {
+  it("identifica o movimento do Pipeline e preserva as duas mudanças", () => {
+    const { subject, html } = montarEmailDeMovimento({ ...base, source: "pipeline",
+      message: "Status 1: Proposta → Análise\nStatus 2: PROPOSTA → BACEN" });
+    expect(subject).toBe("Pipeline NEG-155: APROVADO TOTAL");
+    expect(html).toContain("Status 1: Proposta → Análise<br>Status 2: PROPOSTA → BACEN");
+  });
   it("leva código, cliente, coluna, quem moveu e a mensagem, com o título do aviso", () => {
     const { subject, html } = montarEmailDeMovimento(base, "https://app.exemplo.com.br");
     expect(subject).toBe("Crédito NEG-155: APROVADO TOTAL");

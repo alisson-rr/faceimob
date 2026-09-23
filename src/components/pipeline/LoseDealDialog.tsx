@@ -87,14 +87,14 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
   // — hoje corretor e gerente não saem de "Aprovado", e o diálogo abria o
   // confirmar assim mesmo, para levar 42501.
   const canLeave = canExitStage(deal.stage_id);
-  const allowed = Boolean(lostStage) && canEnterStage(lostStage?.id ?? "") && canLeave;
+  const allowed = Boolean(lostStage) && canEnterStage(lostStage?.id ?? "") && canLeave && can("deals.edit_status_detail");
   // Um preset sem prefixo ("QUEDA", vindo de importação) é motivo válido e não
   // está na lista literal: sem ele nas opções o Select abriria em branco.
   const choices = !status || LOSS_REASONS.includes(status) ? LOSS_REASONS : [status, ...LOSS_REASONS];
   const motivoBloqueado = !podeOffDistrato && isOffOrDistrato(status);
 
   const confirm = async () => {
-    if (!lostStage || !status || motivoBloqueado) return;
+    if (!lostStage || !status || motivoBloqueado || !allowed) return;
     setSaving(true);
     try {
       const reason = notes.trim() ? `${status} — ${notes.trim()}` : status;
@@ -177,7 +177,8 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
           </div>
           {!allowed && (
             <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-              {canLeave
+              {!can("deals.edit_status_detail") ? "Seu perfil não pode alterar o Status 2. A permissão é definida em Administração → Permissões."
+                : canLeave
                 ? "Seu perfil não pode mover negócios para a etapa de perda. Peça a um gestor."
                 : `Seu perfil não pode tirar um negócio de "${deal.stage_label}". Peça a um gestor.`}
             </p>

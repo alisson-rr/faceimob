@@ -37,7 +37,7 @@ const DEAL: CcaDeal = {
   status: "under_review",
 };
 
-async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCount>) {
+async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCount>, deal = DEAL) {
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
   const abertos: string[] = [];
@@ -46,7 +46,7 @@ async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCoun
     root.render(
       <CcaBoard
         stages={[STAGE]}
-        deals={[DEAL]}
+        deals={[deal]}
         canAct={canAct}
         sendCounts={sendCounts}
         onOpen={(deal) => abertos.push(deal.dealId)}
@@ -71,6 +71,7 @@ async function renderBoard(canAct: boolean, sendCounts?: Map<string, CcaSendCoun
     temEnviar: enviar,
     temMover: Boolean(mover),
     texto: container.textContent ?? "",
+    textoDoCartao: corpo?.textContent ?? "",
     abertos,
     clicar: async () => { await act(async () => { corpo?.click(); }); },
     teclar: async (key: string) => {
@@ -138,6 +139,26 @@ describe("CcaBoard · o cartão abre o negócio", () => {
  * presentacional — a contagem precisa estar no nome acessível do cartão.
  */
 describe("CcaBoard · envios por esteira", () => {
+  it("mostra CPF, tempo do status e a espera da Esteira Ágil", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-23T12:00:00Z"));
+    try {
+      const board = await renderBoard(true, undefined, { ...DEAL, cpf: "123.456.789-00", agile: true,
+        submittedAt: "2026-09-10T12:00:00Z", stageEnteredAt: "2026-09-21T12:00:00Z" });
+      expect(board.textoDoCartao).toContain("CPF 123.456.789-00");
+      expect(board.nomeAcessivel).toContain("2 dias no status");
+      expect(board.texto).toContain("Mais antigo: 2 dias");
+      await board.encerrar();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("distingue casos antigos sem data do status, usando a chegada à esteira", async () => {
+    const board = await renderBoard(true, undefined, { ...DEAL, submittedAt: "2026-09-01T00:00:00Z" });
+    expect(board.nomeAcessivel).toContain("na esteira");
+    expect(board.nomeAcessivel).not.toContain("no status");
+    await board.encerrar();
+  });
+
   it("mostra só o selo com envio e leva a contagem ao nome acessível", async () => {
     const board = await renderBoard(true, new Map([["d1", { agil: 2, virar: 0 }]]));
     expect(board.texto).toContain("Ágil 2");
@@ -148,7 +169,7 @@ describe("CcaBoard · envios por esteira", () => {
 
   it("sem contagem o cartão não fala de envio", async () => {
     const board = await renderBoard(true);
-    expect(board.texto).not.toContain("Ágil");
+    expect(board.textoDoCartao).not.toContain("Ágil");
     expect(board.nomeAcessivel).not.toContain("Enviado");
     await board.encerrar();
   });

@@ -50,19 +50,18 @@ describe("PodiumCards", () => {
     await unmount();
   });
 
-  it("o cartão de ouro é o maior, e todos são neutros", async () => {
+  it("destaca os três colocados com os tons do app e mantém o ouro maior", async () => {
     const { container, unmount } = await render(TRIO);
     const cartoes = Array.from(container.querySelectorAll("li > div"));
     const [ouro, prata] = cartoes;
 
-    // A medalha sumia porque tinha a cor do cartão: o fundo agora é `card`.
-    cartoes.forEach((cartao) => {
+    cartoes.forEach((cartao, index) => {
       expect(cartao.className).toContain("bg-card");
-      expect(cartao.className).not.toMatch(/bg-(gold|silver|bronze)|bg-gradient/);
+      expect(cartao.className).toContain(`to-${["gold", "silver", "bronze"][index]}/25`);
     });
     // O crescimento do primeiro cartão só existe a partir do tablet.
-    expect(ouro.className).toContain("sm:py-3.5");
-    expect(prata.className).not.toContain("sm:py-3.5");
+    expect(ouro.className).toContain("sm:min-h-28");
+    expect(prata.className).not.toContain("sm:min-h-28");
 
     await unmount();
   });

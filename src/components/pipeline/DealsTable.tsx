@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
-import { brokerTextClass, dealAgeTone, developerDot, type AgeTone } from "@/lib/tone";
+import { brokerTextClass, dealAgeTone, developerDot, developerColor, isHexColor, textOn, tone, type AgeTone } from "@/lib/tone";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusBadge } from "@/components/shared";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
@@ -134,7 +134,7 @@ export function DealsTable({
             Negócios do pipeline. Clicar na linha abre o detalhe do negócio; por teclado,
             use o nome do cliente ou o botão Abrir da coluna Ações.
           </caption>
-          <thead>
+          <thead className="bg-secondary/70">
             <tr className="border-b border-border text-muted-foreground">
               <th scope="col" className="w-3 p-0"><span className="sr-only">Idade</span></th>
               <th scope="col" className="p-2 text-left font-medium">Etapa</th>
@@ -183,7 +183,7 @@ export function DealsTable({
                     if (window.getSelection()?.isCollapsed === false) return;
                     onOpen(deal);
                   }}
-                  className="cursor-pointer border-b border-border/40 transition-colors hover:bg-secondary/30 focus-within:bg-secondary/30"
+                  className="cursor-pointer border-b border-border transition-colors odd:bg-background/70 even:bg-secondary/45 hover:bg-accent focus-within:bg-accent"
                 >
                   <td className="relative w-3 p-0">
                     <span
@@ -205,9 +205,10 @@ export function DealsTable({
                       />
                     )}
                   </td>
-                  <td className="whitespace-nowrap p-2">
-                    {/* O nome fica em `foreground`: a cor é de objeto gráfico
-                        (3:1), não de texto. */}
+                  <td className="whitespace-nowrap p-2 font-semibold" style={{
+                    backgroundColor: isHexColor(deal.developer_color) ? deal.developer_color : tone(developerColor(deal.developer)),
+                    color: isHexColor(deal.developer_color) ? textOn(deal.developer_color) : "hsl(var(--primary-foreground))",
+                  }}>
                     <span className="inline-flex items-center gap-1.5">
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} aria-hidden />
                       {deal.developer || "—"}
@@ -242,7 +243,7 @@ export function DealsTable({
                         nunca teve esse caminho. */}
                     <Select
                       value={status}
-                      disabled={travado}
+                      disabled={travado || !can("deals.edit_status_detail")}
                       onValueChange={(value) => onStatusChange(deal, value)}
                     >
                       <SelectTrigger

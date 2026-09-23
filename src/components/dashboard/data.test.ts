@@ -59,6 +59,18 @@ const deal = (fields: Partial<DealRow>): DealRow =>
 
 const venda = (fields: Partial<DealRow> = {}) => deal({ outcome: "won", stage: "closed", ...fields });
 
+it("ranking geral reúne os papéis sem duplicar quem acumula funções e preserva rateio", () => {
+  const result = rankBy([venda({ deal_value: 300_000,
+    broker1_id: "b1", broker1: "Ana", broker2_id: "b2", broker2: "Bia",
+    manager1_id: "b1", manager1: "Ana", director1_id: "d1", director1_name: "Daniel",
+  })], "all");
+  expect(result).toEqual([
+    { id: "b1", name: "Ana", vendas: 1, vgv: 300_000 },
+    { id: "d1", name: "Daniel", vendas: 1, vgv: 300_000 },
+    { id: "b2", name: "Bia", vendas: 1, vgv: 150_000 },
+  ]);
+});
+
 describe("dealCategory — o outcome manda, o Status 2 é detalhe", () => {
   it("venda com rótulo do catálogo continua sendo venda", () => {
     // Os dois rótulos que o Select da tela oferece/o sistema escreve num

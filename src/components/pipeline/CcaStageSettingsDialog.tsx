@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -104,7 +104,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
           });
         }
       } else {
-        const { error } = await supabase.from("cca_stages").insert({ ...payload, position: stages.length + 1 });
+        const { error } = await supabase.from("cca_stages").insert({ ...payload, position: Math.max(0, ...stages.map((s) => s.position)) + 1 });
         if (error) throw error;
       }
       toast({ variant: "success", title: editing ? "Estágio atualizado" : "Estágio criado" });
@@ -142,6 +142,21 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
     } finally {
       setRemoving(null);
     }
+  };
+
+  const reorder = async (index: number, direction: number) => {
+    const ids = stages.map((s) => s.id);
+    [ids[index], ids[index + direction]] = [ids[index + direction], ids[index]];
+    setSaving(true);
+    try {
+      // RPC da 0156; remover a ponte quando types.ts for regenerado.
+      const { error } = await supabase.rpc("reorder_cca_stages" as never, { p_stage_ids: ids } as never);
+      if (error) throw error;
+      await onChanged();
+      toast({ variant: "success", title: "Ordem das colunas atualizada" });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Não foi possível reordenar", description: describeError(error, "A ordem não foi alterada.") });
+    } finally { setSaving(false); }
   };
 
   return (
@@ -267,7 +282,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
             </div>
 
             <ul className="space-y-2">
-              {stages.map((stage) => {
+              {stages.map((stage, index) => {
                 // Reserva: o rótulo que o quadro já carrega (0155). O catálogo é
                 // filtrado e pode falhar; sem ela o selo ficava em "…" para sempre.
                 const gravado = rotuloDoStatus(stage.deal_status_id) ?? stage.deal_status?.label;
@@ -292,9 +307,14 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                       </div>
                     </div>
                     <div className="flex flex-shrink-0 gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={saving || index === 0}
+                        aria-label={`Mover ${stage.name} para a esquerda`} onClick={() => void reorder(index, -1)}><ArrowUp className="h-3 w-3" /></Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={saving || index === stages.length - 1}
+                        aria-label={`Mover ${stage.name} para a direita`} onClick={() => void reorder(index, 1)}><ArrowDown className="h-3 w-3" /></Button>
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7"
                         aria-label={`Editar o estágio ${stage.name}`}
+                        disabled={saving}
                         onClick={() => {
                           setEditing(stage);
                           setName(stage.name);
@@ -314,6 +334,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7 text-destructive"
                         aria-label={`Excluir o estágio ${stage.name}`}
+                        disabled={saving}
                         onClick={() => setRemoving(stage)}
                       >
                         <Trash2 className="h-3 w-3" />

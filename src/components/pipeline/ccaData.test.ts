@@ -6,7 +6,7 @@ import {
 const h = vi.hoisted(() => ({
   urls: [] as URL[],
   listLegacyDeals: vi.fn(async (_signal?: AbortSignal, opts?: { ids?: string[] }) =>
-    (opts?.ids ?? []).map((id) => ({ id, client: `Cliente ${id}`, developer: "", project: "", broker1: "", deal_value: 0, notes: "" }))),
+    (opts?.ids ?? []).map((id) => ({ id, client: `Cliente ${id}`, cpf: "12345678900", status: id === "d2" ? "13. Esteira Ágil" : "EM ANÁLISE", developer: "", project: "", broker1: "", deal_value: 0, notes: "" }))),
 }));
 
 // Cliente do Supabase de verdade atrás de um `fetch` falso: o que se confere é
@@ -15,9 +15,9 @@ vi.mock("@/integrations/supabase/client", async () => {
   const { createClient } = await import("@supabase/supabase-js");
   const tabelas: Record<string, unknown[]> = {
     cca_stages: [{ id: "s1", name: "EM ANÁLISE", color: "info", position: 1, status: "under_review", active: true, deal_status_id: null }],
-    // Como o banco devolve com `submitted_at desc`: o mais recente primeiro.
+    // Como o banco devolve com submitted_at asc: o mais antigo primeiro.
     cca_cases: [
-      { id: "k2", deal_id: "d2", status: "under_review", stage_id: "s1", decision_notes: null },
+      { id: "k2", deal_id: "d2", status: "under_review", stage_id: "s1", decision_notes: null, submitted_at: "2026-09-01T12:00:00Z", stage_entered_at: "2026-09-02T12:00:00Z" },
       { id: "k1", deal_id: "d1", status: "under_review", stage_id: "s1", decision_notes: null },
     ],
   };
@@ -115,11 +115,13 @@ describe("loadCcaBoard · só o período, filtrado no banco", () => {
     expect(casos?.searchParams.getAll("submitted_at")).toEqual([
       "gte.2026-08-16T00:00:00-03:00", "lt.2027-01-01T00:00:00-03:00",
     ]);
-    expect(casos?.searchParams.get("order")).toBe("submitted_at.desc,id.asc");
+    expect(casos?.searchParams.get("order")).toBe("submitted_at.asc,id.asc");
     expect(h.listLegacyDeals).toHaveBeenCalledWith(expect.anything(), { ids: ["d2", "d1"] });
 
-    // Mais recentes em cima, com o nome do negócio, e os registros para o editor.
+    // Mantém a ordem do banco, com o nome do negócio e os registros do editor.
     expect(board.deals.map((deal) => deal.client)).toEqual(["Cliente d2", "Cliente d1"]);
     expect(board.negocios.map((deal) => deal.id)).toEqual(["d2", "d1"]);
+    expect(board.deals[0]).toMatchObject({ cpf: "12345678900", agile: true, submittedAt: "2026-09-01T12:00:00Z", stageEnteredAt: "2026-09-02T12:00:00Z" });
+    expect(board.deals[1].agile).toBe(false);
   });
 });

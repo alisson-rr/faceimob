@@ -1,6 +1,32 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/shared";
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
+
+export function ContagemPessoas({ pessoas }: { pessoas: PessoaResumo[] }) {
+  const ativos = pessoas.filter((p) => p.status === "active").length;
+  const inativos = pessoas.length - ativos;
+  return <span className="text-xs font-normal text-muted-foreground">{ativos} {ativos === 1 ? "ativo" : "ativos"} · {inativos} {inativos === 1 ? "inativo" : "inativos"}</span>;
+}
+
+/** Suspensos e desligados continuam acessíveis, recolhidos no fim da coluna. */
+export function ListaPessoas<T extends PessoaResumo>({ pessoas, children }: {
+  pessoas: T[];
+  children: (pessoa: T) => ReactNode;
+}) {
+  const inativos = pessoas.filter((p) => p.status !== "active");
+  return <>
+    {pessoas.filter((p) => p.status === "active").map(children)}
+    {inativos.length > 0 && (
+      <details className="col-span-full rounded-lg border border-border bg-muted/30 p-2">
+        <summary className="cursor-pointer rounded text-xs font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          Inativos ({inativos.length}) · suspensos e desligados
+        </summary>
+        <div className="mt-2 space-y-2">{inativos.map(children)}</div>
+      </details>
+    )}
+  </>;
+}
 
 /** Duas letras do nome, para quando não há foto. */
 export const iniciais = (n: string) =>

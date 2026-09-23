@@ -5,6 +5,11 @@ import { dbError } from "@/lib/supabaseError";
 import { allRows, last30DaysRange, listLegacyDeals, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { bareStatus } from "@/lib/dealStatus";
 import type { CcaCaseStatus } from "./ccaStage";
+import type { Database } from "@/integrations/supabase/types";
+
+// Ponte tipada da 0156 até regenerar types.ts contra o banco migrado.
+type CcaCaseWithClock = Pick<Database["public"]["Tables"]["cca_cases"]["Row"],
+  "id" | "deal_id" | "status" | "stage_id" | "decision_notes" | "submitted_at"> & { stage_entered_at: string | null };
 
 export interface CcaStage {
   id: string;
@@ -41,6 +46,10 @@ export interface CcaDeal {
   stageId: string;
   notes: string;
   status: string;
+  cpf?: string;
+  submittedAt?: string | null;
+  stageEnteredAt?: string | null;
+  agile?: boolean;
 }
 
 export type CcaAnalysis = Record<string, string>;
@@ -207,7 +216,7 @@ export async function saveCcaAnalysis(dealId: string, analysis: CcaAnalysis): Pr
  * para mostrar os ~188 dos últimos 30 dias. Os negócios vêm depois, só pelos
  * ids dos casos carregados.
  *
- * Mais recentes em cima (`submitted_at desc`, com `id` de desempate para as
+ * Ordem de chegada (`submitted_at asc`, com `id` de desempate para as
  * páginas não trocarem linhas). O `stage_id` nulo ou de estágio desativado cai
  * na coluna de mesmo desfecho (`ccaColumnOf`); sem coluna o caso sai do quadro,
  * mas `outside` conta quantos, e a tela diz.
@@ -222,9 +231,10 @@ export async function loadCcaBoard(
       .select("id,name,color,position,status,active,deal_status_id,notify_sales,deal_status:deal_statuses(label)")
       .eq("active", true).order("position").abortSignal(signal),
     allRows((from, to, count) => supabase.from("cca_cases")
-      .select("id,deal_id,status,stage_id,decision_notes", { count })
+      .select("id,deal_id,status,stage_id,decision_notes,submitted_at,stage_entered_at", { count })
       .gte("submitted_at", desde).lt("submitted_at", antesDe)
-      .order("submitted_at", { ascending: false }).order("id").range(from, to).abortSignal(signal)),
+      .order("submitted_at", { ascending: true }).order("id").range(from, to).abortSignal(signal)
+      .returns<CcaCaseWithClock[]>()),
   ]);
   if (stagesResponse.error) throw stagesResponse.error;
   if (casesResponse.error) throw casesResponse.error;
@@ -256,6 +266,10 @@ export async function loadCcaBoard(
       stageId: stage.id,
       notes: row.decision_notes || deal?.notes || "",
       status: row.status,
+      cpf: deal?.cpf || "",
+      submittedAt: row.submitted_at,
+      stageEnteredAt: row.stage_entered_at,
+      agile: bareStatus(deal?.status ?? "").normalize("NFD").replace(/\p{M}/gu, "") === "ESTEIRA AGIL",
     });
   }
 

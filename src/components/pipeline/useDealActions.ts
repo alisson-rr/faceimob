@@ -136,7 +136,9 @@ export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }
     // enquanto a regra estava neles o rótulo que o modal mostrava cinza
     // continuava gravável pela tabela. Antes do desvio para a confirmação de
     // perda, senão o diálogo abre para quem não pode marcar OFF nem distrato.
-    const semPermissao = offDistratoBlocked(can, status);
+    const semPermissao = !can("deals.edit_status_detail")
+      ? "Seu perfil não pode alterar o Status 2."
+      : offDistratoBlocked(can, status);
     if (semPermissao) {
       toast.error("Não foi possível alterar o status", { description: semPermissao });
       return;

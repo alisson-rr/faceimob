@@ -215,7 +215,7 @@ export default function PipelineTopRanking({ onAbrirPainel }: Props) {
     <section
       aria-label={`Ranking do game — ${escopo}`}
       onClick={onAbrirPainel}
-      className="gold-hairline relative mx-auto w-full max-w-5xl cursor-pointer rounded-2xl border border-border bg-card p-3 text-card-foreground transition-colors hover:border-primary/40"
+      className="gold-hairline relative mx-auto w-full cursor-pointer rounded-2xl border border-primary/30 bg-card p-4 text-card-foreground shadow-md transition-colors hover:border-primary/60"
     >
       {conteudo()}
     </section>

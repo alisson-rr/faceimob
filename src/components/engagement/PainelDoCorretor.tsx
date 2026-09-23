@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { MedalhaComFita } from "./MedalhaComFita";
 import { itensDoGame } from "./painel/itensDoGame";
 import { ordenarRanking } from "./ranking";
+import { ResultadosDoPipeline, type PipelinePanelData } from "./painel/ResultadosDoPipeline";
 
 /**
  * Painel — o quadro do game no Pipeline: os itens que pontuaram, os recados da
@@ -72,9 +73,10 @@ export function usePainelDoCorretor() {
 export interface PainelDoCorretorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  pipeline?: PipelinePanelData;
 }
 
-export default function PainelDoCorretor({ open, onOpenChange }: PainelDoCorretorProps) {
+export default function PainelDoCorretor({ open, onOpenChange, pipeline }: PainelDoCorretorProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Um X só: o `DialogContent` do shadcn já desenha o dele (ui/dialog.tsx).
@@ -92,7 +94,10 @@ export default function PainelDoCorretor({ open, onOpenChange }: PainelDoCorreto
 
         {/* O conteúdo é um filho para os hooks dele só rodarem com o modal
             ABERTO: o Radix não monta o portal enquanto fechado. */}
-        <Colunas />
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          {pipeline && <ResultadosDoPipeline {...pipeline} />}
+          <Colunas />
+        </div>
 
         <DialogFooter className="sm:justify-center">
           <DialogClose asChild>

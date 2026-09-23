@@ -304,10 +304,9 @@ export default function Dashboard() {
           <TabsContent value="vendas" className="mt-0">
             <div className="flex flex-col gap-5">
               <TopBrokers
-                title="Ranking de corretores"
-                description="Vendas fechadas no período, do maior para o menor"
-                rows={view.brokers}
-                scroll
+                title="Ranking de diretores"
+                description="Vendas das diretorias no período"
+                rows={view.directors}
               />
               <TopBrokers
                 title="Ranking de gerentes"
@@ -315,9 +314,10 @@ export default function Dashboard() {
                 rows={view.managers}
               />
               <TopBrokers
-                title="Ranking de diretores"
-                description="Vendas das diretorias no período"
-                rows={view.directors}
+                title="Ranking geral"
+                description="Corretores, gerentes e diretores — uma venda por pessoa em cada negócio; VGV rateado para corretores e total da equipe para gestores"
+                rows={view.general}
+                scroll
               />
             </div>
           </TabsContent>

@@ -28,7 +28,7 @@ import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
 import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
 import { GlobalGoalCard } from "@/components/equipes/GlobalGoalCard";
 import { MetaVgv } from "@/components/equipes/MetaVgv";
-import { PessoaCard, iniciais } from "@/components/equipes/PessoaCard";
+import { PessoaCard, ListaPessoas, ContagemPessoas, iniciais } from "@/components/equipes/PessoaCard";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
 import { CofreCredenciais } from "@/components/equipes/CofreCredenciais";
 import { goalPeriods, goalsByProfile, otherMetricsByProfile } from "@/components/equipes/metas";
@@ -720,31 +720,31 @@ export default function Equipes() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Diretores */}
               <Card className="border-info/30" role="region" aria-label="Diretores">
-                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm text-info flex items-center gap-2">
-                    <Crown className="h-4 w-4" /> Diretores ({visibleDirectors.length})
+                <CardHeader className="py-3 px-4 flex flex-row flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-sm text-info flex flex-wrap items-center gap-2">
+                    <Crown className="h-4 w-4" /> Diretores <ContagemPessoas pessoas={visibleDirectors} />
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-4 pb-4 space-y-2 max-h-[520px] overflow-y-auto">
                   {visibleDirectors.length === 0 && (
                     <p className="text-xs text-muted-foreground">{emptyLabel("diretor")}</p>
                   )}
-                  {visibleDirectors.map(d => (
+                  <ListaPessoas pessoas={visibleDirectors}>{d => (
                     <PessoaCard
                       key={d.id}
                       pessoa={d}
                       tom="info"
                       onAbrir={podeEditarFicha(d) ? () => openEdit("manager", d) : undefined}
                     />
-                  ))}
+                  )}</ListaPessoas>
                 </CardContent>
               </Card>
 
               {/* Gerentes */}
               <Card className="border-info/30" role="region" aria-label="Gerentes">
-                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm text-info flex items-center gap-2">
-                    <UserCog className="h-4 w-4" /> Gerentes ({visibleManagers.length})
+                <CardHeader className="py-3 px-4 flex flex-row flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-sm text-info flex flex-wrap items-center gap-2">
+                    <UserCog className="h-4 w-4" /> Gerentes <ContagemPessoas pessoas={visibleManagers} />
                   </CardTitle>
                   {canEdit && (
                     <Button size="sm" variant="outline" className="h-7 text-xs border-info/40 text-info" onClick={() => openBulk("manager")}>
@@ -759,22 +759,22 @@ export default function Equipes() {
                   {/* Nome da equipe e "Desativar" saíram daqui para o bloco
                       "Performance por Equipe": são da EQUIPE, não da pessoa, e o
                       cartão de pessoa agora é só nome e foto. */}
-                  {visibleManagers.map(m => (
+                  <ListaPessoas pessoas={visibleManagers}>{m => (
                     <PessoaCard
                       key={m.id}
                       pessoa={m}
                       tom="info"
                       onAbrir={podeEditarFicha(m) ? () => openEdit("manager", m) : undefined}
                     />
-                  ))}
+                  )}</ListaPessoas>
                 </CardContent>
               </Card>
 
               {/* Corretores */}
               <Card className="border-success/30" role="region" aria-label="Corretores">
-                <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
-                  <CardTitle className="text-sm text-success flex items-center gap-2">
-                    <Users className="h-4 w-4" /> Corretores ({visibleBrokers.length})
+                <CardHeader className="py-3 px-4 flex flex-row flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-sm text-success flex flex-wrap items-center gap-2">
+                    <Users className="h-4 w-4" /> Corretores <ContagemPessoas pessoas={visibleBrokers} />
                   </CardTitle>
                   {canManageMembers && (
                     <Button size="sm" variant="outline" className="h-7 text-xs border-success/40 text-success" onClick={() => openBulk("broker")}>
@@ -786,14 +786,14 @@ export default function Equipes() {
                   {visibleBrokers.length === 0 && (
                     <p className="text-xs text-muted-foreground">{emptyLabel("corretor")}</p>
                   )}
-                  {visibleBrokers.map(b => (
+                  <ListaPessoas pessoas={visibleBrokers}>{b => (
                     <PessoaCard
                       key={b.id}
                       pessoa={b}
                       tom="success"
                       onAbrir={podeEditarFicha(b) ? () => openEdit("broker", b) : undefined}
                     />
-                  ))}
+                  )}</ListaPessoas>
                 </CardContent>
               </Card>
             </div>
@@ -802,18 +802,18 @@ export default function Equipes() {
           <Card className="border-warning/30" role="region" aria-label="CCAs">
             <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
               <CardTitle className="text-sm text-warning flex items-center gap-2">
-                <Shield className="h-4 w-4" /> CCAs ({visibleCcas.length})
+                <Shield className="h-4 w-4" /> CCAs <ContagemPessoas pessoas={visibleCcas} />
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {visibleCcas.map(c => (
+              <ListaPessoas pessoas={visibleCcas}>{c => (
                 <PessoaCard
                   key={c.id}
                   pessoa={c}
                   tom="warning"
                   onAbrir={podeEditarFicha(c) ? () => openEdit("broker", c) : undefined}
                 />
-              ))}
+              )}</ListaPessoas>
               {visibleCcas.length === 0 && (
                 <p className="text-xs text-muted-foreground col-span-full">
                   {emptyLabel("CCA")}
@@ -830,17 +830,17 @@ export default function Equipes() {
           <Card className="border-border/50" role="region" aria-label="Outros papéis">
             <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm flex items-center gap-2">
-                <IdCard className="h-4 w-4 text-muted-foreground" /> Outros papéis ({filter(outros).length})
+                <IdCard className="h-4 w-4 text-muted-foreground" /> Outros papéis <ContagemPessoas pessoas={filter(outros)} />
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {filter(outros).map(o => (
+              <ListaPessoas pessoas={filter(outros)}>{o => (
                 <PessoaCard
                   key={o.id}
                   pessoa={o}
                   onAbrir={podeEditarFicha(o) ? () => openEdit("broker", o) : undefined}
                 />
-              ))}
+              )}</ListaPessoas>
               {filter(outros).length === 0 && (
                 <p className="text-xs text-muted-foreground col-span-full">
                   {search ? "Ninguém com esse nome fora do organograma." : "Administrador, SDR, Marketing e Sócio aparecem aqui quando existirem."}
@@ -872,7 +872,7 @@ export default function Equipes() {
                         <p className="text-xs font-semibold truncate">{t.manager.name}</p>
                         <p className="text-xs text-muted-foreground truncate">{t.director ?? "—"}</p>
                       </div>
-                      <Badge className="bg-success/20 text-success border-success/30 shrink-0">{t.size}</Badge>
+                      <ContagemPessoas pessoas={t.brokers} />
                     </div>
                     {/* Nome da equipe e desativação vieram do cartão do gerente: são
                         da EQUIPE, e o cartão de pessoa agora é só nome e foto.
@@ -920,9 +920,9 @@ export default function Equipes() {
                       </div>
                     )}
                     <div className="flex flex-wrap gap-1">
-                      {t.brokers.map(b => (
+                      <ListaPessoas pessoas={t.brokers}>{b => (
                         <span key={b.id} className="text-xs px-2 py-0.5 rounded-md bg-secondary/40 border border-border/30">{b.name.split(" ")[0]}</span>
-                      ))}
+                      )}</ListaPessoas>
                       {t.brokers.length === 0 && <span className="text-xs text-muted-foreground">Sem corretores</span>}
                     </div>
                   </div>

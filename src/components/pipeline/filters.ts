@@ -47,6 +47,7 @@ export type DealFilterState = {
   developerId: string;
   brokerId: string;
   managerId: string;
+  directorId: string;
   month: string;
   client: string;
   client2: string;
@@ -64,6 +65,7 @@ export const EMPTY_FILTERS: DealFilterState = {
   developerId: ALL,
   brokerId: ALL,
   managerId: ALL,
+  directorId: ALL,
   month: ALL,
   client: "",
   client2: "",
@@ -107,6 +109,16 @@ const participantIds = (deal: LegacyDealRecord) => [
 const managerIds = (deal: LegacyDealRecord) => [
   deal.manager1_id, deal.manager2_id, deal.manager3_id,
 ];
+
+/** Recorte por IDs, inclusive propostas em que o vínculo veio da equipe. */
+export function dealsForLeader(deals: LegacyDealRecord[], people: PersonRecord[], leaderId: string, ownTeam = false) {
+  const ids = ownTeam
+    ? new Set([leaderId, ...people.filter((p) => p.manager_id === leaderId).map((p) => p.id)])
+    : teamProfileIds(people, leaderId);
+  return deals.filter((d) => [
+    ...participantIds(d), ...managerIds(d), ...(ownTeam ? [] : [d.director1_id, d.director2_id]),
+  ].some((id) => id && ids.has(id)));
+}
 
 /**
  * Quem eu lidero — eu mais os membros das equipes em que sou gerente ou diretor.

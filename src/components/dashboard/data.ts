@@ -565,19 +565,25 @@ export const participantsOf = (
  * `share_pct`; evoluir para ler a coluna quando `deal_participants.share_pct`
  * puder ser editado a mao e deixar de ser 100/n.
  */
-export const rankBy = (rows: DealRow[], role: RankRole): RankRow[] => {
+export const rankBy = (rows: DealRow[], role: RankRole | "all"): RankRow[] => {
   const map = new Map<string, RankRow>();
   for (const deal of rows) {
     if (dealCategory(deal) !== "venda") continue;
-    const people = participantsOf(deal, role);
+    // No geral, cada pessoa conta uma vez: corretor conserva o rateio, gestor
+    // recebe o VGV da equipe. Quem acumula papéis recebe a maior dessas fatias.
+    const byPerson = new Map<string, { id: string; name: string | null; share: number }>();
+    for (const currentRole of role === "all" ? ["broker", "manager", "director"] as const : [role]) {
+      const participants = participantsOf(deal, currentRole);
+      const share = (deal.deal_value || 0) / (currentRole === "broker" ? participants.length : 1);
+      for (const person of participants) byPerson.set(person.id, { ...person, share });
+    }
+    const people = [...byPerson.values()];
     if (!people.length) continue;
-    const value = deal.deal_value || 0;
-    const share = role === "broker" ? value / people.length : value;
     for (const person of people) {
       if (!person.name) continue;
       const entry = map.get(person.id) ?? { id: person.id, name: person.name, vendas: 0, vgv: 0 };
       entry.vendas += 1;
-      entry.vgv += share;
+      entry.vgv += person.share;
       map.set(person.id, entry);
     }
   }
@@ -656,6 +662,7 @@ export function monthView(deals: DealRow[], activeMonth: string) {
     brokers: rankBy(rows, "broker"),
     managers: rankBy(rows, "manager"),
     directors: rankBy(rows, "director"),
+    general: rankBy(rows, "all"),
   };
 }
 

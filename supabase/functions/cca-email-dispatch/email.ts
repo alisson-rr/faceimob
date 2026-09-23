@@ -11,6 +11,7 @@
  */
 
 export type CcaMoveEmail = {
+  source?: "cca" | "pipeline";
   deal_code: string | null;
   client_name: string | null;
   stage_name: string;
@@ -50,13 +51,14 @@ export function montarEmailDeMovimento(
   const quem = umaLinha(email.actor_name) || "Alguém";
   const cliente = umaLinha(email.client_name) || "cliente não informado";
   const link = linkDoPipeline(appUrl);
+  const pipeline = email.source === "pipeline";
 
   return {
     // Mesmo título do aviso no sino (`move_cca_case`).
-    subject: `Crédito ${codigo}: ${coluna}`,
+    subject: `${pipeline ? "Pipeline" : "Crédito"} ${codigo}: ${coluna}`,
     html: [
       `<p>${escapeHtml(quem)} moveu o negócio <b>${escapeHtml(codigo)}</b> (${escapeHtml(cliente)}) ` +
-        `para <b>${escapeHtml(coluna)}</b> na análise de crédito.</p>`,
+        `para <b>${escapeHtml(coluna)}</b> ${pipeline ? "no Pipeline" : "na análise de crédito"}.</p>`,
       `<p><b>Mensagem:</b><br>${escapeHtml(email.message.trim()).replace(/\r?\n/g, "<br>")}</p>`,
       link
         ? `<p><a href="${escapeHtml(link)}">Abrir o Pipeline no FACEIMOB</a> e procurar o negócio ${escapeHtml(codigo)}.</p>`

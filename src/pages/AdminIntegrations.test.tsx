@@ -37,7 +37,7 @@ vi.mock("@/integrations/supabase/client", () => ({
     functions: { invoke: cliente.invoke },
     rpc: cliente.rpc,
     from: () => ({
-      select: () => ({ maybeSingle: async () => ({ data: { cca_move_email: cliente.emailLigado }, error: null }) }),
+      select: () => ({ returns: () => ({ maybeSingle: async () => ({ data: { cca_move_email: cliente.emailLigado, pipeline_move_email: false }, error: null }) }) }),
       update: (valores: unknown) => {
         cliente.update(valores);
         return { eq: () => ({ select: async () => ({ data: [{ id: true }], error: null }) }) };
@@ -139,6 +139,17 @@ afterEach(() => {
 
 describe("AdminIntegrations · e-mail das movimentações da CCA", () => {
   const interruptor = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('[id="cca-move-email"]')!;
+
+  it("o Pipeline tem interruptor separado e explica os três destinatários", async () => {
+    auth.isAdmin = true;
+    const el = await montar();
+    const switchPipeline = el.querySelector<HTMLButtonElement>('#pipeline-move-email')!;
+    await vi.waitFor(() => expect(switchPipeline?.disabled).toBe(false));
+    switchPipeline.click();
+    await vi.waitFor(() => expect(cliente.update).toHaveBeenCalledWith({ pipeline_move_email: true }));
+    expect(el.textContent).toContain("corretor, gerente e diretor responsáveis");
+    expect(interruptor(el).getAttribute("aria-checked")).toBe("false");
+  });
 
   it("fica no cartão do remetente, nasce desligado e só o admin liga", async () => {
     const el = await montar();

@@ -293,3 +293,7 @@ o card, e o `VisitPanel` (lead e negócio) lê e fecha a visita com resultado.
    dígitos e o template padrão só manda link. É o item mais urgente da lista.
 6. **SMTP do Brevo em Authentication → Emails**: o remetente embutido do
    Supabase recusa endereço fora da equipe e tem cota baixa por hora.
+
+## 22/09/2026 — ajustes de Pipeline, CCA e equipes
+
+Implementação local dos 16 itens, com referência do Bubble e paleta atual preservada. E-mails de mudanças de Status 1/2 destinados aos responsáveis corretor, gerente e diretor; painel com resultados/propostas por escopo confirmado pelo cliente. Entrega, validação e ordem de publicação em [ajustes-pipeline-set2026.md](ajustes-pipeline-set2026.md). Produção ainda não alterada.

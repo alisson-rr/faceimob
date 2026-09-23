@@ -29,7 +29,8 @@ import {
 } from "@/components/pipeline";
 // Direto do módulo, e não do barril: o `index.ts` de `components/pipeline` é de
 // outra frente nesta rodada. Mesmo caminho que o `useDealActions` abaixo já usa.
-import { ALL, MY_TEAM, teamProfileIds } from "@/components/pipeline/filters";
+import { ALL, MY_TEAM, teamProfileIds, dealsForLeader } from "@/components/pipeline/filters";
+import { DirectorPipelineCards } from "@/components/pipeline/DirectorPipelineCards";
 import { listActiveDealsWithUnit, useDealsRange } from "@/components/pipeline/data";
 import { periodoValido } from "@/components/pipeline/ccaData";
 import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
@@ -192,9 +193,11 @@ export default function Pipeline() {
   // com as duas ordenações sobre os 7.579 negócios roda num render que a
   // próxima tecla pode interromper, em vez de travar a digitação.
   const filtrosAdiados = useDeferredValue(filters);
+  const directorDeals = useMemo(() => filtrosAdiados.directorId === ALL ? deals
+    : dealsForLeader(deals, people, filtrosAdiados.directorId), [deals, people, filtrosAdiados.directorId]);
   const visible = useMemo(
-    () => sortDeals(applyDealFilters(deals, filtrosAdiados, myTeam), catalog),
-    [deals, filtrosAdiados, myTeam, catalog],
+    () => sortDeals(applyDealFilters(directorDeals, filtrosAdiados, myTeam), catalog),
+    [directorDeals, filtrosAdiados, myTeam, catalog],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
@@ -249,7 +252,11 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-6">
-      <PipelineTopRanking onAbrirPainel={painel.abrir} />
+      {roles.includes("partner") ? <DirectorPipelineCards people={people} deals={deals}
+        selected={filters.directorId} onPanel={painel.abrir}
+        loading={peopleQuery.isPending || dealsQuery.isPending} error={peopleQuery.isError || dealsQuery.isError}
+        onSelect={(directorId) => { setFiltrosEscolhidos({ ...EMPTY_FILTERS, directorId }); setTab("deals"); }} />
+        : <PipelineTopRanking onAbrirPainel={painel.abrir} />}
 
       <PageHeader
         title="Pipeline"
@@ -551,7 +558,9 @@ export default function Pipeline() {
       {/* Sempre montado, e não `{painel.open && …}`: o `Dialog` do Radix precisa
           da transição de fechado→aberto para prender o foco e devolvê-lo ao
           botão. O conteúdo (e as consultas dele) só monta com o modal aberto. */}
-      <PainelDoCorretor open={painel.open} onOpenChange={painel.setOpen} />
+      <PainelDoCorretor open={painel.open} onOpenChange={painel.setOpen}
+        pipeline={{ deals, people, period: periodo, loading: dealsQuery.isPending || peopleQuery.isPending,
+          error: dealsQuery.isError || peopleQuery.isError, onOpen: (deal) => { painel.setOpen(false); abrirNegocio(deal); } }} />
     </div>
   );
 }

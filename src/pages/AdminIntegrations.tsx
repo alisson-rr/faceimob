@@ -161,7 +161,9 @@ const revogarCredencial = (provider: string, label: string) =>
  * reais — e, desligado, `move_cca_case` não enfileira nada: ligar não dispara
  * fila velha. Escrita só `is_admin()` (policy da 0004).
  */
-function EmailDaCcaSwitch({ podeLigar, brevoPronta }: { podeLigar: boolean; brevoPronta: boolean }) {
+function EmailDaCcaSwitch({ podeLigar, brevoPronta, pipeline = false }: { podeLigar: boolean; brevoPronta: boolean; pipeline?: boolean }) {
+  const setting = pipeline ? "pipeline_move_email" : "cca_move_email";
+  const fieldId = pipeline ? "pipeline-move-email" : "cca-move-email";
   const { toast } = useToast();
   const [ligado, setLigado] = useState<boolean | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -170,19 +172,20 @@ function EmailDaCcaSwitch({ podeLigar, brevoPronta }: { podeLigar: boolean; brev
 
   useEffect(() => {
     let vivo = true;
-    void supabase.from("automation_settings").select("cca_move_email").maybeSingle().then(({ data, error }) => {
+    void supabase.from("automation_settings").select("cca_move_email,pipeline_move_email")
+      .returns<{ cca_move_email: boolean; pipeline_move_email: boolean }[]>().maybeSingle().then(({ data, error }) => {
       if (!vivo) return;
       if (error) return setErro(describeError(error, "Não consegui ler se o envio está ligado."));
-      setLigado(data?.cca_move_email === true);
+      setLigado(data?.[setting] === true);
     });
     return () => { vivo = false; };
-  }, []);
+  }, [setting]);
 
   const trocar = async (valor: boolean) => {
     setSalvando(true);
     try {
       const { data, error } = await supabase.from("automation_settings")
-        .update({ cca_move_email: valor }).eq("id", true).select("id");
+        .update(pipeline ? { pipeline_move_email: valor } as never : { cca_move_email: valor }).eq("id", true).select("id");
       if (error) throw error;
       // UPDATE que a RLS recusa volta 204 sem erro (mesma regra de `updateDeal`).
       if (!data?.length) {
@@ -193,7 +196,7 @@ function EmailDaCcaSwitch({ podeLigar, brevoPronta }: { podeLigar: boolean; brev
         variant: "success",
         title: valor ? "E-mail das movimentações ligado" : "E-mail das movimentações desligado",
         description: valor
-          ? "A partir do próximo movimento da CCA que avisa o comercial."
+          ? pipeline ? "A partir da próxima alteração de Status 1 ou Status 2 no Pipeline." : "A partir do próximo movimento da CCA que avisa o comercial."
           : "Nenhum e-mail novo entra na fila.",
       });
     } catch (e) {
@@ -206,25 +209,25 @@ function EmailDaCcaSwitch({ podeLigar, brevoPronta }: { podeLigar: boolean; brev
   return (
     <div className="flex items-start justify-between gap-3 rounded-xl border border-border/50 p-3">
       <div className="min-w-0">
-        <Label htmlFor="cca-move-email">Enviar e-mail nas movimentações da CCA</Label>
-        <p id="cca-move-email-help" className="mt-0.5 text-xs text-muted-foreground">
-          Ligado: cada movimento da esteira que avisa o comercial manda também um e-mail de verdade ao corretor e
-          ao gerente do negócio, por este remetente. Desligado: nenhum e-mail entra na fila. Teste a conexão antes
-          de ligar.
+        <Label htmlFor={fieldId}>Enviar e-mail nas movimentações {pipeline ? "do Pipeline" : "da CCA"}</Label>
+        <p id={`${fieldId}-help`} className="mt-0.5 text-xs text-muted-foreground">
+          {pipeline ? "Mudanças de Status 1 e Status 2 enviam e-mail ao corretor, gerente e diretor responsáveis, com os valores anterior e novo."
+            : "Cada movimento da esteira que avisa o comercial manda também um e-mail ao corretor e ao gerente do negócio."}
+          {" "}Desligado: nenhum e-mail novo entra na fila. Teste a conexão antes de ligar.
         </p>
         {erro && <p role="alert" className="mt-1 text-xs text-destructive">{erro}</p>}
         {!podeLigar && <p className="mt-1 text-xs text-warning">Só o administrador liga ou desliga este envio.</p>}
         {/* Ligar sem chave ou sem remetente enche a fila de falhas. Desligar
             continua livre: a credencial pode ter sido revogada com ele ligado. */}
         {semCredencial && (
-          <p id="cca-move-email-motivo" className="mt-1 text-xs text-warning">
+          <p id={`${fieldId}-motivo`} className="mt-1 text-xs text-warning">
             Cadastre a chave de API e o remetente da Brevo antes de ligar.
           </p>
         )}
       </div>
       <Switch
-        id="cca-move-email"
-        aria-describedby={semCredencial ? "cca-move-email-help cca-move-email-motivo" : "cca-move-email-help"}
+        id={fieldId}
+        aria-describedby={semCredencial ? `${fieldId}-help ${fieldId}-motivo` : `${fieldId}-help`}
         checked={ligado === true}
         disabled={!podeLigar || ligado === null || salvando || (!brevoPronta && ligado !== true)}
         onCheckedChange={(valor) => void trocar(valor)}
@@ -716,10 +719,11 @@ export default function AdminIntegrations() {
                   {/* O remetente é o cartão que "manda" os e-mails: o interruptor
                       do envio automático fica junto dele. */}
                   {k === "brevo::sender_email" && (
-                    <EmailDaCcaSwitch
+                    <><EmailDaCcaSwitch
                       podeLigar={isAdmin}
                       brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret}
-                    />
+                    /><EmailDaCcaSwitch pipeline podeLigar={isAdmin}
+                      brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret} /></>
                   )}
                 </CardContent>
               </Card>

@@ -180,6 +180,12 @@
   html {
     color-scheme: dark;
   }
+  @media (prefers-reduced-motion: no-preference) {
+    html, [class*="overflow-auto"], [class*="overflow-x-auto"], [class*="overflow-y-auto"],
+    [data-radix-scroll-area-viewport] {
+      scroll-behavior: smooth;
+    }
+  }
   html.light {
     color-scheme: light;
   }

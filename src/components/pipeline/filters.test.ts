@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
   ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealBrokers, dealMonth, hasActiveFilter,
-  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds,
+  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds, dealsForLeader,
 } from "./filters";
 import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 
@@ -46,6 +46,20 @@ const deal = (patch: Partial<LegacyDealRecord>): LegacyDealRecord => ({
 
 const JOAO_A = "11111111-1111-1111-1111-111111111111";
 const JOAO_B = "22222222-2222-2222-2222-222222222222";
+
+it("diretor vê gerências e equipe própria, sem misturar a equipe própria com a diretoria toda", () => {
+  const people = [
+    { id: "cor", manager_id: "ger", director_id: "dir" },
+    { id: "ger", manager_id: null, director_id: "dir" },
+    { id: "proprio", manager_id: "dir", director_id: "dir" },
+  ] as import("@/integrations/supabase/newSchema").PersonRecord[];
+  const rows = [deal({ id: "equipe", broker1_id: "cor", director1_id: "dir" }),
+    deal({ id: "propria", broker1_id: "proprio", director1_id: "dir" }),
+    deal({ id: "pessoal", broker1_id: "dir" }), deal({ id: "fora", broker1_id: "outro" })];
+  expect(dealsForLeader(rows, people, "dir").map((d) => d.id)).toEqual(["equipe", "propria", "pessoal"]);
+  expect(dealsForLeader(rows, people, "dir", true).map((d) => d.id)).toEqual(["propria", "pessoal"]);
+  expect(dealsForLeader(rows, people, "ger", true).map((d) => d.id)).toEqual(["equipe"]);
+});
 
 describe("filtro de negócios por id", () => {
   const homonimos = [

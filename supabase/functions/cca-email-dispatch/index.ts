@@ -43,6 +43,7 @@ type Linha = CcaMoveEmail & {
   attempts: number;
   status: string;
   updated_at: string;
+  created_at: string;
 };
 
 Deno.serve(async (req) => {
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
     const staleBefore = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
     const { data, error } = await supabase
       .from("cca_move_emails")
-      .select("id,to_email,deal_code,client_name,stage_name,actor_name,message,attempts,status,updated_at")
+      .select("id,to_email,deal_code,client_name,stage_name,actor_name,message,attempts,status,updated_at,source,created_at")
       .or(`status.eq.queued,and(status.in.(failed,sending),updated_at.lt.${staleBefore})`)
       .lt("attempts", MAX_ATTEMPTS)
       .order("created_at", { ascending: true })
@@ -94,6 +95,18 @@ Deno.serve(async (req) => {
 
     let sent = 0, failed = 0;
     for (const row of pending) {
+      // Reconfere o interruptor inclusive em chamada manual do worker.
+      const { data: settings, error: settingsError } = await supabase.from("automation_settings")
+        .select("cca_move_email,pipeline_move_email").eq("id", true).single();
+      if (settingsError) throw settingsError;
+      if (!(row.source === "pipeline" ? settings.pipeline_move_email : settings.cca_move_email)
+          || Date.parse(row.created_at) < Date.now() - 86_400_000) {
+        const { error: expireError } = await supabase.from("cca_move_emails")
+          .update({ status: "expired", last_error: "Envio desligado ou movimento com mais de 24 h." })
+          .eq("id", row.id).eq("status", row.status).eq("updated_at", row.updated_at);
+        if (expireError) throw expireError;
+        continue;
+      }
       // Reserva condicional: só marca `sending` se a linha ainda é a que foi
       // lida (mesmo status e mesmo `updated_at`, que o gatilho renova a cada
       // update). O cron chama de minuto em minuto; uma passada lenta (Brevo
