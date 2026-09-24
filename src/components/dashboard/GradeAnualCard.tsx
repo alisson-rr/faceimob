@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { CalendarRange } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { EmptyState, SectionCard } from "@/components/shared";
 import { brl, num } from "@/lib/format";
@@ -9,8 +9,8 @@ import { MESES, gradeAnual, type GradeMetric } from "./gradeAnual";
 import { dealCategory, type DealRow } from "./data";
 
 const METRICAS: [GradeMetric, string][] = [
-  ["vgv", "Faturamento"],
   ["vendas", "Vendas"],
+  ["vgv", "VGV"],
 ];
 
 /**
@@ -35,8 +35,11 @@ const compacto = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFr
  * grade inteira.
  */
 export function GradeAnual({ deals }: { deals: DealRow[] }) {
-  const [metric, setMetric] = useState<GradeMetric>("vgv");
-  const rows = useMemo(() => gradeAnual(deals, metric), [deals, metric]);
+  const [metric, setMetric] = useState<GradeMetric>("vendas");
+  const grades = useMemo(() => ({ vendas: gradeAnual(deals, "vendas"), vgv: gradeAnual(deals, "vgv") }), [deals]);
+  const rows = grades[metric];
+  const secondary = grades[metric === "vendas" ? "vgv" : "vendas"];
+  const otherFmt = (value: number | null) => value === null ? "—" : metric === "vendas" ? brl(value) : `${num(value)} ${value === 1 ? "venda" : "vendas"}`;
 
   const dinheiro = metric === "vgv";
   const fmt = (value: number | null) => (dinheiro ? brl(value) : num(value));
@@ -44,7 +47,9 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
 
   // As barras saem da MESMA grade: os ultimos 12 meses ja iniciados, na ordem.
   const barras = rows
-    .flatMap((row) => row.cells)
+    .flatMap((row, i) => row.cells.map((cell, j) => ({ ...cell,
+      vendas: grades.vendas[i].cells[j].value, vgv: grades.vgv[i].cells[j].value,
+    })))
     .filter((cell) => cell.value !== null)
     .slice(-12)
     // `mes` so para a cor: o numero do mes e fixo no calendario, entao Janeiro
@@ -53,6 +58,8 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
     .map((cell) => ({
       label: cell.label,
       value: cell.value as number,
+      vendas: cell.vendas,
+      vgv: cell.vgv,
       mes: Number(cell.month.slice(0, 2)),
     }));
 
@@ -63,12 +70,8 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
 
   return (
     <SectionCard
-      title={`${rotulo} por mês e por ano`}
-      description={
-        dinheiro
-          ? "VGV das vendas fechadas em cada mês, com o total de cada ano"
-          : "Vendas fechadas em cada mês, com o total de cada ano"
-      }
+      title="Faturamento por mês e por ano"
+      description="Quantidade de vendas e VGV em cada mês e no total do ano. Escolha a medida em destaque."
       icon={CalendarRange}
       actions={
         <div role="group" aria-label="Métrica da grade" className="flex items-center gap-1">
@@ -96,7 +99,7 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
         <div className="flex flex-col gap-5">
           <div className="h-[220px] w-full" aria-hidden="true">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barras} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
+              <BarChart data={barras} margin={{ top: 24, right: 8, left: -8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} vertical={false} />
                 <XAxis dataKey="label" {...chartAxis} />
                 <YAxis
@@ -105,12 +108,16 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
                   width={dinheiro ? 56 : 40}
                   tickFormatter={(value: number) => (dinheiro ? compacto.format(value) : num(value))}
                 />
-                <Tooltip {...chartTooltip} formatter={(value: number) => [fmt(value), rotulo]} />
+                <Tooltip {...chartTooltip} formatter={(_value: number, _name, item) => [
+                  `${num(item.payload.vendas)} vendas · ${brl(item.payload.vgv)}`, "Resultado",
+                ]} />
                 {/* Barra vazada, como na referencia: o preenchimento translucido
                     guarda a leitura de area e o contorno mantem o contraste do
                     objeto grafico (3:1) nos dois temas. Uma cor por mes — o mes
                     continua escrito no eixo e na grade logo abaixo. */}
                 <Bar dataKey="value" strokeWidth={1.5} radius={[6, 6, 0, 0]} {...chartStill}>
+                  <LabelList dataKey="value" position="top" fill={tone("foreground")} stroke="none" fontSize={11}
+                    formatter={(value: number) => dinheiro ? compacto.format(value) : num(value)} />
                   {barras.map((bar) => (
                     <Cell
                       key={bar.label}
@@ -137,7 +144,7 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
           >
             <table className="w-max border-separate border-spacing-1.5 text-left">
               <caption className="sr-only">
-                {rotulo} de cada mês, uma linha por ano, com o total do ano na última coluna.
+                Quantidade de vendas e VGV de cada mês, uma linha por ano, com os totais na última coluna.
               </caption>
               <thead>
                 <tr>
@@ -159,17 +166,15 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {rows.map((row, rowIndex) => (
                   <tr key={row.year}>
                     <th scope="row" className="pr-2 text-sm font-bold tabular-nums text-foreground">
                       {row.year}
                     </th>
-                    {row.cells.map((cell) => (
+                    {row.cells.map((cell, cellIndex) => (
                       <td key={cell.month} className="p-0">
                         <div
-                          className={`flex h-16 flex-col items-center justify-center gap-0.5 rounded-xl border px-2 ${
-                            dinheiro ? "min-w-[116px]" : "min-w-[76px]"
-                          } ${
+                          className={`flex h-20 min-w-[124px] flex-col items-center justify-center gap-0.5 rounded-xl border px-2 ${
                             cell.value === null
                               ? "border-dashed border-border text-muted-foreground"
                               : "border-border bg-muted/60 text-foreground"
@@ -177,21 +182,21 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
                         >
                           <span className="text-xs font-medium text-muted-foreground">{cell.label}</span>
                           <span className={`font-bold tabular-nums ${dinheiro ? "text-sm" : "text-lg"}`}>
-                            {fmt(cell.value)}
+                            {fmt(cell.value)}{!dinheiro && cell.value !== null && <span className="text-xs font-normal"> {cell.value === 1 ? "venda" : "vendas"}</span>}
                           </span>
+                          <span className="text-xs tabular-nums text-muted-foreground">{otherFmt(secondary[rowIndex].cells[cellIndex].value)}</span>
                         </div>
                       </td>
                     ))}
                     <td className="p-0">
                       <div
-                        className={`flex h-16 flex-col items-center justify-center gap-0.5 rounded-xl border border-success/40 bg-success/10 px-2 text-success ${
-                          dinheiro ? "min-w-[124px]" : "min-w-[84px]"
-                        }`}
+                        className="flex h-20 min-w-[132px] flex-col items-center justify-center gap-0.5 rounded-xl border border-success/40 bg-success/10 px-2 text-success"
                       >
                         <span className="text-xs font-medium">{row.year}</span>
                         <span className={`font-bold tabular-nums ${dinheiro ? "text-sm" : "text-lg"}`}>
-                          {fmt(row.total)}
+                          {fmt(row.total)}{!dinheiro && <span className="text-xs font-normal"> {row.total === 1 ? "venda" : "vendas"}</span>}
                         </span>
+                        <span className="text-xs tabular-nums">{otherFmt(secondary[rowIndex].total)}</span>
                       </div>
                     </td>
                   </tr>

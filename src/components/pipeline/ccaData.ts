@@ -9,7 +9,7 @@ import type { Database } from "@/integrations/supabase/types";
 
 // Ponte tipada da 0156 até regenerar types.ts contra o banco migrado.
 type CcaCaseWithClock = Pick<Database["public"]["Tables"]["cca_cases"]["Row"],
-  "id" | "deal_id" | "status" | "stage_id" | "decision_notes" | "submitted_at"> & { stage_entered_at: string | null };
+  "id" | "deal_id" | "status" | "stage_id" | "decision_notes" | "submitted_at"> & { stage_entered_at?: string | null };
 
 export interface CcaStage {
   id: string;
@@ -226,15 +226,25 @@ export async function loadCcaBoard(
   signal: AbortSignal = new AbortController().signal,
 ): Promise<CcaBoardData> {
   const { desde, antesDe } = limitesDoPeriodo(periodo);
+  const readCases = (withClock: boolean) => allRows((from, to, count) => supabase.from("cca_cases")
+    .select(`id,deal_id,status,stage_id,decision_notes,submitted_at${withClock ? ",stage_entered_at" : ""}`, { count })
+    .gte("submitted_at", desde).lt("submitted_at", antesDe)
+    .order("submitted_at", { ascending: true }).order("id").range(from, to).abortSignal(signal)
+    .returns<CcaCaseWithClock[]>());
+  const casesWithCompatibility = async () => {
+    const response = await readCases(true);
+    // A 0156 pode ainda não ter sido publicada. Só a falta desta coluna permite
+    // reler sem o relógio; erros de permissão, rede e outras colunas continuam erros.
+    if (response.error?.code === "42703" && /\bstage_entered_at\b/.test(response.error.message)) {
+      return readCases(false);
+    }
+    return response;
+  };
   const [stagesResponse, casesResponse] = await Promise.all([
     supabase.from("cca_stages")
       .select("id,name,color,position,status,active,deal_status_id,notify_sales,deal_status:deal_statuses(label)")
       .eq("active", true).order("position").abortSignal(signal),
-    allRows((from, to, count) => supabase.from("cca_cases")
-      .select("id,deal_id,status,stage_id,decision_notes,submitted_at,stage_entered_at", { count })
-      .gte("submitted_at", desde).lt("submitted_at", antesDe)
-      .order("submitted_at", { ascending: true }).order("id").range(from, to).abortSignal(signal)
-      .returns<CcaCaseWithClock[]>()),
+    casesWithCompatibility(),
   ]);
   if (stagesResponse.error) throw stagesResponse.error;
   if (casesResponse.error) throw casesResponse.error;
@@ -268,7 +278,7 @@ export async function loadCcaBoard(
       status: row.status,
       cpf: deal?.cpf || "",
       submittedAt: row.submitted_at,
-      stageEnteredAt: row.stage_entered_at,
+      stageEnteredAt: row.stage_entered_at ?? null,
       agile: bareStatus(deal?.status ?? "").normalize("NFD").replace(/\p{M}/gu, "") === "ESTEIRA AGIL",
     });
   }

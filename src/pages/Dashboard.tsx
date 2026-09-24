@@ -32,6 +32,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { num } from "@/lib/format";
+import { LeadershipReport } from "@/components/dashboard/LeadershipReport";
 
 /**
  * Primeira tela depois do login: a leitura do mes em indicadores, graficos e
@@ -282,6 +283,7 @@ export default function Dashboard() {
                 <SalesFunnelCard stageCounts={view.stageCounts} />
               </div>
               <DeveloperOverview rows={view.developers} />
+              {payload && <LeadershipReport deals={deals} people={payload.people} month={activeMonth} />}
               {/* Histórico: recebe `deals` inteiro, não `view.rows`. A grade
                   compara ano com ano e ignora o filtro de período do topo — o
                   mesmo acordo do `MonthlyTrend`. */}

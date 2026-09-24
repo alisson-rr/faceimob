@@ -73,6 +73,7 @@ export const goalsByProfile = (
 export const METRIC_LABEL: Record<string, string> = {
   vgv: "VGV",
   sales: "Vendas",
+  sales_comp: "Meta Remuneração",
   visits: "Visitas",
   leads: "Leads",
 };

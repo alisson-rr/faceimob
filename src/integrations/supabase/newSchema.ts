@@ -289,11 +289,11 @@ const PAGE_SIZE = 1000;
  * contagem e a leitura, ou a contagem não veio), o laço segue de uma em uma
  * como antes: "até o fim" continua garantido.
  */
-type Page<T> = PromiseLike<{ data: T[] | null; error: { message?: string } | null; count?: number | null }>;
+type Page<T> = PromiseLike<{ data: T[] | null; error: { code?: string; message?: string } | null; count?: number | null }>;
 
 export async function allRows<T>(
   page: (from: number, to: number, count?: "exact") => Page<T>,
-): Promise<{ data: T[]; error: { message?: string } | null }> {
+): Promise<{ data: T[]; error: { code?: string; message?: string } | null }> {
   let last = await page(0, PAGE_SIZE - 1, "exact");
   if (last.error) return { data: [], error: last.error };
   const rows: T[] = [...(last.data ?? [])];
@@ -691,6 +691,7 @@ export async function listLegacyLeads(): Promise<Lead[]> {
 
 export type DashboardPayload = {
   deals: LegacyDealRecord[];
+  people: PersonRecord[];
   /** Total de leads que a RLS deixa ver — contagem exata, sem baixar a lista. */
   leadsCount: number;
   ccaCounts: Record<string, number>;
@@ -729,6 +730,7 @@ export async function loadDashboardPayload(
 
   return {
     deals,
+    people,
     leadsCount: leadsRes.count ?? 0,
     ccaCounts,
     staff: {

@@ -241,6 +241,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     vi.setSystemTime(new Date(2026, 8, 17, 10));
 
     const payload: DashboardPayload = {
+      people: [],
       deals: [
         venda({ id: "futuro", month_base: "02/2027" }),
         venda({ id: "dezembro", month_base: "12/2026" }),
@@ -283,6 +284,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     vi.setSystemTime(new Date(2026, 8, 30, 23, 59));
 
     const payload: DashboardPayload = {
+      people: [],
       deals: [venda({ id: "agosto", month_base: "08/2026" })],
       leadsCount: 0,
       ccaCounts: {},

@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ccaColumnOf, ccaColumnStatusAllowed, loadCcaBoard, periodoValido, ultimos30Dias, type CcaStage,
 } from "./ccaData";
 
 const h = vi.hoisted(() => ({
   urls: [] as URL[],
+  caseError: null as { code: string; message: string } | null,
   listLegacyDeals: vi.fn(async (_signal?: AbortSignal, opts?: { ids?: string[] }) =>
     (opts?.ids ?? []).map((id) => ({ id, client: `Cliente ${id}`, cpf: "12345678900", status: id === "d2" ? "13. Esteira Ágil" : "EM ANÁLISE", developer: "", project: "", broker1: "", deal_value: 0, notes: "" }))),
 }));
@@ -24,8 +25,15 @@ vi.mock("@/integrations/supabase/client", async () => {
   const fetchFalso = async (input: RequestInfo | URL) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     h.urls.push(url);
+    if (url.pathname.endsWith("/cca_cases") && h.caseError && url.searchParams.get("select")?.includes("stage_entered_at")) {
+      return new Response(JSON.stringify(h.caseError), { status: 400, headers: { "content-type": "application/json" } });
+    }
     const linhas = tabelas[url.pathname.replace("/rest/v1/", "")] ?? [];
-    return new Response(JSON.stringify(linhas), {
+    const selected = url.searchParams.get("select")?.split(",") ?? [];
+    const payload = url.pathname.endsWith("/cca_cases") ? linhas.map(row => Object.fromEntries(
+      Object.entries(row as Record<string, unknown>).filter(([key]) => selected.includes(key)),
+    )) : linhas;
+    return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { "content-type": "application/json", "content-range": `0-${linhas.length - 1}/${linhas.length}` },
     });
@@ -107,6 +115,28 @@ describe("período da esteira", () => {
 });
 
 describe("loadCcaBoard · só o período, filtrado no banco", () => {
+  beforeEach(() => { h.urls.length = 0; h.caseError = null; });
+
+  it("mantém a esteira disponível no banco anterior ao contador, sem inventar a data do status", async () => {
+    h.caseError = { code: "42703", message: "column cca_cases.stage_entered_at does not exist" };
+    const board = await loadCcaBoard({ de: "2026-09-01", ate: "2026-09-30" });
+    expect(board.deals).toHaveLength(2);
+    expect(board.deals[0]).toMatchObject({ client: "Cliente d2", stageEnteredAt: null, submittedAt: "2026-09-01T12:00:00Z" });
+    const requests = h.urls.filter(url => url.pathname.endsWith("/cca_cases"));
+    expect(requests).toHaveLength(2);
+    expect(requests[1].searchParams.get("select")).not.toContain("stage_entered_at");
+    expect(requests[1].searchParams.get("order")).toBe("submitted_at.asc,id.asc");
+  });
+
+  it.each([
+    { code: "42501", message: "permission denied for table cca_cases" },
+    { code: "42703", message: "column cca_cases.stage_id does not exist" },
+  ])("não esconde outro erro: $code $message", async error => {
+    h.caseError = error;
+    await expect(loadCcaBoard({ de: "2026-09-01", ate: "2026-09-30" })).rejects.toMatchObject(error);
+    expect(h.urls.filter(url => url.pathname.endsWith("/cca_cases"))).toHaveLength(1);
+  });
+
   it("filtra e ordena os casos na consulta e pede só os negócios deles", async () => {
     const board = await loadCcaBoard({ de: "2026-08-16", ate: "2026-12-31" });
 

@@ -297,3 +297,7 @@ o card, e o `VisitPanel` (lead e negócio) lê e fecha a visita com resultado.
 ## 22/09/2026 — ajustes de Pipeline, CCA e equipes
 
 Implementação local dos 16 itens, com referência do Bubble e paleta atual preservada. E-mails de mudanças de Status 1/2 destinados aos responsáveis corretor, gerente e diretor; painel com resultados/propostas por escopo confirmado pelo cliente. Entrega, validação e ordem de publicação em [ajustes-pipeline-set2026.md](ajustes-pipeline-set2026.md). Produção ainda não alterada.
+
+## 24/09/2026 — correção do CCA e relatório da Dashboard
+
+CCA falhava porque o frontend consultava `stage_entered_at` antes da aplicação da 0156, confirmado pelo erro 42703 do banco. Consulta compatível implementada; gráfico anual mostra vendas e VGV juntos, com vendas em destaque; relatório de diretores e gerentes segue o print e o período. Negócio usa o status existente “Virou Negócio”. Meta Remuneração é separada (`sales_comp`, migration 0158); sem cadastro aparece “—”. Implementação e validações locais em [correcao-cca-dashboard-set2026.md](correcao-cca-dashboard-set2026.md). Nenhuma publicação ou escrita remota nesta rodada.
