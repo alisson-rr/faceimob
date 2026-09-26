@@ -25,7 +25,7 @@ async function render(entries: PodiumEntry[]) {
 
 /**
  * O pódio do print do cliente (10/09/2026): prata à esquerda, OURO MAIOR NO
- * MEIO, bronze à direita — com o troféu do ranking do cabeçalho (17/09/2026).
+ * MEIO, bronze à direita — medalha de fita e degradê do preto ao metal (26/09/2026).
  *
  * O que este arquivo trava é a parte que quebra em silêncio: a ordem visual e a
  * do DOM são diferentes de propósito, e trocar um `order-*` sem querer coroaria
@@ -50,14 +50,16 @@ describe("PodiumCards", () => {
     await unmount();
   });
 
-  it("destaca os três colocados com os tons do app e mantém o ouro maior", async () => {
+  it("pinta os três colocados com o degradê do print e mantém o ouro maior", async () => {
     const { container, unmount } = await render(TRIO);
     const cartoes = Array.from(container.querySelectorAll("li > div"));
     const [ouro, prata] = cartoes;
 
+    // Cor fixa, não token: o topo preto é o mesmo nos dois temas.
     cartoes.forEach((cartao, index) => {
-      expect(cartao.className).toContain("bg-card");
-      expect(cartao.className).toContain(`to-${["gold", "silver", "bronze"][index]}/25`);
+      expect(cartao.className).toContain("from-black");
+      expect(cartao.className).toContain(`to-[${["#e2b43c", "#c4c4c4", "#e56f28"][index]}]`);
+      expect(cartao.className).toContain("text-white");
     });
     // O crescimento do primeiro cartão só existe a partir do tablet.
     expect(ouro.className).toContain("sm:min-h-28");
@@ -66,43 +68,31 @@ describe("PodiumCards", () => {
     await unmount();
   });
 
-  it("o troféu é o do cabeçalho: colocação em primary e a cor do pódio", async () => {
-    const { container, unmount } = await render(TRIO);
-    const trofeus = Array.from(container.querySelectorAll("li svg.lucide-trophy"));
-
-    expect(trofeus).toHaveLength(3);
-    expect(trofeus.map((svg) => svg.getAttribute("class"))).toEqual([
-      expect.stringContaining("text-gold"),
-      expect.stringContaining("text-silver"),
-      expect.stringContaining("text-bronze"),
-    ]);
-    expect(container.querySelector("li [aria-hidden] .text-primary")?.textContent).toBe("1º");
-
-    await unmount();
-  });
-
-  it("a colocação aparece no troféu e também escrita, para o leitor de tela", async () => {
+  it("a colocação aparece na medalha e também escrita, para o leitor de tela", async () => {
     const { container, unmount } = await render(TRIO);
     const ouro = container.querySelector("li");
 
-    // O troféu é decorativo; quem anuncia a colocação é o texto `sr-only`.
-    expect(ouro?.querySelector("[aria-hidden]")?.textContent).toBe("1º");
+    // A medalha é imagem decorativa; quem anuncia a colocação é o `sr-only`.
+    const medalha = ouro?.querySelector("img[aria-hidden]");
+    expect(medalha?.getAttribute("src")).toContain("medalha-ouro");
+    expect(medalha?.getAttribute("alt")).toBe("");
     expect(ouro?.querySelector(".sr-only")?.textContent).toBe("1º lugar: ");
     expect(ouro?.textContent).toContain("360 pontos");
 
     await unmount();
   });
 
-  it("colocação congelada manda no troféu e na cor", async () => {
+  it("colocação congelada manda na medalha e na cor", async () => {
     // Temporada fechada vista por corretor: o primeiro do recorte pode ser o 5º
     // da casa, e coroá-lo de ouro brigaria com a tabela ao lado.
     const { container, unmount } = await render([{ ...TRIO[0], place: 5 }]);
-    const trofeu = container.querySelector("li svg.lucide-trophy");
+    const cartao = container.querySelector("li > div");
 
-    // Fora do pódio o troféu fica apagado, como no cabeçalho.
-    expect(trofeu?.getAttribute("class")).toContain("text-muted-foreground");
-    expect(trofeu?.getAttribute("class")).not.toContain("text-gold");
-    expect(container.querySelector("li [aria-hidden]")?.textContent).toBe("5º");
+    // Fora do pódio o cartão e a medalha voltam ao neutro do tema.
+    expect(cartao?.className).toContain("bg-card");
+    expect(cartao?.className).not.toContain("from-black");
+    expect(container.querySelector("li img")).toBeNull();
+    expect(container.querySelector("li [aria-hidden]")?.textContent).toBe("5");
     expect(container.querySelector(".sr-only")?.textContent).toBe("5º lugar: ");
 
     await unmount();

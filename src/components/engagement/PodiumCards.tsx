@@ -1,8 +1,11 @@
-import { Trophy } from "lucide-react";
+import medalhaBronze from "@/assets/medalha-bronze.png";
+import medalhaOuro from "@/assets/medalha-ouro.png";
+import medalhaPrata from "@/assets/medalha-prata.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { num } from "@/lib/format";
-import { podiumRingClass, podiumTextClass } from "@/lib/tone";
+import { podiumRingClass } from "@/lib/tone";
 import { cn } from "@/lib/utils";
+import { MedalhaComFita } from "./MedalhaComFita";
 import type { PodiumEntry } from "./Podium";
 
 /**
@@ -16,9 +19,14 @@ import type { PodiumEntry } from "./Podium";
  * ("o ranking está um pouco grande"). Gamificação continua com os pedestais,
  * que lá são o assunto da tela.
  *
- * Troféu igual ao do ranking do cabeçalho (pedido de 17/09/2026): a colocação
- * em `primary` e o `Trophy` na cor do pódio (`podiumTextClass`). O gradiente
- * parte de `card` e usa os tons existentes, preservando o contraste dos nomes.
+ * Medalha em imagem e degradê do preto para o metal (prints de 26/09/2026): o
+ * troféu de 17/09 saiu. As imagens são só deste pódio; o Painel segue com a
+ * `MedalhaComFita`.
+ *
+ * As cores do cartão são FIXAS, não os tokens `gold`/`silver`/`bronze`: o print
+ * pede o topo preto nos dois temas, e os tokens escurecem no claro (ouro vira
+ * mostarda). Como o fundo não muda com o tema, o texto também não — nome âmbar e
+ * pontos brancos, com sombra para seguir legível onde o degradê clareia.
  */
 
 /**
@@ -30,10 +38,14 @@ import type { PodiumEntry } from "./Podium";
  */
 const ORDEM = ["sm:order-2", "sm:order-1", "sm:order-3"];
 const DESTAQUE = [
-  "border-gold/70 bg-gradient-to-b from-card to-gold/25 shadow-[0_0_12px_hsl(var(--gold)/0.18)]",
-  "border-silver/70 bg-gradient-to-b from-card to-silver/25 shadow-[0_0_10px_hsl(var(--silver)/0.14)]",
-  "border-bronze/70 bg-gradient-to-b from-card to-bronze/25 shadow-[0_0_10px_hsl(var(--bronze)/0.14)]",
+  "border-[#d4a73a] from-black to-[#e2b43c] shadow-[0_0_14px_rgba(226,180,60,0.45)]",
+  "border-[#e5e5e5] from-black to-[#c4c4c4] shadow-[0_0_12px_rgba(255,255,255,0.4)]",
+  "border-[#e8793a] from-black to-[#e56f28] shadow-[0_0_12px_rgba(229,111,40,0.45)]",
 ];
+const SOMBRA_DO_TEXTO = "[text-shadow:0_1px_3px_rgba(0,0,0,0.75)]";
+// Imagens mandadas pelo cliente (26/09/2026), com o número já desenhado. Do 4º
+// em diante não há metal: fica o disco neutro da `MedalhaComFita`.
+const MEDALHA = [medalhaOuro, medalhaPrata, medalhaBronze];
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
@@ -61,16 +73,25 @@ export function PodiumCards({ entries, className }: PodiumCardsProps) {
           <li key={entry.id} className={cn("min-w-0", ORDEM[index])}>
             <div
               className={cn(
-                "flex min-h-24 items-center gap-3 rounded-xl border-2 bg-card px-4 py-4 text-card-foreground",
-                DESTAQUE[lugar - 1] ?? "border-border",
+                "flex min-h-24 items-center gap-3 rounded-xl border-2 px-4 py-4",
+                // Fora do pódio (colocação congelada) o cartão volta ao neutro do tema.
+                DESTAQUE[lugar - 1]
+                  ? cn("bg-gradient-to-b text-white", DESTAQUE[lugar - 1])
+                  : "border-border bg-card text-card-foreground",
                 primeiro && "sm:min-h-28 sm:gap-4 sm:px-5 sm:py-5",
               )}
             >
-              {/* Decorativo: quem anuncia a colocação é o `sr-only` do nome. */}
-              <span aria-hidden className="flex shrink-0 items-center gap-1">
-                <span className="text-xs font-bold tabular-nums text-primary">{lugar}º</span>
-                <Trophy className={cn("h-5 w-5", podiumTextClass(lugar - 1), primeiro && "sm:h-6 sm:w-6")} />
-              </span>
+              {/* Decorativa: quem anuncia a colocação é o `sr-only` do nome. */}
+              {MEDALHA[lugar - 1] ? (
+                <img
+                  src={MEDALHA[lugar - 1]}
+                  alt=""
+                  aria-hidden
+                  className={cn("-my-2 h-[4.5rem] w-[4.5rem] shrink-0 object-contain", primeiro && "sm:h-20 sm:w-20")}
+                />
+              ) : (
+                <MedalhaComFita lugar={lugar} />
+              )}
 
               <Avatar
                 className={cn(
@@ -85,11 +106,17 @@ export function PodiumCards({ entries, className }: PodiumCardsProps) {
                 </AvatarFallback>
               </Avatar>
 
-              <div className="min-w-0 flex-1">
+              <div className={cn("min-w-0 flex-1", DESTAQUE[lugar - 1] && SOMBRA_DO_TEXTO)}>
                 {/* `line-clamp-2`: "Kayteane Botelho Araujo" ocupa duas linhas no
                     desenho do cliente. Sem o teto, um nome de quatro palavras
                     esticaria só o cartão do meio e desalinharia o pódio. */}
-                <p className={cn("line-clamp-2 break-words text-sm font-bold leading-tight", primeiro && "sm:text-base")}>
+                <p
+                  className={cn(
+                    "line-clamp-2 break-words text-sm font-bold leading-tight",
+                    DESTAQUE[lugar - 1] && "text-[#f5b335]",
+                    primeiro && "sm:text-base",
+                  )}
+                >
                   <span className="sr-only">{lugar}º lugar: </span>
                   {entry.name}
                 </p>
