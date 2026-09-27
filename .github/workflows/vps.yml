@@ -24,6 +24,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_PUBLISHABLE_KEY: test-only-key
       - run: bash scripts/validate-schema.sh --all
       - run: python3 deploy/test.py
       - run: python3 deploy/accept-release.test.py
