@@ -82,7 +82,7 @@ describe("escala de raio", () => {
 });
 
 /**
- * Sem pilula (pedido de 18/09/2026: "nenhum item com o arredondamento grande",
+ * Sem pilula (pedido de 18/09/2026, exceto o interruptor desde 27/09: "nenhum item com o arredondamento grande",
  * com o menu lateral, a barra de abas e o botao "Ultimos 30 dias" de exemplo). Os primitivos
  * sao travados um a um porque um `rounded-full` neles volta a espalhar a
  * pilula por todas as telas de uma vez. `rounded-full` segue valendo para
@@ -92,9 +92,17 @@ describe("escala de raio", () => {
 describe("sem arredondamento grande", () => {
   const src = resolve(__dirname, "..");
 
-  it.each(["button", "badge", "tabs", "switch", "sidebar"])("ui/%s.tsx nao volta a ser pilula", (nome) => {
+  it.each(["button", "badge", "tabs", "sidebar"])("ui/%s.tsx nao volta a ser pilula", (nome) => {
     const fonte = readFileSync(join(src, "components/ui", `${nome}.tsx`), "utf8");
     expect(fonte).not.toMatch(/\brounded-full\b/);
+  });
+
+  // A excecao (pedido de 27/09/2026): o interruptor voltou a ser pilula com
+  // bolinha redonda, como no sistema anterior. Trilho e bolinha, os dois.
+  it("ui/switch.tsx e pilula com bolinha redonda", () => {
+    const fonte = readFileSync(join(src, "components/ui/switch.tsx"), "utf8");
+    expect(fonte.match(/\brounded-full\b/g) ?? []).toHaveLength(2);
+    expect(fonte).not.toMatch(/\brounded-(sm|md)\b/);
   });
 
   it("nenhum componente usa rounded-3xl", () => {

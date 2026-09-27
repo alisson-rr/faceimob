@@ -417,3 +417,40 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Janela do negocio no visual do sistema anterior (prints de 27/09/2026): cada
+ * bloco tem uma cor — azul no topo, dourado em empreendimento, equipe e status,
+ * verde no VGV — que pinta o rotulo, a borda e um brilho em volta do campo. Os
+ * dados do cliente vem em caixa branca (`deal-field-light`).
+ *
+ * O bloco so define `--deal-accent`; o campo le a variavel do ancestral mais
+ * proximo, entao um bloco verde dentro de um dourado (Status 2) funciona sem
+ * regra extra. Fora de `@layer` de proposito: assim sai depois das utilities e
+ * vence `border-input`/`bg-background` do primitivo com a mesma especificidade
+ * (`:where` zera a do campo), enquanto o anel de foco (`focus:ring-2`, que e
+ * mais especifico) continua por cima do brilho. No claro nao ha brilho — halo
+ * colorido sobre branco vira mancha, como no `.glow-highlight`.
+ */
+.deal-tone-blue { --deal-accent: var(--primary); }
+.deal-tone-gold { --deal-accent: var(--gold); }
+.deal-tone-green { --deal-accent: var(--success); }
+:is(.deal-tone-blue, .deal-tone-gold, .deal-tone-green) {
+  --deal-glow: 0 0 12px -3px hsl(var(--deal-accent) / 0.6);
+}
+.light :is(.deal-tone-blue, .deal-tone-gold, .deal-tone-green) { --deal-glow: none; }
+:is(.deal-tone-blue, .deal-tone-gold, .deal-tone-green) .text-eyebrow {
+  color: hsl(var(--deal-accent));
+}
+:is(.deal-tone-blue, .deal-tone-gold, .deal-tone-green) :where(input, textarea, [role="combobox"], .deal-readout) {
+  border-color: hsl(var(--deal-accent) / 0.8);
+  background-color: hsl(var(--deal-accent) / 0.1);
+  box-shadow: var(--deal-glow);
+}
+/* Caixa branca com tinta navy (`--primary-foreground` do escuro): 17:1. O
+   placeholder escurece junto — o `muted-foreground` do escuro some no branco. */
+.deal-field-light :where(input, textarea, [role="combobox"]) {
+  background-color: hsl(0 0% 100%);
+  color: hsl(222 45% 10%);
+}
+.deal-field-light :where(input, textarea)::placeholder { color: hsl(222 12% 42%); }
