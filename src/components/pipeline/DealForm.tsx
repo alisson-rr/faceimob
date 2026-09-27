@@ -238,7 +238,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           tudo no gatilho do banco. Recarregue a página para tentar de novo.
         </p>
       )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="deal-tone-blue grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Label htmlFor={field("month")} className="text-eyebrow">Mês-base</Label>
           <Input
@@ -289,7 +289,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         </p>
       )}
 
-      <Section title="Cliente">
+      <Section title="Cliente" className="deal-tone-blue deal-field-light">
         <TextField id={field("client")} label="Cliente *" value={form.client} onChange={(v) => onChange({ client: v })} />
         <TextField id={field("cpf")} label="CPF" value={form.cpf} onChange={(v) => onChange({ cpf: v })} />
         <TextField id={field("contato")} label="Contato" value={form.contato} onChange={(v) => onChange({ contato: v })} />
@@ -305,7 +305,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       </Section>
 
       {form.has_second_client && (
-        <Section title="2º cliente">
+        <Section title="2º cliente" className="deal-tone-gold deal-field-light">
           <TextField id={field("client2")} label="Cliente" value={form.client2} onChange={(v) => onChange({ client2: v })} />
           <TextField id={field("cpf2")} label="CPF" value={form.cpf2} onChange={(v) => onChange({ cpf2: v })} />
           <TextField id={field("contato2")} label="Contato" value={form.contato2} onChange={(v) => onChange({ contato2: v })} />
@@ -322,7 +322,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       )}
 
       {form.has_informal_income && (
-        <Section title="Renda informal">
+        <Section title="Renda informal" className="deal-tone-blue deal-field-light">
           <TextField id={field("segmento")} label="Segmento/atividade" value={form.segmento_atividade} onChange={(v) => onChange({ segmento_atividade: v })} />
           <TextField id={field("atuacao")} label="Forma de atuação" value={form.forma_atuacao} onChange={(v) => onChange({ forma_atuacao: v })} />
           <TextField id={field("tempo")} label="Tempo de atividade" value={form.tempo_atividade} onChange={(v) => onChange({ tempo_atividade: v })} />
@@ -344,7 +344,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         </Section>
       )}
 
-      <Section title="Empreendimento">
+      <Section title="Empreendimento" className="deal-tone-gold">
         <div>
           <Label htmlFor={field("developer")} className="text-eyebrow">Construtora *</Label>
           <Select
@@ -440,7 +440,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         <TextField id={field("unit")} label="Bloco | unidade" value={form.unit} onChange={(v) => onChange({ unit: v })} />
       </Section>
 
-      <Section title="Equipe">
+      <Section title="Equipe" className="deal-tone-gold">
         <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v })} />
         <PersonField id={field("broker2")} label="Corretor 2" hint={rateio(form.broker2_share)} value={form.broker2_id} fallbackName={form.broker2} options={brokers} onChange={(v) => onChange({ broker2_id: v })} optional />
         <PersonField id={field("broker3")} label="Corretor 3" hint={rateio(form.broker3_share)} value={form.broker3_id} fallbackName={form.broker3} options={brokers} onChange={(v) => onChange({ broker3_id: v })} optional />
@@ -491,7 +491,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         </div>
       </Section>
 
-      <Section title="VGV">
+      <Section title="VGV" className="deal-tone-green">
         <div>
           <Label htmlFor={field("vgv")} className="text-eyebrow">VGV bruto</Label>
           {/* `min={0}` é só a seta do controle e o teclado do celular: sem
@@ -528,14 +528,14 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
               `brl` devolve travessão para nulo, em vez de afirmar R$ 0 num
               negócio que ainda não tem VGV. */}
           <p className="text-eyebrow">VGV líquido</p>
-          <p className="mt-1 text-xs tabular-nums">{brl(form.vgv_liquido)}</p>
+          <p className="deal-readout mt-1 rounded-xl border px-3.5 py-2.5 text-xs font-semibold tabular-nums">{brl(form.vgv_liquido)}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Calculado pelo banco a partir do VGV bruto e do desconto.
           </p>
         </div>
       </Section>
 
-      <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="deal-tone-gold grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <Label htmlFor={field("stage")} className="text-eyebrow">Etapa</Label>
           <Select
@@ -639,7 +639,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
               : "Acompanha o Status 2 sozinho. Trocar à mão é do administrador e do sócio."}
           </p>
         </div>
-        <div>
+        <div className="deal-tone-green">
           <Label htmlFor={field("status")} className="text-eyebrow">Status da venda (Status 2)</Label>
           {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
               banco (a troca manual vale até o Status 2 mudar), e mandar o grupo

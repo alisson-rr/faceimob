@@ -343,8 +343,15 @@ export default function DealDetailModal({
         </div>
 
         <div className="flex justify-end gap-3 border-t border-border p-4">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          {/* Vermelho e verde do rodapé do sistema anterior (pedido de 27/09/2026). */}
           <Button
+            variant="outline" onClick={onClose}
+            className="border-destructive/70 bg-destructive/10 hover:bg-destructive/20"
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="tintSuccess" className="glow-success font-semibold text-success"
             onClick={() => void handleSave()}
             disabled={saving || lock.readOnly || !form.client.trim()}
           >
