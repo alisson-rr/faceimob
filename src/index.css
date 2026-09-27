@@ -19,23 +19,27 @@
  */
 @layer base {
   :root {
-    /* Superficies em camadas — painel azul-marinho (17/09/2026): fundo azul
-       bem escuro e cartao um degrau mais claro, no matiz da marca (213-218).
-       Era 222 38% 10%, que o dono leu como quase preto. */
-    --background: 217 54% 14%;
+    /* Superficies em camadas — paleta do sistema anterior (Bubble), medida
+       nos prints de 26/09/2026 para a transicao nao estranhar os corretores:
+       fundo indigo quase preto (#1B1A2C) e painel um degrau acima (#202331).
+       Antes era o azul-marinho de 17/09 (217 54% 14%), mais saturado. */
+    --background: 243 26% 14%;
     --foreground: 210 30% 96%;
-    --card: 216 48% 19%;
+    --card: 229 21% 16%;
     --card-foreground: 210 30% 96%;
-    --popover: 216 46% 22%;
+    --popover: 229 21% 19%;
     --popover-foreground: 210 30% 96%;
-    --secondary: 216 40% 27%;
+    --secondary: 229 19% 24%;
     --secondary-foreground: 210 30% 96%;
-    --muted: 216 40% 24%;
-    --muted-foreground: 214 30% 78%;
-    --accent: 216 42% 29%;
+    --muted: 229 19% 21%;
+    --muted-foreground: 228 20% 76%;
+    --accent: 229 19% 26%;
     --accent-foreground: 210 30% 96%;
-    --border: 216 36% 30%;
-    --input: 215 26% 54%;
+    --border: 229 19% 28%;
+    --input: 229 14% 54%;
+    /* Brilho azul em volta dos paineis, como o "Pipeline Faceimob" do sistema
+       anterior (borda #24367B). Decoracao: nao e medido como contraste. */
+    --card-glow: 228 55% 45%;
 
     /* Marca — subiu junto com o fundo para manter 4,5:1 sobre o cartao */
     --primary: 213 80% 68%;
@@ -86,14 +90,14 @@
        propria (no claro e o azul da marca), entao rotulo, destaque do item
        ativo e "Sair" tem tokens proprios em vez de `muted-foreground`,
        `gold` e `destructive`, que sao medidos contra `card`. */
-    --sidebar-background: 218 58% 11%;
+    --sidebar-background: 243 26% 12%;
     --sidebar-foreground: 210 25% 88%;
     --sidebar-muted-foreground: 214 30% 76%;
     --sidebar-primary: 213 80% 68%;
     --sidebar-primary-foreground: 222 45% 10%;
-    --sidebar-accent: 216 48% 20%;
+    --sidebar-accent: 243 22% 19%;
     --sidebar-accent-foreground: 210 30% 96%;
-    --sidebar-border: 216 44% 20%;
+    --sidebar-border: 243 20% 21%;
     --sidebar-ring: 213 80% 68%;
     --sidebar-highlight: 45 96% 62%;
     --sidebar-destructive: 358 80% 68%;
@@ -119,6 +123,8 @@
     --accent-foreground: 213 67% 30%;
     --border: 214 24% 87%;
     --input: 214 16% 54%;
+    /* Sem brilho no claro: o painel ja se separa do fundo pela borda. */
+    --card-glow: 0 0% 100%;
 
     --primary: 213 67% 40%;
     --primary-foreground: 0 0% 100%;

@@ -73,7 +73,7 @@ export function DealsBoard({
         icon={Inbox}
         title="Nenhum negócio criado no período"
         description="Amplie as datas do período, converta um lead do funil ou crie o negócio direto por aqui."
-        action={canWrite ? <Button onClick={onNewDeal}>Adicionar negócio</Button> : undefined}
+        action={canWrite ? <Button variant="tintSuccess" onClick={onNewDeal}>Adicionar negócio</Button> : undefined}
       />
     );
   }

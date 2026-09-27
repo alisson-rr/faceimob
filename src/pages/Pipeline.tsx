@@ -277,11 +277,13 @@ export default function Pipeline() {
           <>
             {tab === "deals" ? (
               <>
-                <Button variant="outline" size="sm" onClick={() => setShowFilters((open) => !open)}>
+                {/* Azul, verde e âmbar: as cores de Filtrar, Adicionar e Extrair
+                    no sistema anterior, para a transição não estranhar. */}
+                <Button variant="tintInfo" size="sm" onClick={() => setShowFilters((open) => !open)}>
                   <Filter className="mr-1 h-4 w-4" /> Filtrar
                 </Button>
                 {canWrite ? (
-                  <Button size="sm" onClick={() => setEditor({ deal: null })}>
+                  <Button variant="tintSuccess" size="sm" onClick={() => setEditor({ deal: null })}>
                     <Plus className="mr-1 h-4 w-4" /> Adicionar negócio
                   </Button>
                 ) : (
@@ -289,7 +291,7 @@ export default function Pipeline() {
                 )}
                 {podeExtrair && (
                   <Button
-                    variant="outline" size="sm"
+                    variant="tintGold" size="sm"
                     disabled={visible.length === 0 || extraindo}
                     onClick={() => void extrair()}
                   >

@@ -18,6 +18,11 @@ import { cn } from "@/lib/utils";
  * "Entrar"): ambar com luz de cima, texto escuro e o brilho parado de
  * `.glow-highlight`, que so existe no tema escuro. O foco e o anel padrao — ele
  * vem depois do brilho no CSS e o substitui enquanto o botao esta focado.
+ *
+ * `tintInfo`, `tintSuccess` e `tintGold` sao os botoes de acao do sistema
+ * anterior (prints de 26/09/2026): fundo escuro com um veu da cor e a borda
+ * dela — azul para filtrar, verde para adicionar, ambar para extrair. Texto
+ * `foreground`, entao o contraste e o do fundo da tela nos dois temas.
  */
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold ring-offset-background transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
@@ -33,6 +38,9 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        tintInfo: "border border-primary/60 bg-primary/10 text-foreground hover:bg-primary/20",
+        tintSuccess: "border border-success bg-success/10 text-foreground hover:bg-success/20",
+        tintGold: "border border-gold/60 bg-gold/10 text-foreground hover:bg-gold/20",
       },
       size: {
         default: "h-10 px-5 py-2",

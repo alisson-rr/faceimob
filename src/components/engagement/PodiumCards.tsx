@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
-import medalhaBronze from "@/assets/medalha-bronze.png";
-import medalhaOuro from "@/assets/medalha-ouro.png";
-import medalhaPrata from "@/assets/medalha-prata.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { num } from "@/lib/format";
 import { podiumRingClass } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { MedalhaComFita } from "./MedalhaComFita";
+import { DEGRADE_DO_PODIO, MEDALHA_DO_PODIO, NOME_NO_PODIO, SOMBRA_DO_TEXTO } from "./podioVisual";
 
 /**
  * Pódio em três cartões deitados — o desenho que o cliente mandou para o topo
@@ -22,10 +20,8 @@ import { MedalhaComFita } from "./MedalhaComFita";
  * troféu de 17/09 saiu. As imagens são só deste pódio; o Painel segue com a
  * `MedalhaComFita`.
  *
- * As cores do cartão são FIXAS, não os tokens `gold`/`silver`/`bronze`: o print
- * pede o topo preto nos dois temas, e os tokens escurecem no claro (ouro vira
- * mostarda). Como o fundo não muda com o tema, o texto também não — nome âmbar e
- * pontos brancos, com sombra para seguir legível onde o degradê clareia.
+ * Degradê, medalha e cor do texto vêm de `podioVisual`, o mesmo da tira do
+ * cabeçalho — lá está o porquê de serem cores fixas.
  */
 
 /**
@@ -36,15 +32,8 @@ import { MedalhaComFita } from "./MedalhaComFita";
  * ordem. Só a grade de três colunas reordena.
  */
 const ORDEM = ["sm:order-2", "sm:order-1", "sm:order-3"];
-const DESTAQUE = [
-  "border-[#d4a73a] from-black to-[#e2b43c] shadow-[0_0_14px_rgba(226,180,60,0.45)]",
-  "border-[#e5e5e5] from-black to-[#c4c4c4] shadow-[0_0_12px_rgba(255,255,255,0.4)]",
-  "border-[#e8793a] from-black to-[#e56f28] shadow-[0_0_12px_rgba(229,111,40,0.45)]",
-];
-const SOMBRA_DO_TEXTO = "[text-shadow:0_1px_3px_rgba(0,0,0,0.75)]";
-// Imagens mandadas pelo cliente (26/09/2026), com o número já desenhado. Do 4º
-// em diante não há metal: fica o disco neutro da `MedalhaComFita`.
-const MEDALHA = [medalhaOuro, medalhaPrata, medalhaBronze];
+const DESTAQUE = DEGRADE_DO_PODIO;
+const MEDALHA = MEDALHA_DO_PODIO;
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
@@ -130,7 +119,7 @@ export function PodiumCards({ entries, className }: PodiumCardsProps) {
                 <p
                   className={cn(
                     "line-clamp-2 break-words text-sm font-bold leading-tight",
-                    DESTAQUE[lugar - 1] && "text-[#f5b335]",
+                    DESTAQUE[lugar - 1] && NOME_NO_PODIO,
                     primeiro && "sm:text-base",
                   )}
                 >

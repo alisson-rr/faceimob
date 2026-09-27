@@ -36,7 +36,7 @@ export function SectionCard({
   contentClassName,
 }: SectionCardProps) {
   return (
-    <section className={cn("overflow-hidden rounded-2xl border border-border bg-card text-card-foreground", className)}>
+    <section className={cn("overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-panel", className)}>
       {/* Passo responsivo do shell (`px-4 sm:px-6` do AppLayout): a 375 px os
           20 px de folga de cada lado comiam 40 dos 343 uteis. Do `sm` para
           cima o cartao continua como estava. */}
