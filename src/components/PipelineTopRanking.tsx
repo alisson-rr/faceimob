@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard";
 import { PodiumCards } from "@/components/engagement";
 import { StatusBadge } from "@/components/shared";
-import { brl, num } from "@/lib/format";
+import { brl, num, primeiroEUltimoNome } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 import { useCurrentSeasonId, useGameRanking, useSeasonRanking } from "@/hooks/useGameRanking";
@@ -169,7 +169,7 @@ export default function PipelineTopRanking({ onAbrirPainel }: Props) {
     if (soMinhaPosicao) {
       return (
         <FaixaDoCorretor
-          nome={meuScore?.broker.name || profile?.name || "Você"}
+          nome={meuScore?.broker.name || primeiroEUltimoNome(profile?.name) || "Você"}
           avatarUrl={meuScore?.broker.avatar_url ?? profile?.avatar_url ?? null}
           pontos={meuScore?.points ?? 0}
           noRanking={!meuScore}

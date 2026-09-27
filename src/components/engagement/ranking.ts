@@ -1,4 +1,5 @@
 import type { RankingRow, SeasonResultRow } from "@/integrations/supabase/game";
+import { nomesDeExibicao } from "@/lib/format";
 
 /**
  * Regras puras do placar — as duas listas que a Gamificação e o pódio mostram.
@@ -68,10 +69,12 @@ export function ordenarRanking(ranking: RankingRow[]): RankingRow[] {
  * auditável.
  */
 export function buildScores(ranking: RankingRow[]): BrokerScore[] {
-  return ordenarRanking(ranking)
+  const ordenado = ordenarRanking(ranking);
+  const exibir = nomesDeExibicao(ordenado.map((row) => row.full_name));
+  return ordenado
     .map((row) => ({
       brokerId: row.profile_id,
-      brokerName: row.full_name,
+      brokerName: exibir(row.full_name),
       team: row.team_name || "Sem equipe",
       managerId: row.manager_id ?? undefined,
       managerName: row.manager_name ?? undefined,
@@ -112,6 +115,7 @@ export function buildFrozenScores(
   people: Map<string, RankingRow>,
   { keepUnknown }: { keepUnknown: boolean },
 ): BrokerScore[] {
+  const exibir = nomesDeExibicao(Array.from(people.values(), (person) => person.full_name));
   return [...results]
     .filter((row) => keepUnknown || people.has(row.profile_id))
     .sort((a, b) => a.rank - b.rank)
@@ -119,7 +123,7 @@ export function buildFrozenScores(
       const person = people.get(row.profile_id);
       return {
         brokerId: row.profile_id,
-        brokerName: person?.full_name ?? UNKNOWN_PERSON,
+        brokerName: person ? exibir(person.full_name) : UNKNOWN_PERSON,
         team: person?.team_name || (person ? "Sem equipe" : "—"),
         managerId: person?.manager_id ?? undefined,
         managerName: person?.manager_name ?? undefined,

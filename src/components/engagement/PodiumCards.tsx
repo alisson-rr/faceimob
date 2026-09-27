@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import medalhaBronze from "@/assets/medalha-bronze.png";
 import medalhaOuro from "@/assets/medalha-ouro.png";
 import medalhaPrata from "@/assets/medalha-prata.png";
@@ -6,18 +7,16 @@ import { num } from "@/lib/format";
 import { podiumRingClass } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { MedalhaComFita } from "./MedalhaComFita";
-import type { PodiumEntry } from "./Podium";
 
 /**
  * Pódio em três cartões deitados — o desenho que o cliente mandou para o topo
  * do Pipeline (10/09/2026): prata à esquerda, ouro maior no meio, bronze à
  * direita.
  *
- * Existe ao lado do `Podium` de pedestais porque são dois desenhos, e não dois
- * ajustes do mesmo: aqui não há degrau, coroa nem contagem animada, e a faixa
- * precisa caber acima do quadro de negócios sem empurrá-lo para baixo da dobra
- * ("o ranking está um pouco grande"). Gamificação continua com os pedestais,
- * que lá são o assunto da tela.
+ * É o pódio único do Game: o topo do Pipeline e os "Campeões" da Gamificação
+ * (pedido de 26/09/2026, que aposentou os pedestais animados de lá). Sem
+ * degrau, coroa nem contagem animada: a faixa precisa caber acima do quadro de
+ * negócios sem empurrá-lo para baixo da dobra ("o ranking está um pouco grande").
  *
  * Medalha em imagem e degradê do preto para o metal (prints de 26/09/2026): o
  * troféu de 17/09 saiu. As imagens são só deste pódio; o Painel segue com a
@@ -50,6 +49,24 @@ const MEDALHA = [medalhaOuro, medalhaPrata, medalhaBronze];
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 }
+
+export type PodiumEntry = {
+  id: string;
+  name: string;
+  points: number;
+  avatarUrl?: string | null;
+  /** Linha de apoio: gerente, equipe, métricas curtas. */
+  detail?: ReactNode;
+  /**
+   * Colocação real, quando ela não é a posição na lista.
+   *
+   * O ranking congelado de uma temporada fechada chega filtrado pelo escopo de
+   * quem olha: o primeiro cartão pode ser o 5º da casa. Sem isto o cartão
+   * coroava como 1º quem a tabela ao lado numerava "#5". Ausente = a posição
+   * na lista, que é o caso do ranking vivo.
+   */
+  place?: number;
+};
 
 export interface PodiumCardsProps {
   /** Já ordenado do 1º ao 3º. Aceita menos de três. */
@@ -120,7 +137,13 @@ export function PodiumCards({ entries, className }: PodiumCardsProps) {
                   <span className="sr-only">{lugar}º lugar: </span>
                   {entry.name}
                 </p>
-                {entry.detail && <p className="truncate text-xs text-muted-foreground">{entry.detail}</p>}
+                {/* Branco suave e não `muted-foreground`: o cinza do tema some no
+                    degradê, que é escuro nos dois temas. */}
+                {entry.detail && (
+                  <p className={cn("truncate text-xs", DESTAQUE[lugar - 1] ? "text-white/80" : "text-muted-foreground")}>
+                    {entry.detail}
+                  </p>
+                )}
                 {/* No print os pontos têm quase o corpo do nome; quem separa os
                     dois é o corpo da letra, não a cor. */}
                 <p className={cn("mt-1 text-base font-bold tabular-nums", primeiro && "sm:text-lg")}>

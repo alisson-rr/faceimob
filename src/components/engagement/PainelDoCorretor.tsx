@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { recorteDoRanking, useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
 import { gameKeys, listEffectiveScoringRules } from "@/integrations/supabase/game";
 import { loadMuralDoDia, recadosKeys } from "@/integrations/supabase/recados";
-import { num } from "@/lib/format";
+import { nomesDeExibicao, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { podiumRingClass } from "@/lib/tone";
 import { cn } from "@/lib/utils";
@@ -336,6 +336,9 @@ function Destaques() {
   // em 0 vinham em ordem qualquer, com quem já foi desativado no meio.
   const ordenado = ordenarRanking(placar.data ?? []);
   const lista = soMinhaPosicao ? ordenado.slice(0, 3) : ordenado;
+  // Xará conferido no placar inteiro, não só nos três da lista: o mesmo nome
+  // que o pódio do Pipeline e o cabeçalho mostram.
+  const exibir = nomesDeExibicao(ordenado.map((linha) => linha.full_name));
 
   const corpo = () => {
     if (temporada.isError || placar.isError) {
@@ -380,7 +383,7 @@ function Destaques() {
           <li
             key={linha.profile_id}
             className="flex items-center gap-3"
-            aria-label={`${i + 1}º lugar: ${linha.full_name}, ${num(linha.points)} pontos`}
+            aria-label={`${i + 1}º lugar: ${exibir(linha.full_name)}, ${num(linha.points)} pontos`}
           >
             {/* Do 4º em diante o disco é neutro — `MedalhaComFita` já trata. */}
             <MedalhaComFita lugar={i + 1} />
@@ -392,11 +395,11 @@ function Destaques() {
             >
               <AvatarImage src={linha.avatar_url || undefined} alt="" />
               <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
-                {iniciais(linha.full_name)}
+                {iniciais(exibir(linha.full_name))}
               </AvatarFallback>
             </Avatar>
             <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-              {linha.full_name}
+              {exibir(linha.full_name)}
             </span>
             <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
               {num(linha.points)} pts

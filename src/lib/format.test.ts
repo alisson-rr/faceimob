@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brl, date, dateTime, monthStart, num, parseBrl, parseMonthStart } from "./format";
+import { brl, date, dateTime, monthStart, num, parseBrl, parseMonthStart, primeiroEUltimoNome, nomesDeExibicao } from "./format";
 
 describe("format", () => {
   it("formata BRL sem centavos por padrao", () => {
@@ -24,6 +24,41 @@ describe("format", () => {
 
   it("formata data e hora de um timestamp", () => {
     expect(dateTime(new Date(2026, 7, 21, 14, 30))).toBe("21/08/2026 14:30");
+  });
+});
+
+describe("primeiroEUltimoNome", () => {
+  it("encurta o nome do Game para primeiro e último", () => {
+    expect(primeiroEUltimoNome("Alan Teixeira de Oliveira")).toBe("Alan Oliveira");
+    expect(primeiroEUltimoNome("  Emilly   Guedes ")).toBe("Emilly Guedes");
+    expect(primeiroEUltimoNome("Archimedes")).toBe("Archimedes");
+    expect(primeiroEUltimoNome(null)).toBe("");
+  });
+});
+
+describe("nomesDeExibicao", () => {
+  it("diferencia xarás pela inicial do meio e não mexe em quem não colide", () => {
+    const exibir = nomesDeExibicao(["Ana Beta da Silva", "Ana Zulu Silva", "Alan Teixeira de Oliveira"]);
+
+    expect(exibir("Ana Beta da Silva")).toBe("Ana B. Silva");
+    expect(exibir("Ana Zulu Silva")).toBe("Ana Z. Silva");
+    expect(exibir("Alan Teixeira de Oliveira")).toBe("Alan Oliveira");
+  });
+
+  it("usa o nome inteiro quando nem a inicial separa", () => {
+    const exibir = nomesDeExibicao(["Ana Beatriz Silva", "Ana Bruna Silva", "Ana Silva"]);
+
+    expect(exibir("Ana Beatriz Silva")).toBe("Ana Beatriz Silva");
+    expect(exibir("Ana Bruna Silva")).toBe("Ana Bruna Silva");
+    // "Ana Silva" colidia com os dois no primeiro degrau e não tem meio.
+    expect(exibir("Ana Silva")).toBe("Ana Silva");
+  });
+
+  it("a mesma pessoa repetida na lista não é xará de si mesma", () => {
+    const exibir = nomesDeExibicao(["Alan Teixeira de Oliveira", "Alan  Teixeira de Oliveira "]);
+
+    expect(exibir("Alan Teixeira de Oliveira")).toBe("Alan Oliveira");
+    expect(exibir("Fora da Lista Souza")).toBe("Fora Souza");
   });
 });
 

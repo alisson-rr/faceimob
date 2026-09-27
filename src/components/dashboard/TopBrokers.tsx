@@ -22,10 +22,9 @@ const MEDAL: { icon: LucideIcon; label: string }[] = [
 /**
  * Pódio de vendas + tabela do restante.
  *
- * Não reusa o `Podium` de `@/components/engagement`: aquele imprime "pts" fixo
- * no número, e aqui o número é VENDA — o dado é outro. Os tokens `gold`,
- * `silver` e `bronze` são os mesmos dos dois (achado T06); quando o `Podium`
- * ganhar uma prop de unidade, esta metade do arquivo some.
+ * Não reusa o `PodiumCards` de `@/components/engagement`: aquele imprime
+ * "pontos" fixo no número, e aqui o número é VENDA — o dado é outro. Os tokens
+ * `gold`, `silver` e `bronze` são os mesmos (achado T06).
  */
 export function TopBrokers({ title, description, rows, scroll = false }: TopBrokersProps) {
   const top = rows.slice(0, 3);

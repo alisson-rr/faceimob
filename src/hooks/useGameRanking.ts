@@ -5,6 +5,7 @@ import { useAuth, type AppRole } from "@/contexts/AuthContext";
 // EngagementLayer, confete e áudio para dentro de um hook que só quer a ordem.
 import { ordenarRanking } from "@/components/engagement/ranking";
 import { primaryRole } from "@/integrations/supabase/newSchema";
+import { nomesDeExibicao } from "@/lib/format";
 import {
   gameKeys,
   getCurrentSeasonId,
@@ -145,6 +146,8 @@ export function useGameRanking(dealsInput?: DealLite[]) {
    */
   const rows: RankingRow[] = useMemo(() => ordenarRanking(ranking ?? []), [ranking]);
 
+  const exibir = useMemo(() => nomesDeExibicao(rows.map((row) => row.full_name)), [rows]);
+
   const allScores: ScoreRow[] = useMemo(() => rows.map((row) => {
     const breakdown = row.breakdown || {};
     const deals = dealsInput?.filter((deal) =>
@@ -157,7 +160,8 @@ export function useGameRanking(dealsInput?: DealLite[]) {
       broker: {
         id: row.profile_id,
         user_id: row.profile_id,
-        name: row.full_name,
+        // Exibição curta e sem xará; `full_name` segue inteiro para casar negócio.
+        name: exibir(row.full_name),
         full_name: row.full_name,
         avatar_url: row.avatar_url,
         active: row.active,
@@ -174,7 +178,7 @@ export function useGameRanking(dealsInput?: DealLite[]) {
       vendas: row.sales,
       points: row.points,
     };
-  }), [dealsInput, rows]);
+  }), [dealsInput, exibir, rows]);
 
   const myBroker = useMemo(
     () => allScores.find((score) => score.broker.user_id === user?.id)?.broker || null,
