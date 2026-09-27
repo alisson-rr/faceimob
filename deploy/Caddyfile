@@ -1,0 +1,47 @@
+{
+	admin off
+	servers {
+		# A porta só recebe o proxy HTTPS da própria VPS.
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
+:8080 {
+	encode zstd gzip
+	header X-Content-Type-Options nosniff
+	header Referrer-Policy strict-origin-when-cross-origin
+
+	handle /healthz {
+		root * /srv
+		rewrite * /index.html
+		file_server
+	}
+
+	@api path /auth/v1/* /rest/v1/* /storage/v1/* /realtime/v1/* /functions/v1/*
+	handle @api {
+		reverse_proxy api-gw:8000 {
+			# broker-checkin confia nesses headers; sobrescrevê-los impede forja.
+			header_up sb-forwarded-for {client_ip}
+			header_up cf-connecting-ip {client_ip}
+			header_up X-Real-IP {client_ip}
+		}
+	}
+
+	# O Auth busca o template internamente, sem depender do DNS público.
+	handle /auth-email-template {
+		root * /templates
+		rewrite * /magic_link.html
+		file_server
+	}
+
+	handle {
+		root * /srv
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@index path / /index.html
+		header @index Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

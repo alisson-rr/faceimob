@@ -1,0 +1,11 @@
+{
+	admin off
+}
+
+{$APP_URL} {
+	reverse_proxy 127.0.0.1:8080
+}
+
+{$EVOLUTION_URL} {
+	reverse_proxy 127.0.0.1:8081
+}

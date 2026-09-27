@@ -1,0 +1,64 @@
+# Override da distribuição oficial, fixada em setup.sh. Requer Compose >= 2.24.4.
+services:
+  studio:
+    container_name: faceimob-studio
+  api-gw:
+    container_name: faceimob-api
+    ports: !override
+      - "127.0.0.1:58000:8000"
+  auth:
+    container_name: faceimob-auth
+    environment:
+      GOTRUE_MAILER_TEMPLATES_MAGIC_LINK: http://frontend:8080/auth-email-template
+      GOTRUE_MAILER_SUBJECTS_MAGIC_LINK: Seu código de acesso — FACEIMOB
+  rest:
+    container_name: faceimob-rest
+  realtime:
+    # O prefixo antes do ponto identifica o tenant no Realtime.
+    container_name: realtime-dev.supabase-realtime
+  storage:
+    container_name: faceimob-storage
+  imgproxy:
+    container_name: faceimob-imgproxy
+  meta:
+    container_name: faceimob-meta
+  functions:
+    container_name: faceimob-functions
+    volumes:
+      - ${FACEIMOB_RELEASE:?Defina a pasta da release}/supabase/functions:/home/deno/functions:ro
+    environment:
+      APP_URL: ${SITE_URL}
+      SMTP_CONFIGURED: ${SMTP_CONFIGURED:-false}
+  db:
+    container_name: faceimob-db
+    ports: !override
+      - "127.0.0.1:55432:5432"
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
+      - -c
+      - cron.launch_active_jobs=${CRON_ENABLED:-off}
+  supavisor:
+    container_name: faceimob-pooler
+    ports: !reset []
+  frontend:
+    image: caddy:2.11.4-alpine
+    container_name: faceimob-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ${FACEIMOB_RELEASE}/dist:/srv:ro
+      - /opt/faceimob/config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${FACEIMOB_RELEASE}/supabase/templates/magic_link.html:/templates/magic_link.html:ro
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:8080/healthz]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      api-gw:
+        condition: service_healthy

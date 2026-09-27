@@ -1,0 +1,72 @@
+name: Validar e publicar na VPS
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faceimob-vps-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: bash scripts/validate-schema.sh --all
+      - run: python3 deploy/test.py
+      - run: python3 deploy/accept-release.test.py
+      - run: docker run --rm -v "$PWD:/work" -w /work denoland/deno:2.5.3 test --no-check --no-lock --allow-env deploy/functions-main.test.ts
+
+  deploy:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.VPS_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build com o endereço da VPS
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VPS_APP_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VPS_ANON_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL" && test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
+          npm run build
+          python3 deploy/package.py "$RUNNER_TEMP/release.tar.gz"
+      - name: Transferir e publicar
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" && test -n "$VPS_USER" && test -n "$VPS_KNOWN_HOSTS"
+          [[ "$VPS_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$VPS_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          VPS_PORT=${VPS_PORT:-22}
+          [[ "$VPS_PORT" =~ ^[0-9]+$ ]]
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          trap 'rm -f ~/.ssh/id_ed25519' EXIT
+          ssh_args=(-p "$VPS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes)
+          scp -P "$VPS_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$RUNNER_TEMP/release.tar.gz" "$VPS_USER@$VPS_HOST:/opt/faceimob/incoming/$GITHUB_SHA.tar.gz"
+          ssh "${ssh_args[@]}" "$VPS_USER@$VPS_HOST" "deploy $GITHUB_SHA"

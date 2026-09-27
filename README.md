@@ -81,10 +81,15 @@ empacota a versão desktop.
 
 ## Publicação
 
-O front é publicado na Vercel (`npx vercel deploy --prod`). Só as variáveis
-`VITE_*` do `.env.example` são cadastradas lá — elas vão para o bundle do
-navegador. Chave de serviço e token de terceiro nunca: esses vivem em secret de
-edge function ou em `private.integration_credentials`.
+O destino de publicação é a VPS: frontend e serviços Supabase no mesmo servidor,
+com Postgres, Auth, Storage, Realtime e Edge Functions. A configuração e o
+procedimento de migração estão em [deploy/README.md](deploy/README.md).
+
+Depois da configuração inicial, o push na `main` valida o projeto, faz backup,
+aplica somente migrations pendentes e publica. Uma migration com erro impede
+a troca da aplicação. A ativação depende de `VPS_DEPLOY_ENABLED=true` no GitHub;
+o CRM usa `https://app.faceimob.com.br` e o Manager da Evolution usa
+`https://evo.iafaceimob.com.br/manager/`.
 
 ## Onde está o resto
 
