@@ -363,15 +363,30 @@ describe("TopBrokers", () => {
     await vazio.cleanup();
   });
 
-  it("zerado vai para a tabela, nunca para o podio, e o rodape conta so quem vendeu", async () => {
-    const comZerado = [...rows, { id: "b9", name: "Zeca", vendas: 0, vgv: 0 }];
+  it("o podio tem sempre tres, zerado inclusive, e o rodape conta so quem vendeu", async () => {
+    const comZerados = [...rows, { id: "b8", name: "Ana Zerada", vendas: 0, vgv: 0 }, { id: "b9", name: "Zeca", vendas: 0, vgv: 0 }];
     const { text, query, cleanup } = await render(
-      <TopBrokers title="Ranking" description="Vendas do período" rows={comZerado} />,
+      <TopBrokers title="Ranking" description="Vendas do período" rows={comZerados} />,
     );
+    expect(query("ol")?.textContent).toContain("Ana Zerada");
     expect(query("ol")?.textContent).not.toContain("Zeca");
     expect(query("table")?.textContent).toContain("Zeca");
     expect(text).toContain("2 com venda no período");
     expect(text).toContain("3 vendas");
+    await cleanup();
+  });
+
+  it("mostra primeiro e ultimo nome, e desempata homonimo pelas iniciais", async () => {
+    const nomes = [
+      { id: "a", name: "Fábio Rodrigo Carvalho Batista", vendas: 4, vgv: 900_000 },
+      { id: "b", name: "Ana Beta Silva", vendas: 2, vgv: 100_000 },
+      { id: "c", name: "Ana Zeta Silva", vendas: 1, vgv: 50_000 },
+    ];
+    const { text, cleanup } = await render(<TopBrokers title="Ranking" description="Vendas" rows={nomes} />);
+    expect(text).toContain("Fábio Batista");
+    expect(text).not.toContain("Rodrigo Carvalho");
+    expect(text).toContain("Ana B. Silva");
+    expect(text).toContain("Ana Z. Silva");
     await cleanup();
   });
 

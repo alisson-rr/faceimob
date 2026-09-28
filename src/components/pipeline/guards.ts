@@ -178,37 +178,6 @@ export function dealRequiredError(
   return null;
 }
 
-/**
- * Placeholder do Select de empreendimento — três estados, não dois.
- *
- * A expressão inline anunciava "Sem empreendimentos" enquanto NENHUMA
- * construtora tinha sido escolhida — que é como todo negócio novo abre. Num
- * Select desabilitado, isso manda o operador trocar de construtora por causa de
- * um campo que ele ainda nem alimentou. O ramo de erro de rede já tinha sido
- * separado do "não tem nenhum"; faltava separar o "ainda não perguntei" — e
- * dizer, no último ramo, de quem é o problema.
- *
- * O último ramo é informação, não recusa: `dealRequiredError` não cobra
- * empreendimento, então "esta construtora não tem nenhum" descreve o catálogo
- * em vez de anunciar um bloqueio.
- *
- * O primeiro ramo também descreve, e por isso deixou de mandar: "Escolha a
- * construtora antes" abria com as mesmas três palavras da recusa de
- * `dealRequiredError` e as duas frases ficam na tela AO MESMO TEMPO no negócio
- * novo sem construtora (o Select de empreendimento nasce desabilitado). Quem
- * lê com os olhos vê a ordem duas vezes com finais diferentes e não sabe se são
- * dois problemas; quem usa leitor de tela ouve o mesmo começo no campo com erro
- * e num campo vizinho que erro nenhum tem. A ordem é UMA — a do campo
- * obrigatório; aqui basta dizer de que este campo depende.
- */
-export const projectPlaceholder = (
-  { developer, error, count }: { developer?: string | null; error?: string | null; count: number },
-): string => {
-  if (!(developer ?? "").trim()) return "Depende da construtora";
-  if (error) return "Não carregou";
-  return count > 0 ? "Escolher" : "Esta construtora não tem empreendimento cadastrado";
-};
-
 const chave = (value?: string | null) => (value ?? "").trim().toLowerCase();
 
 /**

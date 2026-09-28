@@ -18,7 +18,6 @@ import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supab
 import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
 import { ChoiceField, MoneyField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
-import { projectPlaceholder } from "./guards";
 import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
 import { offDistratoBlocked } from "./useDealActions";
 import { funnelStages, type PipelineStage } from "./stages";
@@ -104,6 +103,32 @@ interface Props {
 }
 
 /** Aba "Detalhes" do negócio: o formulário inteiro. */
+const NOMES_DOS_MESES = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/** "09/2026" -> "setembro/2026". */
+const rotuloDoMes = (mes: string) => {
+  const [mm, aaaa] = mes.split("/");
+  return `${NOMES_DOS_MESES[Number(mm) - 1] ?? mm}/${aaaa}`;
+};
+
+/**
+ * Meses do seletor de mês-base, do mais novo para o mais antigo: do ano que
+ * vem até dois anos atrás. O mês gravado entra mesmo fora da faixa — negócio
+ * antigo não pode abrir com o campo vazio e trocar de mês ao salvar.
+ */
+const mesesDoSeletor = (atual?: string): string[] => {
+  const ano = new Date().getFullYear();
+  const meses: string[] = [];
+  for (let a = ano + 1; a >= ano - 2; a -= 1) {
+    for (let m = 12; m >= 1; m -= 1) meses.push(`${String(m).padStart(2, "0")}/${a}`);
+  }
+  if (atual && /^\d{2}\/\d{4}$/.test(atual) && !meses.includes(atual)) meses.push(atual);
+  return meses;
+};
+
 export function DealForm({ form, onChange, field, people, developers, stages, isNew, developerError }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const canExitStage = useCanExitStage();
@@ -112,14 +137,6 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
    *  nenhum". `catch { setProjects([]) }` fazia as duas coisas darem a MESMA
    *  tela ("Sem empreendimentos"), num campo obrigatório. */
   const [projectsError, setProjectsError] = useState<string | null>(null);
-  /** A troca de construtora acabou de LIMPAR um empreendimento que estava
-   *  preenchido. O campo pertence à construtora, então zerá-lo é correto — o
-   *  que faltava era dizer. `saveLegacyDeal` sempre inclui `project_id` no
-   *  UPDATE, então o negócio que TINHA empreendimento saía do banco sem ele e
-   *  sem uma linha na tela; o Select apenas voltava ao placeholder. Aviso em
-   *  vez de recusa: cobrar o campo no salvamento reabriria o beco sem saída da
-   *  construtora sem catálogo. */
-  const [projectCleared, setProjectCleared] = useState(false);
   const selectableBrokers = useSelectableBrokers();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
 
@@ -218,7 +235,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       setProjects(await listDeveloperProjects(developer.id));
     } catch (err) {
       setProjects([]);
-      setProjectsError(describeError(err, "Não consegui carregar os empreendimentos desta construtora."));
+      setProjectsError(describeError(err, "Não consegui carregar as sugestões de empreendimento desta construtora. Dá para digitar o nome assim mesmo."));
     }
   }, [developers]);
 
@@ -258,12 +275,27 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       <div className="deal-tone-blue grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Label htmlFor={field("month")} className="text-eyebrow">Mês-base</Label>
-          <Input
-            id={field("month")} className="mt-1 text-xs" placeholder="MM/AAAA"
-            value={form.month_base || ""} disabled={!isAdmin}
-            aria-describedby={isAdmin ? undefined : field("month-hint")}
-            onChange={(event) => isAdmin && onChange({ month_base: event.target.value })}
-          />
+          {/* Seletor, não texto (pedido de 28/09/2026): "9/2026" ou "set/26"
+              digitados iam crus ao banco e voltavam como erro de data. O valor
+              continua "MM/AAAA" — o mesmo que `displayMonthToIso` grava como o
+              1º dia do mês, que é como `month_base`, o fechamento e o game
+              comparam. */}
+          <Select
+            value={form.month_base || undefined} disabled={!isAdmin}
+            onValueChange={(v) => isAdmin && onChange({ month_base: v })}
+          >
+            <SelectTrigger
+              id={field("month")} className="mt-1 text-xs"
+              aria-describedby={isAdmin ? undefined : field("month-hint")}
+            >
+              <SelectValue placeholder="Escolher o mês" />
+            </SelectTrigger>
+            <SelectContent className="max-h-80">
+              {mesesDoSeletor(form.month_base).map((mes) => (
+                <SelectItem key={mes} value={mes}>{rotuloDoMes(mes)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {/* Terceiro motivo de campo cinza na mesma tela (os outros dois vêm do
               `lock`) e o único sem frase: o mês-base define em qual ciclo o
               negócio conta e o que o fechamento congela, por isso só o admin o
@@ -367,9 +399,11 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           <Select
             value={form.developer}
             onValueChange={(v) => {
-              setProjectCleared(v !== form.developer && Boolean((form.project ?? "").trim()));
+              // O empreendimento digitado fica (0160, desvinculado da
+              // construtora); só o vínculo com o cadastro da anterior sai —
+              // `saveLegacyDeal` refaz o vínculo pelo nome na construtora nova.
               onChange({
-                developer: v, project: "", project_id: null,
+                developer: v, project_id: null,
                 developer_id: developers.find((row) => row.name === v)?.id ?? null,
               });
             }}
@@ -398,49 +432,28 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           )}
         </div>
         <div>
-          {/* Sem asterisco: `dealRequiredError` não cobra este campo. O
-              Select não aceita digitação livre, e construtora sem nenhum
-              empreendimento cadastrado é caso real — exigi-lo aqui recusava o
-              "Criar negócio" por algo que a tela não tinha como preencher. A
-              outra porta do mesmo registro (`ConvertLeadDialog`) já o trata
-              como opcional. */}
+          {/* Texto livre (pedido de 28/09/2026): a lista fechada dos
+              cadastrados travava o negócio enquanto o admin não cadastrasse o
+              empreendimento. Os cadastrados da construtora viram sugestão
+              (`datalist`); escolher um deles liga o vínculo `project_id`,
+              digitar outro nome grava só o texto. Sem asterisco: nunca foi
+              cobrado (`dealRequiredError`). */}
           <Label htmlFor={field("project")} className="text-eyebrow">Empreendimento</Label>
-          <Select
-            value={form.project} disabled={!form.developer}
-            onValueChange={(v) => {
-              setProjectCleared(false);
-              onChange({ project: v, project_id: projects.find((row) => row.name === v)?.id ?? null });
+          <Input
+            id={field("project")} list={field("project-sugestoes")} maxLength={120}
+            className="mt-1 text-xs" placeholder="Digite o empreendimento"
+            value={form.project || ""}
+            onChange={(event) => {
+              const nome = event.target.value;
+              const cadastrado = projects.find((row) => row.name.toLowerCase() === nome.trim().toLowerCase());
+              onChange({ project: nome, project_id: cadastrado?.id ?? null });
             }}
-          >
-            <SelectTrigger id={field("project")} className="mt-1 text-xs">
-              <SelectValue
-                placeholder={projectPlaceholder({
-                  developer: form.developer,
-                  error: projectsError,
-                  count: projects.length,
-                })}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((row) => <SelectItem key={row.id} value={row.name}>{row.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {/* A troca de construtora acabou de esvaziar este campo. O Select
-              apenas volta ao placeholder, e `saveLegacyDeal` grava
-              `project_id: null` — sem esta linha, o negócio que TINHA
-              empreendimento o perdia no banco sem nada dizer. Aviso, não
-              recusa: cobrar o campo aqui reabriria o beco sem saída da
-              construtora sem catálogo. */}
-          {projectCleared && !projectsError && (
-            <p role="status" className="mt-1 text-xs text-warning">
-              Trocar a construtora limpou o empreendimento — ele pertencia à anterior. Escolha o
-              novo antes de salvar, senão o negócio fica sem empreendimento.
-            </p>
-          )}
-          {/* Erro de carga tinha a MESMA tela de "esta construtora não tem
-              empreendimento": `catch { setProjects([]) }`, o que mandava o
-              operador escolher outra construtora por causa de uma falha de
-              rede. */}
+          />
+          <datalist id={field("project-sugestoes")}>
+            {projects.map((row) => <option key={row.id} value={row.name} />)}
+          </datalist>
+          {/* Sem as sugestões o campo continua valendo (texto livre); a frase
+              diz por que a lista não aparece, em vez de parecer vazia. */}
           {projectsError && (
             <p className="mt-1 text-xs text-destructive">
               {projectsError}{" "}

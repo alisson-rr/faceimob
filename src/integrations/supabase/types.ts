@@ -1434,6 +1434,7 @@ export type Database = {
           notes: string | null
           outcome: Database["public"]["Enums"]["deal_outcome"]
           project_id: string | null
+          project_name: string | null
           review_esteira: string | null
           stage_entered_at: string
           stage_id: string
@@ -1466,6 +1467,7 @@ export type Database = {
           notes?: string | null
           outcome?: Database["public"]["Enums"]["deal_outcome"]
           project_id?: string | null
+          project_name?: string | null
           review_esteira?: string | null
           stage_entered_at?: string
           stage_id: string
@@ -1498,6 +1500,7 @@ export type Database = {
           notes?: string | null
           outcome?: Database["public"]["Enums"]["deal_outcome"]
           project_id?: string | null
+          project_name?: string | null
           review_esteira?: string | null
           stage_entered_at?: string
           stage_id?: string
@@ -5603,6 +5606,7 @@ export type Database = {
           notes: string | null
           outcome: Database["public"]["Enums"]["deal_outcome"]
           project_id: string | null
+          project_name: string | null
           review_esteira: string | null
           stage_entered_at: string
           stage_id: string

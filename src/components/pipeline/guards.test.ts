@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
   blockedMoveReason, dealLock, dealRangeError, dealRequiredError, exitableStages,
-  findDuplicateDeal, isBehindStage, projectPlaceholder,
+  findDuplicateDeal, isBehindStage,
 } from "./guards";
 import type { PipelineStage } from "./stages";
 
@@ -312,40 +312,3 @@ describe("dealRequiredError", () => {
   });
 });
 
-/**
- * O placeholder do empreendimento tem TRÊS estados.
- *
- * Negócio novo abre sem construtora, o Select fica desabilitado e o campo
- * anunciava "Sem empreendimentos": o operador lê que o catálogo está vazio e
- * troca de construtora por causa de um campo que ainda nem alimentou.
- */
-describe("projectPlaceholder · os três estados do campo", () => {
-  it("sem construtora, diz de que depende — não diz que falta cadastro", () => {
-    expect(projectPlaceholder({ developer: "", error: null, count: 0 }))
-      .toBe("Depende da construtora");
-  });
-
-  // A recusa do campo obrigatório e este placeholder ficam visíveis JUNTOS no
-  // negócio novo sem construtora. Enquanto os dois começavam por "Escolha a
-  // construtora", a tela dava a mesma ordem duas vezes com finais diferentes.
-  it("não repete o começo da recusa do campo obrigatório", () => {
-    const recusa = dealRequiredError({ developer: "", developer_id: null }) ?? "";
-    const placeholder = projectPlaceholder({ developer: "", error: null, count: 0 });
-    expect(recusa).not.toBe("");
-    expect(placeholder.toLowerCase().startsWith(recusa.slice(0, 20).toLowerCase())).toBe(false);
-  });
-
-  it("falha de carga não vira 'sem empreendimento'", () => {
-    expect(projectPlaceholder({ developer: "MRV", error: "Não consegui ler", count: 0 }))
-      .toBe("Não carregou");
-  });
-
-  it("construtora sem empreendimento diz de quem é o problema", () => {
-    expect(projectPlaceholder({ developer: "MRV", error: null, count: 0 }))
-      .toBe("Esta construtora não tem empreendimento cadastrado");
-  });
-
-  it("com catálogo, é só escolher", () => {
-    expect(projectPlaceholder({ developer: "MRV", error: null, count: 3 })).toBe("Escolher");
-  });
-});

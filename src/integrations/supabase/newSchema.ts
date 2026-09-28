@@ -579,7 +579,8 @@ export async function listLegacyDeals(
       developer: developerById.get(deal.developer_id)?.name || "",
       developer_color: developerById.get(deal.developer_id)?.color ?? null,
       developer_id: deal.developer_id,
-      project: projectById.get(deal.project_id) || "",
+      // O digitado manda (0160); negócio anterior a ele só tem o vínculo.
+      project: deal.project_name || projectById.get(deal.project_id) || "",
       project_id: deal.project_id,
       unit: deal.unit || "",
       status: deal.status_detail || legacyStatus(deal.outcome, deal.lost_reason),
@@ -1308,6 +1309,9 @@ export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string>
   const dealPayload = {
     developer_id: developerId,
     project_id: projectId,
+    // Texto livre (0160): o vínculo acima só existe quando o nome bate com o
+    // cadastro da construtora; o nome digitado é gravado sempre.
+    project_name: form.project?.trim() || null,
     stage_id: stageId,
     ...legacyDealFields(form),
   };
