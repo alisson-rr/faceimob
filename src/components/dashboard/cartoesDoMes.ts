@@ -66,8 +66,8 @@ export function cartoesDoPeriodo(
 
 /**
  * "Negócios por etapa" pelo Status 2 (pedido de 28/09/2026): uma linha por
- * Status 2 que tem negócio no período, na ordem do cadastro de status, sem as
- * zeradas. O conjunto é o de sempre — vendas + em aberto (`noFunil`) —, então o
+ * Status 2 que tem negócio no período, do maior para o menor, sem as zeradas;
+ * no empate vale a ordem do cadastro de status. O conjunto é o de sempre — vendas + em aberto (`noFunil`) —, então o
  * total fecha com o que o bloco já dizia no rodapé. Status fora do catálogo
  * vira linha própria no fim, em vez de sumir do total.
  */
@@ -91,6 +91,6 @@ export function linhasDoStatus2(
     linhas.set(id, linha);
   }
   return [...linhas.values()]
-    .sort((a, b) => a.ordem - b.ordem || a.label.localeCompare(b.label, "pt-BR"))
+    .sort((a, b) => b.value - a.value || a.ordem - b.ordem || a.label.localeCompare(b.label, "pt-BR"))
     .map(({ label, value }) => ({ label, value }));
 }

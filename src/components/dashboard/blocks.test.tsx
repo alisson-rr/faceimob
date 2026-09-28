@@ -531,7 +531,7 @@ describe("SalesFunnelCard", () => {
   const negocio = (id: string, status: string, outcome = "open") =>
     ({ id, status, outcome, month_base: "09/2026" }) as unknown as DealRow;
 
-  it("lista só o Status 2 com negócio, na ordem do cadastro, sem zerados nem perdidos", async () => {
+  it("lista só o Status 2 com negócio, do maior para o menor, empate na ordem do cadastro, sem zerados nem perdidos", async () => {
     const { text, container, cleanup } = await renderComCache(
       <SalesFunnelCard deals={[
         negocio("a", "16. PENDENTE"), negocio("b", "13. ESTEIRA AGIL"), negocio("c", "13. ESTEIRA AGIL"),
@@ -540,7 +540,7 @@ describe("SalesFunnelCard", () => {
       semearCatalogo,
     );
     const rotulos = Array.from(container.querySelectorAll("li")).map((li) => li.querySelector("span")?.textContent);
-    expect(rotulos).toEqual(["Assinado no banco", "ESTEIRA AGIL", "PENDENTE"]);
+    expect(rotulos).toEqual(["ESTEIRA AGIL", "Assinado no banco", "PENDENTE"]);
     expect(text).not.toContain("QUEDA");
     expect(text).not.toContain("VIROU NEGÓCIO");
     expect(text).toContain("4 negócios no período · vendas + em aberto");

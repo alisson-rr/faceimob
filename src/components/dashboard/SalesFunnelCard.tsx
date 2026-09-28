@@ -16,9 +16,9 @@ export interface SalesFunnelCardProps {
 
 /**
  * Onde estão os negócios do mês, pelo Status 2 (pedido de 28/09/2026): uma
- * linha por Status 2 com negócio no período, na ordem do cadastro de status, e
- * nenhuma zerada. Antes era por etapa do pipeline, com as etapas vazias na
- * lista — o cliente lê a operação pelo Status 2.
+ * linha por Status 2 com negócio no período, do maior para o menor (empate na
+ * ordem do cadastro de status), e nenhuma zerada. Antes era por etapa do
+ * pipeline, com as etapas vazias na lista — o cliente lê a operação pelo Status 2.
  *
  * O total continua sendo vendas + em aberto (`linhasDoStatus2`), e o rodapé
  * diz isso.
@@ -68,7 +68,7 @@ export function SalesFunnelCard({ deals }: SalesFunnelCardProps) {
   return (
     <SectionCard
       title="Negócios por etapa"
-      description="Negócios do período por Status 2, na ordem do cadastro"
+      description="Negócios do período por Status 2, do maior para o menor"
       icon={GitBranch}
       footer={total > 0 ? `${num(total)} negócios no período · vendas + em aberto` : undefined}
     >
