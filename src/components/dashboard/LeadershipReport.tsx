@@ -11,6 +11,19 @@ import { cn } from "@/lib/utils";
 import { ALL_MONTHS, type DealRow } from "./data";
 import { buildLeadershipReport, loadLeadershipContext, type LeadershipRow } from "./leadershipData";
 
+/**
+ * Fundo sólido com texto branco nos destaques (pedido de 28/09/2026, print do
+ * sistema anterior). Tons fixos e escuros, não os tokens: o `--success` do
+ * escuro é um verde claro onde o branco daria 2:1; estes passam de 4,5:1 com
+ * branco nos dois temas.
+ */
+const SOLIDO = {
+  verde: "bg-[#3d7a45] text-white",
+  ambar: "bg-[#94702a] text-white",
+  vermelho: "bg-[#8e2c2c] text-white",
+  azul: "bg-[#2a5288] text-white",
+} as const;
+
 export function LeadershipTables({ rows, month }: { rows: LeadershipRow[]; month: string }) {
   return <div className="space-y-4">
     {(["director", "manager"] as const).map(role => {
@@ -24,21 +37,24 @@ export function LeadershipTables({ rows, month }: { rows: LeadershipRow[]; month
           : <div className="overflow-x-auto" role="region" aria-label={`Relatório de ${title.toLowerCase()}`} tabIndex={0}>
             <table className="w-full min-w-[960px] text-sm">
               <caption className="sr-only">Desempenho de {title.toLowerCase()} — {month === ALL_MONTHS ? "todos os meses" : month}</caption>
-              <thead><tr className="border-b border-border text-xs text-muted-foreground">
+              {/* Linha de títulos com fundo próprio e texto âmbar, separada das
+                  linhas de dado (pedido de 28/09/2026); Vendas e VGV com o verde
+                  sólido do print, Off em vermelho. */}
+              <thead><tr className="border-b-2 border-gold/60 bg-secondary text-xs font-bold text-gold">
                 <th scope="col" className="p-2">Meta<br />Remuneração</th><th scope="col" className="p-2">Meta</th>
                 <th scope="col" className="p-2">% batido</th><th scope="col" className="p-2 text-left">{role === "director" ? "Diretor" : "Gerente"}</th>
-                <th scope="col" className="bg-primary/15 p-2">Leads</th><th scope="col" className="p-2">Ágil</th>
+                <th scope="col" className="p-2">Leads</th><th scope="col" className="p-2">Ágil</th>
                 <th scope="col" className="p-2" title="Status 2: Virou Negócio / Negócio fechado">Negócio</th>
-                <th scope="col" className="bg-success/20 p-2 text-success">Vendas</th><th scope="col" className="bg-success/20 p-2 text-success">VGV</th>
+                <th scope="col" className={cn("p-2", SOLIDO.verde)}>Vendas</th><th scope="col" className={cn("p-2", SOLIDO.verde)}>VGV</th>
                 <th scope="col" className="p-2 text-destructive">Off</th>
               </tr></thead>
               <tbody>{group.map(row => <tr key={row.id} className="border-b border-border/50 text-center tabular-nums last:border-0 odd:bg-secondary/20">
                 <td className="p-2">{num(row.compensationGoal)}</td><td className="p-2">{num(row.goal)}</td>
-                <td className={cn("p-2 font-semibold", row.reached === null ? "text-muted-foreground" : row.reached >= 100 ? "bg-success/20 text-success" : row.reached >= 50 ? "bg-warning/20 text-warning" : "bg-destructive/15 text-destructive")}>{row.reached === null ? "—" : `${num(Math.round(row.reached))}%`}</td>
+                <td className={cn("p-2 font-bold", row.reached === null ? "text-muted-foreground" : row.reached >= 100 ? SOLIDO.verde : row.reached >= 50 ? SOLIDO.ambar : SOLIDO.vermelho)}>{row.reached === null ? "—" : `${num(Math.round(row.reached))}%`}</td>
                 <th scope="row" className="p-2 text-left font-medium">{nome(row.name)}</th>
-                <td className="bg-primary/10 p-2 font-semibold">{num(row.leads)}</td><td className="p-2">{num(row.agile)}</td><td className="p-2">{num(row.business)}</td>
-                <td className={cn("p-2 font-bold", row.sales ? "bg-success/15 text-success" : "bg-destructive/10 text-destructive")}>{num(row.sales)}</td>
-                <td className={cn("whitespace-nowrap p-2 font-bold", row.sales ? "bg-success/15 text-success" : "bg-destructive/10 text-destructive")}>{brl(row.vgv, { cents: true })}</td>
+                <td className={cn("p-2 font-bold", SOLIDO.azul)}>{num(row.leads)}</td><td className="p-2">{num(row.agile)}</td><td className="p-2">{num(row.business)}</td>
+                <td className={cn("p-2 font-bold", row.sales ? SOLIDO.verde : SOLIDO.vermelho)}>{num(row.sales)}</td>
+                <td className={cn("whitespace-nowrap p-2 font-bold", row.sales ? SOLIDO.verde : SOLIDO.vermelho)}>{brl(row.vgv, { cents: true })}</td>
                 <td className="p-2">{num(row.off)}</td>
               </tr>)}</tbody>
             </table>

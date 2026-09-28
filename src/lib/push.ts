@@ -330,7 +330,7 @@ export async function notifyLocally(
   const link = typeof row.link === "string" ? row.link : "";
   const notification = new Notification(row.title, {
     body: typeof row.body === "string" ? row.body.slice(0, 300) : undefined,
-    icon: "/icon-192.png",
+    icon: "/icon-192.png?v=3",
     tag: typeof row.id === "string" ? row.id : undefined,
   });
   notification.onclick = () => {
