@@ -12,11 +12,16 @@ $$;
 do $$
 declare
   cor uuid := '00000000-0000-0000-0000-000001590001';
+  adm uuid := '00000000-0000-0000-0000-000001590002';
   v_deal uuid;
   v_legado uuid;
 begin
   insert into auth.users(id,email,raw_user_meta_data) values
-    (cor,'broker@desconto159.test','{"full_name":"Corretor 159"}');
+    (cor,'broker@desconto159.test','{"full_name":"Corretor 159"}'),
+    (adm,'admin@desconto159.test','{"full_name":"Admin 159"}');
+  insert into public.user_roles(profile_id,role) values (adm,'admin') on conflict do nothing;
+  -- Editar valor exige `deals.edit_value` (`deals_guard_value`): o admin tem.
+  perform set_config('request.jwt.claims',json_build_object('sub',adm,'role','authenticated')::text,true);
   delete from public.closed_months where period = public.month_start(current_date);
 
   insert into public.deals(stage_id,created_by,vgv_gross,discount_amount)
@@ -45,6 +50,16 @@ begin
     update public.deals set discount_amount = 600000 where id = v_legado;
     raise exception 'FALHOU: desconto maior que o bruto passou';
   exception when check_violation then null;
+  end;
+
+  -- O guarda de valor vigia o R$: sem `deals.edit_value`, mexer no desconto
+  -- mudaria o líquido por fora da permissão.
+  update public.role_permissions set allowed=false where role='broker' and permission='deals.edit_value';
+  perform set_config('request.jwt.claims',json_build_object('sub',cor,'role','authenticated')::text,true);
+  begin
+    update public.deals set discount_amount = 1 where id = v_deal;
+    raise exception 'FALHOU: desconto em R$ mudou sem deals.edit_value';
+  exception when insufficient_privilege then null;
   end;
 end
 $$;

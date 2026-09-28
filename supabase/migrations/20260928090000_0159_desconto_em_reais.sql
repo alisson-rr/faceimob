@@ -83,6 +83,9 @@ begin
 end;
 $$;
 
+-- Função de gatilho: ninguém a chama direto (superfície anônima, 0019).
+revoke all on function public.deals_sync_discount() from public, anon, authenticated;
+
 -- `deals_aa_…` para rodar antes de `deals_guard_value` (gatilhos BEFORE da
 -- mesma tabela disparam em ordem alfabética): o guarda vê o par já coerente.
 drop trigger if exists deals_aa_sync_discount on public.deals;
