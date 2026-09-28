@@ -327,3 +327,7 @@ Pedido do cliente. **Ícone:** o símbolo sobre fundo azul (arte enviada) vira f
 ## 28/09/2026 (5) — "Negócios por etapa" pelo Status 2
 
 Pedido do cliente: o bloco da Visão Geral passa a listar só o Status 2 com negócio no período, na ordem do cadastro de status, sem os zerados (`linhasDoStatus2`). O conjunto contado segue vendas + em aberto, e o total continua fechando com o que o rodapé diz; Status 2 fora do catálogo vira linha própria no fim. A contagem por etapa do pipeline (`funnelRows`, `stageCounts`) saiu, sem outro uso; o teste de "total do bloco = cartão Negócios" foi refeito sobre o Status 2 | `SalesFunnelCard.tsx`, `dashboard/cartoesDoMes.ts`, `dashboard/data.ts` |
+
+## 28/09/2026 (6) — "Negócios por etapa" do maior para o menor
+
+Pedido do cliente: as linhas de Status 2 passam a sair pela quantidade, do maior para o menor; no empate, a ordem do cadastro de status (e o rótulo, para status fora do catálogo) | `dashboard/cartoesDoMes.ts`, `SalesFunnelCard.tsx` |
