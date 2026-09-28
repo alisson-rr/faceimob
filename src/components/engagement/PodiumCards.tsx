@@ -46,6 +46,9 @@ export type PodiumEntry = {
   avatarUrl?: string | null;
   /** Linha de apoio: gerente, equipe, métricas curtas. */
   detail?: ReactNode;
+  /** O número em destaque. Ausente = "N pontos" (o Game); o ranking de vendas
+   *  da Dashboard escreve "N vendas". */
+  value?: ReactNode;
   /**
    * Colocação real, quando ela não é a posição na lista.
    *
@@ -136,7 +139,7 @@ export function PodiumCards({ entries, className }: PodiumCardsProps) {
                 {/* No print os pontos têm quase o corpo do nome; quem separa os
                     dois é o corpo da letra, não a cor. */}
                 <p className={cn("mt-1 text-base font-bold tabular-nums", primeiro && "sm:text-lg")}>
-                  {num(entry.points)} pontos
+                  {entry.value ?? `${num(entry.points)} pontos`}
                 </p>
               </div>
             </div>

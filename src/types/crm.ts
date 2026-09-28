@@ -120,7 +120,10 @@ export interface PipelineDeal {
   /** Rótulo da etapa vindo de `pipeline_stages.label` — a fonte única (F11). */
   stage_label?: string;
   vgv_bruto?: number;
+  /** Derivado do `desconto` pelo banco (0159) — só leitura. */
   perc_desconto?: string;
+  /** Desconto em R$, o valor digitado (`deals.discount_amount`, 0159). */
+  desconto?: number;
   vgv_liquido?: number;
   deal_value: number;
   days_in_pipeline: number;

@@ -242,34 +242,28 @@ describe("findDuplicateDeal", () => {
  * ~40 campos.
  */
 describe("dealRangeError", () => {
-  const base = { vgv_bruto: 400000, perc_desconto: "10", deal_value: 400000 };
+  // Desconto em R$ desde a 0159.
+  const base = { vgv_bruto: 400000, desconto: 40000, deal_value: 400000 };
 
   it("aprova o negocio dentro da faixa", () => {
     expect(dealRangeError(base)).toBeNull();
-    expect(dealRangeError({ ...base, perc_desconto: "" })).toBeNull();
-    expect(dealRangeError({ ...base, perc_desconto: "0" })).toBeNull();
-    expect(dealRangeError({ ...base, perc_desconto: "100" })).toBeNull();
-    expect(dealRangeError({ ...base, vgv_bruto: 0 })).toBeNull();
+    expect(dealRangeError({ ...base, desconto: undefined })).toBeNull();
+    expect(dealRangeError({ ...base, desconto: 0 })).toBeNull();
+    expect(dealRangeError({ ...base, desconto: 400000 })).toBeNull();
+    expect(dealRangeError({ ...base, vgv_bruto: 0, desconto: 0 })).toBeNull();
   });
 
   it("nomeia o VGV negativo, que hoje volta como 23514 sem campo", () => {
     expect(dealRangeError({ ...base, vgv_bruto: -5 })).toMatch(/VGV bruto/i);
   });
 
-  it("nomeia o desconto fora de 0 a 100", () => {
-    expect(dealRangeError({ ...base, perc_desconto: "150" })).toMatch(/desconto/i);
-    expect(dealRangeError({ ...base, perc_desconto: "-1" })).toMatch(/desconto/i);
-  });
-
-  it("le a virgula brasileira, como o gravador", () => {
-    // `toNumberOrNull` e a MESMA funcao que grava: se aqui lesse diferente, a
-    // tela aprovaria um valor e mandaria outro.
-    expect(dealRangeError({ ...base, perc_desconto: "10,5" })).toBeNull();
-    expect(dealRangeError({ ...base, perc_desconto: "100,5" })).toMatch(/desconto/i);
+  it("nomeia o desconto negativo ou maior que o bruto", () => {
+    expect(dealRangeError({ ...base, desconto: -1 })).toMatch(/desconto/i);
+    expect(dealRangeError({ ...base, desconto: 400000.01 })).toMatch(/maior que o VGV bruto/i);
   });
 
   it("cai no deal_value quando o VGV bruto nao foi preenchido, como legacyDealFields", () => {
-    expect(dealRangeError({ perc_desconto: "0", deal_value: -1, vgv_bruto: undefined }))
+    expect(dealRangeError({ desconto: 0, deal_value: -1, vgv_bruto: undefined }))
       .toMatch(/VGV bruto/i);
   });
 });

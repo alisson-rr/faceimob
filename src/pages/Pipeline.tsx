@@ -167,9 +167,17 @@ export default function Pipeline() {
    * escolher — para o corretor, a lista da RLS já é só a dele.
    */
   const recorteInicial = !isAdmin && myTeam.size > 1 && roles.includes("manager") ? MY_TEAM : ALL;
+  /**
+   * A lista abre só nas propostas — Status 1 PROPOSTA (pedido de 28/09/2026) —,
+   * e "Limpar filtros" volta para elas, não para tudo. O filtro continua
+   * trocável. `code` e não o rótulo: o código do grupo é imutável (0149), o
+   * rótulo é editável no cadastro. Sem catálogo ainda, não há o que recortar.
+   */
+  const propostaId = catalog.groups.find((group) => group.code === "PROPOSTA")?.id ?? ALL;
+  const filtrosLimpos = useMemo(() => ({ ...EMPTY_FILTERS, status1: propostaId }), [propostaId]);
   const filters = useMemo(
-    () => filtrosEscolhidos ?? { ...EMPTY_FILTERS, team: recorteInicial },
-    [filtrosEscolhidos, recorteInicial],
+    () => filtrosEscolhidos ?? { ...filtrosLimpos, team: recorteInicial },
+    [filtrosEscolhidos, filtrosLimpos, recorteInicial],
   );
 
   const brokers = useMemo(
@@ -179,6 +187,10 @@ export default function Pipeline() {
   const managers = useMemo(
     () => people.filter((person) => person.active
       && (person.roles.includes("manager") || person.roles.includes("director"))),
+    [people],
+  );
+  const directors = useMemo(
+    () => people.filter((person) => person.active && person.roles.includes("director")),
     [people],
   );
   /** Meses presentes nos negócios do período — o filtro de mês era campo de texto livre. */
@@ -243,8 +255,10 @@ export default function Pipeline() {
   // consertar. É o mesmo achado A01 que o `DealsBoard` corrigiu, um nível acima.
   // `isPlaceholderData`: trocando o período, a lista anterior fica na tela até a
   // nova chegar (ou a data ficar completa), e os números dela não são do período novo.
+  // O catálogo entra na espera: é dele que sai o filtro padrão (PROPOSTA), e sem
+  // ele a lista pintava todos os negócios e encolhia um instante depois.
   const carregando = dealsQuery.isPending || dealsQuery.isPlaceholderData
-    || closedMonths.isPending || openSeason.isPending;
+    || closedMonths.isPending || openSeason.isPending || statusCatalog.isPending;
   const falhou = Boolean(dealsQuery.error ?? closedMonths.error);
 
   const patchFilters = (patch: Partial<DealFilterState>) =>
@@ -372,12 +386,13 @@ export default function Pipeline() {
             <DealFilters
               filters={filters}
               onChange={patchFilters}
-              onClear={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
+              onClear={() => setFiltrosEscolhidos(filtrosLimpos)}
               onClose={() => setShowFilters(false)}
               stages={stages}
               developers={developers}
               brokers={brokers}
               managers={managers}
+              directors={directors}
               months={months}
               teamCount={myTeam.size}
             />
@@ -430,7 +445,7 @@ export default function Pipeline() {
                 void developersQuery.refetch();
                 void statusCatalog.refetch();
               }}
-              onClearFilters={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
+              onClearFilters={() => setFiltrosEscolhidos(filtrosLimpos)}
               onNewDeal={() => setEditor({ deal: null })}
               onOpen={abrirNegocio}
               onMove={moveDeal}

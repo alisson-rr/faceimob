@@ -16,11 +16,12 @@ import {
   rankBy,
   useDashboardPayload,
   vazioTotal,
+  withZeroSellers,
   type DashboardScope,
   type DealRow,
 } from "./data";
 import type { Lead } from "@/types/crm";
-import type { DashboardPayload, MonthlyGoalRow } from "@/integrations/supabase/newSchema";
+import type { DashboardPayload, MonthlyGoalRow, PersonRecord } from "@/integrations/supabase/newSchema";
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" }, roles: [] }) }));
 
@@ -690,5 +691,33 @@ describe("pickSalesGoal — o denominador segue o escopo do numerador", () => {
       target: null,
       scope: "global",
     });
+  });
+});
+
+describe("withZeroSellers — ranking com quem não vendeu", () => {
+  const pessoa = (id: string, name: string, roles: string[], active = true) =>
+    ({ id, name, roles, active }) as unknown as PersonRecord;
+  const vendidos = [{ id: "b1", name: "Diego", vendas: 2, vgv: 500_000 }];
+
+  it("ativos do papel entram zerados, depois de quem vendeu e em ordem alfabética", () => {
+    const people = [
+      pessoa("b3", "Zeca", ["broker"]),
+      pessoa("b2", "Ávila", ["broker"]),
+      pessoa("b1", "Diego", ["broker"]),
+      pessoa("m1", "Marcos", ["manager"]),
+    ];
+    expect(withZeroSellers(vendidos, people, ["broker"]).map((row) => [row.name, row.vendas])).toEqual([
+      ["Diego", 2], ["Ávila", 0], ["Zeca", 0],
+    ]);
+  });
+
+  it("inativo só aparece se vendeu no período", () => {
+    const people = [pessoa("b1", "Diego", ["broker"], false), pessoa("b9", "Inativo", ["broker"], false)];
+    expect(withZeroSellers(vendidos, people, ["broker"]).map((row) => row.id)).toEqual(["b1"]);
+  });
+
+  it("no geral, qualquer papel de venda entra, sem repetir quem acumula papéis", () => {
+    const people = [pessoa("x", "Xavier", ["manager", "broker"]), pessoa("c", "Cida", ["cca"])];
+    expect(withZeroSellers([], people, ["broker", "manager", "director"]).map((row) => row.id)).toEqual(["x"]);
   });
 });

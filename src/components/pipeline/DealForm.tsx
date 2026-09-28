@@ -16,7 +16,7 @@ import {
 } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
-import { ChoiceField, PersonField, Section, TextField } from "./fields";
+import { ChoiceField, MoneyField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
 import { projectPlaceholder } from "./guards";
 import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
@@ -192,6 +192,23 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
 
   const managers = people.filter((person) => person.active
     && (person.roles.includes("manager") || person.roles.includes("director")));
+  const directors = people.filter((person) => person.active && person.roles.includes("director"));
+
+  /**
+   * Sugestão de gerente e diretor pela equipe do Corretor 1 (pedido de
+   * 28/09/2026). É só sugestão: preenche Gerente 1 e Diretor 1 ao trocar o
+   * corretor, e os dois continuam editáveis. Vem de `people`, que traz o gestor
+   * da equipe de cada perfil, e só preenche quem a lista mostra — um id fora da
+   * visibilidade apareceria como "Fora da sua visibilidade". Para o corretor,
+   * que não enxerga o gerente, não há sugestão na tela: o gatilho
+   * `deal_participants_autofill` vincula a equipe ao salvar, como já fazia.
+   */
+  const sugestaoDaEquipe = (brokerId: string | null): Partial<SaveLegacyDealInput> => {
+    const corretor = people.find((person) => person.id === brokerId);
+    const gerente = corretor?.manager_id && managers.some((p) => p.id === corretor.manager_id) ? corretor.manager_id : null;
+    const diretor = corretor?.director_id && directors.some((p) => p.id === corretor.director_id) ? corretor.director_id : null;
+    return { ...(gerente ? { manager1_id: gerente } : {}), ...(diretor ? { director1_id: diretor } : {}) };
+  };
 
   const loadProjects = useCallback(async (developerName: string) => {
     const developer = developers.find((row) => row.name === developerName);
@@ -441,12 +458,14 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       </Section>
 
       <Section title="Equipe" className="deal-tone-gold">
-        <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v })} />
+        <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v, ...sugestaoDaEquipe(v) })} />
         <PersonField id={field("broker2")} label="Corretor 2" hint={rateio(form.broker2_share)} value={form.broker2_id} fallbackName={form.broker2} options={brokers} onChange={(v) => onChange({ broker2_id: v })} optional />
         <PersonField id={field("broker3")} label="Corretor 3" hint={rateio(form.broker3_share)} value={form.broker3_id} fallbackName={form.broker3} options={brokers} onChange={(v) => onChange({ broker3_id: v })} optional />
         <PersonField id={field("manager1")} label="Gerente 1 *" value={form.manager1_id} fallbackName={form.manager1} options={managers} onChange={(v) => onChange({ manager1_id: v })} />
         <PersonField id={field("manager2")} label="Gerente 2" value={form.manager2_id} fallbackName={form.manager2} options={managers} onChange={(v) => onChange({ manager2_id: v })} optional />
         <PersonField id={field("manager3")} label="Gerente 3" value={form.manager3_id} fallbackName={form.manager3} options={managers} onChange={(v) => onChange({ manager3_id: v })} optional />
+        <PersonField id={field("director1")} label="Diretor 1" value={form.director1_id} fallbackName={form.director1_name ?? undefined} options={directors} onChange={(v) => onChange({ director1_id: v })} optional />
+        <PersonField id={field("director2")} label="Diretor 2" value={form.director2_id} fallbackName={form.director2_name ?? undefined} options={directors} onChange={(v) => onChange({ director2_id: v })} optional />
         {/* O rateio é do banco (`recalc_deal_shares`, disparado por gatilho ao
             inserir ou remover corretor) e até aqui não aparecia em tela
             nenhuma: nem o diretor, nem o gerente, nem o próprio corretor viam
@@ -492,46 +511,22 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       </Section>
 
       <Section title="VGV" className="deal-tone-green">
+        {/* Os dois em R$ com máscara (pedido de 28/09/2026). Negativo não se
+            digita; desconto acima do bruto quem barra é `dealRangeError` no
+            salvamento, com o nome do campo — o CHECK da 0159 sozinho voltaria
+            como 23514 sem dizer qual. */}
+        <MoneyField id={field("vgv")} label="VGV bruto" value={form.vgv_bruto} onChange={(v) => onChange({ vgv_bruto: v })} />
+        <MoneyField id={field("desconto")} label="Desconto" value={form.desconto} onChange={(v) => onChange({ desconto: v })} />
         <div>
-          <Label htmlFor={field("vgv")} className="text-eyebrow">VGV bruto</Label>
-          {/* `min={0}` é só a seta do controle e o teclado do celular: sem
-              `<form>` nem `checkValidity()`, ele NÃO impede digitar "-5". Quem
-              barra antes do banco é `dealRangeError` no salvamento — o CHECK
-              `vgv_gross >= 0` sozinho volta como 23514, que a tela traduz para
-              "Um dos campos está fora do valor permitido" sem dizer qual. */}
-          <Input
-            id={field("vgv")} type="number" min={0} inputMode="decimal" className="mt-1 text-xs"
-            value={form.vgv_bruto ?? ""}
-            onChange={(event) => onChange({ vgv_bruto: Number(event.target.value) })}
-          />
-        </div>
-        <div>
-          <Label htmlFor={field("desconto")} className="text-eyebrow">Percentual de desconto</Label>
-          {/* Era texto livre: digitar "10%" virava desconto 0 sem aviso nenhum
-              (`Number("10%")` é NaN). O campo numérico tira o formato ambíguo;
-              a FAIXA quem cobra é `dealRangeError` no salvamento — `max={100}`
-              aqui não impede colar "150". */}
-          <Input
-            id={field("desconto")} type="number" min={0} max={100} step={0.01}
-            inputMode="decimal" className="mt-1 text-xs"
-            value={form.perc_desconto ?? ""}
-            onChange={(event) => onChange({ perc_desconto: event.target.value })}
-          />
-        </div>
-        <div>
-          {/* Não é campo: é leitura. Era um `<input disabled>` com o número CRU
-              ("1140000") num campo rotulado VGV, enquanto a tabela, o cartão e o
-              cabeçalho ao lado mostravam "R$ 1.140.000" — e a explicação de por
-              que ele é cinza vivia só no `title`, que num controle desabilitado
-              não recebe foco e não existe para teclado nem leitor de tela (a
-              mesma "explicação morta" que a tabela já tinha rejeitado).
-              `brl` devolve travessão para nulo, em vez de afirmar R$ 0 num
-              negócio que ainda não tem VGV. */}
+          {/* Não é campo: é leitura, e não se edita. A conta é a mesma da coluna
+              gerada `vgv_net` (0159), feita aqui na hora para quem digita ver o
+              resultado antes de salvar; o banco refaz ao gravar. Sem bruto,
+              travessão, e não "R$ 0,00" num negócio que ainda não tem VGV. */}
           <p className="text-eyebrow">VGV líquido</p>
-          <p className="deal-readout mt-1 rounded-xl border px-3.5 py-2.5 text-xs font-semibold tabular-nums">{brl(form.vgv_liquido)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Calculado pelo banco a partir do VGV bruto e do desconto.
+          <p className="deal-readout mt-1 rounded-xl border px-3.5 py-2.5 text-xs font-semibold tabular-nums">
+            {form.vgv_bruto ? brl(Math.max(form.vgv_bruto - (form.desconto ?? 0), 0), { cents: true }) : brl(null)}
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">VGV bruto menos o desconto.</p>
         </div>
       </Section>
 

@@ -34,6 +34,7 @@ import {
   type DashboardPayload,
   type LegacyDealRecord,
   type MonthlyGoalRow,
+  type PersonRecord,
 } from "@/integrations/supabase/newSchema";
 
 export const ALL_MONTHS = "all";
@@ -596,6 +597,22 @@ export const rankBy = (rows: DealRow[], role: RankRole | "all"): RankRow[] => {
   // identicos ate o centavo — e trocavam de degrau no podio a cada negocio novo
   // cadastrado. `pt-BR` porque "Ana" tem de vir antes de "Ávila" e de "Bruno".
   return Array.from(map.values())
+    .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv || a.name.localeCompare(b.name, "pt-BR"));
+};
+
+/**
+ * O ranking do período com quem não vendeu (pedido de 28/09/2026): todo ATIVO
+ * do papel entra zerado, abaixo de quem vendeu. Inativo só aparece se vendeu no
+ * período — já está em `ranked`, que sai dos negócios — e some no mês seguinte.
+ * A ordem é a mesma de `rankBy`: vendas, VGV e, entre zerados, o nome.
+ */
+export const withZeroSellers = (ranked: RankRow[], people: PersonRecord[], roles: RankRole[]): RankRow[] => {
+  const ranqueados = new Set(ranked.map((row) => row.id));
+  const zerados = people
+    .filter((person) => person.active && !ranqueados.has(person.id))
+    .filter((person) => person.roles.some((role) => (roles as string[]).includes(role)))
+    .map((person) => ({ id: person.id, name: person.name, vendas: 0, vgv: 0 }));
+  return [...ranked, ...zerados]
     .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv || a.name.localeCompare(b.name, "pt-BR"));
 };
 

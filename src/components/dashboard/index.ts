@@ -38,6 +38,7 @@ export {
   useMonthlySeries,
   useSalesGoal,
   useVgvGoal,
+  withZeroSellers,
   vazioTotal,
   type DashboardScope,
   type DealCategory,

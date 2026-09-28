@@ -192,13 +192,19 @@ export async function listSelectableBrokers(): Promise<SelectablePerson[] | null
   // Fronteira: a função nasce na migration 0076 e `types.ts` é gerado depois de
   // aplicá-la. Sem o cast o arquivo não compila até a regeneração — e o `rpc`
   // tipado não aceita nome fora do schema conhecido.
-  const rpc = (db as unknown as {
+  //
+  // A chamada é pelo PRÓPRIO cliente (`cliente.rpc(...)`), nunca por uma
+  // referência solta ao método: `rpc` é método de classe e lê `this.rest`.
+  // Guardado em `const rpc = (...).rpc` ele perdia o `this`, toda chamada
+  // estourava TypeError e o modal mostrava "Não consegui carregar a lista de
+  // corretores" para todo mundo (visto em produção em 28/09/2026).
+  const cliente = db as unknown as {
     rpc: (fn: string) => PromiseLike<{
       data: { id: string; full_name: string }[] | null;
       error: { code?: string; message?: string } | null;
     }>;
-  }).rpc;
-  const { data, error } = await rpc("selectable_brokers");
+  };
+  const { data, error } = await cliente.rpc("selectable_brokers");
   if (error) {
     // PGRST202 = função não encontrada no schema exposto; 42883 = não existe.
     if (error.code === "PGRST202" || error.code === "42883") return null;
@@ -616,6 +622,7 @@ export async function listLegacyDeals(
       director2_name: profileById.get(directors[1]?.profile_id) || null,
       vgv_bruto: Number(deal.vgv_gross || 0),
       perc_desconto: String(deal.discount_pct || 0),
+      desconto: Number(deal.discount_amount || 0),
       vgv_liquido: Number(deal.vgv_net || 0),
       deal_value: Number(deal.vgv_net || 0),
       days_in_pipeline: differenceInDays(new Date(), parseISO(createdAt)),
@@ -1176,7 +1183,8 @@ export function legacyDealFields(form: SaveLegacyDealInput) {
     unit: form.unit || null,
     month_base: form.month_base ? displayMonthToIso(form.month_base) : undefined,
     vgv_gross: Number(form.vgv_bruto ?? form.deal_value ?? 0),
-    discount_pct: toNumberOrNull(form.perc_desconto) ?? 0,
+    // Desconto em R$ (0159): o banco deriva o percentual e o líquido dele.
+    discount_amount: Number(form.desconto ?? 0),
     lead_origin: form.lead_origin || null,
     notes: form.notes || null,
     status_detail: untouched ? null : chosen,
@@ -1310,6 +1318,11 @@ export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string>
   const brokerIds = dedupe([form.broker1_id, form.broker2_id, form.broker3_id]);
   const managerIds = dedupe([form.manager1_id, form.manager2_id, form.manager3_id])
     .filter((id) => !brokerIds.includes(id));
+  // Diretor entrou no formulário em 28/09/2026 (antes só o gatilho
+  // `deal_participants_autofill` o vinculava, pela equipe do corretor). Mesmo
+  // `(deal_id, profile_id, role)` único: quem é gerente E diretor do negócio
+  // fica nas duas linhas, como o gatilho já fazia.
+  const directorIds = dedupe([form.director1_id, form.director2_id]);
 
   // `ordinal` é o slot da tela (Corretor 1/2/3, Gerente 1/2). Sem ele a leitura
   // dependia de `created_at`, que é igual para todas as linhas do mesmo insert —
@@ -1317,6 +1330,7 @@ export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string>
   const desejados = [
     ...brokerIds.map((profileId, i) => ({ deal_id: dealId, profile_id: profileId, role: "broker" as const, ordinal: i + 1 })),
     ...managerIds.map((profileId, i) => ({ deal_id: dealId, profile_id: profileId, role: "manager" as const, ordinal: i + 1 })),
+    ...directorIds.map((profileId, i) => ({ deal_id: dealId, profile_id: profileId, role: "director" as const, ordinal: i + 1 })),
   ];
 
   // Grava PRIMEIRO, remove depois — e nunca esvazia.
@@ -1346,7 +1360,9 @@ export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string>
   // corretores (medido em 02/09/2026), então é buraco latente, não dano.
   // Evoluir quando um negócio precisar de mais de 3 corretores: aí os slots
   // fixos viram lista, e a comparação passa a ser contra o que o banco tem.
-  for (const papel of ["broker", "manager"] as const) {
+  // O mesmo vale para diretor, com 2 slots (os que a leitura já montava): um
+  // 3º só existiria com três corretores de três diretorias diferentes.
+  for (const papel of ["broker", "manager", "director"] as const) {
     const mantidos = desejados.filter((r) => r.role === papel).map((r) => r.profile_id);
     if (!mantidos.length) continue;
     const { error } = await db.from("deal_participants")
