@@ -27,6 +27,7 @@ import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
 
 import { BrokerEditModal, type EditableBroker } from "@/components/BrokerEditModal";
 import { GlobalGoalCard } from "@/components/equipes/GlobalGoalCard";
+import { LeaderGoalsCard } from "@/components/equipes/LeaderGoalsCard";
 import { MetaVgv } from "@/components/equipes/MetaVgv";
 import { PessoaCard, ListaPessoas, ContagemPessoas, iniciais } from "@/components/equipes/PessoaCard";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
@@ -665,6 +666,9 @@ export default function Equipes() {
         <TabsContent value="equipe" className="mt-0 space-y-6">
           {/* Meta global: mesma regra de escrita da RLS (admin e diretor) */}
           {canEdit && <GlobalGoalCard />}
+          {/* Meta e Meta remuneração de cada gestor, por mês — o relatório da
+              Visão Geral lê daqui (pedido de 28/09/2026). */}
+          {canEdit && <LeaderGoalsCard />}
 
           {/* Meu Perfil */}
           <Card className="glass border-primary/30" role="region" aria-label="Meu Perfil">

@@ -53,3 +53,11 @@ describe("validateGoalTarget", () => {
     expect(validateGoalTarget("sales", 3.5)).toBe("A meta de vendas é uma quantidade inteira.");
   });
 });
+
+describe("validateGoalTarget · meta de remuneração", () => {
+  it("é quantidade de vendas, como a meta operacional", () => {
+    expect(validateGoalTarget("sales_comp", 8)).toBeNull();
+    expect(validateGoalTarget("sales_comp", 8.5)).toBe("A meta de vendas é uma quantidade inteira.");
+    expect(validateGoalTarget("sales_comp", 0)).toBe("A meta precisa ser maior que zero.");
+  });
+});

@@ -21,7 +21,6 @@
  */
 import {
   STAGES_REQUIRING_REVIEW,
-  toNumberOrNull,
   type LegacyDealRecord,
   type SaveLegacyDealInput,
 } from "@/integrations/supabase/newSchema";
@@ -109,9 +108,9 @@ export function blockedMoveReason(
  *
  * `min`/`max` de `input[type=number]` **não** travam nada aqui: eles só valem
  * na validação de formulário, e o editor de negócio não tem `<form>` nem
- * `checkValidity()`. Digitar "-5" no VGV ou "150" no desconto entrava no state,
- * ia para `legacyDealFields` e só era barrado por `vgv_gross >= 0` /
- * `discount_pct between 0 and 100` — que voltam como 23514 e viram
+ * `checkValidity()`. Digitar "-5" no VGV ou um desconto maior que o bruto
+ * entrava no state, ia para `legacyDealFields` e só era barrado pelos CHECKs
+ * de `vgv_gross` / `discount_amount` — que voltam como 23514 e viram
  * "Um dos campos está fora do valor permitido." num formulário de ~40 campos,
  * sem dizer qual. Aqui a frase nomeia o campo, antes da ida ao banco.
  *
@@ -119,15 +118,20 @@ export function blockedMoveReason(
  * do VGV: validar outra expressão seria aprovar um valor e mandar outro.
  */
 export function dealRangeError(
-  form: Pick<SaveLegacyDealInput, "vgv_bruto" | "perc_desconto" | "deal_value">,
+  form: Pick<SaveLegacyDealInput, "vgv_bruto" | "desconto" | "deal_value">,
 ): string | null {
   const vgv = Number(form.vgv_bruto ?? form.deal_value ?? 0);
   if (!Number.isFinite(vgv) || vgv < 0) {
     return "O VGV bruto precisa ser um número maior ou igual a zero.";
   }
-  const desconto = toNumberOrNull(form.perc_desconto);
-  if (desconto != null && (desconto < 0 || desconto > 100)) {
-    return "O percentual de desconto precisa ficar entre 0 e 100.";
+  // Desconto em R$ desde a 0159: o CHECK `deals_discount_amount_range` recusa
+  // negativo e maior que o bruto, e voltaria como 23514 sem nome de campo.
+  const desconto = Number(form.desconto ?? 0);
+  if (!Number.isFinite(desconto) || desconto < 0) {
+    return "O desconto precisa ser um valor maior ou igual a zero.";
+  }
+  if (desconto > vgv) {
+    return "O desconto não pode ser maior que o VGV bruto.";
   }
   return null;
 }

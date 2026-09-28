@@ -363,6 +363,18 @@ describe("TopBrokers", () => {
     await vazio.cleanup();
   });
 
+  it("zerado vai para a tabela, nunca para o podio, e o rodape conta so quem vendeu", async () => {
+    const comZerado = [...rows, { id: "b9", name: "Zeca", vendas: 0, vgv: 0 }];
+    const { text, query, cleanup } = await render(
+      <TopBrokers title="Ranking" description="Vendas do período" rows={comZerado} />,
+    );
+    expect(query("ol")?.textContent).not.toContain("Zeca");
+    expect(query("table")?.textContent).toContain("Zeca");
+    expect(text).toContain("2 com venda no período");
+    expect(text).toContain("3 vendas");
+    await cleanup();
+  });
+
   it("a lista rolavel e alcancavel pelo teclado, e tem nome", async () => {
     // A tabela do 4º colocado em diante nao tem UM elemento focavel dentro, so
     // texto: sem `tabIndex` no container rolavel quem navega por teclado nao

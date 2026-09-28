@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { Fragment, useMemo, useState, type MouseEvent } from "react";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
   Lock, Maximize2, RotateCcw, XCircle,
@@ -91,6 +91,17 @@ export function DealsTable({
   const current = Math.min(page, totalPages);
   const rows = ordenados.slice((current - 1) * PER_PAGE, current * PER_PAGE);
 
+  // Separador por construtora (pedido de 28/09/2026) só quando a lista está
+  // agrupada por ela: na ordem padrão e na da coluna Construtora. Ordenada por
+  // VGV ou dias, as construtoras se misturam e o separador repetiria a cada
+  // linha. A contagem é da lista inteira, não da página.
+  const agrupada = sort.key === "padrao" || sort.key === "developer";
+  const porConstrutora = useMemo(() => {
+    const contagem = new Map<string, number>();
+    for (const deal of deals) contagem.set(deal.developer || "", (contagem.get(deal.developer || "") ?? 0) + 1);
+    return contagem;
+  }, [deals]);
+
   /** Cabeçalho que ordena. Função, e não componente local: `<Comp/>` declarado
    *  dentro do render tem identidade nova a cada estado e o React remonta a
    *  célula — o botão perderia o foco no clique que acabou de ordenar. */
@@ -153,7 +164,9 @@ export function DealsTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((deal) => {
+            {rows.map((deal, index) => {
+              const construtora = deal.developer || "";
+              const abreGrupo = agrupada && (index === 0 || (rows[index - 1].developer || "") !== construtora);
               const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
               const status = deal.status || "PROPOSTA";
               const grupo = statusGroupLabel(catalog, deal.status_group_id);
@@ -172,8 +185,18 @@ export function DealsTable({
                 // criaria uma parada de tabulação sem nome. O teclado continua
                 // pelos dois botões nomeados da linha — o nome do cliente e o
                 // "Abrir" da coluna Ações —, e o realce segue foco e ponteiro.
+                <Fragment key={deal.id}>
+                {abreGrupo && (
+                  <tr className="border-b border-border bg-secondary">
+                    <th scope="colgroup" colSpan={14} className="px-3 py-2 text-left text-sm font-bold text-foreground">
+                      {construtora || "Sem construtora"}
+                      <span className="ml-2 text-xs font-medium text-muted-foreground">
+                        {porConstrutora.get(construtora) ?? 0} negócio(s)
+                      </span>
+                    </th>
+                  </tr>
+                )}
                 <tr
-                  key={deal.id}
                   // Arrastar o mouse para copiar um valor da célula termina em
                   // `click` na linha, e o modal abria por cima da seleção. Só
                   // barra quando há seleção viva: `getSelection()` pode devolver
@@ -399,6 +422,7 @@ export function DealsTable({
                     </div>
                   </td>
                 </tr>
+                </Fragment>
               );
             })}
           </tbody>

@@ -28,6 +28,7 @@ import {
   useSalesGoal,
   useVgvGoal,
   vazioTotal,
+  withZeroSellers,
 } from "@/components/dashboard";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
@@ -79,6 +80,17 @@ export default function Dashboard() {
   const activeMonth = month ?? defaultMonth;
 
   const view = useMonthView(deals, activeMonth);
+  // Rankings da aba Vendas com os ativos que não venderam (zerados no fim) e a
+  // foto de cada um para o pódio. `people` é o recorte da RLS de quem olha.
+  const ranking = useMemo(() => {
+    const people = payload?.people ?? [];
+    return {
+      directors: withZeroSellers(view.directors, people, ["director"]),
+      managers: withZeroSellers(view.managers, people, ["manager"]),
+      general: withZeroSellers(view.general, people, ["broker", "manager", "director"]),
+      avatars: new Map(people.map((person) => [person.id, person.avatar_url])),
+    };
+  }, [view, payload?.people]);
   const monthly = useMonthlySeries(deals);
   const goal = useSalesGoal(activeMonth);
   const vgvGoal = useVgvGoal(activeMonth);
@@ -308,17 +320,20 @@ export default function Dashboard() {
               <TopBrokers
                 title="Ranking de diretores"
                 description="Vendas das diretorias no período"
-                rows={view.directors}
+                rows={ranking.directors}
+                avatars={ranking.avatars}
               />
               <TopBrokers
                 title="Ranking de gerentes"
                 description="Vendas das equipes no período"
-                rows={view.managers}
+                rows={ranking.managers}
+                avatars={ranking.avatars}
               />
               <TopBrokers
                 title="Ranking geral"
                 description="Corretores, gerentes e diretores — uma venda por pessoa em cada negócio; VGV rateado para corretores e total da equipe para gestores"
-                rows={view.general}
+                rows={ranking.general}
+                avatars={ranking.avatars}
                 scroll
               />
             </div>

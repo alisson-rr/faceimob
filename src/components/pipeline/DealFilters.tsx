@@ -18,6 +18,8 @@ interface Props {
   developers: { id: string; name: string }[];
   brokers: PersonRecord[];
   managers: PersonRecord[];
+  /** Diretores ativos que a RLS entrega. Vazio = o campo não aparece. */
+  directors: PersonRecord[];
   months: string[];
   /** Tamanho da equipe que o usuário lidera (ele incluído). 0 ou 1 = não lidera
    *  ninguém, e o recorte por equipe não aparece. */
@@ -36,7 +38,7 @@ interface Props {
  * filtra.
  */
 export function DealFilters({
-  filters, onChange, onClear, onClose, stages, developers, brokers, managers, months, teamCount,
+  filters, onChange, onClear, onClose, stages, developers, brokers, managers, directors, months, teamCount,
 }: Props) {
   const id = useId();
   const field = (name: string) => `${id}-${name}`;
@@ -183,6 +185,23 @@ export function DealFilters({
             </p>
           )}
         </div>
+
+        {/* Pedido de 28/09/2026. O recorte é o da diretoria (`dealsForLeader`,
+            no Pipeline): negócio de qualquer equipe que o diretor lidera, mesmo
+            sem ele no slot — o mesmo dos cartões de diretor do sócio. Quem não
+            enxerga diretor nenhum não ganha um campo que só teria "Todos". */}
+        {directors.length > 0 && (
+          <div>
+            <Label htmlFor={field("director")}>Diretor</Label>
+            <Select value={filters.directorId} onValueChange={(v) => onChange({ directorId: v })}>
+              <SelectTrigger id={field("director")} className="mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value={ALL}>Todos os diretores</SelectItem>
+                {directors.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div>
           <Label htmlFor={field("broker")}>Corretor</Label>

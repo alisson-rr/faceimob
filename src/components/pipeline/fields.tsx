@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { brl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,6 +36,31 @@ export function TextField({ id, label, value, onChange, type }: {
       <Input
         id={id} type={type} value={value ?? ""} className="mt-1 text-xs"
         onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Valor em R$ com máscara (pedido de 28/09/2026): quem digita "123456" vê
+ * "R$ 1.234,56" — os dígitos entram pelos centavos, como na maquininha. Não
+ * existe texto intermediário inválido para o banco recusar depois, e o valor
+ * que sobe é sempre número. Vazio = 0, com o placeholder "R$ 0,00".
+ */
+export function MoneyField({ id, label, value, onChange }: {
+  id: string; label: string; value?: number | null; onChange: (value: number) => void;
+}) {
+  return (
+    <div>
+      <Label htmlFor={id} className="text-eyebrow">{label}</Label>
+      <Input
+        id={id} inputMode="numeric" className="mt-1 text-xs tabular-nums" placeholder="R$ 0,00"
+        value={value ? brl(value, { cents: true }) : ""}
+        onChange={(event) => {
+          // 13 dígitos = R$ 99 bilhões: acima disso o `number` perde centavo.
+          const digitos = event.target.value.replace(/\D/g, "").slice(0, 13);
+          onChange(digitos ? Number(digitos) / 100 : 0);
+        }}
       />
     </div>
   );

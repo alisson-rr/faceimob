@@ -1418,6 +1418,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           developer_id: string | null
+          discount_amount: number
           discount_pct: number
           document_review_reason: string | null
           document_review_requested_at: string | null
@@ -1449,6 +1450,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           developer_id?: string | null
+          discount_amount?: number
           discount_pct?: number
           document_review_reason?: string | null
           document_review_requested_at?: string | null
@@ -1480,6 +1482,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           developer_id?: string | null
+          discount_amount?: number
           discount_pct?: number
           document_review_reason?: string | null
           document_review_requested_at?: string | null
@@ -5584,6 +5587,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           developer_id: string | null
+          discount_amount: number
           discount_pct: number
           document_review_reason: string | null
           document_review_requested_at: string | null
