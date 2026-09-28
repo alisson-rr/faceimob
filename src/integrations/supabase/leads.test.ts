@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   attendSecondsLeft, formatCountdown, canClaim, isLeadOverdue,
   sourcePerformance, describeLeadEvent, decorateLead, trackingFields,
-  FUNNEL_STAGES, LEAD_STATUSES, funnelStageLabel,
+  FUNNEL_STAGES, LEAD_STATUSES, funnelStageLabel, nomeDeArquivoSeguro,
   type LeadRecord,
 } from "./leads";
 
@@ -216,5 +216,20 @@ describe("trackingFields", () => {
     expect(labels).toContain("Campanha");
     expect(labels).not.toContain("Mídia");
     expect(labels).not.toContain("Anúncio");
+  });
+});
+
+// A chave do Storage recusa acento e espaço; o anexo do lead chegava com o nome
+// do arquivo cru ("RG João.pdf"), e o envio falhava na conversão (29/09/2026).
+describe("nomeDeArquivoSeguro", () => {
+  it("tira acento, espaço e pontuação, e mantém a extensão", () => {
+    expect(nomeDeArquivoSeguro("RG João (frente).PDF")).toBe("rg-joao-frente.pdf");
+    expect(nomeDeArquivoSeguro("comprovante de renda.jpeg")).toBe("comprovante-de-renda.jpeg");
+  });
+
+  it("nome sem nada aproveitável ainda gera uma chave", () => {
+    expect(nomeDeArquivoSeguro("ção.pdf")).toBe("cao.pdf");
+    expect(nomeDeArquivoSeguro("###.png")).toBe("arquivo.png");
+    expect(nomeDeArquivoSeguro("sem-extensao")).toBe("sem-extensao");
   });
 });

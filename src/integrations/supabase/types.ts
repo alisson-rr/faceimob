@@ -728,6 +728,8 @@ export type Database = {
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
+          external_by: string | null
+          external_reason: string | null
           id: string
           ip_address: unknown
           leads_received: number
@@ -740,6 +742,8 @@ export type Database = {
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
+          external_by?: string | null
+          external_reason?: string | null
           id?: string
           ip_address?: unknown
           leads_received?: number
@@ -752,6 +756,8 @@ export type Database = {
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
+          external_by?: string | null
+          external_reason?: string | null
           id?: string
           ip_address?: unknown
           leads_received?: number
@@ -5683,6 +5689,29 @@ export type Database = {
       dispatch_pending_push: { Args: never; Returns: boolean }
       dispatch_pending_submissions: { Args: never; Returns: undefined }
       distribute_queued_lead: { Args: { p_lead_id: string }; Returns: string }
+      director_external_checkin: {
+        Args: { p_profile: string; p_reason: string }
+        Returns: {
+          auto_checkout: boolean
+          checked_in_at: string
+          checked_out_at: string | null
+          created_at: string
+          external_by: string | null
+          external_reason: string | null
+          id: string
+          ip_address: unknown
+          leads_received: number
+          profile_id: string
+          shift_id: string
+          work_date: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "checkins"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       distribution_queue: {
         Args: { p_group_id: string }
         Returns: {
@@ -6020,6 +6049,8 @@ export type Database = {
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
+          external_by: string | null
+          external_reason: string | null
           id: string
           ip_address: unknown
           leads_received: number
@@ -6041,6 +6072,8 @@ export type Database = {
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
+          external_by: string | null
+          external_reason: string | null
           id: string
           ip_address: unknown
           leads_received: number

@@ -664,11 +664,12 @@ export default function Equipes() {
         </TabsList>
 
         <TabsContent value="equipe" className="mt-0 space-y-6">
-          {/* Meta global: mesma regra de escrita da RLS (admin e diretor) */}
-          {canEdit && <GlobalGoalCard />}
+          {/* Meta global: mesma regra de escrita da RLS (admin e diretor).
+              As duas metas nascem recolhidas (29/09/2026): abrem pelo título. */}
+          {canEdit && <GlobalGoalCard recolhivel />}
           {/* Meta e Meta remuneração de cada gestor, por mês — o relatório da
               Visão Geral lê daqui (pedido de 28/09/2026). */}
-          {canEdit && <LeaderGoalsCard />}
+          {canEdit && <LeaderGoalsCard recolhivel />}
 
           {/* Meu Perfil */}
           <Card className="glass border-primary/30" role="region" aria-label="Meu Perfil">

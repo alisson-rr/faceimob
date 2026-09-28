@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
 import QueuePosition from "@/components/QueuePosition";
 import LeadCounter from "@/components/LeadCounter";
+import { CheckinExterno } from "@/components/checkin/CheckinExterno";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
@@ -84,8 +85,10 @@ const incentives = [
  * `checkins` por realtime. Chamar direto tocaria o som duas vezes.
  */
 export default function Checkin() {
-  const { user } = useAuth();
+  const { user, isAdmin, roles } = useAuth();
   const userId = user?.id ?? null;
+  // Check-in externo (0162): diretor e admin, a mesma regra da RPC.
+  const fazCheckinExterno = isAdmin || roles.includes("director");
   const queryClient = useQueryClient();
   // QUAL ação está em voo, não "alguma". Com um booleano só, clicar em "Fazer
   // check-in" desabilitava o "Check-out" junto — e vice-versa —, o que fazia o
@@ -321,6 +324,8 @@ export default function Checkin() {
           </div>
         </SectionCard>
       )}
+
+      {fazCheckinExterno && <CheckinExterno selfId={userId} />}
 
       <SectionCard title="Leads recebidos" description="Atribuições da roleta, incluindo as que já saíram da sua mão" icon={ShieldCheck}>
         <LeadCounter counts={counts.data ?? null} />

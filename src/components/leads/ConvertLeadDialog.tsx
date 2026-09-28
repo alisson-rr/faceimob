@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
+import { comPrazo } from "@/lib/prazo";
 import {
   addLeadComment, ATTACHMENT_HINT, convertLeadToDeal, leadStatusLabel, promoteLeadAttachments,
   rejectAttachment, uploadLeadAttachment, type LeadRecord,
@@ -27,6 +28,10 @@ import { parseVgvInput } from "./model";
  * O documento não é exigido — a migration `0028` tirou a exigência de anexo da
  * conversão; os obrigatórios travam só o envio ao gerente.
  */
+/** 8 MB numa conexão ruim cabem com folga em um minuto; a RPC responde em segundos. */
+const PRAZO_DOCUMENTO_MS = 60_000;
+const PRAZO_CONVERSAO_MS = 30_000;
+
 export function ConvertLeadDialog({
   lead, actorName, onClose, onConverted,
 }: {
@@ -71,14 +76,26 @@ export function ConvertLeadDialog({
     if (!developerId || vgvInvalid || (encerrado && !reabrir)) return;
     setConverting(true);
     try {
-      if (doc) await uploadLeadAttachment(lead.id, doc);
-      await convertLeadToDeal({
-        leadId: lead.id,
-        developerId,
-        projectId: projectId || null,
-        unit: unit || null,
-        vgvGross,
-      });
+      // Com prazo (29/09/2026): sem ele, um envio que a rede deixava pendurado
+      // mantinha o botão girando para sempre e o lead não convertia.
+      if (doc) {
+        await comPrazo(
+          uploadLeadAttachment(lead.id, doc),
+          PRAZO_DOCUMENTO_MS,
+          "O documento não terminou de subir. Confira a conexão e tente de novo — ou converta sem o documento e anexe depois, na aba Anexos do negócio.",
+        );
+      }
+      await comPrazo(
+        convertLeadToDeal({
+          leadId: lead.id,
+          developerId,
+          projectId: projectId || null,
+          unit: unit || null,
+          vgvGross,
+        }),
+        PRAZO_CONVERSAO_MS,
+        "O servidor não respondeu à conversão. Atualize a lista antes de tentar de novo: o negócio pode ter sido criado.",
+      );
     } catch (err) {
       // O negócio nasce sem anexo desde a `0028`: o que costuma barrar aqui é
       // lead já convertido ou falta de permissão sobre ele.
@@ -108,7 +125,11 @@ export function ConvertLeadDialog({
 
     // Falha na cópia do anexo avisa, mas não desfaz nem esconde a conversão.
     try {
-      await promoteLeadAttachments(lead.id);
+      await comPrazo(
+        promoteLeadAttachments(lead.id),
+        PRAZO_DOCUMENTO_MS,
+        "O negócio foi criado, mas a cópia do anexo não terminou. Anexe o documento de novo na aba Anexos do negócio.",
+      );
       toast({
         variant: "success",
         title: "Lead convertido em negócio",

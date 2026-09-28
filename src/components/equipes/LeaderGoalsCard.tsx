@@ -15,6 +15,7 @@ import {
   type LeaderGoalMetric,
 } from "@/integrations/supabase/newSchema";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { dbError, describeError } from "@/lib/supabaseError";
 
 const METRICAS: { metric: LeaderGoalMetric; label: string }[] = [
@@ -54,8 +55,12 @@ async function carregarMetas(periodIso: string): Promise<Map<Chave, number>> {
  * Quem monta decide quem vê: a `goals_write` aceita admin, e diretor sobre
  * quem ele enxerga — o mesmo `canEdit` da tela de Equipes.
  */
-export function LeaderGoalsCard() {
+export function LeaderGoalsCard({ recolhivel = false }: { recolhivel?: boolean } = {}) {
   const queryClient = useQueryClient();
+  // Meta remuneração só o admin grava (0161, pedido de 29/09/2026). O diretor
+  // vê o valor, mas o campo fica só leitura — a policy recusaria de todo jeito.
+  const { isAdmin } = useAuth();
+  const podeEditar = (metric: LeaderGoalMetric) => metric !== "sales_comp" || isAdmin;
   const [month, setMonth] = useState(() => format(new Date(), "yyyy-MM"));
   // Só o que foi digitado; o valor salvo vem da consulta. Trocar de mês ou
   // salvar zera o rascunho sem sincronizar estado com efeito.
@@ -77,7 +82,7 @@ export function LeaderGoalsCard() {
   const campos = lideres.flatMap((pessoa) => METRICAS.map(({ metric }) => {
     const k = chave(pessoa.id, metric);
     const salvo = metas.data?.get(k) ?? null;
-    const raw = edits[k];
+    const raw = podeEditar(metric) ? edits[k] : undefined;
     const lido = raw === undefined ? null : lerCampo(raw, metric);
     return {
       k, pessoa, metric,
@@ -115,8 +120,11 @@ export function LeaderGoalsCard() {
   return (
     <SectionCard
       title="Metas de diretores e gerentes"
-      description="Meta e Meta remuneração (em vendas) de cada gestor no mês. Aparecem no relatório da Visão Geral; campo vazio = sem meta (—)."
+      description={isAdmin
+        ? "Meta e Meta remuneração (em vendas) de cada gestor no mês. Aparecem no relatório da Visão Geral; campo vazio = sem meta (—)."
+        : "Meta (em vendas) de cada gestor no mês; a Meta remuneração só o administrador define. Campo vazio = sem meta (—)."}
       icon={Target}
+      recolhivel={recolhivel}
     >
       <div className="mb-4 flex flex-col items-center gap-1.5">
         <Label htmlFor="meta-lideres-mes" className="text-xs">Mês</Label>
@@ -165,6 +173,8 @@ export function LeaderGoalsCard() {
                             id={id} type="number" min={1} step={1} inputMode="numeric" placeholder="—"
                             className="mx-auto h-9 w-24 text-center tabular-nums"
                             value={campo.value}
+                            readOnly={!podeEditar(metric)}
+                            title={podeEditar(metric) ? undefined : "Só o administrador define a Meta remuneração"}
                             onChange={(e) => setEdits((prev) => ({ ...prev, [campo.k]: e.target.value }))}
                             aria-invalid={Boolean(campo.erro)}
                             aria-describedby={campo.erro ? `${id}-erro` : undefined}

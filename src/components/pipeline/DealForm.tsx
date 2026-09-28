@@ -212,19 +212,30 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
   const directors = people.filter((person) => person.active && person.roles.includes("director"));
 
   /**
-   * Sugestão de gerente e diretor pela equipe do Corretor 1 (pedido de
-   * 28/09/2026). É só sugestão: preenche Gerente 1 e Diretor 1 ao trocar o
-   * corretor, e os dois continuam editáveis. Vem de `people`, que traz o gestor
+   * Sugestão de gerente e diretor pela equipe do corretor (pedido de
+   * 28/09/2026; Corretor 2 e 3 desde 29/09). É só sugestão: o Corretor N
+   * preenche Gerente N e Diretor N (não há Diretor 3) ao ser trocado, e os
+   * campos continuam editáveis. Quem já está em outro slot não se repete — dois
+   * corretores da mesma equipe não viram "Gerente 1 = Gerente 2". Vem de `people`, que traz o gestor
    * da equipe de cada perfil, e só preenche quem a lista mostra — um id fora da
    * visibilidade apareceria como "Fora da sua visibilidade". Para o corretor,
    * que não enxerga o gerente, não há sugestão na tela: o gatilho
    * `deal_participants_autofill` vincula a equipe ao salvar, como já fazia.
    */
-  const sugestaoDaEquipe = (brokerId: string | null): Partial<SaveLegacyDealInput> => {
+  const sugestaoDaEquipe = (brokerId: string | null, slot: 1 | 2 | 3): Partial<SaveLegacyDealInput> => {
     const corretor = people.find((person) => person.id === brokerId);
-    const gerente = corretor?.manager_id && managers.some((p) => p.id === corretor.manager_id) ? corretor.manager_id : null;
-    const diretor = corretor?.director_id && directors.some((p) => p.id === corretor.director_id) ? corretor.director_id : null;
-    return { ...(gerente ? { manager1_id: gerente } : {}), ...(diretor ? { director1_id: diretor } : {}) };
+    const gerentes = [form.manager1_id, form.manager2_id, form.manager3_id];
+    const diretores = [form.director1_id, form.director2_id];
+    const gerente = corretor?.manager_id && managers.some((p) => p.id === corretor.manager_id)
+      && !gerentes.some((id, i) => i !== slot - 1 && id === corretor.manager_id) ? corretor.manager_id : null;
+    const diretor = slot < 3 && corretor?.director_id && directors.some((p) => p.id === corretor.director_id)
+      && !diretores.some((id, i) => i !== slot - 1 && id === corretor.director_id) ? corretor.director_id : null;
+    const campoGerente = (["manager1_id", "manager2_id", "manager3_id"] as const)[slot - 1];
+    const campoDiretor = (["director1_id", "director2_id"] as const)[slot - 1];
+    return {
+      ...(gerente ? { [campoGerente]: gerente } : {}),
+      ...(diretor && campoDiretor ? { [campoDiretor]: diretor } : {}),
+    };
   };
 
   const loadProjects = useCallback(async (developerName: string) => {
@@ -471,9 +482,9 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       </Section>
 
       <Section title="Equipe" className="deal-tone-gold">
-        <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v, ...sugestaoDaEquipe(v) })} />
-        <PersonField id={field("broker2")} label="Corretor 2" hint={rateio(form.broker2_share)} value={form.broker2_id} fallbackName={form.broker2} options={brokers} onChange={(v) => onChange({ broker2_id: v })} optional />
-        <PersonField id={field("broker3")} label="Corretor 3" hint={rateio(form.broker3_share)} value={form.broker3_id} fallbackName={form.broker3} options={brokers} onChange={(v) => onChange({ broker3_id: v })} optional />
+        <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v, ...sugestaoDaEquipe(v, 1) })} />
+        <PersonField id={field("broker2")} label="Corretor 2" hint={rateio(form.broker2_share)} value={form.broker2_id} fallbackName={form.broker2} options={brokers} onChange={(v) => onChange({ broker2_id: v, ...sugestaoDaEquipe(v, 2) })} optional />
+        <PersonField id={field("broker3")} label="Corretor 3" hint={rateio(form.broker3_share)} value={form.broker3_id} fallbackName={form.broker3} options={brokers} onChange={(v) => onChange({ broker3_id: v, ...sugestaoDaEquipe(v, 3) })} optional />
         <PersonField id={field("manager1")} label="Gerente 1 *" value={form.manager1_id} fallbackName={form.manager1} options={managers} onChange={(v) => onChange({ manager1_id: v })} />
         <PersonField id={field("manager2")} label="Gerente 2" value={form.manager2_id} fallbackName={form.manager2} options={managers} onChange={(v) => onChange({ manager2_id: v })} optional />
         <PersonField id={field("manager3")} label="Gerente 3" value={form.manager3_id} fallbackName={form.manager3} options={managers} onChange={(v) => onChange({ manager3_id: v })} optional />
