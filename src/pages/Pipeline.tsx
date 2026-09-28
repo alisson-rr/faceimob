@@ -270,7 +270,7 @@ export default function Pipeline() {
         selected={filters.directorId} onPanel={painel.abrir}
         loading={peopleQuery.isPending || dealsQuery.isPending} error={peopleQuery.isError || dealsQuery.isError}
         onSelect={(directorId) => { setFiltrosEscolhidos({ ...EMPTY_FILTERS, directorId }); setTab("deals"); }} />
-        : <PipelineTopRanking onAbrirPainel={painel.abrir} />}
+        : <PipelineTopRanking onAbrirPainel={painel.abrir} deals={deals} />}
 
       <PageHeader
         title="Pipeline"
