@@ -331,3 +331,7 @@ Pedido do cliente: o bloco da Visão Geral passa a listar só o Status 2 com neg
 ## 28/09/2026 (6) — "Negócios por etapa" do maior para o menor
 
 Pedido do cliente: as linhas de Status 2 passam a sair pela quantidade, do maior para o menor; no empate, a ordem do cadastro de status (e o rótulo, para status fora do catálogo) | `dashboard/cartoesDoMes.ts`, `SalesFunnelCard.tsx` |
+
+## 28/09/2026 (7) — "Onde pegar" em cada credencial das Integrações
+
+Pedido do cliente: cada campo de `/admin/integrations` diz onde buscar o valor (`ondePegar` no `integrationCatalog.ts`, obrigatório em todo slot) e, quando o valor mora no painel de um provedor, traz o link direto em nova aba (OpenAI API keys, usuários do sistema e apps da Meta, números e modelos do WhatsApp, chaves e remetentes da Brevo). Campos que não vêm de site — tokens combinados (webhook da Meta e da IA de voz), URL das functions, service role (arquivo da VPS) e o par VAPID gerado pelo servidor — ganham só o caminho, sem link. **Risco:** os caminhos dos painéis de terceiros mudam sem aviso; o link aponta para a página, e o texto pode envelhecer | `integrationCatalog.ts`, `AdminIntegrations.tsx` |

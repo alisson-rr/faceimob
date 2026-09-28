@@ -30,6 +30,13 @@ export type IntegrationSlot = {
   envName: string;
   usedBy: string;
   help: string;
+  /**
+   * Onde conseguir o valor (pedido de 28/09/2026): o caminho em uma frase e,
+   * quando ele mora no painel de um provedor, o link direto para lá. Valor que
+   * não vem de fora (combinado, gerado pelo sistema, arquivo da VPS) fica sem
+   * link — um link genérico ali mandaria procurar o que não existe.
+   */
+  ondePegar: { passos: string; link?: { url: string; rotulo: string } };
   formato?: IntegrationFormat;
 };
 
@@ -95,6 +102,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     // do marketing: quem a revoga precisa ler que para tudo isso junto.
     usedBy: "sdr-agent-chat, whatsapp-inbound-webhook, meta-ad-scores, meta-traffic-manager, meta-campaign-planner",
     help: "Agente de SDR, transcrição dos áudios do WhatsApp e as análises de IA do marketing (nota por anúncio, gestor de tráfego e planejador).",
+    ondePegar: { passos: "Painel da OpenAI › API keys › “Create new secret key”. A chave aparece uma vez só: copie antes de fechar.", link: { url: "https://platform.openai.com/api-keys", rotulo: "Abrir API keys da OpenAI" } },
   },
   {
     provider: "meta",
@@ -103,6 +111,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "META_PAGE_ACCESS_TOKEN",
     usedBy: "meta-ads-webhook",
     help: "Lê o formulário de Lead Ads para completar os dados do lead.",
+    ondePegar: { passos: "Configurações do negócio › Usuários do sistema › gerar token com a página e o app, permissões leads_retrieval, pages_show_list, pages_read_engagement e pages_manage_metadata. Token de usuário do sistema não expira.", link: { url: "https://business.facebook.com/settings/system-users", rotulo: "Abrir usuários do sistema da Meta" } },
   },
   {
     provider: "meta",
@@ -111,6 +120,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "META_WEBHOOK_VERIFY_TOKEN",
     usedBy: "meta-ads-webhook",
     help: "Valor combinado com a Meta na configuração do webhook.",
+    ondePegar: { passos: "Não vem da Meta: crie uma senha longa, cole aqui e cole a MESMA em Meta for Developers › seu app › Webhooks › “Verificar token”.", link: { url: "https://developers.facebook.com/apps/", rotulo: "Abrir apps na Meta for Developers" } },
   },
   {
     provider: "meta",
@@ -119,6 +129,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "META_APP_SECRET",
     usedBy: "meta-ads-webhook, whatsapp-inbound-webhook",
     help: "Valida a assinatura X-Hub-Signature-256 de cada evento. Sem ele cadastrado, o webhook aceita POST sem prova de origem.",
+    ondePegar: { passos: "Meta for Developers › seu app › Configurações do app › Básico › “Chave secreta do app” (clique em Mostrar).", link: { url: "https://developers.facebook.com/apps/", rotulo: "Abrir apps na Meta for Developers" } },
   },
   {
     provider: "meta",
@@ -130,6 +141,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     // perdido por prazo — e quem a revoga, que está parando os dois.
     usedBy: "sdr-whatsapp-broadcast, notify-dispatch",
     help: "Disparo de templates de remarketing pela API oficial e dos avisos de lead perdido por prazo.",
+    ondePegar: { passos: "Configurações do negócio › Usuários do sistema › gerar token com o app do WhatsApp e as permissões whatsapp_business_messaging e whatsapp_business_management.", link: { url: "https://business.facebook.com/settings/system-users", rotulo: "Abrir usuários do sistema da Meta" } },
   },
   {
     provider: "meta",
@@ -139,6 +151,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "META_WHATSAPP_PHONE_NUMBER_ID",
     usedBy: "sdr-whatsapp-broadcast, notify-dispatch",
     help: "Identificador do número emissor na Cloud API.",
+    ondePegar: { passos: "Gerenciador do WhatsApp › Números de telefone › clique no número emissor: o “ID do número de telefone” só tem dígitos (não é o número em si).", link: { url: "https://business.facebook.com/wa/manage/phone-numbers/", rotulo: "Abrir números do WhatsApp" } },
   },
   {
     provider: "meta",
@@ -149,6 +162,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     // Sem `formato`: é o NOME de um template aprovado na Meta, e nenhuma regra
     // de forma separa um nome válido de um inválido — quem confere é o envio.
     help: "Template aprovado (categoria Utility) com UMA variável no corpo. Sem ele o aviso sai como texto livre, que a Meta recusa fora da janela de 24 h (código 131047).",
+    ondePegar: { passos: "Gerenciador do WhatsApp › Modelos de mensagem: copie o NOME de um modelo aprovado, categoria Utilidade, com uma variável no corpo.", link: { url: "https://business.facebook.com/wa/manage/message-templates/", rotulo: "Abrir modelos do WhatsApp" } },
   },
   {
     provider: "meta",
@@ -157,6 +171,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "META_MARKETING_ACCESS_TOKEN",
     usedBy: "meta-sync, meta-campaign-action, meta-ads-connect, meta-ad-scores, meta-traffic-manager, meta-campaign-planner",
     help: "Token de usuário de sistema com ads_read e ads_management. Lê gasto, resultados e o estado das contas de anúncios e executa pausar, ativar e mudar verba aprovados no CRM.",
+    ondePegar: { passos: "Configurações do negócio › Usuários do sistema › dar ao usuário acesso às contas de anúncios e gerar token com ads_read e ads_management.", link: { url: "https://business.facebook.com/settings/system-users", rotulo: "Abrir usuários do sistema da Meta" } },
   },
   {
     provider: "voice_ai",
@@ -165,6 +180,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "VOICE_AI_WEBHOOK_SECRET",
     usedBy: "voice-ai-webhook",
     help: "Combinado com a plataforma de voz; autentica cada evento recebido.",
+    ondePegar: { passos: "Não vem de um site: crie uma senha longa, cole aqui e entregue a MESMA ao fornecedor da IA de voz, junto do contrato em docs/integracoes/voice-ai-webhook.md." },
   },
   {
     provider: "brevo",
@@ -173,6 +189,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "BREVO_API_KEY",
     usedBy: "_shared/brevo.ts",
     help: "E-mails transacionais: o envio do dossiê à construtora e o e-mail das movimentações da CCA.",
+    ondePegar: { passos: "Brevo › Configurações › SMTP e API › aba “Chaves de API” › “Gerar nova chave” (começa com xkeysib-).", link: { url: "https://app.brevo.com/settings/keys/api", rotulo: "Abrir chaves de API da Brevo" } },
   },
   {
     provider: "supabase",
@@ -182,6 +199,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "—",
     usedBy: "dispatch_pending_notifications (cron)",
     help: "Ex.: https://<projeto>.supabase.co/functions/v1 — o cron usa para chamar o worker da fila de WhatsApp.",
+    ondePegar: { passos: "Neste servidor é https://app.faceimob.com.br/functions/v1 — o endereço do CRM seguido de /functions/v1." },
   },
   {
     provider: "supabase",
@@ -190,6 +208,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "—",
     usedBy: "dispatch_pending_notifications (cron)",
     help: "Só o banco lê. Nunca sai para o navegador — a tela grava e nunca devolve.",
+    ondePegar: { passos: "Não fica em painel web: é o SERVICE_ROLE_KEY do arquivo /opt/faceimob/supabase/.env na VPS. Peça a quem tem acesso SSH." },
   },
   {
     provider: "brevo",
@@ -199,6 +218,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "BREVO_SENDER_EMAIL",
     usedBy: "_shared/brevo.ts",
     help: "E-mail verificado no Brevo que assina os disparos.",
+    ondePegar: { passos: "Brevo › Remetentes, domínios e IPs › Remetentes: use um e-mail com status verificado.", link: { url: "https://app.brevo.com/senders/list", rotulo: "Abrir remetentes da Brevo" } },
   },
   // Push do navegador (migration 0143). Os três valores formam UM par: trocar a
   // chave pública invalida toda assinatura já feita, e cada aparelho precisa
@@ -210,6 +230,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "WEBPUSH_VAPID_PUBLIC_KEY",
     usedBy: "push-dispatch, get_push_public_key (navegador)",
     help: "Ponto P-256 não comprimido (65 bytes) em base64url sem padding. O navegador assina o push com ela, então precisa estar aqui no cofre. Trocar exige que cada aparelho ative as notificações de novo.",
+    ondePegar: { passos: "Não vem de fora: o par VAPID é gerado pelo próprio servidor (push-dispatch) e gravado aqui. Só preencha para trocar o par." },
   },
   {
     provider: "webpush",
@@ -218,6 +239,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "WEBPUSH_VAPID_PRIVATE_KEY",
     usedBy: "push-dispatch",
     help: "Escalar d (32 bytes) em base64url sem padding, par da chave pública acima. Só a edge function lê; nunca vai ao navegador.",
+    ondePegar: { passos: "Não vem de fora: nasce junto da chave pública, gerada pelo servidor. Só preencha para trocar o par, e sempre junto da pública." },
   },
   {
     provider: "webpush",
@@ -226,6 +248,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "WEBPUSH_VAPID_SUBJECT",
     usedBy: "push-dispatch",
     help: "mailto:ti@suaempresa.com.br — contato que Google, Mozilla e Apple usam se precisarem falar com quem envia os avisos.",
+    ondePegar: { passos: "Não vem de um site: é só um e-mail de contato da empresa escrito como mailto:ti@suaempresa.com.br." },
   },
 ];
 
