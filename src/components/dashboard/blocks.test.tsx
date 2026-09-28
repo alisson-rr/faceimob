@@ -253,18 +253,24 @@ describe("KpiRow", () => {
   });
 
   it("o delta compara com o mes anterior e inverte a leitura em perdas", async () => {
-    const { text, cleanup } = await render(
+    // Perdas sai do Status 1 OFF desde 28/09/2026 (`cartoes`), não mais de `stats`.
+    const contagem = (perdas: number) => ({ propostas: 0, legado: 0, producao: 0, negocios: 0, perdas, distratos: 0 });
+    const { text, container, cleanup } = await render(
       <KpiRow
-        stats={stats({ vendas: 7, perdas: 3 })}
+        stats={stats({ vendas: 7 })}
         leadsNoPeriodo={0}
         leadsNaBase={0}
         month="08/2026"
-        previous={stats({ vendas: 4, perdas: 1 })}
+        previous={stats({ vendas: 4 })}
         previousLabel="07/2026"
+        cartoes={{ atual: contagem(3), anterior: contagem(1), distratosAnterior: null, distratosAntesDoAnterior: null }}
       />,
     );
     expect(text).toContain("+3 vs. 07/2026");
-    expect(text).toContain("+2 vs. 07/2026");
+    const perdaSubiu = Array.from(container.querySelectorAll("span"))
+      .find((el) => el.textContent?.trim() === "+2 vs. 07/2026");
+    // Subir perda é ruim: a seta para cima vem vermelha.
+    expect(perdaSubiu?.className).toContain("text-destructive");
     await cleanup();
   });
 });
