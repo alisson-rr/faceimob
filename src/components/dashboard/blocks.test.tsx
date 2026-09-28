@@ -8,6 +8,8 @@ import { CcaStatusCard, StaffCard } from "./Breakdown";
 import { DirectorPanel } from "./DirectorPanel";
 import { LeadsPanel } from "./LeadsPanel";
 import { SalesFunnelCard } from "./SalesFunnelCard";
+import { dealStatusKeys } from "@/integrations/supabase/dealStatuses";
+import { catalogoDeTeste } from "@/components/pipeline/statusCatalog.fixture";
 import { DeveloperOverview, DeveloperRanking } from "./DeveloperOverview";
 import { GoalCard } from "./GoalCard";
 import { KpiRow } from "./KpiRow";
@@ -524,30 +526,29 @@ describe("MonthlyTrend", () => {
 });
 
 describe("SalesFunnelCard", () => {
-  const stages = [
-    { id: "1", code: "lead", label: "Lead", position: 2 },
-    { id: "2", code: "proposal", label: "Proposta", position: 3 },
-    { id: "3", code: "lost", label: "Perdido", position: 9 },
-  ];
-  const semearEtapas = (client: QueryClient) => client.setQueryData(["dashboard", "stages"], stages);
+  // Status 2 desde 28/09/2026: a ordem e o rótulo saem do catálogo de status.
+  const semearCatalogo = (client: QueryClient) => client.setQueryData(dealStatusKeys.catalog, catalogoDeTeste);
+  const negocio = (id: string, status: string, outcome = "open") =>
+    ({ id, status, outcome, month_base: "09/2026" }) as unknown as DealRow;
 
-  it("usa os rótulos do banco, mantém etapa vazia e não lista o desfecho perdido", async () => {
-    const { text, cleanup } = await renderComCache(
-      <SalesFunnelCard stageCounts={new Map([["proposal", 4]])} />,
-      semearEtapas,
+  it("lista só o Status 2 com negócio, na ordem do cadastro, sem zerados nem perdidos", async () => {
+    const { text, container, cleanup } = await renderComCache(
+      <SalesFunnelCard deals={[
+        negocio("a", "16. PENDENTE"), negocio("b", "13. ESTEIRA AGIL"), negocio("c", "13. ESTEIRA AGIL"),
+        negocio("d", "02. ASS. BANCO", "won"), negocio("e", "18. QUEDA", "lost"),
+      ]} />,
+      semearCatalogo,
     );
-    expect(text).toContain("Proposta");
-    expect(text).toContain("Lead");
-    expect(text).not.toContain("Perdido");
+    const rotulos = Array.from(container.querySelectorAll("li")).map((li) => li.querySelector("span")?.textContent);
+    expect(rotulos).toEqual(["Assinado no banco", "ESTEIRA AGIL", "PENDENTE"]);
+    expect(text).not.toContain("QUEDA");
+    expect(text).not.toContain("VIROU NEGÓCIO");
     expect(text).toContain("4 negócios no período · vendas + em aberto");
     await cleanup();
   });
 
   it("mês sem negócio mostra o estado vazio, não uma lista de zeros", async () => {
-    const { text, cleanup } = await renderComCache(
-      <SalesFunnelCard stageCounts={new Map()} />,
-      semearEtapas,
-    );
+    const { text, cleanup } = await renderComCache(<SalesFunnelCard deals={[]} />, semearCatalogo);
     expect(text).toContain("Nenhum negócio no período");
     await cleanup();
   });

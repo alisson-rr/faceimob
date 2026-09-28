@@ -1,5 +1,5 @@
 import { statusKey, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
-import { ALL_MONTHS, previousMonth, type DealRow } from "./data";
+import { ALL_MONTHS, noFunil, previousMonth, type DealRow } from "./data";
 
 /**
  * O que os cartões do topo da Dashboard contam pelo Status 1/Status 2 (pedido
@@ -62,4 +62,35 @@ export function cartoesDoPeriodo(
     distratosAnterior: contagemAnterior?.distratos ?? null,
     distratosAntesDoAnterior: doMes(antesDoAnterior)?.distratos ?? null,
   };
+}
+
+/**
+ * "Negócios por etapa" pelo Status 2 (pedido de 28/09/2026): uma linha por
+ * Status 2 que tem negócio no período, na ordem do cadastro de status, sem as
+ * zeradas. O conjunto é o de sempre — vendas + em aberto (`noFunil`) —, então o
+ * total fecha com o que o bloco já dizia no rodapé. Status fora do catálogo
+ * vira linha própria no fim, em vez de sumir do total.
+ */
+export function linhasDoStatus2(
+  rows: DealRow[],
+  catalog: Pick<DealStatusCatalog, "statuses" | "indexByKey">,
+): { label: string; value: number }[] {
+  const linhas = new Map<string, { label: string; value: number; ordem: number }>();
+  for (const deal of rows) {
+    if (!noFunil(deal)) continue;
+    const chave = statusKey(deal.status);
+    const indice = catalog.indexByKey.get(chave);
+    const entrada = indice === undefined ? null : catalog.statuses[indice];
+    const id = entrada ? entrada.id : `fora:${chave}`;
+    const linha = linhas.get(id) ?? {
+      label: entrada ? entrada.label || entrada.value : chave || "Sem Status 2",
+      value: 0,
+      ordem: indice ?? catalog.statuses.length,
+    };
+    linha.value += 1;
+    linhas.set(id, linha);
+  }
+  return [...linhas.values()]
+    .sort((a, b) => a.ordem - b.ordem || a.label.localeCompare(b.label, "pt-BR"))
+    .map(({ label, value }) => ({ label, value }));
 }

@@ -24,7 +24,7 @@ import {
 } from "@/lib/dealStatus";
 import { developerColor, type ChartToken } from "@/lib/tone";
 import { useAuth } from "@/contexts/AuthContext";
-import { listPipelineStages, type PipelineStageRecord } from "@/integrations/supabase/permissions";
+import { listPipelineStages } from "@/integrations/supabase/permissions";
 import type { Lead } from "@/types/crm";
 import {
   displayMonthToIso,
@@ -383,45 +383,6 @@ export function useFunnelStages() {
   });
 }
 
-/**
- * O funil por etapa, na ordem do BANCO.
- *
- * Etapa sem negocio continua na lista com zero: some-la esconde justamente o
- * gargalo. Fica de fora so a etapa de desfecho 'lost' — ela e resultado, nao
- * coluna de funil (a mesma decisao que `DEAL_STAGES` documenta em types/crm),
- * e nenhum negocio ativo pode estar nela.
- *
- * As DUAS listas nao vem da mesma consulta, e e por isso que o resto existe:
- * o catalogo aqui e `listPipelineStages()`, que filtra `active = true`, mas
- * `stageCounts` e chaveado pelo `deal.stage` de `listLegacyDeals`, que le
- * `pipeline_stages` SEM filtro de `active`. Desativar etapa e caminho previsto
- * (`pipeline_stages_position_idx` e indice parcial `where active`, e a
- * `pipeline_stages_write` libera `is_admin()`), e com negocio aberto numa etapa
- * desativada o KPI "Negocios" dizia 25 e este bloco dizia 22 — a divergencia que
- * a tela existe para nao ter. Por isso o codigo orfao vira linha propria, com o
- * proprio codigo por rotulo: melhor uma etapa sem nome bonito do que um total
- * que nao fecha.
- *
- * ponytail: o filtro e pelo `code`; evoluir para `pipeline_stages.outcome`
- * quando `listPipelineStages` passar a trazer a coluna — hoje ela nao vem.
- */
-export const funnelRows = (
-  stages: PipelineStageRecord[],
-  stageCounts: Map<string, number>,
-): { label: string; value: number }[] => {
-  const noCatalogo = new Set(stages.map((stage) => stage.code));
-  const rows = stages
-    .filter((stage) => stage.code !== "lost")
-    .map((stage) => ({ label: stage.label, value: stageCounts.get(stage.code) ?? 0 }));
-
-  const orfas = [...stageCounts]
-    .filter(([code, value]) => value > 0 && code !== "lost" && !noCatalogo.has(code))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([code, value]) => ({ label: `${code} · etapa fora do catálogo`, value }));
-
-  return [...rows, ...orfas];
-};
-
 export type DealCategory = "venda" | "producao" | "perda" | "fora";
 
 /**
@@ -661,21 +622,12 @@ export function monthView(deals: DealRow[], activeMonth: string) {
     };
   });
 
-  // Mesmo conjunto do KPI "Negocios" (venda + producao), de proposito: os dois
-  // numeros ficavam lado a lado na mesma tela contando coisas diferentes.
-  const stageCounts = new Map<string, number>();
-  for (const deal of rows) {
-    if (!noFunil(deal)) continue;
-    stageCounts.set(deal.stage, (stageCounts.get(deal.stage) ?? 0) + 1);
-  }
-
   return {
     rows,
     previousMonth: prevMonth,
     stats: statsOf(rows, perdas),
     previous,
     developers,
-    stageCounts,
     brokers: rankBy(rows, "broker"),
     managers: rankBy(rows, "manager"),
     directors: rankBy(rows, "director"),
