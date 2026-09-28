@@ -849,15 +849,17 @@ export const monthInputToPeriodIso = (month: string): string | null =>
  * nega. Os tetos são folgados para a operação; existem para pegar zero a mais
  * na digitação, não para apertar a meta.
  */
-export function validateGoalTarget(metric: "sales" | "vgv", target: number): string | null {
+export function validateGoalTarget(metric: "sales" | "sales_comp" | "vgv", target: number): string | null {
   // Number.isFinite recusa NaN e Infinity de uma vez — é o que sobra de
   // `Number("abc")` e de `Number("1e999")` vindos de um campo de texto.
   if (!Number.isFinite(target)) return "Informe um número para a meta.";
   if (target <= 0) return "A meta precisa ser maior que zero.";
-  if (metric === "sales" && !Number.isInteger(target)) {
+  // A meta de remuneração (`sales_comp`, 0158) também é quantidade de vendas:
+  // o patamar que paga, separado da meta operacional.
+  if (metric !== "vgv" && !Number.isInteger(target)) {
     return "A meta de vendas é uma quantidade inteira.";
   }
-  if (metric === "sales" && target > 100_000) {
+  if (metric !== "vgv" && target > 100_000) {
     return "A meta de vendas não pode passar de 100.000 no mês.";
   }
   if (metric === "vgv" && target > 1_000_000_000) {
@@ -916,6 +918,61 @@ export async function upsertGlobalMonthlyGoal(
       code: "42501",
       message: "Seu perfil não pode gravar a meta deste mês.",
     });
+  }
+}
+
+/** Metas mensais de gestor que a tela de Equipes cadastra (0158). */
+export type LeaderGoalMetric = "sales" | "sales_comp";
+
+/**
+ * Meta mensal de um gerente ou diretor (`goals`, scope 'profile'): a que o
+ * "Relatório de diretores e gerentes" da Visão Geral lê como Meta e Meta
+ * Remuneração. Uma por pessoa, métrica e mês — muda de mês para mês.
+ *
+ * `null` apaga a meta do mês (o relatório volta a "—"). Mesmo caminho
+ * select + insert/update da meta global: `goals_profile_idx` é parcial e o
+ * upsert do PostgREST não o infere. Quem grava é a `goals_write`: admin, ou
+ * diretor sobre quem ele enxerga.
+ */
+export async function saveLeaderMonthlyGoal(
+  profileId: string,
+  metric: LeaderGoalMetric,
+  periodIso: string,
+  target: number | null,
+): Promise<void> {
+  if (target !== null) {
+    const invalido = validateGoalTarget(metric, target);
+    if (invalido) throw dbError("goals", { code: "P0001", message: invalido });
+  }
+  if (!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(periodIso)) {
+    throw dbError("goals", { code: "P0001", message: "Escolha um mês válido para a meta." });
+  }
+
+  const existing = await db
+    .from("goals")
+    .select("id")
+    .eq("scope", "profile")
+    .eq("profile_id", profileId)
+    .eq("period_type", "month")
+    .eq("period", periodIso)
+    .eq("metric", metric)
+    .maybeSingle();
+  if (existing.error) throw dbError("goals", existing.error);
+  if (target === null && !existing.data) return;
+
+  const result = target === null
+    ? await db.from("goals").delete().eq("id", existing.data!.id).select("id")
+    : existing.data
+      ? await db.from("goals").update({ target }).eq("id", existing.data.id).select("id")
+      : await db
+          .from("goals")
+          .insert({ scope: "profile", profile_id: profileId, period_type: "month", period: periodIso, metric, target })
+          .select("id");
+  if (result.error) throw dbError("goals", result.error);
+  // A RLS que não casa linha devolve sucesso vazio: sem esta conferência o
+  // toast diria "salvo" para quem não gravou nada.
+  if (!result.data?.length) {
+    throw dbError("goals", { code: "42501", message: "Seu perfil não pode gravar a meta desta pessoa." });
   }
 }
 
