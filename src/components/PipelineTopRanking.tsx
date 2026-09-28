@@ -11,8 +11,15 @@ import { brl, num, primeiroEUltimoNome } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 import { useCurrentSeasonId, useGameRanking, useSeasonRanking } from "@/hooks/useGameRanking";
+import { contarStatus1PorPessoa, textoDaContagem } from "@/components/engagement/contagemStatus1";
+import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 
-type Props = { onAbrirPainel: () => void };
+type Props = {
+  onAbrirPainel: () => void;
+  /** Negócios do período do Pipeline: de onde sai Venda · Proposta · Legado · Off de cada um. */
+  deals?: LegacyDealRecord[];
+};
 
 /**
  * O mês da meta da faixa do corretor, no formato que `useGoal` espera.
@@ -66,7 +73,7 @@ export function intervaloDoMes(hoje: Date = new Date()): WeekRange {
  * O RECORTE DOS DADOS continua sendo do servidor (`visible_game_ranking`): esta
  * tela escolhe o que MOSTRA do que já chegou, e nunca o contrário.
  */
-export default function PipelineTopRanking({ onAbrirPainel }: Props) {
+export default function PipelineTopRanking({ onAbrirPainel, deals }: Props) {
   // Sem os negócios, como o `AppLayout`: eles só alimentavam `ScoreRow.leads`,
   // que ninguém lê, e custavam 287 corretores × 7.579 negócios em comparação
   // de nome a cada render do Pipeline (cada tecla da busca, cada modal).
@@ -74,6 +81,12 @@ export default function PipelineTopRanking({ onAbrirPainel }: Props) {
   const { profile, user } = useAuth();
 
   const { soMinhaPosicao, escopo } = recorte;
+
+  // Venda · Proposta · Legado · Off por pessoa (pedido de 28/09/2026), dos
+  // negócios que o Pipeline já carregou no período — dentro da RLS de quem
+  // olha. O corretor só enxerga os dele, e é só a linha dele que ele vê.
+  const catalog = useDealStatusCatalog().data;
+  const contagem = deals && catalog ? contarStatus1PorPessoa(deals, catalog) : null;
 
   // As MESMAS duas chaves de cache que o `useGameRanking` já usa — nenhuma
   // consulta a mais, só o `isError` e o "há temporada?" que o hook não devolve.
@@ -177,6 +190,7 @@ export default function PipelineTopRanking({ onAbrirPainel }: Props) {
           erro={Boolean(metaVgv.error ?? placarDoMes.error)}
           realizado={vgvDoMes}
           meta={metaVgv.data?.target ?? null}
+          contagem={contagem && user ? textoDaContagem(contagem.get(user.id)) : null}
           onVerMais={onAbrirPainel}
         />
       );
@@ -190,6 +204,7 @@ export default function PipelineTopRanking({ onAbrirPainel }: Props) {
             name: s.broker.name,
             points: s.points,
             avatarUrl: s.broker.avatar_url,
+            detail: contagem ? textoDaContagem(contagem.get(s.broker.id)) : undefined,
           }))} />
         ) : (
           /* Só o diretor chega aqui: o corretor sem ponto continua na lista
@@ -266,7 +281,7 @@ function AnelDeProgresso({ pct, children }: { pct: number; children: ReactNode }
  * print, e o placar continua a um clique em "Ver mais", que abre o Painel.
  */
 function FaixaDoCorretor({
-  nome, avatarUrl, pontos, noRanking, carregando, erro, realizado, meta, onVerMais,
+  nome, avatarUrl, pontos, noRanking, carregando, erro, realizado, meta, contagem, onVerMais,
 }: {
   nome: string;
   avatarUrl: string | null;
@@ -278,6 +293,8 @@ function FaixaDoCorretor({
   realizado: number;
   /** Meta de VGV do mês, em reais. `null` = não há linha em `goals`. */
   meta: number | null;
+  /** "Venda 2 · Proposta 5 · Legado 1 · Off 0" do corretor no período; `null` sem negócios carregados. */
+  contagem: string | null;
   /** Abre o Painel — o mesmo que o clique no card. */
   onVerMais: () => void;
 }) {
@@ -306,6 +323,7 @@ function FaixaDoCorretor({
             <p className="text-sm font-semibold tabular-nums text-foreground">{num(pontos)} pontos</p>
             <StatusBadge tone="live">Game ativo</StatusBadge>
           </div>
+          {contagem && <p className="text-xs tabular-nums text-muted-foreground">{contagem}</p>}
         </div>
       </div>
 
