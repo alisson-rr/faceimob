@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState, SectionCard } from "@/components/shared";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
-import { brl, num } from "@/lib/format";
+import { brl, nomesDeExibicao, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 import { ALL_MONTHS, type DealRow } from "./data";
@@ -15,6 +15,8 @@ export function LeadershipTables({ rows, month }: { rows: LeadershipRow[]; month
   return <div className="space-y-4">
     {(["director", "manager"] as const).map(role => {
       const group = rows.filter(row => row.role === role);
+      // Primeiro e último nome, sem homônimo na tabela (pedido de 28/09/2026).
+      const nome = nomesDeExibicao(group.map(row => row.name));
       const title = role === "director" ? "Diretores" : "Gerentes";
       return <section key={role} className="rounded-xl border border-primary/30 bg-card p-3">
         <h3 className="mb-3 font-display font-bold">{title}</h3>
@@ -33,7 +35,7 @@ export function LeadershipTables({ rows, month }: { rows: LeadershipRow[]; month
               <tbody>{group.map(row => <tr key={row.id} className="border-b border-border/50 text-center tabular-nums last:border-0 odd:bg-secondary/20">
                 <td className="p-2">{num(row.compensationGoal)}</td><td className="p-2">{num(row.goal)}</td>
                 <td className={cn("p-2 font-semibold", row.reached === null ? "text-muted-foreground" : row.reached >= 100 ? "bg-success/20 text-success" : row.reached >= 50 ? "bg-warning/20 text-warning" : "bg-destructive/15 text-destructive")}>{row.reached === null ? "—" : `${num(Math.round(row.reached))}%`}</td>
-                <th scope="row" className="p-2 text-left font-medium">{row.name}</th>
+                <th scope="row" className="p-2 text-left font-medium">{nome(row.name)}</th>
                 <td className="bg-primary/10 p-2 font-semibold">{num(row.leads)}</td><td className="p-2">{num(row.agile)}</td><td className="p-2">{num(row.business)}</td>
                 <td className={cn("p-2 font-bold", row.sales ? "bg-success/15 text-success" : "bg-destructive/10 text-destructive")}>{num(row.sales)}</td>
                 <td className={cn("whitespace-nowrap p-2 font-bold", row.sales ? "bg-success/15 text-success" : "bg-destructive/10 text-destructive")}>{brl(row.vgv, { cents: true })}</td>

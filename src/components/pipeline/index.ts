@@ -46,7 +46,7 @@ export {
 } from "./data";
 export {
   blockedMoveReason, dealLock, dealRangeError, dealRequiredError, exitableStages,
-  findDuplicateDeal, projectPlaceholder, type DealLock,
+  findDuplicateDeal, type DealLock,
 } from "./guards";
 export { baixarPlanilhaDeNegocios, linhasDeNegocios, shareValue } from "./exportacao";
 export {
