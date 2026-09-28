@@ -54,9 +54,11 @@ export interface GlobalGoalCardProps {
    * /equipes (o Dashboard) já tem um mês escolhido na tela e não passa por URL.
    */
   mesInicial?: string;
+  /** Linha fechada por padrão (Equipes); abre sozinha quando o link traz o mês. */
+  recolhivel?: boolean;
 }
 
-export function GlobalGoalCard({ mesInicial }: GlobalGoalCardProps = {}) {
+export function GlobalGoalCard({ mesInicial, recolhivel = false }: GlobalGoalCardProps = {}) {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   /**
@@ -126,6 +128,10 @@ export function GlobalGoalCard({ mesInicial }: GlobalGoalCardProps = {}) {
       title="Meta global do mês"
       description="É a meta que o Dashboard mostra para toda a operação. Sem cadastro, o painel exibe —."
       icon={Target}
+      recolhivel={recolhivel}
+      // Quem chega pelo "Cadastrar em Equipes" do Dashboard veio preencher:
+      // abrir fechado esconderia o formulário que o link prometeu.
+      abertoInicial={mesDaUrl(searchParams.get("mes")) !== null}
     >
       {/* Centralizado no topo do cartão, como todo seletor de mês do app
           (17/09/2026): empilhado, como no `period` do PageHeader — lado a lado,

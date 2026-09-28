@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { DealDeveloper, DealDocumentReview } from "@/integrations/supabase/documents";
+import type {
+  DealDeveloper, DealDocumentRecord, DealDocumentReview, DocumentTypeRecord,
+} from "@/integrations/supabase/documents";
 import DealDocumentUpload from "./DealDocumentUpload";
 
 /**
@@ -18,6 +20,10 @@ const h = vi.hoisted(() => ({
   papeis: ["manager"] as string[],
   status: "approved" as DealDocumentReview["document_review_status"],
   construtora: null as DealDeveloper | null,
+  tipos: [] as DocumentTypeRecord[],
+  docs: [] as DealDocumentRecord[],
+  podeEditar: false,
+  upload: vi.fn(async () => ({ stored_name: "novo.pdf" })),
 }));
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
@@ -35,8 +41,9 @@ vi.mock("@/components/DeveloperSubmissionDialog", () => ({
 }));
 vi.mock("@/integrations/supabase/documents", async (original) => ({
   ...(await original<typeof import("@/integrations/supabase/documents")>()),
-  listDocumentTypes: async () => [],
-  listDealDocuments: async () => [],
+  listDocumentTypes: async () => h.tipos,
+  listDealDocuments: async () => h.docs,
+  uploadDealDocument: h.upload,
   getDealDocumentReview: async (): Promise<DealDocumentReview> => ({
     review_esteira: "agil",
     document_review_status: h.status,
@@ -48,7 +55,7 @@ vi.mock("@/integrations/supabase/documents", async (original) => ({
   }),
   listMyDealRoles: async () => h.papeis,
   countDealManagers: async () => 1,
-  canEditDeal: async () => false,
+  canEditDeal: async () => h.podeEditar,
   dealParticipantNames: async () => ({}),
   missingStoragePaths: async () => new Set<string>(),
   getDealDeveloper: async () => h.construtora,
@@ -69,6 +76,10 @@ const botaoEnviar = () => [...container.querySelectorAll("button")]
   .find((b) => /enviar à construtora/i.test(b.textContent ?? ""));
 
 beforeEach(() => {
+  h.tipos = [];
+  h.docs = [];
+  h.podeEditar = false;
+  h.upload.mockClear();
   h.papeis = ["manager"];
   h.status = "approved";
   h.construtora = { name: "Externa X", flow: "external", hasEmail: true };
@@ -115,5 +126,49 @@ describe("DealDocumentUpload — Enviar à construtora", () => {
     h.status = "pending";
     await montar();
     expect(botaoEnviar()).toBeUndefined();
+  });
+});
+
+// Pedidos de 29/09/2026: arrastar arquivo para anexar e baixar tudo num PDF só.
+describe("DealDocumentUpload — arrastar e PDF único", () => {
+  const tipo: DocumentTypeRecord = {
+    id: "t-rg", code: "rg", label: "RG", category: "cliente", required_for_conversion: false,
+    allows_multiple: true, naming_pattern: null, sort_order: 1,
+  };
+  const doc = (patch: Partial<DealDocumentRecord>): DealDocumentRecord => ({
+    id: "d1", deal_id: "deal-1", document_type_id: "t-rg", storage_path: "deal-1/rg.pdf",
+    original_name: "rg.pdf", stored_name: "rg.pdf", display_name: null, mime_type: "application/pdf",
+    size_bytes: 10, version: 1, superseded_at: null, created_at: "2026-09-29T10:00:00Z", ...patch,
+  });
+  const soltar = async (alvo: Element, arquivos: File[]) => {
+    const evento = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(evento, "dataTransfer", { value: { files: arquivos, types: ["Files"] } });
+    await act(async () => { alvo.dispatchEvent(evento); });
+  };
+  const linhaDoTipo = () => container.querySelector('label[for$="-t-rg"]')!.closest("div.rounded-lg")!;
+
+  it("soltar o arquivo na linha do tipo envia para aquele tipo", async () => {
+    h.status = "draft";
+    h.papeis = ["broker"];
+    h.podeEditar = true;
+    h.tipos = [tipo];
+    await montar();
+    const arquivo = new File(["%PDF-1.7"], "rg.pdf", { type: "application/pdf" });
+    await soltar(linhaDoTipo(), [arquivo]);
+    await vi.waitFor(() => expect(h.upload).toHaveBeenCalledTimes(1));
+    expect(h.upload).toHaveBeenCalledWith(expect.objectContaining({ documentType: tipo, file: arquivo }));
+  });
+
+  it("o botão do PDF único aparece com versão vigente e some sem nenhuma", async () => {
+    h.tipos = [tipo];
+    h.docs = [doc({}), doc({ id: "d0", superseded_at: "2026-09-28T10:00:00Z" })];
+    await montar();
+    expect([...container.querySelectorAll("button")].some((b) => b.textContent === "Baixar tudo em PDF")).toBe(true);
+
+    await act(async () => { root.unmount(); });
+    container.remove();
+    h.docs = [doc({ superseded_at: "2026-09-28T10:00:00Z" })];
+    await montar();
+    expect([...container.querySelectorAll("button")].some((b) => b.textContent === "Baixar tudo em PDF")).toBe(false);
   });
 });
