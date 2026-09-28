@@ -89,8 +89,10 @@ async function handlePush(event) {
   const urgent = URGENT.includes(category);
   await self.registration.showNotification(text(data.title, "Faceimob"), {
     body: text(data.body, ""),
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    // Símbolo azul nos dois (pedido de 28/09/2026). `?v=3`: o Android guarda o
+    // ícone da notificação, e sem a query o símbolo antigo continuava.
+    icon: "/icon-192.png?v=3",
+    badge: "/icon-192.png?v=3",
     // Um aviso por notificação (dois leads não se sobrescrevem). Sem
     // `renotify`: o `push-dispatch` guarda em `push_done_subs` os aparelhos já
     // tratados e só reenvia para os que falharam, mas o mesmo aviso ainda pode

@@ -44,7 +44,13 @@ const temDado = (rows: DeveloperStats[]) => rows.some((row) => row.negocios > 0)
 
 /** Vendas × propostas por construtora — a leitura de abertura do painel. */
 export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
-  const data = rows.map((row) => ({ name: row.dev, Vendas: row.vendas, Propostas: row.propostas }));
+  // Só quem teve venda ou proposta no período (pedido de 28/09/2026): com as
+  // 40 construtoras do cadastro, as zeradas espremiam os nomes até se
+  // sobreporem no eixo. A grade de construtoras continua completa em
+  // `view.developers` para quem precisa dela.
+  const data = rows
+    .filter((row) => row.vendas > 0 || row.propostas > 0)
+    .map((row) => ({ name: row.dev, Vendas: row.vendas, Propostas: row.propostas }));
 
   return (
     <SectionCard

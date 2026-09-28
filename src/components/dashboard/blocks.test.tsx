@@ -144,8 +144,29 @@ describe("KpiRow", () => {
     );
     expect(text).toContain("recebidos em 08/2026 · os leads da sua carteira e da sua equipe");
     expect(text).toContain("sem recorte de período · os leads da sua carteira e da sua equipe");
-    expect(text).toContain("vendas + em aberto · toda a operação");
+    expect(text).toContain('Status 2 "Virou Negócio" · toda a operação');
     expect(text).not.toContain("total na base, sem recorte de período");
+    await cleanup();
+  });
+
+  it("produção soma legado e propostas, e distrato é o do mês anterior com comparativo", async () => {
+    const atual = { propostas: 95, legado: 30, producao: 125, negocios: 5, perdas: 319, distratos: 2 };
+    const { text, cleanup } = await render(
+      <KpiRow
+        stats={stats()}
+        leadsNoPeriodo={10}
+        leadsNaBase={42}
+        month="09/2026"
+        previous={null}
+        previousLabel="08/2026"
+        cartoes={{ atual, anterior: { ...atual, producao: 100 }, distratosAnterior: 4, distratosAntesDoAnterior: 1 }}
+      />,
+    );
+    expect(text).toContain("Legado 30 + Propostas 95");
+    expect(text).toContain("+25 vs. 08/2026");
+    expect(text).toContain("do mês anterior (08/2026)");
+    expect(text).toContain("+3 vs. 07/2026");
+    expect(text).toContain("319");
     await cleanup();
   });
 
@@ -459,6 +480,21 @@ describe("DeveloperOverview e DeveloperRanking", () => {
     expect(tabela?.textContent).toContain("MRV");
     // O grafico em si nao e anunciado duas vezes.
     expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    await cleanup();
+  });
+
+  it("o panorama mostra só construtora com venda ou proposta no período", async () => {
+    const { container, cleanup } = await render(
+      <DeveloperOverview rows={[
+        dev({ dev: "MRV", propostas: 3, negocios: 3 }),
+        dev({ dev: "TENDA", vendas: 1, negocios: 1 }),
+        dev({ dev: "ZERADA" }),
+      ]} />,
+    );
+    const tabela = container.querySelector(".sr-only table")?.textContent ?? "";
+    expect(tabela).toContain("MRV");
+    expect(tabela).toContain("TENDA");
+    expect(tabela).not.toContain("ZERADA");
     await cleanup();
   });
 });

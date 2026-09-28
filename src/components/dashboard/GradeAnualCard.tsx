@@ -181,10 +181,13 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
                           }`}
                         >
                           <span className="text-xs font-medium text-muted-foreground">{cell.label}</span>
-                          <span className={`font-bold tabular-nums ${dinheiro ? "text-sm" : "text-lg"}`}>
+                          {/* O número de vendas sai em amarelo onde aparecer, principal
+                              ou de apoio (pedido de 28/09/2026). `gold` é o âmbar de
+                              texto, 4,5:1 nos dois temas. */}
+                          <span className={`font-bold tabular-nums ${dinheiro ? "text-sm" : `text-lg ${cell.value === null ? "" : "text-gold"}`}`}>
                             {fmt(cell.value)}{!dinheiro && cell.value !== null && <span className="text-xs font-normal"> {cell.value === 1 ? "venda" : "vendas"}</span>}
                           </span>
-                          <span className="text-xs tabular-nums text-muted-foreground">{otherFmt(secondary[rowIndex].cells[cellIndex].value)}</span>
+                          <span className={`text-xs tabular-nums ${dinheiro && secondary[rowIndex].cells[cellIndex].value !== null ? "font-semibold text-gold" : "text-muted-foreground"}`}>{otherFmt(secondary[rowIndex].cells[cellIndex].value)}</span>
                         </div>
                       </td>
                     ))}
@@ -193,10 +196,10 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
                         className="flex h-20 min-w-[132px] flex-col items-center justify-center gap-0.5 rounded-xl border border-success/40 bg-success/10 px-2 text-success"
                       >
                         <span className="text-xs font-medium">{row.year}</span>
-                        <span className={`font-bold tabular-nums ${dinheiro ? "text-sm" : "text-lg"}`}>
+                        <span className={`font-bold tabular-nums ${dinheiro ? "text-sm" : "text-lg text-gold"}`}>
                           {fmt(row.total)}{!dinheiro && <span className="text-xs font-normal"> {row.total === 1 ? "venda" : "vendas"}</span>}
                         </span>
-                        <span className="text-xs tabular-nums">{otherFmt(secondary[rowIndex].total)}</span>
+                        <span className={`text-xs tabular-nums ${dinheiro ? "font-semibold text-gold" : ""}`}>{otherFmt(secondary[rowIndex].total)}</span>
                       </div>
                     </td>
                   </tr>

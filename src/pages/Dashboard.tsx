@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { cartoesDoPeriodo } from "@/components/dashboard/cartoesDoMes";
+import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Inbox, LayoutDashboard, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -80,6 +82,13 @@ export default function Dashboard() {
   const activeMonth = month ?? defaultMonth;
 
   const view = useMonthView(deals, activeMonth);
+  // Produção, negócios, perdas e distratos pelo Status 1/2 (28/09/2026): o
+  // catálogo diz o grupo de cada negócio. Sem ele ainda, os cartões esperam.
+  const statusCatalog = useDealStatusCatalog();
+  const cartoes = useMemo(
+    () => (statusCatalog.data ? cartoesDoPeriodo(deals, activeMonth, statusCatalog.data) : null),
+    [deals, activeMonth, statusCatalog.data],
+  );
   // Rankings da aba Vendas com os ativos que não venderam (zerados no fim) e a
   // foto de cada um para o pódio. `people` é o recorte da RLS de quem olha.
   const ranking = useMemo(() => {
@@ -263,6 +272,7 @@ export default function Dashboard() {
           vgvGoal={vgvGoal.data?.target ?? null}
           previous={view.previous}
           previousLabel={view.previousMonth}
+          cartoes={cartoes}
         />
 
         {/* O conteudo de cada aba vai num <div> interno. `flex` direto no

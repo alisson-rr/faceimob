@@ -26,8 +26,23 @@ export interface KpiCardProps {
   variant?: "default" | "highlight";
   /** Linha de apoio abaixo do valor ("meta: 40", "ultimos 7 dias"). */
   hint?: ReactNode;
+  /**
+   * Cor fixa do cartão: borda, fundo e brilho na cor, rótulo colorido (régua
+   * da Dashboard, pedido de 28/09/2026). Ausente = o visual de sempre, com a
+   * cor tirada do rótulo. `preto` é fundo preto com texto branco nos dois temas.
+   */
+  cor?: KpiCor;
   className?: string;
 }
+
+export type KpiCor = "azul" | "cinza" | "preto" | "vermelho" | "verde";
+
+const TOKEN_DA_COR: Record<Exclude<KpiCor, "preto">, string> = {
+  azul: "primary",
+  cinza: "silver",
+  vermelho: "destructive",
+  verde: "success",
+};
 
 const deltaTone: Record<DeltaTone, string> = {
   success: "text-success",
@@ -61,7 +76,8 @@ const deltaIcon = { up: ArrowUpRight, down: ArrowDownRight, flat: ArrowRight };
  * dois respiros de 12 px, sete cartoes somavam 896 px de rolagem antes do
  * primeiro grafico. Do `sm` para cima nada muda.
  */
-export function KpiCard({ label, value, delta, icon: Icon, variant = "default", hint, className }: KpiCardProps) {
+export function KpiCard({ label, value, delta, icon: Icon, variant = "default", hint, cor, className }: KpiCardProps) {
+  if (cor) return <KpiCardColorido {...{ label, value, delta, icon: Icon, hint, cor, className }} />;
   const isHighlight = variant === "highlight";
   const DeltaIcon = delta ? deltaIcon[delta.direction] : null;
   const tone = delta ? (delta.tone ?? (delta.direction === "up" ? "success" : delta.direction === "down" ? "danger" : "neutral")) : "neutral";
@@ -101,6 +117,53 @@ export function KpiCard({ label, value, delta, icon: Icon, variant = "default", 
             </span>
           )}
           {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** O cartão com `cor`: mesma estrutura, a cor em volta dele inteiro. */
+function KpiCardColorido({ label, value, delta, icon: Icon, hint, cor, className }: Omit<KpiCardProps, "variant"> & { cor: KpiCor }) {
+  const DeltaIcon = delta ? deltaIcon[delta.direction] : null;
+  const tone = delta ? (delta.tone ?? (delta.direction === "up" ? "success" : delta.direction === "down" ? "danger" : "neutral")) : "neutral";
+  const preto = cor === "preto";
+  const token = preto ? null : TOKEN_DA_COR[cor];
+
+  return (
+    <div
+      style={token ? {
+        borderColor: colorTone(token, 0.75),
+        backgroundImage: `linear-gradient(160deg, ${colorTone(token, 0.2)}, ${colorTone(token, 0.05)} 85%)`,
+        boxShadow: `0 0 14px -4px ${colorTone(token, 0.55)}`,
+      } : { boxShadow: "0 0 12px -4px rgba(255,255,255,0.35)" }}
+      className={cn(
+        "relative overflow-hidden rounded-2xl border-2 p-4 transition-colors duration-200 sm:p-5",
+        preto ? "border-white/40 bg-black text-white" : "bg-card text-foreground",
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        {/* 12 px e não `.text-eyebrow` (11 px): a cor vem por `style`, e o
+            `.text-eyebrow` fixa a dele (index.css). */}
+        <p
+          className="text-xs font-bold uppercase tracking-widest"
+          style={{ color: token ? colorTone(token) : "#fff" }}
+        >
+          {label}
+        </p>
+        {Icon && <Icon className={cn("h-4 w-4 shrink-0", preto ? "text-white/70" : "text-muted-foreground")} aria-hidden />}
+      </div>
+      <p className="mt-2 font-display text-3xl font-bold leading-none tracking-tight tabular-nums sm:mt-3">{value}</p>
+      {(delta || hint) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-3">
+          {delta && DeltaIcon && (
+            <span className={cn("inline-flex items-center gap-1 text-xs font-semibold tabular-nums", deltaTone[tone])}>
+              <DeltaIcon className="h-3.5 w-3.5" aria-hidden />
+              {delta.label}
+            </span>
+          )}
+          {hint && <span className={cn("text-xs", preto ? "text-white/75" : "text-muted-foreground")}>{hint}</span>}
         </div>
       )}
     </div>
