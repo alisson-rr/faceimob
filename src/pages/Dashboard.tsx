@@ -302,7 +302,7 @@ export default function Dashboard() {
               {/* `items-start` para o card de meta nao esticar ate a altura da esteira. */}
               <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
                 {goalCard}
-                <SalesFunnelCard stageCounts={view.stageCounts} />
+                <SalesFunnelCard deals={view.rows} />
               </div>
               <DeveloperOverview rows={view.developers} />
               {payload && <LeadershipReport deals={deals} people={payload.people} month={activeMonth} />}
