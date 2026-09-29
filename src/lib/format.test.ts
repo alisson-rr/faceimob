@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { brl, date, dateTime, monthStart, num, parseBrl, parseMonthStart, primeiroEUltimoNome, nomesDeExibicao } from "./format";
 
 describe("format", () => {
-  it("formata BRL sem centavos por padrao", () => {
-    expect(brl(1200000)).toBe("R$ 1.200.000");
-    expect(brl(1200000, { cents: true })).toBe("R$ 1.200.000,00");
+  // Centavos sempre, até em valor redondo (pedido de 29/09/2026).
+  it("formata BRL sempre com centavos; inteiro só pedido explicitamente", () => {
+    expect(brl(1200000)).toBe("R$ 1.200.000,00");
+    expect(brl(0)).toBe("R$ 0,00");
+    expect(brl(1200000, { cents: false })).toBe("R$ 1.200.000");
   });
 
   it("devolve travessao para valor ausente em vez de NaN", () => {

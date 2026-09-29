@@ -604,7 +604,14 @@ export default function Gamification() {
     points: s.points,
     avatarUrl: s.avatarUrl,
     // Gerente e não equipe (pedido de 26/09/2026); sem gerente, a linha some.
-    detail: s.managerName ? `Gerente: ${primeiroEUltimoNome(s.managerName)}` : undefined,
+    // Vendas e VGV no cartão (29/09/2026): a aba Game é só de gestor, admin e
+    // sócio (0163), os mesmos que já liam esses números na tabela abaixo.
+    detail: (
+      <>
+        <span className="block">{`${num(s.vendas)} venda${s.vendas === 1 ? '' : 's'} · ${brl(s.vgv)}`}</span>
+        {s.managerName && <span className="block">{`Gerente: ${primeiroEUltimoNome(s.managerName)}`}</span>}
+      </>
+    ),
     place: isClosed ? s.rank : undefined,
   }));
 

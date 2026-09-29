@@ -22,8 +22,8 @@ it("abre com vendas em destaque e mantém vendas e VGV visíveis ao alternar a m
   expect(year().lastElementChild?.textContent).toMatch(/2 vendasR\$\s300\.000/);
   await act(async () => vgv.click());
   expect(vgv.getAttribute("aria-pressed")).toBe("true");
-  expect(year().querySelectorAll("td")[1].textContent).toMatch(/R\$\s300\.0002 vendas/);
-  expect(year().lastElementChild?.textContent).toMatch(/R\$\s300\.0002 vendas/);
+  expect(year().querySelectorAll("td")[1].textContent).toMatch(/R\$\s300\.000,002 vendas/);
+  expect(year().lastElementChild?.textContent).toMatch(/R\$\s300\.000,002 vendas/);
   await act(async () => root.unmount());
   container.remove();
 });

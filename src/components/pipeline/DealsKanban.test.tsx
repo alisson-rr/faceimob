@@ -52,8 +52,8 @@ describe("DealsKanban · kanban colorido", () => {
     // Hex do banco; sem ele, o tom da etapa (`approved` = TONE_HEX.success).
     expect(cabecalhos.map((cabecalho) => cabecalho.style.backgroundColor))
       .toEqual(["rgb(129, 140, 248)", "rgb(22, 163, 74)"]);
-    expect(cabecalhos[0].textContent).toMatch(/R\$\s438\.000 · 2 negócios$/);
-    expect(cabecalhos[1].textContent).toMatch(/R\$\s90\.000 · 1 negócio$/);
+    expect(cabecalhos[0].textContent).toMatch(/R\$\s438\.000,00 · 2 negócios$/);
+    expect(cabecalhos[1].textContent).toMatch(/R\$\s90\.000,00 · 1 negócio$/);
 
     const bordas = [...container.querySelectorAll<HTMLElement>("article")].map((cartao) => cartao.style.borderLeftColor);
     // O jsdom devolve a cor como foi escrita.
