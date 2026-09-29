@@ -57,8 +57,15 @@ export function MigracaoSiteCard({ podeUsar }: { podeUsar: boolean }) {
   const copiarTudo = async () => {
     setErro(null);
     setFalhasArquivos([]);
+    // O passo em que parou vai junto do erro: "não respondeu" sozinho não diz
+    // se foi usuário, tabela ou arquivo — e repetir recomeça do mesmo jeito.
+    let passo = "";
+    const avancar = (texto: string) => {
+      passo = texto;
+      setAndamento(texto);
+    };
     try {
-      setAndamento("Copiando usuários…");
+      avancar("Copiando usuários…");
       await importar({ action: "usuarios" });
 
       // A ordem é a do banco (chaves estrangeiras primeiro).
@@ -66,7 +73,7 @@ export function MigracaoSiteCard({ podeUsar }: { podeUsar: boolean }) {
       if (error) throw new Error(error.message);
       for (const nome of (tabelas as unknown as string[]) ?? []) {
         for (let pagina = 0; ; pagina++) {
-          setAndamento(`Copiando ${nome} (página ${pagina + 1})…`);
+          avancar(`Copiando ${nome} (página ${pagina + 1})…`);
           const r = await importar<{ ultima: boolean }>({ action: "tabela", nome, pagina });
           if (r.ultima) break;
         }
@@ -74,21 +81,22 @@ export function MigracaoSiteCard({ podeUsar }: { podeUsar: boolean }) {
 
       const falhas: string[] = [];
       for (const bucket of BUCKETS) {
+        avancar(`Copiando arquivos de ${bucket}…`);
         for (let de = 0; ; ) {
           const r = await importar<{ total: number; proximo: number; ultima: boolean; falhas: string[] }>(
             { action: "arquivos", bucket, de },
           );
           falhas.push(...r.falhas.map((f) => `${bucket}/${f}`));
-          setAndamento(`Copiando arquivos de ${bucket}: ${num(r.proximo)} de ${num(r.total)}…`);
+          avancar(`Copiando arquivos de ${bucket}: ${num(r.proximo)} de ${num(r.total)}…`);
           if (r.ultima) break;
           de = r.proximo;
         }
       }
       setFalhasArquivos(falhas);
-      setAndamento("Conferindo contagens…");
+      avancar("Conferindo contagens…");
       setStatus(await importar<Status>({ action: "status" }));
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falhou.");
+      setErro(`Parou em "${passo.replace(/…$/, "")}": ${e instanceof Error ? e.message : "falhou."}`);
     } finally {
       setAndamento(null);
     }
