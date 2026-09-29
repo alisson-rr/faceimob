@@ -15,14 +15,18 @@ import {
 import { EmptyState, LoadingState } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { recorteDoRanking, useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
+import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { gameKeys, listEffectiveScoringRules } from "@/integrations/supabase/game";
 import { loadMuralDoDia, recadosKeys } from "@/integrations/supabase/recados";
-import { num } from "@/lib/format";
+import { nomesDeExibicao, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { podiumRingClass } from "@/lib/tone";
 import { cn } from "@/lib/utils";
-import { MedalhaComFita } from "./MedalhaComFita";
+import { contarStatus1PorPessoa, textoDaContagem } from "./contagemStatus1";
 import { itensDoGame } from "./painel/itensDoGame";
+import { gruposDoPlacar } from "./painel/gruposDoPlacar";
+import { MEDALHA_DO_PODIO } from "./podioVisual";
 import { ordenarRanking } from "./ranking";
 import { ResultadosDoPipeline, type PipelinePanelData } from "./painel/ResultadosDoPipeline";
 
@@ -37,7 +41,8 @@ import { ResultadosDoPipeline, type PipelinePanelData } from "./painel/Resultado
  *   · o recorte é o do GAME (a temporada aberta), não o do dia.
  *
  * O que cada um vê sai de `recorteDoRanking`:
- *   · corretor → os itens dele e o top 3 da equipe;
+ *   · corretor → os itens dele e a equipe inteira no placar (Destaques), com
+ *     a contagem de Status 1 só na linha dele (28/09/2026);
  *   · gerente, diretor, admin e sócio → a soma do recorte e o ranking inteiro
  *     dele (a equipe, a diretoria, a casa).
  * QUAIS pessoas chegam é decisão do banco (`can_see_game_profile`, 0060/0112);
@@ -96,7 +101,7 @@ export default function PainelDoCorretor({ open, onOpenChange, pipeline }: Paine
             ABERTO: o Radix não monta o portal enquanto fechado. */}
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {pipeline && <ResultadosDoPipeline {...pipeline} />}
-          <Colunas />
+          <Colunas deals={pipeline?.deals} />
         </div>
 
         <DialogFooter className="sm:justify-center">
@@ -109,12 +114,12 @@ export default function PainelDoCorretor({ open, onOpenChange, pipeline }: Paine
   );
 }
 
-function Colunas() {
+function Colunas({ deals }: { deals?: LegacyDealRecord[] }) {
   return (
     <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:grid-cols-3 lg:overflow-hidden">
       <Pontuacao />
       <Mural />
-      <Destaques />
+      <Destaques deals={deals} />
     </div>
   );
 }
@@ -316,26 +321,35 @@ const iniciais = (nome: string) =>
   nome.split(" ").map((parte) => parte[0]).slice(0, 2).join("").toUpperCase();
 
 /**
- * Coluna 3 — o placar do recorte de quem está olhando.
+ * Coluna 3 — o placar da temporada, dividido por quem olha (pedido de
+ * 28/09/2026): admin por diretoria, diretor por gerência (a equipe dele como
+ * "Sua equipe"), gerente e corretor a equipe inteira (`gruposDoPlacar`). As
+ * pessoas chegam recortadas do servidor (`visible_game_ranking`).
  *
- * Corretor vê o top 3 da equipe; gerente, diretor, admin e sócio veem o ranking
- * INTEIRO do recorte ("toda a pontuação dos corretores dele"). As pessoas
- * chegam recortadas do servidor (`visible_game_ranking`); aqui só se decide
- * quantas mostrar.
+ * Em cada bloco os 3 primeiros levam as medalhas do pódio dos rankings; do 4º
+ * em diante, só o número da colocação. Embaixo do nome, Venda · Proposta ·
+ * Legado · Off do período do Painel (`deals`, a mesma lista do topo): o gestor
+ * vê de todos; o corretor, só a própria linha — dos colegas ele vê pontos e
+ * colocação, e a linha dele fica destacada.
  *
  * Lê a temporada e o placar direto, e não pelo `useGameRanking`: são as MESMAS
  * duas chaves de cache, mas com o `isError` à mão — sem ele, falha de leitura e
  * temporada sem ponto caíam na mesma frase.
  */
-function Destaques() {
-  const { roles, isAdmin } = useAuth();
-  const { soMinhaPosicao } = recorteDoRanking(roles, isAdmin);
+function Destaques({ deals }: { deals?: LegacyDealRecord[] }) {
+  const { user, role, isAdmin } = useAuth();
   const temporada = useCurrentSeasonId();
   const placar = useSeasonRanking(temporada.data);
+  const catalog = useDealStatusCatalog().data;
   // `ordenarRanking` e não a ordem crua: a RPC ordena só por pontos, e empates
   // em 0 vinham em ordem qualquer, com quem já foi desativado no meio.
   const ordenado = ordenarRanking(placar.data ?? []);
-  const lista = soMinhaPosicao ? ordenado.slice(0, 3) : ordenado;
+  // Xará conferido no placar inteiro: o mesmo nome do pódio do Pipeline e do cabeçalho.
+  const exibir = nomesDeExibicao(ordenado.map((linha) => linha.full_name));
+  const visao = isAdmin ? "empresa" : role === "director" ? "diretoria" : "equipe";
+  const grupos = gruposDoPlacar(ordenado, visao, user?.id);
+  const gestor = isAdmin || role === "director" || role === "manager";
+  const contagem = deals && catalog ? contarStatus1PorPessoa(deals, catalog) : null;
 
   const corpo = () => {
     if (temporada.isError || placar.isError) {
@@ -366,7 +380,7 @@ function Destaques() {
       );
     }
 
-    if (lista.length === 0) {
+    if (ordenado.length === 0) {
       return (
         <p className="text-sm text-muted-foreground">
           Ninguém do seu recorte entrou no placar desta temporada ainda.
@@ -375,35 +389,63 @@ function Destaques() {
     }
 
     return (
-      <ol className="space-y-4">
-        {lista.map((linha, i) => (
-          <li
-            key={linha.profile_id}
-            className="flex items-center gap-3"
-            aria-label={`${i + 1}º lugar: ${linha.full_name}, ${num(linha.points)} pontos`}
-          >
-            {/* Do 4º em diante o disco é neutro — `MedalhaComFita` já trata. */}
-            <MedalhaComFita lugar={i + 1} />
-            <Avatar
-              className={cn(
-                "h-10 w-10 shrink-0 ring-2 ring-offset-2 ring-offset-card",
-                podiumRingClass(i),
-              )}
-            >
-              <AvatarImage src={linha.avatar_url || undefined} alt="" />
-              <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
-                {iniciais(linha.full_name)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-              {linha.full_name}
-            </span>
-            <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-              {num(linha.points)} pts
-            </span>
-          </li>
+      <div className="space-y-5">
+        {grupos.map((grupo) => (
+          <section key={grupo.chave} aria-label={grupo.titulo ?? "Sua equipe"}>
+            {grupo.titulo && (
+              <h4 className="mb-2 border-b border-border pb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                {grupo.titulo}
+              </h4>
+            )}
+            <ol className="space-y-3">
+              {grupo.linhas.map((linha, i) => {
+                const eu = linha.profile_id === user?.id;
+                const nome = exibir(linha.full_name);
+                const mostraContagem = contagem && (gestor || eu);
+                return (
+                  <li
+                    key={linha.profile_id}
+                    className={cn("flex items-center gap-3 rounded-lg", eu && "bg-primary/10 p-1.5 ring-1 ring-primary/40")}
+                    aria-label={`${i + 1}º lugar: ${nome}${eu ? " (você)" : ""}, ${num(linha.points)} pontos`}
+                  >
+                    {MEDALHA_DO_PODIO[i] ? (
+                      <img src={MEDALHA_DO_PODIO[i]} alt="" aria-hidden className="-my-1 h-12 w-12 shrink-0 object-contain" />
+                    ) : (
+                      <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center text-base font-bold tabular-nums text-muted-foreground">
+                        {i + 1}º
+                      </span>
+                    )}
+                    <Avatar
+                      className={cn(
+                        "h-10 w-10 shrink-0 ring-2 ring-offset-2 ring-offset-card",
+                        podiumRingClass(i),
+                      )}
+                    >
+                      <AvatarImage src={linha.avatar_url || undefined} alt="" />
+                      <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
+                        {iniciais(nome)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground">
+                        {nome}{eu && <span className="ml-1 text-xs font-normal text-primary">(você)</span>}
+                      </p>
+                      {mostraContagem && (
+                        <p className="text-xs tabular-nums text-muted-foreground">
+                          {textoDaContagem(contagem.get(linha.profile_id))}
+                        </p>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                      {num(linha.points)} pts
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
         ))}
-      </ol>
+      </div>
     );
   };
 

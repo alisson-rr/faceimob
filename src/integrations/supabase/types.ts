@@ -728,6 +728,8 @@ export type Database = {
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
+          external_by: string | null
+          external_reason: string | null
           id: string
           ip_address: unknown
           leads_received: number
@@ -740,6 +742,8 @@ export type Database = {
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
+          external_by?: string | null
+          external_reason?: string | null
           id?: string
           ip_address?: unknown
           leads_received?: number
@@ -752,6 +756,8 @@ export type Database = {
           checked_in_at?: string
           checked_out_at?: string | null
           created_at?: string
+          external_by?: string | null
+          external_reason?: string | null
           id?: string
           ip_address?: unknown
           leads_received?: number
@@ -1364,6 +1370,30 @@ export type Database = {
         }
         Relationships: []
       }
+      deal_status_permissions: {
+        Row: {
+          can_enter: boolean
+          can_exit: boolean
+          role: Database["public"]["Enums"]["app_role"]
+          status_id: string
+          updated_at: string
+        }
+        Insert: {
+          can_enter?: boolean
+          can_exit?: boolean
+          role: Database["public"]["Enums"]["app_role"]
+          status_id: string
+          updated_at?: string
+        }
+        Update: {
+          can_enter?: boolean
+          can_exit?: boolean
+          role?: Database["public"]["Enums"]["app_role"]
+          status_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       deal_statuses: {
         Row: {
           active: boolean
@@ -1373,6 +1403,8 @@ export type Database = {
           label: string
           locked: boolean
           position: number
+          requires_note: boolean
+          stage_id: string | null
           tone: string
           updated_at: string
           value: string
@@ -1385,6 +1417,8 @@ export type Database = {
           label: string
           locked?: boolean
           position: number
+          requires_note?: boolean
+          stage_id?: string | null
           tone?: string
           updated_at?: string
           value: string
@@ -1397,6 +1431,8 @@ export type Database = {
           label?: string
           locked?: boolean
           position?: number
+          requires_note?: boolean
+          stage_id?: string | null
           tone?: string
           updated_at?: string
           value?: string
@@ -1418,6 +1454,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           developer_id: string | null
+          discount_amount: number
           discount_pct: number
           document_review_reason: string | null
           document_review_requested_at: string | null
@@ -1433,6 +1470,7 @@ export type Database = {
           notes: string | null
           outcome: Database["public"]["Enums"]["deal_outcome"]
           project_id: string | null
+          project_name: string | null
           review_esteira: string | null
           stage_entered_at: string
           stage_id: string
@@ -1449,6 +1487,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           developer_id?: string | null
+          discount_amount?: number
           discount_pct?: number
           document_review_reason?: string | null
           document_review_requested_at?: string | null
@@ -1464,6 +1503,7 @@ export type Database = {
           notes?: string | null
           outcome?: Database["public"]["Enums"]["deal_outcome"]
           project_id?: string | null
+          project_name?: string | null
           review_esteira?: string | null
           stage_entered_at?: string
           stage_id: string
@@ -1480,6 +1520,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           developer_id?: string | null
+          discount_amount?: number
           discount_pct?: number
           document_review_reason?: string | null
           document_review_requested_at?: string | null
@@ -1495,6 +1536,7 @@ export type Database = {
           notes?: string | null
           outcome?: Database["public"]["Enums"]["deal_outcome"]
           project_id?: string | null
+          project_name?: string | null
           review_esteira?: string | null
           stage_entered_at?: string
           stage_id?: string
@@ -5584,6 +5626,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           developer_id: string | null
+          discount_amount: number
           discount_pct: number
           document_review_reason: string | null
           document_review_requested_at: string | null
@@ -5599,6 +5642,7 @@ export type Database = {
           notes: string | null
           outcome: Database["public"]["Enums"]["deal_outcome"]
           project_id: string | null
+          project_name: string | null
           review_esteira: string | null
           stage_entered_at: string
           stage_id: string
@@ -5675,6 +5719,33 @@ export type Database = {
       dispatch_pending_push: { Args: never; Returns: boolean }
       dispatch_pending_submissions: { Args: never; Returns: undefined }
       distribute_queued_lead: { Args: { p_lead_id: string }; Returns: string }
+      deal_status_move_block: {
+        Args: { p_from: string; p_to: string }
+        Returns: string
+      }
+      director_external_checkin: {
+        Args: { p_profile: string; p_reason: string }
+        Returns: {
+          auto_checkout: boolean
+          checked_in_at: string
+          checked_out_at: string | null
+          created_at: string
+          external_by: string | null
+          external_reason: string | null
+          id: string
+          ip_address: unknown
+          leads_received: number
+          profile_id: string
+          shift_id: string
+          work_date: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "checkins"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       distribution_queue: {
         Args: { p_group_id: string }
         Returns: {
@@ -5990,6 +6061,10 @@ export type Database = {
         Returns: Json
       }
       normalize_phone: { Args: { raw: string }; Returns: string }
+      move_deal_status: {
+        Args: { p_deal_id: string; p_note?: string; p_status: string }
+        Returns: undefined
+      }
       notification_queue_health: {
         Args: never
         Returns: {
@@ -6012,6 +6087,8 @@ export type Database = {
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
+          external_by: string | null
+          external_reason: string | null
           id: string
           ip_address: unknown
           leads_received: number
@@ -6033,6 +6110,8 @@ export type Database = {
           checked_in_at: string
           checked_out_at: string | null
           created_at: string
+          external_by: string | null
+          external_reason: string | null
           id: string
           ip_address: unknown
           leads_received: number

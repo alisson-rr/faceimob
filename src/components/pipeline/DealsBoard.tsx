@@ -3,15 +3,18 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { describeError } from "@/lib/supabaseError";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { DealsKanban } from "./DealsKanban";
+import type { DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { DealsTable } from "./DealsTable";
-import type { PipelineStage } from "./stages";
+import { StatusKanban } from "./StatusKanban";
 
 interface Props {
   view: "table" | "kanban";
   /** Negócios já filtrados e ordenados. */
   deals: LegacyDealRecord[];
-  stages: PipelineStage[];
+  /** Colunas do kanban: os Status 2 do cadastro (0164). */
+  catalog: DealStatusCatalog;
+  /** Status 1 do filtro; `null` = todos. */
+  statusGroupId: string | null;
   isPending: boolean;
   error: unknown;
   filtered: boolean;
@@ -26,7 +29,6 @@ interface Props {
   /** Meses congelados (`closed_months`): a linha e o cartão precisam dizer. */
   closedMonths: string[];
   onOpen: (deal: LegacyDealRecord) => void;
-  onMove: (deal: LegacyDealRecord, stage: PipelineStage) => void;
   onStatusChange: (deal: LegacyDealRecord, status: string) => void;
   onScheduleVisit: (deal: LegacyDealRecord) => void;
   onLose: (deal: LegacyDealRecord) => void;
@@ -42,8 +44,8 @@ interface Props {
  * e vazio-de-verdade são telas distintas, cada uma com a sua saída.
  */
 export function DealsBoard({
-  view, deals, stages, isPending, error, filtered, canWrite, closedMonths,
-  onRetry, onClearFilters, onNewDeal, onOpen, onMove, onStatusChange, onScheduleVisit, onLose,
+  view, deals, catalog, statusGroupId, isPending, error, filtered, canWrite, closedMonths,
+  onRetry, onClearFilters, onNewDeal, onOpen, onStatusChange, onScheduleVisit, onLose,
   onReopen,
 }: Props) {
   if (isPending) return <LoadingState variant="table" rows={8} label="Carregando negócios…" />;
@@ -73,17 +75,18 @@ export function DealsBoard({
         icon={Inbox}
         title="Nenhum negócio criado no período"
         description="Amplie as datas do período, converta um lead do funil ou crie o negócio direto por aqui."
-        action={canWrite ? <Button onClick={onNewDeal}>Adicionar negócio</Button> : undefined}
+        action={canWrite ? <Button variant="tintSuccess" onClick={onNewDeal}>Adicionar negócio</Button> : undefined}
       />
     );
   }
 
   return view === "kanban" ? (
-    <DealsKanban
-      stages={stages}
-      deals={deals.filter((deal) => deal.active)}
+    <StatusKanban
+      catalog={catalog}
+      statusGroupId={statusGroupId}
+      deals={deals}
       onOpen={onOpen}
-      onMove={onMove}
+      onMoveStatus={onStatusChange}
       onLose={onLose}
       canWrite={canWrite}
       closedMonths={closedMonths}

@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   dashboardScope,
   dealCategory,
-  funnelRows,
   leadsInMonth,
   monthOptions,
   monthView,
@@ -16,11 +15,14 @@ import {
   rankBy,
   useDashboardPayload,
   vazioTotal,
+  withZeroSellers,
   type DashboardScope,
   type DealRow,
 } from "./data";
 import type { Lead } from "@/types/crm";
-import type { DashboardPayload, MonthlyGoalRow } from "@/integrations/supabase/newSchema";
+import { catalogoDeTeste } from "@/components/pipeline/statusCatalog.fixture";
+import { linhasDoStatus2 } from "./cartoesDoMes";
+import type { DashboardPayload, MonthlyGoalRow, PersonRecord } from "@/integrations/supabase/newSchema";
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" }, roles: [] }) }));
 
@@ -117,36 +119,14 @@ describe("monthView — o mês inteiro numa conta só", () => {
     expect(stats.vgv).toBe(700_000);
   });
 
-  it("o total do funil por etapa é o mesmo do cartão 'Negócios'", () => {
-    const { stats, stageCounts } = monthView(homologacao, "08/2026");
-    const noFunil = [...stageCounts.values()].reduce((total, value) => total + value, 0);
-    // Era 22 no cartão e 25 no bloco, lado a lado, sem nada avisar.
-    expect(noFunil).toBe(stats.negocios);
-  });
-
-  it("o bloco COMPOSTO fecha com o KPI mesmo com etapa fora do catálogo ativo", () => {
-    // A conta acima somava o `stageCounts` cru, que é a mesma fonte do KPI: ela
-    // não podia falhar. O que a tela mostra é `funnelRows(etapas, stageCounts)`,
-    // e as etapas vêm de `listPipelineStages()`, que filtra `active = true`.
-    // Com um negócio aberto numa etapa desativada o bloco somava 22 sob um KPI
-    // de 25 — a mesma divergência, por outro caminho.
-    // `visit_scheduled` desativada em `pipeline_stages` — desativar etapa é
-    // caminho previsto: `pipeline_stages_position_idx` é índice parcial
-    // `where active`, e `pipeline_stages_write` libera `is_admin()`.
-    const comDesativada = [
-      ...homologacao,
-      deal({ id: "arquivada1", stage: "visit_scheduled" }),
-      deal({ id: "arquivada2", stage: "visit_scheduled" }),
-    ];
-    const { stats, stageCounts } = monthView(comDesativada, "08/2026");
-    const catalogoAtivo = [
-      { id: "1", code: "proposal", label: "Proposta", position: 2 },
-      { id: "2", code: "closed", label: "Fechado", position: 3 },
-      { id: "3", code: "lost", label: "Perdido", position: 9 },
-    ];
-    const rows = funnelRows(catalogoAtivo, stageCounts);
-    expect(rows.reduce((total, row) => total + row.value, 0)).toBe(stats.negocios);
-    expect(rows).toContainEqual({ label: "visit_scheduled · etapa fora do catálogo", value: 2 });
+  it("o total do bloco por Status 2 é o mesmo do cartão 'Negócios', status fora do catálogo inclusive", () => {
+    // Era 22 no cartão e 25 no bloco, lado a lado, sem nada avisar. Desde
+    // 28/09/2026 o bloco é por Status 2: status fora do catálogo vira linha
+    // própria em vez de sumir do total.
+    const { stats, rows } = monthView(homologacao, "08/2026");
+    const linhas = linhasDoStatus2(rows, catalogoDeTeste);
+    expect(linhas.reduce((total, linha) => total + linha.value, 0)).toBe(stats.negocios);
+    expect(linhas.every((linha) => linha.value > 0)).toBe(true);
   });
 
   it("QUEDA é perda; DISTRATO só com venda anterior do mesmo cliente", () => {
@@ -315,44 +295,6 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     expect(lido?.months).toContain("10/2026");
 
     await act(async () => root.unmount());
-  });
-});
-
-describe("funnelRows — as etapas saem do banco", () => {
-  const stages = [
-    { id: "1", code: "lead", label: "Lead", position: 2 },
-    { id: "2", code: "proposal", label: "Proposta", position: 3 },
-    { id: "3", code: "lost", label: "Perdido", position: 9 },
-  ];
-
-  it("mantém a ordem e a etapa vazia, e tira o desfecho 'lost'", () => {
-    const counts = new Map([["proposal", 4]]);
-    expect(funnelRows(stages, counts)).toEqual([
-      { label: "Lead", value: 0 },
-      { label: "Proposta", value: 4 },
-    ]);
-  });
-
-  it("etapa nova no banco aparece sozinha, sem tocar no frontend", () => {
-    const comNova = [...stages, { id: "4", code: "reserva", label: "Reserva", position: 4 }];
-    expect(funnelRows(comNova, new Map([["reserva", 2]]))).toContainEqual({ label: "Reserva", value: 2 });
-  });
-
-  it("negócio em etapa DESATIVADA vira linha própria, em vez de sumir do total", () => {
-    // `listPipelineStages()` filtra `active = true`; `listLegacyDeals` lê o
-    // catálogo SEM esse filtro. Sem a linha órfã o total do bloco ficava abaixo
-    // do KPI "Negócios" na mesma tela — e nada dizia por quê.
-    const rows = funnelRows(stages, new Map([["proposal", 4], ["reserva-2024", 3]]));
-    expect(rows).toContainEqual({ label: "reserva-2024 · etapa fora do catálogo", value: 3 });
-    expect(rows.reduce((total, row) => total + row.value, 0)).toBe(7);
-  });
-
-  it("etapa órfã com zero não polui a lista, e 'lost' continua fora", () => {
-    const rows = funnelRows(stages, new Map([["reserva-2024", 0], ["lost", 5]]));
-    expect(rows).toEqual([
-      { label: "Lead", value: 0 },
-      { label: "Proposta", value: 0 },
-    ]);
   });
 });
 
@@ -690,5 +632,33 @@ describe("pickSalesGoal — o denominador segue o escopo do numerador", () => {
       target: null,
       scope: "global",
     });
+  });
+});
+
+describe("withZeroSellers — ranking com quem não vendeu", () => {
+  const pessoa = (id: string, name: string, roles: string[], active = true) =>
+    ({ id, name, roles, active }) as unknown as PersonRecord;
+  const vendidos = [{ id: "b1", name: "Diego", vendas: 2, vgv: 500_000 }];
+
+  it("ativos do papel entram zerados, depois de quem vendeu e em ordem alfabética", () => {
+    const people = [
+      pessoa("b3", "Zeca", ["broker"]),
+      pessoa("b2", "Ávila", ["broker"]),
+      pessoa("b1", "Diego", ["broker"]),
+      pessoa("m1", "Marcos", ["manager"]),
+    ];
+    expect(withZeroSellers(vendidos, people, ["broker"]).map((row) => [row.name, row.vendas])).toEqual([
+      ["Diego", 2], ["Ávila", 0], ["Zeca", 0],
+    ]);
+  });
+
+  it("inativo só aparece se vendeu no período", () => {
+    const people = [pessoa("b1", "Diego", ["broker"], false), pessoa("b9", "Inativo", ["broker"], false)];
+    expect(withZeroSellers(vendidos, people, ["broker"]).map((row) => row.id)).toEqual(["b1"]);
+  });
+
+  it("no geral, qualquer papel de venda entra, sem repetir quem acumula papéis", () => {
+    const people = [pessoa("x", "Xavier", ["manager", "broker"]), pessoa("c", "Cida", ["cca"])];
+    expect(withZeroSellers([], people, ["broker", "manager", "director"]).map((row) => row.id)).toEqual(["x"]);
   });
 });

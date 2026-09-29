@@ -17,6 +17,7 @@ import { DEAL_DOCUMENTS_BUCKET } from "./documents";
 import { listPeople, type PersonRecord } from "./newSchema";
 import type { Database } from "./types";
 import { dbError } from "@/lib/supabaseError";
+import { slugify } from "@/lib/utils";
 
 // Fronteira sem tipo, num único lugar: `types.ts` é gerado pelo Dev A e ainda
 // está em trânsito (S1.3). Tipar este arquivo contra ele agora amarraria esta
@@ -1020,6 +1021,13 @@ export const rejectAttachment = (file: { name: string; size: number; type: strin
   return null;
 };
 
+export const nomeDeArquivoSeguro = (nome: string): string => {
+  const ponto = nome.lastIndexOf(".");
+  const base = slugify(ponto > 0 ? nome.slice(0, ponto) : nome) || "arquivo";
+  const extensao = ponto > 0 ? slugify(nome.slice(ponto + 1)) : "";
+  return extensao ? `${base}.${extensao}` : base;
+};
+
 export async function uploadLeadAttachment(leadId: string, file: File): Promise<void> {
   const recusa = rejectAttachment(file);
   if (recusa) throw dbError("anexar", { code: "P0001", message: recusa });
@@ -1027,8 +1035,12 @@ export async function uploadLeadAttachment(leadId: string, file: File): Promise<
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user?.id) throw sessionExpired("anexar");
 
-  const storedName = `${Date.now()}-${file.name}`;
-  const path = `${leadId}/${storedName}`;
+  // Só a CHAVE do Storage sai sem acento nem espaço ("RG João.pdf" →
+  // "rg-joao.pdf"): o Storage recusa chave fora do ASCII. `stored_name` segue
+  // legível — vira o nome do documento no negócio ao converter.
+  const agora = Date.now();
+  const storedName = `${agora}-${file.name}`;
+  const path = `${leadId}/${agora}-${nomeDeArquivoSeguro(file.name)}`;
 
   const { error: uploadError } = await supabase.storage
     .from(LEAD_ATTACHMENTS_BUCKET)

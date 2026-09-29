@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { Fragment, useMemo, useState, type MouseEvent } from "react";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
   Lock, Maximize2, RotateCcw, XCircle,
@@ -12,7 +12,7 @@ import { brokerTextClass, dealAgeTone, developerDot, developerColor, isHexColor,
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusBadge } from "@/components/shared";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import { EMPTY_STATUS_CATALOG, statusMoveBlock, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { DOCUMENT_REVIEW_META } from "./review";
 import { faceimobStatusTone, statusChoices, statusGroupLabel, STATUS_TONE_CLASS } from "./statuses";
 import { dealLock } from "./guards";
@@ -63,7 +63,7 @@ interface Props {
 export function DealsTable({
   deals, canWrite, closedMonths, onOpen, onStatusChange, onScheduleVisit, onLose, onReopen,
 }: Props) {
-  const { isAdmin, can } = useAuth();
+  const { isAdmin, roles, can } = useAuth();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const [page, setPage] = useState(1);
   // A ordem era fixa (construtora, depois catálogo de Status 2): não dava para
@@ -90,6 +90,16 @@ export function DealsTable({
   const totalPages = Math.max(1, Math.ceil(deals.length / PER_PAGE));
   const current = Math.min(page, totalPages);
   const rows = ordenados.slice((current - 1) * PER_PAGE, current * PER_PAGE);
+  // Separador por construtora (pedido de 28/09/2026) só quando a lista está
+  // agrupada por ela: na ordem padrão e na da coluna Construtora. Ordenada por
+  // VGV ou dias, as construtoras se misturam e o separador repetiria a cada
+  // linha. A contagem é da lista inteira, não da página.
+  const agrupada = sort.key === "padrao" || sort.key === "developer";
+  const porConstrutora = useMemo(() => {
+    const contagem = new Map<string, number>();
+    for (const deal of deals) contagem.set(deal.developer || "", (contagem.get(deal.developer || "") ?? 0) + 1);
+    return contagem;
+  }, [deals]);
 
   /** Cabeçalho que ordena. Função, e não componente local: `<Comp/>` declarado
    *  dentro do render tem identidade nova a cada estado e o React remonta a
@@ -134,8 +144,8 @@ export function DealsTable({
             Negócios do pipeline. Clicar na linha abre o detalhe do negócio; por teclado,
             use o nome do cliente ou o botão Abrir da coluna Ações.
           </caption>
-          <thead className="bg-secondary/70">
-            <tr className="border-b border-border text-muted-foreground">
+          <thead className="bg-card">
+            <tr className="border-b-2 border-primary/35 bg-secondary text-foreground">
               <th scope="col" className="w-3 p-0"><span className="sr-only">Idade</span></th>
               <th scope="col" className="p-2 text-left font-medium">Etapa</th>
               {colunaOrdenavel("Construtora", "developer")}
@@ -153,7 +163,9 @@ export function DealsTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((deal) => {
+            {rows.map((deal, index) => {
+              const construtora = deal.developer || "";
+              const abreGrupo = agrupada && (index === 0 || (rows[index - 1].developer || "") !== construtora);
               const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
               const status = deal.status || "PROPOSTA";
               const grupo = statusGroupLabel(catalog, deal.status_group_id);
@@ -172,8 +184,18 @@ export function DealsTable({
                 // criaria uma parada de tabulação sem nome. O teclado continua
                 // pelos dois botões nomeados da linha — o nome do cliente e o
                 // "Abrir" da coluna Ações —, e o realce segue foco e ponteiro.
+                <Fragment key={deal.id}>
+                {abreGrupo && (
+                  <tr className="border-b border-border bg-secondary">
+                    <th scope="colgroup" colSpan={14} className="px-3 py-2 text-left text-sm font-bold text-foreground">
+                      {construtora || "Sem construtora"}
+                      <span className="ml-2 text-xs font-medium text-muted-foreground">
+                        {porConstrutora.get(construtora) ?? 0} negócio(s)
+                      </span>
+                    </th>
+                  </tr>
+                )}
                 <tr
-                  key={deal.id}
                   // Arrastar o mouse para copiar um valor da célula termina em
                   // `click` na linha, e o modal abria por cima da seleção. Só
                   // barra quando há seleção viva: `getSelection()` pode devolver
@@ -183,7 +205,7 @@ export function DealsTable({
                     if (window.getSelection()?.isCollapsed === false) return;
                     onOpen(deal);
                   }}
-                  className="cursor-pointer border-b border-border transition-colors odd:bg-background/70 even:bg-secondary/45 hover:bg-accent focus-within:bg-accent"
+                  className="cursor-pointer border-b border-border bg-background transition-colors hover:bg-accent focus-within:bg-accent"
                 >
                   <td className="relative w-3 p-0">
                     <span
@@ -205,11 +227,11 @@ export function DealsTable({
                       />
                     )}
                   </td>
-                  <td className="whitespace-nowrap p-2 font-semibold" style={{
-                    backgroundColor: isHexColor(deal.developer_color) ? deal.developer_color : tone(developerColor(deal.developer)),
-                    color: isHexColor(deal.developer_color) ? textOn(deal.developer_color) : "hsl(var(--primary-foreground))",
-                  }}>
-                    <span className="inline-flex items-center gap-1.5">
+                  <td className="whitespace-nowrap p-2 font-semibold">
+                    <span className="inline-flex h-7 min-w-[120px] items-center gap-1.5 rounded px-2" style={{
+                      backgroundColor: isHexColor(deal.developer_color) ? deal.developer_color : tone(developerColor(deal.developer)),
+                      color: isHexColor(deal.developer_color) ? textOn(deal.developer_color) : "hsl(var(--primary-foreground))",
+                    }}>
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} aria-hidden />
                       {deal.developer || "—"}
                     </span>
@@ -272,9 +294,11 @@ export function DealsTable({
                           // escolhido não é escrita, e `<SelectValue/>` espelha
                           // os filhos do item — o "(só administrador...)" iria
                           // parar dentro do badge colorido da linha.
+                          // E a matriz por função do cadastro (0164).
                           const semPermissao = option.value === status
                             ? null
-                            : offDistratoBlocked(can, option.value);
+                            : offDistratoBlocked(can, option.value)
+                              ?? statusMoveBlock(catalog, status, option.value, { isAdmin, roles });
                           return (
                             <SelectItem
                               key={option.value} value={option.value} className="text-xs"
@@ -287,7 +311,9 @@ export function DealsTable({
                                   que o valor gravado não volta para a tela. */}
                               <span>{option.label}</span>
                               {semPermissao && (
-                                <span className="text-muted-foreground"> (só administrador e sócio)</span>
+                                <span className="text-muted-foreground">
+                                  {semPermissao.startsWith("Só administrador") ? " (só administrador e sócio)" : " (fora da sua função)"}
+                                </span>
                               )}
                             </SelectItem>
                           );
@@ -399,6 +425,7 @@ export function DealsTable({
                     </div>
                   </td>
                 </tr>
+                </Fragment>
               );
             })}
           </tbody>

@@ -1,8 +1,9 @@
-import { CheckCircle2, Database, DollarSign, FileText, TrendingUp, Users, XCircle } from "lucide-react";
+import { CheckCircle2, Database, DollarSign, FileText, TrendingUp, Undo2, Users, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KpiCard, KpiGrid } from "@/components/shared";
 import { brl, num } from "@/lib/format";
-import { ALL_MONTHS, type MonthStats } from "./data";
+import type { ContagemDoMes } from "./cartoesDoMes";
+import { ALL_MONTHS, previousMonth, type MonthStats } from "./data";
 
 export interface KpiRowProps {
   stats: MonthStats;
@@ -44,6 +45,16 @@ export interface KpiRowProps {
   /** Mesmo calculo no mes anterior. Sem ele o cartao nao mostra delta. */
   previous: MonthStats | null;
   previousLabel: string | null;
+  /**
+   * Produção, negócios, perdas e distratos pelo Status 1/2 (`cartoesDoPeriodo`).
+   * `null` enquanto o catálogo de status não chegou — os cartões mostram "—".
+   */
+  cartoes?: {
+    atual: ContagemDoMes;
+    anterior: ContagemDoMes | null;
+    distratosAnterior: number | null;
+    distratosAntesDoAnterior: number | null;
+  } | null;
 }
 
 /** Delta absoluto ja formatado; `undefined` quando nao ha mes anterior com que comparar. */
@@ -67,16 +78,15 @@ function delta(
 }
 
 /**
- * A regua de indicadores do mes. Sete cartoes do kit — a meta de VENDAS saiu
- * daqui e virou card proprio (`GoalCard`), porque "Meta —" sem meta cadastrada
- * nao diz nada a quem esta olhando; a meta de VGV fica aqui, como alvo do
- * proprio cartao de VGV.
+ * A régua de indicadores do mês — oito cartões, na ordem e nas cores pedidas
+ * pelo cliente em 28/09/2026: leads do mês e base (azul), produção (cinza,
+ * legado + propostas), negócios (preto, só o Status 2 "Virou Negócio"), perdas
+ * (vermelho, Status 1 OFF — queda inclusa), distratos do mês ANTERIOR (o
+ * distrato chega depois do mês fechado), vendas e VGV gerado (verde). A meta de
+ * VENDAS é card próprio (`GoalCard`); a de VGV fica como alvo do cartão de VGV.
  *
- * "Leads" segue o filtro de periodo como todo o resto: enquanto ele mostrava o
- * total da base sob um cabecalho que dizia "— 08/2026", dois numeros do mesmo
- * cartao falavam de periodos diferentes. O total da base continua visivel, em
- * cartao proprio, com o rotulo dizendo que ele nao tem recorte de PERIODO e de
- * quem e o recorte de PERFIL.
+ * Leads segue o filtro de período; a base inteira fica em cartão próprio, com
+ * o rótulo dizendo que não tem recorte de PERÍODO e de quem é o de PERFIL.
  */
 export function KpiRow({
   stats,
@@ -91,18 +101,24 @@ export function KpiRow({
   vgvGoal,
   previous,
   previousLabel,
+  cartoes,
 }: KpiRowProps) {
   const periodo = month === ALL_MONTHS ? "todos os meses" : month;
   const vgvPct = vgvGoal && vgvGoal > 0 ? Math.round((stats.vgv / vgvGoal) * 100) : null;
+  const atual = cartoes?.atual;
+  const anterior = cartoes?.anterior ?? undefined;
+  const mesAnterior = month === ALL_MONTHS ? null : previousMonth(month);
+  const antesDoAnterior = mesAnterior ? previousMonth(mesAnterior) : null;
 
   return (
     <KpiGrid cols={4}>
       <KpiCard
-        label="Leads"
-        // O traco marca "ainda carregando", nao "zero": afirmar zero antes da
-        // lista chegar e o mesmo erro de inventar numero. Quando a consulta
-        // FALHA o traco continua, mas o texto de apoio para de prometer um
-        // numero que nunca vem.
+        label="Leads do mês"
+        cor="azul"
+        // O traço marca "ainda carregando", não "zero": afirmar zero antes da
+        // lista chegar é o mesmo erro de inventar número. Quando a consulta
+        // FALHA o traço continua, mas o texto de apoio para de prometer um
+        // número que nunca vem.
         value={leadsNoPeriodo === null ? "—" : num(leadsNoPeriodo)}
         icon={Users}
         hint={
@@ -122,45 +138,63 @@ export function KpiRow({
       />
       <KpiCard
         label="Base de leads"
+        cor="azul"
         value={num(leadsNaBase)}
         icon={Database}
         hint={`sem recorte de período · ${leadsLabel}`}
       />
       <KpiCard
         label="Produção"
-        value={num(stats.propostas)}
+        cor="cinza"
+        value={atual ? num(atual.producao) : "—"}
         icon={FileText}
-        delta={delta(stats.propostas, previous?.propostas, previousLabel)}
-        hint="negócios em aberto"
+        delta={atual ? delta(atual.producao, anterior?.producao, previousLabel) : undefined}
+        hint={atual ? `Legado ${num(atual.legado)} + Propostas ${num(atual.propostas)}` : "carregando o catálogo de status"}
       />
       <KpiCard
-        label="Resultado"
+        label="Negócios"
+        cor="preto"
+        value={atual ? num(atual.negocios) : "—"}
+        icon={CheckCircle2}
+        delta={atual ? delta(atual.negocios, anterior?.negocios, previousLabel) : undefined}
+        hint={`Status 2 "Virou Negócio" · ${dealsLabel}`}
+      />
+      <KpiCard
+        label="Perdas"
+        cor="vermelho"
+        value={atual ? num(atual.perdas) : "—"}
+        icon={XCircle}
+        delta={atual ? delta(atual.perdas, anterior?.perdas, previousLabel, { invert: true }) : undefined}
+        hint="OFF e quedas do mês"
+      />
+      <KpiCard
+        label="Distratos"
+        cor="vermelho"
+        value={cartoes?.distratosAnterior == null ? "—" : num(cartoes.distratosAnterior)}
+        icon={Undo2}
+        delta={cartoes?.distratosAnterior == null ? undefined : delta(
+          cartoes.distratosAnterior,
+          cartoes.distratosAntesDoAnterior ?? undefined,
+          antesDoAnterior,
+          { invert: true },
+        )}
+        hint={mesAnterior ? `do mês anterior (${mesAnterior}) — chegam depois do fechamento` : "escolha um mês para ver o anterior"}
+      />
+      <KpiCard
+        label="Vendas"
+        cor="verde"
         value={num(stats.vendas)}
         icon={TrendingUp}
         delta={delta(stats.vendas, previous?.vendas, previousLabel)}
         hint="vendas fechadas"
       />
       <KpiCard
-        label="Perdas"
-        value={num(stats.perdas)}
-        icon={XCircle}
-        delta={delta(stats.perdas, previous?.perdas, previousLabel, { invert: true })}
-        hint="quedas e distratos"
-      />
-      <KpiCard
-        label="Negócios"
-        value={num(stats.negocios)}
-        icon={CheckCircle2}
-        variant="highlight"
-        delta={delta(stats.negocios, previous?.negocios, previousLabel)}
-        hint={`vendas + em aberto · ${dealsLabel}`}
-      />
-      <KpiCard
-        label="VGV"
+        label="VGV gerado"
+        cor="verde"
         value={brl(stats.vgv)}
         icon={DollarSign}
         delta={delta(stats.vgv, previous?.vgv, previousLabel, { format: (value) => brl(value) })}
-        hint={vgvPct === null ? "valor das vendas" : `${num(vgvPct)}% da meta de ${brl(vgvGoal ?? 0)}`}
+        hint={vgvPct === null ? "valor geral de vendas no período" : `${num(vgvPct)}% da meta de ${brl(vgvGoal ?? 0)}`}
       />
     </KpiGrid>
   );

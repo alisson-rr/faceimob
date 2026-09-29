@@ -20,10 +20,10 @@ import { useToast } from '@/hooks/use-toast';
 import { toast as sonnerToast } from '@/components/ui/sonner';
 import { GamificationAdmin, GamificationBanners } from '@/components/GamificationAdmin';
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from '@/components/shared';
-import { Podium, SoundPreview, buildFrozenScores, buildScores, type BrokerScore, type PodiumEntry } from '@/components/engagement';
+import { PodiumCards, SoundPreview, buildFrozenScores, buildScores, type BrokerScore, type PodiumEntry } from '@/components/engagement';
 import { useCurrentSeasonId, useSeasonRanking } from '@/hooks/useGameRanking';
 import { useClosedMonths } from '@/components/pipeline/data';
-import { brl, date, num } from '@/lib/format';
+import { brl, date, num, primeiroEUltimoNome } from '@/lib/format';
 import { describeError } from '@/lib/supabaseError';
 import {
   closeGameSeason,
@@ -603,7 +603,15 @@ export default function Gamification() {
     name: s.brokerName,
     points: s.points,
     avatarUrl: s.avatarUrl,
-    detail: s.team,
+    // Gerente e não equipe (pedido de 26/09/2026); sem gerente, a linha some.
+    // Vendas e VGV no cartão (29/09/2026): a aba Game é só de gestor, admin e
+    // sócio (0163), os mesmos que já liam esses números na tabela abaixo.
+    detail: (
+      <>
+        <span className="block">{`${num(s.vendas)} venda${s.vendas === 1 ? '' : 's'} · ${brl(s.vgv)}`}</span>
+        {s.managerName && <span className="block">{`Gerente: ${primeiroEUltimoNome(s.managerName)}`}</span>}
+      </>
+    ),
     place: isClosed ? s.rank : undefined,
   }));
 
@@ -890,7 +898,7 @@ export default function Gamification() {
                       ? `Semana ${weekLabel(activeWeek)}`
                       : selected ? seasonPeriod(selected) : undefined}
                   >
-                    <Podium entries={podium} />
+                    <PodiumCards entries={podium} />
                     {!veTudo && (
                       <p className="mt-4 text-center text-xs text-muted-foreground">
                         Você vê os corretores das suas equipes. O ranking da casa inteira é da diretoria.

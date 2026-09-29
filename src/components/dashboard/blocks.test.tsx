@@ -8,6 +8,8 @@ import { CcaStatusCard, StaffCard } from "./Breakdown";
 import { DirectorPanel } from "./DirectorPanel";
 import { LeadsPanel } from "./LeadsPanel";
 import { SalesFunnelCard } from "./SalesFunnelCard";
+import { dealStatusKeys } from "@/integrations/supabase/dealStatuses";
+import { catalogoDeTeste } from "@/components/pipeline/statusCatalog.fixture";
 import { DeveloperOverview, DeveloperRanking } from "./DeveloperOverview";
 import { GoalCard } from "./GoalCard";
 import { KpiRow } from "./KpiRow";
@@ -144,8 +146,29 @@ describe("KpiRow", () => {
     );
     expect(text).toContain("recebidos em 08/2026 · os leads da sua carteira e da sua equipe");
     expect(text).toContain("sem recorte de período · os leads da sua carteira e da sua equipe");
-    expect(text).toContain("vendas + em aberto · toda a operação");
+    expect(text).toContain('Status 2 "Virou Negócio" · toda a operação');
     expect(text).not.toContain("total na base, sem recorte de período");
+    await cleanup();
+  });
+
+  it("produção soma legado e propostas, e distrato é o do mês anterior com comparativo", async () => {
+    const atual = { propostas: 95, legado: 30, producao: 125, negocios: 5, perdas: 319, distratos: 2 };
+    const { text, cleanup } = await render(
+      <KpiRow
+        stats={stats()}
+        leadsNoPeriodo={10}
+        leadsNaBase={42}
+        month="09/2026"
+        previous={null}
+        previousLabel="08/2026"
+        cartoes={{ atual, anterior: { ...atual, producao: 100 }, distratosAnterior: 4, distratosAntesDoAnterior: 1 }}
+      />,
+    );
+    expect(text).toContain("Legado 30 + Propostas 95");
+    expect(text).toContain("+25 vs. 08/2026");
+    expect(text).toContain("do mês anterior (08/2026)");
+    expect(text).toContain("+3 vs. 07/2026");
+    expect(text).toContain("319");
     await cleanup();
   });
 
@@ -232,18 +255,24 @@ describe("KpiRow", () => {
   });
 
   it("o delta compara com o mes anterior e inverte a leitura em perdas", async () => {
-    const { text, cleanup } = await render(
+    // Perdas sai do Status 1 OFF desde 28/09/2026 (`cartoes`), não mais de `stats`.
+    const contagem = (perdas: number) => ({ propostas: 0, legado: 0, producao: 0, negocios: 0, perdas, distratos: 0 });
+    const { text, container, cleanup } = await render(
       <KpiRow
-        stats={stats({ vendas: 7, perdas: 3 })}
+        stats={stats({ vendas: 7 })}
         leadsNoPeriodo={0}
         leadsNaBase={0}
         month="08/2026"
-        previous={stats({ vendas: 4, perdas: 1 })}
+        previous={stats({ vendas: 4 })}
         previousLabel="07/2026"
+        cartoes={{ atual: contagem(3), anterior: contagem(1), distratosAnterior: null, distratosAntesDoAnterior: null }}
       />,
     );
     expect(text).toContain("+3 vs. 07/2026");
-    expect(text).toContain("+2 vs. 07/2026");
+    const perdaSubiu = Array.from(container.querySelectorAll("span"))
+      .find((el) => el.textContent?.trim() === "+2 vs. 07/2026");
+    // Subir perda é ruim: a seta para cima vem vermelha.
+    expect(perdaSubiu?.className).toContain("text-destructive");
     await cleanup();
   });
 });
@@ -363,6 +392,33 @@ describe("TopBrokers", () => {
     await vazio.cleanup();
   });
 
+  it("o podio tem sempre tres, zerado inclusive, e o rodape conta so quem vendeu", async () => {
+    const comZerados = [...rows, { id: "b8", name: "Ana Zerada", vendas: 0, vgv: 0 }, { id: "b9", name: "Zeca", vendas: 0, vgv: 0 }];
+    const { text, query, cleanup } = await render(
+      <TopBrokers title="Ranking" description="Vendas do período" rows={comZerados} />,
+    );
+    expect(query("ol")?.textContent).toContain("Ana Zerada");
+    expect(query("ol")?.textContent).not.toContain("Zeca");
+    expect(query("table")?.textContent).toContain("Zeca");
+    expect(text).toContain("2 com venda no período");
+    expect(text).toContain("3 vendas");
+    await cleanup();
+  });
+
+  it("mostra primeiro e ultimo nome, e desempata homonimo pelas iniciais", async () => {
+    const nomes = [
+      { id: "a", name: "Fábio Rodrigo Carvalho Batista", vendas: 4, vgv: 900_000 },
+      { id: "b", name: "Ana Beta Silva", vendas: 2, vgv: 100_000 },
+      { id: "c", name: "Ana Zeta Silva", vendas: 1, vgv: 50_000 },
+    ];
+    const { text, cleanup } = await render(<TopBrokers title="Ranking" description="Vendas" rows={nomes} />);
+    expect(text).toContain("Fábio Batista");
+    expect(text).not.toContain("Rodrigo Carvalho");
+    expect(text).toContain("Ana B. Silva");
+    expect(text).toContain("Ana Z. Silva");
+    await cleanup();
+  });
+
   it("a lista rolavel e alcancavel pelo teclado, e tem nome", async () => {
     // A tabela do 4º colocado em diante nao tem UM elemento focavel dentro, so
     // texto: sem `tabIndex` no container rolavel quem navega por teclado nao
@@ -434,6 +490,36 @@ describe("DeveloperOverview e DeveloperRanking", () => {
     expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
     await cleanup();
   });
+
+  it("o panorama mostra só construtora com venda ou proposta no período", async () => {
+    const { container, cleanup } = await render(
+      <DeveloperOverview rows={[
+        dev({ dev: "MRV", propostas: 3, negocios: 3 }),
+        dev({ dev: "TENDA", vendas: 1, negocios: 1 }),
+        dev({ dev: "ZERADA" }),
+      ]} />,
+    );
+    const tabela = container.querySelector(".sr-only table")?.textContent ?? "";
+    expect(tabela).toContain("MRV");
+    expect(tabela).toContain("TENDA");
+    expect(tabela).not.toContain("ZERADA");
+    await cleanup();
+  });
+
+  it("o ranking de propostas remove construtoras zeradas", async () => {
+    const { container, cleanup } = await render(
+      <DeveloperRanking rows={[
+        dev({ dev: "MRV", propostas: 3, negocios: 3 }),
+        dev({ dev: "SEM PROPOSTA", vendas: 2, negocios: 2 }),
+        dev({ dev: "ZERADA" }),
+      ]} />,
+    );
+    const tabela = container.querySelector(".sr-only table")?.textContent ?? "";
+    expect(tabela).toContain("MRV");
+    expect(tabela).not.toContain("SEM PROPOSTA");
+    expect(tabela).not.toContain("ZERADA");
+    await cleanup();
+  });
 });
 
 describe("MonthlyTrend", () => {
@@ -455,30 +541,29 @@ describe("MonthlyTrend", () => {
 });
 
 describe("SalesFunnelCard", () => {
-  const stages = [
-    { id: "1", code: "lead", label: "Lead", position: 2 },
-    { id: "2", code: "proposal", label: "Proposta", position: 3 },
-    { id: "3", code: "lost", label: "Perdido", position: 9 },
-  ];
-  const semearEtapas = (client: QueryClient) => client.setQueryData(["dashboard", "stages"], stages);
+  // Status 2 desde 28/09/2026: a ordem e o rótulo saem do catálogo de status.
+  const semearCatalogo = (client: QueryClient) => client.setQueryData(dealStatusKeys.catalog, catalogoDeTeste);
+  const negocio = (id: string, status: string, outcome = "open") =>
+    ({ id, status, outcome, month_base: "09/2026" }) as unknown as DealRow;
 
-  it("usa os rótulos do banco, mantém etapa vazia e não lista o desfecho perdido", async () => {
-    const { text, cleanup } = await renderComCache(
-      <SalesFunnelCard stageCounts={new Map([["proposal", 4]])} />,
-      semearEtapas,
+  it("lista só o Status 2 com negócio, do maior para o menor, empate na ordem do cadastro, sem zerados nem perdidos", async () => {
+    const { text, container, cleanup } = await renderComCache(
+      <SalesFunnelCard deals={[
+        negocio("a", "16. PENDENTE"), negocio("b", "13. ESTEIRA AGIL"), negocio("c", "13. ESTEIRA AGIL"),
+        negocio("d", "02. ASS. BANCO", "won"), negocio("e", "18. QUEDA", "lost"),
+      ]} />,
+      semearCatalogo,
     );
-    expect(text).toContain("Proposta");
-    expect(text).toContain("Lead");
-    expect(text).not.toContain("Perdido");
+    const rotulos = Array.from(container.querySelectorAll("li")).map((li) => li.querySelector("span")?.textContent);
+    expect(rotulos).toEqual(["ESTEIRA AGIL", "Assinado no banco", "PENDENTE"]);
+    expect(text).not.toContain("QUEDA");
+    expect(text).not.toContain("VIROU NEGÓCIO");
     expect(text).toContain("4 negócios no período · vendas + em aberto");
     await cleanup();
   });
 
   it("mês sem negócio mostra o estado vazio, não uma lista de zeros", async () => {
-    const { text, cleanup } = await renderComCache(
-      <SalesFunnelCard stageCounts={new Map()} />,
-      semearEtapas,
-    );
+    const { text, cleanup } = await renderComCache(<SalesFunnelCard deals={[]} />, semearCatalogo);
     expect(text).toContain("Nenhum negócio no período");
     await cleanup();
   });
@@ -813,7 +898,7 @@ describe("DirectorPanel", () => {
 describe("Breakdown", () => {
   it("o CCA diz de quem e a contagem — a empresa ou so os seus negocios", async () => {
     const toda = await render(<CcaStatusCard counts={{ Aprovado: 3 }} toda />);
-    expect(toda.text).toContain("Processos do CCA por situação");
+    expect(toda.text).toContain("Processos do CCA no mês vigente");
     await toda.cleanup();
 
     const minha = await render(<CcaStatusCard counts={{}} toda={false} />);

@@ -12,6 +12,7 @@ import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { dealBrokers, dealMonth, pct } from "./filters";
 import type { DealLock } from "./guards";
 import { DOCUMENT_REVIEW_META } from "./review";
+import { comissaoPrevista } from "./comissao";
 import type { PipelineStage } from "./stages";
 
 interface Props {
@@ -87,6 +88,7 @@ function DealCardBase({
   const mes = dealMonth(deal);
   const corretores = dealBrokers(deal);
   const bolinha = developerDot(deal.developer, deal.developer_color);
+  const comissao = comissaoPrevista(deal);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -204,6 +206,19 @@ function DealCardBase({
           {review.label}
         </Badge>
 
+        {/* Previsão de comissão a partir da aprovação (29/09/2026): o número que
+            motiva o corretor, no cartão que ele olha todo dia. */}
+        {comissao && (
+          <p className="mb-2 rounded bg-success/10 px-1.5 py-1 text-xs text-success">
+            <span className="font-semibold">Comissão prevista {brl(comissao.total)}</span>
+            {comissao.porCorretor.length > 1 && (
+              <span className="block text-success/90">
+                {comissao.porCorretor.map((c) => `${primeiroNome(c.nome)} ${brl(c.valor)}`).join(" · ")}
+              </span>
+            )}
+          </p>
+        )}
+
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-semibold tabular-nums text-primary">{brl(deal.deal_value)}</span>
           <div className="flex items-center gap-1.5">
@@ -280,6 +295,8 @@ function DealCardBase({
     </article>
   );
 }
+
+const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0] ?? nome;
 
 const mesmaTrava = (a: DealLock, b: DealLock) =>
   a.locked === b.locked && a.reason === b.reason && a.monthClosed === b.monthClosed;

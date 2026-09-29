@@ -137,6 +137,21 @@ afterEach(() => {
   cliente.emailLigado = false;
 });
 
+describe("AdminIntegrations · onde pegar", () => {
+  it("cada cartão diz onde buscar o valor e abre o painel do provedor em nova aba", async () => {
+    const el = await montar();
+    const openai = cartao(el, "OpenAI — chave de API");
+    expect(openai.textContent).toContain("Onde pegar:");
+    const link = openai.querySelector<HTMLAnchorElement>('a[href="https://platform.openai.com/api-keys"]')!;
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toContain("noopener");
+    // Valor que não vem de site nenhum ganha o caminho, sem link inventado.
+    const servico = cartao(el, "Supabase — service role key");
+    expect(servico.textContent).toContain("/opt/faceimob/supabase/.env");
+    expect(servico.querySelector("a")).toBeNull();
+  });
+});
+
 describe("AdminIntegrations · e-mail das movimentações da CCA", () => {
   const interruptor = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('[id="cca-move-email"]')!;
 

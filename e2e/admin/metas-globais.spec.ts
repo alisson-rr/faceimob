@@ -30,7 +30,9 @@ const formulario = (page: Page) => page.getByRole("form", { name: "Meta global d
 async function abrirCartaoDoMes(page: Page) {
   await page.goto("/equipes");
   await aguardarCarregamento(page);
-  await page.getByLabel("Mês", { exact: true }).fill(MES);
+  // Desde 29/09/2026 a meta global nasce recolhida em /equipes: abre pelo título.
+  await page.getByRole("button", { name: "Meta global do mês" }).click();
+  await page.locator("#meta-global-mes").fill(MES);
   // O campo fica desabilitado enquanto a meta do mês carrega; "Cadastrado:"
   // preenchido é o sinal de que o formulário já reflete 12/2099.
   await expect(formulario(page).getByText(/^Cadastrado: /).first()).not.toContainText("…");

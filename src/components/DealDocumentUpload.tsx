@@ -5,12 +5,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX,
+  Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX, FileStack,
   AlertTriangle, Pencil, Check, X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
+import { cn, slugify } from "@/lib/utils";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import { loadCcaCase } from "@/components/pipeline/ccaData";
@@ -132,6 +133,10 @@ export default function DealDocumentUpload({
    *  documento nenhum — uma queda de rede acusaria o dossiê inteiro de vazio. */
   const [semArquivo, setSemArquivo] = useState<Set<string> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Tipo sob um arquivo arrastado (29/09/2026: "poder arrastar os arquivos
+  // para anexar"). O botão "Anexar" continua o caminho de teclado.
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [juntando, setJuntando] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
   const [envioMensagem, setEnvioMensagem] = useState("");
@@ -297,6 +302,67 @@ export default function DealDocumentUpload({
   };
 
   /**
+   * "Baixar tudo em PDF" (pedido de 29/09/2026): as versões VIGENTES, na ordem
+   * dos tipos, num arquivo só. A biblioteca de PDF (≈ 500 kB) só carrega no
+   * clique. Arquivo que não baixa ou não vira página não derruba o resto: entra
+   * na lista do aviso, pelo nome.
+   */
+  const baixarTudoEmPdf = async (vigentes: DealDocumentRecord[]) => {
+    if (vigentes.length === 0 || juntando) return;
+    setJuntando(true);
+    try {
+      const { juntarEmPdf, converterNoNavegador } = await import("@/lib/pdfUnico");
+      const baixados = await Promise.all(vigentes.map(async (d) => {
+        const nome = documentDisplayName(d);
+        try {
+          const resposta = await fetch(await signedDocumentUrl(d));
+          if (!resposta.ok) return { nome, falhou: true as const };
+          return { nome, tipo: d.mime_type, bytes: await resposta.arrayBuffer() };
+        } catch {
+          return { nome, falhou: true as const };
+        }
+      }));
+      const semDownload = baixados.flatMap((b) => ("falhou" in b ? [b.nome] : []));
+      const resultado = await juntarEmPdf(
+        baixados.flatMap((b) => ("falhou" in b ? [] : [b])),
+        converterNoNavegador,
+      );
+      const foraDoPdf = [...semDownload, ...resultado.ignorados];
+      if (!resultado.pdf) {
+        toast({
+          variant: "destructive",
+          title: "Nenhum arquivo pôde virar PDF",
+          description: `Ficaram de fora: ${foraDoPdf.join(", ")}. Baixe-os um a um.`,
+        });
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([resultado.pdf], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${slugify(dealCode || "negocio") || "negocio"}-documentos.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast({
+        variant: foraDoPdf.length ? "destructive" : "success",
+        title: `PDF com ${resultado.incluidos} arquivo${resultado.incluidos > 1 ? "s" : ""} baixado`,
+        description: foraDoPdf.length
+          ? `Ficaram de fora (baixe um a um): ${foraDoPdf.join(", ")}.`
+          : undefined,
+      });
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível montar o PDF",
+        description: describeError(e, "Tente de novo em instantes, ou baixe os arquivos um a um."),
+      });
+    } finally {
+      setJuntando(false);
+    }
+  };
+
+  /**
    * Grava o APELIDO da linha. O arquivo não muda de nome: `stored_name` continua
    * sendo o que vai anexado no e-mail da construtora.
    *
@@ -426,6 +492,9 @@ export default function DealDocumentUpload({
     ? docs.filter((d) => !d.superseded_at && semArquivo.has(d.storage_path))
     : [];
   const missing = missingRequiredTypes(types, comArquivo);
+  // O que entra no "Baixar tudo em PDF": versão vigente com arquivo, na ordem dos tipos.
+  const vigentes = types.flatMap((type) => (byType.get(type.id) ?? [])
+    .filter((d) => !d.superseded_at && semArquivo?.has(d.storage_path) !== true));
   const status = review?.document_review_status ?? "draft";
   const canSubmit = isAdmin || myRoles.includes("broker");
   const canReview = isAdmin || myRoles.includes("manager");
@@ -690,10 +759,22 @@ export default function DealDocumentUpload({
         ) : (
           <Badge variant="outline">Obrigatórios completos</Badge>
         )}
+        {vigentes.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 text-xs gap-1 ml-auto"
+            disabled={juntando}
+            onClick={() => void baixarTudoEmPdf(vigentes)}
+          >
+            {juntando ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileStack className="h-3 w-3" />}
+            {juntando ? "Montando PDF…" : "Baixar tudo em PDF"}
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 text-xs gap-1 ml-auto"
+          className={cn("h-6 text-xs gap-1", vigentes.length === 0 && "ml-auto")}
           onClick={() => setShowHistory((v) => !v)}
         >
           <History className="h-3 w-3" /> {showHistory ? "Ocultar" : "Ver"} histórico
@@ -738,6 +819,11 @@ export default function DealDocumentUpload({
         />
       )}
 
+      {canAttach && types.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Arraste os arquivos até a linha do tipo de documento, ou use o botão Anexar.
+        </p>
+      )}
       <div className="space-y-2">
         {types.map((type) => {
           const all = byType.get(type.id) ?? [];
@@ -755,7 +841,29 @@ export default function DealDocumentUpload({
           );
 
           return (
-            <div key={type.id} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
+            <div
+              key={type.id}
+              className={cn(
+                "rounded-lg border border-border/60 bg-muted/10 p-2.5 transition-colors",
+                arrastando === type.id && "border-primary border-dashed bg-primary/10",
+              )}
+              onDragOver={canAttach && busy !== type.id ? (e) => {
+                // Só arquivo: arrastar texto ou link não vira anexo.
+                if (!e.dataTransfer.types.includes("Files")) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+                if (arrastando !== type.id) setArrastando(type.id);
+              } : undefined}
+              onDragLeave={(e) => {
+                // Sair para um filho não é sair da área.
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setArrastando(null);
+              }}
+              onDrop={canAttach && busy !== type.id ? (e) => {
+                e.preventDefault();
+                setArrastando(null);
+                void handleFiles(type, e.dataTransfer.files);
+              } : undefined}
+            >
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 {/* `htmlFor`/`id` e `aria-label`: os nove campos compartilhavam o
                     mesmo nome acessível ("Anexar"), e o input escondido não

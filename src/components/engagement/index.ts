@@ -18,8 +18,7 @@
 export { EngagementLayer } from "./EngagementLayer";
 export { SoundToggle } from "./SoundToggle";
 export { SoundPreview } from "./SoundPreview";
-export { Podium, type PodiumEntry, type PodiumProps } from "./Podium";
-export { PodiumCards, type PodiumCardsProps } from "./PodiumCards";
+export { PodiumCards, type PodiumCardsProps, type PodiumEntry } from "./PodiumCards";
 export { useCelebration, type Celebrate, type CelebrationPayload } from "./context";
 export { fireConfetti, type ConfettiOrigin } from "./Confetti";
 export { ordenarRanking, buildScores, buildFrozenScores, UNKNOWN_PERSON, type BrokerScore } from "./ranking";

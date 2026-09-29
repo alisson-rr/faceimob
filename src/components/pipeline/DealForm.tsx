@@ -14,11 +14,18 @@ import {
   choosesLoss, dealStageCodeFor, saleBlockedReason,
   type PersonRecord, type SaveLegacyDealInput,
 } from "@/integrations/supabase/newSchema";
-import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import {
+  EMPTY_STATUS_CATALOG, statusKey, statusMoveBlock, useDealStatusCatalog, type DealStatusCatalog,
+} from "@/integrations/supabase/dealStatuses";
+
+/** O Status 2 pede observação ao entrar (0164)? */
+const statusRequiresNote = (catalog: DealStatusCatalog, value: string) => {
+  const indice = catalog.indexByKey.get(statusKey(value));
+  return indice !== undefined && catalog.statuses[indice].requires_note;
+};
 import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
-import { ChoiceField, PersonField, Section, TextField } from "./fields";
+import { ChoiceField, MoneyField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
-import { projectPlaceholder } from "./guards";
 import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
 import { offDistratoBlocked } from "./useDealActions";
 import { funnelStages, type PipelineStage } from "./stages";
@@ -104,6 +111,32 @@ interface Props {
 }
 
 /** Aba "Detalhes" do negócio: o formulário inteiro. */
+const NOMES_DOS_MESES = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
+/** "09/2026" -> "setembro/2026". */
+const rotuloDoMes = (mes: string) => {
+  const [mm, aaaa] = mes.split("/");
+  return `${NOMES_DOS_MESES[Number(mm) - 1] ?? mm}/${aaaa}`;
+};
+
+/**
+ * Meses do seletor de mês-base, do mais novo para o mais antigo: do ano que
+ * vem até dois anos atrás. O mês gravado entra mesmo fora da faixa — negócio
+ * antigo não pode abrir com o campo vazio e trocar de mês ao salvar.
+ */
+const mesesDoSeletor = (atual?: string): string[] => {
+  const ano = new Date().getFullYear();
+  const meses: string[] = [];
+  for (let a = ano + 1; a >= ano - 2; a -= 1) {
+    for (let m = 12; m >= 1; m -= 1) meses.push(`${String(m).padStart(2, "0")}/${a}`);
+  }
+  if (atual && /^\d{2}\/\d{4}$/.test(atual) && !meses.includes(atual)) meses.push(atual);
+  return meses;
+};
+
 export function DealForm({ form, onChange, field, people, developers, stages, isNew, developerError }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const canExitStage = useCanExitStage();
@@ -112,14 +145,6 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
    *  nenhum". `catch { setProjects([]) }` fazia as duas coisas darem a MESMA
    *  tela ("Sem empreendimentos"), num campo obrigatório. */
   const [projectsError, setProjectsError] = useState<string | null>(null);
-  /** A troca de construtora acabou de LIMPAR um empreendimento que estava
-   *  preenchido. O campo pertence à construtora, então zerá-lo é correto — o
-   *  que faltava era dizer. `saveLegacyDeal` sempre inclui `project_id` no
-   *  UPDATE, então o negócio que TINHA empreendimento saía do banco sem ele e
-   *  sem uma linha na tela; o Select apenas voltava ao placeholder. Aviso em
-   *  vez de recusa: cobrar o campo no salvamento reabriria o beco sem saída da
-   *  construtora sem catálogo. */
-  const [projectCleared, setProjectCleared] = useState(false);
   const selectableBrokers = useSelectableBrokers();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
 
@@ -145,7 +170,11 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
 
   // A etapa só muda se o perfil puder SAIR da atual: `deals_guard_stage` cobra
   // `can_exit_stage(old.stage_id)` antes de olhar a etapa de destino.
-  const canLeaveStage = isNew || !form.stage_id || canExitStage(form.stage_id);
+  // Desde a 0164 a etapa de um negócio que já existe SEGUE o Status 2: quem a
+  // muda é o cadastro de status. Negócio novo ainda escolhe onde nasce, e o
+  // admin segue podendo corrigir à mão.
+  const etapaSegueStatus = !isNew && !isAdmin;
+  const canLeaveStage = !etapaSegueStatus && (isNew || !form.stage_id || canExitStage(form.stage_id));
 
   // A etapa de perda fica fora da lista (ver o comentário do Select). As
   // bloqueadas saem daqui para que o item cinza e a frase que o explica leiam a
@@ -192,6 +221,34 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
 
   const managers = people.filter((person) => person.active
     && (person.roles.includes("manager") || person.roles.includes("director")));
+  const directors = people.filter((person) => person.active && person.roles.includes("director"));
+
+  /**
+   * Sugestão de gerente e diretor pela equipe do corretor (pedido de
+   * 28/09/2026; Corretor 2 e 3 desde 29/09). É só sugestão: o Corretor N
+   * preenche Gerente N e Diretor N (não há Diretor 3) ao ser trocado, e os
+   * campos continuam editáveis. Quem já está em outro slot não se repete — dois
+   * corretores da mesma equipe não viram "Gerente 1 = Gerente 2". Vem de `people`, que traz o gestor
+   * da equipe de cada perfil, e só preenche quem a lista mostra — um id fora da
+   * visibilidade apareceria como "Fora da sua visibilidade". Para o corretor,
+   * que não enxerga o gerente, não há sugestão na tela: o gatilho
+   * `deal_participants_autofill` vincula a equipe ao salvar, como já fazia.
+   */
+  const sugestaoDaEquipe = (brokerId: string | null, slot: 1 | 2 | 3): Partial<SaveLegacyDealInput> => {
+    const corretor = people.find((person) => person.id === brokerId);
+    const gerentes = [form.manager1_id, form.manager2_id, form.manager3_id];
+    const diretores = [form.director1_id, form.director2_id];
+    const gerente = corretor?.manager_id && managers.some((p) => p.id === corretor.manager_id)
+      && !gerentes.some((id, i) => i !== slot - 1 && id === corretor.manager_id) ? corretor.manager_id : null;
+    const diretor = slot < 3 && corretor?.director_id && directors.some((p) => p.id === corretor.director_id)
+      && !diretores.some((id, i) => i !== slot - 1 && id === corretor.director_id) ? corretor.director_id : null;
+    const campoGerente = (["manager1_id", "manager2_id", "manager3_id"] as const)[slot - 1];
+    const campoDiretor = (["director1_id", "director2_id"] as const)[slot - 1];
+    return {
+      ...(gerente ? { [campoGerente]: gerente } : {}),
+      ...(diretor && campoDiretor ? { [campoDiretor]: diretor } : {}),
+    };
+  };
 
   const loadProjects = useCallback(async (developerName: string) => {
     const developer = developers.find((row) => row.name === developerName);
@@ -201,7 +258,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       setProjects(await listDeveloperProjects(developer.id));
     } catch (err) {
       setProjects([]);
-      setProjectsError(describeError(err, "Não consegui carregar os empreendimentos desta construtora."));
+      setProjectsError(describeError(err, "Não consegui carregar as sugestões de empreendimento desta construtora. Dá para digitar o nome assim mesmo."));
     }
   }, [developers]);
 
@@ -238,15 +295,30 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           tudo no gatilho do banco. Recarregue a página para tentar de novo.
         </p>
       )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="deal-tone-blue grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Label htmlFor={field("month")} className="text-eyebrow">Mês-base</Label>
-          <Input
-            id={field("month")} className="mt-1 text-xs" placeholder="MM/AAAA"
-            value={form.month_base || ""} disabled={!isAdmin}
-            aria-describedby={isAdmin ? undefined : field("month-hint")}
-            onChange={(event) => isAdmin && onChange({ month_base: event.target.value })}
-          />
+          {/* Seletor, não texto (pedido de 28/09/2026): "9/2026" ou "set/26"
+              digitados iam crus ao banco e voltavam como erro de data. O valor
+              continua "MM/AAAA" — o mesmo que `displayMonthToIso` grava como o
+              1º dia do mês, que é como `month_base`, o fechamento e o game
+              comparam. */}
+          <Select
+            value={form.month_base || undefined} disabled={!isAdmin}
+            onValueChange={(v) => isAdmin && onChange({ month_base: v })}
+          >
+            <SelectTrigger
+              id={field("month")} className="mt-1 text-xs"
+              aria-describedby={isAdmin ? undefined : field("month-hint")}
+            >
+              <SelectValue placeholder="Escolher o mês" />
+            </SelectTrigger>
+            <SelectContent className="max-h-80">
+              {mesesDoSeletor(form.month_base).map((mes) => (
+                <SelectItem key={mes} value={mes}>{rotuloDoMes(mes)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {/* Terceiro motivo de campo cinza na mesma tela (os outros dois vêm do
               `lock`) e o único sem frase: o mês-base define em qual ciclo o
               negócio conta e o que o fechamento congela, por isso só o admin o
@@ -289,7 +361,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         </p>
       )}
 
-      <Section title="Cliente">
+      <Section title="Cliente" className="deal-tone-blue deal-field-light">
         <TextField id={field("client")} label="Cliente *" value={form.client} onChange={(v) => onChange({ client: v })} />
         <TextField id={field("cpf")} label="CPF" value={form.cpf} onChange={(v) => onChange({ cpf: v })} />
         <TextField id={field("contato")} label="Contato" value={form.contato} onChange={(v) => onChange({ contato: v })} />
@@ -305,7 +377,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       </Section>
 
       {form.has_second_client && (
-        <Section title="2º cliente">
+        <Section title="2º cliente" className="deal-tone-gold deal-field-light">
           <TextField id={field("client2")} label="Cliente" value={form.client2} onChange={(v) => onChange({ client2: v })} />
           <TextField id={field("cpf2")} label="CPF" value={form.cpf2} onChange={(v) => onChange({ cpf2: v })} />
           <TextField id={field("contato2")} label="Contato" value={form.contato2} onChange={(v) => onChange({ contato2: v })} />
@@ -322,7 +394,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
       )}
 
       {form.has_informal_income && (
-        <Section title="Renda informal">
+        <Section title="Renda informal" className="deal-tone-blue deal-field-light">
           <TextField id={field("segmento")} label="Segmento/atividade" value={form.segmento_atividade} onChange={(v) => onChange({ segmento_atividade: v })} />
           <TextField id={field("atuacao")} label="Forma de atuação" value={form.forma_atuacao} onChange={(v) => onChange({ forma_atuacao: v })} />
           <TextField id={field("tempo")} label="Tempo de atividade" value={form.tempo_atividade} onChange={(v) => onChange({ tempo_atividade: v })} />
@@ -344,15 +416,17 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         </Section>
       )}
 
-      <Section title="Empreendimento">
+      <Section title="Empreendimento" className="deal-tone-gold">
         <div>
           <Label htmlFor={field("developer")} className="text-eyebrow">Construtora *</Label>
           <Select
             value={form.developer}
             onValueChange={(v) => {
-              setProjectCleared(v !== form.developer && Boolean((form.project ?? "").trim()));
+              // O empreendimento digitado fica (0160, desvinculado da
+              // construtora); só o vínculo com o cadastro da anterior sai —
+              // `saveLegacyDeal` refaz o vínculo pelo nome na construtora nova.
               onChange({
-                developer: v, project: "", project_id: null,
+                developer: v, project_id: null,
                 developer_id: developers.find((row) => row.name === v)?.id ?? null,
               });
             }}
@@ -381,49 +455,28 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           )}
         </div>
         <div>
-          {/* Sem asterisco: `dealRequiredError` não cobra este campo. O
-              Select não aceita digitação livre, e construtora sem nenhum
-              empreendimento cadastrado é caso real — exigi-lo aqui recusava o
-              "Criar negócio" por algo que a tela não tinha como preencher. A
-              outra porta do mesmo registro (`ConvertLeadDialog`) já o trata
-              como opcional. */}
+          {/* Texto livre (pedido de 28/09/2026): a lista fechada dos
+              cadastrados travava o negócio enquanto o admin não cadastrasse o
+              empreendimento. Os cadastrados da construtora viram sugestão
+              (`datalist`); escolher um deles liga o vínculo `project_id`,
+              digitar outro nome grava só o texto. Sem asterisco: nunca foi
+              cobrado (`dealRequiredError`). */}
           <Label htmlFor={field("project")} className="text-eyebrow">Empreendimento</Label>
-          <Select
-            value={form.project} disabled={!form.developer}
-            onValueChange={(v) => {
-              setProjectCleared(false);
-              onChange({ project: v, project_id: projects.find((row) => row.name === v)?.id ?? null });
+          <Input
+            id={field("project")} list={field("project-sugestoes")} maxLength={120}
+            className="mt-1 text-xs" placeholder="Digite o empreendimento"
+            value={form.project || ""}
+            onChange={(event) => {
+              const nome = event.target.value;
+              const cadastrado = projects.find((row) => row.name.toLowerCase() === nome.trim().toLowerCase());
+              onChange({ project: nome, project_id: cadastrado?.id ?? null });
             }}
-          >
-            <SelectTrigger id={field("project")} className="mt-1 text-xs">
-              <SelectValue
-                placeholder={projectPlaceholder({
-                  developer: form.developer,
-                  error: projectsError,
-                  count: projects.length,
-                })}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((row) => <SelectItem key={row.id} value={row.name}>{row.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {/* A troca de construtora acabou de esvaziar este campo. O Select
-              apenas volta ao placeholder, e `saveLegacyDeal` grava
-              `project_id: null` — sem esta linha, o negócio que TINHA
-              empreendimento o perdia no banco sem nada dizer. Aviso, não
-              recusa: cobrar o campo aqui reabriria o beco sem saída da
-              construtora sem catálogo. */}
-          {projectCleared && !projectsError && (
-            <p role="status" className="mt-1 text-xs text-warning">
-              Trocar a construtora limpou o empreendimento — ele pertencia à anterior. Escolha o
-              novo antes de salvar, senão o negócio fica sem empreendimento.
-            </p>
-          )}
-          {/* Erro de carga tinha a MESMA tela de "esta construtora não tem
-              empreendimento": `catch { setProjects([]) }`, o que mandava o
-              operador escolher outra construtora por causa de uma falha de
-              rede. */}
+          />
+          <datalist id={field("project-sugestoes")}>
+            {projects.map((row) => <option key={row.id} value={row.name} />)}
+          </datalist>
+          {/* Sem as sugestões o campo continua valendo (texto livre); a frase
+              diz por que a lista não aparece, em vez de parecer vazia. */}
           {projectsError && (
             <p className="mt-1 text-xs text-destructive">
               {projectsError}{" "}
@@ -440,13 +493,15 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         <TextField id={field("unit")} label="Bloco | unidade" value={form.unit} onChange={(v) => onChange({ unit: v })} />
       </Section>
 
-      <Section title="Equipe">
-        <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v })} />
-        <PersonField id={field("broker2")} label="Corretor 2" hint={rateio(form.broker2_share)} value={form.broker2_id} fallbackName={form.broker2} options={brokers} onChange={(v) => onChange({ broker2_id: v })} optional />
-        <PersonField id={field("broker3")} label="Corretor 3" hint={rateio(form.broker3_share)} value={form.broker3_id} fallbackName={form.broker3} options={brokers} onChange={(v) => onChange({ broker3_id: v })} optional />
+      <Section title="Equipe" className="deal-tone-gold">
+        <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v, ...sugestaoDaEquipe(v, 1) })} />
+        <PersonField id={field("broker2")} label="Corretor 2" hint={rateio(form.broker2_share)} value={form.broker2_id} fallbackName={form.broker2} options={brokers} onChange={(v) => onChange({ broker2_id: v, ...sugestaoDaEquipe(v, 2) })} optional />
+        <PersonField id={field("broker3")} label="Corretor 3" hint={rateio(form.broker3_share)} value={form.broker3_id} fallbackName={form.broker3} options={brokers} onChange={(v) => onChange({ broker3_id: v, ...sugestaoDaEquipe(v, 3) })} optional />
         <PersonField id={field("manager1")} label="Gerente 1 *" value={form.manager1_id} fallbackName={form.manager1} options={managers} onChange={(v) => onChange({ manager1_id: v })} />
         <PersonField id={field("manager2")} label="Gerente 2" value={form.manager2_id} fallbackName={form.manager2} options={managers} onChange={(v) => onChange({ manager2_id: v })} optional />
         <PersonField id={field("manager3")} label="Gerente 3" value={form.manager3_id} fallbackName={form.manager3} options={managers} onChange={(v) => onChange({ manager3_id: v })} optional />
+        <PersonField id={field("director1")} label="Diretor 1" value={form.director1_id} fallbackName={form.director1_name ?? undefined} options={directors} onChange={(v) => onChange({ director1_id: v })} optional />
+        <PersonField id={field("director2")} label="Diretor 2" value={form.director2_id} fallbackName={form.director2_name ?? undefined} options={directors} onChange={(v) => onChange({ director2_id: v })} optional />
         {/* O rateio é do banco (`recalc_deal_shares`, disparado por gatilho ao
             inserir ou remover corretor) e até aqui não aparecia em tela
             nenhuma: nem o diretor, nem o gerente, nem o próprio corretor viam
@@ -491,51 +546,27 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         </div>
       </Section>
 
-      <Section title="VGV">
+      <Section title="VGV" className="deal-tone-green">
+        {/* Os dois em R$ com máscara (pedido de 28/09/2026). Negativo não se
+            digita; desconto acima do bruto quem barra é `dealRangeError` no
+            salvamento, com o nome do campo — o CHECK da 0159 sozinho voltaria
+            como 23514 sem dizer qual. */}
+        <MoneyField id={field("vgv")} label="VGV bruto" value={form.vgv_bruto} onChange={(v) => onChange({ vgv_bruto: v })} />
+        <MoneyField id={field("desconto")} label="Desconto" value={form.desconto} onChange={(v) => onChange({ desconto: v })} />
         <div>
-          <Label htmlFor={field("vgv")} className="text-eyebrow">VGV bruto</Label>
-          {/* `min={0}` é só a seta do controle e o teclado do celular: sem
-              `<form>` nem `checkValidity()`, ele NÃO impede digitar "-5". Quem
-              barra antes do banco é `dealRangeError` no salvamento — o CHECK
-              `vgv_gross >= 0` sozinho volta como 23514, que a tela traduz para
-              "Um dos campos está fora do valor permitido" sem dizer qual. */}
-          <Input
-            id={field("vgv")} type="number" min={0} inputMode="decimal" className="mt-1 text-xs"
-            value={form.vgv_bruto ?? ""}
-            onChange={(event) => onChange({ vgv_bruto: Number(event.target.value) })}
-          />
-        </div>
-        <div>
-          <Label htmlFor={field("desconto")} className="text-eyebrow">Percentual de desconto</Label>
-          {/* Era texto livre: digitar "10%" virava desconto 0 sem aviso nenhum
-              (`Number("10%")` é NaN). O campo numérico tira o formato ambíguo;
-              a FAIXA quem cobra é `dealRangeError` no salvamento — `max={100}`
-              aqui não impede colar "150". */}
-          <Input
-            id={field("desconto")} type="number" min={0} max={100} step={0.01}
-            inputMode="decimal" className="mt-1 text-xs"
-            value={form.perc_desconto ?? ""}
-            onChange={(event) => onChange({ perc_desconto: event.target.value })}
-          />
-        </div>
-        <div>
-          {/* Não é campo: é leitura. Era um `<input disabled>` com o número CRU
-              ("1140000") num campo rotulado VGV, enquanto a tabela, o cartão e o
-              cabeçalho ao lado mostravam "R$ 1.140.000" — e a explicação de por
-              que ele é cinza vivia só no `title`, que num controle desabilitado
-              não recebe foco e não existe para teclado nem leitor de tela (a
-              mesma "explicação morta" que a tabela já tinha rejeitado).
-              `brl` devolve travessão para nulo, em vez de afirmar R$ 0 num
-              negócio que ainda não tem VGV. */}
+          {/* Não é campo: é leitura, e não se edita. A conta é a mesma da coluna
+              gerada `vgv_net` (0159), feita aqui na hora para quem digita ver o
+              resultado antes de salvar; o banco refaz ao gravar. Sem bruto,
+              travessão, e não "R$ 0,00" num negócio que ainda não tem VGV. */}
           <p className="text-eyebrow">VGV líquido</p>
-          <p className="mt-1 text-xs tabular-nums">{brl(form.vgv_liquido)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Calculado pelo banco a partir do VGV bruto e do desconto.
+          <p className="deal-readout mt-1 rounded-xl border px-3.5 py-2.5 text-xs font-semibold tabular-nums">
+            {form.vgv_bruto ? brl(Math.max(form.vgv_bruto - (form.desconto ?? 0), 0), { cents: true }) : brl(null)}
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">VGV bruto menos o desconto.</p>
         </div>
       </Section>
 
-      <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="deal-tone-gold grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <Label htmlFor={field("stage")} className="text-eyebrow">Etapa</Label>
           <Select
@@ -549,7 +580,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
             <SelectTrigger
               id={field("stage")} className="mt-1 text-xs"
               aria-describedby={
-                !canLeaveStage || etapasBloqueadas.size > 0 ? field("stage-hint") : undefined
+                etapaSegueStatus || !canLeaveStage || etapasBloqueadas.size > 0 ? field("stage-hint") : undefined
               }
             >
               <SelectValue />
@@ -591,7 +622,11 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
               As duas frases dividem o mesmo `id` porque nunca aparecem juntas:
               sem poder SAIR, o Select inteiro está desabilitado e a lista de
               destinos não chega a abrir. */}
-          {!canLeaveStage ? (
+          {etapaSegueStatus ? (
+            <p id={field("stage-hint")} className="mt-1 text-xs text-muted-foreground">
+              A etapa segue o Status 2: mude o Status 2 e ela acompanha.
+            </p>
+          ) : !canLeaveStage ? (
             <p id={field("stage-hint")} className="mt-1 text-xs text-muted-foreground">
               Seu perfil não pode tirar um negócio desta etapa (matriz de etapas, em
               Admin · Permissões → Etapas). Peça a um gestor.
@@ -635,11 +670,11 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           </Select>
           <p id={field("status1-hint")} className="mt-1 text-xs text-muted-foreground">
             {podeTrocarStatus1
-              ? "Acompanha o Status 2. A troca à mão vale até o Status 2 mudar de novo."
-              : "Acompanha o Status 2 sozinho. Trocar à mão é do administrador e do sócio."}
+              ? "Segue o Status 2. A troca à mão vale até o Status 2 mudar de novo."
+              : "Segue o Status 2. Trocar à mão é do administrador e do sócio."}
           </p>
         </div>
-        <div>
+        <div className="deal-tone-green">
           <Label htmlFor={field("status")} className="text-eyebrow">Status da venda (Status 2)</Label>
           {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
               banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
@@ -663,9 +698,15 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                 // O rótulo ATUAL fica de fora: escolher o que já está escolhido
                 // não é escrita, e `<SelectValue/>` espelha os filhos do item —
                 // o sufixo iria parar dentro do próprio gatilho do Select.
-                const semPermissao = option.value === form.status
+                // E a matriz por função do cadastro (0164): quem coloca e quem
+                // tira cada Status 2. Status com observação obrigatória vai pelo
+                // Pipeline, que pede o texto.
+                const bloqueio = option.value === form.status
                   ? null
-                  : offDistratoBlocked(can, option.value);
+                  : offDistratoBlocked(can, option.value)
+                    ?? (isNew ? null : statusMoveBlock(catalog, form.status, option.value, { isAdmin, roles }))
+                    ?? (!isAdmin && statusRequiresNote(catalog, option.value) ? "com observação, pelo Pipeline" : null);
+                const semPermissao = bloqueio;
                 return (
                   <SelectItem key={option.value} value={option.value} disabled={Boolean(semPermissao)}>
                     {/* O nome no próprio `<span>` e o motivo em outro: o texto
@@ -673,7 +714,9 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                         `statusLabels.test.ts` lê daqui. */}
                     <span>{option.label}</span>
                     {semPermissao && (
-                      <span className="text-muted-foreground"> (só administrador e sócio)</span>
+                      <span className="text-muted-foreground">
+                        {" "}({semPermissao.startsWith("Só administrador") ? "só administrador e sócio" : semPermissao.startsWith("Seu perfil") ? "fora da sua função" : semPermissao})
+                      </span>
                     )}
                   </SelectItem>
                 );

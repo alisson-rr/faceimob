@@ -9,7 +9,7 @@ import { recorteDoRanking, useCurrentSeasonId, useSeasonRanking } from "@/hooks/
 // Caminho direto, e não o barril `@/components/dashboard`: o barril arrasta os
 // componentes do Dashboard para a camada que monta em toda tela.
 import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard/data";
-import { brl } from "@/lib/format";
+import { brl, nomesDeExibicao } from "@/lib/format";
 import {
   countSalesSince,
   gameKeys,
@@ -245,7 +245,8 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
             queryFn: () => listRanking(seasonId),
             staleTime: 30_000,
           });
-          const byId = new Map(rows.map((row) => [row.profile_id, row.full_name]));
+          const exibir = nomesDeExibicao(rows.map((row) => row.full_name));
+          const byId = new Map(rows.map((row) => [row.profile_id, exibir(row.full_name)]));
           names = batch.profileIds.map((id) => byId.get(id) ?? "").filter(Boolean);
         } catch {
           // Sem nome resolvido a comemoração continua: vira "Equipe".

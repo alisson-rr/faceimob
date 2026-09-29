@@ -22,7 +22,9 @@ const ANIMACAO_DO_PAINEL_MS = 500;
  * 23 re-renderizavam com a árvore de Tooltip do Radix (76% do custo do layout
  * por navegação). Depende de `NAV_ITEMS` ser constante de módulo.
  */
-const ItemDoMenu = memo(function ItemDoMenu({ item, active, collapsed }: { item: NavItem; active: boolean; collapsed: boolean }) {
+const ItemDoMenu = memo(function ItemDoMenu({ item, active, collapsed, onEscolher }: {
+  item: NavItem; active: boolean; collapsed: boolean; onEscolher: () => void;
+}) {
   return (
     <SidebarMenuItem>
       {/* Item ativo (12/09/2026): pílula escura com borda fina e ícone
@@ -37,7 +39,7 @@ const ItemDoMenu = memo(function ItemDoMenu({ item, active, collapsed }: { item:
         tooltip={item.title}
         className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-highlight))]"
       >
-        <NavLink to={item.url} end>
+        <NavLink to={item.url} end onClick={onEscolher}>
           <item.icon className={cn("h-4 w-4", active && "text-sidebar-highlight")} />
           {/* Recolhida, a barra esconde o rotulo — mas ele nao pode sair do
               DOM: o icone nao carrega texto, entao sem o <span> TODO link do
@@ -53,7 +55,7 @@ const ItemDoMenu = memo(function ItemDoMenu({ item, active, collapsed }: { item:
 });
 
 export function AppSidebar() {
-  const { state, setOpen } = useSidebar();
+  const { state, setOpen, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const navigate = useNavigate();
@@ -72,6 +74,10 @@ export function AppSidebar() {
    * animação.
    */
   const [sobreposto, setSobreposto] = useState(false);
+  // Lido por `fecharAoEscolher` sem entrar nas dependências dele: a função
+  // chega aos 23 itens `memo`, e mudar a cada hover re-renderizava todos.
+  const sobrepostoRef = useRef(sobreposto);
+  sobrepostoRef.current = sobreposto;
 
   const handleMouseEnter = useCallback(() => {
     clearTimeout(hoverTimer.current);
@@ -91,6 +97,23 @@ export function AppSidebar() {
       hoverTimer.current = setTimeout(() => setSobreposto(false), ANIMACAO_DO_PAINEL_MS);
     }, 500);
   }, [setOpen]);
+
+  /**
+   * Escolher uma opção fecha o menu (pedido de 28/09/2026). No celular a gaveta
+   * ficava aberta por cima da tela nova até um toque fora; no computador, o
+   * painel aberto pelo hover só fechava quando o ponteiro saía — e em tela de
+   * toque o ponteiro nunca "sai". Fecha como o `handleMouseLeave`, sem a espera.
+   */
+  const fecharAoEscolher = useCallback(() => {
+    clearTimeout(hoverTimer.current);
+    if (isMobile) {
+      setOpenMobile(false);
+      return;
+    }
+    if (!sobrepostoRef.current) return;
+    setOpen(false);
+    hoverTimer.current = setTimeout(() => setSobreposto(false), ANIMACAO_DO_PAINEL_MS);
+  }, [isMobile, setOpenMobile, setOpen]);
 
   // Sem codigo mapeado a rota e livre — so o que exige permissao esta no mapa.
   const visible = (item: NavItem) => {
@@ -126,7 +149,10 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
-                  <ItemDoMenu key={item.url} item={item} active={isActive(item.url)} collapsed={collapsed} />
+                  <ItemDoMenu
+                    key={item.url} item={item} active={isActive(item.url)} collapsed={collapsed}
+                    onEscolher={fecharAoEscolher}
+                  />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

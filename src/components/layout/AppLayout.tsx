@@ -14,6 +14,7 @@ import { Trophy } from "lucide-react";
 import { useGameRanking } from "@/hooks/useGameRanking";
 import { cn } from "@/lib/utils";
 import { podiumTextClass } from "@/lib/tone";
+import { DEGRADE_DO_PODIO, MEDALHA_DO_PODIO, NOME_NO_PODIO, SOMBRA_DO_TEXTO } from "@/components/engagement/podioVisual";
 
 /** Só o rótulo lê a rota: no corpo do layout, cada troca de tela re-renderizava menu, cabeçalho e sino. */
 function TituloDaPagina() {
@@ -81,18 +82,41 @@ export default function AppLayout() {
             </p>
 
             <div className="relative mx-auto hidden items-center gap-2 overflow-hidden lg:flex">
-              {headerScores.map((s) => (
-                <div
-                  key={s.broker.id}
-                  className="interactive ease-premium flex items-center gap-2 rounded-md border border-border bg-card/60 px-3 py-1.5 hover:border-primary/40"
-                >
-                  <span className="text-xs font-bold tabular-nums text-primary">{s.rank}º</span>
-                  {/* `rank` da tira é 1º, 2º, 3º; o pódio de `@/lib/tone` é base 0. */}
-                  <Trophy className={cn("h-3.5 w-3.5", podiumTextClass(s.rank - 1))} aria-hidden />
-                  <span className="max-w-[140px] truncate text-xs font-medium">{s.broker.name}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">{s.points} pts</span>
-                </div>
-              ))}
+              {headerScores.map((s) => {
+                // `rank` da tira é 1º, 2º, 3º; o pódio é base 0. Do 4º em diante
+                // (a própria posição do corretor) não há metal: chip neutro.
+                const degrade = DEGRADE_DO_PODIO[s.rank - 1];
+                const medalha = MEDALHA_DO_PODIO[s.rank - 1];
+                return (
+                  <div
+                    key={s.broker.id}
+                    className={cn(
+                      "interactive ease-premium flex items-center gap-2 rounded-md border px-3 py-1.5",
+                      degrade
+                        ? cn("bg-gradient-to-b text-white", degrade, SOMBRA_DO_TEXTO)
+                        : "border-border bg-card/60 hover:border-primary/40",
+                    )}
+                  >
+                    {medalha ? (
+                      <>
+                        <span className="sr-only">{s.rank}º</span>
+                        <img src={medalha} alt="" aria-hidden className="-my-1 h-7 w-7 shrink-0 object-contain" />
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-xs font-bold tabular-nums text-primary">{s.rank}º</span>
+                        <Trophy className={cn("h-3.5 w-3.5", podiumTextClass(s.rank - 1))} aria-hidden />
+                      </>
+                    )}
+                    <span className={cn("max-w-[140px] truncate text-xs font-semibold", degrade && NOME_NO_PODIO)}>
+                      {s.broker.name}
+                    </span>
+                    <span className={cn("text-xs tabular-nums", degrade ? "font-semibold text-white" : "text-muted-foreground")}>
+                      {s.points} pts
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="relative ml-auto flex shrink-0 items-center gap-2 sm:gap-3">

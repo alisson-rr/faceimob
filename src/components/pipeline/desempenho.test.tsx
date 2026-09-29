@@ -153,6 +153,8 @@ const CCA_STAGES: CcaStage[] = ["pending_documents", "under_review", "sent_to_de
   (status, i) => ({ id: `cs${i}`, name: status, color: "#0ea5e9", position: i + 1, status: status as CcaStage["status"] }),
 );
 
+const STATUS_DO_QUADRO = ["16. PENDENTE", "13. ESTEIRA AGIL", "08. VIROU NEGÓCIO", "02. ASS. BANCO"];
+
 function semearBanco() {
   const construtoras = ["Ávila", "Zamboni", "Alfa", "Érica", "Beta"];
   const deals = Array.from({ length: N_NEGOCIOS }, (_, i) => ({
@@ -162,7 +164,8 @@ function semearBanco() {
     developer_id: `dev${i % 41}`,
     project_id: `p${i % 200}`,
     unit: String(100 + (i % 50)),
-    status_detail: null,
+    // Status 2 do catálogo de teste: desde 29/09/2026 as colunas do kanban são eles.
+    status_detail: STATUS_DO_QUADRO[i % STATUS_DO_QUADRO.length],
     outcome: i < N_ATIVOS ? "open" : "lost",
     lost_reason: null,
     lead_origin: null,
@@ -290,7 +293,7 @@ describe("desempenho · carga dos negócios", () => {
 // A esteira CCA saiu daqui em 15/09/2026: ela não compartilha mais a base de
 // negócios, carrega só o período (filtro no banco) — ver `ccaData.test.ts`.
 describe("desempenho · cache compartilhado", () => {
-  it("o Dashboard aberto depois do Pipeline não rebaixa os negócios e conta a base inteira", async () => {
+  it("o Dashboard aberto depois do Pipeline não rebaixa os negócios e recorta o CCA no mês vigente", async () => {
     zerarRede(5);
     const client = novoCliente();
     const estado = { pipeline: false, payload: false, leads: false };
@@ -321,7 +324,9 @@ describe("desempenho · cache compartilhado", () => {
 
     expect(doCaminho("deals") - negociosAntes).toBe(0);
     expect(payload?.leadsCount).toBe(N_LEADS);
-    expect(somaCca).toBe(N_CASOS);
+    // A massa vai de 01/2026 a 08/2026. Em 09/2026 nenhum caso entra na
+    // contagem: o Dashboard não deve mais somar o histórico inteiro do CCA.
+    expect(somaCca).toBe(0);
     await tela.desmontar();
   }, 120_000);
 });
@@ -369,16 +374,21 @@ describe("desempenho · render", () => {
   const noop = () => undefined;
   const fechados: string[] = [];
   const clienteDoQuadro = novoCliente();
-  /** O `onMove` é o `moveDeal` de verdade, como no Pipeline: um `noop` estável
-   *  escondia que ele mudava a cada render (via `useInvalidateDeals`) e refazia
-   *  todos os cartões. */
+  /** O `onStatusChange` é o `moveStatus` de verdade, como no Pipeline: um
+   *  `noop` estável escondia que ele mudava a cada render (via
+   *  `useInvalidateDeals`) e refazia todos os cartões. O quadro recebe só os
+   *  ativos, como o Pipeline abre (Status 1 PROPOSTA). */
+  let ativos: typeof negocios = [];
   function Pai() {
-    const { moveDeal } = useDealActions({ stages: STAGES, closedMonths: fechados, onNeedsLossConfirmation: noop });
+    const { moveStatus } = useDealActions({
+      catalog: catalogoDeTeste, closedMonths: fechados, onNeedsLossConfirmation: noop, onNeedsText: noop,
+    });
     return (
       <DealsBoard
         view="kanban"
-        deals={negocios}
-        stages={STAGES}
+        deals={ativos}
+        catalog={catalogoDeTeste}
+        statusGroupId={null}
         isPending={false}
         error={null}
         filtered={false}
@@ -388,8 +398,7 @@ describe("desempenho · render", () => {
         onClearFilters={noop}
         onNewDeal={noop}
         onOpen={noop}
-        onMove={moveDeal}
-        onStatusChange={noop}
+        onStatusChange={moveStatus}
         onScheduleVisit={noop}
         onLose={noop}
         onReopen={noop}
@@ -399,6 +408,7 @@ describe("desempenho · render", () => {
   const quadro = () => <QueryClientProvider client={clienteDoQuadro}><Pai /></QueryClientProvider>;
 
   it("kanban: render do pai e arraste não refazem os cartões", async () => {
+    ativos = negocios.filter((deal) => deal.active);
     h.probabilidade.chamadas = 0;
     const tela = await montar(quadro());
     const montagem = { ms: tela.ms, cartoes: h.probabilidade.chamadas };

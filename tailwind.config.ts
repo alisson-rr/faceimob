@@ -34,6 +34,7 @@ export default {
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
+        "card-glow": "hsl(var(--card-glow))",
         foreground: "hsl(var(--foreground))",
         primary: withForeground("primary"),
         secondary: withForeground("secondary"),
@@ -84,6 +85,11 @@ export default {
       // mais o `--radius` conserta os degraus junto (`radius-scale.test.ts`
       // reprova) e revisa o recuo do `.gold-hairline` em `index.css`, que
       // precisa acompanhar o `2xl`.
+      // Sombra de painel: a do `shadow-sm` mais o brilho azul do sistema
+      // anterior. `--card-glow` e branco no claro, entao la sobra so o shadow-sm.
+      boxShadow: {
+        panel: "0 1px 2px 0 rgb(0 0 0 / 0.05), 0 0 16px -4px hsl(var(--card-glow) / 0.5)",
+      },
       borderRadius: {
         sm: "calc(var(--radius) - 3px)",
         md: "calc(var(--radius) - 2px)",

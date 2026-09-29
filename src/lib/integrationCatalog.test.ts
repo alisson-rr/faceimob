@@ -123,3 +123,17 @@ describe("lerRemetentesDaSonda", () => {
     ).toEqual([{ email: "ok@faceimob.com.br", ativo: false }]);
   });
 });
+
+describe("INTEGRATION_SLOTS · onde pegar", () => {
+  // Pedido de 28/09/2026: todo campo diz onde buscar o valor. O link, quando
+  // existe, abre o painel do provedor — só https, para não virar vetor de
+  // `javascript:` num catálogo que qualquer um edita.
+  it("todo campo tem o caminho, e todo link é https com rótulo", () => {
+    for (const slot of INTEGRATION_SLOTS) {
+      expect(slot.ondePegar.passos.trim(), slot.title).not.toBe("");
+      if (!slot.ondePegar.link) continue;
+      expect(new URL(slot.ondePegar.link.url).protocol, slot.title).toBe("https:");
+      expect(slot.ondePegar.link.rotulo.trim(), slot.title).not.toBe("");
+    }
+  });
+});

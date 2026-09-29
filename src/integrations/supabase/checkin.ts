@@ -89,6 +89,37 @@ export async function listTodayCheckins(profileId: string): Promise<CheckinRecor
   return (data ?? []) as CheckinRecord[];
 }
 
+/** Check-in externo do dia: feito por diretor/admin, sem IP, com motivo (0162). */
+export type ExternalCheckin = {
+  id: string;
+  profile_id: string;
+  checked_in_at: string;
+  external_reason: string;
+  external_by: string | null;
+};
+
+/**
+ * Diretor (ou admin) faz o check-in de um corretor da equipe que está de
+ * plantão fora da loja. A RPC valida papel, equipe, janela, bloqueio por atraso
+ * e o motivo; o erro volta em pt-BR (P0001/42501).
+ */
+export async function directorExternalCheckin(profileId: string, reason: string): Promise<void> {
+  const { error } = await supabase.rpc("director_external_checkin", { p_profile: profileId, p_reason: reason });
+  if (error) throw dbError("check-in externo", error);
+}
+
+export async function listTodayExternalCheckins(): Promise<ExternalCheckin[]> {
+  const workDate = await getCurrentWorkDate();
+  const { data, error } = await supabase
+    .from("checkins")
+    .select("id,profile_id,checked_in_at,external_reason,external_by")
+    .eq("work_date", workDate)
+    .not("external_reason", "is", null)
+    .order("checked_in_at", { ascending: false });
+  if (error) throw dbError("checkins", error);
+  return (data ?? []) as ExternalCheckin[];
+}
+
 /**
  * Fila do grupo de distribuição do corretor.
  *

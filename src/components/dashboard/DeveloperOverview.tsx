@@ -44,7 +44,13 @@ const temDado = (rows: DeveloperStats[]) => rows.some((row) => row.negocios > 0)
 
 /** Vendas × propostas por construtora — a leitura de abertura do painel. */
 export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
-  const data = rows.map((row) => ({ name: row.dev, Vendas: row.vendas, Propostas: row.propostas }));
+  // Só quem teve venda ou proposta no período (pedido de 28/09/2026): com as
+  // 40 construtoras do cadastro, as zeradas espremiam os nomes até se
+  // sobreporem no eixo. A grade de construtoras continua completa em
+  // `view.developers` para quem precisa dela.
+  const data = rows
+    .filter((row) => row.vendas > 0 || row.propostas > 0)
+    .map((row) => ({ name: row.dev, Vendas: row.vendas, Propostas: row.propostas }));
 
   return (
     <SectionCard
@@ -87,6 +93,9 @@ export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
  */
 export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
   const data = [...rows]
+    // Ranking é de propostas: construtora sem proposta no período não ocupa
+    // linha nem aparece com barra/valor zero no fim da lista.
+    .filter((row) => row.propostas > 0)
     // Desempate final pelo nome: sem ele o empate herda a ordem de chegada de
     // `view.developers` e a barra troca de lugar entre carregamentos.
     .sort((a, b) => b.propostas - a.propostas || b.vendas - a.vendas || a.dev.localeCompare(b.dev, "pt-BR"))
@@ -115,9 +124,7 @@ export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
                 <YAxis type="category" dataKey="name" {...chartAxis} width={140} tickFormatter={(name: string) => shortTick(name, 18)} />
                 <Tooltip {...chartTooltip} />
                 <Bar dataKey="Propostas" radius={[0, 6, 6, 0]} label={{ position: "right", ...chartBarLabel }} {...chartStill}>
-                  {data.map((row) => (
-                    <Cell key={row.name} fill={tone(row.Propostas === 0 ? "muted-foreground" : row.token)} />
-                  ))}
+                  {data.map((row) => <Cell key={row.name} fill={tone(row.token)} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

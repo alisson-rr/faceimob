@@ -108,6 +108,19 @@ describe("buildScores", () => {
     expect(scores.map((s) => s.brokerName)).toEqual(["Zeca", "Ana", "Bruno", "Carlos"]);
   });
 
+  it("mostra nome curto sem xará e desempata pelo nome inteiro", () => {
+    // Os dois seriam "Ana Silva": a inicial do meio separa, e a ordem continua
+    // a do congelamento, que usa `full_name`.
+    const scores = buildScores([
+      row({ profile_id: "z", full_name: "Ana Zulu da Silva", points: 0 }),
+      row({ profile_id: "b", full_name: "Ana Beta Silva", points: 0 }),
+      row({ profile_id: "c", full_name: "Carlos", points: 0 }),
+    ]);
+
+    expect(scores.map((s) => s.brokerId)).toEqual(["b", "z", "c"]);
+    expect(scores.map((s) => s.brokerName)).toEqual(["Ana B. Silva", "Ana Z. Silva", "Carlos"]);
+  });
+
   it("descarta corretor inativo e nomeia quem está sem equipe", () => {
     const scores = buildScores([
       row({ profile_id: "a", full_name: "Ana", points: 5, active: false }),

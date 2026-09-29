@@ -15,7 +15,8 @@ import PipelineTopRanking from "@/components/PipelineTopRanking";
 import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
 import { last30DaysRange, saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog, type DealStatus } from "@/integrations/supabase/dealStatuses";
+import { MoverStatusDialog, type MovimentoComTexto } from "@/components/pipeline/MoverStatusDialog";
 import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
   CloseMonthDialog, DealFilters, DealStatusSettingsDialog, DealsBoard, DealsToolbar,
@@ -95,6 +96,8 @@ export default function Pipeline() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [visitDeal, setVisitDeal] = useState<LegacyDealRecord | null>(null);
   const [losing, setLosing] = useState<{ deal: LegacyDealRecord; preset?: string } | null>(null);
+  /** Mover para um Status 2 que pede texto: envio para análise ou observação (0164). */
+  const [comTexto, setComTexto] = useState<{ movimento: MovimentoComTexto; envio: boolean } | null>(null);
   const [reopening, setReopening] = useState<LegacyDealRecord | null>(null);
   const [closeMonthOpen, setCloseMonthOpen] = useState(false);
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
@@ -152,8 +155,12 @@ export default function Pipeline() {
    *  Pipeline refazia os 2.288 cartões ativos (ver `DealsKanban`). */
   const abrirNegocio = useCallback((deal: LegacyDealRecord) => setEditor({ deal }), []);
   const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
-  const { moveDeal, changeStatus } = useDealActions({
-    stages, closedMonths: closed, onNeedsLossConfirmation: abrirPerda,
+  const pedirTexto = useCallback(
+    (deal: LegacyDealRecord, status: DealStatus, envio: boolean) => setComTexto({ movimento: { deal, status }, envio }),
+    [],
+  );
+  const { moveStatus } = useDealActions({
+    catalog, closedMonths: closed, onNeedsLossConfirmation: abrirPerda, onNeedsText: pedirTexto,
   });
 
   /** Eu + quem eu lidero — o mesmo conjunto de `auth_visible_profiles()`. */
@@ -167,9 +174,17 @@ export default function Pipeline() {
    * escolher — para o corretor, a lista da RLS já é só a dele.
    */
   const recorteInicial = !isAdmin && myTeam.size > 1 && roles.includes("manager") ? MY_TEAM : ALL;
+  /**
+   * A lista abre só nas propostas — Status 1 PROPOSTA (pedido de 28/09/2026) —,
+   * e "Limpar filtros" volta para elas, não para tudo. O filtro continua
+   * trocável. `code` e não o rótulo: o código do grupo é imutável (0149), o
+   * rótulo é editável no cadastro. Sem catálogo ainda, não há o que recortar.
+   */
+  const propostaId = catalog.groups.find((group) => group.code === "PROPOSTA")?.id ?? ALL;
+  const filtrosLimpos = useMemo(() => ({ ...EMPTY_FILTERS, status1: propostaId }), [propostaId]);
   const filters = useMemo(
-    () => filtrosEscolhidos ?? { ...EMPTY_FILTERS, team: recorteInicial },
-    [filtrosEscolhidos, recorteInicial],
+    () => filtrosEscolhidos ?? { ...filtrosLimpos, team: recorteInicial },
+    [filtrosEscolhidos, filtrosLimpos, recorteInicial],
   );
 
   const brokers = useMemo(
@@ -179,6 +194,10 @@ export default function Pipeline() {
   const managers = useMemo(
     () => people.filter((person) => person.active
       && (person.roles.includes("manager") || person.roles.includes("director"))),
+    [people],
+  );
+  const directors = useMemo(
+    () => people.filter((person) => person.active && person.roles.includes("director")),
     [people],
   );
   /** Meses presentes nos negócios do período — o filtro de mês era campo de texto livre. */
@@ -243,8 +262,10 @@ export default function Pipeline() {
   // consertar. É o mesmo achado A01 que o `DealsBoard` corrigiu, um nível acima.
   // `isPlaceholderData`: trocando o período, a lista anterior fica na tela até a
   // nova chegar (ou a data ficar completa), e os números dela não são do período novo.
+  // O catálogo entra na espera: é dele que sai o filtro padrão (PROPOSTA), e sem
+  // ele a lista pintava todos os negócios e encolhia um instante depois.
   const carregando = dealsQuery.isPending || dealsQuery.isPlaceholderData
-    || closedMonths.isPending || openSeason.isPending;
+    || closedMonths.isPending || openSeason.isPending || statusCatalog.isPending;
   const falhou = Boolean(dealsQuery.error ?? closedMonths.error);
 
   const patchFilters = (patch: Partial<DealFilterState>) =>
@@ -256,7 +277,7 @@ export default function Pipeline() {
         selected={filters.directorId} onPanel={painel.abrir}
         loading={peopleQuery.isPending || dealsQuery.isPending} error={peopleQuery.isError || dealsQuery.isError}
         onSelect={(directorId) => { setFiltrosEscolhidos({ ...EMPTY_FILTERS, directorId }); setTab("deals"); }} />
-        : <PipelineTopRanking onAbrirPainel={painel.abrir} />}
+        : <PipelineTopRanking onAbrirPainel={painel.abrir} deals={deals} />}
 
       <PageHeader
         title="Pipeline"
@@ -277,11 +298,13 @@ export default function Pipeline() {
           <>
             {tab === "deals" ? (
               <>
-                <Button variant="outline" size="sm" onClick={() => setShowFilters((open) => !open)}>
+                {/* Azul, verde e âmbar: as cores de Filtrar, Adicionar e Extrair
+                    no sistema anterior, para a transição não estranhar. */}
+                <Button variant="tintInfo" size="sm" onClick={() => setShowFilters((open) => !open)}>
                   <Filter className="mr-1 h-4 w-4" /> Filtrar
                 </Button>
                 {canWrite ? (
-                  <Button size="sm" onClick={() => setEditor({ deal: null })}>
+                  <Button variant="tintSuccess" size="sm" onClick={() => setEditor({ deal: null })}>
                     <Plus className="mr-1 h-4 w-4" /> Adicionar negócio
                   </Button>
                 ) : (
@@ -289,7 +312,7 @@ export default function Pipeline() {
                 )}
                 {podeExtrair && (
                   <Button
-                    variant="outline" size="sm"
+                    variant="tintGold" size="sm"
                     disabled={visible.length === 0 || extraindo}
                     onClick={() => void extrair()}
                   >
@@ -370,12 +393,13 @@ export default function Pipeline() {
             <DealFilters
               filters={filters}
               onChange={patchFilters}
-              onClear={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
+              onClear={() => setFiltrosEscolhidos(filtrosLimpos)}
               onClose={() => setShowFilters(false)}
               stages={stages}
               developers={developers}
               brokers={brokers}
               managers={managers}
+              directors={directors}
               months={months}
               teamCount={myTeam.size}
             />
@@ -403,7 +427,8 @@ export default function Pipeline() {
             <DealsBoard
               view={view}
               deals={visible}
-              stages={stages}
+              catalog={catalog}
+              statusGroupId={filters.status1 === ALL ? null : filters.status1}
               // A trava do mês fechado e as listas de pessoas/construtoras
               // entram na espera junto com a matriz de etapas, e pelo mesmo
               // motivo: `closedMonths` falhando devolvia `[]`, e mês congelado
@@ -428,11 +453,10 @@ export default function Pipeline() {
                 void developersQuery.refetch();
                 void statusCatalog.refetch();
               }}
-              onClearFilters={() => setFiltrosEscolhidos(EMPTY_FILTERS)}
+              onClearFilters={() => setFiltrosEscolhidos(filtrosLimpos)}
               onNewDeal={() => setEditor({ deal: null })}
               onOpen={abrirNegocio}
-              onMove={moveDeal}
-              onStatusChange={changeStatus}
+              onStatusChange={moveStatus}
               onScheduleVisit={setVisitDeal}
               onLose={abrirPerda}
               onReopen={setReopening}
@@ -505,6 +529,15 @@ export default function Pipeline() {
           stages={stages}
           onClose={() => setVisitDeal(null)}
           onScheduled={invalidateDeals}
+        />
+      )}
+
+      {comTexto && (
+        <MoverStatusDialog
+          movimento={comTexto.movimento}
+          envioParaAnalise={comTexto.envio}
+          onClose={() => setComTexto(null)}
+          onMoved={invalidateDeals}
         />
       )}
 

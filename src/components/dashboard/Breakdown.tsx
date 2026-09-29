@@ -71,7 +71,7 @@ export function CcaStatusCard({
   return (
     <SectionCard
       title="Esteira de crédito"
-      description={toda ? "Processos do CCA por situação" : "Processos do CCA nos seus negócios"}
+      description={toda ? "Processos do CCA no mês vigente" : "Processos do CCA nos seus negócios no mês vigente"}
       icon={Layers}
     >
       {items.length === 0 ? (

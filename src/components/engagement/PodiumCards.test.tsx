@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { PodiumCards } from "./PodiumCards";
-import type { PodiumEntry } from "./Podium";
+import { PodiumCards, type PodiumEntry } from "./PodiumCards";
 
 // Sem @testing-library no projeto, o render é o do react-dom mesmo; a flag é o
 // que faz `act` aceitar o jsdom como ambiente de teste.

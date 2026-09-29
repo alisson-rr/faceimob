@@ -26,10 +26,63 @@ const brlCents = currency(2);
 const dateFmt = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 const timeFmt = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-/** Valor em reais. Sem centavos por padrao — VGV e meta sao numeros grandes. */
+/**
+ * "Alan Teixeira de Oliveira" -> "Alan Oliveira". Nome de exibicao do Game
+ * (pedido de 26/09/2026): placar, podio e comemoracao nao cabem o nome inteiro.
+ * So exibicao — ordenar, comparar e casar pessoa continua no nome completo.
+ */
+export const primeiroEUltimoNome = (nome: string | null | undefined): string => {
+  const partes = (nome ?? "").trim().split(/\s+/).filter(Boolean);
+  return partes.length > 2 ? `${partes[0]} ${partes[partes.length - 1]}` : partes.join(" ");
+};
+
+const CONECTIVOS = new Set(["da", "das", "de", "do", "dos", "e"]);
+
+/** "Ana Beta da Silva" -> "Ana B. Silva": o degrau entre o curto e o inteiro. */
+const comIniciais = (nome: string): string => {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  if (partes.length <= 2) return partes.join(" ");
+  const meio = partes.slice(1, -1)
+    .filter((parte) => !CONECTIVOS.has(parte.toLowerCase()))
+    .map((parte) => `${parte[0].toUpperCase()}.`);
+  return [partes[0], ...meio, partes[partes.length - 1]].join(" ");
+};
+
+/**
+ * Nome de exibicao do Game, sem homonimo na mesma lista (pedido de 26/09/2026).
+ *
+ * Cada nome comeca curto (`primeiroEUltimoNome`). Quem colide com OUTRA pessoa
+ * da lista sobe para as iniciais do meio ("Ana B. Silva" / "Ana Z. Silva") e,
+ * se ainda colidir, para o nome inteiro. A lista e o escopo que a tela mostra:
+ * xara fora dela nao encurta ninguem.
+ */
+export const nomesDeExibicao = (nomes: Iterable<string | null | undefined>): ((nome: string | null | undefined) => string) => {
+  const distintos = [...new Set(Array.from(nomes, (nome) => (nome ?? "").trim().replace(/\s+/g, " ")))];
+  const rotulo = new Map(distintos.map((nome) => [nome, primeiroEUltimoNome(nome)]));
+
+  for (const proximo of [comIniciais, (nome: string) => nome]) {
+    const uso = new Map<string, number>();
+    for (const r of rotulo.values()) uso.set(r, (uso.get(r) ?? 0) + 1);
+    for (const nome of distintos) {
+      if ((uso.get(rotulo.get(nome) ?? "") ?? 0) > 1) rotulo.set(nome, proximo(nome));
+    }
+  }
+
+  return (nome) => {
+    const chave = (nome ?? "").trim().replace(/\s+/g, " ");
+    return rotulo.get(chave) ?? primeiroEUltimoNome(chave);
+  };
+};
+
+/**
+ * Valor em reais, SEMPRE com centavos ("R$ 250.000,00") — pedido do cliente em
+ * 29/09/2026: "VGV sempre em R$ com os pontos e vírgulas, com zeros mesmo que
+ * no fim, em todo o App". `cents: false` fica para quem precisa do inteiro por
+ * espaço (eixo de gráfico, que usa notação compacta própria).
+ */
 export const brl = (value: number | null | undefined, options?: { cents?: boolean }): string => {
   if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY;
-  return (options?.cents ? brlCents : brlWhole).format(value);
+  return (options?.cents === false ? brlWhole : brlCents).format(value);
 };
 
 /** Inteiro com separador de milhar (leads, pontos, contagens). */

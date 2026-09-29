@@ -1,54 +1,50 @@
 import { AlertTriangle, GitBranch, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState, SectionCard } from "@/components/shared";
+import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { BarList } from "./BarList";
-import { funnelRows, useFunnelStages } from "./data";
+import { linhasDoStatus2 } from "./cartoesDoMes";
+import type { DealRow } from "./data";
 
 export interface SalesFunnelCardProps {
-  /** Negocios do periodo por codigo de etapa — venda + em aberto, o mesmo
-   *  conjunto do KPI "Negocios". Perdido e cancelado ficam de fora. */
-  stageCounts: Map<string, number>;
+  /** Negócios do período (`view.rows`). O bloco conta vendas + em aberto — o
+   *  mesmo conjunto de antes; perdido e cancelado ficam de fora. */
+  deals: DealRow[];
 }
 
 /**
- * Onde estao os negocios do mes, etapa a etapa da esteira.
+ * Onde estão os negócios do mês, pelo Status 2 (pedido de 28/09/2026): uma
+ * linha por Status 2 com negócio no período, do maior para o menor (empate na
+ * ordem do cadastro de status), e nenhuma zerada. Antes era por etapa do
+ * pipeline, com as etapas vazias na lista — o cliente lê a operação pelo Status 2.
  *
- * A lista conta VENDA + EM ABERTO, nao so o que ainda esta andando: o total
- * daqui e o mesmo do KPI "Negocios", e os dois nasciam de regras diferentes e
- * mostravam 22 e 25 lado a lado, na mesma tela. Por isso o texto nao pode
- * chamar o conjunto de "ativo" — a linha "Fechado · 7" esta bem ali.
- *
- * A ordem e os rotulos saem de `pipeline_stages` (Tarefa H: fonte unica de
- * etapa), nao de um catalogo fixo no frontend — com a lista chumbada, etapa
- * renomeada no banco aparecia com o nome velho e etapa NOVA nao aparecia,
- * levando junto os negocios dela. Etapa sem negocio continua na lista com zero:
- * some-la esconde justamente o gargalo.
+ * O total continua sendo vendas + em aberto (`linhasDoStatus2`), e o rodapé
+ * diz isso.
  */
-export function SalesFunnelCard({ stageCounts }: SalesFunnelCardProps) {
-  const stages = useFunnelStages();
-  // Sem o catalogo NADA casa, e `funnelRows` leria a etapa de todo negocio como
-  // "fora do catalogo": enquanto a consulta nao volta, a lista fica vazia e o
-  // corpo mostra o carregamento — o rodape nao pode contar antes disso.
-  const rows = stages.data ? funnelRows(stages.data, stageCounts) : [];
+export function SalesFunnelCard({ deals }: SalesFunnelCardProps) {
+  const catalog = useDealStatusCatalog();
+  // Sem o catálogo não há ordem nem rótulo: a lista espera, e o rodapé não
+  // conta antes disso.
+  const rows = catalog.data ? linhasDoStatus2(deals, catalog.data) : [];
   const total = rows.reduce((sum, row) => sum + row.value, 0);
 
   const body = () => {
-    if (stages.isPending) return <LoadingState variant="block" label="Carregando as etapas…" />;
+    if (catalog.isPending) return <LoadingState variant="block" label="Carregando os status…" />;
 
-    if (stages.isError) {
+    if (catalog.isError) {
       return (
         <EmptyState
           icon={AlertTriangle}
           tone="danger"
-          title="Não consegui carregar as etapas"
+          title="Não consegui carregar os status"
           description={describeError(
-            stages.error,
-            "A consulta do catálogo de etapas falhou. Sem ela não dá para dizer em que etapa cada negócio está.",
+            catalog.error,
+            "A consulta do catálogo de status falhou. Sem ela não dá para ordenar os negócios por Status 2.",
           )}
           action={
-            <Button variant="outline" onClick={() => void stages.refetch()}>
+            <Button variant="outline" onClick={() => void catalog.refetch()}>
               Tentar de novo
             </Button>
           }
@@ -72,7 +68,7 @@ export function SalesFunnelCard({ stageCounts }: SalesFunnelCardProps) {
   return (
     <SectionCard
       title="Negócios por etapa"
-      description="Negócios do período, por etapa da esteira"
+      description="Negócios do período por Status 2, do maior para o menor"
       icon={GitBranch}
       footer={total > 0 ? `${num(total)} negócios no período · vendas + em aberto` : undefined}
     >

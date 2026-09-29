@@ -259,7 +259,7 @@ describe("CcaBoard · kanban colorido", () => {
     expect(cabecalho?.style.backgroundColor).toBe("rgb(14, 165, 233)");
     expect(cabecalho?.style.color).toBe("rgb(0, 0, 0)");
     // 100.000 + 338.000. O substantivo é só do leitor de tela.
-    expect(cabecalho?.textContent).toMatch(/R\$\s438\.000 · 2 casos$/);
+    expect(cabecalho?.textContent).toMatch(/R\$\s438\.000,00 · 2 casos$/);
 
     const cartoes = [...container.querySelectorAll<HTMLElement>("article")];
     expect(cartoes).toHaveLength(2);
@@ -290,7 +290,7 @@ describe("CcaBoard · kanban colorido", () => {
     const cabecalho = container.querySelector("h2")?.parentElement;
     // TONE_HEX.success = #16A34A.
     expect(cabecalho?.style.backgroundColor).toBe("rgb(22, 163, 74)");
-    expect(cabecalho?.textContent).toMatch(/R\$\s0 · 0 casos$/);
+    expect(cabecalho?.textContent).toMatch(/R\$\s0,00 · 0 casos$/);
     await act(async () => { root.unmount(); });
     container.remove();
   });

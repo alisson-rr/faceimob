@@ -1,4 +1,5 @@
 import { PipelineDeal, DealStage, DEAL_STAGES } from "@/types/crm";
+import { brl } from "@/lib/format";
 
 // ── Deal Probability Score ───────────────────────────────────
 const stageProbability: Record<DealStage, number> = {
@@ -214,7 +215,7 @@ export function askAssistant(question: string, deals: PipelineDeal[]): string {
 
   if (q.includes("vgv") && (q.includes("total") || q.includes("trimestre") || q.includes("mês"))) {
     const total = active.reduce((a, d) => a + d.deal_value, 0);
-    return `O VGV total do pipeline ativo é R$ ${total.toLocaleString("pt-BR")}.`;
+    return `O VGV total do pipeline ativo é ${brl(total)}.`;
   }
 
   if (q.includes("provável") || q.includes("probabilidade") || q.includes("mais perto")) {
@@ -228,7 +229,7 @@ export function askAssistant(question: string, deals: PipelineDeal[]): string {
   }
 
   if (q.includes("fechou") || q.includes("fechados") || q.includes("closed")) {
-    return `Total de deals fechados: ${closed.length}. VGV fechado: R$ ${closed.reduce((a, d) => a + d.deal_value, 0).toLocaleString("pt-BR")}.`;
+    return `Total de deals fechados: ${closed.length}. VGV fechado: ${brl(closed.reduce((a, d) => a + d.deal_value, 0))}.`;
   }
 
   return "Desculpe, não entendi a pergunta. Tente perguntar sobre VGV total, top corretor, deals mais prováveis ou follow-ups pendentes.";

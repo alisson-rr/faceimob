@@ -34,9 +34,11 @@ const MATRIZ: Record<string, string[]> = {
     "menu.equipes", "menu.gamification", "menu.leads", "menu.links", "menu.marketing",
     "menu.pipeline", "menu.resultados", "menu.sdr",
   ],
+  // Sem `menu.gamification` desde a 0163 (29/09/2026): o corretor vê o jogo só
+  // pelo popup do Pipeline.
   broker: [
     "menu.atividades", "menu.checkin", "menu.dashboard", "menu.equipes",
-    "menu.gamification", "menu.leads", "menu.links", "menu.pipeline",
+    "menu.leads", "menu.links", "menu.pipeline",
   ],
   cca: ["menu.cca", "menu.equipes", "menu.pipeline"],
   sdr: ["menu.leads", "menu.sdr"],

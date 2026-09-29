@@ -10,7 +10,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { KeyRound, Loader2, ShieldCheck, ShieldAlert, Activity, AlertTriangle, CheckCircle2, Ban } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck, ShieldAlert, Activity, AlertTriangle, CheckCircle2, Ban, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState } from "@/components/shared";
@@ -587,6 +587,22 @@ export default function AdminIntegrations() {
                 <CardContent className="px-4 pb-4 space-y-2">
                   <p className="text-xs text-muted-foreground">
                     {slot.help} <span className="opacity-70">· lida por <code>{slot.usedBy}</code></span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Onde pegar:</span> {slot.ondePegar.passos}
+                    {slot.ondePegar.link && (
+                      <>
+                        {" "}
+                        <a
+                          href={slot.ondePegar.link.url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                        >
+                          {slot.ondePegar.link.rotulo}
+                          <ExternalLink className="h-3 w-3" aria-hidden />
+                          <span className="sr-only"> (abre em nova aba)</span>
+                        </a>
+                      </>
+                    )}
                   </p>
                   {!configured && (
                     // O slot vazio dizia "usando secret X" como se a chave

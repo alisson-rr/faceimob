@@ -41,7 +41,7 @@ vi.mock("@/integrations/supabase/client", async () => {
 });
 
 import {
-  createdAtBounds, dealStageCodeFor, last30DaysRange, legacyDealFields, listLegacyDeals,
+  createdAtBounds, dealStageCodeFor, last30DaysRange, legacyDealFields, listLegacyDeals, listSelectableBrokers,
   saleBlockedReason, STAGES_REQUIRING_REVIEW, toNumberOrNull, type SaveLegacyDealInput,
 } from "./newSchema";
 
@@ -256,8 +256,10 @@ describe("legacyDealFields · numeros e mes", () => {
   });
 
   it("desconto de campo numerico entra igual, sem virar dez vezes maior", () => {
-    expect(legacyDealFields(form({ perc_desconto: "10.5" })).discount_pct).toBe(10.5);
-    expect(legacyDealFields(form({ perc_desconto: "" })).discount_pct).toBe(0);
+    // Desconto em R$ desde a 0159; o percentual é derivado no banco.
+    expect(legacyDealFields(form({ desconto: 1234.56 })).discount_amount).toBe(1234.56);
+    expect(legacyDealFields(form({})).discount_amount).toBe(0);
+    expect(legacyDealFields(form({ perc_desconto: "10.5" }))).not.toHaveProperty("discount_pct");
   });
 
   it("VGV bruto manda; o liquido e do banco", () => {
@@ -341,5 +343,13 @@ describe("listLegacyDeals · recorte no banco", () => {
     expect(url.searchParams.has("created_at")).toBe(false);
     expect(url.searchParams.has("id")).toBe(false);
     expect(doCaminho("deal_clients")[0].searchParams.has("deal_id")).toBe(false);
+  });
+});
+
+describe("listSelectableBrokers", () => {
+  it("chama a RPC pelo próprio cliente — método solto perde o `this` e estoura", async () => {
+    rede.tabelas["rpc/selectable_brokers"] = [{ id: "b1", full_name: "Diego" }];
+    await expect(listSelectableBrokers()).resolves.toEqual([{ id: "b1", name: "Diego" }]);
+    delete rede.tabelas["rpc/selectable_brokers"];
   });
 });
