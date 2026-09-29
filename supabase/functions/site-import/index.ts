@@ -65,9 +65,22 @@ async function doSite<T>(base: string, token: string, query: Record<string, stri
   } catch {
     throw new FalhaNoSite("O site não respondeu (rede ou tempo esgotado).");
   }
-  if (res.status === 404) throw new FalhaNoSite("A exportação do site está desligada: falta o secret MIGRACAO_TOKEN no Lovable.");
+  if (res.status === 404) {
+    throw new FalhaNoSite(
+      "O site não achou a exportação: ou a versão com a rota ainda não foi publicada no Lovable (Publish → Update), ou falta o secret MIGRACAO_TOKEN.",
+    );
+  }
   if (res.status === 401) throw new FalhaNoSite("O token do cofre não é o mesmo do secret MIGRACAO_TOKEN do Lovable.");
-  if (!res.ok) throw new FalhaNoSite(`O site recusou a leitura (HTTP ${res.status}).`);
+  if (!res.ok) {
+    // A rota devolve o motivo (tabela ou etapa e a mensagem do banco) para
+    // quem tem o token; sem ele, "HTTP 500" não diz o que corrigir.
+    const corpo = await res.json().catch(() => null) as { recurso?: unknown; detalhe?: unknown } | null;
+    const detalhe = typeof corpo?.detalhe === "string" ? corpo.detalhe.slice(0, 300) : null;
+    const etapa = typeof corpo?.recurso === "string" ? corpo.recurso : query.recurso ?? "links";
+    throw new FalhaNoSite(
+      `O site falhou ao ler (${etapa}, HTTP ${res.status})${detalhe ? `: ${detalhe}` : "."}`,
+    );
+  }
   return await res.json() as T;
 }
 

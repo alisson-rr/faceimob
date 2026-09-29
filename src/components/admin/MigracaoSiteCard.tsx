@@ -16,7 +16,12 @@ import { num } from "@/lib/format";
  */
 
 type Status = {
-  fonte: { tabelas: Record<string, number>; buckets: { id: string; public: boolean }[] };
+  fonte: {
+    tabelas: Record<string, number>;
+    /** Tabela que o site não conseguiu contar, com o motivo. */
+    erros?: Record<string, string>;
+    buckets: { id: string; public: boolean }[];
+  };
   destino: Record<string, number>;
   sem_par: { email: string; full_name: string | null }[] | null;
 };
@@ -133,6 +138,16 @@ export function MigracaoSiteCard({ podeUsar }: { podeUsar: boolean }) {
                 </li>
               ))}
             </ul>
+            {status.fonte.erros && Object.keys(status.fonte.erros).length > 0 && (
+              <div className="text-sm">
+                <p className="font-medium text-destructive">Tabelas que o site não conseguiu ler:</p>
+                <ul className="text-muted-foreground">
+                  {Object.entries(status.fonte.erros).map(([nome, motivo]) => (
+                    <li key={nome}>{nome}: {motivo}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {status.sem_par && status.sem_par.length > 0 && (
               <div className="text-sm">
                 <p className="font-medium">{status.sem_par.length} usuário(s) do site sem cadastro no CRM (mesmo e-mail):</p>
