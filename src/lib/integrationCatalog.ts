@@ -250,6 +250,27 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     help: "mailto:ti@suaempresa.com.br — contato que Google, Mozilla e Apple usam se precisarem falar com quem envia os avisos.",
     ondePegar: { passos: "Não vem de um site: é só um e-mail de contato da empresa escrito como mailto:ti@suaempresa.com.br." },
   },
+  // Migração do site para a VPS (docs/migracao-site.md). Os dois somem depois
+  // da virada do domínio.
+  {
+    provider: "site",
+    label: "migracao_url",
+    formato: "url",
+    title: "Site — endereço da exportação",
+    envName: "SITE_MIGRACAO_URL",
+    usedBy: "site-import",
+    help: "https://faceimob.com.br/api/migracao/exportar — a rota do site que entrega os dados para a cópia.",
+    ondePegar: { passos: "É o endereço do site publicado seguido de /api/migracao/exportar." },
+  },
+  {
+    provider: "site",
+    label: "migracao_token",
+    title: "Site — token da exportação",
+    envName: "SITE_MIGRACAO_TOKEN",
+    usedBy: "site-import",
+    help: "O mesmo valor gravado no secret MIGRACAO_TOKEN do Lovable. Sem ele a rota do site não responde.",
+    ondePegar: { passos: "Gere um valor longo e aleatório, grave aqui e em Lovable › Cloud › Secrets como MIGRACAO_TOKEN." },
+  },
 ];
 
 export const slotKey = (provider: string, label: string) => `${provider}::${label}`;

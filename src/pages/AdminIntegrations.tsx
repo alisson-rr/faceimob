@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { dateTime } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
+import { MigracaoSiteCard } from "@/components/admin/MigracaoSiteCard";
 
 /**
  * Nome de secret de edge function (`OPENAI_API_KEY`). O catálogo usa "—" nos
@@ -859,6 +860,8 @@ export default function AdminIntegrations() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {isAdmin && <MigracaoSiteCard podeUsar={can("settings.integrations")} />}
 
       <AlertDialog open={!!revogando} onOpenChange={(aberto) => { if (!aberto && !revogandoAgora) setRevogando(null); }}>
         <AlertDialogContent>

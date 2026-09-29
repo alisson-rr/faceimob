@@ -55,6 +55,10 @@ export const SECRET_SLOTS = {
   WEBPUSH_VAPID_PUBLIC_KEY: { provider: "webpush", label: "vapid_public_key" },
   WEBPUSH_VAPID_PRIVATE_KEY: { provider: "webpush", label: "vapid_private_key" },
   WEBPUSH_VAPID_SUBJECT: { provider: "webpush", label: "vapid_subject" },
+  // Migração do site (docs/migracao-site.md): endereço da rota de exportação
+  // do site no Lovable e o token combinado com ela. Some depois da virada.
+  SITE_MIGRACAO_URL: { provider: "site", label: "migracao_url" },
+  SITE_MIGRACAO_TOKEN: { provider: "site", label: "migracao_token" },
 } as const;
 
 export type SecretName = keyof typeof SECRET_SLOTS;
