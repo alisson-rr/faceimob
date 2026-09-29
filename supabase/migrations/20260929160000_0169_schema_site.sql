@@ -19,7 +19,6 @@
 CREATE SCHEMA IF NOT EXISTS site;
 GRANT USAGE ON SCHEMA site TO anon, authenticated, service_role;
 
-\restrict x3Vmwt9hORf0QgHeeyCV2u162LVTNrkY6ahaGHseUUdFuO7BAdoE6BULNXOMFId
 
 CREATE TYPE site.app_role AS ENUM (
     'admin',
@@ -931,7 +930,6 @@ GRANT ALL ON TABLE site.university_videos TO service_role;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE site.university_watched TO authenticated;
 GRANT ALL ON TABLE site.university_watched TO service_role;
 
-\unrestrict x3Vmwt9hORf0QgHeeyCV2u162LVTNrkY6ahaGHseUUdFuO7BAdoE6BULNXOMFId
 
 -- -----------------------------------------------------------------------------
 -- Storage: as cinco pastas do site. `public` fica falso aqui; a importação
