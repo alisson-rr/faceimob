@@ -27,6 +27,10 @@ const json = (body: unknown, status = 200) =>
 
 const BUCKETS = ["property-images", "property-docs", "campaign-images", "blog-images", "support-docs"];
 const ARQUIVOS_POR_LOTE = 25;
+const ARQUIVOS_EM_PARALELO = 5;
+// A chamada inteira precisa voltar antes do tempo do gateway (~60 s): depois
+// disto nenhum arquivo novo começa, e a tela continua do ponto em que parou.
+const PRAZO_DO_LOTE_MS = 20_000;
 
 type Pedido =
   | { action: "status" }
@@ -139,10 +143,18 @@ Deno.serve(async (req) => {
       return json({ ok: true, resultado: data, ultima: lote.ultima });
     }
 
-    // Arquivos: um lote por chamada, mesmo caminho do site.
-    const { arquivos } = await doSite<{ arquivos: { caminho: string; tamanho: number; tipo: string | null }[] }>(
-      base, token, { recurso: "arquivos", bucket: pedido.bucket },
+    // Arquivos: um lote por chamada, mesmo caminho do site. O site que já
+    // pagina (`de`/`limite`, devolvendo `total`) manda só o lote; o anterior
+    // manda a lista inteira e o recorte é feito aqui.
+    const inicio = Date.now();
+    const listagem = await doSite<{ arquivos: { caminho: string; tamanho: number; tipo: string | null }[]; total?: number }>(
+      base, token, { recurso: "arquivos", bucket: pedido.bucket, de: String(pedido.de), limite: String(ARQUIVOS_POR_LOTE) },
     );
+    const paginado = typeof listagem.total === "number";
+    const total = paginado ? listagem.total as number : listagem.arquivos.length;
+    const lote = paginado
+      ? listagem.arquivos.slice(0, ARQUIVOS_POR_LOTE)
+      : listagem.arquivos.slice(pedido.de, pedido.de + ARQUIVOS_POR_LOTE);
     if (pedido.de === 0) {
       const { buckets } = await doSite<{ buckets: { id: string; public: boolean }[] }>(base, token, { recurso: "contagem" });
       const origem = buckets.find((b) => b.id === pedido.bucket);
@@ -151,17 +163,17 @@ Deno.serve(async (req) => {
         if (error) throw error;
       }
     }
-    const lote = arquivos.slice(pedido.de, pedido.de + ARQUIVOS_POR_LOTE);
     const falhas: string[] = [];
+    let feitos = 0;
     if (lote.length) {
       const { links } = await doSite<{ links: { caminho: string; url: string | null }[] }>(
         base, token, {}, { bucket: pedido.bucket, caminhos: lote.map((a) => a.caminho) },
       );
-      for (const arquivo of lote) {
+      const copiar = async (arquivo: { caminho: string; tamanho: number; tipo: string | null }) => {
         const link = links.find((l) => l.caminho === arquivo.caminho)?.url;
         try {
           if (!link) throw new Error("sem link");
-          const res = await fetch(link, { signal: AbortSignal.timeout(60_000) });
+          const res = await fetch(link, { signal: AbortSignal.timeout(30_000) });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const blob = await res.blob();
           if (arquivo.tamanho && blob.size !== arquivo.tamanho) throw new Error("tamanho diferente");
@@ -172,15 +184,19 @@ Deno.serve(async (req) => {
         } catch (e) {
           falhas.push(`${arquivo.caminho}: ${e instanceof Error ? e.message : "falhou"}`);
         }
+      };
+      while (feitos < lote.length && (feitos === 0 || Date.now() - inicio < PRAZO_DO_LOTE_MS)) {
+        const grupo = lote.slice(feitos, feitos + ARQUIVOS_EM_PARALELO);
+        await Promise.all(grupo.map(copiar));
+        feitos += grupo.length;
       }
     }
-    const proximo = pedido.de + lote.length;
+    const proximo = pedido.de + feitos;
     return json({
       ok: falhas.length === 0,
-      total: arquivos.length,
-      bytes: arquivos.reduce((soma, a) => soma + a.tamanho, 0),
+      total,
       proximo,
-      ultima: proximo >= arquivos.length,
+      ultima: proximo >= total,
       falhas,
     });
   } catch (e) {
