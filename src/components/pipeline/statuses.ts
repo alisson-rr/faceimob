@@ -77,10 +77,10 @@ export const statusGroupCode = (name: string): string =>
 
 /** Classes do gatilho colorido na tabela. Literais, para o Tailwind enxergar. */
 export const STATUS_TONE_CLASS: Record<StatusTone, string> = {
-  success: "bg-success/15 text-success",
-  warning: "bg-warning/15 text-warning",
-  info: "bg-info/15 text-info",
-  danger: "bg-destructive/15 text-destructive",
-  neutral: "bg-muted text-muted-foreground",
+  success: "bg-success text-success-foreground",
+  warning: "bg-warning text-warning-foreground",
+  info: "bg-info text-info-foreground",
+  danger: "bg-destructive text-destructive-foreground",
+  neutral: "bg-muted-foreground text-background",
   highlight: "bg-highlight text-highlight-foreground",
 };

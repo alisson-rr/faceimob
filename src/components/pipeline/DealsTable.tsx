@@ -90,7 +90,6 @@ export function DealsTable({
   const totalPages = Math.max(1, Math.ceil(deals.length / PER_PAGE));
   const current = Math.min(page, totalPages);
   const rows = ordenados.slice((current - 1) * PER_PAGE, current * PER_PAGE);
-
   // Separador por construtora (pedido de 28/09/2026) só quando a lista está
   // agrupada por ela: na ordem padrão e na da coluna Construtora. Ordenada por
   // VGV ou dias, as construtoras se misturam e o separador repetiria a cada
@@ -145,8 +144,8 @@ export function DealsTable({
             Negócios do pipeline. Clicar na linha abre o detalhe do negócio; por teclado,
             use o nome do cliente ou o botão Abrir da coluna Ações.
           </caption>
-          <thead className="bg-secondary/70">
-            <tr className="border-b border-border text-muted-foreground">
+          <thead className="bg-card">
+            <tr className="border-b-2 border-primary/35 bg-secondary text-foreground">
               <th scope="col" className="w-3 p-0"><span className="sr-only">Idade</span></th>
               <th scope="col" className="p-2 text-left font-medium">Etapa</th>
               {colunaOrdenavel("Construtora", "developer")}
@@ -206,7 +205,7 @@ export function DealsTable({
                     if (window.getSelection()?.isCollapsed === false) return;
                     onOpen(deal);
                   }}
-                  className="cursor-pointer border-b border-border transition-colors odd:bg-background/70 even:bg-secondary/45 hover:bg-accent focus-within:bg-accent"
+                  className="cursor-pointer border-b border-border bg-background transition-colors hover:bg-accent focus-within:bg-accent"
                 >
                   <td className="relative w-3 p-0">
                     <span
