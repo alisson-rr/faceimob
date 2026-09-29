@@ -32,7 +32,7 @@ import {
 // outra frente nesta rodada. Mesmo caminho que o `useDealActions` abaixo já usa.
 import { ALL, MY_TEAM, teamProfileIds, dealsForLeader } from "@/components/pipeline/filters";
 import { DirectorPipelineCards } from "@/components/pipeline/DirectorPipelineCards";
-import { listActiveDealsWithUnit, useDealsRange } from "@/components/pipeline/data";
+import { BUSCA_MINIMA, listActiveDealsWithUnit, useDealSearch, useDealsRange } from "@/components/pipeline/data";
 import { periodoValido } from "@/components/pipeline/ccaData";
 import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
 import { useDealActions } from "@/components/pipeline/useDealActions";
@@ -212,8 +212,16 @@ export default function Pipeline() {
   // com as duas ordenações sobre os 7.579 negócios roda num render que a
   // próxima tecla pode interromper, em vez de travar a digitação.
   const filtrosAdiados = useDeferredValue(filters);
-  const directorDeals = useMemo(() => filtrosAdiados.directorId === ALL ? deals
-    : dealsForLeader(deals, people, filtrosAdiados.directorId), [deals, people, filtrosAdiados.directorId]);
+  // Busca por cliente ou código olha a base inteira, não só o período: os
+  // negócios que o banco achou somam aos do período, e o filtro da tela decide.
+  const busca = useDealSearch(filtrosAdiados.search);
+  const dealsDaLista = useMemo(() => {
+    if (filtrosAdiados.search.trim().length < BUSCA_MINIMA || !busca.data?.length) return deals;
+    const ids = new Set(deals.map((deal) => deal.id));
+    return [...deals, ...busca.data.filter((deal) => !ids.has(deal.id))];
+  }, [deals, busca.data, filtrosAdiados.search]);
+  const directorDeals = useMemo(() => filtrosAdiados.directorId === ALL ? dealsDaLista
+    : dealsForLeader(dealsDaLista, people, filtrosAdiados.directorId), [dealsDaLista, people, filtrosAdiados.directorId]);
   const visible = useMemo(
     () => sortDeals(applyDealFilters(directorDeals, filtrosAdiados, myTeam), catalog),
     [directorDeals, filtrosAdiados, myTeam, catalog],

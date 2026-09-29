@@ -6,7 +6,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
-import { nextMonthBase } from "@/lib/dealStatus";
+import { contaComoVenda, nextMonthBase } from "@/lib/dealStatus";
 import {
   DEFAULT_TARGETS,
   GLOBAL_TARGET_KEY,
@@ -273,6 +273,6 @@ export function directorPipeline(
     leads: leadsInMonth(leads, mes).filter((lead) => owners.has(lead.broker_id)).length,
     analises: alcancaram("under_analysis"),
     aprovados: alcancaram("approved"),
-    vendas: rows.filter((deal) => deal.outcome === "won").length,
+    vendas: rows.filter(contaComoVenda).length,
   };
 }

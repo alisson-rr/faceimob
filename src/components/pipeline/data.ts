@@ -66,6 +66,9 @@ export const pipelineKeys = {
   /** A lista do Pipeline: o período entra na chave; o perfil, pelo mesmo motivo de `dealsQuery`. */
   dealsRange: (from: string, to: string, profileId: string | null) =>
     ["deals", profileId, "periodo", from, to] as const,
+  /** Busca por cliente ou código na base inteira, fora do período. */
+  dealsSearch: (term: string, profileId: string | null) =>
+    ["deals", profileId, "busca", term] as const,
   stages: ["pipeline", "stages"] as const,
   people: ["pipeline", "people"] as const,
   developers: ["pipeline", "developers"] as const,
@@ -114,6 +117,45 @@ export function useDealsRange(from: string, to: string) {
     queryKey: pipelineKeys.dealsRange(from, to, user?.id ?? null),
     queryFn: ({ signal }) => listLegacyDeals(signal, { createdFrom: from, createdTo: to }),
     enabled: periodoValido({ de: from, ate: to }),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Termo curto demais varreria a base inteira por "de" ou "da". */
+export const BUSCA_MINIMA = 3;
+
+/** `%` e `_` são curingas do `ilike`: digitados, valem como texto. */
+const literalIlike = (term: string) => term.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/**
+ * Negócios de QUALQUER período cujo cliente (1 ou 2) ou código contém o termo.
+ *
+ * O Pipeline carrega só os criados no período escolhido (30 dias por padrão),
+ * então "OSVALDO DE OLIVEIRA PEDROSO", de um negócio de três meses atrás, não
+ * aparecia na busca. A busca vai ao banco pelo nome e pelo código e traz esses
+ * negócios; o resto do filtro (corretor, empreendimento) continua na tela. A
+ * RLS recorta como sempre. Teto de 200 por consulta: termo que casa mais que
+ * isso ainda não é uma busca.
+ */
+export async function searchDeals(term: string, signal?: AbortSignal) {
+  const padrao = `%${literalIlike(term.trim())}%`;
+  const [clientes, codigos] = await Promise.all([
+    supabase.from("deal_clients").select("deal_id").ilike("full_name", padrao).limit(200).abortSignal(signal ?? new AbortController().signal),
+    supabase.from("deals").select("id").ilike("code", padrao).limit(200).abortSignal(signal ?? new AbortController().signal),
+  ]);
+  if (clientes.error) throw dbError("deal_clients", clientes.error);
+  if (codigos.error) throw dbError("deals", codigos.error);
+  const ids = [...new Set([...clientes.data.map((row) => row.deal_id), ...codigos.data.map((row) => row.id)])];
+  return ids.length ? listLegacyDeals(signal, { ids }) : [];
+}
+
+export function useDealSearch(term: string) {
+  const { user } = useAuth();
+  const termo = term.trim();
+  return useQuery({
+    queryKey: pipelineKeys.dealsSearch(termo.toLowerCase(), user?.id ?? null),
+    queryFn: ({ signal }) => searchDeals(termo, signal),
+    enabled: termo.length >= BUSCA_MINIMA,
     placeholderData: keepPreviousData,
   });
 }
