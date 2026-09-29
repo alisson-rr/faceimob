@@ -180,40 +180,23 @@ describe("activeTeamIdOfManager", () => {
 });
 
 describe("setTeamByManager", () => {
-  it("reabre a filiação anterior quando a nova equipe é recusada", async () => {
-    const chamadas = prepararTabelas({
-      // Lista, não `maybeSingle`: a equipe ativa é resolvida por
-      // `activeTeamIdOfManager`, que trata "nenhuma" e "mais de uma".
-      teams: [ok([{ id: "t1", name: "Alfa" }])],
-      team_members: [
-        ok([{ id: "m1" }, { id: "m2" }]),              // fecha as abertas
-        { data: null, error: { code: "42501", message: "denied" } }, // insert recusado
-        ok([{ id: "m1" }, { id: "m2" }]),              // reabertura
-      ],
-    });
+  it("troca de equipe é uma operação só no banco — nada fecha pela tabela (0167)", async () => {
+    // Fechar e abrir pela tabela recusava o diretor movendo gente entre as
+    // equipes dele: fechado o vínculo, a pessoa some do alcance e o insert batia na RLS.
+    const chamadas = prepararTabelas({ teams: [ok([{ id: "t1", name: "Alfa" }])] });
+    rpc.mockResolvedValue({ data: null, error: null });
 
-    await expect(setTeamByManager("p1", "ger1")).rejects.toThrow(/team_members/);
+    await setTeamByManager("p1", "ger1");
 
-    const reabertura = chamadas.find(
-      (c) => c.metodo === "update" && JSON.stringify(c.argumentos[0]) === JSON.stringify({ left_at: null }),
-    );
-    expect(reabertura, "sem reabrir, a pessoa fica sem equipe nenhuma").toBeTruthy();
-    expect(chamadas.some((c) => c.metodo === "in" && JSON.stringify(c.argumentos[1]) === '["m1","m2"]')).toBe(true);
+    expect(rpc).toHaveBeenCalledWith("move_team_member", { p_profile_id: "p1", p_team_id: "t1" });
+    expect(chamadas.some((c) => c.tabela === "team_members")).toBe(false);
   });
 
-  it("reabertura que casa 0 linhas diz que o vínculo anterior não voltou", async () => {
-    // Desde a 0128 o gestor que fechou pode já não enxergar a pessoa: o update
-    // da reabertura volta 204 sem erro e sem linha, e a pessoa ficaria sem equipe.
-    prepararTabelas({
-      teams: [ok([{ id: "t1", name: "Alfa" }])],
-      team_members: [
-        ok([{ id: "m1" }]),                                          // fecha a aberta
-        { data: null, error: { code: "42501", message: "denied" } }, // insert recusado
-        ok([]),                                                      // reabertura recusada pela RLS
-      ],
-    });
+  it("recusa do banco sobe como erro, sem sucesso falso", async () => {
+    prepararTabelas({ teams: [ok([{ id: "t1", name: "Alfa" }])] });
+    rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "Você só move pessoas entre equipes que lidera." } });
 
-    await expect(setTeamByManager("p1", "ger1")).rejects.toThrow(/não pôde ser restaurada/);
+    await expect(setTeamByManager("p1", "ger1")).rejects.toThrow(/move_team_member|lidera/);
   });
 
   it("gerente sem equipe ativa é recusado antes de fechar qualquer filiação", async () => {

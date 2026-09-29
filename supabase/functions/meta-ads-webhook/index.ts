@@ -133,6 +133,27 @@ function pickUtm(fields: Record<string, string>, key: string) {
   return fields[key] || fields[`utm_${key}`] || fields[key.replace('utm_', '')] || ''
 }
 
+/**
+ * Rastro da última chamada (0166): hora e um código curto, lidos pelo
+ * diagnóstico de /admin/meta-ads. É o que separa "a Meta não chama" de "a Meta
+ * chama e nós recusamos". Nunca derruba a resposta: falhar aqui só perde o rastro.
+ */
+type ResultadoDaChamada =
+  | 'verificacao_ok' | 'verificacao_recusada' | 'sem_app_secret' | 'assinatura_invalida'
+  | 'pausado' | 'sem_lead' | 'aceito' | 'falha'
+
+async function registrarChamada(supabase: ReturnType<typeof createClient>, resultado: ResultadoDaChamada) {
+  try {
+    const { error } = await supabase
+      .from('automation_settings')
+      .update({ meta_webhook_last_at: new Date().toISOString(), meta_webhook_last_result: resultado })
+      .eq('id', true)
+    if (error) console.error('meta-ads-webhook: rastro da chamada não gravado', error.code)
+  } catch {
+    console.error('meta-ads-webhook: rastro da chamada não gravado')
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -154,8 +175,10 @@ Deno.serve(async (req) => {
       const challenge = url.searchParams.get('hub.challenge')
       const verifyToken = await getSecret('META_WEBHOOK_VERIFY_TOKEN')
       if (verifyToken && mode === 'subscribe' && token === verifyToken) {
+        await registrarChamada(supabase, 'verificacao_ok')
         return new Response(challenge, { status: 200, headers: corsHeaders })
       }
+      await registrarChamada(supabase, 'verificacao_recusada')
       return new Response('Forbidden', { status: 403, headers: corsHeaders })
     }
 
@@ -196,6 +219,7 @@ Deno.serve(async (req) => {
         const sig = await checkMetaSignature(raw, req.headers.get('x-hub-signature-256'))
         if (sig !== 'valid') {
           console.error(`meta-ads-webhook: payload da Meta sem assinatura válida (${sig}) — POST recusado`)
+          await registrarChamada(supabase, sig === 'unconfigured' ? 'sem_app_secret' : 'assinatura_invalida')
           return new Response(JSON.stringify({
             error: sig === 'unconfigured' ? 'Webhook não configurado.' : 'Assinatura inválida.',
             detail: sig === 'unconfigured'
@@ -219,6 +243,7 @@ Deno.serve(async (req) => {
         .maybeSingle()
       if (settings?.leads_paused) {
         console.log('Leads paused — ignoring incoming payload')
+        await registrarChamada(supabase, 'pausado')
         return new Response(JSON.stringify({ success: true, paused: true, leads_processed: 0 }), {
           status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
@@ -322,6 +347,7 @@ Deno.serve(async (req) => {
 
       if (leads.length === 0) {
         console.log('No leads parsed from payload')
+        await registrarChamada(supabase, 'sem_lead')
         return new Response(JSON.stringify({ success: true, message: 'No leads to process' }), {
           status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
@@ -354,6 +380,10 @@ Deno.serve(async (req) => {
           errors.push({ message: e instanceof Error ? e.message : String(e) })
         }
       }
+
+      // Sem nenhuma linha gravada o 200 abaixo PERDE o lead (a Meta não
+      // reenvia): o rastro diz "falha" para o diagnóstico mostrar.
+      await registrarChamada(supabase, insertedRows.length || !errors.length ? 'aceito' : 'falha')
 
       // Always ACK 200 so Meta does not retry (retries cause duplicate leads/notifications)
       return new Response(JSON.stringify({

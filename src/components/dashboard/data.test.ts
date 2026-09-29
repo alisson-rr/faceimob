@@ -61,16 +61,51 @@ const deal = (fields: Partial<DealRow>): DealRow =>
 
 const venda = (fields: Partial<DealRow> = {}) => deal({ outcome: "won", stage: "closed", ...fields });
 
-it("ranking geral reúne os papéis sem duplicar quem acumula funções e preserva rateio", () => {
-  const result = rankBy([venda({ deal_value: 300_000,
-    broker1_id: "b1", broker1: "Ana", broker2_id: "b2", broker2: "Bia",
-    manager1_id: "b1", manager1: "Ana", director1_id: "d1", director1_name: "Daniel",
-  })], "all");
-  expect(result).toEqual([
-    { id: "b1", name: "Ana", vendas: 1, vgv: 300_000 },
-    { id: "d1", name: "Daniel", vendas: 1, vgv: 300_000 },
-    { id: "b2", name: "Bia", vendas: 1, vgv: 150_000 },
-  ]);
+const pessoa = (id: string, name: string, extra: Partial<PersonRecord> = {}) =>
+  ({ id, name, roles: ["broker"], role: "broker", active: true, manager_id: null, director_id: null, ...extra }) as PersonRecord;
+
+describe("rankBy — cada ranking com os números do papel (29/09/2026)", () => {
+  // Diretor Daniel também é gerente da equipe A e aparece como gerente e
+  // diretor nos slots do negócio — o caso que o punha acima dos gerentes.
+  const people = [
+    pessoa("b1", "Ana", { manager_id: "m1", director_id: "dir" }),
+    pessoa("b2", "Bia", { manager_id: "m1", director_id: "dir" }),
+    pessoa("b3", "Caio", { manager_id: "m2", director_id: "dir" }),
+    pessoa("m1", "Marcos", { roles: ["manager", "broker"], role: "manager" }),
+    pessoa("m2", "Mara", { roles: ["manager", "broker"], role: "manager" }),
+    pessoa("dir", "Daniel", { roles: ["director", "manager", "broker"], role: "director" }),
+  ];
+  const vendas = [
+    venda({ id: "v1", deal_value: 300_000, broker1_id: "b1", broker1: "Ana", broker2_id: "b2", broker2: "Bia",
+      manager1_id: "dir", manager1: "Daniel", director1_id: "dir", director1_name: "Daniel" }),
+    venda({ id: "v2", deal_value: 100_000, broker1_id: "b3", broker1: "Caio",
+      manager1_id: "dir", manager1: "Daniel", director1_id: "dir", director1_name: "Daniel" }),
+  ];
+
+  it("geral é só corretor: o diretor no slot de gestor não entra", () => {
+    expect(rankBy(vendas, "broker", people)).toEqual([
+      { id: "b1", name: "Ana", vendas: 1, vgv: 150_000 },
+      { id: "b2", name: "Bia", vendas: 1, vgv: 150_000 },
+      { id: "b3", name: "Caio", vendas: 1, vgv: 100_000 },
+    ]);
+  });
+
+  it("gerente soma os corretores da equipe que gerencia — dois da mesma equipe são uma venda", () => {
+    expect(rankBy(vendas, "manager", people)).toEqual([
+      { id: "m1", name: "Marcos", vendas: 1, vgv: 300_000 },
+      { id: "m2", name: "Mara", vendas: 1, vgv: 100_000 },
+    ]);
+  });
+
+  it("diretor soma a diretoria inteira", () => {
+    expect(rankBy(vendas, "director", people)).toEqual([
+      { id: "dir", name: "Daniel", vendas: 2, vgv: 400_000 },
+    ]);
+  });
+
+  it("corretor fora do alcance de quem olha não credita gestor nenhum", () => {
+    expect(rankBy(vendas, "manager", [])).toEqual([]);
+  });
 });
 
 describe("dealCategory — o outcome manda, o Status 2 é detalhe", () => {
@@ -327,15 +362,6 @@ describe("rankBy — rateio do negocio", () => {
     expect(rankBy([meioAMeio], "broker")).toEqual([
       { id: "b1", name: "Diego", vendas: 1, vgv: 300_000 },
       { id: "b2", name: "Gustavo", vendas: 1, vgv: 300_000 },
-    ]);
-  });
-
-  it("gerente e diretor ficam com o valor cheio — o share_pct deles e 0 no banco", () => {
-    expect(rankBy([meioAMeio], "manager")).toEqual([
-      { id: "m1", name: "Marcos", vendas: 1, vgv: 600_000 },
-    ]);
-    expect(rankBy([meioAMeio], "director")).toEqual([
-      { id: "dir1", name: "Daniela", vendas: 1, vgv: 600_000 },
     ]);
   });
 
@@ -636,29 +662,31 @@ describe("pickSalesGoal — o denominador segue o escopo do numerador", () => {
 });
 
 describe("withZeroSellers — ranking com quem não vendeu", () => {
-  const pessoa = (id: string, name: string, roles: string[], active = true) =>
-    ({ id, name, roles, active }) as unknown as PersonRecord;
   const vendidos = [{ id: "b1", name: "Diego", vendas: 2, vgv: 500_000 }];
 
   it("ativos do papel entram zerados, depois de quem vendeu e em ordem alfabética", () => {
     const people = [
-      pessoa("b3", "Zeca", ["broker"]),
-      pessoa("b2", "Ávila", ["broker"]),
-      pessoa("b1", "Diego", ["broker"]),
-      pessoa("m1", "Marcos", ["manager"]),
+      pessoa("b3", "Zeca"),
+      pessoa("b2", "Ávila"),
+      pessoa("b1", "Diego"),
+      pessoa("m1", "Marcos", { roles: ["manager", "broker"], role: "manager" }),
     ];
-    expect(withZeroSellers(vendidos, people, ["broker"]).map((row) => [row.name, row.vendas])).toEqual([
+    expect(withZeroSellers(vendidos, people, "broker").map((row) => [row.name, row.vendas])).toEqual([
       ["Diego", 2], ["Ávila", 0], ["Zeca", 0],
     ]);
   });
 
   it("inativo só aparece se vendeu no período", () => {
-    const people = [pessoa("b1", "Diego", ["broker"], false), pessoa("b9", "Inativo", ["broker"], false)];
-    expect(withZeroSellers(vendidos, people, ["broker"]).map((row) => row.id)).toEqual(["b1"]);
+    const people = [pessoa("b1", "Diego", { active: false }), pessoa("b9", "Inativo", { active: false })];
+    expect(withZeroSellers(vendidos, people, "broker").map((row) => row.id)).toEqual(["b1"]);
   });
 
-  it("no geral, qualquer papel de venda entra, sem repetir quem acumula papéis", () => {
-    const people = [pessoa("x", "Xavier", ["manager", "broker"]), pessoa("c", "Cida", ["cca"])];
-    expect(withZeroSellers([], people, ["broker", "manager", "director"]).map((row) => row.id)).toEqual(["x"]);
+  it("gestor zerado só entra se lidera equipe de fato", () => {
+    const people = [
+      pessoa("b1", "Diego", { manager_id: "m1" }),
+      pessoa("m1", "Marcos", { roles: ["manager", "broker"], role: "manager" }),
+      pessoa("d1", "Dora", { roles: ["director", "manager", "broker"], role: "director" }),
+    ];
+    expect(withZeroSellers([], people, "manager").map((row) => row.id)).toEqual(["m1"]);
   });
 });

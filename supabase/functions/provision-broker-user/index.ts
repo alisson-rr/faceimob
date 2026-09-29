@@ -135,7 +135,59 @@ Deno.serve(async (req) => {
     // regra. Sem isto o desligamento feito pelo sócio gravava a ficha como
     // desligada e o `access_provision_log` registrava "denied": a pessoa saía
     // das listas e continuava entrando no sistema.
-    if (!(roleRows || []).some((row) => row.role === "admin" || row.role === "partner")) {
+    const ehAdmin = (roleRows || []).some((row) => row.role === "admin" || row.role === "partner");
+
+    // ── Ramo do diretor: inativar quem saiu (pedido de 29/09/2026) ──────────
+    //
+    // "O diretor pediu para inativar o corretor que sai, mas não quero que ele
+    // edite os dados dos usuários." Um passo só, com a chave de serviço:
+    // `status = 'suspended'` tira da roleta e das listas de trabalho, e o
+    // bloqueio da entrada tira o acesso. Nada é apagado, e reativar continua
+    // sendo do administrador (Switch "Ativo" da ficha devolve os dois).
+    //
+    // Quem pode: admin/sócio, ou DIRETOR que lidera a equipe do alvo — a mesma
+    // `manages_profile()` das policies, perguntada com o JWT de quem chamou. O
+    // alvo não pode ser administrador, sócio nem diretor.
+    if (String(body.access || "").trim() === "inativar") {
+      if (!profileId) return json({ error: "profile_id obrigatório." }, 400);
+      if (profileId === actorId) return json({ error: "Você não pode inativar a si mesmo." }, 409);
+      if (!ehAdmin) {
+        const ehDiretor = (roleRows || []).some((row) => row.role === "director");
+        const { data: lidera, error: lideraError } = ehDiretor
+          ? await userClient.rpc("manages_profile", { target: profileId })
+          : { data: false, error: null };
+        const { data: papeisAlvo, error: papeisError } = await admin
+          .from("user_roles").select("role").eq("profile_id", profileId);
+        if (lideraError || papeisError) throw lideraError ?? papeisError;
+        const alvoProtegido = (papeisAlvo || [])
+          .some((row) => row.role === "admin" || row.role === "partner" || row.role === "director");
+        if (lidera !== true || alvoProtegido) {
+          await registrar(profileId, "denied", "(inativar)");
+          return json({ error: "Só o administrador ou o diretor da equipe desta pessoa pode inativá-la." }, 403);
+        }
+      }
+
+      const { data: alvo, error: alvoError } = await admin
+        .from("profiles").update({ status: "suspended" })
+        // Suspenso também passa: o gestor pode ter suspendido sem bloquear a entrada.
+        .eq("id", profileId).neq("status", "terminated")
+        .select("id,email").maybeSingle();
+      if (alvoError) throw alvoError;
+      if (!alvo) return json({ error: "Esta pessoa já foi desligada pelo administrador." }, 409);
+
+      const { error: banError } = await admin.auth.admin.updateUserById(profileId, { ban_duration: BAN_PARA_SEMPRE });
+      if (banError) {
+        console.error("provision-broker-user: inativado sem bloqueio de entrada", banError.message);
+        return json({
+          error: "A pessoa foi inativada (saiu da roleta), mas a entrada no login NÃO foi bloqueada. Tente de novo ou peça ao administrador.",
+        // 409 e não 5xx: a ficha mostra a frase; 5xx vira "a função falhou" genérico.
+        }, 409);
+      }
+      await registrar(profileId, "revoked", alvo.email ?? "");
+      return json({ success: true, access: "inativar", user_id: profileId });
+    }
+
+    if (!ehAdmin) {
       // A tentativa recusada é a que mais interessa auditar — alguém sem papel
       // batendo no endpoint que cria acesso — e era a única que não deixava
       // rastro nenhum. `profile_id` fica nulo: ninguém foi provisionado.

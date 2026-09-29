@@ -92,7 +92,8 @@ export type ProfileFields = ProfileDetails & {
 
 export type PersonSave = {
   id: string;
-  profile: ProfileFields;
+  /** Parcial para quem não é admin: o gestor grava só situação e crachá (0167). */
+  profile: Partial<ProfileFields>;
   /** Conjunto completo de papéis. Omitir = não mexer (quem não é admin). */
   roles?: NewAppRole[];
   /** Gerente da equipe; `null` só encerra a filiação. Omitir = vínculo não mudou. */
@@ -190,7 +191,7 @@ export async function activeTeamIdOfManager(managerId: string): Promise<string> 
   return data[0].id;
 }
 
-export async function updateProfile(profileId: string, fields: ProfileFields): Promise<void> {
+export async function updateProfile(profileId: string, fields: Partial<ProfileFields>): Promise<void> {
   // `.select()` não é enfeite: update que não casa linha nenhuma (RLS de quem
   // não alcança o perfil) volta 204 SEM erro, e a tela dizia "Dados atualizados"
   // sem ter gravado nada — a mesma mentira que GoalRow e applyBulk já fecharam.
@@ -207,6 +208,15 @@ export async function setRoles(profileId: string, roles: NewAppRole[]): Promise<
   if (error) throw dbError("set_profile_roles", error);
 }
 
+/**
+ * Põe a pessoa na equipe, fechando o vínculo anterior, numa operação só (0167).
+ * Admin move qualquer um; o gestor, entre equipes que ele lidera.
+ */
+export async function moveTeamMember(profileId: string, teamId: string): Promise<void> {
+  const { error } = await untyped.rpc("move_team_member", { p_profile_id: profileId, p_team_id: teamId });
+  if (error) throw dbError("move_team_member", error);
+}
+
 export async function setTeamByManager(
   profileId: string,
   managerId: string | null,
@@ -216,11 +226,14 @@ export async function setTeamByManager(
    */
   tinhaEquipe = false,
 ): Promise<void> {
-  let teamId: string | null = null;
-  if (managerId) teamId = await activeTeamIdOfManager(managerId);
-  // Fechar e abrir são dois requests: sem transação, o insert recusado (RLS de
-  // quem não é admin, por exemplo) deixaria a pessoa sem equipe nenhuma. Por
-  // isso guardamos os ids fechados aqui e reabrimos abaixo se o insert falhar.
+  if (managerId) {
+    // Trocar de equipe é UMA operação no banco (0167): fechar e abrir pela
+    // tabela recusava o diretor movendo gente entre as equipes dele — depois de
+    // fechado o vínculo a pessoa deixa de ser visível e o insert batia na RLS.
+    await moveTeamMember(profileId, await activeTeamIdOfManager(managerId));
+    return;
+  }
+  // Sem gerente = sai da equipe: só o fechamento.
   const closed = await supabase
     .from("team_members").update({ left_at: today() }).eq("profile_id", profileId).is("left_at", null).select("id");
   if (closed.error) throw dbError("team_members", closed.error);
@@ -233,18 +246,6 @@ export async function setTeamByManager(
     throw ruleError(
       "Este colaborador pertence a uma equipe que você não administra — peça ao administrador para transferi-lo.",
     );
-  }
-  if (!teamId) return;
-  const opened = await supabase.from("team_members").insert({ team_id: teamId, profile_id: profileId });
-  if (opened.error) {
-    const ids = (closed.data ?? []).map((row) => row.id);
-    // Conferido pelas linhas, não pelo `error`: desde a 0128 o gestor que fechou
-    // pode já não enxergar a pessoa, e a reabertura casa 0 linhas com 204 sem
-    // erro — ela ficava sem equipe e a tela só mostrava a recusa do insert.
-    if (!(await reopenMemberships(ids))) {
-      throw ruleError("A nova equipe foi recusada e a anterior não pôde ser restaurada. Revise o vínculo em Equipes.");
-    }
-    throw dbError("team_members", opened.error);
   }
 }
 
@@ -597,7 +598,13 @@ export function buildPersonSave(
   // aviso e uma ficha meio salva.
   if (isAdmin && form.roles.length === 0) return "Escolha ao menos uma função para o colaborador.";
 
-  const profile: ProfileFields = {
+  // Quem não é admin grava só o crachá (e a situação, abaixo): o banco recusa
+  // qualquer outra coluna vinda do gestor (0167), e reenviar os dados que a
+  // ficha normaliza (trim, CPF só dígitos, "" → null) contaria como mudança.
+  const profile: Partial<ProfileFields> = !isAdmin ? {
+    badge_requested_at: form.badge_requested_at || null,
+    badge_delivered_at: form.badge_delivered_at || null,
+  } : {
     full_name,
     email: (email || "").trim(),
     phone: form.celular || null,

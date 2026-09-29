@@ -21,7 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { slugify } from "@/lib/utils";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { listPeople } from "@/integrations/supabase/newSchema";
-import { activeTeamIdOfManager, createTeamForManager, deactivateTeam, leadsProfile, listTeamLeaderNames } from "@/integrations/supabase/people";
+import { activeTeamIdOfManager, createTeamForManager, deactivateTeam, leadsProfile, listTeamLeaderNames, moveTeamMember } from "@/integrations/supabase/people";
 
 import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
 
@@ -508,31 +508,17 @@ export default function Equipes() {
       let vinculou = 0;
       for (const profileId of ids) {
         if (membrosAtuais.includes(profileId)) continue; // já está nesta equipe
-        // Fecha o vínculo anterior em QUALQUER equipe, inclusive uma que este
-        // gerente não lidera. Nesse caso a RLS casa 0 linhas em silêncio e o
-        // insert seguinte estoura `team_members_one_active` (23505), que vira
-        // "Já existe um registro com esses dados." — frase que não diz nada.
-        const fecha = await supabase
-          .from("team_members")
-          .update({ left_at: hoje })
-          .eq("profile_id", profileId)
-          .is("left_at", null)
-          .select("id");
-        if (fecha.error) {
-          return falha("Não foi possível vincular os corretores", describeError(fecha.error, "Não foi possível encerrar o vínculo anterior."));
-        }
-        const jaTinhaEquipe = brokers.some(b => b.id === profileId && b.manager_id);
-        if (jaTinhaEquipe && !fecha.data?.length) {
+        // Troca de equipe numa operação só (0167). Fechar e abrir pela tabela
+        // recusava o diretor movendo gente entre as equipes DELE: fechado o
+        // vínculo, a pessoa saía do alcance e o insert batia na RLS. A RPC
+        // confere as duas pontas antes e recusa com a frase de quem não lidera.
+        try {
+          await moveTeamMember(profileId, targetTeamId);
+        } catch (error: unknown) {
           return falha(
             "Não foi possível vincular os corretores",
-            `${brokers.find(b => b.id === profileId)?.name ?? "O corretor"} pertence a uma equipe que você não administra — peça ao administrador para transferi-lo.`,
+            `${brokers.find(b => b.id === profileId)?.name ?? "O corretor"}: ${describeError(error, "Tente de novo em instantes.")}`,
           );
-        }
-        const { error } = await supabase
-          .from("team_members")
-          .insert({ team_id: targetTeamId, profile_id: profileId });
-        if (error) {
-          return falha("Não foi possível vincular os corretores", describeError(error, "Tente de novo em instantes."));
         }
         vinculou++;
       }
@@ -1000,6 +986,11 @@ export default function Equipes() {
         // 42501 — inclusive para o diretor editando a PRÓPRIA ficha, que segue
         // de fora.
         podeMudarSituacao={isAdmin || (!!profileEdit && gestorDoAlvo({ id: profileEdit.id, manager_id: profileEdit.manager_id, director_id: profileEdit.director_id }))}
+        // Inativar quem saiu (29/09/2026): diretor da equipe do alvo, nunca a si
+        // mesmo nem outro diretor. A edge confere de novo com o banco.
+        podeInativar={!isAdmin && roles.includes("director") && !!profileEdit
+          && profileEdit.id !== myBrokerId && profileEdit.role !== "director"
+          && profileEdit.director_id === myBrokerId}
         onClose={() => { setProfileEdit(null); load(); }}
         onSaved={() => { setProfileEdit(null); load(); }}
       />

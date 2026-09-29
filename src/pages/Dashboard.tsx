@@ -30,6 +30,7 @@ import {
   useSalesGoal,
   useVgvGoal,
   vazioTotal,
+  rankBy,
   withZeroSellers,
 } from "@/components/dashboard";
 import { useAuth } from "@/contexts/AuthContext";
@@ -94,9 +95,9 @@ export default function Dashboard() {
   const ranking = useMemo(() => {
     const people = payload?.people ?? [];
     return {
-      directors: withZeroSellers(view.directors, people, ["director"]),
-      managers: withZeroSellers(view.managers, people, ["manager"]),
-      general: withZeroSellers(view.general, people, ["broker", "manager", "director"]),
+      directors: withZeroSellers(rankBy(view.rows, "director", people), people, "director"),
+      managers: withZeroSellers(rankBy(view.rows, "manager", people), people, "manager"),
+      general: withZeroSellers(view.brokers, people, "broker"),
       avatars: new Map(people.map((person) => [person.id, person.avatar_url])),
     };
   }, [view, payload?.people]);
@@ -329,19 +330,19 @@ export default function Dashboard() {
             <div className="flex flex-col gap-5">
               <TopBrokers
                 title="Ranking de diretores"
-                description="Vendas das diretorias no período"
+                description="Vendas dos corretores de cada diretoria no período"
                 rows={ranking.directors}
                 avatars={ranking.avatars}
               />
               <TopBrokers
                 title="Ranking de gerentes"
-                description="Vendas das equipes no período"
+                description="Vendas dos corretores das equipes que cada um gerencia"
                 rows={ranking.managers}
                 avatars={ranking.avatars}
               />
               <TopBrokers
                 title="Ranking geral"
-                description="Corretores, gerentes e diretores — uma venda por pessoa em cada negócio; VGV rateado para corretores e total da equipe para gestores"
+                description="Só vendas como corretor do negócio — VGV rateado entre os corretores"
                 rows={ranking.general}
                 avatars={ranking.avatars}
                 scroll
