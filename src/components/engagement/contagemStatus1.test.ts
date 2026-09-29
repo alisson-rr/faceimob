@@ -9,12 +9,11 @@ const catalog = {
 } as never;
 
 const negocio = (status_group_id: string | null, ids: Partial<Record<string, string>>) => ({
-  status_group_id, broker1_id: null, broker2_id: null, broker3_id: null,
-  manager1_id: null, manager2_id: null, manager3_id: null, director1_id: null, director2_id: null, ...ids,
+  status_group_id, broker1_id: null, broker2_id: null, broker3_id: null, ...ids,
 });
 
 describe("contarStatus1PorPessoa", () => {
-  it("conta cada Status 1 por pessoa, em qualquer slot, uma vez por negócio", () => {
+  it("conta cada Status 1 por corretor do negócio; slot de gestor não entra", () => {
     const contagem = contarStatus1PorPessoa([
       negocio("g-venda", { broker1_id: "c1", manager1_id: "g1" }),
       negocio("g-prop", { broker1_id: "c1", broker2_id: "c2", manager1_id: "g1" }),
@@ -24,8 +23,8 @@ describe("contarStatus1PorPessoa", () => {
     ], catalog);
     expect(contagem.get("c1")).toEqual({ VENDA: 1, PROPOSTA: 2, LEGADO: 0, OFF: 0 });
     expect(contagem.get("c2")).toEqual({ VENDA: 0, PROPOSTA: 1, LEGADO: 0, OFF: 1 });
-    expect(contagem.get("g1")).toEqual({ VENDA: 1, PROPOSTA: 1, LEGADO: 0, OFF: 0 });
-    expect(contagem.get("d1")).toEqual({ VENDA: 0, PROPOSTA: 0, LEGADO: 1, OFF: 0 });
+    expect(contagem.has("g1")).toBe(false);
+    expect(contagem.has("d1")).toBe(false);
   });
 
   it("distrato e negócio sem Status 1 ficam de fora", () => {

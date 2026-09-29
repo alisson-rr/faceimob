@@ -141,7 +141,7 @@ function motivoDoErro(error: unknown, fallback: string): string {
 
 export function BrokerEditModal({
   open, broker, managers, directors, onClose, onSaved, isAdmin, podeMudarSituacao = false,
-  criando = false, metas, onDuplicado,
+  criando = false, metas, onDuplicado, podeInativar = false,
 }: {
   open: boolean;
   broker: EditableBroker | null;
@@ -169,6 +169,12 @@ export function BrokerEditModal({
    * na tela e o banco devolvia 42501.
    */
   podeMudarSituacao?: boolean;
+  /**
+   * Diretor que lidera a equipe do alvo: "Inativar — saiu da empresa" (pedido de
+   * 29/09/2026). A edge `provision-broker-user` suspende e bloqueia a entrada
+   * numa chamada só, e confere de novo quem pode.
+   */
+  podeInativar?: boolean;
 }) {
   const [form, setForm] = useState<FormState | null>(null);
   /**
@@ -193,6 +199,7 @@ export function BrokerEditModal({
   const [avisoPapel, setAvisoPapel] = useState<string | null>(null);
   /** Confirmação do desligamento definitivo — a única ação sem volta da ficha. */
   const [confirmarDesligamento, setConfirmarDesligamento] = useState(false);
+  const [confirmarInativacao, setConfirmarInativacao] = useState(false);
   /**
    * A ficha gravou e o ACESSO não (ou o contrário).
    *
@@ -209,6 +216,7 @@ export function BrokerEditModal({
     setNovaFoto(null);
     setAvisoPapel(null);
     setConfirmarDesligamento(false);
+    setConfirmarInativacao(false);
     setAcessoPendente(null);
     setEmailTocado(false);
     if (!broker) {
@@ -316,6 +324,12 @@ export function BrokerEditModal({
   // enxergá-lo (`auth_visible_profiles` só alcança membros das equipes
   // lideradas). O campo fica travado em vez de causar isso em silêncio.
   const equipeTravada = managesTeam;
+  /**
+   * Dados pessoais só o admin edita (pedido de 29/09/2026: "não quero que o
+   * diretor edite os dados dos usuários"). O gestor muda equipe, situação e
+   * crachá; o banco recusa o resto (0167) e `buildPersonSave` nem os envia.
+   */
+  const dadosTravados = !isAdmin && !criando;
   const desligado = (baseline?.status ?? form.status) === "terminated";
   /** Ligar o Switch de quem está DESLIGADO devolve também a entrada no login. */
   const reativando = desligado && form.active === true;
@@ -372,6 +386,24 @@ export function BrokerEditModal({
     }
   };
 
+  /** Diretor: suspende e bloqueia a entrada numa chamada só (a edge confere quem pode). */
+  const inativar = async () => {
+    setSaving(true);
+    try {
+      await chamarProvisionamento({ profile_id: form.id, access: "inativar" });
+      toast({
+        title: "Colaborador inativado",
+        description: "Saiu da roleta e perdeu o acesso. Nada foi apagado; reativar é com o administrador.",
+        variant: "success",
+      });
+      onSaved();
+    } catch (error: unknown) {
+      toast({ title: "Não foi possível inativar", description: motivoDoErro(error, "Tente de novo em instantes."), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async (desligar = false) => {
     // Desligar são DUAS gravações — a ficha e o bloqueio da entrada — e só o
     // administrador faz a segunda (a edge function recusa os demais). Sem esta
@@ -390,11 +422,12 @@ export function BrokerEditModal({
     setSaving(true);
     setAcessoPendente(null);
     try {
-      input.profile.avatar_url = await enviarFoto(form.id);
+      // Foto é dado pessoal: só o admin troca a de outra pessoa (0167).
+      if (isAdmin) input.profile.avatar_url = await enviarFoto(form.id);
       await savePerson(input);
       // A URL nova entra no formulário: sem isto, um Salvar seguinte (a
       // retentativa depois de uma falha) regravaria a foto ANTIGA por cima.
-      upd("avatar_url", input.profile.avatar_url);
+      if (isAdmin) upd("avatar_url", input.profile.avatar_url ?? null);
       descartarFoto();
 
       /**
@@ -672,6 +705,7 @@ export function BrokerEditModal({
             <button
               type="button"
               aria-label="Trocar foto"
+              hidden={dadosTravados}
               onClick={() => fileRef.current?.click()}
               className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-xl p-1.5 border-2 border-background"
             >
@@ -694,9 +728,15 @@ export function BrokerEditModal({
         {/* Fields grid — `fieldset disabled` bloqueia a ficha inteira de uma vez
             enquanto ela carrega: editar antes seria sobrescrito quando a
             resposta chegasse, e depois de falhar seria gravar vazio por cima. */}
+        {dadosTravados && (
+          <p role="status" className="rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
+            Dados pessoais só o administrador altera. Aqui você muda a equipe, a situação e o crachá.
+          </p>
+        )}
         <fieldset disabled={details !== "ready"} className="grid min-w-0 grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Nome completo" className="md:col-span-2">
             <Input
+              disabled={dadosTravados}
               value={form.full_name || ""}
               onChange={e => {
                 upd("full_name", e.target.value);
@@ -788,12 +828,12 @@ export function BrokerEditModal({
             )}
           </fieldset>
 
-          <Field label="CPF"><Input inputMode="numeric" value={form.cpf || ""} onChange={e => upd("cpf", e.target.value)} /></Field>
-          <Field label="Celular"><Input value={form.celular || ""} onChange={e => upd("celular", e.target.value)} /></Field>
-          <Field label="Nascimento"><Input type="date" value={form.birth_date || ""} onChange={e => upd("birth_date", e.target.value)} /></Field>
+          <Field label="CPF"><Input disabled={dadosTravados} inputMode="numeric" value={form.cpf || ""} onChange={e => upd("cpf", e.target.value)} /></Field>
+          <Field label="Celular"><Input disabled={dadosTravados} value={form.celular || ""} onChange={e => upd("celular", e.target.value)} /></Field>
+          <Field label="Nascimento"><Input disabled={dadosTravados} type="date" value={form.birth_date || ""} onChange={e => upd("birth_date", e.target.value)} /></Field>
 
           <Field label="Habilitação">
-            <Select value={form.habilitation || "__none__"} onValueChange={v => upd("habilitation", v === "__none__" ? null : v)}>
+            <Select disabled={dadosTravados} value={form.habilitation || "__none__"} onValueChange={v => upd("habilitation", v === "__none__" ? null : v)}>
               <SelectTrigger aria-label="Habilitação"><SelectValue placeholder="—" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">—</SelectItem>
@@ -803,7 +843,7 @@ export function BrokerEditModal({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="CRECI"><Input value={form.creci || ""} onChange={e => upd("creci", e.target.value)} /></Field>
+          <Field label="CRECI"><Input disabled={dadosTravados} value={form.creci || ""} onChange={e => upd("creci", e.target.value)} /></Field>
           {/* `profiles_guard_admin_columns` (0012) levanta 42501 quando quem
               não é admin (nem gestor do alvo) mexe em `hired_at`. O campo era
               oferecido a todos: um diretor SEM equipe editando a própria ficha
@@ -816,9 +856,9 @@ export function BrokerEditModal({
             <Input type="date" disabled={!isAdmin} value={form.hired_at || ""} onChange={e => upd("hired_at", e.target.value)} />
           </Field>
 
-          <Field label="Endereço" className="md:col-span-3"><Input value={form.address || ""} onChange={e => upd("address", e.target.value)} /></Field>
-          <Field label="Divisão"><Input value={form.division || ""} onChange={e => upd("division", e.target.value)} /></Field>
-          <Field label="Indicação" className="md:col-span-2"><Input value={form.indication || ""} onChange={e => upd("indication", e.target.value)} /></Field>
+          <Field label="Endereço" className="md:col-span-3"><Input disabled={dadosTravados} value={form.address || ""} onChange={e => upd("address", e.target.value)} /></Field>
+          <Field label="Divisão"><Input disabled={dadosTravados} value={form.division || ""} onChange={e => upd("division", e.target.value)} /></Field>
+          <Field label="Indicação" className="md:col-span-2"><Input disabled={dadosTravados} value={form.indication || ""} onChange={e => upd("indication", e.target.value)} /></Field>
 
           {/* Situação. O Switch sozinho só sabia dizer ativo/suspenso, e
               `profile_status` tem TRÊS valores: `terminated` existe no enum
@@ -863,6 +903,18 @@ export function BrokerEditModal({
                 onClick={() => setConfirmarDesligamento(true)}
               >
                 Desligar definitivamente
+              </Button>
+            )}
+            {podeInativar && !isAdmin && !desligado && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="ml-auto border-destructive/40 text-destructive"
+                disabled={details !== "ready" || saving}
+                onClick={() => setConfirmarInativacao(true)}
+              >
+                Inativar — saiu da empresa
               </Button>
             )}
           </div>
@@ -1056,6 +1108,27 @@ export function BrokerEditModal({
             onClick={() => { setConfirmarDesligamento(false); void save(true); }}
           >
             Desligar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog open={confirmarInativacao} onOpenChange={setConfirmarInativacao}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-sm">Inativar {form.full_name || form.name}?</AlertDialogTitle>
+          <AlertDialogDescription className="text-xs">
+            Sai da roleta e perde o acesso ao sistema agora. Nada é apagado: leads, negócios e
+            histórico ficam onde estão. Reativar é com o administrador.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel className="text-xs">Voltar</AlertDialogCancel>
+          <AlertDialogAction
+            className="text-xs"
+            onClick={() => { setConfirmarInativacao(false); void inativar(); }}
+          >
+            Inativar
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

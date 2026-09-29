@@ -19,6 +19,7 @@ import { INTEGRATION_SLOTS, slotKey, validarCredencial, type IntegrationSlot } f
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { MetaAdsAccountsCard } from "@/components/marketing/MetaAdsAccountsCard";
+import { MetaLeadsDiagnosticoCard } from "@/components/marketing/MetaLeadsDiagnosticoCard";
 
 const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-ads-webhook`;
 /** O SDR só responde no WhatsApp se ESTE webhook também estiver assinado, no
@@ -453,6 +454,7 @@ export default function MetaAdsSetup() {
       {/* Fora do `loaded`: ler `meta_ad_accounts` depende de `reports.view_finance`,
           não do cofre. Quem leva 42501 em `list_integrations` continua vendo as
           contas salvas, no modo leitura do próprio card. */}
+      <MetaLeadsDiagnosticoCard />
       <MetaAdsAccountsCard />
 
       <SectionCard title="Passo a passo">

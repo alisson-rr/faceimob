@@ -506,72 +506,81 @@ export const participantsOf = (
 };
 
 /**
- * Ranking por participante, com o rateio do banco.
+ * Ranking por papel (pedido de 29/09/2026), com o rateio do banco.
  *
- * Ler so `broker1_id` credita a venda e o VGV inteiros ao primeiro corretor e
- * some com o coparticipante — o mesmo negocio aparecia com valor diferente aqui
- * e na Gamificacao. A venda conta para CADA participante (a convencao do
- * trigger `deals_award_points`, que da um evento 'venda' por corretor) e o VGV
- * do corretor divide por quantos corretores o negocio tem, que e o `100/n` de
- * `recalc_deal_shares`. Gerente e diretor somam o valor cheio: o `share_pct`
- * deles e 0 no banco por definicao.
+ *   · corretor (e o ranking geral): só os negócios em que a pessoa é CORRETOR.
+ *     A venda conta para cada corretor (a convenção de `deals_award_points`) e o
+ *     VGV divide por quantos corretores o negócio tem — o `100/n` de
+ *     `recalc_deal_shares`;
+ *   · gerente: a soma dos corretores das equipes em que ele é `teams.manager_id`;
+ *   · diretor: a soma dos corretores das equipes em que ele é `teams.director_id`.
  *
- * O divisor conta TODOS os slots preenchidos, e o nome sempre chega: a RPC
- * `deal_participant_names()` e SECURITY DEFINER e nao passa por
- * `auth_visible_profiles()`. O `continue` abaixo e guarda contra perfil sem
- * `full_name`, nao caminho de rotina — o rodape que contava "N sem nome, fora
- * do seu alcance de visibilidade" descrevia um comportamento que o banco nao
- * tem, e saiu junto com `hiddenParticipants` em 02/09/2026.
+ * Gestor NÃO sai mais do slot de gerente/diretor do negócio, nem ganha o valor
+ * cheio de todo negócio em que aparece: era isso que punha o diretor no ranking
+ * de gerentes vencendo gerentes, e no geral esmagando o resultado individual.
+ * Quem acumula papéis aparece em cada ranking com os números daquele papel.
+ * Negócio com dois corretores da mesma equipe é UMA venda do gerente, com a
+ * soma das duas fatias.
  *
- * ponytail: o rateio e DERIVADO (100/n) porque `LegacyDealRecord` nao carrega
- * `share_pct`; evoluir para ler a coluna quando `deal_participants.share_pct`
- * puder ser editado a mao e deixar de ser 100/n.
+ * A equipe é a ATUAL do corretor (`people`, recortado pela RLS de quem olha).
+ * ponytail: corretor que troca de equipe leva o histórico para a equipe nova;
+ * evoluir para a equipe da data do negócio quando `team_members` for lido com
+ * `joined_at`/`left_at` no período.
+ *
+ * O `continue` do nome é guarda contra perfil sem `full_name`, não caminho de
+ * rotina: `deal_participant_names()` é SECURITY DEFINER e sempre devolve o nome.
  */
-export const rankBy = (rows: DealRow[], role: RankRole | "all"): RankRow[] => {
-  const map = new Map<string, RankRow>();
+export const rankBy = (rows: DealRow[], role: RankRole, people: PersonRecord[] = []): RankRow[] => {
+  const map = new Map<string, RankRow & { deals?: Set<string> }>();
+  const personById = new Map(people.map((person) => [person.id, person]));
   for (const deal of rows) {
     if (dealCategory(deal) !== "venda") continue;
-    // No geral, cada pessoa conta uma vez: corretor conserva o rateio, gestor
-    // recebe o VGV da equipe. Quem acumula papéis recebe a maior dessas fatias.
-    const byPerson = new Map<string, { id: string; name: string | null; share: number }>();
-    for (const currentRole of role === "all" ? ["broker", "manager", "director"] as const : [role]) {
-      const participants = participantsOf(deal, currentRole);
-      const share = (deal.deal_value || 0) / (currentRole === "broker" ? participants.length : 1);
-      for (const person of participants) byPerson.set(person.id, { ...person, share });
-    }
-    const people = [...byPerson.values()];
-    if (!people.length) continue;
-    for (const person of people) {
-      if (!person.name) continue;
-      const entry = map.get(person.id) ?? { id: person.id, name: person.name, vendas: 0, vgv: 0 };
-      entry.vendas += 1;
-      entry.vgv += person.share;
-      map.set(person.id, entry);
+    const brokers = participantsOf(deal, "broker");
+    const share = (deal.deal_value || 0) / (brokers.length || 1);
+    for (const broker of brokers) {
+      let id: string | null = broker.id;
+      let name = broker.name;
+      if (role !== "broker") {
+        const team = personById.get(broker.id);
+        id = (role === "manager" ? team?.manager_id : team?.director_id) ?? null;
+        name = id ? personById.get(id)?.name ?? null : null;
+      }
+      if (!id || !name) continue;
+      const entry = map.get(id) ?? { id, name, vendas: 0, vgv: 0, deals: new Set<string>() };
+      if (!entry.deals?.has(deal.id)) {
+        entry.deals?.add(deal.id);
+        entry.vendas += 1;
+      }
+      entry.vgv += share;
+      map.set(id, entry);
     }
   }
   // Desempate final pelo NOME, como o banco faz ao congelar a temporada
   // (`close_game_season`: `order by r.points desc, r.full_name`) e como a
-  // Gamificacao ja fazia na tela (`ordenarRanking`). Sem ele a ordem do empate
-  // era a de insercao no `Map`, ou seja, a ordem em que os NEGOCIOS chegaram
-  // (`listLegacyDeals` pede `created_at desc, id`): dois corretores no mesmo
-  // negocio rateado empatam sempre — 1 venda cada e `deal_value / 2` de VGV,
-  // identicos ate o centavo — e trocavam de degrau no podio a cada negocio novo
-  // cadastrado. `pt-BR` porque "Ana" tem de vir antes de "Ávila" e de "Bruno".
-  return Array.from(map.values())
+  // Gamificacao ja fazia na tela (`ordenarRanking`). Sem ele dois corretores do
+  // mesmo negocio rateado — sempre empatados — trocavam de degrau a cada negocio
+  // novo. `pt-BR` porque "Ana" tem de vir antes de "Ávila" e de "Bruno".
+  return Array.from(map.values(), ({ id, name, vendas, vgv }) => ({ id, name, vendas, vgv }))
     .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv || a.name.localeCompare(b.name, "pt-BR"));
 };
 
 /**
- * O ranking do período com quem não vendeu (pedido de 28/09/2026): todo ATIVO
- * do papel entra zerado, abaixo de quem vendeu. Inativo só aparece se vendeu no
+ * O ranking do período com quem não vendeu (pedido de 28/09/2026): entra zerado,
+ * abaixo de quem vendeu, todo ATIVO do papel. Inativo só aparece se vendeu no
  * período — já está em `ranked`, que sai dos negócios — e some no mês seguinte.
- * A ordem é a mesma de `rankBy`: vendas, VGV e, entre zerados, o nome.
+ *
+ * Do papel, pela mesma régua de `rankBy`: no de corretores, quem tem corretor
+ * como papel PRINCIPAL (toda conta nova ganha `broker`, e o diretor zerado no
+ * pé do ranking geral era ruído); no de gestores, quem lidera equipe de fato.
+ * A ordem é a de `rankBy`: vendas, VGV e, entre zerados, o nome.
  */
-export const withZeroSellers = (ranked: RankRow[], people: PersonRecord[], roles: RankRole[]): RankRow[] => {
+export const withZeroSellers = (ranked: RankRow[], people: PersonRecord[], role: RankRole): RankRow[] => {
   const ranqueados = new Set(ranked.map((row) => row.id));
+  const lideres = new Set(people.map((person) => (role === "manager" ? person.manager_id : person.director_id)));
+  const doPapel = (person: PersonRecord) =>
+    role === "broker" ? person.role === "broker" : person.roles.includes(role) && lideres.has(person.id);
   const zerados = people
-    .filter((person) => person.active && !ranqueados.has(person.id))
-    .filter((person) => person.roles.some((role) => (roles as string[]).includes(role)))
+    .filter((person) => person.active && !ranqueados.has(person.id) && doPapel(person))
     .map((person) => ({ id: person.id, name: person.name, vendas: 0, vgv: 0 }));
   return [...ranked, ...zerados]
     .sort((a, b) => b.vendas - a.vendas || b.vgv - a.vgv || a.name.localeCompare(b.name, "pt-BR"));
@@ -629,9 +638,6 @@ export function monthView(deals: DealRow[], activeMonth: string) {
     previous,
     developers,
     brokers: rankBy(rows, "broker"),
-    managers: rankBy(rows, "manager"),
-    directors: rankBy(rows, "director"),
-    general: rankBy(rows, "all"),
   };
 }
 
