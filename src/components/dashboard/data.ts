@@ -18,6 +18,7 @@ import { dealsQuery } from "@/components/pipeline/data";
 import { format, parseISO } from "date-fns";
 import {
   compareMonth,
+  contaComoVenda,
   currentMonthBase,
   isLossStatus,
   normalizeStatus,
@@ -415,8 +416,9 @@ const encerraSemPerda = (status: string | null | undefined): boolean => {
  *
  * Decisao de 02/09/2026 (recomendacao do inventario).
  */
-export const dealCategory = (deal: Pick<DealRow, "outcome" | "status">): DealCategory => {
-  if (deal.outcome === "won") return "venda";
+export const dealCategory = (deal: Pick<DealRow, "outcome" | "status" | "status_group_code">): DealCategory => {
+  // Fechado ou Status 1 VENDA (Em contrato…): a regra única de `contaComoVenda`.
+  if (contaComoVenda(deal)) return "venda";
   if (deal.outcome === "open") return "producao";
   if (deal.outcome === "lost") return encerraSemPerda(deal.status) ? "fora" : "perda";
   return "fora"; // 'cancelled' nao e perda: e negocio que deixou de existir.

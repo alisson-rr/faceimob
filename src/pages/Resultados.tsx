@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import { listLegacyDeals } from "@/integrations/supabase/newSchema";
 import { listAnnualResults, upsertAnnualResult, type AnnualResultRow } from "@/integrations/supabase/analytics";
+import { contaComoVenda } from "@/lib/dealStatus";
 import { brl, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 
@@ -184,7 +185,7 @@ export default function Resultados() {
     try {
       const deals = await listLegacyDeals();
       const byMonth = new Map<number, { sales: number; vgv: number }>();
-      const ganhos = deals.filter((deal) => deal.outcome === "won" && deal.month_base);
+      const ganhos = deals.filter((deal) => contaComoVenda(deal) && deal.month_base);
       ganhos
         .forEach((deal) => {
           const [month, year] = deal.month_base!.split("/").map(Number);

@@ -282,7 +282,7 @@ describe("desempenho · carga dos negócios", () => {
 
     expect(lista).toHaveLength(N_NEGOCIOS);
     const esperado = paginas("deals") + paginas("deal_clients") + paginas("deal_participants")
-      + paginas("rpc/deal_participant_names") + 1 /* visits */ + 3 /* catálogos */;
+      + paginas("rpc/deal_participant_names") + 1 /* visits */ + 4 /* catálogos: etapas, construtoras, empreendimentos, Status 1 */;
     expect(h.state.requisicoes).toHaveLength(esperado);
     // Em cadeia, cada tabela paginada tem no máximo uma requisição em voo (8 ao
     // todo). Mais que isso só acontece com as faixas saindo juntas.

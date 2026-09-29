@@ -136,3 +136,15 @@ export const closableMonths = (
   if (seasonMonth) all.add(seasonMonth);
   return [...all].filter((month) => !closed.has(month)).sort((a, b) => compareMonth(b, a));
 };
+
+/**
+ * Venda, em TODO o app (pedido de 29/09/2026: "coloquei em contrato, esse
+ * Status 2 deve contar como venda e ponto de game"): negócio fechado, ou ainda
+ * aberto com Status 1 VENDA (Em contrato, Assinado, Ass. banco, RC emitida).
+ * É a mesma regra do jogo no banco (`deal_counts_as_game_sale`, 0163), e o
+ * Dashboard, o Painel e os rankings passam a contar igual.
+ */
+export const contaComoVenda = (deal: {
+  outcome: string;
+  status_group_code?: string | null;
+}): boolean => deal.outcome === "won" || (deal.outcome === "open" && deal.status_group_code === "VENDA");

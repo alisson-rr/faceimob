@@ -7,7 +7,7 @@ import { dealsForLeader } from "@/components/pipeline/filters";
 import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
 import type { LegacyDealRecord, PersonRecord } from "@/integrations/supabase/newSchema";
 import { brl, num } from "@/lib/format";
-import { bareStatus } from "@/lib/dealStatus";
+import { bareStatus, contaComoVenda } from "@/lib/dealStatus";
 
 export type PipelinePanelData = {
   deals: LegacyDealRecord[];
@@ -29,8 +29,9 @@ export function ResultadosDoPipeline({ deals, people, period, loading, error, on
     : director ? dealsForLeader(deals, people, scope === "all" || scope === "own" ? ownId : scope, scope !== "all")
       : manager ? dealsForLeader(deals, people, ownId, true)
         : deals.filter((d) => [d.broker1_id, d.broker2_id, d.broker3_id].includes(ownId));
-  const proposals = scoped.filter((d) => d.outcome === "open");
-  const sales = scoped.filter((d) => d.outcome === "won");
+  // Venda = fechado ou Status 1 VENDA (Em contrato…), a mesma regra da Dashboard.
+  const sales = scoped.filter(contaComoVenda);
+  const proposals = scoped.filter((d) => d.outcome === "open" && !contaComoVenda(d));
   const vgv = sales.reduce((sum, d) => {
     if (isAdmin || director || manager) return sum + d.deal_value;
     const brokers = [

@@ -137,6 +137,45 @@ const mesesDoSeletor = (atual?: string): string[] => {
   return meses;
 };
 
+type Lideranca = Pick<PersonRecord, "id" | "manager_id" | "director_id">;
+
+/**
+ * Gerente N e Diretor N sugeridos ao trocar o Corretor N. Trocar o corretor
+ * troca a sugestão: quando o novo corretor não tem líder a sugerir (sem equipe,
+ * líder fora da lista, ou o líder já está em outro slot), o líder que o
+ * corretor ANTERIOR tinha posto no slot sai — antes ele ficava, e o negócio
+ * gravava o gerente da equipe errada. Líder escolhido à mão, que não era o do
+ * corretor anterior, fica.
+ */
+export function sugestaoDeLideres(
+  form: Pick<SaveLegacyDealInput, "broker1_id" | "broker2_id" | "broker3_id" | "manager1_id" | "manager2_id"
+    | "manager3_id" | "director1_id" | "director2_id">,
+  brokerId: string | null,
+  slot: 1 | 2 | 3,
+  people: Lideranca[],
+  managers: { id: string }[],
+  directors: { id: string }[],
+): Partial<SaveLegacyDealInput> {
+  const campoGerente = (["manager1_id", "manager2_id", "manager3_id"] as const)[slot - 1];
+  const campoDiretor = slot < 3 ? (["director1_id", "director2_id"] as const)[slot - 1] : null;
+  const anterior = people.find((person) => person.id === form[(["broker1_id", "broker2_id", "broker3_id"] as const)[slot - 1]]);
+  const corretor = people.find((person) => person.id === brokerId);
+  const gerentes = [form.manager1_id, form.manager2_id, form.manager3_id];
+  const diretores = [form.director1_id, form.director2_id];
+  const gerente = corretor?.manager_id && managers.some((p) => p.id === corretor.manager_id)
+    && !gerentes.some((id, i) => i !== slot - 1 && id === corretor.manager_id) ? corretor.manager_id : null;
+  const diretor = campoDiretor && corretor?.director_id && directors.some((p) => p.id === corretor.director_id)
+    && !diretores.some((id, i) => i !== slot - 1 && id === corretor.director_id) ? corretor.director_id : null;
+  const patch: Partial<SaveLegacyDealInput> = {};
+  if (gerente) patch[campoGerente] = gerente;
+  else if (anterior?.manager_id && form[campoGerente] === anterior.manager_id) patch[campoGerente] = null;
+  if (campoDiretor) {
+    if (diretor) patch[campoDiretor] = diretor;
+    else if (anterior?.director_id && form[campoDiretor] === anterior.director_id) patch[campoDiretor] = null;
+  }
+  return patch;
+}
+
 export function DealForm({ form, onChange, field, people, developers, stages, isNew, developerError }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const canExitStage = useCanExitStage();
@@ -174,6 +213,21 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
   // muda é o cadastro de status. Negócio novo ainda escolhe onde nasce, e o
   // admin segue podendo corrigir à mão.
   const etapaSegueStatus = !isNew && !isAdmin;
+  // A etapa que o Status 2 leva (cadastro de status, 0164), se houver. Fechado
+  // e Perdido ficam de fora: esses o gravador decide pelo desfecho.
+  const etapaDoStatus = (value: string | null | undefined) => {
+    const indice = catalog.indexByKey.get(statusKey(value));
+    const stageId = indice === undefined ? null : catalog.statuses[indice].stage_id;
+    const code = stages.find((stage) => stage.id === stageId)?.code;
+    return code && code !== "closed" && code !== "lost" ? (code as DealStage) : null;
+  };
+  // Status 2 trocado agora (o Status 1 volta à derivação, ver o Select): a
+  // ficha já mostra a etapa para onde o banco vai levar o negócio ao salvar,
+  // em vez da antiga. Só exibição — quem move é o gatilho `deals_ab_status_stage`;
+  // mandar a etapa junto faria `deals_guard_stage` cobrar a matriz de etapas.
+  const etapaExibida = etapaSegueStatus && form.status_group_id === undefined
+    ? etapaDoStatus(form.status) ?? form.stage
+    : form.stage;
   const canLeaveStage = !etapaSegueStatus && (isNew || !form.stage_id || canExitStage(form.stage_id));
 
   // A etapa de perda fica fora da lista (ver o comentário do Select). As
@@ -234,21 +288,8 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
    * que não enxerga o gerente, não há sugestão na tela: o gatilho
    * `deal_participants_autofill` vincula a equipe ao salvar, como já fazia.
    */
-  const sugestaoDaEquipe = (brokerId: string | null, slot: 1 | 2 | 3): Partial<SaveLegacyDealInput> => {
-    const corretor = people.find((person) => person.id === brokerId);
-    const gerentes = [form.manager1_id, form.manager2_id, form.manager3_id];
-    const diretores = [form.director1_id, form.director2_id];
-    const gerente = corretor?.manager_id && managers.some((p) => p.id === corretor.manager_id)
-      && !gerentes.some((id, i) => i !== slot - 1 && id === corretor.manager_id) ? corretor.manager_id : null;
-    const diretor = slot < 3 && corretor?.director_id && directors.some((p) => p.id === corretor.director_id)
-      && !diretores.some((id, i) => i !== slot - 1 && id === corretor.director_id) ? corretor.director_id : null;
-    const campoGerente = (["manager1_id", "manager2_id", "manager3_id"] as const)[slot - 1];
-    const campoDiretor = (["director1_id", "director2_id"] as const)[slot - 1];
-    return {
-      ...(gerente ? { [campoGerente]: gerente } : {}),
-      ...(diretor && campoDiretor ? { [campoDiretor]: diretor } : {}),
-    };
-  };
+  const sugestaoDaEquipe = (brokerId: string | null, slot: 1 | 2 | 3) =>
+    sugestaoDeLideres(form, brokerId, slot, people, managers, directors);
 
   const loadProjects = useCallback(async (developerName: string) => {
     const developer = developers.find((row) => row.name === developerName);
@@ -570,7 +611,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
         <div>
           <Label htmlFor={field("stage")} className="text-eyebrow">Etapa</Label>
           <Select
-            value={form.stage} disabled={!canLeaveStage}
+            value={etapaExibida} disabled={!canLeaveStage}
             onValueChange={(v) => onChange({ stage: v as DealStage })}
           >
             {/* Desabilitado, e não escondido: um campo que some não ensina de
@@ -679,7 +720,12 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
               banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
               antigo junto seria uma troca manual que ninguém pediu. */}
-          <Select value={form.status} disabled={!can("deals.edit_status_detail")} onValueChange={(v) => onChange({ status: v, status_group_id: undefined })}>
+          <Select value={form.status} disabled={!can("deals.edit_status_detail")} onValueChange={(v) => {
+            // O admin, que escolhe a etapa à mão, vê a etapa do Status 2 já
+            // selecionada e continua podendo trocar. A matriz dele é inteira.
+            const etapa = isAdmin ? etapaDoStatus(v) : null;
+            onChange({ status: v, status_group_id: undefined, ...(etapa ? { stage: etapa } : {}) });
+          }}>
             <SelectTrigger
               id={field("status")}
               className="mt-1 text-xs"

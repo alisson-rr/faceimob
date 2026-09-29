@@ -117,6 +117,14 @@ describe("dealCategory — o outcome manda, o Status 2 é detalhe", () => {
     expect(dealCategory(venda({ status: "" }))).toBe("venda");
   });
 
+  it("aberto com Status 1 VENDA (Em contrato…) já é venda", () => {
+    // Pedido de 29/09/2026: o Painel contava 21, o Dashboard 38, e a 39ª —
+    // posta "Em contrato" — não entrava em nenhum. É a mesma regra do game (0163).
+    expect(dealCategory(deal({ status: "04. EM CONTRATO", status_group_code: "VENDA" }))).toBe("venda");
+    expect(dealCategory(deal({ status: "PROPOSTA", status_group_code: "PROPOSTA" }))).toBe("producao");
+    expect(dealCategory(deal({ outcome: "lost", status: "18. QUEDA", status_group_code: "VENDA" }))).toBe("perda");
+  });
+
   it("negócio aberto é produção, com qualquer rótulo", () => {
     expect(dealCategory(deal({ status: "13. ESTEIRA AGIL" }))).toBe("producao");
     expect(dealCategory(deal({ status: "16. PENDENTE" }))).toBe("producao");

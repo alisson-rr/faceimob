@@ -56,6 +56,9 @@ export type LegacyDealRecord = PipelineDeal & {
   /** Status 1 (`deal_status_groups.id`, 0149). O banco o deriva do Status 2;
    *  `null` = Status 2 fora do catálogo. */
   status_group_id: string | null;
+  /** Código imutável do Status 1 (`deal_status_groups.code`: VENDA, PROPOSTA…).
+   *  É o que decide se um negócio aberto já conta como venda (`contaComoVenda`). */
+  status_group_code?: string | null;
   /** Motivo da perda gravado no banco. O gravador precisa dele para NÃO
    *  reescrevê-lo a cada salvamento do modal. */
   lost_reason: string | null;
@@ -434,6 +437,7 @@ export async function listLegacyDeals(
     participantsRes,
     participantNamesRes,
     visitsRes,
+    gruposRes,
   ] = await Promise.all([
     recortados ?? allRows(negocios(null)),
     db.from("pipeline_stages").select("id,code,label,position").abortSignal(sinal),
@@ -468,6 +472,9 @@ export async function listLegacyDeals(
       const query = db.from("visits").select("deal_id,scheduled_at,result", { count }).not("deal_id", "is", null);
       return (lote ? query.in("deal_id", lote) : query).order("id").range(from, to).abortSignal(sinal);
     }),
+    // Status 1 pelo código: "Em contrato" (Status 1 VENDA) conta como venda
+    // antes do Fechado, como já contava no jogo (0163).
+    db.from("deal_status_groups").select("id,code").abortSignal(sinal),
   ]);
 
   throwIfError("deals", dealsRes);
@@ -480,6 +487,8 @@ export async function listLegacyDeals(
   throwIfError("deal_participants", participantsRes);
   throwIfError("deal_participant_names", participantNamesRes);
   throwIfError("visits", visitsRes);
+  throwIfError("deal_status_groups", gruposRes);
+  const grupoCodigo = new Map((gruposRes.data || []).map((row) => [row.id, row.code]));
 
   const stageById = new Map((stagesRes.data || []).map((row) => [row.id, row]));
   const developerById = new Map(
@@ -586,6 +595,7 @@ export async function listLegacyDeals(
       status: deal.status_detail || legacyStatus(deal.outcome, deal.lost_reason),
       status_detail: deal.status_detail,
       status_group_id: deal.status_group_id,
+      status_group_code: deal.status_group_id ? grupoCodigo.get(deal.status_group_id) ?? null : null,
       lost_reason: deal.lost_reason,
       stage: (stage?.code || "incomplete") as PipelineDeal["stage"],
       stage_id: deal.stage_id,
