@@ -49,19 +49,31 @@ docker run -d --name "$CONTAINER" \
   -e POSTGRES_DB=postgres \
   "$IMAGE" >/dev/null
 
-# Espera o Postgres aceitar conexões. pg_isready sobe antes do initdb terminar
-# de recriar o cluster, então checamos com uma query real.
-for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER" psql -U postgres -q -c 'select 1' >/dev/null 2>&1; then
+# Espera o Postgres DEFINITIVO. A imagem sobe antes um servidor provisório,
+# só no socket local, para rodar a inicialização, e o derruba em seguida: um
+# `select 1` pelo socket acertava o provisório e o primeiro arquivo levava
+# "terminating connection due to administrator command" (CI de 29/09/2026).
+# O provisório não escuta TCP, então conectar por 127.0.0.1 só passa no
+# servidor que fica.
+psql_tcp() {
+  docker exec -i -e PGPASSWORD="$PGPASS" "$CONTAINER" psql -h 127.0.0.1 -U postgres "$@"
+}
+pronto=0
+for _ in $(seq 1 120); do
+  if psql_tcp -q -c 'select 1' >/dev/null 2>&1; then
+    pronto=1
     break
   fi
   sleep 0.5
 done
+if [[ $pronto -ne 1 ]]; then
+  echo "Postgres não ficou pronto em 60 s." >&2
+  exit 1
+fi
 
 run_sql() {
   local file="$1"
-  docker exec -i "$CONTAINER" \
-    psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f - < "$file"
+  psql_tcp -d postgres -v ON_ERROR_STOP=1 -q -f - < "$file"
 }
 
 echo "==> stubs do ambiente Supabase"
