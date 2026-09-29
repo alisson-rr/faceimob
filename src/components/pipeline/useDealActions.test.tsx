@@ -3,62 +3,73 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { toast } from "@/components/ui/sonner";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { updateDeal } from "./data";
-import type { PipelineStage } from "./stages";
+import {
+  buildDealStatusCatalog, moveDealStatus, type DealStatusCatalog,
+} from "@/integrations/supabase/dealStatuses";
+import { catalogoDeTeste } from "./statusCatalog.fixture";
 import { useDealActions } from "./useDealActions";
 
 /**
- * Avisos de etapa e de Status 2: o sucesso só depois do servidor, curto (gesto
- * repetido), fora da venda que ganha o card do `EngagementLayer` e, na recusa
- * do banco, erro traduzido — nunca sucesso.
+ * Mover o Status 2 (0164): um caminho só para o kanban, o teclado e a tabela.
+ * O destino decide o caminho (direto, observação, envio para análise, perda) e a
+ * matriz por função decide se pode — antes da escrita, com a frase do banco.
  */
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const h = vi.hoisted(() => ({
+  auth: { isAdmin: true, roles: ["admin"] as string[], can: (_code: string) => true },
+}));
 
 vi.mock("@/components/ui/sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
-vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ canEnterStage: () => true, isAdmin: true, can: () => true }),
-}));
-vi.mock("./data", () => ({
-  updateDeal: vi.fn(),
-  useCanExitStage: () => () => true,
-  useInvalidateDeals: () => async () => undefined,
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => h.auth }));
+vi.mock("./data", () => ({ useInvalidateDeals: () => async () => undefined }));
+vi.mock("@/integrations/supabase/dealStatuses", async (original) => ({
+  ...(await original<typeof import("@/integrations/supabase/dealStatuses")>()),
+  moveDealStatus: vi.fn(),
 }));
 
-const proposta: PipelineStage = { id: "s-proposal", code: "proposal", label: "Proposta", position: 2 };
-const visita: PipelineStage = { id: "s-visit", code: "visit_scheduled", label: "Visita agendada", position: 3 };
-const analise: PipelineStage = { id: "s-analysis", code: "under_analysis", label: "Em análise", position: 4 };
-const fechado: PipelineStage = { id: "s-closed", code: "closed", label: "Fechado", position: 7 };
-
-// Cast: o hook e `blockedMoveReason` só leem estes campos do negócio.
+// Cast: o hook só lê estes campos do negócio.
 const negocio = {
-  id: "d1", client: "Cliente", stage: "proposal", stage_id: "s-proposal", stage_label: "Proposta",
-  month_base: "08/2026", document_review_status: "approved", broker1_id: "b1",
+  id: "d1", client: "Cliente", status: "08. VIROU NEGÓCIO", month_base: "08/2026",
+  document_review_status: "approved", broker1_id: "b1",
 } as LegacyDealRecord;
 // Sem corretor no rateio o banco não lança `venda` em `game_events`: não há card.
 const soComGerente = { ...negocio, broker1_id: null, manager1_id: "g1" } as LegacyDealRecord;
 
+const porValor = (catalog: DealStatusCatalog, value: string) =>
+  catalog.statuses.find((status) => status.value === value)!;
+
+let catalog = catalogoDeTeste;
+const perda = vi.fn();
+const texto = vi.fn();
 let actions: ReturnType<typeof useDealActions>;
 function Harness() {
-  actions = useDealActions({
-    stages: [proposta, visita, analise, fechado], closedMonths: [], onNeedsLossConfirmation: () => undefined,
-  });
+  actions = useDealActions({ catalog, closedMonths: [], onNeedsLossConfirmation: perda, onNeedsText: texto });
   return null;
 }
 
 let root: Root;
 let container: HTMLElement;
 
-describe("useDealActions · avisos de etapa e status", () => {
+const montar = async () => {
+  container = document.body.appendChild(document.createElement("div"));
+  root = createRoot(container);
+  await act(async () => { root.render(<Harness />); });
+};
+
+describe("useDealActions · mover o Status 2", () => {
   beforeEach(async () => {
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.info).mockClear();
-    vi.mocked(updateDeal).mockReset();
-    container = document.body.appendChild(document.createElement("div"));
-    root = createRoot(container);
-    await act(async () => { root.render(<Harness />); });
+    vi.mocked(moveDealStatus).mockReset();
+    perda.mockClear();
+    texto.mockClear();
+    catalog = catalogoDeTeste;
+    h.auth = { isAdmin: true, roles: ["admin"], can: () => true };
+    await montar();
   });
 
   afterEach(async () => {
@@ -66,90 +77,67 @@ describe("useDealActions · avisos de etapa e status", () => {
     container.remove();
   });
 
-  it("confirma com sucesso curto depois de gravar", async () => {
-    vi.mocked(updateDeal).mockResolvedValue(undefined);
-    await act(async () => { await actions.moveDeal(negocio, visita); });
+  it("status comum grava pela RPC e confirma com o nome do status", async () => {
+    vi.mocked(moveDealStatus).mockResolvedValue(undefined);
+    await act(async () => { await actions.moveStatus(negocio, "16. PENDENTE"); });
 
-    expect(updateDeal).toHaveBeenCalledWith("d1", { stage_id: "s-visit" });
-    expect(toast.success).toHaveBeenCalledWith("Negócio movido para Visita agendada", { duration: 2500 });
-    expect(toast.error).not.toHaveBeenCalled();
+    expect(moveDealStatus).toHaveBeenCalledWith("d1", "16. PENDENTE");
+    expect(toast.success).toHaveBeenCalledWith("Negócio movido para PENDENTE", { duration: 2500 });
   });
 
-  it("não soma sucesso ao card de venda quando vai para Fechado com corretor", async () => {
-    vi.mocked(updateDeal).mockResolvedValue(undefined);
-    await act(async () => { await actions.moveDeal(negocio, fechado); });
+  it("Status 1 VENDA com corretor deixa a confirmação para o card de venda; sem corretor confirma", async () => {
+    vi.mocked(moveDealStatus).mockResolvedValue(undefined);
+    await act(async () => { await actions.moveStatus(negocio, "02. ASS. BANCO"); });
+    expect(toast.success, "o toast duplicou o card de venda").not.toHaveBeenCalled();
 
-    expect(updateDeal).toHaveBeenCalledWith("d1", { stage_id: "s-closed" });
-    expect(toast.success, "o toast de sucesso duplicou o card de venda").not.toHaveBeenCalled();
+    await act(async () => { await actions.moveStatus(soComGerente, "02. ASS. BANCO"); });
+    expect(toast.success).toHaveBeenCalledWith("Negócio movido para Assinado no banco", { duration: 2500 });
   });
 
-  it("confirma Fechado sem corretor, porque essa venda não ganha card", async () => {
-    vi.mocked(updateDeal).mockResolvedValue(undefined);
-    await act(async () => { await actions.moveDeal(soComGerente, fechado); });
+  it("voltar à análise pede a mensagem do envio; com a conferência pendente, só avisa", async () => {
+    await act(async () => { await actions.moveStatus(negocio, "RET. ESTEIRA AGIL"); });
+    expect(texto).toHaveBeenCalledWith(negocio, porValor(catalog, "RET. ESTEIRA AGIL"), true);
+    expect(moveDealStatus).not.toHaveBeenCalled();
 
-    expect(toast.success, "a venda sem card ficou sem aviso nenhum")
-      .toHaveBeenCalledWith("Negócio movido para Fechado", { duration: 2500 });
+    texto.mockClear();
+    await act(async () => { await actions.moveStatus({ ...negocio, document_review_status: "pending" }, "13. ESTEIRA AGIL"); });
+    expect(texto).not.toHaveBeenCalled();
+    expect(toast.info).toHaveBeenCalled();
   });
 
-  // O envio ao gerente exige mensagem e esteira (0150), que o arraste não pede:
-  // chamar a RPC daqui só produzia a recusa "Escreva a mensagem do envio".
-  it("arrastar para Em análise sem conferência orienta o envio pela aba Anexos e não grava", async () => {
-    const semConferencia = { ...negocio, document_review_status: "draft" } as LegacyDealRecord;
-    await act(async () => { await actions.moveDeal(semConferencia, analise); });
+  it("encerrar vai para o diálogo de perda, e observação obrigatória para o diálogo de texto", async () => {
+    await act(async () => { await actions.moveStatus(negocio, "18. QUEDA"); });
+    expect(perda).toHaveBeenCalledWith(negocio, "18. QUEDA");
 
-    expect(updateDeal, "o arraste não pode mover nem enviar").not.toHaveBeenCalled();
-    expect(toast.info).toHaveBeenCalledWith("Envie pela aba Anexos", {
-      description: expect.stringContaining("«Enviar ao gerente» na aba Anexos, com a mensagem do envio"),
+    catalog = buildDealStatusCatalog(
+      catalogoDeTeste.groups,
+      catalogoDeTeste.statuses.map((status) => status.value === "16. PENDENTE" ? { ...status, requires_note: true } : status),
+    );
+    await act(async () => { root.render(<Harness />); });
+    await act(async () => { await actions.moveStatus(negocio, "16. PENDENTE"); });
+    expect(texto).toHaveBeenCalledWith(negocio, porValor(catalog, "16. PENDENTE"), false);
+    expect(moveDealStatus).not.toHaveBeenCalled();
+  });
+
+  it("a matriz recusa ANTES da escrita, com a frase do banco", async () => {
+    h.auth = { isAdmin: false, roles: ["broker"], can: () => true };
+    catalog = buildDealStatusCatalog(catalogoDeTeste.groups, catalogoDeTeste.statuses, [
+      { status_id: porValor(catalogoDeTeste, "08. VIROU NEGÓCIO").id, role: "cca", can_enter: true, can_exit: true },
+    ]);
+    await act(async () => { root.render(<Harness />); });
+    await act(async () => { await actions.moveStatus(negocio, "16. PENDENTE"); });
+
+    expect(moveDealStatus).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("Não foi possível mover o negócio", {
+      description: 'Seu perfil não tira o negócio de "VIROU NEGÓCIO".',
     });
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.error).not.toHaveBeenCalled();
-  });
-
-  // Com a conferência pendente a aba Anexos esconde o envio: mandar o corretor
-  // usar «Enviar ao gerente» apontava para um botão que não está na tela.
-  it("arrastar para Em análise com a conferência pendente diz que falta o gerente, sem mandar reenviar", async () => {
-    const pendente = { ...negocio, document_review_status: "pending" } as LegacyDealRecord;
-    await act(async () => { await actions.moveDeal(pendente, analise); });
-
-    expect(updateDeal).not.toHaveBeenCalled();
-    expect(toast.info).toHaveBeenCalledWith("Aguardando o gerente", {
-      description: expect.stringContaining("já aguarda conferência do gerente"),
-    });
-    expect(toast.info).not.toHaveBeenCalledWith("Envie pela aba Anexos", expect.anything());
   });
 
   it("na recusa do banco mostra erro traduzido e nenhum sucesso", async () => {
-    vi.mocked(updateDeal).mockRejectedValue({ code: "P0001", message: "Seu perfil não pode alterar este negócio." });
-    await act(async () => { await actions.moveDeal(negocio, visita); });
+    vi.mocked(moveDealStatus).mockRejectedValue({ code: "P0001", message: "Mês fechado." });
+    await act(async () => { await actions.moveStatus(negocio, "16. PENDENTE"); });
 
     expect(toast.success).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith("Não foi possível mover o negócio", {
-      description: "Seu perfil não pode alterar este negócio.",
-    });
-  });
-
-  it("marcar VENDA com corretor grava Fechado e deixa a confirmação para o card", async () => {
-    vi.mocked(updateDeal).mockResolvedValue(undefined);
-    await act(async () => { await actions.changeStatus(negocio, "VENDA"); });
-
-    expect(updateDeal).toHaveBeenCalledWith("d1", { status_detail: "VENDA", lost_reason: null, stage_id: "s-closed" });
-    expect(toast.success, "o toast de sucesso duplicou o card de venda").not.toHaveBeenCalled();
-    expect(toast.error).not.toHaveBeenCalled();
-  });
-
-  it("marcar VENDA sem corretor confirma com sucesso curto", async () => {
-    vi.mocked(updateDeal).mockResolvedValue(undefined);
-    await act(async () => { await actions.changeStatus(soComGerente, "VENDA"); });
-
-    expect(toast.success).toHaveBeenCalledWith("Status atualizado", { description: "VENDA", duration: 2500 });
-  });
-
-  it("trocar para um status comum confirma com sucesso curto e o status na descrição", async () => {
-    vi.mocked(updateDeal).mockResolvedValue(undefined);
-    await act(async () => { await actions.changeStatus(negocio, "PROPOSTA"); });
-
-    expect(updateDeal).toHaveBeenCalledWith("d1", { status_detail: "PROPOSTA", lost_reason: null });
-    expect(toast.success).toHaveBeenCalledWith("Status atualizado", { description: "PROPOSTA", duration: 2500 });
-    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("Não foi possível mover o negócio", { description: "Mês fechado." });
   });
 });

@@ -152,28 +152,21 @@ begin
   perform pg_temp.check149(pg_temp.grupo149(v_deal) = 'PROPOSTA',
     'negócio novo sem Status 2 nasce PROPOSTA');
 
-  perform pg_temp.become149(cor);
-  set local role authenticated;
+  -- Desde a 0164 "02. ASS. BANCO" é da CCA (matriz por função, com teste
+  -- próprio); aqui importa só o Status 1 acompanhar, então a troca vai direto.
   update public.deals set status_detail = '02. ASS. BANCO' where id = v_deal;
-  reset role;
 
   perform pg_temp.check149(
     (select status_detail from public.deals where id = v_deal) = '02. ASS. BANCO'
     and pg_temp.grupo149(v_deal) = 'VENDA',
-    'corretor troca o Status 2 para "02. ASS. BANCO" e o Status 1 vira VENDA');
+    'trocar o Status 2 para "02. ASS. BANCO" leva o Status 1 a VENDA');
 
-  perform pg_temp.become149(cor);
-  set local role authenticated;
   update public.deals set status_detail = '18. QUEDA' where id = v_deal;
-  reset role;
 
   perform pg_temp.check149(pg_temp.grupo149(v_deal) = 'OFF',
     '"18. QUEDA" leva o Status 1 para OFF');
 
-  perform pg_temp.become149(cor);
-  set local role authenticated;
   update public.deals set status_detail = 'RÓTULO QUE NÃO EXISTE 149' where id = v_deal;
-  reset role;
 
   perform pg_temp.check149(pg_temp.grupo149(v_deal) is null,
     'Status 2 fora do catálogo deixa o Status 1 nulo, sem inventar grupo');
@@ -262,8 +255,9 @@ begin
   perform pg_temp.check149(pg_temp.grupo149(v_deal) = 'LEGADO',
     'reenviar o mesmo Status 2 mantém a troca manual');
 
-  -- Status 2 novo: o Status 1 volta a acompanhar.
-  perform pg_temp.become149(cor);
+  -- Status 2 novo: o Status 1 volta a acompanhar. Pelo admin: desde a 0164
+  -- "03. ASSINADO" é de admin e sócio.
+  perform pg_temp.become149(adm);
   set local role authenticated;
   update public.deals set status_detail = '03. ASSINADO' where id = v_deal;
   reset role;

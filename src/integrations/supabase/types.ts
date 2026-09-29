@@ -1370,6 +1370,30 @@ export type Database = {
         }
         Relationships: []
       }
+      deal_status_permissions: {
+        Row: {
+          can_enter: boolean
+          can_exit: boolean
+          role: Database["public"]["Enums"]["app_role"]
+          status_id: string
+          updated_at: string
+        }
+        Insert: {
+          can_enter?: boolean
+          can_exit?: boolean
+          role: Database["public"]["Enums"]["app_role"]
+          status_id: string
+          updated_at?: string
+        }
+        Update: {
+          can_enter?: boolean
+          can_exit?: boolean
+          role?: Database["public"]["Enums"]["app_role"]
+          status_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       deal_statuses: {
         Row: {
           active: boolean
@@ -1379,6 +1403,8 @@ export type Database = {
           label: string
           locked: boolean
           position: number
+          requires_note: boolean
+          stage_id: string | null
           tone: string
           updated_at: string
           value: string
@@ -1391,6 +1417,8 @@ export type Database = {
           label: string
           locked?: boolean
           position: number
+          requires_note?: boolean
+          stage_id?: string | null
           tone?: string
           updated_at?: string
           value: string
@@ -1403,6 +1431,8 @@ export type Database = {
           label?: string
           locked?: boolean
           position?: number
+          requires_note?: boolean
+          stage_id?: string | null
           tone?: string
           updated_at?: string
           value?: string
@@ -5689,6 +5719,10 @@ export type Database = {
       dispatch_pending_push: { Args: never; Returns: boolean }
       dispatch_pending_submissions: { Args: never; Returns: undefined }
       distribute_queued_lead: { Args: { p_lead_id: string }; Returns: string }
+      deal_status_move_block: {
+        Args: { p_from: string; p_to: string }
+        Returns: string
+      }
       director_external_checkin: {
         Args: { p_profile: string; p_reason: string }
         Returns: {
@@ -6027,6 +6061,10 @@ export type Database = {
         Returns: Json
       }
       normalize_phone: { Args: { raw: string }; Returns: string }
+      move_deal_status: {
+        Args: { p_deal_id: string; p_note?: string; p_status: string }
+        Returns: undefined
+      }
       notification_queue_health: {
         Args: never
         Returns: {

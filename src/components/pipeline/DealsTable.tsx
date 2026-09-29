@@ -12,7 +12,7 @@ import { brokerTextClass, dealAgeTone, developerDot, developerColor, isHexColor,
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusBadge } from "@/components/shared";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import { EMPTY_STATUS_CATALOG, statusMoveBlock, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { DOCUMENT_REVIEW_META } from "./review";
 import { faceimobStatusTone, statusChoices, statusGroupLabel, STATUS_TONE_CLASS } from "./statuses";
 import { dealLock } from "./guards";
@@ -63,7 +63,7 @@ interface Props {
 export function DealsTable({
   deals, canWrite, closedMonths, onOpen, onStatusChange, onScheduleVisit, onLose, onReopen,
 }: Props) {
-  const { isAdmin, can } = useAuth();
+  const { isAdmin, roles, can } = useAuth();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const [page, setPage] = useState(1);
   // A ordem era fixa (construtora, depois catálogo de Status 2): não dava para
@@ -295,9 +295,11 @@ export function DealsTable({
                           // escolhido não é escrita, e `<SelectValue/>` espelha
                           // os filhos do item — o "(só administrador...)" iria
                           // parar dentro do badge colorido da linha.
+                          // E a matriz por função do cadastro (0164).
                           const semPermissao = option.value === status
                             ? null
-                            : offDistratoBlocked(can, option.value);
+                            : offDistratoBlocked(can, option.value)
+                              ?? statusMoveBlock(catalog, status, option.value, { isAdmin, roles });
                           return (
                             <SelectItem
                               key={option.value} value={option.value} className="text-xs"
@@ -310,7 +312,9 @@ export function DealsTable({
                                   que o valor gravado não volta para a tela. */}
                               <span>{option.label}</span>
                               {semPermissao && (
-                                <span className="text-muted-foreground"> (só administrador e sócio)</span>
+                                <span className="text-muted-foreground">
+                                  {semPermissao.startsWith("Só administrador") ? " (só administrador e sócio)" : " (fora da sua função)"}
+                                </span>
                               )}
                             </SelectItem>
                           );
