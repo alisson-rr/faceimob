@@ -93,8 +93,10 @@ export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
  */
 export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
   const data = [...rows]
+    // Mostrar apenas construtoras com propostas (>0).
     // Desempate final pelo nome: sem ele o empate herda a ordem de chegada de
     // `view.developers` e a barra troca de lugar entre carregamentos.
+    .filter((row) => row.propostas > 0)
     .sort((a, b) => b.propostas - a.propostas || b.vendas - a.vendas || a.dev.localeCompare(b.dev, "pt-BR"))
     .map((row) => ({ name: row.dev, Propostas: row.propostas, token: row.token }));
 
