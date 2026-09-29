@@ -227,11 +227,11 @@ export function DealsTable({
                       />
                     )}
                   </td>
-                  <td className="whitespace-nowrap p-2 font-semibold" style={{
-                    backgroundColor: isHexColor(deal.developer_color) ? deal.developer_color : tone(developerColor(deal.developer)),
-                    color: isHexColor(deal.developer_color) ? textOn(deal.developer_color) : "hsl(var(--primary-foreground))",
-                  }}>
-                    <span className="inline-flex items-center gap-1.5">
+                  <td className="whitespace-nowrap p-2 font-semibold">
+                    <span className="inline-flex h-7 min-w-[120px] items-center gap-1.5 rounded px-2" style={{
+                      backgroundColor: isHexColor(deal.developer_color) ? deal.developer_color : tone(developerColor(deal.developer)),
+                      color: isHexColor(deal.developer_color) ? textOn(deal.developer_color) : "hsl(var(--primary-foreground))",
+                    }}>
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} aria-hidden />
                       {deal.developer || "—"}
                     </span>

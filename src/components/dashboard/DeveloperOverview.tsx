@@ -93,10 +93,11 @@ export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
  */
 export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
   const data = [...rows]
-    // Mostrar apenas construtoras com propostas (>0).
+    // Ranking é de propostas: construtora sem proposta no período não ocupa
+    // linha nem aparece com barra/valor zero no fim da lista.
+    .filter((row) => row.propostas > 0)
     // Desempate final pelo nome: sem ele o empate herda a ordem de chegada de
     // `view.developers` e a barra troca de lugar entre carregamentos.
-    .filter((row) => row.propostas > 0)
     .sort((a, b) => b.propostas - a.propostas || b.vendas - a.vendas || a.dev.localeCompare(b.dev, "pt-BR"))
     .map((row) => ({ name: row.dev, Propostas: row.propostas, token: row.token }));
 
@@ -123,9 +124,7 @@ export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
                 <YAxis type="category" dataKey="name" {...chartAxis} width={140} tickFormatter={(name: string) => shortTick(name, 18)} />
                 <Tooltip {...chartTooltip} />
                 <Bar dataKey="Propostas" radius={[0, 6, 6, 0]} label={{ position: "right", ...chartBarLabel }} {...chartStill}>
-                  {data.map((row) => (
-                    <Cell key={row.name} fill={tone(row.Propostas === 0 ? "muted-foreground" : row.token)} />
-                  ))}
+                  {data.map((row) => <Cell key={row.name} fill={tone(row.token)} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

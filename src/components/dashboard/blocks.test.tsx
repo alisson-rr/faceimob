@@ -505,6 +505,21 @@ describe("DeveloperOverview e DeveloperRanking", () => {
     expect(tabela).not.toContain("ZERADA");
     await cleanup();
   });
+
+  it("o ranking de propostas remove construtoras zeradas", async () => {
+    const { container, cleanup } = await render(
+      <DeveloperRanking rows={[
+        dev({ dev: "MRV", propostas: 3, negocios: 3 }),
+        dev({ dev: "SEM PROPOSTA", vendas: 2, negocios: 2 }),
+        dev({ dev: "ZERADA" }),
+      ]} />,
+    );
+    const tabela = container.querySelector(".sr-only table")?.textContent ?? "";
+    expect(tabela).toContain("MRV");
+    expect(tabela).not.toContain("SEM PROPOSTA");
+    expect(tabela).not.toContain("ZERADA");
+    await cleanup();
+  });
 });
 
 describe("MonthlyTrend", () => {
@@ -883,7 +898,7 @@ describe("DirectorPanel", () => {
 describe("Breakdown", () => {
   it("o CCA diz de quem e a contagem — a empresa ou so os seus negocios", async () => {
     const toda = await render(<CcaStatusCard counts={{ Aprovado: 3 }} toda />);
-    expect(toda.text).toContain("Processos do CCA por situação");
+    expect(toda.text).toContain("Processos do CCA no mês vigente");
     await toda.cleanup();
 
     const minha = await render(<CcaStatusCard counts={{}} toda={false} />);

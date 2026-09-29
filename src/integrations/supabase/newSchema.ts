@@ -722,7 +722,7 @@ export async function loadDashboardPayload(
     db.from("leads").select("id", { count: "exact", head: true }),
     listPeople(),
     // Paginado: sem `range`, a esteira do Dashboard somava só 1.000 dos 7.560 casos.
-    allRows((from, to, count) => db.from("cca_cases").select("status", { count })
+    allRows((from, to, count) => db.from("cca_cases").select("status,deal_id", { count })
       .order("id").range(from, to)),
     db.from("closed_months").select("period"),
   ]);
@@ -731,7 +731,12 @@ export async function loadDashboardPayload(
   if (closedRes.error) throw dbError("closed_months", closedRes.error);
 
   const ccaCounts: Record<string, number> = {};
+  const currentMonth = format(new Date(), "MM/yyyy");
+  const currentDealIds = new Set(
+    deals.filter((deal) => deal.month_base === currentMonth).map((deal) => deal.id),
+  );
   for (const row of ccaRes.data) {
+    if (!currentDealIds.has(row.deal_id)) continue;
     const label = ccaStatusLabel(row.status);
     ccaCounts[label] = (ccaCounts[label] || 0) + 1;
   }
@@ -741,12 +746,15 @@ export async function loadDashboardPayload(
     people,
     leadsCount: leadsRes.count ?? 0,
     ccaCounts,
-    staff: {
-      brokersTotal: people.filter((person) => person.roles.includes("broker")).length,
-      active: people.filter((person) => person.active).length,
-      managers: people.filter((person) => person.roles.includes("manager")).length,
-      directors: people.filter((person) => person.roles.includes("director")).length,
-    },
+    staff: (() => {
+      const activePeople = people.filter((person) => person.active);
+      return {
+        brokersTotal: activePeople.filter((person) => person.roles.includes("broker")).length,
+        active: activePeople.length,
+        managers: activePeople.filter((person) => person.roles.includes("manager")).length,
+        directors: activePeople.filter((person) => person.roles.includes("director")).length,
+      };
+    })(),
     closedMonths: (closedRes.data || [])
       .map((row) => isoMonthToDisplay(row.period))
       .filter(Boolean) as string[],
