@@ -83,9 +83,16 @@ export function MigracaoSiteCard({ podeUsar }: { podeUsar: boolean }) {
       for (const bucket of BUCKETS) {
         avancar(`Copiando arquivos de ${bucket}…`);
         for (let de = 0; ; ) {
-          const r = await importar<{ total: number; proximo: number; ultima: boolean; falhas: string[] }>(
-            { action: "arquivos", bucket, de },
-          );
+          // Copiar arquivo é regravar no mesmo caminho: repetir o lote que não
+          // respondeu (rede, gateway) é seguro, e evita recomeçar tudo à mão.
+          let r: { total: number; proximo: number; ultima: boolean; falhas: string[] } | undefined;
+          for (let tentativa = 1; !r; tentativa++) {
+            try {
+              r = await importar({ action: "arquivos", bucket, de });
+            } catch (e) {
+              if (tentativa >= 3) throw e;
+            }
+          }
           falhas.push(...r.falhas.map((f) => `${bucket}/${f}`));
           avancar(`Copiando arquivos de ${bucket}: ${num(r.proximo)} de ${num(r.total)}…`);
           if (r.ultima) break;

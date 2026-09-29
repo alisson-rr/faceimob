@@ -28,9 +28,13 @@ const json = (body: unknown, status = 200) =>
 const BUCKETS = ["property-images", "property-docs", "campaign-images", "blog-images", "support-docs"];
 const ARQUIVOS_POR_LOTE = 25;
 const ARQUIVOS_EM_PARALELO = 5;
+// Arquivo grande vai sozinho: cinco vídeos juntos não cabem numa chamada.
+const BYTES_POR_GRUPO = 8 * 1024 * 1024;
 // A chamada inteira precisa voltar antes do tempo do gateway (~60 s): depois
-// disto nenhum arquivo novo começa, e a tela continua do ponto em que parou.
-const PRAZO_DO_LOTE_MS = 20_000;
+// de PRAZO nenhum grupo novo começa, e em CORTE os downloads em curso param.
+// O que parou é refeito na próxima chamada; a tela continua de onde parou.
+const PRAZO_DO_LOTE_MS = 15_000;
+const CORTE_DA_CHAMADA_MS = 40_000;
 
 type Pedido =
   | { action: "status" }
@@ -169,11 +173,13 @@ Deno.serve(async (req) => {
       const { links } = await doSite<{ links: { caminho: string; url: string | null }[] }>(
         base, token, {}, { bucket: pedido.bucket, caminhos: lote.map((a) => a.caminho) },
       );
-      const copiar = async (arquivo: { caminho: string; tamanho: number; tipo: string | null }) => {
+      const corte = AbortSignal.timeout(Math.max(1_000, CORTE_DA_CHAMADA_MS - (Date.now() - inicio)));
+      /** `false` = cortado pelo tempo da chamada: não conta como feito nem como falha. */
+      const copiar = async (arquivo: { caminho: string; tamanho: number; tipo: string | null }): Promise<boolean> => {
         const link = links.find((l) => l.caminho === arquivo.caminho)?.url;
         try {
           if (!link) throw new Error("sem link");
-          const res = await fetch(link, { signal: AbortSignal.timeout(30_000) });
+          const res = await fetch(link, { signal: corte });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const blob = await res.blob();
           if (arquivo.tamanho && blob.size !== arquivo.tamanho) throw new Error("tamanho diferente");
@@ -181,14 +187,37 @@ Deno.serve(async (req) => {
             upsert: true, contentType: arquivo.tipo ?? undefined,
           });
           if (error) throw error;
+          return true;
         } catch (e) {
+          if (corte.aborted) return false;
           falhas.push(`${arquivo.caminho}: ${e instanceof Error ? e.message : "falhou"}`);
+          return true;
         }
       };
       while (feitos < lote.length && (feitos === 0 || Date.now() - inicio < PRAZO_DO_LOTE_MS)) {
-        const grupo = lote.slice(feitos, feitos + ARQUIVOS_EM_PARALELO);
-        await Promise.all(grupo.map(copiar));
-        feitos += grupo.length;
+        const grupo = [lote[feitos]];
+        let bytes = lote[feitos].tamanho;
+        while (grupo.length < ARQUIVOS_EM_PARALELO && feitos + grupo.length < lote.length
+               && bytes + lote[feitos + grupo.length].tamanho <= BYTES_POR_GRUPO) {
+          bytes += lote[feitos + grupo.length].tamanho;
+          grupo.push(lote[feitos + grupo.length]);
+        }
+        const concluidos = await Promise.all(grupo.map(copiar));
+        const cortado = concluidos.indexOf(false);
+        if (cortado === -1) {
+          feitos += grupo.length;
+          continue;
+        }
+        // Um arquivo que sozinho não cabe numa chamada iria travar a cópia
+        // para sempre: vira falha (com o tamanho) e a cópia segue.
+        if (feitos === 0 && cortado === 0) {
+          const mb = (grupo[0].tamanho / 1024 / 1024).toFixed(1);
+          falhas.push(`${grupo[0].caminho}: grande demais para copiar por aqui (${mb} MB)`);
+          feitos = 1;
+        } else {
+          feitos += cortado;
+        }
+        break;
       }
     }
     const proximo = pedido.de + feitos;
