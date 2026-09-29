@@ -52,14 +52,15 @@ begin
   perform pg_temp.check_pipeline((select notes='Continua editando outros campos' from public.deals where id=v_deal), 'status igual não bloqueia salvar outros campos');
   update public.role_permissions set allowed=true where role='broker' and permission='deals.edit_status_detail';
   set local role authenticated;
-  update public.deals set status_detail='16. PENDENTE' where id=v_deal;
+  -- Um Status 2 que a matriz da 0164 dá ao corretor ("16. PENDENTE" é da CCA).
+  update public.deals set status_detail='06. ENVIO DE RP' where id=v_deal;
   reset role;
   perform pg_temp.check_pipeline(not exists(select 1 from public.cca_move_emails where deal_id=v_deal), 'e-mail desligado não enfileira');
 
   update public.automation_settings set pipeline_move_email=true;
   update public.deals set status_detail='12. EM PROCESSAMENTO' where id=v_deal;
   perform pg_temp.check_pipeline((select count(*)=3 from public.cca_move_emails where deal_id=v_deal and source='pipeline'), 'corretor, gerente e diretor recebem uma vez');
-  perform pg_temp.check_pipeline((select bool_and(message like '%PENDENTE%' and message like '%EM PROCESSAMENTO%') from public.cca_move_emails where deal_id=v_deal), 'e-mail contém antes e depois');
+  perform pg_temp.check_pipeline((select bool_and(message like '%ENVIO DE RP%' and message like '%EM PROCESSAMENTO%') from public.cca_move_emails where deal_id=v_deal), 'e-mail contém antes e depois');
   update public.deals set notes='Sem movimentação',status_detail='12. EM PROCESSAMENTO' where id=v_deal;
   perform pg_temp.check_pipeline((select count(*)=3 from public.cca_move_emails where deal_id=v_deal), 'salvar mesmo status não duplica');
   update public.deals set status_group_id=(select id from public.deal_status_groups where id is distinct from deals.status_group_id limit 1) where id=v_deal;

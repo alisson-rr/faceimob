@@ -15,7 +15,8 @@ import PipelineTopRanking from "@/components/PipelineTopRanking";
 import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
 import { last30DaysRange, saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog, type DealStatus } from "@/integrations/supabase/dealStatuses";
+import { MoverStatusDialog, type MovimentoComTexto } from "@/components/pipeline/MoverStatusDialog";
 import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
   CloseMonthDialog, DealFilters, DealStatusSettingsDialog, DealsBoard, DealsToolbar,
@@ -95,6 +96,8 @@ export default function Pipeline() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [visitDeal, setVisitDeal] = useState<LegacyDealRecord | null>(null);
   const [losing, setLosing] = useState<{ deal: LegacyDealRecord; preset?: string } | null>(null);
+  /** Mover para um Status 2 que pede texto: envio para análise ou observação (0164). */
+  const [comTexto, setComTexto] = useState<{ movimento: MovimentoComTexto; envio: boolean } | null>(null);
   const [reopening, setReopening] = useState<LegacyDealRecord | null>(null);
   const [closeMonthOpen, setCloseMonthOpen] = useState(false);
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
@@ -152,8 +155,12 @@ export default function Pipeline() {
    *  Pipeline refazia os 2.288 cartões ativos (ver `DealsKanban`). */
   const abrirNegocio = useCallback((deal: LegacyDealRecord) => setEditor({ deal }), []);
   const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
-  const { moveDeal, changeStatus } = useDealActions({
-    stages, closedMonths: closed, onNeedsLossConfirmation: abrirPerda,
+  const pedirTexto = useCallback(
+    (deal: LegacyDealRecord, status: DealStatus, envio: boolean) => setComTexto({ movimento: { deal, status }, envio }),
+    [],
+  );
+  const { moveStatus } = useDealActions({
+    catalog, closedMonths: closed, onNeedsLossConfirmation: abrirPerda, onNeedsText: pedirTexto,
   });
 
   /** Eu + quem eu lidero — o mesmo conjunto de `auth_visible_profiles()`. */
@@ -420,7 +427,8 @@ export default function Pipeline() {
             <DealsBoard
               view={view}
               deals={visible}
-              stages={stages}
+              catalog={catalog}
+              statusGroupId={filters.status1 === ALL ? null : filters.status1}
               // A trava do mês fechado e as listas de pessoas/construtoras
               // entram na espera junto com a matriz de etapas, e pelo mesmo
               // motivo: `closedMonths` falhando devolvia `[]`, e mês congelado
@@ -448,8 +456,7 @@ export default function Pipeline() {
               onClearFilters={() => setFiltrosEscolhidos(filtrosLimpos)}
               onNewDeal={() => setEditor({ deal: null })}
               onOpen={abrirNegocio}
-              onMove={moveDeal}
-              onStatusChange={changeStatus}
+              onStatusChange={moveStatus}
               onScheduleVisit={setVisitDeal}
               onLose={abrirPerda}
               onReopen={setReopening}
@@ -522,6 +529,15 @@ export default function Pipeline() {
           stages={stages}
           onClose={() => setVisitDeal(null)}
           onScheduled={invalidateDeals}
+        />
+      )}
+
+      {comTexto && (
+        <MoverStatusDialog
+          movimento={comTexto.movimento}
+          envioParaAnalise={comTexto.envio}
+          onClose={() => setComTexto(null)}
+          onMoved={invalidateDeals}
         />
       )}
 

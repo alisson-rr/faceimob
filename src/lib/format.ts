@@ -74,10 +74,15 @@ export const nomesDeExibicao = (nomes: Iterable<string | null | undefined>): ((n
   };
 };
 
-/** Valor em reais. Sem centavos por padrao — VGV e meta sao numeros grandes. */
+/**
+ * Valor em reais, SEMPRE com centavos ("R$ 250.000,00") — pedido do cliente em
+ * 29/09/2026: "VGV sempre em R$ com os pontos e vírgulas, com zeros mesmo que
+ * no fim, em todo o App". `cents: false` fica para quem precisa do inteiro por
+ * espaço (eixo de gráfico, que usa notação compacta própria).
+ */
 export const brl = (value: number | null | undefined, options?: { cents?: boolean }): string => {
   if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY;
-  return (options?.cents ? brlCents : brlWhole).format(value);
+  return (options?.cents === false ? brlWhole : brlCents).format(value);
 };
 
 /** Inteiro com separador de milhar (leads, pontos, contagens). */

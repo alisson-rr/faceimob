@@ -1,13 +1,14 @@
 import { useCallback } from "react";
 import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
-import { bareStatus, isLossStatus, normalizeStatus } from "@/lib/dealStatus";
+import { isLossStatus, isSystemStatus, normalizeStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import {
+  moveDealStatus, statusKey, statusMoveBlock, type DealStatus, type DealStatusCatalog,
+} from "@/integrations/supabase/dealStatuses";
 import type { PipelineDeal } from "@/types/crm";
-import { updateDeal, useCanExitStage, useInvalidateDeals } from "./data";
-import { blockedMoveReason } from "./guards";
-import type { PipelineStage } from "./stages";
+import { useInvalidateDeals } from "./data";
 
 /**
  * Recusa de OFF e DISTRATO por permissão, ou `null` quando ela passa.
@@ -51,137 +52,88 @@ export const vendaTemCard = (deal: Pick<PipelineDeal, "broker1_id" | "broker2_id
   Boolean(deal.broker1_id || deal.broker2_id || deal.broker3_id);
 
 /**
- * Escritas do Pipeline: mover de etapa e trocar o Status 2.
+ * Escrita do Pipeline: mover o Status 2 (pedido de 29/09/2026, 0164).
  *
- * Fora da tela porque o arraste do kanban, o teclado, o Select da tabela e o
- * editor precisam chamar exatamente a mesma função — duplicar a regra em cada
- * gatilho era o jeito garantido de o teclado permitir o que o mouse recusa.
+ * O kanban, o teclado, o botão do cartão e o Select da tabela chamam a MESMA
+ * função — duplicar a regra em cada gatilho era o jeito garantido de o teclado
+ * permitir o que o mouse recusa. A etapa e o Status 1 não são mais movidos pela
+ * tela: seguem o Status 2 no banco.
  *
- * Quem autoriza cada uma das duas é DIFERENTE, e tratá-las como a mesma coisa
- * foi o defeito da primeira versão da trava de 10/09/2026:
- *
- *   · **Etapa** — a matriz `stage_permissions` (`can_enter`/
- *     `can_exit`), que o admin já administra em Admin · Permissões e que
- *     `deals_guard_stage` cobra no banco. Um código de permissão próprio
- *     (`deals.edit_stage`) passava POR CIMA dela: o admin concedia a etapa na
- *     tela e a concessão não produzia efeito nenhum, enquanto três fluxos
- *     legítimos que gravam `stage_id` pelo token de quem clica — agendar
- *     visita, aprovar o caso no CCA e encerrar o negócio — caíam em 42501.
- *   · **Desfecho** — só OFF e DISTRATO, por `deals.mark_off_distrato`. O resto
- *     do Status 2 continua livre, como sempre foi.
+ * Quatro caminhos, pelo destino:
+ *   · voltar à análise (esteira ágil, retorno à esteira, análise p/ virar
+ *     negócio) → envio ao gerente com mensagem (`onNeedsText`, envio);
+ *   · encerrar (queda, distrato, reprovado, OFF) → diálogo de perda com motivo;
+ *   · status com observação obrigatória → `onNeedsText`, observação;
+ *   · o resto → `move_deal_status` direto.
+ * Quem pode colocar e tirar é a matriz por função do cadastro (`statusMoveBlock`),
+ * a mesma que o banco cobra.
  */
-export function useDealActions({ stages, closedMonths, onNeedsLossConfirmation }: {
-  stages: PipelineStage[];
+export function useDealActions({ catalog, closedMonths, onNeedsLossConfirmation, onNeedsText }: {
+  catalog: DealStatusCatalog;
   /** Meses em `closed_months`: o gatilho recusa edição de negócio deles. */
   closedMonths: string[];
   /** Status que significa perda não grava direto: vai para a confirmação (F14). */
   onNeedsLossConfirmation: (deal: LegacyDealRecord, status: string) => void;
+  /** Destino que pede texto: envio para análise ou observação obrigatória. */
+  onNeedsText: (deal: LegacyDealRecord, status: DealStatus, envioParaAnalise: boolean) => void;
 }) {
-  const { canEnterStage, isAdmin, can } = useAuth();
-  const canExitStage = useCanExitStage();
+  const { isAdmin, roles, can } = useAuth();
   const invalidateDeals = useInvalidateDeals();
 
-  const moveDeal = useCallback(async (deal: LegacyDealRecord, stage: PipelineStage) => {
-    // As quatro recusas (sair da etapa, entrar na etapa, mês fechado e
-    // conferência documental) num lugar só, ANTES da escrita — e o mesmo lugar
-    // para o arraste, a seta do teclado e o botão de mover do cartão.
-    const blocked = blockedMoveReason(deal, stage, {
-      isAdmin, canEnterStage, canExitStage, closedMonths,
-    });
-    if (blocked) {
-      toast.error("Não foi possível mover o negócio", { description: blocked });
-      return;
-    }
+  const moveStatus = useCallback(async (deal: LegacyDealRecord, value: string) => {
+    const falhou = (description: string) => { toast.error("Não foi possível mover o negócio", { description }); };
 
-    // Entrar em análise passa pela conferência do gerente, e o envio exige
-    // mensagem e esteira (0150) — que um arraste não tem como pedir. O card não
-    // anda: a frase leva o corretor ao lugar onde o envio é feito. Com a
-    // conferência já pendente não há envio a fazer (a aba Anexos esconde o
-    // bloco), então a frase diz o que falta: a decisão do gerente.
-    if (stage.code === "under_analysis" && deal.stage !== "under_analysis"
-        && deal.document_review_status !== "approved") {
+    const indice = catalog.indexByKey.get(statusKey(value));
+    const status = indice === undefined ? null : catalog.statuses[indice];
+    if (!status) return falhou("Este Status 2 não está no cadastro.");
+    if (statusKey(deal.status) === statusKey(status.value)) return;
+
+    if (!can("deals.edit_status_detail")) return falhou("Seu perfil não pode alterar o Status 2.");
+    if (!isAdmin && closedMonths.includes(deal.month_base)) {
+      return falhou("Mês fechado: o negócio não muda mais de status.");
+    }
+    const offDistrato = offDistratoBlocked(can, status.value);
+    if (offDistrato) return falhou(offDistrato);
+
+    if (isSystemStatus(status.value)) {
+      // Com a conferência já pendente não há envio a fazer: falta o gerente.
       if (deal.document_review_status === "pending") {
         toast.info("Aguardando o gerente", {
-          description: "A documentação já aguarda conferência do gerente; o negócio entra em Em análise quando ele aprovar.",
+          description: "A documentação já aguarda conferência do gerente; o negócio volta para a análise quando ele aprovar.",
         });
-      } else {
-        toast.info("Envie pela aba Anexos", {
-          description: "Abra o negócio e use «Enviar ao gerente» na aba Anexos, com a mensagem do envio. "
-            + "Ele entra em Em análise quando o gerente aprovar.",
-        });
-      }
-      return;
-    }
-
-    try {
-      // Sem atualização otimista de propósito: quando a escrita falhava, o card
-      // ficava na coluna nova com o banco recusando — a tela mentia sobre o
-      // estado real até o próximo reload.
-      await updateDeal(deal.id, { stage_id: stage.id });
-      await invalidateDeals();
-      // "Fechado" vira venda, e a venda com corretor já tem o card do `EngagementLayer`.
-      if (stage.code !== "closed" || !vendaTemCard(deal)) {
-        toast.success(`Negócio movido para ${stage.label}`, { duration: 2500 });
-      }
-    } catch (err) {
-      toast.error("Não foi possível mover o negócio", {
-        description: describeError(err, "A etapa não foi atualizada no servidor."),
-      });
-    }
-  }, [canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin]);
-
-  const changeStatus = useCallback(async (deal: LegacyDealRecord, status: string) => {
-    // A trava dos dois desfechos de administrador mora AQUI, e não no Select da
-    // tabela nem no diálogo de perda: os dois são gatilhos do mesmo `update`, e
-    // enquanto a regra estava neles o rótulo que o modal mostrava cinza
-    // continuava gravável pela tabela. Antes do desvio para a confirmação de
-    // perda, senão o diálogo abre para quem não pode marcar OFF nem distrato.
-    const semPermissao = !can("deals.edit_status_detail")
-      ? "Seu perfil não pode alterar o Status 2."
-      : offDistratoBlocked(can, status);
-    if (semPermissao) {
-      toast.error("Não foi possível alterar o status", { description: semPermissao });
-      return;
-    }
-
-    // Contra a lista de motivos do diálogo, não contra `normalizeStatus`: este
-    // `if` listava QUEDA/DISTRATO/OFF e "19. REPROVADO" — que é um dos motivos
-    // oferecidos na confirmação — escapava para o `update` direto, deixando o
-    // negócio ativo no funil com `lost_reason` nulo e sem ninguém confirmar.
-    if (isLossStatus(status)) {
-      onNeedsLossConfirmation(deal, status);
-      return;
-    }
-
-    const outcome = normalizeStatus(status);
-    try {
-      const closedStage = outcome === "VENDA" ? stages.find((row) => row.code === "closed") : null;
-      if (outcome === "VENDA" && !closedStage) throw new Error("Etapa de fechamento não encontrada.");
-      // Mesmas travas do arraste: marcar "VENDA" aqui MOVE o negócio para
-      // "Fechado", e a etapa exige sair da atual e ter a documentação aprovada.
-      const blocked = closedStage
-        && blockedMoveReason(deal, closedStage, { isAdmin, canEnterStage, canExitStage, closedMonths });
-      if (blocked) {
-        toast.error("Não foi possível alterar o status", { description: blocked });
         return;
       }
+      onNeedsText(deal, status, true);
+      return;
+    }
 
-      await updateDeal(deal.id, {
-        status_detail: status,
-        lost_reason: null,
-        ...(closedStage ? { stage_id: closedStage.id } : {}),
-      });
+    const bloqueio = statusMoveBlock(catalog, deal.status, status.value, { isAdmin, roles });
+    if (bloqueio) return falhou(bloqueio);
+
+    // Contra a lista de motivos do diálogo, não contra `normalizeStatus`:
+    // "19. REPROVADO" também encerra e precisa do motivo.
+    if (isLossStatus(status.value)) {
+      onNeedsLossConfirmation(deal, status.value);
+      return;
+    }
+    if (status.requires_note) {
+      onNeedsText(deal, status, false);
+      return;
+    }
+
+    try {
+      await moveDealStatus(deal.id, status.value);
       await invalidateDeals();
-      // VENDA leva a "Fechado": com corretor, quem confirma é o card de venda do `EngagementLayer`.
-      if (!closedStage || !vendaTemCard(deal)) {
-        toast.success("Status atualizado", { description: bareStatus(status), duration: 2500 });
+      // Status 1 VENDA é venda do jogo (0163): com corretor, quem confirma é o
+      // card de venda do `EngagementLayer`.
+      const venda = catalog.groupById.get(status.group_id)?.code === "VENDA";
+      if (!venda || !vendaTemCard(deal)) {
+        toast.success(`Negócio movido para ${status.label}`, { duration: 2500 });
       }
     } catch (err) {
-      toast.error("Não foi possível alterar o status", {
-        description: describeError(err, "O status não foi atualizado no servidor."),
-      });
+      falhou(describeError(err, "O Status 2 não foi alterado no servidor."));
     }
-  }, [can, canEnterStage, canExitStage, closedMonths, invalidateDeals, isAdmin, onNeedsLossConfirmation, stages]);
+  }, [can, catalog, closedMonths, invalidateDeals, isAdmin, onNeedsLossConfirmation, onNeedsText, roles]);
 
-  return { moveDeal, changeStatus };
+  return { moveStatus };
 }

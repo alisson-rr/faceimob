@@ -14,7 +14,15 @@ import {
   choosesLoss, dealStageCodeFor, saleBlockedReason,
   type PersonRecord, type SaveLegacyDealInput,
 } from "@/integrations/supabase/newSchema";
-import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import {
+  EMPTY_STATUS_CATALOG, statusKey, statusMoveBlock, useDealStatusCatalog, type DealStatusCatalog,
+} from "@/integrations/supabase/dealStatuses";
+
+/** O Status 2 pede observação ao entrar (0164)? */
+const statusRequiresNote = (catalog: DealStatusCatalog, value: string) => {
+  const indice = catalog.indexByKey.get(statusKey(value));
+  return indice !== undefined && catalog.statuses[indice].requires_note;
+};
 import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
 import { ChoiceField, MoneyField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
@@ -162,7 +170,11 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
 
   // A etapa só muda se o perfil puder SAIR da atual: `deals_guard_stage` cobra
   // `can_exit_stage(old.stage_id)` antes de olhar a etapa de destino.
-  const canLeaveStage = isNew || !form.stage_id || canExitStage(form.stage_id);
+  // Desde a 0164 a etapa de um negócio que já existe SEGUE o Status 2: quem a
+  // muda é o cadastro de status. Negócio novo ainda escolhe onde nasce, e o
+  // admin segue podendo corrigir à mão.
+  const etapaSegueStatus = !isNew && !isAdmin;
+  const canLeaveStage = !etapaSegueStatus && (isNew || !form.stage_id || canExitStage(form.stage_id));
 
   // A etapa de perda fica fora da lista (ver o comentário do Select). As
   // bloqueadas saem daqui para que o item cinza e a frase que o explica leiam a
@@ -568,7 +580,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
             <SelectTrigger
               id={field("stage")} className="mt-1 text-xs"
               aria-describedby={
-                !canLeaveStage || etapasBloqueadas.size > 0 ? field("stage-hint") : undefined
+                etapaSegueStatus || !canLeaveStage || etapasBloqueadas.size > 0 ? field("stage-hint") : undefined
               }
             >
               <SelectValue />
@@ -610,7 +622,11 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
               As duas frases dividem o mesmo `id` porque nunca aparecem juntas:
               sem poder SAIR, o Select inteiro está desabilitado e a lista de
               destinos não chega a abrir. */}
-          {!canLeaveStage ? (
+          {etapaSegueStatus ? (
+            <p id={field("stage-hint")} className="mt-1 text-xs text-muted-foreground">
+              A etapa segue o Status 2: mude o Status 2 e ela acompanha.
+            </p>
+          ) : !canLeaveStage ? (
             <p id={field("stage-hint")} className="mt-1 text-xs text-muted-foreground">
               Seu perfil não pode tirar um negócio desta etapa (matriz de etapas, em
               Admin · Permissões → Etapas). Peça a um gestor.
@@ -654,8 +670,8 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           </Select>
           <p id={field("status1-hint")} className="mt-1 text-xs text-muted-foreground">
             {podeTrocarStatus1
-              ? "Acompanha o Status 2. A troca à mão vale até o Status 2 mudar de novo."
-              : "Acompanha o Status 2 sozinho. Trocar à mão é do administrador e do sócio."}
+              ? "Segue o Status 2. A troca à mão vale até o Status 2 mudar de novo."
+              : "Segue o Status 2. Trocar à mão é do administrador e do sócio."}
           </p>
         </div>
         <div className="deal-tone-green">
@@ -682,9 +698,15 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                 // O rótulo ATUAL fica de fora: escolher o que já está escolhido
                 // não é escrita, e `<SelectValue/>` espelha os filhos do item —
                 // o sufixo iria parar dentro do próprio gatilho do Select.
-                const semPermissao = option.value === form.status
+                // E a matriz por função do cadastro (0164): quem coloca e quem
+                // tira cada Status 2. Status com observação obrigatória vai pelo
+                // Pipeline, que pede o texto.
+                const bloqueio = option.value === form.status
                   ? null
-                  : offDistratoBlocked(can, option.value);
+                  : offDistratoBlocked(can, option.value)
+                    ?? (isNew ? null : statusMoveBlock(catalog, form.status, option.value, { isAdmin, roles }))
+                    ?? (!isAdmin && statusRequiresNote(catalog, option.value) ? "com observação, pelo Pipeline" : null);
+                const semPermissao = bloqueio;
                 return (
                   <SelectItem key={option.value} value={option.value} disabled={Boolean(semPermissao)}>
                     {/* O nome no próprio `<span>` e o motivo em outro: o texto
@@ -692,7 +714,9 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                         `statusLabels.test.ts` lê daqui. */}
                     <span>{option.label}</span>
                     {semPermissao && (
-                      <span className="text-muted-foreground"> (só administrador e sócio)</span>
+                      <span className="text-muted-foreground">
+                        {" "}({semPermissao.startsWith("Só administrador") ? "só administrador e sócio" : semPermissao.startsWith("Seu perfil") ? "fora da sua função" : semPermissao})
+                      </span>
                     )}
                   </SelectItem>
                 );

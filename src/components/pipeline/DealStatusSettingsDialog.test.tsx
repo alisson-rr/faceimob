@@ -19,7 +19,10 @@ import { DealStatusSettingsDialog } from "./DealStatusSettingsDialog";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("./data", () => ({ useInvalidateDeals: () => async () => undefined }));
+vi.mock("./data", () => ({
+  useInvalidateDeals: () => async () => undefined,
+  usePipelineStages: () => ({ data: [{ id: "st-analise", code: "under_analysis", label: "Em análise", position: 5 }] }),
+}));
 // A releitura depois de gravar nunca responde: vale a ordem otimista, e o teste
 // não vai à rede.
 vi.mock("@/integrations/supabase/client", () => ({
@@ -113,7 +116,8 @@ describe("DealStatusSettingsDialog · peso do cadastro", () => {
     const linha = document.querySelector('[role="group"][aria-label="Status 2 Assinado no banco"]');
     const valores = [...(linha?.querySelectorAll('button[role="combobox"]') ?? [])].map((gatilho) => gatilho.textContent);
 
-    expect(valores, "o gatilho perdeu o rótulo do valor atual").toEqual(["VENDA", "Azul — em andamento"]);
+    // Status 1, cor e (0164) etapa — sem etapa vinculada, "Não muda a etapa".
+    expect(valores, "o gatilho perdeu o rótulo do valor atual").toEqual(["VENDA", "Azul — em andamento", "Não muda a etapa"]);
     expect(renders.itens, "algum Select montou a lista fechado").toBe(0);
   });
 

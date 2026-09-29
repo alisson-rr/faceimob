@@ -195,9 +195,10 @@ begin
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
 
-  -- O resto do Status 2 é do corretor, e "19. REPROVADO" encerra o negócio sem
-  -- ser OFF nem distrato: a rodada anterior tirou dele o catálogo inteiro.
-  update public.deals set status_detail = '19. REPROVADO' where id = v_deal;
+  -- Desde a 0164 o corretor move o Status 2 pela matriz por função; "18. QUEDA"
+  -- é dele e encerra o negócio sem ser OFF nem distrato. ("19. REPROVADO"
+  -- passou a ser da CCA.)
+  update public.deals set status_detail = '18. QUEDA' where id = v_deal;
 
   v_dist := false;
   begin
@@ -227,8 +228,8 @@ begin
   reset role;
 
   select status_detail into v_label from public.deals where id = v_deal;
-  perform pg_temp.check98(v_label = '19. REPROVADO',
-    'corretor encerra por REPROVADO: o resto do Status 2 continua livre');
+  perform pg_temp.check98(v_label = '18. QUEDA',
+    'corretor encerra por QUEDA, que a matriz do Status 2 dá a ele');
   perform pg_temp.check98(v_dist and v_off and v_motivo,
     'corretor não marca DISTRATO nem OFF, nem pelo Status 2 nem pelo motivo da perda');
 
@@ -419,8 +420,8 @@ begin
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
   update public.deals
-     set stage_id = v_lost, status_detail = '19. REPROVADO',
-         lost_reason = '19. REPROVADO — cliente sumiu'
+     set stage_id = v_lost, status_detail = '18. QUEDA',
+         lost_reason = '18. QUEDA — cliente sumiu'
    where id = v_deal;
   reset role;
 

@@ -14,7 +14,7 @@ export { DealCommentsPanel } from "./DealCommentsPanel";
 export { DealFilters } from "./DealFilters";
 export { DealForm } from "./DealForm";
 export { DealsBoard } from "./DealsBoard";
-export { DealsKanban } from "./DealsKanban";
+export { StatusKanban } from "./StatusKanban";
 export { DealsTable } from "./DealsTable";
 export { DealsToolbar } from "./DealsToolbar";
 export { DealStatusSettingsDialog } from "./DealStatusSettingsDialog";

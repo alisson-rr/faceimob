@@ -117,7 +117,7 @@ export function GradeAnual({ deals }: { deals: DealRow[] }) {
                     continua escrito no eixo e na grade logo abaixo. */}
                 <Bar dataKey="value" strokeWidth={1.5} radius={[6, 6, 0, 0]} {...chartStill}>
                   <LabelList dataKey="value" position="top" fill={tone("foreground")} stroke="none" fontSize={11}
-                    formatter={(value: number) => dinheiro ? compacto.format(value) : num(value)} />
+                    formatter={(value: number) => dinheiro ? brl(value) : num(value)} />
                   {barras.map((bar) => (
                     <Cell
                       key={bar.label}

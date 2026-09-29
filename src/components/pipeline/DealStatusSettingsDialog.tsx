@@ -9,17 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/sonner";
 import { LoadingState, type StatusTone } from "@/components/shared";
 import { cn } from "@/lib/utils";
 import { describeError } from "@/lib/supabaseError";
 import {
-  EMPTY_STATUS_CATALOG, buildDealStatusCatalog, createDealStatus, createDealStatusGroup,
-  dealStatusKeys, statusKey, updateDealStatus, updateDealStatusGroup, useDealStatusCatalog,
-  type DealStatus, type DealStatusCatalog, type DealStatusGroup,
+  EMPTY_STATUS_CATALOG, STATUS_ROLES, buildDealStatusCatalog, createDealStatus, createDealStatusGroup,
+  dealStatusKeys, setDealStatusPermission, statusKey, updateDealStatus, updateDealStatusGroup, useDealStatusCatalog,
+  type DealStatus, type DealStatusCatalog, type DealStatusGroup, type StatusPermission,
+  type StatusPermissionRow, type StatusRole,
 } from "@/integrations/supabase/dealStatuses";
 import { CCA_TONE_OPTIONS } from "./ccaStage";
-import { useInvalidateDeals } from "./data";
+import { useInvalidateDeals, usePipelineStages } from "./data";
 import { STATUS_TONE_CLASS, groupChoices, statusGroupCode } from "./statuses";
 
 type Otimista = (catalog: DealStatusCatalog) => DealStatusCatalog;
@@ -29,10 +31,28 @@ type Gravar = (otimista: Otimista, escrever: () => Promise<void>, sucesso: strin
 type Opcao = { value: string; label: string };
 
 const comGrupos = (patches: Record<string, Partial<DealStatusGroup>>): Otimista => (catalog) =>
-  buildDealStatusCatalog(catalog.groups.map((group) => ({ ...group, ...patches[group.id] })), catalog.statuses);
+  buildDealStatusCatalog(catalog.groups.map((group) => ({ ...group, ...patches[group.id] })), catalog.statuses, linhasDaMatriz(catalog));
 
 const comStatus = (patches: Record<string, Partial<DealStatus>>): Otimista => (catalog) =>
-  buildDealStatusCatalog(catalog.groups, catalog.statuses.map((status) => ({ ...status, ...patches[status.id] })));
+  buildDealStatusCatalog(catalog.groups, catalog.statuses.map((status) => ({ ...status, ...patches[status.id] })), linhasDaMatriz(catalog));
+
+/** A matriz do catálogo de volta em linhas, para remontá-lo com um patch. */
+const linhasDaMatriz = (catalog: DealStatusCatalog): StatusPermissionRow[] =>
+  [...catalog.permissions].flatMap(([statusId, porFuncao]) =>
+    (Object.entries(porFuncao) as [StatusRole, StatusPermission][]).map(([role, p]) => ({
+      status_id: statusId, role, can_enter: p.enter, can_exit: p.exit,
+    })));
+
+const comMatriz = (statusId: string, role: StatusRole, patch: Partial<StatusPermission>): Otimista => (catalog) => {
+  const atual = catalog.permissions.get(statusId)?.[role] ?? { enter: false, exit: false };
+  const linhas = linhasDaMatriz(catalog).filter((row) => !(row.status_id === statusId && row.role === role));
+  const nova = { ...atual, ...patch };
+  return buildDealStatusCatalog(catalog.groups, catalog.statuses,
+    [...linhas, { status_id: statusId, role, can_enter: nova.enter, can_exit: nova.exit }]);
+};
+
+/** "Não muda a etapa" como opção explícita: o Select do Radix não aceita valor vazio. */
+const SEM_ETAPA = "sem-etapa";
 
 const semMudanca: Otimista = (catalog) => catalog;
 
@@ -60,6 +80,11 @@ export function DealStatusSettingsDialog({ onClose }: { onClose: () => void }) {
   const invalidateDeals = useInvalidateDeals();
   const query = useDealStatusCatalog();
   const catalog = query.data ?? EMPTY_STATUS_CATALOG;
+  const etapas = usePipelineStages();
+  const opcoesDeEtapa: Opcao[] = [
+    { value: SEM_ETAPA, label: "Não muda a etapa" },
+    ...(etapas.data ?? []).map((stage) => ({ value: stage.id, label: stage.label })),
+  ];
   const [salvando, setSalvando] = useState(0);
   const alterou = useRef(false);
   /**
@@ -343,6 +368,76 @@ export function DealStatusSettingsDialog({ onClose }: { onClose: () => void }) {
                                 />
                               </div>
                             </div>
+
+                            {/* 0164: o Status 2 manda. A etapa segue o que está aqui,
+                                e a matriz diz quem coloca e quem tira o negócio
+                                deste status (admin e sócio passam sempre). */}
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                              <div>
+                                <Label htmlFor={`${campo}-etapa`} className="text-xs">Etapa</Label>
+                                <SelectAoAbrir
+                                  id={`${campo}-etapa`}
+                                  value={status.stage_id ?? SEM_ETAPA}
+                                  rotulo={opcoesDeEtapa.find((opcao) => opcao.value === (status.stage_id ?? SEM_ETAPA))?.label ?? ""}
+                                  opcoes={opcoesDeEtapa}
+                                  onValueChange={(value) => {
+                                    const stageId = value === SEM_ETAPA ? null : value;
+                                    void gravar(
+                                      comStatus({ [status.id]: { stage_id: stageId } }),
+                                      () => updateDealStatus(status.id, { stage_id: stageId }),
+                                      "Etapa do status atualizada",
+                                    );
+                                  }}
+                                />
+                              </div>
+                              <div className="flex items-end gap-2 pb-1.5 sm:col-span-2">
+                                <Switch
+                                  id={`${campo}-obs`} checked={status.requires_note}
+                                  onCheckedChange={(requiresNote) => void gravar(
+                                    comStatus({ [status.id]: { requires_note: requiresNote } }),
+                                    () => updateDealStatus(status.id, { requires_note: requiresNote }),
+                                    requiresNote ? "Observação passa a ser obrigatória" : "Observação deixa de ser obrigatória",
+                                  )}
+                                />
+                                <Label htmlFor={`${campo}-obs`} className="text-xs">Observação obrigatória ao mover para cá</Label>
+                              </div>
+                            </div>
+
+                            <fieldset className="rounded-lg border border-border/60 p-2">
+                              <legend className="px-1 text-xs font-semibold">Quem move (admin e sócio sempre)</legend>
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-4">
+                                {STATUS_ROLES.map(({ role, label }) => {
+                                  const atual = catalog.permissions.get(status.id)?.[role] ?? { enter: false, exit: false };
+                                  return (
+                                    <div key={role} className="space-y-1 text-xs">
+                                      <p className="font-medium">{label}</p>
+                                      {(["enter", "exit"] as const).map((campoMatriz) => {
+                                        const idCaixa = `${campo}-${role}-${campoMatriz}`;
+                                        return (
+                                          <div key={campoMatriz} className="flex items-center gap-1.5">
+                                            <Checkbox
+                                              id={idCaixa} checked={atual[campoMatriz]}
+                                              onCheckedChange={(marcado) => {
+                                                const patch = { [campoMatriz]: marcado === true };
+                                                void gravar(
+                                                  comMatriz(status.id, role, patch),
+                                                  () => setDealStatusPermission(status.id, role, patch),
+                                                  "Permissão atualizada",
+                                                );
+                                              }}
+                                            />
+                                            <Label htmlFor={idCaixa} className="text-xs font-normal">
+                                              {campoMatriz === "enter" ? "coloca" : "tira"}
+                                              <span className="sr-only"> {status.label} — {label}</span>
+                                            </Label>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </fieldset>
 
                             <div className="flex items-center gap-2">
                               <Switch
