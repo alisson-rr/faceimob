@@ -89,7 +89,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -1165,8 +1165,12 @@ async function autoteste() {
   );
 }
 
-const alvo = process.argv.includes("--autoteste") ? autoteste : main;
-alvo().catch((e) => {
-  console.error(`\n[jogo e metas] ABORTADO\n${String(e.message || e)}`);
-  process.exit(1);
-});
+export { lerTemporadas, lerPlacar, atribuirRank };
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const alvo = process.argv.includes("--autoteste") ? autoteste : main;
+  alvo().catch((e) => {
+    console.error(`\n[jogo e metas] ABORTADO\n${String(e.message || e)}`);
+    process.exit(1);
+  });
+}

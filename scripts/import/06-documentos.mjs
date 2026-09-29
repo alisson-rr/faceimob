@@ -248,6 +248,8 @@
  * arquivo que aparece em aviso já passou pela máscara.
  */
 import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   acharExport,
@@ -1249,9 +1251,13 @@ async function autoteste() {
   console.log("autoteste: OK");
 }
 
-const rodar = process.argv.includes("--autoteste") ? autoteste : principal;
-rodar().catch((e) => {
-  if (rodar === principal) rel.imprimir();
-  console.error(`\n[06-documentos] ABORTADO: ${e.message}`);
-  process.exit(1);
-});
+export { registro, classificar, nomeOriginal, mascararCpf, sanear, idArquivo, processarBloco };
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const rodar = process.argv.includes("--autoteste") ? autoteste : principal;
+  rodar().catch((e) => {
+    if (rodar === principal) rel.imprimir();
+    console.error(`\n[06-documentos] ABORTADO: ${e.message}`);
+    process.exit(1);
+  });
+}

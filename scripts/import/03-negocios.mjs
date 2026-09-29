@@ -224,6 +224,8 @@
  * telefone ou e-mail completo é impresso.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   acharExport,
@@ -302,6 +304,7 @@ const STATUS2 = new Map([
   ["VIROU NEGÓCIO", ["08. VIROU NEGÓCIO", "approved", "approved"]],
   ["APROV. TOT. RESTRIÇÃO", ["APROV. TOT. RESTRIÇÃO", "approved", "approved"]],
   ["ANÁLISE P/ VIRAR NEGÓCIO", ["15. ANÁLISE P/ VIRAR NEGÓCIO", "under_analysis", "under_review"]],
+  ["ANÁLISE P/ POTENCIAL", ["ANÁLISE P/ POTENCIAL", "under_analysis", "under_review"]],
   ["INTERNALIZADO", ["15. INTERNALIZADO", "approved", "under_review"]],
   ["PENDENTE P/ VIRAR NEGÓCIO", ["14. PENDENTE P/ VIRAR NEGÓCIO", "under_analysis", "pending_documents"]],
   ["APROV. COND. RESTRIÇÃO", ["APROV. COND. RESTRIÇÃO", "approved", "approved"]],
@@ -1445,8 +1448,12 @@ async function principal() {
   if (erros > 0 || pessoa.semPerfil > 0) process.exit(1);
 }
 
-principal().catch((e) => {
-  rel.imprimir();
-  console.error(`\n[03-negocios] ABORTADO: ${e.message}`);
-  process.exit(1);
-});
+export { montar, det };
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  principal().catch((e) => {
+    rel.imprimir();
+    console.error(`\n[03-negocios] ABORTADO: ${e.message}`);
+    process.exit(1);
+  });
+}
