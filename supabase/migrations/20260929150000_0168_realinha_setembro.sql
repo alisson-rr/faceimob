@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0165 — realinhar Status 1 e etapa dos negócios de setembro/2026 pelo Status 2
+-- 0168 — realinhar Status 1 e etapa dos negócios de setembro/2026 pelo Status 2
 --
 -- Pedido do cliente em 29/09/2026: "aplicar o que é proposta e o que é legado
 -- em setembro para vermos como ficam as métricas nesse novo parâmetro; não
@@ -53,6 +53,6 @@ begin
   alter table public.deals enable trigger deals_guard_stage;
   alter table public.deals enable trigger deals_queue_status_email;
 
-  raise notice '0165: % negócios de setembro/2026 realinhados pelo Status 2', v_linhas;
+  raise notice '0168: % negócios de setembro/2026 realinhados pelo Status 2', v_linhas;
 end
 $$;
