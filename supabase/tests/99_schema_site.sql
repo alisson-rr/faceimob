@@ -140,4 +140,28 @@ begin
 end
 $$;
 
+-- A ordem da cópia respeita as chaves estrangeiras entre as tabelas do site.
+do $$
+declare
+  v_ordem text[] := public.site_import_tabelas();
+  r record;
+begin
+  for r in
+    select cl.relname as filha, pl.relname as pai
+      from pg_constraint c
+      join pg_class cl on cl.oid = c.conrelid
+      join pg_class pl on pl.oid = c.confrelid
+      join pg_namespace n on n.oid = cl.relnamespace and n.nspname = 'site'
+      join pg_namespace pn on pn.oid = pl.relnamespace and pn.nspname = 'site'
+     where c.contype = 'f' and cl.relname <> pl.relname
+  loop
+    if array_position(v_ordem, r.pai) is not null and array_position(v_ordem, r.filha) is not null
+       and array_position(v_ordem, r.pai) > array_position(v_ordem, r.filha) then
+      raise exception 'FALHOU: % é copiada antes de %, de quem depende', r.filha, r.pai;
+    end if;
+  end loop;
+  raise notice '  ok  ordem da cópia respeita as chaves estrangeiras';
+end
+$$;
+
 rollback;
