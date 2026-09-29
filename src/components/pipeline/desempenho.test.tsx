@@ -293,7 +293,7 @@ describe("desempenho · carga dos negócios", () => {
 // A esteira CCA saiu daqui em 15/09/2026: ela não compartilha mais a base de
 // negócios, carrega só o período (filtro no banco) — ver `ccaData.test.ts`.
 describe("desempenho · cache compartilhado", () => {
-  it("o Dashboard aberto depois do Pipeline não rebaixa os negócios e conta a base inteira", async () => {
+  it("o Dashboard aberto depois do Pipeline não rebaixa os negócios e recorta o CCA no mês vigente", async () => {
     zerarRede(5);
     const client = novoCliente();
     const estado = { pipeline: false, payload: false, leads: false };
@@ -324,7 +324,9 @@ describe("desempenho · cache compartilhado", () => {
 
     expect(doCaminho("deals") - negociosAntes).toBe(0);
     expect(payload?.leadsCount).toBe(N_LEADS);
-    expect(somaCca).toBe(N_CASOS);
+    // A massa vai de 01/2026 a 08/2026. Em 09/2026 nenhum caso entra na
+    // contagem: o Dashboard não deve mais somar o histórico inteiro do CCA.
+    expect(somaCca).toBe(0);
     await tela.desmontar();
   }, 120_000);
 });
