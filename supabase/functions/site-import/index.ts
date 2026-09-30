@@ -218,14 +218,8 @@ Deno.serve(async (req) => {
           : [],
       });
     }
-    if (pedido.de === 0) {
-      const { buckets } = await doSite<{ buckets: { id: string; public: boolean }[] }>(base, token, { recurso: "contagem" });
-      const origem = buckets.find((b) => b.id === pedido.bucket);
-      if (origem) {
-        const { error } = await db.storage.updateBucket(pedido.bucket, { public: origem.public });
-        if (error) throw error;
-      }
-    }
+    // A visibilidade das pastas é decidida na VPS (0175: fotos públicas,
+    // documentos privados), não copiada do Lovable: a cópia final desfaria isso.
     const falhas: string[] = [];
     let feitos = 0;
     if (lote.length) {

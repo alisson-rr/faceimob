@@ -150,6 +150,19 @@ begin
 end
 $$;
 
+-- 0175: só as fotos do site ficam públicas; documentos continuam privados.
+do $$
+begin
+  perform pg_temp.ok(
+    (select bool_and(public) from storage.buckets where id in ('property-images', 'blog-images')),
+    'fotos de imóveis e do blog em pasta pública');
+  perform pg_temp.ok(
+    not exists (select 1 from storage.buckets
+                 where id in ('property-docs', 'support-docs', 'campaign-images') and public),
+    'documentos e material de campanha seguem privados');
+end
+$$;
+
 -- A cópia do Lovable desliga os gatilhos: lead antigo não entra de novo.
 do $$
 begin
