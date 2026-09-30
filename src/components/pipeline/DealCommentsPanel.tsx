@@ -21,6 +21,12 @@ type DealComment = { id: string; actor_id: string | null; to_value: string | nul
  * um rótulo, e derrubar a barra de abas por causa dele seria pior que mostrar a
  * aba sem contador. O erro de verdade — o da LISTA — aparece dentro do painel.
  */
+/** Um comentário pela mesma porta da aba Comentários (`add_deal_comment`). */
+export async function addDealComment(dealId: string, body: string): Promise<void> {
+  const { error } = await supabase.rpc("add_deal_comment", { p_deal_id: dealId, p_body: body });
+  if (error) throw error;
+}
+
 export async function countDealComments(dealId: string): Promise<number> {
   const { count, error } = await supabase
     .from("deal_history")
@@ -89,8 +95,7 @@ export function DealCommentsPanel({ dealId, people }: { dealId: string; people: 
     if (!body) return;
     setSending(true);
     try {
-      const { error } = await supabase.rpc("add_deal_comment", { p_deal_id: dealId, p_body: body });
-      if (error) throw error;
+      await addDealComment(dealId, body);
       setDraft("");
       toast({ variant: "success", title: "Comentário adicionado" });
       await load();
