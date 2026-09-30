@@ -59,6 +59,11 @@ numa lista para o cliente resolver antes da virada — nada é criado sozinho.
    usuário.
 3. **Conferência**: contagem por tabela e total de arquivos/bytes dos dois
    lados. Qualquer diferença trava o avanço.
+4. **Vídeo não é copiado** (decisão do cliente em 30/09/2026): todos os vídeos
+   estão no YouTube, e o site passa a usar o link. Os 4 vídeos que o site tinha
+   no Storage (2 em campanhas, `facebook_campaigns.media`; 2 aulas,
+   `university_videos.video_url`) ficam só no Lovable até a Fase B trocar a
+   referência pelo link do YouTube.
 
 ## Etapas
 
