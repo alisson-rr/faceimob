@@ -63,6 +63,11 @@ class FalhaNoSite extends Error {}
 // chamada sem resposta nenhuma ("A importação não respondeu").
 const FLUXO_ACIMA_DE_BYTES = 10 * 1024 * 1024;
 
+// Decisão do cliente em 30/09/2026: vídeo fica no YouTube e o site usa o link;
+// o Storage não guarda vídeo. A cópia passa por eles sem gravar nem acusar falha.
+const ehVideo = (arquivo: { caminho: string; tipo: string | null }) =>
+  arquivo.tipo?.startsWith("video/") === true || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(arquivo.caminho);
+
 /** Grava direto na API do Storage, lendo o corpo do download enquanto chega. */
 async function gravarEmFluxo(
   bucket: string,
@@ -230,6 +235,7 @@ Deno.serve(async (req) => {
       const corte = AbortSignal.timeout(Math.max(1_000, CORTE_DA_CHAMADA_MS - (Date.now() - inicio)));
       /** `false` = cortado pelo tempo da chamada: não conta como feito nem como falha. */
       const copiar = async (arquivo: { caminho: string; tamanho: number; tipo: string | null }): Promise<boolean> => {
+        if (ehVideo(arquivo)) return true;
         const link = links.find((l) => l.caminho === arquivo.caminho)?.url;
         try {
           if (!link) throw new Error("sem link");
