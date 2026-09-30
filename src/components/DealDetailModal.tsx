@@ -13,7 +13,9 @@ import {
   DealCcaPanel, DealCommentsPanel, DealForm, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
-import { countDealComments } from "@/components/pipeline/DealCommentsPanel";
+import { addDealComment, countDealComments } from "@/components/pipeline/DealCommentsPanel";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { vendaTemCard } from "@/components/pipeline/useDealActions";
 import DealDocumentUpload from "@/components/DealDocumentUpload";
 import DealHistoryPanel from "@/components/DealHistoryPanel";
@@ -25,7 +27,8 @@ interface Props {
   deal?: SaveLegacyDealInput | null;
   open: boolean;
   onClose: () => void;
-  onSave: (deal: SaveLegacyDealInput) => Promise<void>;
+  /** Devolve o id gravado; o negócio novo precisa dele para o comentário inicial. */
+  onSave: (deal: SaveLegacyDealInput) => Promise<string | void>;
   onReviewChanged?: () => void | Promise<void>;
   people: PersonRecord[];
   developers: { id: string; name: string }[];
@@ -95,6 +98,8 @@ export default function DealDetailModal({
   const [tab, setTab] = useState<TabKey>("detalhes");
   const [cca, setCca] = useState<CcaAnalysis>({});
   const [saving, setSaving] = useState(false);
+  /** Negócio novo: comentário que vai para a aba Comentários depois de criado. */
+  const [comentarioInicial, setComentarioInicial] = useState("");
   /** Já houve uma tentativa de salvar. Só depois dela o campo obrigatório vazio
    *  vira erro: cobrar antes pintaria de vermelho um formulário recém-aberto. */
   const [tentouSalvar, setTentouSalvar] = useState(false);
@@ -174,8 +179,22 @@ export default function DealDetailModal({
     const virouVenda = dealStageCodeFor(form) === "closed" && (!deal || dealStageCodeFor(deal) !== "closed")
       && vendaTemCard(form);
     try {
-      await onSave(form);
+      const novoId = await onSave(form);
       negocioGravado = true;
+      // Comentário escrito na criação: a aba Comentários só existe depois do id.
+      const comentario = comentarioInicial.trim();
+      if (isNew && comentario) {
+        try {
+          if (typeof novoId !== "string") throw new Error("o negócio voltou sem id");
+          await addDealComment(novoId, comentario);
+        } catch (err) {
+          toast({
+            variant: "destructive",
+            title: "Negócio criado, mas o comentário não foi salvo",
+            description: `${describeError(err, "O comentário não foi gravado.")} Abra o negócio e escreva de novo na aba Comentários.`,
+          });
+        }
+      }
       if (dealId && Object.keys(cca).length > 0) await saveCcaAnalysis(dealId, cca);
       if (!virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado" : "Negócio atualizado" });
       if (closeOnSave) onClose();
@@ -305,6 +324,20 @@ export default function DealDetailModal({
                 people={people} developers={developers} stages={stages} isNew={isNew}
                 developerError={developerError}
               />
+              {isNew && (
+                <div className="mt-4 space-y-1.5">
+                  <Label htmlFor={field("comentario-inicial")} className="text-eyebrow">Comentário (opcional)</Label>
+                  <Textarea
+                    id={field("comentario-inicial")}
+                    value={comentarioInicial}
+                    onChange={(event) => setComentarioInicial(event.target.value)}
+                    maxLength={2000}
+                    rows={3}
+                    placeholder="Ex.: cliente aprovado na Caixa, assinatura marcada para sexta."
+                  />
+                  <p className="text-xs text-muted-foreground">Entra na aba Comentários quando o negócio for criado.</p>
+                </div>
+              )}
             </>
           )}
 

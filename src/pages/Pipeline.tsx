@@ -220,11 +220,20 @@ export default function Pipeline() {
     const ids = new Set(deals.map((deal) => deal.id));
     return [...deals, ...busca.data.filter((deal) => !ids.has(deal.id))];
   }, [deals, busca.data, filtrosAdiados.search]);
-  const directorDeals = useMemo(() => filtrosAdiados.directorId === ALL ? dealsDaLista
-    : dealsForLeader(dealsDaLista, people, filtrosAdiados.directorId), [dealsDaLista, people, filtrosAdiados.directorId]);
+  // Buscando, a busca passa por cima de todo filtro (período, Status 1 — o
+  // padrão PROPOSTA escondia a venda —, construtora, corretor, diretoria):
+  // o negócio aparece onde estiver. A RLS continua recortando o que cada um vê.
+  const buscando = filtrosAdiados.search.trim().length >= BUSCA_MINIMA;
+  const directorDeals = useMemo(() => buscando || filtrosAdiados.directorId === ALL ? dealsDaLista
+    : dealsForLeader(dealsDaLista, people, filtrosAdiados.directorId),
+  [buscando, dealsDaLista, people, filtrosAdiados.directorId]);
   const visible = useMemo(
-    () => sortDeals(applyDealFilters(directorDeals, filtrosAdiados, myTeam), catalog),
-    [directorDeals, filtrosAdiados, myTeam, catalog],
+    () => sortDeals(applyDealFilters(
+      directorDeals,
+      buscando ? { ...EMPTY_FILTERS, search: filtrosAdiados.search } : filtrosAdiados,
+      myTeam,
+    ), catalog),
+    [buscando, directorDeals, filtrosAdiados, myTeam, catalog],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
@@ -273,6 +282,7 @@ export default function Pipeline() {
   // O catálogo entra na espera: é dele que sai o filtro padrão (PROPOSTA), e sem
   // ele a lista pintava todos os negócios e encolhia um instante depois.
   const carregando = dealsQuery.isPending || dealsQuery.isPlaceholderData
+    || (buscando && busca.isPending)
     || closedMonths.isPending || openSeason.isPending || statusCatalog.isPending;
   const falhou = Boolean(dealsQuery.error ?? closedMonths.error);
 
@@ -525,8 +535,9 @@ export default function Pipeline() {
                   + "Abra o negócio existente em vez de cadastrar outro.",
               });
             }
-            await saveLegacyDeal(updated);
+            const id = await saveLegacyDeal(updated);
             await invalidateDeals();
+            return id;
           }}
         />
       )}
