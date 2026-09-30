@@ -91,6 +91,24 @@ Esses diretórios contêm dados pessoais e segredos, são ignorados pelo Git e
 não devem virar artefatos do Actions. O snapshot original também permite
 voltar à origem, cujos dados foram preservados e crons pausados no corte.
 
+## Schema do site na API (30/09/2026)
+
+O site faceimob.com.br lê o schema `site` (0169) pela mesma API do CRM. Em
+instalação nova, `setup.sh` já o expõe. Na VPS em uso, por SSH administrativo
+(só adiciona `site` à lista e reinicia a API REST, sem tocar em dados):
+
+```sh
+sudo sed -i 's/^PGRST_DB_SCHEMAS=.*/PGRST_DB_SCHEMAS=public,graphql_public,site/' /opt/faceimob/supabase/.env
+sudo env FACEIMOB_RELEASE=$(readlink -f /opt/faceimob/current) docker compose --project-name faceimob \
+  --env-file /opt/faceimob/supabase/.env \
+  -f /opt/faceimob/supabase/docker-compose.yml \
+  -f /opt/faceimob/config/compose.yml up -d --no-deps rest
+```
+
+Desfazer: o mesmo `sed` com `public,graphql_public` e o mesmo `up -d`. O
+acesso continua pelas policies do schema `site` (anônimo lê imóvel ativo e
+grava lead; o resto exige papel vindo do CRM).
+
 ## Operação e recuperação
 
 Para administrar os serviços Supabase:
