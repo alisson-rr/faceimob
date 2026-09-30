@@ -86,7 +86,14 @@ async function gravarEmFluxo(
     body: origem.body,
     signal: sinal,
   });
-  if (!res.ok) throw new Error(`Storage HTTP ${res.status}`);
+  if (!res.ok) {
+    // O motivo do Storage (limite de tamanho, tipo recusado) é o que diz o que
+    // ajustar; só a mensagem, curta, sem o corpo inteiro.
+    const corpo = await res.json().catch(() => null) as { message?: unknown; error?: unknown } | null;
+    const motivo = typeof corpo?.message === "string" ? corpo.message
+      : typeof corpo?.error === "string" ? corpo.error : "";
+    throw new Error(`Storage HTTP ${res.status}${motivo ? ` (${motivo.slice(0, 120)})` : ""}`);
+  }
   await res.body?.cancel();
 }
 
