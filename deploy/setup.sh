@@ -36,7 +36,8 @@ values = {
     'ENABLE_ANONYMOUS_USERS': 'false', 'FUNCTIONS_VERIFY_JWT': 'true',
     'STUDIO_DEFAULT_ORGANIZATION': 'FACEIMOB', 'STUDIO_DEFAULT_PROJECT': 'FACEIMOB',
     'OPENAI_API_KEY': '', 'POOLER_TENANT_ID': 'faceimob',
-    'PGRST_DB_SCHEMAS': 'public,graphql_public',
+    # `site`: banco do site faceimob.com.br (0169), lido pelo site via API.
+    'PGRST_DB_SCHEMAS': 'public,graphql_public,site',
 }
 text = '\n'.join(f'{line.split("=",1)[0]}={values[line.split("=",1)[0]]}'
                  if line.split('=',1)[0] in values else line for line in p.read_text().splitlines())
