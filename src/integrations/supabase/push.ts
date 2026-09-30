@@ -12,9 +12,9 @@ import { dbError } from "@/lib/supabaseError";
  */
 
 /** Categorias de `push_preferences.category`. A regra kind → categoria é `public.push_category`. */
-export type PushCategory = "lead_recebido" | "lead_prazo" | "lead_atividade" | "credito" | "outros";
+export type PushCategory = "lead_recebido" | "lead_prazo" | "lead_atividade" | "credito" | "outros" | "lead_geral";
 
-const CATEGORIES: readonly PushCategory[] = ["lead_recebido", "lead_prazo", "lead_atividade", "credito", "outros"];
+const CATEGORIES: readonly PushCategory[] = ["lead_recebido", "lead_prazo", "lead_atividade", "credito", "outros", "lead_geral"];
 
 const isCategory = (value: unknown): value is PushCategory =>
   typeof value === "string" && (CATEGORIES as readonly string[]).includes(value);

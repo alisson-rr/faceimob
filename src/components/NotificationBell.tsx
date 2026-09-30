@@ -121,6 +121,17 @@ export default function NotificationBell() {
           // com a janela oculta vira notificação do sistema. `notifyLocally`
           // não faz nada onde há push — ali quem avisa é o sw.js.
           if (payload.eventType !== "INSERT") return;
+          // 0176: lead que chegou ganha popup na tela para o admin, com atalho
+          // para a ficha. O sino e o push seguem como sempre.
+          const nova = payload.new as { kind?: unknown; title?: unknown; body?: unknown; link?: unknown };
+          if (nova.kind === "lead_new_admin" && typeof nova.title === "string") {
+            const link = typeof nova.link === "string" ? nova.link : "/leads";
+            toast(nova.title, {
+              description: typeof nova.body === "string" ? nova.body : undefined,
+              duration: 10_000,
+              action: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },
+            });
+          }
           notifyLocally(profileId, payload.new, (path) => navigateRef.current(path)).catch((err) => {
             console.warn("Aviso do sistema não exibido:", err);
           });

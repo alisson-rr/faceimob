@@ -47,7 +47,7 @@ const STATUS_TEXT: Record<PushStatus, string> = {
  * direto nesta seção.
  */
 export default function PushSettings() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { hash } = useLocation();
   const secaoRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<PushStatus | null>(null);
@@ -228,7 +228,7 @@ export default function PushSettings() {
               </p>
             ) : (
               <ul className="divide-y divide-border/60">
-                {PUSH_CATEGORIES.map((categoria) => {
+                {PUSH_CATEGORIES.filter((categoria) => isAdmin || !categoria.soAdmin).map((categoria) => {
                   const id = `push-${categoria.id}`;
                   return (
                     <li key={categoria.id} className="flex items-center justify-between gap-4 py-2.5">

@@ -35,12 +35,27 @@ export const SW_URL = "/sw.js";
  * `push_preferences` = ligado nas quatro primeiras, desligado em `outros`):
  * quem decide o envio é o banco, a tela só precisa desenhar o mesmo estado.
  */
-export const PUSH_CATEGORIES: readonly { id: PushCategory; label: string; description: string; padrao: boolean }[] = [
+export const PUSH_CATEGORIES: readonly {
+  id: PushCategory;
+  label: string;
+  description: string;
+  padrao: boolean;
+  /** Só admin e sócio veem o interruptor (o aviso só sai para eles). */
+  soAdmin?: boolean;
+}[] = [
   { id: "lead_recebido", label: "Lead recebido", description: "Lead novo chegou para você.", padrao: true },
   { id: "lead_prazo", label: "Prazo de atendimento", description: "O tempo para atender um lead está acabando.", padrao: true },
   { id: "lead_atividade", label: "Atividades do lead", description: "Tarefas e movimentações dos seus leads.", padrao: true },
   { id: "credito", label: "Crédito (CCA)", description: "Andamento das análises de crédito.", padrao: true },
   { id: "outros", label: "Outros avisos", description: "Demais comunicados do sistema.", padrao: false },
+  // 0176: desligada, o aviso nem é criado — some do sino também, não só do celular.
+  {
+    id: "lead_geral",
+    label: "Todo lead que chega",
+    description: "Lead do site, Meta ou WhatsApp: de onde veio e para quem foi. Também some do sino se desligar.",
+    padrao: true,
+    soAdmin: true,
+  },
 ];
 
 /**
