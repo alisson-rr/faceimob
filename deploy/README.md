@@ -119,7 +119,15 @@ na VPS (lê o `JWT_SECRET` sem imprimi-lo; o token vale 5 anos):
 sudo python3 -c "import hmac,hashlib,base64,json,time,re;s=re.search(r'^JWT_SECRET=(.*)$',open('/opt/faceimob/supabase/.env').read(),re.M).group(1).strip().strip('\"');b=lambda d:base64.urlsafe_b64encode(d).rstrip(b'=').decode();h=b(json.dumps({'alg':'HS256','typ':'JWT'}).encode());t=int(time.time());p=b(json.dumps({'role':'site_server','iss':'supabase','iat':t,'exp':t+5*365*86400}).encode());print(h+'.'+p+'.'+b(hmac.new(s.encode(),(h+'.'+p).encode(),hashlib.sha256).digest()))"
 ```
 
-O resultado vai direto para a variável protegida `SUPABASE_SITE_KEY` da Vercel,
+Antes, uma vez: o `db push` roda como `postgres`, que pode não ter poder para
+criar o papel e ligá-lo ao PostgREST e ao Storage. A migration só avisa; este
+comando completa como superusuário (é idempotente, pode repetir):
+
+```sh
+sudo docker exec -i faceimob-db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 < /opt/faceimob/current/supabase/migrations/20260930100000_0172_chave_do_site.sql
+```
+
+O resultado do primeiro comando vai direto para a variável protegida `SUPABASE_SITE_KEY` da Vercel,
 nunca para o Git ou para conversa. O site chama a API com `apikey` = chave
 anon (o gateway exige) e `Authorization: Bearer <SUPABASE_SITE_KEY>`.
 Revogar: apagar da Vercel e `revoke site_server from authenticator` (ou

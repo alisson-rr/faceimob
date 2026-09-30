@@ -17,33 +17,47 @@
 -- `revoke site_server from authenticator`.
 -- =============================================================================
 
-do $$
-begin
-  if not exists (select 1 from pg_roles where rolname = 'site_server') then
-    create role site_server nologin noinherit;
-  end if;
-  if exists (select 1 from pg_roles where rolname = 'authenticator') then
-    grant site_server to authenticator;
-  end if;
-  if exists (select 1 from pg_roles where rolname = 'supabase_storage_admin') then
-    grant site_server to supabase_storage_admin;
-  end if;
-end
-$$;
-
-grant usage on schema site to site_server;
-grant select, insert, update, delete on all tables in schema site to site_server;
-grant usage, select on all sequences in schema site to site_server;
-grant execute on all functions in schema site to site_server;
-alter default privileges in schema site grant select, insert, update, delete on tables to site_server;
-alter default privileges in schema site grant usage, select on sequences to site_server;
-
--- Uma policy por tabela, para o papel ver tudo de `site` sem BYPASSRLS (que
--- valeria para o banco inteiro).
+-- Tudo o que depende do papel fica num bloco só, e o que exige superusuário
+-- (criar papel, dar o papel ao PostgREST e ao Storage, grants no Storage) não
+-- derruba o deploy: no Supabase self-hosted o `postgres` do `db push` pode não
+-- ter esse poder. O que faltar sai como aviso, e rodar este mesmo arquivo como
+-- `supabase_admin` na VPS completa (deploy/README.md). Idempotente.
 do $$
 declare
   r record;
+  v_buckets constant text := $b$bucket_id in ('property-images', 'property-docs', 'campaign-images', 'blog-images', 'support-docs')$b$;
 begin
+  begin
+    if not exists (select 1 from pg_roles where rolname = 'site_server') then
+      create role site_server nologin noinherit;
+    end if;
+  exception when others then
+    raise warning '0172: não criei o papel site_server (%). Rode este arquivo como supabase_admin.', sqlerrm;
+  end;
+  if not exists (select 1 from pg_roles where rolname = 'site_server') then
+    return;
+  end if;
+
+  begin
+    grant site_server to authenticator;
+  exception when others then
+    raise warning '0172: não dei site_server ao authenticator (%). Rode este arquivo como supabase_admin.', sqlerrm;
+  end;
+  begin
+    grant site_server to supabase_storage_admin;
+  exception when others then
+    raise warning '0172: não dei site_server ao Storage (%). Rode este arquivo como supabase_admin.', sqlerrm;
+  end;
+
+  grant usage on schema site to site_server;
+  grant select, insert, update, delete on all tables in schema site to site_server;
+  grant usage, select on all sequences in schema site to site_server;
+  grant execute on all functions in schema site to site_server;
+  alter default privileges in schema site grant select, insert, update, delete on tables to site_server;
+  alter default privileges in schema site grant usage, select on sequences to site_server;
+
+  -- Uma policy por tabela, para o papel ver tudo de `site` sem BYPASSRLS (que
+  -- valeria para o banco inteiro).
   for r in
     select c.relname
       from pg_class c
@@ -55,32 +69,24 @@ begin
       'create policy "site_server: tudo" on site.%I for all to site_server using (true) with check (true)',
       r.relname);
   end loop;
+
+  -- Storage: só os buckets do site.
+  begin
+    grant usage on schema storage to site_server;
+    grant select on storage.buckets to site_server;
+    grant select, insert, update, delete on storage.objects to site_server;
+    drop policy if exists "site_server: buckets do site" on storage.objects;
+    execute format('create policy "site_server: buckets do site" on storage.objects for all to site_server using (%s) with check (%s)',
+      v_buckets, v_buckets);
+    drop policy if exists "site_server: buckets do site" on storage.buckets;
+    create policy "site_server: buckets do site" on storage.buckets
+      for select to site_server
+      using (id in ('property-images', 'property-docs', 'campaign-images', 'blog-images', 'support-docs'));
+  exception when others then
+    raise warning '0172: não dei acesso ao Storage a site_server (%). Rode este arquivo como supabase_admin.', sqlerrm;
+  end;
 end
 $$;
-
--- Storage: só os buckets do site. O dono das tabelas de storage é o próprio
--- Storage; se o `postgres` da instalação não puder repassar o grant, o deploy
--- não cai por isso: fica o aviso, e o upload do site acusa na prévia.
-do $$
-begin
-  grant usage on schema storage to site_server;
-  grant select on storage.buckets to site_server;
-  grant select, insert, update, delete on storage.objects to site_server;
-exception when insufficient_privilege then
-  raise warning '0172: sem permissão para dar acesso ao Storage a site_server: %', sqlerrm;
-end
-$$;
-
-drop policy if exists "site_server: buckets do site" on storage.objects;
-create policy "site_server: buckets do site" on storage.objects
-  for all to site_server
-  using (bucket_id in ('property-images', 'property-docs', 'campaign-images', 'blog-images', 'support-docs'))
-  with check (bucket_id in ('property-images', 'property-docs', 'campaign-images', 'blog-images', 'support-docs'));
-
-drop policy if exists "site_server: buckets do site" on storage.buckets;
-create policy "site_server: buckets do site" on storage.buckets
-  for select to site_server
-  using (id in ('property-images', 'property-docs', 'campaign-images', 'blog-images', 'support-docs'));
 
 -- -----------------------------------------------------------------------------
 -- Perfis do CRM para o site: só id, nome e e-mail, só pelo servidor do site.
@@ -112,8 +118,16 @@ $$;
 
 revoke all on function site.crm_perfis(uuid[]) from public, anon, authenticated;
 revoke all on function site.crm_perfil_por_email(text) from public, anon, authenticated;
-grant execute on function site.crm_perfis(uuid[]) to site_server, service_role;
-grant execute on function site.crm_perfil_por_email(text) to site_server, service_role;
+grant execute on function site.crm_perfis(uuid[]) to service_role;
+grant execute on function site.crm_perfil_por_email(text) to service_role;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'site_server') then
+    grant execute on function site.crm_perfis(uuid[]) to site_server;
+    grant execute on function site.crm_perfil_por_email(text) to site_server;
+  end if;
+end
+$$;
 
 comment on function site.crm_perfis(uuid[]) is
   'Nome e e-mail de perfis do CRM para o servidor do site (editores do suporte). Só site_server (0172).';
