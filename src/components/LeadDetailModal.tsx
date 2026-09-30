@@ -370,6 +370,11 @@ export default function LeadDetailModal({
           <TabsContent value="info" className="space-y-3">
             <div className="space-y-2 text-sm">
               <Row k="Origem" v={lead.source} />
+              <LinkRow k="Página de origem" href={lead.landing_page} />
+              <LinkRow
+                k="Pasta de documentos"
+                href={typeof lead.tracking.pasta_drive === "string" ? lead.tracking.pasta_drive : null}
+              />
               <Row k="Corretor" v={lead.broker_name} />
               <Row k="Atribuído em" v={lead.assigned_at ? dateTime(lead.assigned_at) : null} />
               <Row k="Primeiro contato" v={lead.first_contact_at ? dateTime(lead.first_contact_at) : null} />
@@ -725,6 +730,24 @@ function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void 
       <Button size="sm" onClick={save} disabled={saving || semPrazo}>
         <Save className="h-4 w-4" /> {saving ? "Salvando…" : "Salvar"}
       </Button>
+    </div>
+  );
+}
+
+/** Link só para http(s): o endereço vem do site, e `javascript:` não pode virar clique. */
+function LinkRow({ k, href }: { k: string; href?: string | null }) {
+  if (!href || !/^https?:\/\//i.test(href)) return null;
+  return (
+    <div className="flex flex-col gap-0.5 text-sm sm:flex-row sm:gap-2">
+      <span className="text-muted-foreground sm:min-w-[150px]">{k}:</span>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="min-w-0 flex-1 break-all text-primary underline-offset-2 hover:underline"
+      >
+        {href}
+      </a>
     </div>
   );
 }

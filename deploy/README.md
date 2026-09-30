@@ -109,6 +109,22 @@ Desfazer: o mesmo `sed` com `public,graphql_public` e o mesmo `up -d`. O
 acesso continua pelas policies do schema `site` (anônimo lê imóvel ativo e
 grava lead; o resto exige papel vindo do CRM).
 
+## Chave do servidor do site (0172)
+
+O servidor do site (Vercel) não usa a service role: usa um token com o papel
+`site_server`, que só lê e grava o schema `site` e os buckets do site. Gerar
+na VPS (lê o `JWT_SECRET` sem imprimi-lo; o token vale 5 anos):
+
+```sh
+sudo python3 -c "import hmac,hashlib,base64,json,time,re;s=re.search(r'^JWT_SECRET=(.*)$',open('/opt/faceimob/supabase/.env').read(),re.M).group(1).strip().strip('\"');b=lambda d:base64.urlsafe_b64encode(d).rstrip(b'=').decode();h=b(json.dumps({'alg':'HS256','typ':'JWT'}).encode());t=int(time.time());p=b(json.dumps({'role':'site_server','iss':'supabase','iat':t,'exp':t+5*365*86400}).encode());print(h+'.'+p+'.'+b(hmac.new(s.encode(),(h+'.'+p).encode(),hashlib.sha256).digest()))"
+```
+
+O resultado vai direto para a variável protegida `SUPABASE_SITE_KEY` da Vercel,
+nunca para o Git ou para conversa. O site chama a API com `apikey` = chave
+anon (o gateway exige) e `Authorization: Bearer <SUPABASE_SITE_KEY>`.
+Revogar: apagar da Vercel e `revoke site_server from authenticator` (ou
+trocar o `JWT_SECRET`, que invalida todas as chaves).
+
 ## Operação e recuperação
 
 Para administrar os serviços Supabase:
