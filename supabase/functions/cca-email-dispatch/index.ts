@@ -39,6 +39,7 @@ const STUCK_AFTER_MS = 10 * 60 * 1000;
 
 type Linha = CcaMoveEmail & {
   id: string;
+  deal_id: string | null;
   to_email: string;
   attempts: number;
   status: string;
@@ -61,7 +62,7 @@ Deno.serve(async (req) => {
     const staleBefore = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
     const { data, error } = await supabase
       .from("cca_move_emails")
-      .select("id,to_email,deal_code,client_name,stage_name,actor_name,message,attempts,status,updated_at,source,created_at")
+      .select("id,deal_id,to_email,deal_code,client_name,stage_name,actor_name,message,attempts,status,updated_at,source,created_at,detalhes")
       .or(`status.eq.queued,and(status.in.(failed,sending),updated_at.lt.${staleBefore})`)
       .lt("attempts", MAX_ATTEMPTS)
       .order("created_at", { ascending: true })
@@ -122,7 +123,15 @@ Deno.serve(async (req) => {
       if (!reservada?.length) continue;
 
       try {
-        const { subject, html } = montarEmailDeMovimento(row, appUrl);
+        // O e-mail da CCA não grava os dados do negócio na fila: vêm do banco
+        // na hora do envio, pela mesma função do gatilho do Pipeline (0177).
+        let detalhes = row.detalhes ?? null;
+        if (!detalhes && row.deal_id) {
+          const { data: lidos, error: detalhesError } = await supabase.rpc("email_detalhes_do_negocio", { p_deal_id: row.deal_id });
+          if (detalhesError) console.error("cca-email-dispatch: dados do negócio indisponíveis —", detalhesError.message);
+          detalhes = (lidos as Linha["detalhes"]) ?? null;
+        }
+        const { subject, html } = montarEmailDeMovimento({ ...row, detalhes }, appUrl);
         const result = await sendEmail({ to: row.to_email, subject, html, senderEmail: remetente });
         if (!result.ok) throw new Error(result.error);
 

@@ -10,22 +10,42 @@ const base = {
 };
 
 describe("montarEmailDeMovimento", () => {
-  it("identifica o movimento do Pipeline e preserva as duas mudanças", () => {
-    const { subject, html } = montarEmailDeMovimento({ ...base, source: "pipeline",
-      message: "Status 1: Proposta → Análise\nStatus 2: PROPOSTA → BACEN" });
-    expect(subject).toBe("Pipeline NEG-155: APROVADO TOTAL");
-    expect(html).toContain("Status 1: Proposta → Análise<br>Status 2: PROPOSTA → BACEN");
+  const detalhes = {
+    codigo: "NEG-001227", cliente: "JULYA DE PAIVA SCAPIN", cpf: "04367223051",
+    empreendimento: "ACQUA DANUBIO", construtora: "Morana", status1: "PROPOSTA",
+    status2: "ESTEIRA AGIL", status2_tom: "info", status2_antes: "ANÁLISE",
+    corretor1: "Tabhata Nobre", gerente1: "Archimedes Boff", quando: "28/09/2026 às 11:40",
+    observacao: "favor reanalizar",
+  };
+
+  it("assunto no formato do cliente, sem posições vazias, com CPF completo", () => {
+    const { subject } = montarEmailDeMovimento({ ...base, source: "pipeline", detalhes });
+    expect(subject).toBe(
+      "ESTEIRA AGIL | JULYA DE PAIVA SCAPIN | 043.672.230-51 | ACQUA DANUBIO | Tabhata Nobre | Archimedes Boff",
+    );
   });
-  it("leva código, cliente, coluna, quem moveu e a mensagem, com o título do aviso", () => {
-    const { subject, html } = montarEmailDeMovimento(base, "https://app.exemplo.com.br");
-    expect(subject).toBe("Crédito NEG-155: APROVADO TOTAL");
-    expect(html).toContain("Ana da CCA moveu o negócio <b>NEG-155</b> (Maria Souza) para <b>APROVADO TOTAL</b>");
+
+  it("corpo com Status 2 em destaque, antes, Status 1, dados, observação, logo e link", () => {
+    const { html } = montarEmailDeMovimento({ ...base, source: "pipeline", detalhes }, "https://app.exemplo.com.br");
+    expect(html).toContain(">ESTEIRA AGIL</span>");
+    expect(html).toContain(">ANÁLISE</span>");
+    expect(html).toContain("<b style=\"color:#1b2a4a;\">PROPOSTA</b>");
+    expect(html).toContain("043.672.230-51");
+    expect(html).toContain("Tabhata Nobre");
+    expect(html).toContain("favor reanalizar");
+    expect(html).toContain('src="https://app.exemplo.com.br/email/logo-faceimob-branco.png"');
+    expect(html).toContain('<a href="https://app.exemplo.com.br/pipeline"');
+    expect(html).not.toContain("Corretor 2");
+  });
+
+  it("CCA: a mensagem da análise vira a observação", () => {
+    const { html } = montarEmailDeMovimento({ ...base, detalhes: { ...detalhes, observacao: undefined } });
     expect(html).toContain("Crédito aprovado.<br>Agendar assinatura.");
-    expect(html).toContain('<a href="https://app.exemplo.com.br/pipeline">');
+    expect(html).toContain("Crédito · NEG-001227");
   });
 
   it("escapa o HTML de tudo que vem do usuário", () => {
-    const { html } = montarEmailDeMovimento({
+    const { html, subject } = montarEmailDeMovimento({
       deal_code: "<b>X</b>",
       client_name: "Zé & Cia",
       stage_name: '"><img src=x onerror=alert(1)>',
@@ -37,15 +57,17 @@ describe("montarEmailDeMovimento", () => {
     expect(html).toContain("Zé &amp; Cia");
     expect(html).toContain("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;");
     expect(html).toContain("&lt;a href=&#39;https://mal.example&#39;&gt;clique&lt;/a&gt;");
+    expect(subject).not.toMatch(/[\r\n]/);
   });
 
-  it("assunto numa linha só e textos padrão quando falta dado", () => {
+  it("sem dados do negócio e sem endereço do app, cai nos textos padrão", () => {
     const { subject, html } = montarEmailDeMovimento({
       ...base, deal_code: null, client_name: "", actor_name: null, stage_name: "EM\r\nANÁLISE",
     });
-    expect(subject).toBe("Crédito negócio sem código: EM ANÁLISE");
-    expect(html).toContain("Alguém moveu o negócio <b>negócio sem código</b> (cliente não informado)");
+    expect(subject).toBe("EM ANÁLISE");
+    expect(html).toContain("Cliente não informado");
     expect(html).toContain("Abra o Pipeline no FACEIMOB e procure o negócio negócio sem código.");
+    expect(html).not.toContain("<img");
   });
 });
 
