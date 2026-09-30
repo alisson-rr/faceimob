@@ -137,6 +137,19 @@ begin
 end
 $$;
 
+-- Formulário da página do imóvel (0174) tem origem própria.
+insert into site.leads (id, name, phone, source, property_id, page_url) values
+  ('00000000-0000-0000-0000-0000000174b1', 'Dora Formulário', '51999990176', 'property_form',
+   '00000000-0000-0000-0000-0000000172a1', 'https://faceimob.com.br/imovel/imovel-0172');
+do $$
+begin
+  perform pg_temp.ok(
+    (select s.label from public.leads l join public.lead_sources s on s.id = l.source_id
+      where l.external_id = 'site:00000000-0000-0000-0000-0000000174b1') = 'Site · Formulário do imóvel',
+    'formulário do imóvel com origem própria');
+end
+$$;
+
 -- A cópia do Lovable desliga os gatilhos: lead antigo não entra de novo.
 do $$
 begin
