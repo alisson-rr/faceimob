@@ -85,12 +85,15 @@ export function MigracaoSiteCard({ podeUsar }: { podeUsar: boolean }) {
         for (let de = 0; ; ) {
           // Copiar arquivo é regravar no mesmo caminho: repetir o lote que não
           // respondeu (rede, gateway) é seguro, e evita recomeçar tudo à mão.
+          // Três vezes sem resposta no mesmo ponto é arquivo que não passa por
+          // aqui: ele é pulado (nome e tamanho vão para a lista abaixo) e a
+          // cópia segue com o resto.
           let r: { total: number; proximo: number; ultima: boolean; falhas: string[] } | undefined;
           for (let tentativa = 1; !r; tentativa++) {
             try {
-              r = await importar({ action: "arquivos", bucket, de });
+              r = await importar({ action: "arquivos", bucket, de, pular: tentativa > 3 });
             } catch (e) {
-              if (tentativa >= 3) throw e;
+              if (tentativa > 3) throw e;
             }
           }
           falhas.push(...r.falhas.map((f) => `${bucket}/${f}`));

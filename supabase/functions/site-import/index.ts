@@ -40,7 +40,7 @@ type Pedido =
   | { action: "status" }
   | { action: "usuarios" }
   | { action: "tabela"; nome: string; pagina: number }
-  | { action: "arquivos"; bucket: string; de: number };
+  | { action: "arquivos"; bucket: string; de: number; pular: boolean };
 
 function lerPedido(body: unknown): Pedido | null {
   const b = body as Record<string, unknown> | null;
@@ -51,12 +51,44 @@ function lerPedido(body: unknown): Pedido | null {
   }
   if (b?.action === "arquivos" && typeof b.bucket === "string" && BUCKETS.includes(b.bucket)
       && Number.isInteger(b.de) && (b.de as number) >= 0) {
-    return { action: "arquivos", bucket: b.bucket, de: b.de as number };
+    return { action: "arquivos", bucket: b.bucket, de: b.de as number, pular: b.pular === true };
   }
   return null;
 }
 
 class FalhaNoSite extends Error {}
+
+// Acima disto o arquivo vai do site para o Storage em fluxo, sem passar
+// inteiro pela memória da função: um vídeo carregado de uma vez derrubava a
+// chamada sem resposta nenhuma ("A importação não respondeu").
+const FLUXO_ACIMA_DE_BYTES = 10 * 1024 * 1024;
+
+/** Grava direto na API do Storage, lendo o corpo do download enquanto chega. */
+async function gravarEmFluxo(
+  bucket: string,
+  caminho: string,
+  origem: Response,
+  tipo: string | null,
+  sinal: AbortSignal,
+): Promise<void> {
+  const chave = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const alvo = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/${bucket}/${caminho.split("/").map(encodeURIComponent).join("/")}`;
+  const tamanho = origem.headers.get("content-length");
+  const res = await fetch(alvo, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${chave}`,
+      apikey: chave,
+      "x-upsert": "true",
+      "Content-Type": tipo ?? origem.headers.get("content-type") ?? "application/octet-stream",
+      ...(tamanho ? { "Content-Length": tamanho } : {}),
+    },
+    body: origem.body,
+    signal: sinal,
+  });
+  if (!res.ok) throw new Error(`Storage HTTP ${res.status}`);
+  await res.body?.cancel();
+}
 
 /** Um pedido à rota de exportação do site. Token só no header; URL nunca vai para log. */
 async function doSite<T>(base: string, token: string, query: Record<string, string>, corpo?: unknown): Promise<T> {
@@ -159,6 +191,21 @@ Deno.serve(async (req) => {
     const lote = paginado
       ? listagem.arquivos.slice(0, ARQUIVOS_POR_LOTE)
       : listagem.arquivos.slice(pedido.de, pedido.de + ARQUIVOS_POR_LOTE);
+    // Um arquivo que não passou em três tentativas: a tela pede para pular.
+    // Nada é copiado; o nome e o tamanho voltam como falha, e a cópia segue.
+    if (pedido.pular) {
+      const arquivo = lote[0];
+      const proximo = Math.min(pedido.de + 1, total);
+      return json({
+        ok: false,
+        total,
+        proximo,
+        ultima: proximo >= total,
+        falhas: arquivo
+          ? [`${arquivo.caminho}: não copiado (${(arquivo.tamanho / 1024 / 1024).toFixed(1)} MB) — copie à mão`]
+          : [],
+      });
+    }
     if (pedido.de === 0) {
       const { buckets } = await doSite<{ buckets: { id: string; public: boolean }[] }>(base, token, { recurso: "contagem" });
       const origem = buckets.find((b) => b.id === pedido.bucket);
@@ -181,6 +228,10 @@ Deno.serve(async (req) => {
           if (!link) throw new Error("sem link");
           const res = await fetch(link, { signal: corte });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          if (arquivo.tamanho > FLUXO_ACIMA_DE_BYTES) {
+            await gravarEmFluxo(pedido.bucket, arquivo.caminho, res, arquivo.tipo, corte);
+            return true;
+          }
           const blob = await res.blob();
           if (arquivo.tamanho && blob.size !== arquivo.tamanho) throw new Error("tamanho diferente");
           const { error } = await db.storage.from(pedido.bucket).upload(arquivo.caminho, blob, {
