@@ -269,8 +269,12 @@ begin
             where period = public.month_start(current_date)),
     'mês corrente ficou fechado');
 
+  -- O mês é dado explícito: a temporada que o fechamento abre nasce em
+  -- `current_date + 1`, e no último dia do mês isso já é o mês seguinte — sem
+  -- `p_period` a segunda chamada fecharia o próximo mês, e o teste só falhava
+  -- no dia 30/31.
   begin
-    perform public.close_month_and_season();
+    perform public.close_month_and_season(public.month_start(current_date));
     raise exception 'FALHOU: mês fechado aceitou fechar de novo';
   exception when others then
     if sqlerrm like 'O mês % já está fechado.' then
