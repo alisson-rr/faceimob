@@ -124,7 +124,6 @@ export default function NewLeadNotifier() {
     if (notified.current.has(key)) return;
     notified.current.add(key);
 
-    celebrate("lead_new");
     // O diálogo mostra um lead só. Com outro lead ainda no prazo nele, trocar
     // em silêncio sumia com aquele (a roleta entrega vários seguidos ao mesmo
     // corretor): o que está aberto fica, com o prazo mais curto, e o novo vai
@@ -140,6 +139,7 @@ export default function NewLeadNotifier() {
       setKind(nextKind);
       return;
     }
+    celebrate("lead_new");
     toast({
       title: nextKind === "assigned" ? "Lead atribuído a você" : "Novo lead na fila",
       description: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
@@ -231,6 +231,18 @@ export default function NewLeadNotifier() {
   // Todo fechamento passa por `setLead(null)`; o ref acompanha depois do commit.
   useEffect(() => { if (!lead) leadNoDialogo.current = null; }, [lead]);
 
+  // O toque nasce quando o popup realmente entrou na tela, não apenas quando o
+  // evento chegou pelo realtime. Assim som e aviso visual permanecem juntos e
+  // cada atribuição toca uma vez (o `notified` já elimina repetição do evento).
+  const sonoro = useRef<string | null>(null);
+  useEffect(() => {
+    if (!lead) return;
+    const key = `${lead.id}:${lead.assigned_at || lead.created_at || ""}`;
+    if (sonoro.current === key) return;
+    sonoro.current = key;
+    celebrate("lead_new");
+  }, [lead, celebrate]);
+
   useEffect(() => {
     if (!lead) return;
     const ticker = setInterval(() => setNow(Date.now()), 1000);
@@ -243,6 +255,7 @@ export default function NewLeadNotifier() {
 
   const attend = async () => {
     if (!lead) return;
+    const leadId = lead.id;
     setClaiming(true);
     try {
       await claimLead(lead.id);
@@ -251,7 +264,7 @@ export default function NewLeadNotifier() {
       // realtime de `lead_events` no EngagementLayer. Sem `menu.leads` o
       // destino é a home do papel ("/" resolve em `HomeRedirect`), não uma tela
       // que o guard nega logo depois de o atendimento ter dado certo.
-      navigate(podeAbrirLeads ? "/leads" : "/");
+      navigate(podeAbrirLeads ? `/leads?lead=${leadId}` : "/");
     } catch (err) {
       toast({
         variant: "destructive",
@@ -276,7 +289,7 @@ export default function NewLeadNotifier() {
           </DialogTitle>
           <DialogDescription>
             {assigned
-              ? "Clique em Atender para travar o lead com você e parar o cronômetro."
+              ? "Assuma o lead e fale com ele agora pelo WhatsApp ou por ligação."
               : "Um lead novo entrou na fila de distribuição."}
           </DialogDescription>
         </DialogHeader>
@@ -310,7 +323,7 @@ export default function NewLeadNotifier() {
           <Button variant="outline" onClick={() => setLead(null)}>Depois</Button>
           {assigned ? (
             <Button variant="highlight" onClick={attend} disabled={claiming || secondsLeft === 0}>
-              <HandMetal className="h-4 w-4 mr-1" /> {claiming ? "Atendendo..." : "Atender agora"}
+              <HandMetal className="h-4 w-4 mr-1" /> {claiming ? "Atendendo..." : "Atender e falar agora"}
             </Button>
           ) : podeAbrirLeads ? (
             <Button onClick={() => { setLead(null); navigate("/leads"); }}>

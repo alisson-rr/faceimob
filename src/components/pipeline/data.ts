@@ -101,6 +101,18 @@ export const useDeals = () => {
   return useQuery(dealsQuery(user?.id ?? null));
 };
 
+/** Competências (AAAA-MM-01) tocadas por um intervalo inclusivo de datas. */
+export function monthBasesInDateRange(from: string, to: string): string[] {
+  const inicio = new Date(`${from.slice(0, 7)}-01T12:00:00Z`);
+  const fim = new Date(`${to.slice(0, 7)}-01T12:00:00Z`);
+  if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime()) || inicio > fim) return [];
+  const meses: string[] = [];
+  for (const cursor = new Date(inicio); cursor <= fim; cursor.setUTCMonth(cursor.getUTCMonth() + 1)) {
+    meses.push(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}-01`);
+  }
+  return meses;
+}
+
 /**
  * Os negócios criados no período (AAAA-MM-DD, `to` inclusivo) — a lista do
  * Pipeline. O filtro vai no banco: a tela abria baixando a base inteira para
@@ -115,7 +127,15 @@ export function useDealsRange(from: string, to: string) {
   const { user } = useAuth();
   return useQuery({
     queryKey: pipelineKeys.dealsRange(from, to, user?.id ?? null),
-    queryFn: ({ signal }) => listLegacyDeals(signal, { createdFrom: from, createdTo: to }),
+    // A tela mostra tanto os criados no intervalo quanto os negócios cuja
+    // competência toca o intervalo. Sem esse segundo recorte, uma venda criada
+    // meses antes e levada a EM CONTRATO em setembro nunca chegava ao navegador:
+    // filtrar Mês-base 09/2026 encontrava só 26 das 44 vendas.
+    queryFn: ({ signal }) => listLegacyDeals(signal, {
+      createdFrom: from,
+      createdTo: to,
+      includeMonthBases: monthBasesInDateRange(from, to),
+    }),
     enabled: periodoValido({ de: from, ate: to }),
     placeholderData: keepPreviousData,
   });
@@ -161,7 +181,7 @@ export function useDealSearch(term: string) {
 }
 
 /** O que o fechamento e a reabertura de mês contam de cada negócio. */
-export type MonthDeal = Pick<LegacyDealRecord, "month_base" | "created_at" | "outcome" | "deal_value">;
+export type MonthDeal = Pick<LegacyDealRecord, "month_base" | "created_at" | "outcome" | "deal_value" | "status_group_code">;
 
 /**
  * Mês-base, desfecho e VGV dos negócios, direto do banco.
@@ -179,21 +199,27 @@ export async function listMonthDeals(
 ): Promise<MonthDeal[]> {
   if (filtro.months?.length === 0) return [];
   const sinal = signal ?? new AbortController().signal;
-  const { data, error } = await allRows((from, to, count) => {
-    let query = supabase.from("deals").select("month_base,outcome,vgv_net", { count });
-    if (filtro.months) query = query.in("month_base", filtro.months.map(displayMonthToIso));
-    if (filtro.exceptMonths?.length) {
-      query = query.not("month_base", "in", `(${filtro.exceptMonths.map(displayMonthToIso).join(",")})`);
-    }
-    if (filtro.openOnly) query = query.eq("outcome", "open");
-    return query.order("id").range(from, to).abortSignal(sinal);
-  });
+  const [{ data, error }, grupos] = await Promise.all([
+    allRows((from, to, count) => {
+      let query = supabase.from("deals").select("month_base,outcome,vgv_net,status_group_id", { count });
+      if (filtro.months) query = query.in("month_base", filtro.months.map(displayMonthToIso));
+      if (filtro.exceptMonths?.length) {
+        query = query.not("month_base", "in", `(${filtro.exceptMonths.map(displayMonthToIso).join(",")})`);
+      }
+      if (filtro.openOnly) query = query.eq("outcome", "open");
+      return query.order("id").range(from, to).abortSignal(sinal);
+    }),
+    supabase.from("deal_status_groups").select("id,code").abortSignal(sinal),
+  ]);
   if (error) throw dbError("deals", error);
+  if (grupos.error) throw dbError("deal_status_groups", grupos.error);
+  const codigoPorGrupo = new Map((grupos.data ?? []).map((grupo) => [grupo.id, grupo.code]));
   return data.map((row) => ({
     month_base: toDisplayMonth(row.month_base) ?? undefined,
     created_at: "",
     outcome: row.outcome,
     deal_value: Number(row.vgv_net || 0),
+    status_group_code: row.status_group_id ? codigoPorGrupo.get(row.status_group_id) ?? null : null,
   }));
 }
 

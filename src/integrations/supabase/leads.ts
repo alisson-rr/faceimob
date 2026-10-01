@@ -86,14 +86,29 @@ export const LEAD_STATUSES: { value: LeadStatus; label: string; tone: LeadTone }
 // O funil é `funnel_stage` — "convertido" NÃO é etapa de funil, é `status`.
 // A coluna "Convertido" que existia no funil era uma etapa inexistente no enum.
 export const FUNNEL_STAGES: { key: LeadFunnelStage; label: string; tone: LeadTone }[] = [
-  { key: "new", label: "Novo Lead", tone: "info" },
-  { key: "first_contact", label: "Primeiro Contato", tone: "info" },
-  { key: "no_response", label: "Sem Resposta", tone: "warning" },
-  { key: "warm", label: "Lead Morno", tone: "warning" },
-  { key: "hot", label: "Lead Quente", tone: "highlight" },
-  { key: "gathering_docs", label: "Juntando Doc", tone: "neutral" },
-  { key: "scheduled_visit", label: "Visita Agendada", tone: "info" },
-  { key: "qualified", label: "Qualificado", tone: "success" },
+  { key: "new", label: "Recebido agora", tone: "info" },
+  { key: "first_contact", label: "Conversa iniciada", tone: "info" },
+  { key: "warm", label: "Interesse inicial", tone: "warning" },
+  { key: "hot", label: "Interesse confirmado", tone: "success" },
+  { key: "scheduled_visit", label: "Visita combinada", tone: "success" },
+  { key: "qualified", label: "Pronto para proposta", tone: "success" },
+  { key: "no_response", label: "Aguardando retorno", tone: "warning" },
+  { key: "gathering_docs", label: "Documentação", tone: "success" },
+];
+
+/**
+ * Caminho comercial mostrado no detalhe. "Aguardando retorno" é um desvio de
+ * atenção, não um avanço; "Documentação" fica por último para a conversa
+ * começar pelo cliente, não pela burocracia.
+ */
+export const LEAD_ROADMAP: { key: LeadFunnelStage; guidance: string }[] = [
+  { key: "new", guidance: "Fale agora pelo WhatsApp ou faça uma ligação." },
+  { key: "first_contact", guidance: "Entenda o que procura, a região e quando pretende comprar." },
+  { key: "warm", guidance: "Apresente poucas opções alinhadas ao que o cliente contou." },
+  { key: "hot", guidance: "Confirme o imóvel preferido e convide para conhecer." },
+  { key: "scheduled_visit", guidance: "Combine e confirme a visita com dia, hora e local." },
+  { key: "qualified", guidance: "Alinhe condições e prepare a conversão em proposta." },
+  { key: "gathering_docs", guidance: "Reúna a documentação necessária e conclua a conversão." },
 ];
 
 export const leadStatusLabel = (status?: string | null) =>

@@ -449,6 +449,13 @@ describe("LeadDetailModal · ações que o banco aceita", () => {
     const { cleanup } = await abrir({ assigned_to: "eu", broker_name: "Eu", status: "attending" });
 
     expect(botao(/^converter/i), "o dono do lead converte, e o banco aceita").toBeTruthy();
+    const texto = document.body.textContent ?? "";
+    expect(texto).toMatch(/caminho até a conversão/i);
+    expect(texto).toMatch(/Recebido agora/);
+    expect(texto).toMatch(/Conversa iniciada/);
+    expect(texto).toMatch(/Pronto para proposta/);
+    expect(texto).toMatch(/Documentação/);
+    expect(texto).not.toMatch(/Lead Morno|Lead Quente|Juntando Doc/);
     await cleanup();
   });
 });

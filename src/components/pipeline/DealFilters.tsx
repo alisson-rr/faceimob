@@ -99,7 +99,11 @@ export function DealFilters({
               <SelectItem value={ALL}>Todos os Status 1</SelectItem>
               {catalog.groups.map((option) => (
                 <SelectItem key={option.id} value={option.id}>
-                  <span>{option.label}</span>
+                  <span>
+                    {option.code === "VENDA"
+                      ? `${option.label} — todas as vendas`
+                      : option.label}
+                  </span>
                   {!option.active && <span className="text-muted-foreground"> (inativo)</span>}
                 </SelectItem>
               ))}

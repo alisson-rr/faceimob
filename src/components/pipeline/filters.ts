@@ -9,6 +9,7 @@
 import { newestFirst, type LegacyDealRecord, type PersonRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { faceimobStatusRank } from "./statuses";
+import { contaComoVenda } from "@/lib/dealStatus";
 
 export const ALL = "all";
 
@@ -297,17 +298,20 @@ export function sortDealsBy(
  * total do período.
  */
 export function monthClosePreview(
-  deals: Pick<LegacyDealRecord, "month_base" | "created_at" | "outcome" | "deal_value">[],
+  deals: Pick<LegacyDealRecord, "month_base" | "created_at" | "outcome" | "deal_value" | "status_group_code">[],
   period: string,
 ) {
   const doMes = deals.filter((deal) => dealMonth(deal) === period);
-  const migram = doMes.filter((deal) => deal.outcome === "open");
+  // `outcome = open` não significa necessariamente proposta: desde a 0163,
+  // EM CONTRATO/ASSINADO/ASS. BANCO/RC EMITIDA são Status 1 VENDA e contam
+  // como venda antes do desfecho final. Essas vendas ficam no mês fechado.
+  const migram = doMes.filter((deal) => deal.outcome === "open" && !contaComoVenda(deal));
   return {
     total: doMes.length,
     migram: migram.length,
     congelam: doMes.length - migram.length,
     vgvVendido: doMes
-      .filter((deal) => deal.outcome === "won")
+      .filter(contaComoVenda)
       .reduce((total, deal) => total + (deal.deal_value || 0), 0),
   };
 }

@@ -75,9 +75,8 @@ export function CloseMonthDialog({ season, fallbackMonth, closedMonths, onClose 
   const semMes = mesesAbertos.isSuccess && options.length === 0;
 
   // O que a RPC vai fazer com o período escolhido: propostas abertas migram,
-  // resultados ficam congelados. O predicado é `outcome = 'open'`, o MESMO
-  // `where` da RPC — `deal.active` incluía as vendas e prometia mover negócio
-  // que a RPC não move.
+  // resultados ficam congelados. `outcome = open` com Status 1 VENDA também
+  // congela: Em contrato/Assinado já são venda oficial desde a 0163.
   const previsao = monthClosePreview(deals, period);
 
   const confirm = async () => {

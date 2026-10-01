@@ -28,13 +28,15 @@ const MASTER_GAIN = 0.32;
 const STORAGE_KEY = "faceimob-sound";
 
 const CATALOG: Record<SoundName, Preset> = {
-  // Dois toques curtos — lead novo na roleta.
+  // Três toques ascendentes e distintos — precisa ser percebido mesmo com o
+  // corretor em outra tela, sem competir com a fanfarra de venda.
   leadNew: {
     notes: [
-      { freq: 880, at: 0, dur: 0.16 },
-      { freq: 1174.66, at: 0.18, dur: 0.16 },
+      { freq: 783.99, at: 0, dur: 0.18 },
+      { freq: 987.77, at: 0.2, dur: 0.18 },
+      { freq: 1318.51, at: 0.4, dur: 0.28 },
     ],
-    peak: 0.25,
+    peak: 0.32,
   },
   // Curto e positivo: o corretor travou o lead com ele.
   leadClaimed: {

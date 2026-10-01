@@ -34,6 +34,17 @@ const columnBorder: Record<LeadTone, string> = {
   neutral: "border-border",
 };
 
+/** Cor da etapa acompanha coluna e cartão: azul em início, amarelo quando pede
+ * atenção e verde conforme o lead avança para conversão. */
+const stageSurface: Record<LeadTone, string> = {
+  info: "bg-info/10",
+  warning: "bg-warning/10",
+  danger: "bg-destructive/10",
+  success: "bg-success/10",
+  highlight: "bg-highlight/10",
+  neutral: "bg-muted/50",
+};
+
 export default function LeadFunnel({
   actorName, onConvert,
 }: { actorName: string; onConvert: (l: LeadRecord) => void }) {
@@ -104,6 +115,9 @@ export default function LeadFunnel({
   const attend = async (lead: LeadRecord) => {
     try {
       await claimLead(lead.id);
+      // Atender significa falar agora. O detalhe abre nos atalhos de WhatsApp
+      // e ligação; agendar uma ação só vem depois da tentativa de contato.
+      setSelectedId(lead.id);
     } catch (err) {
       toast.error("Não foi possível atender o lead", {
         description: describeError(err, "outro corretor pode ter assumido antes"),
@@ -163,12 +177,13 @@ export default function LeadFunnel({
         {FUNNEL_STAGES.map((stage) => {
           const items = grouped[stage.key] || [];
           const accent = columnBorder[stage.tone];
+          const surface = stageSurface[stage.tone];
           return (
             // Coluna em camada própria: o cronômetro da trava muda a cada segundo e
             // repintava os cartões das oito colunas (trace, CPU 4x: pintura de
             // ~130 para ~20 ms/s). Isolar só o cronômetro não adiantou.
             <div key={stage.key} className="w-[260px] min-w-[260px] shrink-0 will-change-transform">
-              <div className={cn("flex items-center justify-between rounded-t-xl border-x border-t bg-muted/50 px-3 py-2", accent)}>
+              <div className={cn("flex items-center justify-between rounded-t-xl border-x border-t px-3 py-2", accent, surface)}>
                 <span className="text-eyebrow">{stage.label}</span>
                 <Badge variant="outline" className="tabular-nums">{num(items.length)}</Badge>
               </div>
@@ -183,6 +198,7 @@ export default function LeadFunnel({
                     claimable={canClaim(lead, profileId)}
                     primeiroDaFila={lead.id === primeiroDaFila}
                     overdue={isLeadOverdue(lead, now)}
+                    stageTone={stage.tone}
                     onOpen={setSelectedId}
                     onAttend={onAttend}
                   />
@@ -271,7 +287,7 @@ export default function LeadFunnel({
  * "novo", "inativo" e o "há X minutos" precisam andar a cada tique de 30 s.
  */
 const LeadCardMini = memo(function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, onOpen, onAttend,
+  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend,
 }: {
   lead: LeadRecord;
   now: number;
@@ -281,6 +297,7 @@ const LeadCardMini = memo(function LeadCardMini({
   /** O lead aguardando atendimento que vence primeiro: só ele leva o "Atender" âmbar. */
   primeiroDaFila: boolean;
   overdue: boolean;
+  stageTone: LeadTone;
   onOpen: (leadId: string) => void;
   onAttend: (lead: LeadRecord) => void;
 }) {
@@ -292,7 +309,8 @@ const LeadCardMini = memo(function LeadCardMini({
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card px-3 py-2 transition-colors",
+        "rounded-xl border px-3 py-2 transition-colors",
+        stageSurface[stageTone],
         claimable ? "border-primary/70 ring-1 ring-primary/40"
           : overdue ? "border-destructive/70 ring-1 ring-destructive/40" : "border-border",
       )}
