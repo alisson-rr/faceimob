@@ -1397,6 +1397,7 @@ export type Database = {
       deal_statuses: {
         Row: {
           active: boolean
+          color: string | null
           created_at: string
           group_id: string
           id: string
@@ -1411,6 +1412,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          color?: string | null
           created_at?: string
           group_id: string
           id?: string
@@ -1425,6 +1427,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          color?: string | null
           created_at?: string
           group_id?: string
           id?: string

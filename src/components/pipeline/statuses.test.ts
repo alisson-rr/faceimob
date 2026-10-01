@@ -11,10 +11,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LOSS_REASONS, SYSTEM_STATUSES } from "@/lib/dealStatus";
-import { EMPTY_STATUS_CATALOG, statusKey } from "@/integrations/supabase/dealStatuses";
+import { EMPTY_STATUS_CATALOG, buildDealStatusCatalog, statusKey } from "@/integrations/supabase/dealStatuses";
 import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 import {
-  faceimobStatusRank, faceimobStatusTone, groupChoices, statusChoices, statusGroupCode,
+  faceimobStatusColor, faceimobStatusRank, faceimobStatusTone, groupChoices, statusChoices, statusGroupCode,
   statusGroupLabel, statusGroupOf, statusLabel,
 } from "./statuses";
 
@@ -85,15 +85,15 @@ describe("statusChoices", () => {
 
   it("valor fora do catálogo entra no topo com o texto exato, senão o Select abre em branco", () => {
     const [primeiro] = statusChoices(catalogo, "99. RÓTULO ANTIGO");
-    expect(primeiro).toEqual({ value: "99. RÓTULO ANTIGO", label: "RÓTULO ANTIGO", tone: "neutral" });
+    expect(primeiro).toEqual({ value: "99. RÓTULO ANTIGO", label: "RÓTULO ANTIGO", tone: "neutral", color: "#64748B" });
     // Casa pela chave para nome e cor, mas o `value` é o gravado: o Radix
     // compara o `value` do item com o do Select.
-    expect(statusChoices(catalogo, "queda")[0]).toEqual({ value: "queda", label: "QUEDA", tone: "danger" });
+    expect(statusChoices(catalogo, "queda")[0]).toEqual({ value: "queda", label: "QUEDA", tone: "danger", color: "#DC2626" });
   });
 
   it("sem catálogo carregado sobra o valor atual", () => {
     expect(statusChoices(EMPTY_STATUS_CATALOG, "16. PENDENTE"))
-      .toEqual([{ value: "16. PENDENTE", label: "PENDENTE", tone: "neutral" }]);
+      .toEqual([{ value: "16. PENDENTE", label: "PENDENTE", tone: "neutral", color: "#64748B" }]);
   });
 });
 
@@ -103,6 +103,10 @@ describe("nome, cor, ordem e Status 1 pelo catálogo", () => {
     expect(statusLabel(catalogo, "VENDA")).toBe("VENDA");
     expect(faceimobStatusTone(catalogo, "17. DISTRATO")).toBe("danger");
     expect(faceimobStatusTone(catalogo, "ALGO QUE NÃO EXISTE")).toBe("neutral");
+    expect(faceimobStatusColor(catalogo, "ALGO QUE NÃO EXISTE")).toBe("#64748B");
+    const livre = buildDealStatusCatalog(catalogo.groups, catalogo.statuses.map((status) =>
+      status.value === "16. PENDENTE" ? { ...status, color: "#123456" } : status));
+    expect(faceimobStatusColor(livre, "16. PENDENTE")).toBe("#123456");
   });
 
   it("ordena pelo Status 1 e depois pela posição; desconhecido por último", () => {

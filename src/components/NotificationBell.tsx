@@ -33,6 +33,17 @@ const PAGE = 30;
  */
 const RECARGA_MS = 600;
 
+/** Avisos operacionais que também precisam aparecer enquanto a pessoa está
+ * trabalhando no app — além de persistirem no sino e no push. */
+const POPUP_KINDS = new Set([
+  "cca_pending",
+  "cca_status_changed",
+  "deal_status_changed",
+  "document_review_requested",
+  "document_review_approved",
+  "document_review_returned",
+]);
+
 /**
  * Sino de notificações.
  *
@@ -126,6 +137,14 @@ export default function NotificationBell() {
           const nova = payload.new as { kind?: unknown; title?: unknown; body?: unknown; link?: unknown };
           if (nova.kind === "lead_new_admin" && typeof nova.title === "string") {
             const link = typeof nova.link === "string" ? nova.link : "/leads";
+            toast(nova.title, {
+              description: typeof nova.body === "string" ? nova.body : undefined,
+              duration: 10_000,
+              action: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },
+            });
+          }
+          if (typeof nova.kind === "string" && POPUP_KINDS.has(nova.kind) && typeof nova.title === "string") {
+            const link = typeof nova.link === "string" ? nova.link : "/pipeline";
             toast(nova.title, {
               description: typeof nova.body === "string" ? nova.body : undefined,
               duration: 10_000,

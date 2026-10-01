@@ -8,13 +8,15 @@
  *
  * `value` é o que está gravado em `deals.status_detail`; `label` é o que a tela
  * mostra. Fora do catálogo (importação antiga, rótulo derivado do desfecho) o
- * nome cai em `bareStatus`, e a cor em neutro.
+ * nome cai em `bareStatus`, e a cor em neutro. Desde a 0180, `color` aceita
+ * qualquer `#RRGGBB`; `tone` continua como fallback para o catálogo antigo.
  */
 import type { StatusTone } from "@/components/shared";
 import { bareStatus, isSystemStatus } from "@/lib/dealStatus";
+import { TONE_HEX, isHexColor, textOn } from "@/lib/tone";
 import { statusKey, type DealStatusCatalog, type DealStatusGroup } from "@/integrations/supabase/dealStatuses";
 
-export type StatusOption = { value: string; label: string; tone: StatusTone };
+export type StatusOption = { value: string; label: string; tone: StatusTone; color: string };
 
 const entryOf = (catalog: DealStatusCatalog, value: string | null | undefined) => {
   const index = catalog.indexByKey.get(statusKey(value));
@@ -27,6 +29,17 @@ export const statusLabel = (catalog: DealStatusCatalog, value: string | null | u
 
 export const faceimobStatusTone = (catalog: DealStatusCatalog, value: string | null | undefined): StatusTone =>
   entryOf(catalog, value)?.tone ?? "neutral";
+
+/** Cor sólida livre do Status 2; catálogos antigos continuam pelo tom. */
+export const faceimobStatusColor = (catalog: DealStatusCatalog, value: string | null | undefined): string => {
+  const status = entryOf(catalog, value);
+  return isHexColor(status?.color) ? status.color : TONE_HEX[status?.tone ?? "neutral"];
+};
+
+export const faceimobStatusStyle = (catalog: DealStatusCatalog, value: string | null | undefined) => {
+  const backgroundColor = faceimobStatusColor(catalog, value);
+  return { backgroundColor, color: textOn(backgroundColor) };
+};
 
 /** Ordem de exibição da tabela — a do catálogo, desconhecido por último. */
 export const faceimobStatusRank = (catalog: DealStatusCatalog, value: string | null | undefined): number =>
@@ -57,9 +70,16 @@ export const statusChoices = (catalog: DealStatusCatalog, current?: string | nul
   const choices = catalog.statuses
     .filter((status) => status.value === current
       || (status.active && catalog.groupById.get(status.group_id)?.active && !isSystemStatus(status.value)))
-    .map(({ value, label, tone }) => ({ value, label, tone }));
+    .map(({ value, label, tone, color }) => ({
+      value, label, tone, color: isHexColor(color) ? color : TONE_HEX[tone],
+    }));
   return current && !choices.some((option) => option.value === current)
-    ? [{ value: current, label: statusLabel(catalog, current), tone: faceimobStatusTone(catalog, current) }, ...choices]
+    ? [{
+      value: current,
+      label: statusLabel(catalog, current),
+      tone: faceimobStatusTone(catalog, current),
+      color: faceimobStatusColor(catalog, current),
+    }, ...choices]
     : choices;
 };
 

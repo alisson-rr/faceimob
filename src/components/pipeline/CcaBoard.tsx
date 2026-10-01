@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useState } from "react";
+import { memo, useEffect, useId, useState, type DragEvent } from "react";
 import { Building2, ChevronDown, ChevronUp, DollarSign, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { ccaStageColor } from "./ccaStage";
 import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
 import { elapsedDays, elapsedLabel } from "./ccaTime";
+import { cn } from "@/lib/utils";
 
 /** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
 const POR_COLUNA = 200;
@@ -52,7 +53,9 @@ interface Props {
  * fica preso no topo. As colunas não rolam sozinhas — eram 19 barras de rolagem
  * dentro de uma página que também rolava. A tela dá a altura (`flex-1 min-h-0`).
  *
- * "Mover para…" é um `Select` sempre visível. Eram botões em
+ * O cartão pode ser arrastado entre colunas; soltar abre o mesmo diálogo que
+ * cobra o comentário antes de gravar. "Mover para…" continua como alternativa
+ * acessível e para telas de toque. Eram botões em
  * `opacity-0 group-hover:opacity-100` com 8 px de fonte: invisíveis no toque,
  * inalcançáveis pelo teclado e abaixo do piso de tamanho (achados X02 e X07).
  *
@@ -85,6 +88,9 @@ export const CcaBoard = memo(function CcaBoard({
    * padrão fica bem abaixo; o teto segura um período longo escolhido à mão.
    */
   const [limites, setLimites] = useState<Record<string, number>>({});
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [sobreEstagio, setSobreEstagio] = useState<string | null>(null);
+  const [anuncio, setAnuncio] = useState("");
 
   // Um passe só, na ordem de chegada (mais antigos em cima): indicador e
   // coluna leem a mesma lista.
@@ -99,11 +105,28 @@ export const CcaBoard = memo(function CcaBoard({
     const days = elapsedDays(deal.stageEnteredAt ?? deal.submittedAt, now);
     return days === null ? [] : [days];
   });
+  const casoArrastado = arrastando
+    ? deals.find((deal) => deal.caseId === arrastando) ?? null
+    : null;
+
+  const iniciarArraste = (event: DragEvent<HTMLElement>, deal: CcaDeal) => {
+    if (!canAct) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", deal.caseId);
+    setArrastando(deal.caseId);
+    setAnuncio(`Arrastando ${deal.client}. Solte na coluna desejada; o comentário será pedido antes de mover.`);
+  };
+
+  const encerrarArraste = () => {
+    setArrastando(null);
+    setSobreEstagio(null);
+  };
 
   return (
     // `contain: paint` fecha o transbordo aqui dentro: sem ele a faixa das
     // colunas chegou a rolar a PÁGINA na horizontal (735 px a 375 px).
     <div className="min-h-0 flex-1 overflow-auto [contain:paint]">
+      <p role="status" aria-live="polite" className="sr-only">{anuncio}</p>
       {/* Mesma altura e largura para todos: a grade de indicadores do app
           (última linha centralizada) e o nome em duas linhas de altura fixa,
           cortado com reticências (o nome inteiro fica no `title`). A cor da
@@ -148,6 +171,11 @@ export const CcaBoard = memo(function CcaBoard({
             ))}
           </KpiGrid>
         </div>
+        {canAct && (
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Arraste um card para outra coluna. Antes de mover, o comentário é obrigatório.
+          </p>
+        )}
       </div>
 
       <div className="flex w-max gap-3 pb-2">
@@ -155,6 +183,7 @@ export const CcaBoard = memo(function CcaBoard({
           const cor = ccaStageColor(stage.color);
           const stageDeals = porEstagio.get(stage.id) ?? [];
           const limite = limites[stage.id] ?? POR_COLUNA;
+          const recebeArraste = Boolean(canAct && casoArrastado && casoArrastado.stageId !== stage.id);
           return (
             // As colunas esticam até a mais alta: o cabeçalho preso vale até o
             // fim da rolagem em todas, não só na coluna mais cheia. O fundo
@@ -162,7 +191,31 @@ export const CcaBoard = memo(function CcaBoard({
             // aparecer a página. Por isso quem prende é um invólucro com o fundo
             // da página — preso o próprio cabeçalho, os cartões rolando por baixo
             // apareciam pelo entalhe e pela ponta.
-            <section key={stage.id} className="flex w-64 flex-shrink-0 flex-col">
+            <section
+              key={stage.id}
+              aria-label={`${stage.name}: ${stageDeals.length} ${stageDeals.length === 1 ? "caso" : "casos"}`}
+              className={cn(
+                "flex w-64 flex-shrink-0 flex-col rounded-b-2xl transition-shadow",
+                sobreEstagio === stage.id && recebeArraste && "ring-2 ring-ring ring-offset-2 ring-offset-background",
+              )}
+              onDragOver={(event) => {
+                if (!recebeArraste) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setSobreEstagio(stage.id);
+              }}
+              onDragLeave={(event) => {
+                if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+                if (sobreEstagio === stage.id) setSobreEstagio(null);
+              }}
+              onDrop={(event) => {
+                if (!recebeArraste || !casoArrastado) return;
+                event.preventDefault();
+                setAnuncio(`Abrindo comentário para mover ${casoArrastado.client} para ${stage.name}.`);
+                onMove(casoArrastado, stage);
+                encerrarArraste();
+              }}
+            >
               <div className="sticky top-0 z-10 bg-background">
                 <KanbanColumnHeader
                   as="h2"
@@ -184,7 +237,14 @@ export const CcaBoard = memo(function CcaBoard({
                   return (
                     <article
                       key={deal.caseId}
-                      className="space-y-2 rounded-xl border border-l-4 border-border bg-card p-3"
+                      draggable={canAct}
+                      onDragStart={(event) => iniciarArraste(event, deal)}
+                      onDragEnd={encerrarArraste}
+                      className={cn(
+                        "space-y-2 rounded-xl border border-l-4 border-border bg-card p-3 transition-opacity",
+                        canAct && "cursor-grab active:cursor-grabbing",
+                        arrastando === deal.caseId && "opacity-50",
+                      )}
                       style={{ borderLeftColor: cor }}
                     >
                       {/* Mesmo desenho do `DealCard`: o corpo clicável é IRMÃO

@@ -60,7 +60,7 @@ export {
   type PipelineStage,
 } from "./stages";
 export {
-  STATUS_TONE_CLASS, faceimobStatusRank, faceimobStatusTone, groupChoices, statusChoices,
+  STATUS_TONE_CLASS, faceimobStatusColor, faceimobStatusRank, faceimobStatusStyle, faceimobStatusTone, groupChoices, statusChoices,
   statusGroupCode, statusGroupLabel, statusGroupOf, statusLabel, type StatusOption,
 } from "./statuses";
 export { canWriteDeals } from "./writeAccess";
