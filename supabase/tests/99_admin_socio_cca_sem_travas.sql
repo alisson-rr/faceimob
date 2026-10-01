@@ -46,7 +46,7 @@ on conflict do nothing;
 
 insert into public.deals (id, stage_id, created_by, month_base, status_detail)
 select '00000000-0000-0000-0000-0000000181d1', s.id,
-       '00000000-0000-0000-0000-000000018103', '12/2099', 'PROPOSTA'
+       '00000000-0000-0000-0000-000000018103', date '2099-12-01', 'PROPOSTA'
   from public.pipeline_stages s
  where s.active
  order by s.position
