@@ -16,13 +16,7 @@ import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dealsQuery } from "@/components/pipeline/data";
 import { format, parseISO } from "date-fns";
-import {
-  compareMonth,
-  contaComoVenda,
-  currentMonthBase,
-  isLossStatus,
-  normalizeStatus,
-} from "@/lib/dealStatus";
+import { compareMonth, contaComoVenda, currentMonthBase, isLossStatus, normalizeStatus } from "@/lib/dealStatus";
 import { developerColor, type ChartToken } from "@/lib/tone";
 import { useAuth } from "@/contexts/AuthContext";
 import { listPipelineStages } from "@/integrations/supabase/permissions";
@@ -82,11 +76,10 @@ const monthsWithDealsOf = (deals: DealRow[]): string[] =>
 /**
  * Os meses do filtro de periodo.
  *
- * Alem dos meses COM negocio entra sempre o mes corrente: a meta do mes e
- * cadastrada em /equipes pelo calendario (`GlobalGoalCard` abre em `yyyy-MM`), e
- * enquanto a lista saia so dos negocios o mes recem-cadastrado nao aparecia aqui
- * — quem gravava a meta de 09/2026 nao tinha como abri-la no painel. Medido na
- * homologacao em 02/09/2026: meta de 14 vendas para 09/2026, zero negocio no mes.
+ * Alem dos meses COM negocio entra sempre o mes operacional. Ele vem da
+ * temporada aberta e so avanca quando o fechamento migra as propostas e abre o
+ * ciclo seguinte. Assim a virada do calendario nao cria um painel vazio antes
+ * de a operacao encerrar o periodo anterior.
  */
 export const monthOptions = (deals: DealRow[], hoje: string = currentMonthBase()): string[] => {
   const seen = new Set(monthsWithDealsOf(deals));
@@ -135,16 +128,12 @@ export function useDashboardPayload() {
   );
 
   const closedMonths = useMemo(() => payload?.closedMonths ?? [], [payload?.closedMonths]);
-  // O painel abre SEMPRE no mes corrente (pedido do dono, 17/09/2026). Antes
-  // abria no mes aberto mais recente com negocio, e um unico negocio com
-  // mes-base 02/2027 levava todo mundo para 02/2027. Consequencia aceita: no
-  // dia 1º o painel abre no mes novo, possivelmente vazio — o `monthOptions`
-  // rotula esse mes como "sem negocio".
-  const defaultMonth = currentMonthBase();
-  // O MESMO mes alimenta a lista: `months` so recalcula quando `deals` muda, e
-  // `deals` fica identico por horas (o TanStack devolve a mesma referencia). Com
-  // aba aberta na virada do mes, o padrao virava o mes novo e a lista continuava
-  // sem ele — o seletor ficava sem rotulo. Aqui os dois viram no mesmo render.
+  // A fonte de verdade e o ciclo aberto do game, o mesmo usado pelo fechamento
+  // do Pipeline. O calendario so entra como fallback dentro da carga quando nao
+  // existe temporada aberta.
+  const defaultMonth = payload?.activeMonth ?? currentMonthBase();
+  // O MESMO mes alimenta a lista; quando o fechamento cria a temporada seguinte
+  // e invalida o Dashboard, seletor e indicadores avancam juntos.
   const months = useMemo(() => monthOptions(deals, defaultMonth), [deals, defaultMonth]);
   const monthsWithDeals = useMemo(() => new Set(monthsWithDealsOf(deals)), [deals]);
 
