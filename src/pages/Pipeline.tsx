@@ -183,6 +183,7 @@ export default function Pipeline() {
    * rótulo é editável no cadastro. Sem catálogo ainda, não há o que recortar.
    */
   const propostaId = catalog.groups.find((group) => group.code === "PROPOSTA")?.id ?? ALL;
+  const vendaId = catalog.groups.find((group) => group.code === "VENDA")?.id ?? null;
   const filtrosLimpos = useMemo(() => ({ ...EMPTY_FILTERS, status1: propostaId }), [propostaId]);
   const filters = useMemo(
     () => filtrosEscolhidos ?? { ...filtrosLimpos, team: recorteInicial },
@@ -234,8 +235,9 @@ export default function Pipeline() {
       directorDeals,
       buscando ? { ...EMPTY_FILTERS, search: filtrosAdiados.search } : filtrosAdiados,
       myTeam,
+      vendaId,
     ), catalog),
-    [buscando, directorDeals, filtrosAdiados, myTeam, catalog],
+    [buscando, directorDeals, filtrosAdiados, myTeam, vendaId, catalog],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
@@ -448,7 +450,7 @@ export default function Pipeline() {
               view={view}
               deals={visible}
               catalog={catalog}
-              statusGroupId={filters.status1 === ALL ? null : filters.status1}
+              statusGroupId={filters.status1 === ALL || filters.status1 === vendaId ? null : filters.status1}
               // A trava do mês fechado e as listas de pessoas/construtoras
               // entram na espera junto com a matriz de etapas, e pelo mesmo
               // motivo: `closedMonths` falhando devolvia `[]`, e mês congelado
