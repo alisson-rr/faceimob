@@ -198,6 +198,21 @@ describe("filtro de Status 1", () => {
     expect(applyDealFilters(linhas, EMPTY_FILTERS)).toHaveLength(3);
     expect(hasActiveFilter({ ...EMPTY_FILTERS, status1: GRUPOS.OFF.id })).toBe(true);
   });
+
+  it("VENDA — todas as vendas inclui negócio ganho que já avançou para pós-venda", () => {
+    const linhas = [
+      deal({ id: "venda-aberta", status_group_id: GRUPOS.VENDA.id, status_group_code: "VENDA" }),
+      deal({ id: "pos-venda", outcome: "won", status_group_id: "grupo-pos-venda", status_group_code: "POS_VENDA" }),
+      deal({ id: "proposta", status_group_id: GRUPOS.PROPOSTA.id, status_group_code: "PROPOSTA" }),
+    ];
+
+    expect(applyDealFilters(
+      linhas,
+      { ...EMPTY_FILTERS, status1: GRUPOS.VENDA.id },
+      new Set(),
+      GRUPOS.VENDA.id,
+    ).map((row) => row.id)).toEqual(["venda-aberta", "pos-venda"]);
+  });
 });
 
 describe("ordenação", () => {

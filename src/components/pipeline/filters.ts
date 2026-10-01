@@ -154,6 +154,7 @@ export function applyDealFilters(
   deals: LegacyDealRecord[],
   filters: DealFilterState,
   teamIds: ReadonlySet<string> = new Set(),
+  vendaGroupId: string | null = null,
 ): LegacyDealRecord[] {
   const term = filters.search.trim();
   const cpf = digits(filters.cpf);
@@ -180,7 +181,15 @@ export function applyDealFilters(
     if (filters.brokerId !== ALL && !participantIds(deal).includes(filters.brokerId)) return false;
     if (filters.managerId !== ALL && !managerIds(deal).includes(filters.managerId)) return false;
     if (filters.stage !== ALL && deal.stage !== filters.stage) return false;
-    if (filters.status1 !== ALL && deal.status_group_id !== filters.status1) return false;
+    if (filters.status1 !== ALL) {
+      // "VENDA — todas as vendas" precisa responder à mesma pergunta do
+      // Dashboard: inclui tanto o grupo VENDA ainda aberto quanto negócios já
+      // ganhos que avançaram para PÓS VENDA. Comparar apenas o id do grupo
+      // escondia exatamente essa última venda do mês.
+      if (vendaGroupId && filters.status1 === vendaGroupId) {
+        if (!contaComoVenda(deal)) return false;
+      } else if (deal.status_group_id !== filters.status1) return false;
+    }
     if (filters.status2 !== ALL && deal.status !== filters.status2) return false;
     if (filters.documentReview !== ALL && deal.document_review_status !== filters.documentReview) return false;
     if (filters.month !== ALL && dealMonth(deal) !== filters.month) return false;
