@@ -14,7 +14,7 @@ import { StatusBadge } from "@/components/shared";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, statusMoveBlock, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { DOCUMENT_REVIEW_META } from "./review";
-import { faceimobStatusTone, statusChoices, statusGroupLabel, STATUS_TONE_CLASS } from "./statuses";
+import { faceimobStatusStyle, statusChoices, statusGroupLabel, STATUS_TONE_CLASS } from "./statuses";
 import { dealLock } from "./guards";
 import { offDistratoBlocked } from "./useDealActions";
 import { dealBrokers, dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
@@ -270,10 +270,8 @@ export function DealsTable({
                     >
                       <SelectTrigger
                         aria-label={`Status 2 de ${deal.client}${motivo}`}
-                        className={cn(
-                          "h-7 min-w-[150px] gap-1 whitespace-nowrap rounded border-0 px-2 py-0 text-xs font-bold",
-                          STATUS_TONE_CLASS[faceimobStatusTone(catalog, status)],
-                        )}
+                        className="h-7 min-w-[150px] gap-1 whitespace-nowrap rounded border-0 px-2 py-0 text-xs font-bold"
+                        style={faceimobStatusStyle(catalog, status)}
                       >
                         <SelectValue />
                       </SelectTrigger>

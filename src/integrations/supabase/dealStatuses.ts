@@ -28,8 +28,12 @@ export type DealStatusGroup = Pick<
 
 export type DealStatus = Pick<
   Tables["deal_statuses"]["Row"],
-  "id" | "value" | "label" | "group_id" | "position" | "active" | "locked" | "stage_id" | "requires_note"
+  "id" | "value" | "label" | "group_id" | "position" | "active" | "locked" | "stage_id" | "requires_note" | "color"
 > & { tone: StatusTone };
+
+export type DealStatusCcaStage = Pick<
+  Tables["cca_stages"]["Row"], "id" | "name" | "position" | "active" | "deal_status_id"
+>;
 
 /**
  * Funções que a matriz do Status 2 distingue (0164). Admin e sócio passam
@@ -104,7 +108,7 @@ export const EMPTY_STATUS_CATALOG = buildDealStatusCatalog([], []);
 export async function listDealStatusCatalog(): Promise<DealStatusCatalog> {
   const [groups, statuses, permissions] = await Promise.all([
     supabase.from("deal_status_groups").select("id,code,label,position,active"),
-    supabase.from("deal_statuses").select("id,value,label,group_id,position,tone,active,locked,stage_id,requires_note"),
+    supabase.from("deal_statuses").select("id,value,label,group_id,position,tone,color,active,locked,stage_id,requires_note"),
     supabase.from("deal_status_permissions").select("status_id,role,can_enter,can_exit"),
   ]);
   if (groups.error) throw dbError("deal_status_groups", groups.error);
@@ -121,10 +125,33 @@ export async function listDealStatusCatalog(): Promise<DealStatusCatalog> {
   );
 }
 
-export const dealStatusKeys = { catalog: ["deal-status-catalog"] as const };
+export const dealStatusKeys = {
+  catalog: ["deal-status-catalog"] as const,
+  ccaStages: ["deal-status-cca-stages"] as const,
+};
 
 export const useDealStatusCatalog = () =>
   useQuery({ queryKey: dealStatusKeys.catalog, queryFn: listDealStatusCatalog, staleTime: 5 * 60_000 });
+
+export async function listDealStatusCcaStages(): Promise<DealStatusCcaStage[]> {
+  const { data, error } = await supabase
+    .from("cca_stages")
+    .select("id,name,position,active,deal_status_id")
+    .eq("active", true)
+    .order("position");
+  if (error) throw dbError("cca_stages", error);
+  return data ?? [];
+}
+
+export async function updateCcaStageDealStatus(stageId: string, dealStatusId: string | null) {
+  const { data, error } = await supabase
+    .from("cca_stages")
+    .update({ deal_status_id: dealStatusId })
+    .eq("id", stageId)
+    .select("id");
+  if (error) throw dbError("cca_stages", error);
+  conferir("cca_stages", data);
+}
 
 /**
  * UPDATE recusado pela RLS não é erro: a linha some do `USING` e o PostgREST
@@ -162,7 +189,7 @@ export async function updateDealStatusGroup(
  * número a todo Select, tabela e planilha.
  */
 export async function createDealStatus(
-  row: Pick<DealStatus, "value" | "group_id" | "position" | "tone">,
+  row: Pick<DealStatus, "value" | "group_id" | "position" | "tone"> & { color?: string | null },
 ) {
   // Vazio, e não ausente: `label` é obrigatório no tipo do INSERT, e o gatilho o
   // preenche antes do CHECK de nome em branco.
@@ -174,7 +201,7 @@ export async function createDealStatus(
 /** `value` fica de fora (os negócios guardam o texto) e `locked` também (é do sistema). */
 export async function updateDealStatus(
   id: string,
-  patch: Partial<Pick<DealStatus, "label" | "group_id" | "tone" | "active" | "position" | "stage_id" | "requires_note">>,
+  patch: Partial<Pick<DealStatus, "label" | "group_id" | "tone" | "color" | "active" | "position" | "stage_id" | "requires_note">>,
 ) {
   const { data, error } = await supabase.from("deal_statuses").update(patch).eq("id", id).select("id");
   if (error) throw dbError("deal_statuses", error);

@@ -30,6 +30,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 vi.mock("@/integrations/supabase/dealStatuses", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/integrations/supabase/dealStatuses")>()),
+  listDealStatusCcaStages: vi.fn(async () => []),
   updateDealStatusGroup: vi.fn(async () => undefined),
   updateDealStatus: vi.fn(async () => undefined),
 }));
@@ -65,6 +66,7 @@ beforeEach(async () => {
   renders.itens = 0;
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(dealStatusKeys.catalog, catalogoDeTeste);
+  queryClient.setQueryData(dealStatusKeys.ccaStages, []);
   container = document.body.appendChild(document.createElement("div"));
   root = createRoot(container);
   await act(async () => {
@@ -116,8 +118,8 @@ describe("DealStatusSettingsDialog · peso do cadastro", () => {
     const linha = document.querySelector('[role="group"][aria-label="Status 2 Assinado no banco"]');
     const valores = [...(linha?.querySelectorAll('button[role="combobox"]') ?? [])].map((gatilho) => gatilho.textContent);
 
-    // Status 1, cor e (0164) etapa — sem etapa vinculada, "Não muda a etapa".
-    expect(valores, "o gatilho perdeu o rótulo do valor atual").toEqual(["VENDA", "Azul — em andamento", "Não muda a etapa"]);
+    // Status 1 e (0164) etapa — a cor livre agora é um input nativo.
+    expect(valores, "o gatilho perdeu o rótulo do valor atual").toEqual(["VENDA", "Não muda a etapa"]);
     expect(renders.itens, "algum Select montou a lista fechado").toBe(0);
   });
 
@@ -134,7 +136,7 @@ describe("DealStatusSettingsDialog · peso do cadastro", () => {
 
     // "pendente" repete "16. PENDENTE": prova que a tecla chegou ao estado.
     expect(campo.getAttribute("aria-invalid"), "a tecla não chegou ao React: o teste não exercitou nada").toBe("true");
-    // Só os dois Selects do próprio formulário (Status 1 e Cor).
-    expect(renders.gatilhos, "a tecla redesenhou as linhas do cadastro").toBeLessThanOrEqual(2);
+    // Só o Select de Status 1 do próprio formulário; cor é input nativo.
+    expect(renders.gatilhos, "a tecla redesenhou as linhas do cadastro").toBeLessThanOrEqual(1);
   });
 });

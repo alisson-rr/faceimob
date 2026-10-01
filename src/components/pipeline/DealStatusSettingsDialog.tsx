@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Lock, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,18 +11,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/sonner";
-import { LoadingState, type StatusTone } from "@/components/shared";
+import { ColorField, LoadingState } from "@/components/shared";
 import { cn } from "@/lib/utils";
+import { TONE_HEX, isHexColor, textOn } from "@/lib/tone";
 import { describeError } from "@/lib/supabaseError";
 import {
   EMPTY_STATUS_CATALOG, STATUS_ROLES, buildDealStatusCatalog, createDealStatus, createDealStatusGroup,
-  dealStatusKeys, setDealStatusPermission, statusKey, updateDealStatus, updateDealStatusGroup, useDealStatusCatalog,
+  dealStatusKeys, listDealStatusCcaStages, setDealStatusPermission, statusKey, updateCcaStageDealStatus,
+  updateDealStatus, updateDealStatusGroup, useDealStatusCatalog,
   type DealStatus, type DealStatusCatalog, type DealStatusGroup, type StatusPermission,
   type StatusPermissionRow, type StatusRole,
 } from "@/integrations/supabase/dealStatuses";
-import { CCA_TONE_OPTIONS } from "./ccaStage";
 import { useInvalidateDeals, usePipelineStages } from "./data";
-import { STATUS_TONE_CLASS, groupChoices, statusGroupCode } from "./statuses";
+import { groupChoices, statusGroupCode } from "./statuses";
 
 type Otimista = (catalog: DealStatusCatalog) => DealStatusCatalog;
 
@@ -61,8 +62,6 @@ const proximaPosicao = (rows: { position: number }[]) => Math.max(0, ...rows.map
 const opcoesDeGrupo = (catalog: DealStatusCatalog, atual?: string): Opcao[] =>
   groupChoices(catalog, atual).map((group) => ({ value: group.id, label: group.label }));
 
-const rotuloDoTom = (tone: StatusTone) => CCA_TONE_OPTIONS.find((option) => option.value === tone)?.label ?? tone;
-
 /**
  * Cadastro do Status 1 e do Status 2 (0149) — o que antes só mudava com deploy.
  *
@@ -79,6 +78,7 @@ export function DealStatusSettingsDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const invalidateDeals = useInvalidateDeals();
   const query = useDealStatusCatalog();
+  const ccaStages = useQuery({ queryKey: dealStatusKeys.ccaStages, queryFn: listDealStatusCcaStages });
   const catalog = query.data ?? EMPTY_STATUS_CATALOG;
   const etapas = usePipelineStages();
   const opcoesDeEtapa: Opcao[] = [
@@ -141,6 +141,25 @@ export function DealStatusSettingsDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const gravarLigacaoCca = async (stageId: string, statusId: string | null) => {
+    setSalvando((total) => total + 1);
+    try {
+      await updateCcaStageDealStatus(stageId, statusId);
+      alterou.current = true;
+      toast.success(statusId ? "Coluna do CCA ligada ao Status 2" : "Ligação com o CCA removida", { duration: 2500 });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: dealStatusKeys.ccaStages }),
+        queryClient.invalidateQueries({ queryKey: ["cca"] }),
+      ]);
+    } catch (erro) {
+      toast.error("Não foi possível atualizar a ligação com o CCA", {
+        description: describeError(erro, "A ligação continua como estava."),
+      });
+    } finally {
+      setSalvando((total) => total - 1);
+    }
+  };
+
   // ponytail: troca a posição com o vizinho; empate de `position` (só por SQL,
   // a tela sempre cria no fim) não reordena. Renumerar a lista quando existir.
   const mover = (
@@ -185,8 +204,9 @@ export function DealStatusSettingsDialog({ onClose }: { onClose: () => void }) {
           <DialogTitle>Status do negócio</DialogTitle>
           <DialogDescription>
             Cada Status 2 pertence a um Status 1, e trocar o Status 2 de um negócio leva o Status 1
-            junto. Mudar o cadastro não reescreve os negócios que já têm o status. Desativar tira das
-            opções de escolha, sem apagar nada.
+            junto. A cor é livre e as colunas do CCA podem ser ligadas ao Status 2 que gravam. Mudar o
+            cadastro não reescreve os negócios que já têm o status. Desativar tira das opções de
+            escolha, sem apagar nada.
           </DialogDescription>
         </DialogHeader>
 
@@ -285,7 +305,13 @@ export function DealStatusSettingsDialog({ onClose }: { onClose: () => void }) {
                             className="space-y-2 rounded-xl border border-border bg-muted/20 p-2"
                           >
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className={cn("rounded px-2 py-0.5 text-xs font-bold", STATUS_TONE_CLASS[status.tone])}>
+                              <span
+                                className="rounded px-2 py-0.5 text-xs font-bold"
+                                style={{
+                                  backgroundColor: isHexColor(status.color) ? status.color : TONE_HEX[status.tone],
+                                  color: textOn(isHexColor(status.color) ? status.color : TONE_HEX[status.tone]),
+                                }}
+                              >
                                 {status.label}
                               </span>
                               <span className="text-xs text-muted-foreground">
@@ -352,22 +378,57 @@ export function DealStatusSettingsDialog({ onClose }: { onClose: () => void }) {
                               </div>
                               <div>
                                 <Label htmlFor={`${campo}-cor`} className="text-xs">Cor</Label>
-                                <SelectAoAbrir
+                                <ColorField
                                   id={`${campo}-cor`}
-                                  value={status.tone}
-                                  rotulo={rotuloDoTom(status.tone)}
-                                  opcoes={CCA_TONE_OPTIONS}
-                                  onValueChange={(value) => {
-                                    const tone = value as StatusTone;
-                                    void gravar(
-                                      comStatus({ [status.id]: { tone } }),
-                                      () => updateDealStatus(status.id, { tone }),
-                                      "Cor atualizada",
-                                    );
-                                  }}
+                                  value={isHexColor(status.color) ? status.color : TONE_HEX[status.tone]}
+                                  allowEmpty={false}
+                                  onChange={(color) => void gravar(
+                                    comStatus({ [status.id]: { color } }),
+                                    () => updateDealStatus(status.id, { color }),
+                                    "Cor atualizada",
+                                  )}
                                 />
                               </div>
                             </div>
+
+                            <details className="rounded-lg border border-border/60 px-2 py-1.5">
+                              <summary className="cursor-pointer text-xs font-semibold">
+                                Colunas do CCA ({(ccaStages.data ?? []).filter((stage) => stage.deal_status_id === status.id).length})
+                              </summary>
+                              {ccaStages.isPending ? (
+                                <p className="mt-2 text-xs text-muted-foreground">Carregando colunas…</p>
+                              ) : ccaStages.error ? (
+                                <p role="alert" className="mt-2 text-xs text-destructive">
+                                  {describeError(ccaStages.error, "Não consegui ler as colunas do CCA.")}
+                                </p>
+                              ) : (
+                                <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                                  {(ccaStages.data ?? []).map((stage) => {
+                                    const ligado = stage.deal_status_id === status.id;
+                                    const outro = stage.deal_status_id
+                                      ? catalog.statuses.find((item) => item.id === stage.deal_status_id)?.label
+                                      : null;
+                                    const checkboxId = `${campo}-cca-${stage.id}`;
+                                    return (
+                                      <div key={stage.id} className="flex items-start gap-2 rounded-md px-1 py-1 hover:bg-muted/40">
+                                        <Checkbox
+                                          id={checkboxId}
+                                          checked={ligado}
+                                          disabled={salvando > 0}
+                                          onCheckedChange={(checked) => void gravarLigacaoCca(stage.id, checked === true ? status.id : null)}
+                                        />
+                                        <Label htmlFor={checkboxId} className="text-xs font-normal leading-tight">
+                                          {stage.name}
+                                          {!ligado && outro && (
+                                            <span className="block text-muted-foreground">Hoje: {outro}</span>
+                                          )}
+                                        </Label>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </details>
 
                             {/* 0164: o Status 2 manda. A etapa segue o que está aqui,
                                 e a matriz diz quem coloca e quem tira o negócio
@@ -558,7 +619,7 @@ function NovoStatus1({ id, catalog, gravar }: { id: string; catalog: DealStatusC
 function NovoStatus2({ id, catalog, gravar }: { id: string; catalog: DealStatusCatalog; gravar: Gravar }) {
   const [texto, setTexto] = useState("");
   const [grupo, setGrupo] = useState("");
-  const [tom, setTom] = useState<StatusTone>("info");
+  const [cor, setCor] = useState(TONE_HEX.info);
   const textoNovo = texto.trim();
   const repetido = Boolean(textoNovo) && catalog.indexByKey.has(statusKey(textoNovo));
 
@@ -567,7 +628,7 @@ function NovoStatus2({ id, catalog, gravar }: { id: string; catalog: DealStatusC
     const ok = await gravar(
       semMudanca,
       () => createDealStatus({
-        value: textoNovo, group_id: grupo, tone: tom,
+        value: textoNovo, group_id: grupo, tone: "info", color: cor,
         position: proximaPosicao(catalog.statuses.filter((status) => status.group_id === grupo)),
       }),
       `Status 2 "${textoNovo}" criado`,
@@ -600,13 +661,7 @@ function NovoStatus2({ id, catalog, gravar }: { id: string; catalog: DealStatusC
       </div>
       <div>
         <Label htmlFor={`${id}-novo-status-cor`} className="text-xs">Cor</Label>
-        <SelectAoAbrir
-          id={`${id}-novo-status-cor`}
-          value={tom}
-          rotulo={rotuloDoTom(tom)}
-          opcoes={CCA_TONE_OPTIONS}
-          onValueChange={(value) => setTom(value as StatusTone)}
-        />
+        <ColorField id={`${id}-novo-status-cor`} value={cor} allowEmpty={false} onChange={setCor} />
       </div>
       <p
         id={`${id}-novo-status-dica`}

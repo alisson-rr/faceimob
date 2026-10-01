@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -929,11 +930,30 @@ export default function Gamification() {
                   description="Defina o diretor de cada equipe em Equipes para o placar sair por diretoria."
                 />
               ) : (
-                directorshipRankings.map((dir) => (
-                  <SectionCard key={dir.id} title={`Diretoria ${dir.name}`} icon={Crown} flush>
-                    <RankingTable scores={dir.all} secondColumn="manager" />
-                  </SectionCard>
-                ))
+                <Accordion type="single" collapsible className="grid items-start gap-3 md:grid-cols-3">
+                  {directorshipRankings.map((dir) => (
+                    <AccordionItem
+                      key={dir.id}
+                      value={dir.id}
+                      className="rounded-xl border border-border bg-card px-4 shadow-sm data-[state=open]:md:col-span-3"
+                    >
+                      <AccordionTrigger className="gap-3 py-4 text-left hover:no-underline">
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="rounded-lg bg-primary/10 p-2 text-primary"><Crown className="h-4 w-4" /></span>
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold">Diretoria {dir.name}</span>
+                            <span className="block text-xs font-normal text-muted-foreground">
+                              {num(dir.all.length)} {dir.all.length === 1 ? 'corretor' : 'corretores'} · {num(dir.all.reduce((total, linha) => total + linha.points, 0))} pts
+                            </span>
+                          </span>
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="-mx-4 pb-0">
+                        <RankingTable scores={dir.all} secondColumn="manager" />
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               )}
             </TabsContent>
 

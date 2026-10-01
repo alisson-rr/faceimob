@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { isSystemStatus } from "@/lib/dealStatus";
-import { TONE_HEX } from "@/lib/tone";
 import {
   statusKey, statusMoveBlock, type DealStatus, type DealStatusCatalog,
 } from "@/integrations/supabase/dealStatuses";
@@ -11,6 +10,7 @@ import { DealCard } from "./DealCard";
 import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import { dealLock } from "./guards";
 import type { PipelineStage } from "./stages";
+import { faceimobStatusColor } from "./statuses";
 
 /** Coluna do quadro: um Status 2 do cadastro, ou a de quem está fora dele. */
 type Coluna = { stage: PipelineStage; status: DealStatus | null; deals: LegacyDealRecord[] };
@@ -67,7 +67,7 @@ export function StatusKanban({
       deals: porChave.get(statusKey(status.value)) ?? [],
       stage: {
         id: status.id, code: statusKey(status.value), label: status.label,
-        position: status.position, color: TONE_HEX[status.tone],
+        position: status.position, color: faceimobStatusColor(catalog, status.value),
       },
     }));
     // Quem está fora das colunas (sem Status 2, texto antigo fora do cadastro)
@@ -80,7 +80,7 @@ export function StatusKanban({
       });
     }
     return lista;
-  }, [catalog.statuses, statusGroupId, deals]);
+  }, [catalog, statusGroupId, deals]);
 
   const statusPorColuna = useMemo(
     () => new Map(colunas.map((coluna) => [coluna.stage.id, coluna.status])),

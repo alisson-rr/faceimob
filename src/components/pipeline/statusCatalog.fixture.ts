@@ -31,7 +31,7 @@ const status = (
   extra: Partial<DealStatus> = {},
 ): DealStatus => ({
   id: `s-${value}`, value, label: value.replace(/^\d+\.\s*/, ""), group_id: group.id,
-  position, tone, active: true, locked: false, stage_id: null, requires_note: false, ...extra,
+  position, tone, color: null, active: true, locked: false, stage_id: null, requires_note: false, ...extra,
 });
 
 const { VENDA, PROPOSTA, LEGADO, DISTRATO, OFF } = GRUPOS;
