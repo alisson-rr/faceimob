@@ -13,6 +13,7 @@ const estado = vi.hoisted(() => ({ cartoes: 0, leads: [] as LeadRecord[] }));
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "eu" } }) }));
 vi.mock("@/components/LeadDetailModal", () => ({ default: () => null }));
+vi.mock("@/components/leads/LeadCheckinButton", () => ({ LeadCheckinButton: () => null }));
 vi.mock("@/components/leads", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/components/leads")>();
   const noop = () => undefined;

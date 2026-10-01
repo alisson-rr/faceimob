@@ -1,5 +1,6 @@
 import { supabase } from "./client";
 import { dbError } from "@/lib/supabaseError";
+import { functionErrorMessage } from "@/lib/functionError";
 
 /**
  * Check-in, turno e fila de distribuição.
@@ -17,6 +18,34 @@ export type CheckinEligibility = {
   overdue_count: number;
   threshold: number;
 };
+
+export type BrokerPresenceAction = "checkin" | "checkout";
+
+const CHECKIN_FUNCTION_ERRORS: Record<string, string> = {
+  unauthorized: "Sua sessão expirou. Entre novamente.",
+  unknown: "Não foi possível concluir a ação. Tente de novo.",
+};
+
+/**
+ * Registra entrada ou saída pela mesma Edge Function usada na tela completa.
+ * Centralizar evita que o botão compacto do funil aceite uma resposta que a
+ * tela de check-in recusaria (ou mostre o erro técnico do SDK em inglês).
+ */
+export async function performBrokerPresence(action: BrokerPresenceAction): Promise<void> {
+  const { data: session } = await supabase.auth.getSession();
+  if (!session?.session) throw new Error("Você precisa estar logado. Faça login novamente.");
+
+  const { data, error } = await supabase.functions.invoke("broker-checkin", { body: { action } });
+  if (error) {
+    const fallback = "O servidor de check-in não respondeu. Tente de novo em instantes.";
+    const message = await functionErrorMessage(error, fallback);
+    const translated = message === error.message ? fallback : message;
+    throw new Error(CHECKIN_FUNCTION_ERRORS[translated] ?? translated);
+  }
+
+  const returned = (data as { error?: string } | null)?.error;
+  if (returned) throw new Error(CHECKIN_FUNCTION_ERRORS[returned] ?? returned);
+}
 
 export type WorkShift = {
   id: string;

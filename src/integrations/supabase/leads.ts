@@ -80,20 +80,26 @@ export const LEAD_STATUSES: { value: LeadStatus; label: string; tone: LeadTone }
   { value: "in_progress", label: "Em relacionamento", tone: "info" },
   { value: "converted", label: "Convertido", tone: "success" },
   { value: "lost", label: "Perdido", tone: "danger" },
-  { value: "discarded", label: "Descartado", tone: "neutral" },
+  { value: "discarded", label: "Descartado", tone: "danger" },
 ];
 
 // O funil é `funnel_stage` — "convertido" NÃO é etapa de funil, é `status`.
 // A coluna "Convertido" que existia no funil era uma etapa inexistente no enum.
-export const FUNNEL_STAGES: { key: LeadFunnelStage; label: string; tone: LeadTone }[] = [
-  { key: "new", label: "Novo Lead", tone: "info" },
-  { key: "first_contact", label: "Primeiro Contato", tone: "info" },
-  { key: "no_response", label: "Sem Resposta", tone: "warning" },
-  { key: "warm", label: "Lead Morno", tone: "warning" },
-  { key: "hot", label: "Lead Quente", tone: "highlight" },
-  { key: "gathering_docs", label: "Juntando Doc", tone: "neutral" },
-  { key: "scheduled_visit", label: "Visita Agendada", tone: "info" },
-  { key: "qualified", label: "Qualificado", tone: "success" },
+export const FUNNEL_STAGES: {
+  key: LeadFunnelStage;
+  label: string;
+  tone: LeadTone;
+  /** Orientação curta, escrita para o corretor — não é nome técnico do banco. */
+  guidance: string;
+}[] = [
+  { key: "new", label: "Chegou agora", tone: "info", guidance: "Leia o interesse e faça o primeiro contato." },
+  { key: "first_contact", label: "Conversa iniciada", tone: "info", guidance: "Entenda necessidade, prazo e faixa de investimento." },
+  { key: "no_response", label: "Aguardando resposta", tone: "warning", guidance: "Combine uma nova tentativa e marque a próxima ação." },
+  { key: "warm", label: "Interesse em avaliação", tone: "warning", guidance: "Apresente as melhores opções e descubra objeções." },
+  { key: "hot", label: "Interesse confirmado", tone: "success", guidance: "Confirme a opção favorita e conduza para a visita." },
+  { key: "gathering_docs", label: "Documentos em andamento", tone: "success", guidance: "Ajude o cliente a concluir a documentação necessária." },
+  { key: "scheduled_visit", label: "Visita marcada", tone: "success", guidance: "Prepare a visita e confirme data, local e participantes." },
+  { key: "qualified", label: "Pronto para proposta", tone: "success", guidance: "Revise os dados e converta o lead em negócio." },
 ];
 
 export const leadStatusLabel = (status?: string | null) =>

@@ -289,7 +289,7 @@ test.describe("trava de atendimento de 5 minutos", () => {
     await linhaDoLead(page, nome).getByRole("button", { name: nome, exact: true }).click();
 
     const modal = page.getByRole("dialog");
-    await modal.getByRole("button", { name: "Lead Quente", exact: true }).click();
+    await modal.getByRole("button", { name: /Interesse confirmado/ }).click();
     await expect(page.getByText(/movido para lead quente/i)).toBeVisible();
 
     // `updateLead` passou a pedir a linha de volta: UPDATE que a RLS recusa

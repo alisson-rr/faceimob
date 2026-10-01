@@ -10,6 +10,7 @@ import {
   CloseLeadDialog, NextActionDialog, useAutomationSettings, useDistributionGroups, useLeadDetail,
   useNowTicker,
 } from "@/components/leads";
+import { LeadJourney } from "@/components/leads/LeadJourney";
 import { useAuth } from "@/contexts/AuthContext";
 import TaskPanel from "@/components/TaskPanel";
 import VisitPanel from "@/components/VisitPanel";
@@ -17,7 +18,7 @@ import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  AlertTriangle, ArrowRightCircle, Clock, Download, HandMetal, Loader2, Mail,
+  AlertTriangle, Clock, Download, HandMetal, Loader2, Mail,
   MessageCircle, Paperclip, Phone, RefreshCcw, Save, Send, Timer, Upload, User, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,11 +27,11 @@ import { describeError } from "@/lib/supabaseError";
 import {
   addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
   updateLead, moveLeadStage, claimLead,
-  ATTACHMENT_HINT, FUNNEL_STAGES, funnelStageLabel, funnelStageTone, leadSourceTone,
+  ATTACHMENT_HINT, funnelStageLabel, funnelStageTone,
   leadStatusLabel, leadStatusTone,
   attendSecondsLeft, canWriteLead, formatCountdown, canClaim, isLeadUnattended, trackingFields,
   type LeadRecord, type LeadAttachment,
-  type LeadFunnelStage, type LeadPatch,
+  type LeadFunnelStage, type LeadPatch, type LeadTone,
 } from "@/integrations/supabase/leads";
 import { toDateTimeInput } from "@/components/leads";
 
@@ -51,6 +52,15 @@ const EDIT_FIELDS: { key: EditableField; label: string; type?: string }[] = [
   { key: "email", label: "E-mail", type: "email" },
   { key: "document", label: "CPF / documento" },
 ];
+
+const DETAIL_TONE_FRAME: Record<LeadTone, string> = {
+  info: "border-t-info",
+  warning: "border-t-warning",
+  danger: "border-t-destructive",
+  success: "border-t-success",
+  highlight: "border-t-highlight",
+  neutral: "border-t-border",
+};
 
 export default function LeadDetailModal({
   lead, open, onOpenChange, actorName, onConvert, onStageChanged,
@@ -137,6 +147,11 @@ export default function LeadDetailModal({
   const semAtendimento = isLeadUnattended(lead, settingsQuery.data?.roulette_max_rounds ?? 5);
   const encerravel = !["converted", "lost", "discarded"].includes(lead.status)
     && !lead.converted_deal_id;
+  const visualTone: LeadTone = ["lost", "discarded"].includes(lead.status)
+    ? "danger"
+    : lead.status === "converted" || lead.converted_deal_id
+      ? "success"
+      : funnelStageTone(lead.funnel_stage);
 
   const attend = async () => {
     let travado = false;
@@ -247,26 +262,21 @@ export default function LeadDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-strong max-h-[92vh] max-w-3xl overflow-y-auto">
+      <DialogContent className={cn(
+        "glass-strong max-h-[92vh] max-w-5xl overflow-y-auto border-t-4",
+        DETAIL_TONE_FRAME[visualTone],
+      )}>
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             <span>{lead.name}</span>
-            <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
             <StatusBadge tone={funnelStageTone(lead.funnel_stage)}>{funnelStageLabel(lead.funnel_stage)}</StatusBadge>
-            {/* Cronômetro neutro, igual ao funil e ao aviso de lead (lá o âmbar é
-                o botão "Atender"). No último minuto vira alerta vermelho. */}
-            {secondsLeft !== null && (
-              <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
-                <span className="tabular-nums">{formatCountdown(secondsLeft)}</span> para atender
-              </StatusBadge>
-            )}
-            {inactiveHours > 24 && (
-              <StatusBadge tone="danger" icon={AlertTriangle}>Inativo há {inactiveHours.toFixed(0)}h</StatusBadge>
+            {!["attending", "in_progress"].includes(lead.status) && (
+              <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
             )}
           </DialogTitle>
           {/* `DialogDescription` de verdade, e não `aria-describedby={undefined}`:
-              esta linha É a descrição do diálogo (de onde o lead veio, com quem
-              está, quantas voltas deu). Sem ela o Radix avisava em runtime e o
+              esta linha É a descrição do diálogo (quando chegou, com quem está
+              e quantas voltas deu). Sem ela o Radix avisava em runtime e o
               leitor de tela anunciava o título e parava. `asChild` porque o
               conteúdo é uma linha de badges, e `<div>` dentro de `<p>` é HTML
               inválido. */}
@@ -278,10 +288,6 @@ export default function LeadDetailModal({
             <span className="flex items-center gap-1">
               <User className="h-3.5 w-3.5" aria-hidden /> {lead.broker_name || "Sem corretor"}
             </span>
-            <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
-            {lead.campaign_name && <StatusBadge tone="neutral">📣 {lead.campaign_name}</StatusBadge>}
-            {lead.form_name && <StatusBadge tone="neutral">📋 {lead.form_name}</StatusBadge>}
-            {grupo && <StatusBadge tone="neutral">Fila: {grupo.name}</StatusBadge>}
             {lead.roulette_misses > 0 && (
               <StatusBadge tone={semAtendimento ? "danger" : "warning"} icon={RefreshCcw}>
                 {semAtendimento
@@ -293,8 +299,23 @@ export default function LeadDetailModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Ações rápidas */}
-        <div className="flex flex-wrap gap-2">
+        {(secondsLeft !== null || inactiveHours > 24) && (
+          <div className="flex flex-wrap gap-2" aria-live="polite">
+            {secondsLeft !== null && (
+              <StatusBadge tone={secondsLeft <= 60 ? "danger" : "warning"} icon={Timer}>
+                <span className="tabular-nums">{formatCountdown(secondsLeft)}</span> para começar o atendimento
+              </StatusBadge>
+            )}
+            {inactiveHours > 24 && (
+              <StatusBadge tone="danger" icon={AlertTriangle}>Sem atividade há {inactiveHours.toFixed(0)}h</StatusBadge>
+            )}
+          </div>
+        )}
+
+        {/* Primeiro a conversa com o cliente; ações administrativas ficam depois. */}
+        <section className="rounded-2xl border border-border bg-card/60 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fale com o cliente</p>
+          <div className="flex flex-wrap gap-2">
           {claimable && (
             <Button size="sm" onClick={attend}>
               <HandMetal className="h-4 w-4" /> Atender
@@ -316,38 +337,24 @@ export default function LeadDetailModal({
               <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4" /> E-mail</a>
             </Button>
           )}
-          {/* `convert_lead_to_deal` exige dono, gestor do dono ou admin (0028):
-              o mesmo `writable` da lista. Sem ele o sócio via o botão aceso,
-              preenchia construtora e VGV e só então tomava 42501. */}
-          {writable && lead.status !== "converted" && !lead.converted_deal_id && (
-            <Button size="sm" className="sm:ml-auto" onClick={() => onConvert(lead)}>
-              <ArrowRightCircle className="h-4 w-4" /> Converter
-            </Button>
-          )}
           {/* Encerrar com motivo: a saída que faltava. Sem ela o único jeito de
               tirar o lead da conta dos atrasados era reagendar para sempre. */}
           {writable && encerravel && (
-            <Button size="sm" variant="outline" onClick={() => setClosing(true)}>
+            <Button size="sm" variant="ghost" className="sm:ml-auto text-muted-foreground hover:text-destructive" onClick={() => setClosing(true)}>
               <XCircle className="h-4 w-4" /> Encerrar
             </Button>
           )}
-        </div>
-
-        {/* Mover de etapa — só para quem o banco deixa escrever no lead. */}
-        {writable ? (
-          <div className="flex flex-wrap gap-1">
-            {FUNNEL_STAGES.map((stage) => (
-              <Button
-                key={stage.key} size="sm"
-                variant={lead.funnel_stage === stage.key ? "default" : "outline"}
-                className="h-8 px-3 text-xs"
-                onClick={() => moveTo(stage.key)}
-              >
-                {stage.label}
-              </Button>
-            ))}
           </div>
-        ) : (
+        </section>
+
+        <LeadJourney
+          lead={lead}
+          writable={writable}
+          onMove={(stage) => void moveTo(stage)}
+          onConvert={() => onConvert(lead)}
+        />
+
+        {!writable && (
           <p className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             Você acompanha este lead em modo leitura: mover de etapa, editar, comentar, anexar e
             converter são do corretor responsável, do gestor da equipe dele e do administrador.
@@ -355,32 +362,24 @@ export default function LeadDetailModal({
         )}
 
         <Tabs defaultValue="info" className="mt-2">
-          {/* 7 abas: `grid-cols-6` escondia a última e o `h-10` do TabsList
-              cortava o rótulo. Em tela estreita quebra em duas linhas. */}
-          <TabsList className="grid h-auto w-full grid-cols-4 sm:grid-cols-7">
-            <TabsTrigger value="info" className="text-xs">Dados</TabsTrigger>
-            <TabsTrigger value="form" className="text-xs">Formulário</TabsTrigger>
-            <TabsTrigger value="comments" className="text-xs">Comentar</TabsTrigger>
-            <TabsTrigger value="attachments" className="text-xs">Anexos</TabsTrigger>
+          <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto p-1">
+            <TabsTrigger value="info" className="shrink-0 text-xs">Resumo</TabsTrigger>
+            <TabsTrigger value="comments" className="shrink-0 text-xs">Conversas</TabsTrigger>
+            <TabsTrigger value="agenda" className="shrink-0 text-xs">Ações e visitas</TabsTrigger>
+            <TabsTrigger value="attachments" className="shrink-0 text-xs">Arquivos</TabsTrigger>
             <TabsTrigger value="history" className="text-xs">Histórico</TabsTrigger>
-            <TabsTrigger value="agenda" className="text-xs">Agenda</TabsTrigger>
-            <TabsTrigger value="tracking" className="text-xs">Rastreio</TabsTrigger>
+            <TabsTrigger value="form" className="shrink-0 text-xs">Respostas recebidas</TabsTrigger>
+            <TabsTrigger value="tracking" className="shrink-0 text-xs">Dados técnicos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="info" className="space-y-3">
             <div className="space-y-2 text-sm">
-              <Row k="Origem" v={lead.source} />
-              <LinkRow k="Página de origem" href={lead.landing_page} />
-              <LinkRow
-                k="Pasta de documentos"
-                href={typeof lead.tracking.pasta_drive === "string" ? lead.tracking.pasta_drive : null}
-              />
-              <Row k="Corretor" v={lead.broker_name} />
+              <Row k="Como chegou" v={lead.source} />
+              <Row k="Responsável" v={lead.broker_name} />
               <Row k="Atribuído em" v={lead.assigned_at ? dateTime(lead.assigned_at) : null} />
-              <Row k="Primeiro contato" v={lead.first_contact_at ? dateTime(lead.first_contact_at) : null} />
+              <Row k="Conversa iniciada" v={lead.first_contact_at ? dateTime(lead.first_contact_at) : null} />
               <Row k="Próxima ação" v={lead.next_action_at ? dateTime(lead.next_action_at) : null} />
-              <Row k="Qualificado pela IA" v={lead.sdr_qualified_at ? dateTime(lead.sdr_qualified_at) : null} />
-              <Row k="Notas" v={lead.notes} />
+              <Row k="Interesse informado" v={lead.notes} />
             </div>
             {/* `key` por versão do lead: o registro muda por baixo (roleta,
                 realtime) e o formulário precisa refletir o que está no banco,
@@ -546,6 +545,17 @@ export default function LeadDetailModal({
           </TabsContent>
 
           <TabsContent value="tracking" className="space-y-2 text-sm">
+            <Row k="Status interno" v={leadStatusLabel(lead.status)} />
+            <Row k="Etapa interna" v={lead.funnel_stage} />
+            <Row k="Fila de distribuição" v={grupo?.name} />
+            <Row k="Campanha" v={lead.campaign_name} />
+            <Row k="Formulário" v={lead.form_name} />
+            <Row k="Qualificado pela IA" v={lead.sdr_qualified_at ? dateTime(lead.sdr_qualified_at) : null} />
+            <LinkRow k="Página de origem" href={lead.landing_page} />
+            <LinkRow
+              k="Pasta de documentos"
+              href={typeof lead.tracking.pasta_drive === "string" ? lead.tracking.pasta_drive : null}
+            />
             {tracking.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sem dados de rastreio.</p>
             ) : (
