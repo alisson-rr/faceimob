@@ -132,7 +132,7 @@ export function DealFilters({
             <SelectContent>
               <SelectItem value={ALL}>Todas as conferências</SelectItem>
               <SelectItem value="draft">Em preparação</SelectItem>
-              <SelectItem value="pending">Aguardando gerente</SelectItem>
+              <SelectItem value="pending">Análise enviada para conferência</SelectItem>
               <SelectItem value="returned">Devolvido para correção</SelectItem>
               <SelectItem value="approved">Conferido</SelectItem>
             </SelectContent>

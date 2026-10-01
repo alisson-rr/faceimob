@@ -14,6 +14,12 @@ import {
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
 import { addDealComment, countDealComments } from "@/components/pipeline/DealCommentsPanel";
+import { ConferenciaGerenteDialog } from "@/components/pipeline/ConferenciaGerenteDialog";
+import { submitDealForManagerReview } from "@/integrations/supabase/documents";
+import { BatidaCpfDialog } from "@/components/pipeline/BatidaCpfDialog";
+import {
+  assumirNegocioDoCpf, cpfsParaBatida, negocioDoCpf, type NegocioDoCpf,
+} from "@/integrations/supabase/batidaCpf";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { vendaTemCard } from "@/components/pipeline/useDealActions";
@@ -39,6 +45,8 @@ interface Props {
   /** Fecha o modal só depois de TODAS as gravações (negócio e análise do CCA).
    *  Fechar dentro de `onSave` apagava a análise digitada quando só ela falhava. */
   closeOnSave?: boolean;
+  /** Negócio encerrado assumido na batida de CPF: quem abriu a ficha o mostra. */
+  onAssumido?: (dealId: string) => void | Promise<void>;
 }
 
 type TabKey = "detalhes" | "comentarios" | "anexos" | "agenda" | "historico" | "cca";
@@ -84,7 +92,7 @@ const emptyDeal = (stageCode: string, month?: string, selfBrokerId?: string): Sa
  * abrem depois de salvar — antes elas consultavam com um id inexistente.
  */
 export default function DealDetailModal({
-  deal, open, onClose, onSave, onReviewChanged, people, developers, stages, defaultMonth, closeOnSave,
+  deal, open, onClose, onSave, onReviewChanged, people, developers, stages, defaultMonth, closeOnSave, onAssumido,
 }: Props) {
   const { user } = useAuth();
   const id = useId();
@@ -116,8 +124,16 @@ export default function DealDetailModal({
   // apaga a frase no mesmo instante, sem efeito nem segundo clique em salvar.
   const developerError = tentouSalvar ? dealRequiredError(form) : null;
 
-  const dealId = deal?.id ?? null;
+  /** Negócio criado pelo popup de conferência: a ficha fica aberta, agora como
+   *  edição, para anexar os documentos e enviar ao gerente. */
+  const [criadoId, setCriadoId] = useState<string | null>(null);
+  const dealId = deal?.id ?? criadoId;
   const isNew = !dealId;
+  /** Popup "Conferência do gerente" (Status 2 Em análise / Esteira Ágil). */
+  const [conferencia, setConferencia] = useState<{ enviando: boolean; erro: string | null } | null>(null);
+  const [mensagemEnvio, setMensagemEnvio] = useState("");
+  /** Batida de CPF que achou negócio (0179). */
+  const [batida, setBatida] = useState<{ negocio: NegocioDoCpf; enviando: boolean; erro: string | null } | null>(null);
 
   // Contador no rótulo da aba: sem ele o comentário sai da aba "Detalhes" e vira
   // conteúdo escondido — ninguém clica numa aba que não avisa que tem algo. Em
@@ -132,7 +148,11 @@ export default function DealDetailModal({
   const patch = (next: Partial<SaveLegacyDealInput>) =>
     setForm((previous) => ({ ...previous, ...next }));
 
-  const handleSave = async () => {
+  /** Grava o negócio. Devolve o id gravado, ou `null` quando nada foi gravado
+   *  (a recusa já foi mostrada). `fechar: false` mantém a ficha aberta. */
+  const handleSave = async (
+    { fechar = Boolean(closeOnSave), avisar = true }: { fechar?: boolean; avisar?: boolean } = {},
+  ): Promise<string | null> => {
     // Liga antes da primeira recusa, e não depois delas: o formulário nasce sem
     // corretor E sem construtora, então cobrar um campo por clique fazia o
     // operador descobrir a segunda pendência só na tentativa seguinte. Ligado
@@ -141,7 +161,7 @@ export default function DealDetailModal({
     setTentouSalvar(true);
     if (!form.client.trim()) {
       toast({ variant: "destructive", title: "O nome do cliente é obrigatório" });
-      return;
+      return null;
     }
     // Sem participante o negócio nasce fora do alcance de `can_edit_deal()`:
     // ninguém além de admin e CCA conseguiria abri-lo de novo.
@@ -151,7 +171,7 @@ export default function DealDetailModal({
         title: "Escolha ao menos um corretor ou gerente",
         description: "É o vínculo que dá acesso ao negócio depois de salvo.",
       });
-      return;
+      return null;
     }
     // "Construtora *" é recusa de CAMPO, e por isso não vai para toast: a frase
     // aparece uma vez, presa ao Select que a causou (`aria-invalid` +
@@ -168,7 +188,28 @@ export default function DealDetailModal({
       // de partida certo e faz o leitor de tela reler o campo com a frase
       // ligada por `aria-describedby` a cada nova tentativa.
       document.getElementById(field("developer"))?.focus();
-      return;
+      return null;
+    }
+    // Batida de CPF (0179): um CPF, um negócio. Sem a resposta não cadastra — o
+    // banco recusaria o CPF repetido de qualquer forma, com frase pior.
+    if (isNew) {
+      const cpfs = cpfsParaBatida(form);
+      if (cpfs.length > 0) {
+        try {
+          const achado = await negocioDoCpf(cpfs);
+          if (achado) {
+            setBatida({ negocio: achado, enviando: false, erro: null });
+            return null;
+          }
+        } catch (err) {
+          toast({
+            variant: "destructive",
+            title: "Não foi possível conferir o CPF",
+            description: describeError(err, "Tente de novo em instantes."),
+          });
+          return null;
+        }
+      }
     }
     setSaving(true);
     // São duas escritas: se só a análise do CCA falhar, o negócio JÁ foi gravado
@@ -181,6 +222,7 @@ export default function DealDetailModal({
     try {
       const novoId = await onSave(form);
       negocioGravado = true;
+      const gravado = typeof novoId === "string" ? novoId : dealId;
       // Comentário escrito na criação: a aba Comentários só existe depois do id.
       const comentario = comentarioInicial.trim();
       if (isNew && comentario) {
@@ -196,8 +238,15 @@ export default function DealDetailModal({
         }
       }
       if (dealId && Object.keys(cca).length > 0) await saveCcaAnalysis(dealId, cca);
-      if (!virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado" : "Negócio atualizado" });
-      if (closeOnSave) onClose();
+      if (avisar && !virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado" : "Negócio atualizado" });
+      if (fechar) {
+        onClose();
+      } else if (isNew && gravado) {
+        setCriadoId(gravado);
+        patch({ id: gravado });
+        setComentarioInicial("");
+      }
+      return gravado;
     } catch (err) {
       toast(negocioGravado
         ? {
@@ -210,9 +259,70 @@ export default function DealDetailModal({
           title: isNew ? "Não foi possível criar o negócio" : "Não foi possível salvar o negócio",
           description: describeError(err, isNew ? "O negócio não foi gravado." : "As alterações não foram gravadas."),
         });
+      return null;
     } finally {
       setSaving(false);
     }
+  };
+
+  // Negócio já gravado e sem escrita (gerente de outro rateio, por exemplo):
+  // o envio vai direto, sem regravar a ficha que o banco recusaria.
+  const gravarAntesDoEnvio = () =>
+    (dealId && lock.readOnly ? Promise.resolve(dealId) : handleSave({ fechar: false, avisar: false }));
+
+  const enviarConferencia = async (mensagem: string) => {
+    setConferencia({ enviando: true, erro: null });
+    const gravado = await gravarAntesDoEnvio();
+    if (!gravado) {
+      setConferencia({ enviando: false, erro: "O negócio não foi gravado: confira o aviso e tente de novo." });
+      return;
+    }
+    try {
+      await submitDealForManagerReview(gravado, mensagem, "agil");
+      patch({ document_review_status: "pending" });
+      await onReviewChanged?.();
+      toast({
+        variant: "success",
+        title: "Análise enviada para conferência",
+        description: "O gerente recebeu o aviso com a sua mensagem.",
+      });
+      setConferencia(null);
+      if (closeOnSave) onClose();
+    } catch (err) {
+      setConferencia({ enviando: false, erro: describeError(err, "O envio ao gerente não foi feito.") });
+    }
+  };
+
+  const assumir = async (comentario: string) => {
+    if (!batida) return;
+    setBatida({ ...batida, enviando: true, erro: null });
+    try {
+      await assumirNegocioDoCpf(batida.negocio.deal_id, comentario);
+      toast({
+        variant: "success",
+        title: "Negócio assumido",
+        description: "Os dados do cliente vieram junto e você é o corretor agora.",
+      });
+      setBatida(null);
+      onClose();
+      await onAssumido?.(batida.negocio.deal_id);
+    } catch (err) {
+      setBatida({ ...batida, enviando: false, erro: describeError(err, "O negócio não foi assumido.") });
+    }
+  };
+
+  const irParaAnexos = async (mensagem: string) => {
+    if (isNew) {
+      setConferencia({ enviando: true, erro: null });
+      const gravado = await handleSave({ fechar: false });
+      if (!gravado) {
+        setConferencia({ enviando: false, erro: "O negócio não foi gravado: confira o aviso e tente de novo." });
+        return;
+      }
+    }
+    setMensagemEnvio(mensagem);
+    setConferencia(null);
+    setTab("anexos");
   };
 
   const tabs: { key: TabKey; label: string }[] = [
@@ -323,6 +433,7 @@ export default function DealDetailModal({
                 form={form} onChange={patch} field={field}
                 people={people} developers={developers} stages={stages} isNew={isNew}
                 developerError={developerError}
+                onPedirConferencia={() => setConferencia({ enviando: false, erro: null })}
               />
               {isNew && (
                 <div className="mt-4 space-y-1.5">
@@ -350,7 +461,7 @@ export default function DealDetailModal({
               dealCode={form.code || dealId}
               // O que vale é o gravado (`deal`), não o `form`: trocar a construtora
               // na aba Detalhes sem confirmar ainda deixa o banco sem ela.
-              hasDeveloper={Boolean(deal?.developer_id)}
+              hasDeveloper={Boolean(deal?.developer_id || (criadoId && (form.developer_id || form.developer)))}
               // A MESMA resposta que desabilita os campos: sem ela o gerente
               // clicava "Aprovar e enviar ao CCA" num negócio de mês fechado e
               // recebia a recusa crua de `deals_guard_closed_month` em toast.
@@ -360,6 +471,7 @@ export default function DealDetailModal({
               // enquanto o resto do modal já estava travado pelo mesmo `lock`.
               unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
               onReviewChanged={onReviewChanged}
+              mensagemInicial={mensagemEnvio}
             />
           )}
 
@@ -392,6 +504,26 @@ export default function DealDetailModal({
           </Button>
         </div>
       </DialogContent>
+      {batida && (
+        <BatidaCpfDialog
+          negocio={batida.negocio}
+          enviando={batida.enviando}
+          erro={batida.erro}
+          onAssumir={(comentario) => void assumir(comentario)}
+          onClose={() => setBatida(null)}
+        />
+      )}
+      {conferencia && (
+        <ConferenciaGerenteDialog
+          cliente={form.client}
+          isNew={isNew}
+          enviando={conferencia.enviando}
+          erro={conferencia.erro}
+          onEnviar={(mensagem) => void enviarConferencia(mensagem)}
+          onAnexos={(mensagem) => void irParaAnexos(mensagem)}
+          onClose={() => setConferencia(null)}
+        />
+      )}
     </Dialog>
   );
 }
