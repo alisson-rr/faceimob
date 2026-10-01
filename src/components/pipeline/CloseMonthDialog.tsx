@@ -89,6 +89,9 @@ export function CloseMonthDialog({ season, fallbackMonth, closedMonths, onClose 
         queryClient.invalidateQueries({ queryKey: pipelineKeys.closedMonths }),
         queryClient.invalidateQueries({ queryKey: pipelineKeys.openSeason }),
         queryClient.invalidateQueries({ queryKey: gameKeys.all }),
+        // O Dashboard usa a temporada aberta como mes vigente. Recarrega-la
+        // junto do fechamento evita servir o ciclo anterior pelo cache.
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
       toast({
         variant: "success",

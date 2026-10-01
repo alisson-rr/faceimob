@@ -710,6 +710,8 @@ export async function listLegacyLeads(): Promise<Lead[]> {
 export type DashboardPayload = {
   deals: LegacyDealRecord[];
   people: PersonRecord[];
+  /** Mês contábil da temporada ainda aberta (MM/AAAA). */
+  activeMonth: string;
   /** Total de leads que a RLS deixa ver — contagem exata, sem baixar a lista. */
   leadsCount: number;
   ccaCounts: Record<string, number>;
@@ -725,7 +727,7 @@ export type DashboardPayload = {
 export async function loadDashboardPayload(
   loadDeals: () => Promise<LegacyDealRecord[]> = () => listLegacyDeals(),
 ): Promise<DashboardPayload> {
-  const [deals, leadsRes, people, ccaRes, closedRes] = await Promise.all([
+  const [deals, leadsRes, people, ccaRes, closedRes, openSeasonRes] = await Promise.all([
     loadDeals(),
     // Só a contagem. A lista inteira vinha aqui E de novo em `useDashboardLeads`
     // na mesma abertura, e o total dela parava nas 1.000 linhas do `max-rows`.
@@ -735,15 +737,28 @@ export async function loadDashboardPayload(
     allRows((from, to, count) => db.from("cca_cases").select("status,deal_id", { count })
       .order("id").range(from, to)),
     db.from("closed_months").select("period"),
+    // A competencia operacional nao vira na meia-noite do dia 1. Ela segue a
+    // temporada aberta, que `close_month_and_season` encerra somente depois de
+    // migrar as propostas e substitui pelo ciclo seguinte na mesma transacao.
+    db.from("game_seasons")
+      .select("period_start")
+      .is("closed_at", null)
+      .order("period_start", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
   if (leadsRes.error) throw dbError("leads", leadsRes.error);
   if (ccaRes.error) throw dbError("cca_cases", ccaRes.error);
   if (closedRes.error) throw dbError("closed_months", closedRes.error);
+  if (openSeasonRes.error) throw dbError("game_seasons", openSeasonRes.error);
 
   const ccaCounts: Record<string, number> = {};
-  const currentMonth = format(new Date(), "MM/yyyy");
+  // Sem temporada (instalacao nova ou jogo parado), o calendario e o fallback
+  // historico do banco em `current_season_month()`.
+  const activeMonth = isoMonthToDisplay(openSeasonRes.data?.period_start)
+    ?? format(new Date(), "MM/yyyy");
   const currentDealIds = new Set(
-    deals.filter((deal) => deal.month_base === currentMonth).map((deal) => deal.id),
+    deals.filter((deal) => deal.month_base === activeMonth).map((deal) => deal.id),
   );
   for (const row of ccaRes.data) {
     if (!currentDealIds.has(row.deal_id)) continue;
@@ -754,6 +769,7 @@ export async function loadDashboardPayload(
   return {
     deals,
     people,
+    activeMonth,
     leadsCount: leadsRes.count ?? 0,
     ccaCounts,
     staff: (() => {

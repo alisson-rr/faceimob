@@ -79,7 +79,7 @@ export default function Dashboard() {
   const { query, deals, months, monthsWithDeals, closedMonths, defaultMonth, payload } =
     useDashboardPayload();
   // Derivado, nao sincronizado: enquanto o usuario nao escolhe, vale o mes
-  // corrente — e ele ja esta certo na primeira pintura.
+  // operacional ainda aberto — e ele ja esta certo na primeira pintura.
   const activeMonth = month ?? defaultMonth;
 
   const view = useMonthView(deals, activeMonth);
@@ -186,8 +186,8 @@ export default function Dashboard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_MONTHS}>Todos os meses</SelectItem>
-              {/* O mes corrente entra na lista mesmo sem negocio (e nele que a
-                  meta do mes e cadastrada); o rotulo diz que ele esta vazio, em
+              {/* O mes operacional entra na lista mesmo sem negocio (e nele que
+                  a meta do mes e cadastrada); o rotulo diz que ele esta vazio, em
                   vez de deixar quem escolhe achar que o painel quebrou. */}
               {months.map((item) => (
                 <SelectItem key={item} value={item}>

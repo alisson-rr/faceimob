@@ -247,23 +247,19 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     vi.useRealTimers();
   });
 
-  it("o mês corrente entra na lista mesmo sem negócio", () => {
+  it("o mês operacional entra na lista mesmo sem negócio", () => {
     // A meta de 09/2026 estava gravada e 09/2026 não aparecia no filtro, porque
     // não havia negócio no mês: quem cadastrava a meta não conseguia vê-la.
     expect(monthOptions(rows, "09/2026")).toEqual(["09/2026", "08/2026", "07/2026"]);
     expect(monthOptions([], "09/2026")).toEqual(["09/2026"]);
   });
 
-  /**
-   * Pedido do dono, 17/09/2026: o painel abre SEMPRE no mês corrente. Na
-   * homologação um único negócio com mês-base 02/2027 fazia o Dashboard abrir
-   * em 02/2027, porque o padrão era o mês aberto mais recente com negócio.
-   */
-  it("abre no mês corrente, mesmo com negócio em mês futuro e o mês corrente vazio", async () => {
+  it("abre no mês operacional, mesmo depois da virada do calendário", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date(2026, 8, 17, 10));
+    vi.setSystemTime(new Date(2026, 9, 1, 10));
 
     const payload: DashboardPayload = {
+      activeMonth: "09/2026",
       people: [],
       deals: [
         venda({ id: "futuro", month_base: "02/2027" }),
@@ -296,17 +292,12 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     await act(async () => root.unmount());
   });
 
-  /**
-   * Aba aberta na virada do mês: os negócios não mudam (o TanStack devolve a
-   * mesma referência), então a lista de meses só refaz se o mês corrente for
-   * dependência dela. Sem isso o padrão virava 10/2026 e a lista continuava em
-   * 09/2026 — o seletor ficava sem rótulo, mostrando um mês que ninguém pediu.
-   */
-  it("na virada do mês, a lista acompanha o mês padrão", async () => {
+  it("só avança quando a temporada seguinte passa a ser a ativa", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2026, 8, 30, 23, 59));
 
     const payload: DashboardPayload = {
+      activeMonth: "09/2026",
       people: [],
       deals: [venda({ id: "agosto", month_base: "08/2026" })],
       leadsCount: 0,
@@ -328,16 +319,21 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     });
     expect(lido?.months).toEqual(["09/2026", "08/2026"]);
 
-    // Passou da meia-noite e a tela repinta (trocar de aba, clicar em Recarregar).
+    // Passar da meia-noite nao muda o ciclo. Depois do fechamento, a proxima
+    // carga chega com a nova temporada e so entao o seletor deve avancar.
     vi.setSystemTime(new Date(2026, 9, 1, 0, 1));
+    await act(async () => root.unmount());
+    lido = null;
+    client.setQueryData(["dashboard", "payload", "u1"], { ...payload, activeMonth: "10/2026" });
+    const nextRoot = createRoot(document.createElement("div"));
     await act(async () => {
-      root.render(createElement(QueryClientProvider, { client }, createElement(Painel)));
+      nextRoot.render(createElement(QueryClientProvider, { client }, createElement(Painel)));
     });
 
     expect(lido?.defaultMonth).toBe("10/2026");
     expect(lido?.months).toContain("10/2026");
 
-    await act(async () => root.unmount());
+    await act(async () => nextRoot.unmount());
   });
 });
 
