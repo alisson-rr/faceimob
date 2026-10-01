@@ -71,6 +71,8 @@ type Props = {
    *  o modal já mostra a mesma explicação acima das abas. */
   unconfirmedMonth?: string | null;
   onReviewChanged?: () => void | Promise<void>;
+  /** Mensagem já escrita no popup de conferência da ficha (01/10/2026). */
+  mensagemInicial?: string;
 };
 
 const formatSize = (bytes: number | null) => {
@@ -110,7 +112,7 @@ const assinatura = (
  * anterior é o trigger `deal_documents_supersede`.
  */
 export default function DealDocumentUpload({
-  dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged,
+  dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged, mensagemInicial,
 }: Props) {
   const { toast } = useToast();
   const { user, isAdmin, can } = useAuth();
@@ -139,7 +141,7 @@ export default function DealDocumentUpload({
   const [juntando, setJuntando] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
-  const [envioMensagem, setEnvioMensagem] = useState("");
+  const [envioMensagem, setEnvioMensagem] = useState(mensagemInicial ?? "");
   /** Escolha explícita da esteira; `null` enquanto ninguém escolheu. */
   const [esteira, setEsteira] = useState<ReviewEsteira | null>(null);
   /** Status do caso na CCA: decide se a análise p/ virar negócio já vale. */

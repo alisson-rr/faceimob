@@ -18,6 +18,15 @@ import {
   EMPTY_STATUS_CATALOG, statusKey, statusMoveBlock, useDealStatusCatalog, type DealStatusCatalog,
 } from "@/integrations/supabase/dealStatuses";
 
+const ESTEIRA_AGIL = statusKey("13. ESTEIRA AGIL");
+
+/**
+ * O Status 2 escolhido na ficha vira envio ao gerente (pedido de 01/10/2026)?
+ * Só "Esteira Ágil": é rótulo que só o sistema grava, e a entrada nele é a
+ * conferência do gerente — a mesma caixa da aba Anexos.
+ */
+export const statusPedeConferencia = (value: string): boolean => statusKey(value) === ESTEIRA_AGIL;
+
 /** O Status 2 pede observação ao entrar (0164)? */
 const statusRequiresNote = (catalog: DealStatusCatalog, value: string) => {
   const indice = catalog.indexByKey.get(statusKey(value));
@@ -28,6 +37,7 @@ import { ChoiceField, MoneyField, PersonField, Section, TextField } from "./fiel
 import { pct } from "./filters";
 import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
 import { offDistratoBlocked } from "./useDealActions";
+import { DOCUMENT_REVIEW_META } from "./review";
 import { funnelStages, type PipelineStage } from "./stages";
 
 const SIM_NAO = ["NÃO", "SIM"];
@@ -108,6 +118,9 @@ interface Props {
    *  e a frase precisa nascer PRESA ao campo que a causou, não num toast que
    *  some sozinho por cima de ~40 campos. */
   developerError?: string | null;
+  /** "Em análise" ou "Esteira Ágil" escolhidos por quem não os grava direto:
+   *  abre o envio ao gerente em vez de trocar o Status 2 (01/10/2026). */
+  onPedirConferencia?: () => void;
 }
 
 /** Aba "Detalhes" do negócio: o formulário inteiro. */
@@ -176,7 +189,9 @@ export function sugestaoDeLideres(
   return patch;
 }
 
-export function DealForm({ form, onChange, field, people, developers, stages, isNew, developerError }: Props) {
+export function DealForm({
+  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia,
+}: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const canExitStage = useCanExitStage();
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -251,6 +266,12 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
   const vendaBloqueada = dealStageCodeFor(form) === "closed"
     ? saleBlockedReason(form, stages, canEnterStage, { isAdmin })
     : null;
+
+  // "Esteira Ágil" é rótulo do sistema e fica fora do catálogo escolhível; aqui
+  // ela volta como porta de entrada da conferência do gerente.
+  const esteiraAgil = catalog.statuses.find((status) => statusKey(status.value) === ESTEIRA_AGIL);
+  const pedeConferencia = (value: string) => Boolean(onPedirConferencia) && statusPedeConferencia(value);
+  const conferenciaPendente = form.document_review_status === "pending";
 
   // Revisão do cliente em 10/09/2026, no tamanho que ele pediu: dos rótulos do
   // Status 2, só OFF e DISTRATO viraram de administrador e sócio — o resto do
@@ -721,6 +742,10 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
               banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
               antigo junto seria uma troca manual que ninguém pediu. */}
           <Select value={form.status} disabled={!can("deals.edit_status_detail")} onValueChange={(v) => {
+            if (pedeConferencia(v)) {
+              onPedirConferencia?.();
+              return;
+            }
             // O admin, que escolhe a etapa à mão, vê a etapa do Status 2 já
             // selecionada e continua podendo trocar. A matriz dele é inteira.
             const etapa = isAdmin ? etapaDoStatus(v) : null;
@@ -740,6 +765,12 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                   todo — trancar o resto tirava do corretor rótulos que sempre
                   foram dele. Os dois saem desabilitados com o motivo, a mesma
                   forma da lista de etapas acima e do Select da tabela. */}
+              {esteiraAgil && onPedirConferencia && !conferenciaPendente && statusKey(form.status) !== ESTEIRA_AGIL && (
+                <SelectItem value={esteiraAgil.value}>
+                  <span>{esteiraAgil.label}</span>
+                  <span className="text-muted-foreground"> (enviar ao gerente)</span>
+                </SelectItem>
+              )}
               {statusChoices(catalog, form.status).map((option) => {
                 // O rótulo ATUAL fica de fora: escolher o que já está escolhido
                 // não é escrita, e `<SelectValue/>` espelha os filhos do item —
@@ -747,7 +778,7 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                 // E a matriz por função do cadastro (0164): quem coloca e quem
                 // tira cada Status 2. Status com observação obrigatória vai pelo
                 // Pipeline, que pede o texto.
-                const bloqueio = option.value === form.status
+                const bloqueio = option.value === form.status || pedeConferencia(option.value)
                   ? null
                   : offDistratoBlocked(can, option.value)
                     ?? (isNew ? null : statusMoveBlock(catalog, form.status, option.value, { isAdmin, roles }))
@@ -759,6 +790,9 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
                         exibido continua sendo só `option.label`, que é o que o
                         `statusLabels.test.ts` lê daqui. */}
                     <span>{option.label}</span>
+                    {!semPermissao && option.value !== form.status && pedeConferencia(option.value) && (
+                      <span className="text-muted-foreground"> (enviar ao gerente)</span>
+                    )}
                     {semPermissao && (
                       <span className="text-muted-foreground">
                         {" "}({semPermissao.startsWith("Só administrador") ? "só administrador e sócio" : semPermissao.startsWith("Seu perfil") ? "fora da sua função" : semPermissao})
@@ -773,6 +807,11 @@ export function DealForm({ form, onChange, field, people, developers, stages, is
           {vendaBloqueada && (
             <p id={field("status-hint")} className="mt-1 text-xs text-muted-foreground">
               {vendaBloqueada}
+            </p>
+          )}
+          {conferenciaPendente && (
+            <p className="mt-1 text-xs font-medium text-warning">
+              {DOCUMENT_REVIEW_META.pending.label}: aguardando o gerente.
             </p>
           )}
         </div>

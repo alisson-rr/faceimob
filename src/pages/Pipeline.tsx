@@ -14,7 +14,9 @@ import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
 import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
-import { last30DaysRange, saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import {
+  last30DaysRange, listLegacyDeals, saveLegacyDeal, type LegacyDealRecord,
+} from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, useDealStatusCatalog, type DealStatus } from "@/integrations/supabase/dealStatuses";
 import { MoverStatusDialog, type MovimentoComTexto } from "@/components/pipeline/MoverStatusDialog";
 import type { LeadRecord } from "@/integrations/supabase/leads";
@@ -500,6 +502,11 @@ export default function Pipeline() {
           onClose={() => setEditor(null)}
           closeOnSave
           onReviewChanged={invalidateDeals}
+          onAssumido={async (dealId) => {
+            await invalidateDeals();
+            const [assumido] = await listLegacyDeals(undefined, { ids: [dealId] });
+            if (assumido) setEditor({ deal: assumido });
+          }}
           onSave={async (updated) => {
             // VGV negativo e desconto fora de 0–100 chegavam ao banco e voltavam
             // como 23514 ("Um dos campos está fora do valor permitido") — sem
