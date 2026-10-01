@@ -16,6 +16,7 @@ import {
   useAutomationSettings, useInvalidateLeads, useLeadsRealtime, useNowTicker,
   useOpenLeads, useTimeoutReleasesToday, waNumber,
 } from "@/components/leads";
+import { LeadCheckinButton } from "@/components/leads/LeadCheckinButton";
 import { AttendCountdown } from "@/components/leads/LeadsTable";
 import { sameLeadProps } from "@/components/leads/sameLeadProps";
 import {
@@ -24,14 +25,44 @@ import {
   type LeadRecord, type LeadTone,
 } from "@/integrations/supabase/leads";
 
-/** Contorno da coluna por tom da etapa. Só token — não há paleta literal aqui. */
-const columnBorder: Record<LeadTone, string> = {
-  info: "border-info/40",
-  warning: "border-warning/40",
-  danger: "border-destructive/40",
-  success: "border-success/40",
-  highlight: "border-highlight/50",
-  neutral: "border-border",
+/** A cor conta a história do funil: azul começa, amarelo pede atenção e verde avança. */
+const columnTone: Record<LeadTone, { header: string; body: string; card: string; dot: string }> = {
+  info: {
+    header: "border-info/50 bg-info/15",
+    body: "border-info/40 bg-info/5",
+    card: "border-info/40 bg-info/10",
+    dot: "bg-info",
+  },
+  warning: {
+    header: "border-warning/60 bg-warning/20",
+    body: "border-warning/45 bg-warning/5",
+    card: "border-warning/50 bg-warning/10",
+    dot: "bg-warning",
+  },
+  danger: {
+    header: "border-destructive/60 bg-destructive/20",
+    body: "border-destructive/45 bg-destructive/5",
+    card: "border-destructive/50 bg-destructive/10",
+    dot: "bg-destructive",
+  },
+  success: {
+    header: "border-success/60 bg-success/20",
+    body: "border-success/45 bg-success/5",
+    card: "border-success/50 bg-success/10",
+    dot: "bg-success",
+  },
+  highlight: {
+    header: "border-warning/60 bg-warning/20",
+    body: "border-warning/45 bg-warning/5",
+    card: "border-warning/50 bg-warning/10",
+    dot: "bg-warning",
+  },
+  neutral: {
+    header: "border-border bg-muted/70",
+    body: "border-border bg-muted/20",
+    card: "border-border bg-card",
+    dot: "bg-muted-foreground",
+  },
 };
 
 export default function LeadFunnel({
@@ -133,7 +164,8 @@ export default function LeadFunnel({
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-start gap-3">
+        <LeadCheckinButton />
         <Button
           size="sm"
           variant={overdueLeads.length > 0 ? "destructive" : "outline"}
@@ -162,17 +194,20 @@ export default function LeadFunnel({
       <div className="lead-funnel flex gap-3 overflow-x-auto pb-4">
         {FUNNEL_STAGES.map((stage) => {
           const items = grouped[stage.key] || [];
-          const accent = columnBorder[stage.tone];
+          const accent = columnTone[stage.tone];
           return (
             // Coluna em camada própria: o cronômetro da trava muda a cada segundo e
             // repintava os cartões das oito colunas (trace, CPU 4x: pintura de
             // ~130 para ~20 ms/s). Isolar só o cronômetro não adiantou.
             <div key={stage.key} className="w-[260px] min-w-[260px] shrink-0 will-change-transform">
-              <div className={cn("flex items-center justify-between rounded-t-xl border-x border-t bg-muted/50 px-3 py-2", accent)}>
-                <span className="text-eyebrow">{stage.label}</span>
+              <div className={cn("flex items-center justify-between rounded-t-xl border-x border-t px-3 py-2", accent.header)}>
+                <div className="min-w-0">
+                  <span className="block truncate text-eyebrow">{stage.label}</span>
+                  <span className="mt-0.5 block text-xs leading-tight text-muted-foreground">{stage.guidance}</span>
+                </div>
                 <Badge variant="outline" className="tabular-nums">{num(items.length)}</Badge>
               </div>
-              <div className={cn("min-h-[400px] space-y-2 rounded-b-xl border bg-card/40 p-2", accent)}>
+              <div className={cn("min-h-[400px] space-y-2 rounded-b-xl border p-2", accent.body)}>
                 {items.map((lead) => (
                   <LeadCardMini
                     key={lead.id}
@@ -183,6 +218,7 @@ export default function LeadFunnel({
                     claimable={canClaim(lead, profileId)}
                     primeiroDaFila={lead.id === primeiroDaFila}
                     overdue={isLeadOverdue(lead, now)}
+                    stageTone={stage.tone}
                     onOpen={setSelectedId}
                     onAttend={onAttend}
                   />
@@ -271,7 +307,7 @@ export default function LeadFunnel({
  * "novo", "inativo" e o "há X minutos" precisam andar a cada tique de 30 s.
  */
 const LeadCardMini = memo(function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, onOpen, onAttend,
+  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend,
 }: {
   lead: LeadRecord;
   now: number;
@@ -281,6 +317,7 @@ const LeadCardMini = memo(function LeadCardMini({
   /** O lead aguardando atendimento que vence primeiro: só ele leva o "Atender" âmbar. */
   primeiroDaFila: boolean;
   overdue: boolean;
+  stageTone: LeadTone;
   onOpen: (leadId: string) => void;
   onAttend: (lead: LeadRecord) => void;
 }) {
@@ -288,13 +325,15 @@ const LeadCardMini = memo(function LeadCardMini({
   const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
   const inactive = (now - lastActivity) / 3_600_000 > inactivityHours;
   const number = waNumber(lead.phone);
+  const accent = columnTone[stageTone];
 
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card px-3 py-2 transition-colors",
-        claimable ? "border-primary/70 ring-1 ring-primary/40"
-          : overdue ? "border-destructive/70 ring-1 ring-destructive/40" : "border-border",
+        "rounded-xl border px-3 py-2 transition-colors",
+        accent.card,
+        claimable ? "ring-2 ring-primary/50"
+          : overdue ? "ring-2 ring-destructive/60" : "",
       )}
     >
       <button
@@ -308,7 +347,7 @@ const LeadCardMini = memo(function LeadCardMini({
               "mt-1.5 h-2 w-2 shrink-0 rounded-full",
               claimable ? "bg-primary animate-pulse"
                 : overdue ? "bg-destructive animate-pulse"
-                  : isBrandNew ? "bg-info animate-pulse" : "bg-muted-foreground/40",
+                  : isBrandNew ? "bg-info animate-pulse" : accent.dot,
             )}
             aria-hidden
           />

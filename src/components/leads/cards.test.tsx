@@ -299,7 +299,8 @@ describe("OverdueLeadsCard", () => {
 describe("LeadDetailModal · ações que o banco aceita", () => {
   /** O modal vai para um portal: a busca é no body, não no container. */
   const botao = (rotulo: RegExp) => [...document.body.querySelectorAll("button")]
-    .find((b) => rotulo.test((b.textContent ?? "").trim()));
+    .find((b) => rotulo.test((b.textContent ?? "").trim())
+      || rotulo.test(b.getAttribute("aria-label") ?? ""));
 
   /**
    * As abas do Radix montam só o conteúdo ativo: sem trocar de aba, nada
@@ -366,7 +367,7 @@ describe("LeadDetailModal · ações que o banco aceita", () => {
 
       // E o anexo tem botão de baixar nomeado — sem nome ele é inalcançável
       // por teclado e por leitor de tela.
-      await irPara(/anexos/i);
+      await irPara(/arquivos/i);
       const baixar = [...document.body.querySelectorAll("button")]
         .find((b) => /baixar rg-cliente\.pdf/i.test(b.getAttribute("aria-label") ?? ""));
       expect(baixar, "anexo sem botão nomeado é inalcançável por teclado").toBeTruthy();
@@ -397,12 +398,12 @@ describe("LeadDetailModal · ações que o banco aceita", () => {
       expect(texto).toMatch(/carregando o histórico/i);
       expect(texto, "'Sem histórico' antes da resposta é mentira").not.toMatch(/Sem histórico/i);
 
-      await irPara(/^comentar$/i);
+      await irPara(/^conversas$/i);
       texto = document.body.textContent ?? "";
       expect(texto).toMatch(/carregando os comentários/i);
       expect(texto).not.toMatch(/Nenhum comentário ainda/i);
 
-      await irPara(/anexos/i);
+      await irPara(/arquivos/i);
       texto = document.body.textContent ?? "";
       expect(texto).toMatch(/carregando os anexos/i);
       expect(texto).not.toMatch(/Sem anexos/i);

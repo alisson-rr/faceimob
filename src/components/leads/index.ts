@@ -33,6 +33,8 @@ export { FileDropzone } from "./FileDropzone";
 export { LeadFilters } from "./LeadFilters";
 export { LeadFormDialog } from "./LeadFormDialog";
 export { LeadImportDialog } from "./LeadImportDialog";
+export { LeadCheckinButton } from "./LeadCheckinButton";
+export { LeadJourney } from "./LeadJourney";
 export { LeadsSummary } from "./LeadsSummary";
 export { LeadsTable, type LeadPermissions, type LeadRowActions } from "./LeadsTable";
 export { EmailDialog, WhatsAppDialog } from "./OutreachDialogs";

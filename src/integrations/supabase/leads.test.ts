@@ -139,7 +139,7 @@ describe("sourcePerformance", () => {
 describe("describeLeadEvent", () => {
   it("traduz mudança de etapa", () => {
     expect(describeLeadEvent({ kind: "stage_changed", from_value: "new", to_value: "hot" }))
-      .toBe("Etapa alterada: Novo Lead → Lead Quente");
+      .toBe("Etapa alterada: Chegou agora → Interesse confirmado");
   });
 
   it("traduz mudança de status", () => {
