@@ -54,7 +54,8 @@ select '00000000-0000-0000-0000-0000000181d1', s.id,
 
 insert into public.deal_participants (deal_id, profile_id, role, share_pct)
 values ('00000000-0000-0000-0000-0000000181d1',
-        '00000000-0000-0000-0000-000000018103', 'broker', 100);
+        '00000000-0000-0000-0000-000000018103', 'broker', 100)
+on conflict (deal_id, profile_id, role) do update set share_pct = excluded.share_pct;
 
 insert into public.cca_cases (id, deal_id, status, stage_id, submitted_at)
 select '00000000-0000-0000-0000-0000000181c1',
