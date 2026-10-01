@@ -98,8 +98,8 @@ describe("isLeadOverdue (mesma regra de overdue_lead_count)", () => {
 describe("etapas e status", () => {
   it("o funil só usa etapas que existem no enum lead_funnel_stage", () => {
     const enumStages = [
-      "new", "first_contact", "no_response", "warm",
-      "hot", "gathering_docs", "scheduled_visit", "qualified",
+      "new", "first_contact", "warm", "hot",
+      "scheduled_visit", "qualified", "no_response", "gathering_docs",
     ];
     expect(FUNNEL_STAGES.map((stage) => stage.key)).toEqual(enumStages);
   });
@@ -139,7 +139,7 @@ describe("sourcePerformance", () => {
 describe("describeLeadEvent", () => {
   it("traduz mudança de etapa", () => {
     expect(describeLeadEvent({ kind: "stage_changed", from_value: "new", to_value: "hot" }))
-      .toBe("Etapa alterada: Novo Lead → Lead Quente");
+      .toBe("Etapa alterada: Recebido agora → Interesse confirmado");
   });
 
   it("traduz mudança de status", () => {

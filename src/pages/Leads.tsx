@@ -230,10 +230,9 @@ export default function Leads() {
   // O toast e o som de comemoração saem do realtime de `lead_events` no
   // EngagementLayer — chamar `celebrate()` aqui tocaria o som duas vezes.
   //
-  // Em seguida a tela pede a próxima ação. `claim_lead` já grava um padrão
-  // (`now() + no_response_hours`), mas quem sabe quando volta a falar com o
-  // cliente é o corretor — e é essa data que decide se o lead vai atrasar e
-  // travar o check-in dele em 20.
+  // Em seguida abre o detalhe no convite de contato. Agendar antes de tentar
+  // falar transformava a primeira ação em "deixar para depois"; a agenda só é
+  // perguntada depois que WhatsApp ou ligação forem usados.
   const attend = async (lead: LeadRecord) => {
     let travado = false;
     try {
@@ -247,7 +246,7 @@ export default function Leads() {
       });
     }
     await invalidateLeads();
-    if (travado) openDialog({ nextAction: lead });
+    if (travado) setDetailLeadId(lead.id);
   };
 
   /**

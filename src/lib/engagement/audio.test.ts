@@ -96,14 +96,14 @@ describe("som de aviso cede a vez", () => {
     playSound("success");
     agora += 0.1;
     playSound("leadNew");
-    expect(notas).toBe(4);
+    expect(notas).toBe(5);
     // O primeiro ganho criado é o volume geral; o segundo, o canal dos avisos.
     const canalDosAvisos = ganhos[1];
     expect(canalDosAvisos.setTargetAtTime).toHaveBeenCalledWith(0, agora, expect.any(Number));
     // Sem reabrir, o canal fica zerado e todo aviso sai mudo até recarregar a página.
     agora += 5;
     playSound("error");
-    expect(notas).toBe(6);
+    expect(notas).toBe(7);
     expect(canalDosAvisos.setValueAtTime).toHaveBeenCalledWith(1, agora);
   });
 

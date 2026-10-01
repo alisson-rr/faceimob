@@ -83,7 +83,7 @@ export function DealsToolbar({
           que o banco devolve, e a lista inteira depende dele. */}
       <div className="flex flex-wrap items-end gap-2">
         <div>
-          <Label htmlFor={`${id}-de`} className="text-xs text-muted-foreground">Criado de</Label>
+          <Label htmlFor={`${id}-de`} className="text-xs text-muted-foreground">Criado ou mês-base de</Label>
           <Input
             id={`${id}-de`} type="date" className="mt-1 h-9 w-[9.5rem]"
             value={period.from} max={period.to || undefined}
@@ -105,6 +105,11 @@ export function DealsToolbar({
       {periodIncomplete && (
         <p role="alert" className="text-xs text-destructive">
           Preencha as duas datas, com o início antes do fim.
+        </p>
+      )}
+      {!periodIncomplete && (
+        <p className="text-xs text-muted-foreground">
+          Inclui os negócios criados nas datas e todos os negócios das competências tocadas pelo período.
         </p>
       )}
 

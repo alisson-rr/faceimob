@@ -386,6 +386,8 @@ export type LegacyDealsOptions = {
   createdFrom?: string;
   /** AAAA-MM-DD, inclusivo até o fim do dia. */
   createdTo?: string;
+  /** Competências AAAA-MM-01 incluídas além do período de criação. */
+  includeMonthBases?: string[];
   /** Só estes negócios. */
   ids?: string[];
 };
@@ -407,13 +409,23 @@ export async function listLegacyDeals(
   // páginas enquanto a próxima já começava.
   const sinal = signal ?? new AbortController().signal;
   const faixa = createdAtBounds(opts.createdFrom, opts.createdTo);
-  const recorte = opts.ids !== undefined || Boolean(faixa.gte || faixa.lt);
+  const meses = opts.includeMonthBases ?? [];
+  const recorte = opts.ids !== undefined || Boolean(faixa.gte || faixa.lt || meses.length);
 
   const negocios = (lote: string[] | null): PageFn<DealRow> => (from, to, count) => {
     let query = db.from("deals").select("*", { count });
     if (lote) query = query.in("id", lote);
-    if (faixa.gte) query = query.gte("created_at", faixa.gte);
-    if (faixa.lt) query = query.lt("created_at", faixa.lt);
+    if (meses.length && faixa.gte && faixa.lt) {
+      // Uma única consulta: data de criação OU competência. Valores vêm de
+      // datas já validadas, sem texto livre do usuário.
+      query = query.or(
+        `and(created_at.gte.${faixa.gte},created_at.lt.${faixa.lt}),month_base.in.(${meses.join(",")})`,
+      );
+    } else {
+      if (faixa.gte) query = query.gte("created_at", faixa.gte);
+      if (faixa.lt) query = query.lt("created_at", faixa.lt);
+      if (meses.length) query = query.in("month_base", meses);
+    }
     return query.order("created_at", { ascending: false }).order("id").range(from, to).abortSignal(sinal);
   };
 

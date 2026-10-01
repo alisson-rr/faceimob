@@ -320,6 +320,19 @@ describe("listLegacyDeals · recorte no banco", () => {
     }
   });
 
+  it("inclui numa única consulta os negócios da competência tocada pelo período", async () => {
+    await listLegacyDeals(undefined, {
+      createdFrom: "2026-09-01",
+      createdTo: "2026-09-30",
+      includeMonthBases: ["2026-09-01"],
+    });
+
+    const filtro = doCaminho("deals")[0].searchParams.get("or") ?? "";
+    expect(filtro).toContain("created_at.gte.2026-09-01T00:00:00-03:00");
+    expect(filtro).toContain("created_at.lt.2026-10-01T00:00:00-03:00");
+    expect(filtro).toContain("month_base.in.(2026-09-01)");
+  });
+
   it("com ids, pede em lotes que cabem na URL e devolve do mais recente para o mais antigo", async () => {
     const ids = Array.from({ length: 250 }, (_, i) => `id-${i}`);
     rede.tabelas.deals = [];

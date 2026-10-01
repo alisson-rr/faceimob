@@ -18,7 +18,7 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "eu" }, role: "broker", can: () => true }),
 }));
 // Estável como o `celebrate` real (useCallback sem dependências do EngagementLayer).
-const celebrar = vi.hoisted(() => () => undefined);
+const celebrar = vi.hoisted(() => vi.fn());
 vi.mock("@/components/engagement/context", () => ({ useCelebration: () => celebrar }));
 vi.mock("@/integrations/supabase/leads", () => ({
   claimLead: async () => undefined,
@@ -75,7 +75,16 @@ async function montar() {
 }
 
 describe("NewLeadNotifier · lead atribuído", () => {
-  afterEach(() => { avisos.length = 0; });
+  afterEach(() => { avisos.length = 0; celebrar.mockClear(); });
+
+  it("toca o aviso de chegada uma vez quando o popup aparece", async () => {
+    const desmontar = await montar();
+    await act(async () => { chegou(atribuido("som", "Som do Lead", 5 * 60_000)); });
+    expect(dialogo()).toContain("Som do Lead");
+    expect(celebrar).toHaveBeenCalledTimes(1);
+    expect(celebrar).toHaveBeenCalledWith("lead_new");
+    await desmontar();
+  });
 
   it("com um lead no prazo no diálogo, o seguinte vira toast em vez de trocar o diálogo", async () => {
     const desmontar = await montar();

@@ -17,8 +17,8 @@ import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  AlertTriangle, ArrowRightCircle, Clock, Download, HandMetal, Loader2, Mail,
-  MessageCircle, Paperclip, Phone, RefreshCcw, Save, Send, Timer, Upload, User, XCircle,
+  AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Loader2, Mail,
+  MessageCircle, Paperclip, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
@@ -26,7 +26,7 @@ import { describeError } from "@/lib/supabaseError";
 import {
   addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
   updateLead, moveLeadStage, claimLead,
-  ATTACHMENT_HINT, FUNNEL_STAGES, funnelStageLabel, funnelStageTone, leadSourceTone,
+  ATTACHMENT_HINT, FUNNEL_STAGES, LEAD_ROADMAP, funnelStageLabel, funnelStageTone, leadSourceTone,
   leadStatusLabel, leadStatusTone,
   attendSecondsLeft, canWriteLead, formatCountdown, canClaim, isLeadUnattended, trackingFields,
   type LeadRecord, type LeadAttachment,
@@ -139,22 +139,18 @@ export default function LeadDetailModal({
     && !lead.converted_deal_id;
 
   const attend = async () => {
-    let travado = false;
     try {
       await claimLead(lead.id);
-      travado = true;
       // "Lead em atendimento" sai do realtime no EngagementLayer, com som.
+      toast.success("Lead reservado para você", {
+        description: "Agora fale com o cliente pelo WhatsApp ou por ligação.",
+      });
     } catch (err) {
       toast.error("Não foi possível atender o lead", {
         description: describeError(err, "outro corretor pode ter assumido antes"),
       });
     }
     onStageChanged?.();
-    // Igual ao "Atender" da lista: `claim_lead` grava um padrão de 24 h, e quem
-    // sabe quando volta a falar com o cliente é o corretor — é essa data que
-    // decide se o lead atrasa e trava o check-in dele em 20. Quem atendia por
-    // aqui nunca era perguntado e o prazo nascia de um chute.
-    if (travado) setAskNextAction(true);
   };
 
   const moveTo = async (stage: LeadFunnelStage) => {
@@ -199,6 +195,9 @@ export default function LeadDetailModal({
 
   const contactClick = async () => {
     if (await touchFirstContact()) toast.success(`Lead movido para ${primeiroContato}`, { duration: 2500 });
+    // A agenda vem depois da tentativa real de contato, nunca como primeira
+    // saída ao assumir o lead.
+    if (writable) setAskNextAction(true);
   };
 
   const submitComment = async () => {
@@ -293,24 +292,46 @@ export default function LeadDetailModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Ações rápidas */}
-        <div className="flex flex-wrap gap-2">
+        {/* Próxima ação comercial — antes da agenda e das partes técnicas. */}
+        <section className="rounded-2xl border border-info/30 bg-info/10 p-3" aria-labelledby="lead-next-step">
+          <div className="mb-2 flex items-start gap-2">
+            <Route className="mt-0.5 h-4 w-4 shrink-0 text-info" aria-hidden />
+            <div>
+              <p id="lead-next-step" className="text-xs font-semibold uppercase tracking-wider text-info">
+                Próximo passo recomendado
+              </p>
+              <p className="text-sm font-medium">
+                {claimable
+                  ? "Assuma o lead e fale com ele agora."
+                  : lead.funnel_stage === "no_response"
+                    ? "Tente um novo contato por outro canal."
+                    : LEAD_ROADMAP.find((step) => step.key === lead.funnel_stage)?.guidance
+                      ?? "Conduza o lead para o próximo passo da compra."}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
           {claimable && (
-            <Button size="sm" onClick={attend}>
-              <HandMetal className="h-4 w-4" /> Atender
+            <Button size="sm" variant="highlight" onClick={attend}>
+              <HandMetal className="h-4 w-4" /> Atender e falar agora
               {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
             </Button>
           )}
-          {waLink && (
-            <Button size="sm" variant="outline" className="border-success/40 text-success hover:text-success" asChild onClick={contactClick}>
+          {!claimable && waLink && (
+            <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" asChild onClick={contactClick}>
               <a href={waLink} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
             </Button>
           )}
-          {lead.phone && (
-            <Button size="sm" variant="outline" asChild onClick={contactClick}>
+          {!claimable && lead.phone && (
+            <Button size="sm" variant="outline" className="border-info/40" asChild onClick={contactClick}>
               <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4" /> Ligar</a>
             </Button>
           )}
+          </div>
+        </section>
+
+        {/* Ações secundárias; contato e caminho de conversão ficam acima. */}
+        <div className="flex flex-wrap gap-2">
           {lead.email && (
             <Button size="sm" variant="outline" asChild>
               <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4" /> E-mail</a>
@@ -333,20 +354,9 @@ export default function LeadDetailModal({
           )}
         </div>
 
-        {/* Mover de etapa — só para quem o banco deixa escrever no lead. */}
+        {/* Roadmap de conversão — os controles técnicos ficam nas abas abaixo. */}
         {writable ? (
-          <div className="flex flex-wrap gap-1">
-            {FUNNEL_STAGES.map((stage) => (
-              <Button
-                key={stage.key} size="sm"
-                variant={lead.funnel_stage === stage.key ? "default" : "outline"}
-                className="h-8 px-3 text-xs"
-                onClick={() => moveTo(stage.key)}
-              >
-                {stage.label}
-              </Button>
-            ))}
-          </div>
+          <LeadRoadmap current={lead.funnel_stage} onMove={moveTo} />
         ) : (
           <p className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             Você acompanha este lead em modo leitura: mover de etapa, editar, comentar, anexar e
@@ -571,6 +581,86 @@ export default function LeadDetailModal({
         />
       )}
     </Dialog>
+  );
+}
+
+/**
+ * Caminho enxuto até a conversão. O lead enxerga nomes humanos; valores do
+ * enum e controles de cadastro continuam escondidos na camada de dados.
+ */
+function LeadRoadmap({
+  current, onMove,
+}: {
+  current: LeadFunnelStage;
+  onMove: (stage: LeadFunnelStage) => Promise<void>;
+}) {
+  const currentIndex = LEAD_ROADMAP.findIndex((step) => step.key === current);
+  const awaitingReply = current === "no_response";
+
+  return (
+    <section className="rounded-2xl border border-border bg-card/50 p-3" aria-labelledby="lead-roadmap-title">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 id="lead-roadmap-title" className="flex items-center gap-2 text-sm font-semibold">
+            <Route className="h-4 w-4 text-primary" aria-hidden /> Caminho até a conversão
+          </h3>
+          <p className="text-xs text-muted-foreground">Avance conforme a conversa acontecer — um passo de cada vez.</p>
+        </div>
+        {awaitingReply && (
+          <StatusBadge tone="warning" icon={AlertTriangle}>Aguardando retorno</StatusBadge>
+        )}
+      </div>
+
+      <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {LEAD_ROADMAP.map((step, index) => {
+          const stage = FUNNEL_STAGES.find((item) => item.key === step.key);
+          if (!stage) return null;
+          const active = step.key === current;
+          const done = currentIndex >= 0 && index < currentIndex;
+          return (
+            <li key={step.key}>
+              <button
+                type="button"
+                onClick={() => void onMove(step.key)}
+                aria-current={active ? "step" : undefined}
+                className={cn(
+                  "h-full w-full rounded-xl border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  done && "border-success/30 bg-success/10",
+                  active && "border-success/70 bg-success/15 ring-1 ring-success/30",
+                  !done && !active && "border-border bg-background/60 hover:border-primary/40",
+                )}
+              >
+                <span className="flex items-center gap-2 text-xs font-semibold">
+                  <span className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs",
+                    done || active ? "border-success bg-success text-success-foreground" : "border-border text-muted-foreground",
+                  )}>
+                    {done ? <Check className="h-3 w-3" aria-hidden /> : index + 1}
+                  </span>
+                  {stage.label}
+                </span>
+                <span className="mt-1.5 block text-xs leading-4 text-muted-foreground">{step.guidance}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <p className="text-xs text-muted-foreground">
+          Não conseguiu falar? Marque a atenção sem perder o caminho comercial.
+        </p>
+        <Button
+          size="sm"
+          variant={awaitingReply ? "default" : "outline"}
+          className={cn("h-8 text-xs", !awaitingReply && "border-warning/40 text-warning hover:text-warning")}
+          onClick={() => void onMove("no_response")}
+        >
+          {awaitingReply && <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />}
+          Aguardando retorno
+        </Button>
+      </div>
+    </section>
   );
 }
 

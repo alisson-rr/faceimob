@@ -101,10 +101,20 @@ declare
   v_mes_anterior date := public.month_start((current_date - interval '1 month')::date);
   v_mes_atual    date := public.month_start(current_date);
   v_abertos int;
+  v_venda uuid;
   v_res     jsonb;
 begin
+  -- Venda ainda tem outcome aberto enquanto está em EM CONTRATO. Ela já conta
+  -- como venda e precisa permanecer na competência que será fechada.
+  insert into public.deals (stage_id, created_by, vgv_gross, month_base, status_detail)
+  select id, '00000000-0000-0000-0000-00000000c002', 250000,
+         v_mes_anterior, '04. EM CONTRATO'
+    from public.pipeline_stages where code = 'contract'
+  returning id into v_venda;
+
   select count(*) into v_abertos from public.deals
-   where outcome = 'open' and month_base = v_mes_anterior;
+   where outcome = 'open' and month_base = v_mes_anterior
+     and not public.deal_counts_as_game_sale(outcome, status_group_id);
   perform pg_temp.check16(v_abertos >= 1, 'há proposta aberta no mês do ciclo para migrar');
 
   perform set_config('request.jwt.claims',
@@ -126,10 +136,17 @@ begin
 
   perform pg_temp.check16(
     not exists (select 1 from public.deals
-                where outcome = 'open' and month_base = v_mes_anterior)
+                where outcome = 'open' and month_base = v_mes_anterior
+                  and not public.deal_counts_as_game_sale(outcome, status_group_id))
     and exists (select 1 from public.deals
                 where outcome = 'open' and month_base = v_mes_atual),
     'nenhuma proposta aberta sobra no mês fechado');
+
+  perform pg_temp.check16(
+    exists (select 1 from public.deals
+             where id = v_venda and month_base = v_mes_anterior
+               and public.deal_counts_as_game_sale(outcome, status_group_id)),
+    'venda aberta em EM CONTRATO fica congelada no mês fechado');
 
   perform pg_temp.check16(
     exists (select 1 from public.game_seasons

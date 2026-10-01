@@ -260,31 +260,34 @@ describe("monthClosePreview", () => {
   const mes = "08/2026";
   const doMes = [
     ...Array.from({ length: 18 }, (_, i) => deal({ id: `open-${i}`, month_base: mes, outcome: "open" })),
+    ...Array.from({ length: 8 }, (_, i) => deal({
+      id: `open-sale-${i}`, month_base: mes, outcome: "open", status_group_code: "VENDA", deal_value: 1000,
+    })),
     ...Array.from({ length: 7 }, (_, i) => deal({
       id: `won-${i}`, month_base: mes, outcome: "won", active: true, deal_value: 1000,
     })),
     deal({ id: "lost-0", month_base: mes, outcome: "lost", active: false }),
   ];
 
-  it("conta como migrante só o que a RPC move: outcome aberto", () => {
+  it("migra proposta aberta, mas mantém no mês o aberto que já é Status 1 VENDA", () => {
     const previsao = monthClosePreview(doMes, mes);
-    expect(previsao.migram, "a venda NÃO migra").toBe(18);
+    expect(previsao.migram, "as oito vendas abertas NÃO migram").toBe(18);
   });
 
   it("as duas linhas particionam o mês — nenhum negócio contado duas vezes", () => {
     const previsao = monthClosePreview(doMes, mes);
     expect(previsao.migram + previsao.congelam).toBe(previsao.total);
-    expect(previsao.total).toBe(26);
-    expect(previsao.congelam, "7 vendas + 1 perda ficam congeladas").toBe(8);
+    expect(previsao.total).toBe(34);
+    expect(previsao.congelam, "15 vendas + 1 perda ficam congeladas").toBe(16);
   });
 
   it("soma o VGV só das vendas do período", () => {
-    expect(monthClosePreview(doMes, mes).vgvVendido).toBe(7000);
+    expect(monthClosePreview(doMes, mes).vgvVendido).toBe(15000);
   });
 
   it("ignora negócio de outro mês", () => {
     const outro = deal({ id: "x", month_base: "09/2026", outcome: "open" });
-    expect(monthClosePreview([...doMes, outro], mes).total).toBe(26);
+    expect(monthClosePreview([...doMes, outro], mes).total).toBe(34);
     expect(monthClosePreview([...doMes, outro], "09/2026")).toEqual({
       total: 1, migram: 1, congelam: 0, vgvVendido: 0,
     });
