@@ -150,6 +150,11 @@ begin
     raise exception 'FALHOU: catálogo de etapas ausente — rode com --seed (ou --all)';
   end if;
 
+  -- O fixture mora em setembro/2026 e `16_game_cycle.sql` fecha de verdade o
+  -- mês anterior à data da execução: a partir de outubro o mês do fixture
+  -- chegava fechado e `deals_guard_closed_month` recusava o insert.
+  delete from public.closed_months where period = date '2026-09-01';
+
   insert into public.deals (id, stage_id, vgv_gross, month_base, unit,
                             document_review_status, outcome, closed_at)
   select v_deal, id, 500000, date '2026-09-01', 'T0112-A', 'approved', 'won',

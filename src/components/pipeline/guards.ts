@@ -94,8 +94,10 @@ export function blockedMoveReason(
   // `deal_stage_document_block` (0111) — era uma cópia local que já divergia.
   // `under_analysis` fica de fora DESTA porta, e só dela: mover para lá tem
   // caminho próprio (envia para a conferência do gerente em vez de gravar a
-  // etapa). A exceção é do CAMINHO, não da lista.
-  if (stage.code !== "under_analysis"
+  // etapa). A exceção é do CAMINHO, não da lista. Administrador e sócio
+  // sobem sem a conferência (0178).
+  if (!opts.isAdmin
+      && stage.code !== "under_analysis"
       && STAGES_REQUIRING_REVIEW.includes(stage.code)
       && deal.document_review_status !== "approved") {
     return `"${stage.label}" só aceita negócio com a documentação aprovada pelo gerente.`;

@@ -146,6 +146,11 @@ describe("blockedMoveReason", () => {
     ).toBeNull();
   });
 
+  it("administrador sobe sem a conferencia (0178)", () => {
+    expect(blockedMoveReason(negocio(), etapa("contract", "Contrato"), { ...tudoLiberado, isAdmin: true }))
+      .toBeNull();
+  });
+
   it("nao barra 'Em analise': ela tem caminho proprio (envia para conferencia)", () => {
     expect(blockedMoveReason(negocio(), etapa("under_analysis", "Em análise"), tudoLiberado))
       .toBeNull();
