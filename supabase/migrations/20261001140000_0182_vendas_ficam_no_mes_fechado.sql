@@ -11,7 +11,10 @@
 -- Alvo conservador da reparação: venda hoje em outubro, criada antes do
 -- fechamento de setembro e que já possuía evento de venda quando setembro foi
 -- fechado. Uma venda legítima criada em outubro não satisfaz esse conjunto.
-create temporary table vendas_0182_a_reparar on commit drop as
+-- Sem `on commit drop`: o aplicador executa cada instrução em autocommit e a
+-- tabela sumiria antes do bloco de conferência. Sendo TEMP, ela já é removida
+-- automaticamente ao encerrar a sessão da migration.
+create temporary table vendas_0182_a_reparar as
 select d.id
   from public.deals d
   join public.closed_months cm on cm.period = date '2026-09-01'
