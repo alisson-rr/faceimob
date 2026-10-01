@@ -228,6 +228,57 @@ describe("CcaBoard · mover para outro estágio", () => {
     if (semResize) delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
     if (semScroll) delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   });
+
+  it("arrasta o cartão para outra coluna e entrega o destino ao diálogo de comentário", async () => {
+    const outro: CcaStage = { ...STAGE, id: "s2", name: "Aprovado", position: 2, status: "approved" };
+    const movidos: string[] = [];
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[STAGE, outro]}
+          deals={[DEAL]}
+          canAct
+          onOpen={() => undefined}
+          onMove={(_caso, stage) => movidos.push(stage.id)}
+        /> as ReactNode,
+      );
+    });
+
+    const cartao = container.querySelector<HTMLElement>('article[draggable="true"]');
+    const destino = container.querySelector<HTMLElement>('[aria-label="Aprovado: 0 casos"]');
+    const dataTransfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: vi.fn(),
+    };
+    const dragEvent = (tipo: string) => {
+      const evento = new Event(tipo, { bubbles: true, cancelable: true });
+      Object.defineProperty(evento, "dataTransfer", { value: dataTransfer });
+      return evento;
+    };
+
+    await act(async () => { cartao?.dispatchEvent(dragEvent("dragstart")); });
+    await act(async () => { destino?.dispatchEvent(dragEvent("dragover")); });
+    expect(destino?.className).toContain("ring-2");
+    await act(async () => { destino?.dispatchEvent(dragEvent("drop")); });
+
+    // `onMove` não grava nada: no CcaPipeline ele abre o CcaMoveDialog, cujo
+    // comentário obrigatório é a única porta para chamar `move_cca_case`.
+    expect(movidos).toEqual(["s2"]);
+    expect(dataTransfer.setData).toHaveBeenCalledWith("text/plain", "c1");
+
+    await act(async () => { root.unmount(); });
+    container.remove();
+  });
+
+  it("não torna o cartão arrastável sem permissão de atuar no CCA", async () => {
+    const board = await renderBoard(false);
+    const cartao = document.querySelector<HTMLElement>("article");
+    expect(cartao?.getAttribute("draggable")).toBe("false");
+    await board.encerrar();
+  });
 });
 
 /**

@@ -68,6 +68,24 @@ describe("ccaColumnOf · onde o caso aparece no quadro", () => {
     expect(ccaColumnOf(ativas, { stage_id: "aprovado-cond", status: "approved" })?.id).toBe("aprovado-cond");
   });
 
+  it("põe o Status 2 Esteira Ágil na coluna Esteira Ágil, mesmo com stage_id antigo", () => {
+    const colunas = [
+      { ...coluna("agil", "under_review", 1), name: "ESTEIRA ÁGIL" },
+      { ...coluna("processando", "under_review", 2), name: "EM PROCESSAMENTO" },
+    ];
+    expect(ccaColumnOf(colunas, { stage_id: "processando", status: "under_review" }, "13. ESTEIRA AGIL")?.id)
+      .toBe("agil");
+  });
+
+  it("prefere a coluna ligada ao Status 2 antes do stage_id histórico", () => {
+    const colunas = [
+      { ...coluna("pendente", "pending_documents", 1), deal_status: { label: "16. PENDENTE" } },
+      { ...coluna("processando", "under_review", 2), deal_status: { label: "12. EM PROCESSAMENTO" } },
+    ];
+    expect(ccaColumnOf(colunas, { stage_id: "processando", status: "under_review" }, "16. PENDENTE")?.id)
+      .toBe("pendente");
+  });
+
   it("estágio desativado ou nulo cai na primeira coluna de mesmo desfecho", () => {
     expect(ccaColumnOf(ativas, { stage_id: "aprovado-antigo", status: "approved" })?.id).toBe("aprovado-total");
     expect(ccaColumnOf(ativas, { stage_id: null, status: "pending_documents" })?.id).toBe("pendente");

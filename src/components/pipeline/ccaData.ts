@@ -130,8 +130,28 @@ export async function loadCcaCase(
 export const ccaColumnOf = (
   stages: CcaStage[],
   row: { stage_id: string | null; status: string },
+  dealStatus?: string | null,
 ): CcaStage | undefined =>
-  stages.find((item) => item.id === row.stage_id) ?? stages.find((item) => item.status === row.status);
+  // O Status 2 é a fonte de verdade das colunas da CCA (0150). Casos antigos
+  // podem conservar um `stage_id` anterior à reorganização das colunas: era o
+  // caso de um negócio ainda marcado "13. ESTEIRA AGIL" aparecer em "EM
+  // PROCESSAMENTO". Primeiro casa o Status 2 com o vínculo da coluna e, para os
+  // rótulos de sistema que não podem ter vínculo, com o próprio nome da coluna.
+  // Só depois cai no `stage_id` histórico e no desfecho.
+  stages.find((item) => {
+    const status = foldStatus(dealStatus);
+    return Boolean(status) && (
+      foldStatus(item.deal_status?.label) === status
+      || foldStatus(item.name) === status
+    );
+  })
+  ?? stages.find((item) => item.id === row.stage_id)
+  ?? stages.find((item) => item.status === row.status);
+
+/** Chave sem número nem acento, para "13. ESTEIRA AGIL" casar com a coluna
+ *  editável "ESTEIRA ÁGIL". */
+const foldStatus = (value?: string | null): string => bareStatus(value ?? "")
+  .normalize("NFD").replace(/\p{M}/gu, "");
 
 /** Rótulos que a coluna não pode gravar — a mesma lista do gatilho
  *  `cca_stages_guard_deal_status` (0150): rótulo de envio ou desfecho.
@@ -259,12 +279,12 @@ export async function loadCcaBoard(
   const deals: CcaDeal[] = [];
   let outside = 0;
   for (const row of casesResponse.data) {
-    const stage = ccaColumnOf(stages, row);
+    const deal = dealById.get(row.deal_id);
+    const stage = ccaColumnOf(stages, row, deal?.status);
     if (!stage) {
       outside += 1;
       continue;
     }
-    const deal = dealById.get(row.deal_id);
     deals.push({
       caseId: row.id,
       dealId: row.deal_id,
