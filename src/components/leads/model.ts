@@ -7,6 +7,7 @@
  */
 import { parseBrl } from "@/lib/format";
 import { isLeadOverdue, searchPhoneDigits, searchTerm, type LeadRecord } from "@/integrations/supabase/leads";
+import type { AppRole } from "@/contexts/AuthContext";
 
 export type LeadFilterState = {
   search: string;
@@ -237,4 +238,16 @@ export function leadsPorPeriodo(leads: Pick<LeadRecord, "created_at">[], agora: 
     if (chegada >= mes) conta.mes++;
   }
   return conta;
+}
+
+/** Quem olha um corretor por vez: a gestão, não o corretor (02/10/2026). */
+const VER_POR_CORRETOR: AppRole[] = ["admin", "partner", "director", "manager"];
+
+export const podeVerPorCorretor = (roles: AppRole[], isAdmin: boolean) =>
+  isAdmin || roles.some((role) => VER_POR_CORRETOR.includes(role));
+
+/** "all" = todos; "none" = sem corretor (fila); senão o id do corretor. */
+export function leadsDoCorretor<T extends Pick<LeadRecord, "assigned_to">>(leads: T[], broker: string): T[] {
+  if (broker === "all") return leads;
+  return leads.filter((lead) => (broker === "none" ? !lead.assigned_to : lead.assigned_to === broker));
 }

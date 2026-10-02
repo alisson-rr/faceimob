@@ -4,8 +4,8 @@ import {
   type LeadRecord, type LeadSource,
 } from "@/integrations/supabase/leads";
 import {
-  emptyLeadFilters, fillWhatsappTemplate, hasActiveFilter, leadMetrics, leadsPorPeriodo, matchesFilters,
-  nextActionPreset, overdueByBroker, parseVgvInput, toDateTimeInput, waNumber,
+  emptyLeadFilters, fillWhatsappTemplate, hasActiveFilter, leadMetrics, leadsDoCorretor, leadsPorPeriodo, matchesFilters,
+  nextActionPreset, overdueByBroker, parseVgvInput, podeVerPorCorretor, toDateTimeInput, waNumber,
 } from "./model";
 import { rowsToLeads } from "./importSheet";
 
@@ -68,6 +68,22 @@ describe("matchesFilters", () => {
     expect(hasActiveFilter(emptyLeadFilters)).toBe(false);
     expect(hasActiveFilter({ ...emptyLeadFilters, search: "   " })).toBe(false);
     expect(hasActiveFilter({ ...emptyLeadFilters, status: "queued" })).toBe(true);
+  });
+});
+
+describe("ver por corretor", () => {
+  it("é da gestão, inclusive do gerente sem permissão de realocar", () => {
+    expect(podeVerPorCorretor(["manager"], false)).toBe(true);
+    expect(podeVerPorCorretor(["director", "broker"], false)).toBe(true);
+    expect(podeVerPorCorretor(["broker"], false)).toBe(false);
+    expect(podeVerPorCorretor([], true)).toBe(true);
+  });
+
+  it("recorta por corretor, pela fila ou deixa todos", () => {
+    const leads = [{ assigned_to: "a" }, { assigned_to: "b" }, { assigned_to: null }];
+    expect(leadsDoCorretor(leads, "all")).toHaveLength(3);
+    expect(leadsDoCorretor(leads, "a")).toEqual([{ assigned_to: "a" }]);
+    expect(leadsDoCorretor(leads, "none")).toEqual([{ assigned_to: null }]);
   });
 });
 

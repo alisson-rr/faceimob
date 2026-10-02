@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,23 @@ type Window = {
 
 type Broker = { id: string; name: string; active: boolean };
 type FormRef = { form_id: string; form_name: string | null };
+
+/**
+ * Formulários das páginas da Meta (edge `meta-ads-connect`, 02/10/2026). Antes
+ * a lista só conhecia formulário que já tinha mandado lead: formulário novo, ou
+ * página com o webhook ainda parado, não aparecia para ligar à roleta.
+ */
+async function formulariosDaMeta(): Promise<FormRef[]> {
+  const { data, error } = await supabase.functions.invoke<{ formularios?: FormRef[]; error?: string }>(
+    "meta-ads-connect", { body: { action: "listar_formularios" } },
+  );
+  if (error) {
+    // A frase da edge vem no corpo da resposta de erro.
+    const corpo = await (error as { context?: Response }).context?.json?.().catch(() => null);
+    throw new Error(corpo?.error ?? "Não consegui ler os formulários na Meta.");
+  }
+  return (data?.formularios ?? []).map((f) => ({ form_id: f.form_id, form_name: f.form_name }));
+}
 type Group = {
   id: string;
   name: string;
@@ -169,6 +187,13 @@ export default function AdminLeadAutomation() {
   >(null);
   const [formDialog, setFormDialog] = useState<{ groupId: string; form_id: string; form_name: string } | null>(null);
   const editingGroup = groups.find((g) => g.id === editingGroupId) || null;
+  const metaForms = useQuery({ queryKey: ["meta", "leadgen-forms"], queryFn: formulariosDaMeta, staleTime: 5 * 60_000, retry: false });
+  // O nome que a Meta dá ganha do vazio; o vínculo já gravado mantém o dele.
+  const conhecidos = (() => {
+    const map = new Map(detectedForms.map((f) => [f.form_id, f.form_name] as const));
+    for (const f of metaForms.data ?? []) if (!map.get(f.form_id)) map.set(f.form_id, f.form_name);
+    return Array.from(map, ([form_id, form_name]) => ({ form_id, form_name }));
+  })();
   // `groups` fica inteiro de propósito: o dono de um formulário ("grupo: X") e
   // o diálogo aberto seguem verdadeiros quando uma remoção tira a roleta do
   // alcance — o diretor vê o controle travado com o motivo, em vez de o
@@ -181,8 +206,8 @@ export default function AdminLeadAutomation() {
   // frente, depois os demais detectados. Só `detectedForms` escondia o vínculo
   // manual e não deixava desmarcá-lo.
   const formOptions = editingGroup
-    ? [...editingGroup.forms, ...detectedForms.filter((d) => !editingGroup.forms.some((f) => f.form_id === d.form_id))]
-    : detectedForms;
+    ? [...editingGroup.forms, ...conhecidos.filter((d) => !editingGroup.forms.some((f) => f.form_id === d.form_id))]
+    : conhecidos;
   const groupOwning = (formId: string) => groups.find((g) => g.forms.some((f) => f.form_id === formId)) ?? null;
 
   const load = async () => {
@@ -714,7 +739,14 @@ export default function AdminLeadAutomation() {
                       );
                     })}
                     {formOptions.length === 0 && (
-                      <p className="text-xs text-muted-foreground p-2">Nenhum formulário detectado ainda. Use "Adicionar form manual" abaixo.</p>
+                      <p className="text-xs text-muted-foreground p-2">
+                        {metaForms.isPending ? "Buscando os formulários na Meta…" : "Nenhum formulário detectado ainda. Use \"Adicionar form manual\" abaixo."}
+                      </p>
+                    )}
+                    {metaForms.error && (
+                      <p className="text-xs text-warning p-2">
+                        Não consegui listar os formulários da Meta: {metaForms.error.message}
+                      </p>
                     )}
                   </div>
                 </ScrollArea>
