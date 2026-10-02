@@ -11,7 +11,7 @@ import { dbError, describeError } from "@/lib/supabaseError";
 // Tabela da 0191, ainda fora do `types.ts` gerado.
 const untyped = supabase as unknown as SupabaseClient;
 const CHAVE = ["checkin", "dias-sem-ip"] as const;
-const DIAS_NA_TELA = 14;
+const DIAS_NA_TELA = 7;
 
 /** Os próximos `quantos` dias a partir da data da operação (AAAA-MM-DD), sem fuso do navegador. */
 function proximosDias(inicio: string, quantos = DIAS_NA_TELA): string[] {
