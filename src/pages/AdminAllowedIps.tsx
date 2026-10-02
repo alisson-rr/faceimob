@@ -16,6 +16,7 @@ import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema
 import { describeError } from "@/lib/supabaseError";
 import { dateTime, num } from "@/lib/format";
 import { EmptyState, LoadingState, PageHeader, SectionCard } from "@/components/shared";
+import { DiasSemTravaDeIp } from "@/components/checkin/DiasSemTravaDeIp";
 
 type Ip = {
   id: string;
@@ -312,6 +313,8 @@ export default function AdminAllowedIps() {
           desativam ou removem IPs (o banco recusa a escrita pelo RLS, não só a tela).
         </p>
       )}
+
+      <DiasSemTravaDeIp podeEditar={isAdmin} />
 
       <SectionCard title="Adicionar IP" icon={Plus} contentClassName="space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
