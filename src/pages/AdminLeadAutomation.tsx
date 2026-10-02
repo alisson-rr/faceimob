@@ -50,7 +50,10 @@ type Window = {
 };
 
 type Broker = { id: string; name: string; active: boolean };
-type FormRef = { form_id: string; form_name: string | null };
+type FormRef = { form_id: string; form_name: string | null; pagina?: string | null };
+
+/** Busca sem acento nem caixa: "mrv viamao" acha "CAMPANHA MRV VIAMÃO". */
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 /**
  * Formulários das páginas da Meta (edge `meta-ads-connect`, 02/10/2026). Antes
@@ -66,7 +69,7 @@ async function formulariosDaMeta(): Promise<FormRef[]> {
     const corpo = await (error as { context?: Response }).context?.json?.().catch(() => null);
     throw new Error(corpo?.error ?? "Não consegui ler os formulários na Meta.");
   }
-  return (data?.formularios ?? []).map((f) => ({ form_id: f.form_id, form_name: f.form_name }));
+  return (data?.formularios ?? []).map((f) => ({ form_id: f.form_id, form_name: f.form_name, pagina: f.pagina ?? null }));
 }
 type Group = {
   id: string;
@@ -190,9 +193,12 @@ export default function AdminLeadAutomation() {
   const metaForms = useQuery({ queryKey: ["meta", "leadgen-forms"], queryFn: formulariosDaMeta, staleTime: 5 * 60_000, retry: false });
   // O nome que a Meta dá ganha do vazio; o vínculo já gravado mantém o dele.
   const conhecidos = (() => {
-    const map = new Map(detectedForms.map((f) => [f.form_id, f.form_name] as const));
-    for (const f of metaForms.data ?? []) if (!map.get(f.form_id)) map.set(f.form_id, f.form_name);
-    return Array.from(map, ([form_id, form_name]) => ({ form_id, form_name }));
+    const map = new Map<string, FormRef>(detectedForms.map((f) => [f.form_id, f]));
+    for (const f of metaForms.data ?? []) {
+      const atual = map.get(f.form_id);
+      map.set(f.form_id, { form_id: f.form_id, form_name: atual?.form_name || f.form_name, pagina: f.pagina });
+    }
+    return Array.from(map.values());
   })();
   // `groups` fica inteiro de propósito: o dono de um formulário ("grupo: X") e
   // o diálogo aberto seguem verdadeiros quando uma remoção tira a roleta do
@@ -205,9 +211,13 @@ export default function AdminLeadAutomation() {
   // União: o que o grupo já tem (inclusive form manual sem lead nenhum) na
   // frente, depois os demais detectados. Só `detectedForms` escondia o vínculo
   // manual e não deixava desmarcá-lo.
-  const formOptions = editingGroup
+  const [buscaForm, setBuscaForm] = useState("");
+  const paginaDoForm = new Map(conhecidos.map((f) => [f.form_id, f.pagina] as const));
+  const termoForm = semAcento(buscaForm.trim());
+  const formOptions = (editingGroup
     ? [...editingGroup.forms, ...conhecidos.filter((d) => !editingGroup.forms.some((f) => f.form_id === d.form_id))]
-    : conhecidos;
+    : conhecidos
+  ).filter((f) => !termoForm || semAcento(`${f.form_name ?? ""} ${f.form_id} ${paginaDoForm.get(f.form_id) ?? ""}`).includes(termoForm));
   const groupOwning = (formId: string) => groups.find((g) => g.forms.some((f) => f.form_id === formId)) ?? null;
 
   const load = async () => {
@@ -717,6 +727,22 @@ export default function AdminLeadAutomation() {
                   </h3>
                   <Badge variant="secondary">{editingGroup.forms.length} selecionados</Badge>
                 </div>
+                <div className="mb-2 flex items-center gap-2">
+                  <Input
+                    value={buscaForm}
+                    onChange={(e) => setBuscaForm(e.target.value)}
+                    placeholder="Buscar formulário…"
+                    aria-label="Buscar formulário"
+                    className="h-8"
+                  />
+                  <Button
+                    type="button" variant="outline" size="sm" className="shrink-0"
+                    disabled={metaForms.isFetching}
+                    onClick={() => void metaForms.refetch()}
+                  >
+                    {metaForms.isFetching ? "Atualizando…" : "Atualizar formulários"}
+                  </Button>
+                </div>
                 <ScrollArea className="h-72 rounded border border-border/60 p-2">
                   <div className="space-y-1">
                     {formOptions.map((d) => {
@@ -733,14 +759,20 @@ export default function AdminLeadAutomation() {
                             }}
                           />
                           <span className="truncate flex-1">{d.form_name || d.form_id}</span>
-                          {d.form_name && <span className="text-xs text-muted-foreground truncate">{d.form_id}</span>}
+                          {(paginaDoForm.get(d.form_id) || d.form_name) && (
+                            <span className="text-xs text-muted-foreground truncate">{paginaDoForm.get(d.form_id) || d.form_id}</span>
+                          )}
                           {owner && <span className="text-xs text-warning truncate">grupo: {owner.name}</span>}
                         </label>
                       );
                     })}
                     {formOptions.length === 0 && (
                       <p className="text-xs text-muted-foreground p-2">
-                        {metaForms.isPending ? "Buscando os formulários na Meta…" : "Nenhum formulário detectado ainda. Use \"Adicionar form manual\" abaixo."}
+                        {metaForms.isPending
+                          ? "Buscando os formulários na Meta…"
+                          : termoForm
+                            ? "Nenhum formulário com esse nome."
+                            : "Nenhum formulário detectado ainda. Use \"Adicionar form manual\" abaixo."}
                       </p>
                     )}
                     {metaForms.error && (
