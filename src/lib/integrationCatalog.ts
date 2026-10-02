@@ -107,11 +107,20 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
   {
     provider: "meta",
     label: "page_access_token",
-    title: "Meta — token da página",
+    title: "Meta — token da página principal",
     envName: "META_PAGE_ACCESS_TOKEN",
     usedBy: "meta-ads-webhook",
-    help: "Lê o formulário de Lead Ads para completar os dados do lead.",
+    help: "Lê o formulário de Lead Ads da página principal. Continua aceito para compatibilidade.",
     ondePegar: { passos: "Configurações do negócio › Usuários do sistema › gerar token com a página e o app, permissões leads_retrieval, pages_show_list, pages_read_engagement e pages_manage_metadata. Token de usuário do sistema não expira.", link: { url: "https://business.facebook.com/settings/system-users", rotulo: "Abrir usuários do sistema da Meta" } },
+  },
+  {
+    provider: "meta",
+    label: "page_access_tokens",
+    title: "Meta — tokens das páginas de Lead Ads",
+    envName: "META_PAGE_ACCESS_TOKENS_JSON",
+    usedBy: "meta-ads-webhook, meta-ads-connect",
+    help: "Recebe leads de várias Páginas no mesmo webhook. Cole um JSON com page_id, name e access_token de cada página.",
+    ondePegar: { passos: "Use tokens de Página permanentes, um por página, no formato [{\"page_id\":\"123\",\"name\":\"Faceimob\",\"access_token\":\"...\"}]. Cada página precisa das permissões leads_retrieval, pages_read_engagement e pages_manage_metadata." },
   },
   {
     provider: "meta",

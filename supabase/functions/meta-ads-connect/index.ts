@@ -4,6 +4,7 @@ import { descreverFalhaMeta } from "../_shared/metaErros.ts";
 import { MetaApiError, metaGet, metaGetAll, metaPost, metaToken } from "../_shared/metaAds.ts";
 import { diagnosticarLeadsMeta, type FatosDaMeta } from "../_shared/metaLeadsDiagnostico.ts";
 import { getSecret } from "../_shared/secrets.ts";
+import { getMetaPageCredentials } from "../_shared/metaPageTokensStore.ts";
 
 /**
  * Conexão com a Marketing API (F1.1): testar o token do cofre e escolher as
@@ -128,10 +129,10 @@ function clienteDeServico() {
 
 async function diagnosticarLeads() {
   const db = clienteDeServico();
-  const [appSecret, verifyToken, pageToken, ajustes, ultimoLead] = await Promise.all([
+  const [appSecret, verifyToken, pageCredentials, ajustes, ultimoLead] = await Promise.all([
     getSecret("META_APP_SECRET"),
     getSecret("META_WEBHOOK_VERIFY_TOKEN"),
-    getSecret("META_PAGE_ACCESS_TOKEN"),
+    getMetaPageCredentials(),
     db.from("automation_settings")
       .select("leads_paused, meta_webhook_last_at, meta_webhook_last_result")
       .eq("id", true).maybeSingle(),
@@ -145,7 +146,7 @@ async function diagnosticarLeads() {
     pausado: Boolean(ajustes.data?.leads_paused),
     temAppSecret: Boolean(appSecret),
     temVerifyToken: Boolean(verifyToken),
-    temPageToken: Boolean(pageToken),
+    temPageToken: pageCredentials.length > 0,
     token: null,
     assinaturas: null,
     leituraDeLead: null,
@@ -155,56 +156,108 @@ async function diagnosticarLeads() {
     ultimoLeadEm: ultimoLead.data?.created_at ?? null,
   };
 
-  let pagina: { id: string; name: string | null } | null = null;
-  if (pageToken) {
+  const paginas: Array<{ id: string; name: string | null; assinada: boolean; erro?: string }> = [];
+  const tokensValidos: Array<{ id: string; token: string }> = [];
+  const errosDeToken: string[] = [];
+  for (const credential of pageCredentials) {
     try {
-      const dono = await donoDoToken(pageToken);
-      fatos.token = { tipo: dono.metadata?.type ?? null, nome: dono.name ?? null };
-      if (dono.metadata?.type === "page" && dono.id) pagina = { id: dono.id, name: dono.name ?? null };
+      const dono = await donoDoToken(credential.token);
+      if (dono.metadata?.type !== "page" || !dono.id) {
+        errosDeToken.push("Há um token de USUÁRIO no lugar de token de Página.");
+        continue;
+      }
+      if (credential.pageId && credential.pageId !== dono.id) {
+        errosDeToken.push(`O token cadastrado para a página ${credential.pageId} pertence a outra página.`);
+        continue;
+      }
+      tokensValidos.push({ id: dono.id, token: credential.token });
     } catch (e) {
-      fatos.token = { erro: falhaDaPagina(e) };
+      errosDeToken.push(falhaDaPagina(e));
     }
   }
 
-  if (pageToken && pagina) {
+  fatos.token = errosDeToken.length
+    ? { erro: errosDeToken.join(" ") }
+    : tokensValidos.length
+      ? { tipo: "page", nome: `${tokensValidos.length} página(s) válida(s)` }
+      : null;
+
+  const assinaturaErros: string[] = [];
+  for (const page of tokensValidos) {
+    try {
+      const resposta = await metaGet<{ data?: { name?: string; subscribed_fields?: string[] }[] }>(
+        `${page.id}/subscribed_apps`, {}, page.token,
+      );
+      const apps = resposta.data ?? [];
+      const assinada = apps.some((app) => (app.subscribed_fields ?? []).includes("leadgen"));
+      const dono = await donoDoToken(page.token);
+      paginas.push({ id: page.id, name: dono.name ?? null, assinada });
+    } catch (e) {
+      const erro = falhaDaPagina(e);
+      assinaturaErros.push(erro);
+      paginas.push({ id: page.id, name: null, assinada: false, erro });
+    }
+  }
+
+  if (tokensValidos.length) {
+    fatos.assinaturas = assinaturaErros.length
+      ? { erro: assinaturaErros.join(" ") }
+      : [{ nome: `${paginas.length} página(s)`, campos: paginas.every((p) => p.assinada) ? ["leadgen"] : [] }];
+
     const leadgenId = ultimoLead.data?.external_id;
-    const [assinaturas, leitura] = await Promise.allSettled([
-      metaGet<{ data?: { name?: string; subscribed_fields?: string[] }[] }>(
-        `${pagina.id}/subscribed_apps`, {}, pageToken,
-      ),
-      leadgenId && /^\d+$/.test(leadgenId)
-        ? metaGet(leadgenId, { fields: "id" }, pageToken)
-        : Promise.resolve(null),
-    ]);
-    fatos.assinaturas = assinaturas.status === "fulfilled"
-      ? (assinaturas.value.data ?? []).map((app) => ({ nome: app.name ?? null, campos: app.subscribed_fields ?? [] }))
-      : { erro: falhaDaPagina(assinaturas.reason) };
-    if (leitura.status === "rejected") fatos.leituraDeLead = { erro: falhaDaPagina(leitura.reason) };
-    else if (leitura.value) fatos.leituraDeLead = { ok: true };
+    if (leadgenId && /^\d+$/.test(leadgenId)) {
+      let leituraErro: string | null = null;
+      for (const page of tokensValidos) {
+        try {
+          await metaGet(leadgenId, { fields: "id" }, page.token);
+          fatos.leituraDeLead = { ok: true };
+          leituraErro = null;
+          break;
+        } catch (e) {
+          leituraErro = falhaDaPagina(e);
+        }
+      }
+      if (!fatos.leituraDeLead && leituraErro) fatos.leituraDeLead = { erro: leituraErro };
+    }
   }
 
   const checagens = diagnosticarLeadsMeta(fatos);
   const assinatura = checagens.find((c) => c.id === "assinatura");
-  return json({ ok: true, pagina, podeAssinar: Boolean(pagina) && assinatura?.ok === false, checagens });
+  return json({
+    ok: true,
+    pagina: paginas[0] ? { id: paginas[0].id, name: paginas[0].name } : null,
+    paginas,
+    podeAssinar: paginas.length > 0 && assinatura?.ok === false,
+    checagens,
+  });
 }
 
 async function assinarPagina() {
-  const pageToken = await getSecret("META_PAGE_ACCESS_TOKEN");
-  if (!pageToken) return json({ error: "Token da página não cadastrado. Cadastre meta/page_access_token em Integrações." }, 409);
-  try {
-    const dono = await donoDoToken(pageToken);
-    if (dono.metadata?.type !== "page" || !dono.id) {
-      return json({ error: "O token cadastrado é de usuário, não da página. Substitua pelo token da Página." }, 409);
-    }
-    await metaPost(`${dono.id}/subscribed_apps`, { subscribed_fields: "leadgen" }, pageToken);
-    return json({ ok: true, pagina: { id: dono.id, name: dono.name ?? null } });
-  } catch (e) {
-    console.error(
-      "meta-ads-connect: assinatura da página falhou",
-      e instanceof MetaApiError ? `status=${e.status} code=${e.code ?? "-"}` : "leitura interrompida",
-    );
-    return json({ error: falhaDaPagina(e) }, 502);
+  const credentials = await getMetaPageCredentials();
+  if (!credentials.length) {
+    return json({ error: "Nenhum token de página cadastrado. Cadastre meta/page_access_token ou meta/page_access_tokens em Integrações." }, 409);
   }
+  const paginas: Array<{ id: string; name: string | null }> = [];
+  for (const credential of credentials) {
+    try {
+      const dono = await donoDoToken(credential.token);
+      if (dono.metadata?.type !== "page" || !dono.id) {
+        return json({ error: "Há um token de usuário no lugar do token da Página. Substitua-o antes de assinar." }, 409);
+      }
+      if (credential.pageId && credential.pageId !== dono.id) {
+        return json({ error: `O token cadastrado para a página ${credential.pageId} pertence a outra página.` }, 409);
+      }
+      await metaPost(`${dono.id}/subscribed_apps`, { subscribed_fields: "leadgen" }, credential.token);
+      paginas.push({ id: dono.id, name: dono.name ?? null });
+    } catch (e) {
+      console.error(
+        "meta-ads-connect: assinatura da página falhou",
+        e instanceof MetaApiError ? `status=${e.status} code=${e.code ?? "-"}` : "leitura interrompida",
+      );
+      return json({ error: falhaDaPagina(e) }, 502);
+    }
+  }
+  return json({ ok: true, pagina: paginas[0] ?? null, paginas });
 }
 
 Deno.serve(async (req) => {

@@ -31,7 +31,8 @@ const VERIFY_LABEL = "webhook_verify_token";
  * O que o `meta-ads-webhook` precisa para validar o handshake e completar o
  * lead. As chaves de WhatsApp são de outra function e não travam o webhook.
  */
-const REQUIRED_FOR_WEBHOOK = new Set(["page_access_token", VERIFY_LABEL]);
+const REQUIRED_FOR_WEBHOOK = new Set([VERIFY_LABEL]);
+const PAGE_TOKEN_LABELS = new Set(["page_access_token", "page_access_tokens"]);
 const QUERY_KEY = ["integrations"];
 
 /**
@@ -243,7 +244,11 @@ export default function MetaAdsSetup() {
   const stored = new Map((integrations.data ?? []).map((r) => [slotKey(r.provider, r.label), r]));
   const record = (label: string): IntegrationRecord | undefined => stored.get(slotKey("meta", label));
   const configured = (label: string) => !!record(label)?.has_secret;
-  const missing = META_SLOTS.filter((s) => REQUIRED_FOR_WEBHOOK.has(s.label) && !configured(s.label));
+  const hasPageTokens = [...PAGE_TOKEN_LABELS].some(configured);
+  const missing = [
+    ...(!hasPageTokens ? META_SLOTS.filter((s) => s.label === "page_access_tokens") : []),
+    ...META_SLOTS.filter((s) => REQUIRED_FOR_WEBHOOK.has(s.label) && !configured(s.label)),
+  ];
   // `data` e não `isSuccess`: se a releitura após gravar falhar, o status vira
   // "error" com os dados antigos mantidos — e o token recém-gerado, que só
   // existe nesta sessão, precisa continuar na tela até o admin copiar.
@@ -417,7 +422,7 @@ export default function MetaAdsSetup() {
             <ul className="divide-y divide-border">
               {META_SLOTS.map((slot) => {
                 const ok = configured(slot.label);
-                const required = REQUIRED_FOR_WEBHOOK.has(slot.label);
+                const required = REQUIRED_FOR_WEBHOOK.has(slot.label) || (PAGE_TOKEN_LABELS.has(slot.label) && !hasPageTokens);
                 return (
                   <li key={slot.label} className="space-y-1 py-3 first:pt-0 last:pb-0">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

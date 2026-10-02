@@ -3,6 +3,8 @@ import { getSecret } from '../_shared/secrets.ts'
 import { requireServiceRole } from '../_shared/auth.ts'
 import { checkMetaSignature, normalizePhone, sendWhatsAppTemplate } from '../_shared/meta.ts'
 import { MetaApiError, metaGet } from '../_shared/metaAds.ts'
+import { tokenForMetaPage } from '../_shared/metaPageTokens.ts'
+import { getMetaPageCredentials } from '../_shared/metaPageTokensStore.ts'
 
 type SupabaseClient = ReturnType<typeof createClient>
 type MetaField = { name?: string; values?: unknown[] }
@@ -16,7 +18,7 @@ type MetaLeadValue = {
   campaign_id?: string | number
 }
 type MetaPayload = {
-  entry?: Array<{ changes?: Array<{ field?: string; value?: MetaLeadValue }> }>
+  entry?: Array<{ id?: string | number; changes?: Array<{ field?: string; value?: MetaLeadValue }> }>
   name?: unknown
   email?: unknown
   phone?: unknown
@@ -163,7 +165,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     // Cofre primeiro, secret da function como fallback (ver _shared/secrets.ts).
-    const pageAccessToken = (await getSecret('META_PAGE_ACCESS_TOKEN')) || ''
+    const pageCredentials = await getMetaPageCredentials()
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Verification (GET). Sem token cadastrado o handshake é recusado — o
@@ -256,6 +258,8 @@ Deno.serve(async (req) => {
           for (const change of entry.changes || []) {
             if (change.field !== 'leadgen' || !change.value) continue
             const v = change.value
+            const pageId = v.page_id ? String(v.page_id) : entry.id ? String(entry.id) : null
+            const pageAccessToken = tokenForMetaPage(pageCredentials, pageId) || ''
             let fields: Record<string, string> = {}
 
             // 1) inline (test tool sometimes)
@@ -318,8 +322,8 @@ Deno.serve(async (req) => {
               utm_campaign: pickUtm(fields, 'utm_campaign'),
               utm_content: pickUtm(fields, 'utm_content'),
               utm_term: pickUtm(fields, 'utm_term'),
-              raw_payload: { fields, leadgen_id: v.leadgen_id, form_id: v.form_id, page_id: v.page_id, ad_id: v.ad_id, adset_id: v.adset_id, campaign_id: v.campaign_id, form_name: formName },
-              notes: `leadgen_id=${v.leadgen_id || ''} form_id=${v.form_id || ''} form_name=${formName || '—'} page_id=${v.page_id || ''}${!pageAccessToken ? ' [SEM META_PAGE_ACCESS_TOKEN]' : ''}`,
+              raw_payload: { fields, leadgen_id: v.leadgen_id, form_id: v.form_id, page_id: pageId, ad_id: v.ad_id, adset_id: v.adset_id, campaign_id: v.campaign_id, form_name: formName },
+              notes: `leadgen_id=${v.leadgen_id || ''} form_id=${v.form_id || ''} form_name=${formName || '—'} page_id=${pageId || ''}${!pageAccessToken ? ' [SEM TOKEN PARA ESTA PÁGINA]' : ''}`,
             })
           }
         }
