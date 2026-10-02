@@ -300,11 +300,12 @@ Deno.serve(async (req) => {
             const composed = [firstName, lastName].filter(Boolean).join(' ').trim()
             const fullName = fields['full_name'] || fields['nome_completo'] || fields['nome_e_sobrenome'] || fields['name'] || fields['nome'] || composed || ''
             const fallbackName = fields['email']?.split('@')[0] || fields['phone_number'] || `Lead ${v.leadgen_id || ''}`.trim()
+            const phone = fields['phone_number'] || fields['telefone'] || fields['phone'] || fields['whatsapp'] || fields['número_do_whatsapp'] || fields['whatsapp_number'] || ''
 
             leads.push({
               full_name: fullName || firstName || fallbackName,
-              phone: fields['phone_number'] || fields['telefone'] || fields['phone'] || '',
-              phone_raw: fields['phone_number'] || fields['whatsapp'] || '',
+              phone,
+              phone_raw: phone,
               email: fields['email'] || null,
               status: 'queued',
               funnel_stage: 'new',
