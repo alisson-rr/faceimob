@@ -117,10 +117,46 @@ function falhaDaPagina(e: unknown): string {
 }
 
 type DonoDoToken = { id?: string; name?: string; metadata?: { type?: string } };
+type PaginaAutorizada = { id: string; name: string | null; token: string };
 
 /** De quem é o token: página (o certo) ou usuário (o erro mais comum ao colar). */
 async function donoDoToken(pageToken: string): Promise<DonoDoToken> {
   return await metaGet<DonoDoToken>("me", { fields: "id,name", metadata: "1" }, pageToken);
+}
+
+/**
+ * Tokens de usuário de sistema são permanentes e a Meta os reutiliza para os
+ * ativos atribuídos. Por isso `/me` continua sendo o usuário, mesmo quando o
+ * token alcança uma Página. Nesse caso o `page_id` explícito do cofre é a
+ * fronteira de segurança: a credencial só é aceita se conseguir ler exatamente
+ * essa Página. O formato legado sem `page_id` continua exigindo token cujo dono
+ * seja a própria Página.
+ */
+async function paginaAutorizada(
+  credential: { pageId: string | null; name: string | null; token: string },
+): Promise<PaginaAutorizada> {
+  const dono = await donoDoToken(credential.token);
+
+  if (dono.metadata?.type === "page" && dono.id) {
+    if (credential.pageId && credential.pageId !== dono.id) {
+      throw new Error(`O token cadastrado para a página ${credential.pageId} pertence a outra página.`);
+    }
+    return { id: dono.id, name: dono.name ?? credential.name, token: credential.token };
+  }
+
+  if (!credential.pageId) {
+    throw new Error("Há um token de usuário sem page_id. Informe a página junto da credencial.");
+  }
+
+  const pagina = await metaGet<{ id?: string; name?: string }>(
+    credential.pageId,
+    { fields: "id,name" },
+    credential.token,
+  );
+  if (pagina.id !== credential.pageId) {
+    throw new Error(`A credencial não confirmou acesso à página ${credential.pageId}.`);
+  }
+  return { id: pagina.id, name: pagina.name ?? credential.name, token: credential.token };
 }
 
 function clienteDeServico() {
@@ -157,22 +193,13 @@ async function diagnosticarLeads() {
   };
 
   const paginas: Array<{ id: string; name: string | null; assinada: boolean; erro?: string }> = [];
-  const tokensValidos: Array<{ id: string; token: string }> = [];
+  const tokensValidos: PaginaAutorizada[] = [];
   const errosDeToken: string[] = [];
   for (const credential of pageCredentials) {
     try {
-      const dono = await donoDoToken(credential.token);
-      if (dono.metadata?.type !== "page" || !dono.id) {
-        errosDeToken.push("Há um token de USUÁRIO no lugar de token de Página.");
-        continue;
-      }
-      if (credential.pageId && credential.pageId !== dono.id) {
-        errosDeToken.push(`O token cadastrado para a página ${credential.pageId} pertence a outra página.`);
-        continue;
-      }
-      tokensValidos.push({ id: dono.id, token: credential.token });
+      tokensValidos.push(await paginaAutorizada(credential));
     } catch (e) {
-      errosDeToken.push(falhaDaPagina(e));
+      errosDeToken.push(e instanceof Error && !(e instanceof MetaApiError) ? e.message : falhaDaPagina(e));
     }
   }
 
@@ -190,8 +217,7 @@ async function diagnosticarLeads() {
       );
       const apps = resposta.data ?? [];
       const assinada = apps.some((app) => (app.subscribed_fields ?? []).includes("leadgen"));
-      const dono = await donoDoToken(page.token);
-      paginas.push({ id: page.id, name: dono.name ?? null, assinada });
+      paginas.push({ id: page.id, name: page.name, assinada });
     } catch (e) {
       const erro = falhaDaPagina(e);
       assinaturaErros.push(erro);
@@ -240,21 +266,16 @@ async function assinarPagina() {
   const paginas: Array<{ id: string; name: string | null }> = [];
   for (const credential of credentials) {
     try {
-      const dono = await donoDoToken(credential.token);
-      if (dono.metadata?.type !== "page" || !dono.id) {
-        return json({ error: "Há um token de usuário no lugar do token da Página. Substitua-o antes de assinar." }, 409);
-      }
-      if (credential.pageId && credential.pageId !== dono.id) {
-        return json({ error: `O token cadastrado para a página ${credential.pageId} pertence a outra página.` }, 409);
-      }
-      await metaPost(`${dono.id}/subscribed_apps`, { subscribed_fields: "leadgen" }, credential.token);
-      paginas.push({ id: dono.id, name: dono.name ?? null });
+      const pagina = await paginaAutorizada(credential);
+      await metaPost(`${pagina.id}/subscribed_apps`, { subscribed_fields: "leadgen" }, pagina.token);
+      paginas.push({ id: pagina.id, name: pagina.name });
     } catch (e) {
       console.error(
         "meta-ads-connect: assinatura da página falhou",
         e instanceof MetaApiError ? `status=${e.status} code=${e.code ?? "-"}` : "leitura interrompida",
       );
-      return json({ error: falhaDaPagina(e) }, 502);
+      const mensagem = e instanceof Error && !(e instanceof MetaApiError) ? e.message : falhaDaPagina(e);
+      return json({ error: mensagem }, e instanceof MetaApiError ? 502 : 409);
     }
   }
   return json({ ok: true, pagina: paginas[0] ?? null, paginas });

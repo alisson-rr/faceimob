@@ -135,9 +135,9 @@ export function MetaLeadsDiagnosticoCard() {
             <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-muted-foreground">
               {pageTokenFailed && (
                 <li>
-                  Gere um <strong className="text-foreground">novo token da Página</strong> com
-                  <code className="mx-1">leads_retrieval</code> e <code>pages_manage_metadata</code>, escolha a
-                  Página Faceimob no gerador e substitua “Meta — token da página” acima.
+                  Gere um <strong className="text-foreground">token permanente de usuário de sistema</strong> com
+                  <code className="mx-1">leads_retrieval</code> e <code>pages_manage_metadata</code>, atribua as
+                  Páginas ao usuário e salve cada uma com seu <code className="mx-1">page_id</code> no cofre acima.
                 </li>
               )}
               {verifyMismatch && (
@@ -147,7 +147,7 @@ export function MetaLeadsDiagnosticoCard() {
                 </li>
               )}
               <li>
-                Rode “Diagnosticar” novamente. Quando o token da Página estiver válido, esta tela libera o botão
+                Rode “Diagnosticar” novamente. Quando o acesso às Páginas estiver válido, esta tela libera o botão
                 “Assinar páginas pendentes”.
               </li>
             </ol>
