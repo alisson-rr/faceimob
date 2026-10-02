@@ -22,6 +22,7 @@ type Checagem = { id: string; titulo: string; ok: boolean | null; detalhe: strin
 type Diagnostico = {
   ok: true;
   pagina: { id: string; name: string | null } | null;
+  paginas?: Array<{ id: string; name: string | null; assinada: boolean; erro?: string }>;
   podeAssinar: boolean;
   checagens: Checagem[];
 };
@@ -49,9 +50,9 @@ export function MetaLeadsDiagnosticoCard() {
   });
 
   const assinar = useMutation({
-    mutationFn: () => chamar<{ ok: true; pagina: { name: string | null } }>({ action: "assinar_pagina" }),
+    mutationFn: () => chamar<{ ok: true; pagina?: { name: string | null }; paginas?: Array<{ name: string | null }> }>({ action: "assinar_pagina" }),
     onSuccess: (r) => {
-      toast.success(r.pagina.name ? `Página ${r.pagina.name} assinada para receber leads` : "Página assinada para receber leads");
+      toast.success(`${r.paginas?.length ?? (r.pagina ? 1 : 0)} página(s) assinada(s) para receber leads`);
       diagnostico.mutate();
     },
     onError: (e) => toast.error("Não foi possível assinar a página", { description: describeError(e, "Tente de novo em instantes.") }),
@@ -86,7 +87,7 @@ export function MetaLeadsDiagnosticoCard() {
               disabled={!podeUsar || assinar.isPending}
             >
               {assinar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />}
-              Assinar a página para receber leads
+              Assinar páginas pendentes
             </Button>
           )}
         </div>
@@ -94,6 +95,19 @@ export function MetaLeadsDiagnosticoCard() {
           <p role="status" className="text-xs text-warning">
             Sem a permissão &quot;Gerenciar integrações&quot;: o diagnóstico é de quem administra o cofre.
           </p>
+        )}
+
+        {resultado && (resultado.paginas?.length ?? 0) > 0 && (
+          <ul className="grid gap-2 sm:grid-cols-2" aria-label="Páginas de Lead Ads configuradas">
+            {resultado.paginas!.map((pagina) => (
+              <li key={pagina.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+                <span className="min-w-0 truncate">{pagina.name || `Página ${pagina.id}`}</span>
+                <StatusBadge tone={pagina.assinada ? "success" : "warning"}>
+                  {pagina.assinada ? "Recebendo" : pagina.erro ? "Erro" : "Assinar"}
+                </StatusBadge>
+              </li>
+            ))}
+          </ul>
         )}
 
         {resultado && (
@@ -134,7 +148,7 @@ export function MetaLeadsDiagnosticoCard() {
               )}
               <li>
                 Rode “Diagnosticar” novamente. Quando o token da Página estiver válido, esta tela libera o botão
-                “Assinar a página para receber leads”.
+                “Assinar páginas pendentes”.
               </li>
             </ol>
             <Button asChild type="button" size="sm" variant="outline" className="mt-3">

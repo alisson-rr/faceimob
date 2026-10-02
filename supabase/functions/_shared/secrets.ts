@@ -23,6 +23,10 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 export const SECRET_SLOTS = {
   OPENAI_API_KEY: { provider: "openai", label: "api_key" },
   META_PAGE_ACCESS_TOKEN: { provider: "meta", label: "page_access_token" },
+  // Várias Páginas podem publicar formulários no mesmo app. O valor é um
+  // JSON com os tokens separados por page_id; o slot singular acima continua
+  // aceito para instalações antigas e como retaguarda durante a migração.
+  META_PAGE_ACCESS_TOKENS_JSON: { provider: "meta", label: "page_access_tokens" },
   META_WEBHOOK_VERIFY_TOKEN: { provider: "meta", label: "webhook_verify_token" },
   META_APP_SECRET: { provider: "meta", label: "app_secret" },
   META_WHATSAPP_ACCESS_TOKEN: { provider: "meta", label: "whatsapp_access_token" },
