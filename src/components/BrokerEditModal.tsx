@@ -29,6 +29,7 @@ export type EditableBroker = {
   id: string;
   name: string | null;
   full_name?: string | null;
+  nickname?: string | null;
   email?: string | null;
   role?: string | null;
   manager_id?: string | null;
@@ -227,7 +228,7 @@ export function BrokerEditModal({
       if (open && criando) {
         setForm({
           ...EMPTY_DETAILS,
-          id: "", name: "", full_name: "", email: "", celular: null, avatar_url: null,
+          id: "", name: "", full_name: "", nickname: "", email: "", celular: null, avatar_url: null,
           active: true, status: "active", roles: ["broker"],
         });
         setBaseline(null);
@@ -251,6 +252,7 @@ export function BrokerEditModal({
         const real: EditableBroker = {
           ...broker,
           full_name: identity.full_name ?? broker.full_name ?? broker.name,
+          nickname: identity.nickname ?? broker.nickname ?? "",
           name: identity.full_name ?? broker.name,
           email: identity.email ?? broker.email,
           login_email: identity.email ?? broker.login_email,
@@ -745,6 +747,18 @@ export function BrokerEditModal({
                 // do bloco de acesso monta, sem obrigar a copiar à mão.
                 if (criando && !emailTocado) upd("email", suggestEmail(e.target.value));
               }}
+            />
+          </Field>
+          <Field
+            label="Apelido"
+            hint="Opcional. É o nome curto mostrado no game e no ranking."
+          >
+            <Input
+              disabled={dadosTravados}
+              maxLength={40}
+              value={form.nickname || ""}
+              onChange={e => upd("nickname", e.target.value)}
+              placeholder="Ex.: Adriel"
             />
           </Field>
           <Field

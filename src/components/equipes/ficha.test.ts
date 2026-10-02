@@ -52,6 +52,15 @@ describe("buildPersonSave: validação", () => {
     expect(out.profile.cpf).toBe("12345678901");
   });
 
+  it("grava o apelido sem trocar o nome completo e aceita removê-lo", () => {
+    const comApelido = buildPersonSave(form({ nickname: "  Nani  " }), "a@b.com", base);
+    const semApelido = buildPersonSave(form({ nickname: "   " }), "a@b.com", base);
+    if (typeof comApelido === "string" || typeof semApelido === "string") throw new Error("esperava PersonSave");
+    expect(comApelido.profile.full_name).toBe("Ana Oliveira");
+    expect(comApelido.profile.nickname).toBe("Nani");
+    expect(semApelido.profile.nickname).toBeNull();
+  });
+
   it("barra conjunto de papéis vazio ANTES de gravar o perfil", () => {
     // `set_profile_roles` recusa — mas só depois da etapa 1 de `savePerson`,
     // e o usuário ficava com uma ficha metade nova, metade antiga.

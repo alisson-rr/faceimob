@@ -245,8 +245,8 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
             queryFn: () => listRanking(seasonId),
             staleTime: 30_000,
           });
-          const exibir = nomesDeExibicao(rows.map((row) => row.full_name));
-          const byId = new Map(rows.map((row) => [row.profile_id, exibir(row.full_name)]));
+          const exibir = nomesDeExibicao(rows.map((row) => row.display_name || row.full_name));
+          const byId = new Map(rows.map((row) => [row.profile_id, exibir(row.display_name || row.full_name)]));
           names = batch.profileIds.map((id) => byId.get(id) ?? "").filter(Boolean);
         } catch {
           // Sem nome resolvido a comemoração continua: vira "Equipe".

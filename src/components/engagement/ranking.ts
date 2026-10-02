@@ -70,11 +70,11 @@ export function ordenarRanking(ranking: RankingRow[]): RankingRow[] {
  */
 export function buildScores(ranking: RankingRow[]): BrokerScore[] {
   const ordenado = ordenarRanking(ranking);
-  const exibir = nomesDeExibicao(ordenado.map((row) => row.full_name));
+  const exibir = nomesDeExibicao(ordenado.map((row) => row.display_name || row.full_name));
   return ordenado
     .map((row) => ({
       brokerId: row.profile_id,
-      brokerName: exibir(row.full_name),
+      brokerName: exibir(row.display_name || row.full_name),
       team: row.team_name || "Sem equipe",
       managerId: row.manager_id ?? undefined,
       managerName: row.manager_name ?? undefined,

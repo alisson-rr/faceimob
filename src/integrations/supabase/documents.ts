@@ -389,6 +389,17 @@ export async function signedDocumentUrl(doc: Pick<DealDocumentRecord, "storage_p
   return data.signedUrl;
 }
 
+/** URL assinada curta, sem `download`, para renderização dentro do popup. */
+export async function signedDocumentPreviewUrl(
+  doc: Pick<DealDocumentRecord, "storage_path">,
+): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from(DEAL_DOCUMENTS_BUCKET)
+    .createSignedUrl(doc.storage_path, 300);
+  if (error) throw dbError("gerar visualização do documento", error);
+  return data.signedUrl;
+}
+
 /**
  * Quais desses caminhos NÃO têm arquivo legível no bucket.
  *

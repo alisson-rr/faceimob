@@ -95,6 +95,14 @@ describe("ordenarRanking", () => {
 });
 
 describe("buildScores", () => {
+  it("mostra o apelido no game sem apagar o nome completo do perfil", () => {
+    const scores = buildScores([
+      row({ profile_id: "a", full_name: "Ana Oliveira", display_name: "Nani", points: 10 }),
+    ]);
+
+    expect(scores[0].brokerName).toBe("Nani");
+  });
+
   it("desempata por nome, como o banco faz ao congelar", () => {
     // Ordem de chegada invertida de propósito: sem desempate, o pódio trocava
     // de degrau entre dois carregamentos com o mesmo dado.

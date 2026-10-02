@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Stethoscope } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SectionCard, StatusBadge } from "@/components/shared";
@@ -58,6 +58,9 @@ export function MetaLeadsDiagnosticoCard() {
   });
 
   const resultado = diagnostico.data;
+  const pageTokenFailed = resultado?.checagens.find((item) => item.id === "page_token")?.ok === false;
+  const verifyMismatch = resultado?.checagens.find((item) => item.id === "ultima_chamada")?.detalhe
+    .includes("token de verificação") ?? false;
 
   return (
     <SectionCard
@@ -108,6 +111,41 @@ export function MetaLeadsDiagnosticoCard() {
               );
             })}
           </ul>
+        )}
+
+        {(pageTokenFailed || verifyMismatch) && (
+          <div className="rounded-xl border border-warning/45 bg-warning/10 p-3 text-sm">
+            <p className="flex items-center gap-2 font-semibold text-warning">
+              <AlertTriangle className="h-4 w-4" aria-hidden /> São duas credenciais diferentes
+            </p>
+            <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-muted-foreground">
+              {pageTokenFailed && (
+                <li>
+                  Gere um <strong className="text-foreground">novo token da Página</strong> com
+                  <code className="mx-1">leads_retrieval</code> e <code>pages_manage_metadata</code>, escolha a
+                  Página Faceimob no gerador e substitua “Meta — token da página” acima.
+                </li>
+              )}
+              {verifyMismatch && (
+                <li>
+                  O <strong className="text-foreground">Verify Token</strong> não é o token da Página. Em
+                  Webhooks → Page, use exatamente o valor gerado nesta tela e clique em “Verificar e salvar”.
+                </li>
+              )}
+              <li>
+                Rode “Diagnosticar” novamente. Quando o token da Página estiver válido, esta tela libera o botão
+                “Assinar a página para receber leads”.
+              </li>
+            </ol>
+            <Button asChild type="button" size="sm" variant="outline" className="mt-3">
+              <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer">
+                Abrir gerador da Meta <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Não envie o token por mensagem: cole-o diretamente no cofre desta tela.
+            </p>
+          </div>
         )}
 
         {resultado && (

@@ -68,7 +68,7 @@ export function DealCommentsPanel({ dealId, people }: { dealId: string; people: 
       .select("id,actor_id,to_value,created_at")
       .eq("deal_id", dealId)
       .eq("kind", "comment")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false });
     setErro(error);
     if (!error) setComments((data as DealComment[]) || []);
   }, [dealId]);
@@ -138,11 +138,11 @@ export function DealCommentsPanel({ dealId, people }: { dealId: string; people: 
               // `foreground`, que é o que precisa de contraste de leitura.
               <li
                 key={entry.id}
-                className={`rounded-md border-l-2 border-current bg-muted/20 px-2 py-1.5 ${brokerTextClass(nome)}`}
+                className={`rounded-lg border border-blue-800/40 border-l-2 border-l-current bg-blue-950/55 px-3 py-2 ${brokerTextClass(nome)}`}
               >
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span className="text-xs font-bold">{nome}</span>
-                  <span className="text-xs text-muted-foreground">{dateTime(entry.created_at)}</span>
+                  <span className="text-xs font-semibold text-warning">{dateTime(entry.created_at)}</span>
                 </div>
                 {/* `whitespace-pre-wrap`: o campo é um textarea e o comentário de
                     duas linhas virava um parágrafo só. */}
@@ -159,7 +159,8 @@ export function DealCommentsPanel({ dealId, people }: { dealId: string; people: 
       <div className="flex gap-2">
         <Label htmlFor={`${id}-draft`} className="sr-only">Novo comentário</Label>
         <Textarea
-          id={`${id}-draft`} rows={2} className="flex-1 text-xs"
+          id={`${id}-draft`} rows={2}
+          className="flex-1 border-slate-300 bg-white text-xs text-slate-950 placeholder:text-slate-500"
           value={draft} onChange={(event) => setDraft(event.target.value)}
           // 4000 é o teto que `add_deal_comment` cobra: sem isto o texto longo só
           // era recusado depois do clique, com a frase crua do banco em toast.

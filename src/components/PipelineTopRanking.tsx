@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { endOfMonth, format, startOfMonth } from "date-fns";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { WeekRange } from "@/integrations/supabase/game";
@@ -14,6 +14,8 @@ import { useCurrentSeasonId, useGameRanking, useSeasonRanking } from "@/hooks/us
 import { contarStatus1PorPessoa, textoDaContagem } from "@/components/engagement/contagemStatus1";
 import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { dealMonth } from "@/components/pipeline/filters";
+import { currentMonthRange } from "@/lib/currentMonthRange";
 
 type Props = {
   onAbrirPainel: () => void;
@@ -49,10 +51,7 @@ export function mesDaMetaDoCorretor(soMinhaPosicao: boolean, hoje: Date = new Da
  * leitura, não um segundo jeito de contar venda.
  */
 export function intervaloDoMes(hoje: Date = new Date()): WeekRange {
-  return {
-    from: format(startOfMonth(hoje), "yyyy-MM-dd"),
-    to: format(endOfMonth(hoje), "yyyy-MM-dd"),
-  };
+  return currentMonthRange(hoje);
 }
 
 /**
@@ -77,7 +76,8 @@ export default function PipelineTopRanking({ onAbrirPainel, deals }: Props) {
   // Sem os negócios, como o `AppLayout`: eles só alimentavam `ScoreRow.leads`,
   // que ninguém lê, e custavam 287 corretores × 7.579 negócios em comparação
   // de nome a cada render do Pipeline (cada tecla da busca, cada modal).
-  const { scoped, meuScore, recorte, seasonId } = useGameRanking();
+  const monthRange = intervaloDoMes();
+  const { scoped, meuScore, recorte, seasonId } = useGameRanking(undefined, monthRange);
   const { profile, user } = useAuth();
 
   const { soMinhaPosicao, escopo } = recorte;
@@ -86,7 +86,9 @@ export default function PipelineTopRanking({ onAbrirPainel, deals }: Props) {
   // negócios que o Pipeline já carregou no período — dentro da RLS de quem
   // olha. O corretor só enxerga os dele, e é só a linha dele que ele vê.
   const catalog = useDealStatusCatalog().data;
-  const contagem = deals && catalog ? contarStatus1PorPessoa(deals, catalog) : null;
+  const mesVigente = format(new Date(), "MM/yyyy");
+  const dealsDoMes = deals?.filter((deal) => dealMonth(deal) === mesVigente);
+  const contagem = dealsDoMes && catalog ? contarStatus1PorPessoa(dealsDoMes, catalog) : null;
 
   // As MESMAS duas chaves de cache que o `useGameRanking` já usa — nenhuma
   // consulta a mais, só o `isError` e o "há temporada?" que o hook não devolve.
@@ -121,7 +123,7 @@ export default function PipelineTopRanking({ onAbrirPainel, deals }: Props) {
    * (`intervaloDoMes`), e o valor é o `vgv` que `visible_game_ranking` já
    * devolve por pessoa.
    */
-  const placarDoMes = useSeasonRanking(soMinhaPosicao ? seasonId : null, intervaloDoMes());
+  const placarDoMes = useSeasonRanking(soMinhaPosicao ? seasonId : null, monthRange);
   const vgvDoMes = placarDoMes.data?.find((linha) => linha.profile_id === user?.id)?.vgv ?? 0;
 
   // O "Ver mais" em texto do print do pódio. É `button` e não `Link`: abre o

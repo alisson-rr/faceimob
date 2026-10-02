@@ -23,6 +23,8 @@ import { nomesDeExibicao, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { podiumRingClass } from "@/lib/tone";
 import { cn } from "@/lib/utils";
+import { currentMonthRange } from "@/lib/currentMonthRange";
+import { dealMonth } from "@/components/pipeline/filters";
 import { contarStatus1PorPessoa, textoDaContagem } from "./contagemStatus1";
 import { itensDoGame } from "./painel/itensDoGame";
 import { gruposDoPlacar } from "./painel/gruposDoPlacar";
@@ -145,7 +147,8 @@ function Pontuacao() {
   const { roles, isAdmin, user } = useAuth();
   const { soMinhaPosicao, escopo } = recorteDoRanking(roles, isAdmin);
   const temporada = useCurrentSeasonId();
-  const placar = useSeasonRanking(temporada.data);
+  const monthRange = currentMonthRange();
+  const placar = useSeasonRanking(temporada.data, monthRange);
   // Mesma chave e mesma leitura da tela de Gamificação: cache compartilhado.
   const regras = useQuery({
     queryKey: gameKeys.rules(temporada.data ?? null),
@@ -339,17 +342,20 @@ const iniciais = (nome: string) =>
 function Destaques({ deals }: { deals?: LegacyDealRecord[] }) {
   const { user, role, isAdmin } = useAuth();
   const temporada = useCurrentSeasonId();
-  const placar = useSeasonRanking(temporada.data);
+  const monthRange = currentMonthRange();
+  const placar = useSeasonRanking(temporada.data, monthRange);
   const catalog = useDealStatusCatalog().data;
   // `ordenarRanking` e não a ordem crua: a RPC ordena só por pontos, e empates
   // em 0 vinham em ordem qualquer, com quem já foi desativado no meio.
   const ordenado = ordenarRanking(placar.data ?? []);
   // Xará conferido no placar inteiro: o mesmo nome do pódio do Pipeline e do cabeçalho.
-  const exibir = nomesDeExibicao(ordenado.map((linha) => linha.full_name));
+  const exibir = nomesDeExibicao(ordenado.map((linha) => linha.display_name || linha.full_name));
   const visao = isAdmin ? "empresa" : role === "director" ? "diretoria" : "equipe";
   const grupos = gruposDoPlacar(ordenado, visao, user?.id);
   const gestor = isAdmin || role === "director" || role === "manager";
-  const contagem = deals && catalog ? contarStatus1PorPessoa(deals, catalog) : null;
+  const monthLabel = monthRange.from.slice(5, 7) + "/" + monthRange.from.slice(0, 4);
+  const monthDeals = deals?.filter((deal) => dealMonth(deal) === monthLabel);
+  const contagem = monthDeals && catalog ? contarStatus1PorPessoa(monthDeals, catalog) : null;
 
   const corpo = () => {
     if (temporada.isError || placar.isError) {
@@ -388,62 +394,78 @@ function Destaques({ deals }: { deals?: LegacyDealRecord[] }) {
       );
     }
 
+    const listaDoGrupo = (grupo: (typeof grupos)[number]) => (
+      <ol className="space-y-3">
+        {grupo.linhas.map((linha, i) => {
+          const eu = linha.profile_id === user?.id;
+          const nome = exibir(linha.display_name || linha.full_name);
+          const mostraContagem = contagem && (gestor || eu);
+          return (
+            <li
+              key={linha.profile_id}
+              className={cn("flex items-center gap-3 rounded-lg", eu && "bg-primary/10 p-1.5 ring-1 ring-primary/40")}
+              aria-label={`${i + 1}º lugar: ${nome}${eu ? " (você)" : ""}, ${num(linha.points)} pontos`}
+            >
+              {MEDALHA_DO_PODIO[i] ? (
+                <img src={MEDALHA_DO_PODIO[i]} alt="" aria-hidden className="-my-1 h-12 w-12 shrink-0 object-contain" />
+              ) : (
+                <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center text-base font-bold tabular-nums text-muted-foreground">
+                  {i + 1}º
+                </span>
+              )}
+              <Avatar
+                className={cn(
+                  "h-10 w-10 shrink-0 ring-2 ring-offset-2 ring-offset-card",
+                  podiumRingClass(i),
+                )}
+              >
+                <AvatarImage src={linha.avatar_url || undefined} alt="" />
+                <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
+                  {iniciais(nome)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">
+                  {nome}{eu && <span className="ml-1 text-xs font-normal text-primary">(você)</span>}
+                </p>
+                {mostraContagem && (
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {textoDaContagem(contagem.get(linha.profile_id))}
+                  </p>
+                )}
+              </div>
+              <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                {num(linha.points)} pts
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    );
+
     return (
-      <div className="space-y-5">
+      <div className={cn(visao === "empresa" ? "space-y-2" : "space-y-5")}>
         {grupos.map((grupo) => (
-          <section key={grupo.chave} aria-label={grupo.titulo ?? "Sua equipe"}>
-            {grupo.titulo && (
-              <h4 className="mb-2 border-b border-border pb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                {grupo.titulo}
-              </h4>
-            )}
-            <ol className="space-y-3">
-              {grupo.linhas.map((linha, i) => {
-                const eu = linha.profile_id === user?.id;
-                const nome = exibir(linha.full_name);
-                const mostraContagem = contagem && (gestor || eu);
-                return (
-                  <li
-                    key={linha.profile_id}
-                    className={cn("flex items-center gap-3 rounded-lg", eu && "bg-primary/10 p-1.5 ring-1 ring-primary/40")}
-                    aria-label={`${i + 1}º lugar: ${nome}${eu ? " (você)" : ""}, ${num(linha.points)} pontos`}
-                  >
-                    {MEDALHA_DO_PODIO[i] ? (
-                      <img src={MEDALHA_DO_PODIO[i]} alt="" aria-hidden className="-my-1 h-12 w-12 shrink-0 object-contain" />
-                    ) : (
-                      <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center text-base font-bold tabular-nums text-muted-foreground">
-                        {i + 1}º
-                      </span>
-                    )}
-                    <Avatar
-                      className={cn(
-                        "h-10 w-10 shrink-0 ring-2 ring-offset-2 ring-offset-card",
-                        podiumRingClass(i),
-                      )}
-                    >
-                      <AvatarImage src={linha.avatar_url || undefined} alt="" />
-                      <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
-                        {iniciais(nome)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground">
-                        {nome}{eu && <span className="ml-1 text-xs font-normal text-primary">(você)</span>}
-                      </p>
-                      {mostraContagem && (
-                        <p className="text-xs tabular-nums text-muted-foreground">
-                          {textoDaContagem(contagem.get(linha.profile_id))}
-                        </p>
-                      )}
-                    </div>
-                    <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                      {num(linha.points)} pts
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
+          visao === "empresa" ? (
+            <details key={grupo.chave} className="group rounded-lg border border-border bg-secondary/20 px-3 py-2">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider text-foreground">
+                <span>{grupo.titulo ?? "Diretoria"}</span>
+                <span className="font-normal normal-case tracking-normal text-muted-foreground">
+                  {grupo.linhas.length} corretor(es) · toque para expandir
+                </span>
+              </summary>
+              <div className="mt-3 border-t border-border pt-3">{listaDoGrupo(grupo)}</div>
+            </details>
+          ) : (
+            <section key={grupo.chave} aria-label={grupo.titulo ?? "Sua equipe"}>
+              {grupo.titulo && (
+                <h4 className="mb-2 border-b border-border pb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  {grupo.titulo}
+                </h4>
+              )}
+              {listaDoGrupo(grupo)}
+            </section>
+          )
         ))}
       </div>
     );

@@ -129,10 +129,10 @@ export function recorteDoRanking(roles: AppRole[], isAdmin: boolean): { soMinhaP
   return { soMinhaPosicao: true, escopo: "Sua posição" };
 }
 
-export function useGameRanking(dealsInput?: DealLite[]) {
+export function useGameRanking(dealsInput?: DealLite[], range?: WeekRange | null) {
   const { role, roles, isAdmin, user } = useAuth();
   const { data: seasonId } = useCurrentSeasonId();
-  const { data: ranking, isLoading } = useSeasonRanking(seasonId);
+  const { data: ranking, isLoading } = useSeasonRanking(seasonId, range);
 
   /**
    * Ativo, pontos desc, nome no empate — a MESMA `ordenarRanking` do pódio da
@@ -146,7 +146,10 @@ export function useGameRanking(dealsInput?: DealLite[]) {
    */
   const rows: RankingRow[] = useMemo(() => ordenarRanking(ranking ?? []), [ranking]);
 
-  const exibir = useMemo(() => nomesDeExibicao(rows.map((row) => row.full_name)), [rows]);
+  const exibir = useMemo(
+    () => nomesDeExibicao(rows.map((row) => row.display_name || row.full_name)),
+    [rows],
+  );
 
   const allScores: ScoreRow[] = useMemo(() => rows.map((row) => {
     const breakdown = row.breakdown || {};
@@ -161,7 +164,7 @@ export function useGameRanking(dealsInput?: DealLite[]) {
         id: row.profile_id,
         user_id: row.profile_id,
         // Exibição curta e sem xará; `full_name` segue inteiro para casar negócio.
-        name: exibir(row.full_name),
+        name: exibir(row.display_name || row.full_name),
         full_name: row.full_name,
         avatar_url: row.avatar_url,
         active: row.active,
