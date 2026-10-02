@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, BarChart3, Inbox, Plus, Upload, Users, Zap } from "lucide-react";
+import { AlertTriangle, BarChart3, HandMetal, Inbox, Plus, Upload, Users, Zap } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState, PageHeader, SectionCard } from "@/components/shared";
 import { ListaDeLigacaoButton } from "@/components/leads/ListaDeLigacaoButton";
@@ -13,7 +14,7 @@ import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
 import {
   LeadDialogs, LeadFilters, LeadsSummary, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
   SourcePerformanceCard,
-  emptyLeadFilters, hasActiveFilter, leadMetrics, matchesFilters, noLeadDialogs,
+  emptyLeadFilters, hasActiveFilter, leadMetrics, leadsPorPeriodo, matchesFilters, noLeadDialogs,
   useAssignableBrokers, useAutomationSettings, useDebounced, useDistributionGroups, useGroupQueues,
   useInvalidateLeads, useLeadSources,
   useLeads, useLeadsRealtime, useNowTicker, useWhatsappTemplates,
@@ -135,8 +136,22 @@ export default function Leads() {
       : filtered.length === 1
         ? "1 lead encontrado"
         : `${num(filtered.length)} leads encontrados`;
-  const metrics = useMemo(() => leadMetrics(base, now, profileId), [base, now, profileId]);
-  const overdueLeads = useMemo(() => base.filter((lead) => isLeadOverdue(lead, now)), [base, now]);
+  // Gerente e diretor olham um corretor por vez (02/10/2026): o mesmo filtro da
+  // lista recorta os indicadores, para os números falarem do mesmo corretor.
+  const doCorretor = useMemo(
+    () => filters.broker === "all"
+      ? base
+      : base.filter((lead) => (filters.broker === "none" ? !lead.assigned_to : lead.assigned_to === filters.broker)),
+    [base, filters.broker],
+  );
+  const porPeriodo = useMemo(() => leadsPorPeriodo(doCorretor), [doCorretor]);
+  // Para o corretor: o que está esperando o "Atender" dele, no topo da tela.
+  const paraAtender = useMemo(
+    () => (canReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && lead.status === "assigned")),
+    [base, canReassign, profileId],
+  );
+  const metrics = useMemo(() => leadMetrics(doCorretor, now, profileId), [doCorretor, now, profileId]);
+  const overdueLeads = useMemo(() => doCorretor.filter((lead) => isLeadOverdue(lead, now)), [doCorretor, now]);
   const queuedLeads = useMemo(() => base.filter((lead) => lead.status === "queued"), [base]);
   const maxRounds = settingsQuery.data?.roulette_max_rounds ?? 5;
   // A bandeja é do gestor, mas o número precisa aparecer no cabeçalho: um lead
@@ -376,6 +391,59 @@ export default function Leads() {
         </>
       ) : (
         <>
+          {!canReassign && (
+            <SectionCard
+              title="Para atender agora"
+              description={paraAtender.length > 0
+                ? "Leads que caíram para você. Clique em Atender antes de o prazo acabar."
+                : "Nenhum lead esperando você agora. Mantenha o check-in ativo para receber."}
+              icon={HandMetal}
+              flush={paraAtender.length > 0}
+            >
+              {paraAtender.length > 0 && (
+                <ul className="divide-y divide-border">
+                  {paraAtender.map((lead) => (
+                    <li key={lead.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                      <button type="button" className="min-w-0 text-left" onClick={() => actions.onOpen(lead)}>
+                        <p className="truncate font-semibold">{lead.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{lead.campaign_name || lead.phone || "Sem campanha"}</p>
+                      </button>
+                      <Button size="sm" className="gap-1" onClick={() => actions.onAttend(lead)}>
+                        <HandMetal className="h-4 w-4" aria-hidden /> Atender
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+          )}
+
+          <section aria-label="Leads recebidos" className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center">
+            <div className="grid flex-1 grid-cols-3 gap-3">
+              {([["Hoje", porPeriodo.hoje], ["Esta semana", porPeriodo.semana], ["Este mês", porPeriodo.mes]] as const).map(([rotulo, valor]) => (
+                <div key={rotulo} className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
+                  <p className="text-eyebrow">Leads · {rotulo}</p>
+                  <p className="text-2xl font-bold tabular-nums">{num(valor)}</p>
+                </div>
+              ))}
+            </div>
+            {canReassign && (brokersQuery.data?.length ?? 0) > 0 && (
+              <div className="w-full lg:w-64">
+                <label htmlFor="leads-corretor" className="text-eyebrow">Ver por corretor</label>
+                <Select value={filters.broker} onValueChange={(broker) => setFilters((f) => ({ ...f, broker }))}>
+                  <SelectTrigger id="leads-corretor" className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    <SelectItem value="all">Todos os corretores</SelectItem>
+                    {canViewQueue && <SelectItem value="none">Sem corretor (fila)</SelectItem>}
+                    {(brokersQuery.data ?? []).map((broker) => (
+                      <SelectItem key={broker.id} value={broker.id}>{broker.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </section>
+
           <LeadsSummary metrics={metrics} canViewQueue={canViewQueue} />
 
           {showSources && <SourcePerformanceCard leads={base} />}

@@ -4,7 +4,7 @@ import { descreverFalhaMeta } from "../_shared/metaErros.ts";
 import { actId, MetaApiError, metaGet, metaGetAll, metaToken } from "../_shared/metaAds.ts";
 import {
   type GraphAccount, type GraphAdset, type GraphCampaign, type GraphInsight,
-  hojeNoFuso, janelaPedida, montarConta, montarPayload,
+  fatiasDaJanela, hojeNoFuso, janelaPedida, montarConta, montarPayload,
 } from "./montar.ts";
 
 /**
@@ -50,7 +50,9 @@ const CAMPOS_ESTADO = [
 // Sem o filtro, /campaigns e /adsets deixam ARCHIVED de fora. DELETED não é
 // listável aqui: a campanha apagada chega pelos insights (montar.ts).
 const STATUS_CAMPANHA = JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED", "IN_PROCESS", "WITH_ISSUES"]);
-const STATUS_CONJUNTO = JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ARCHIVED", "IN_PROCESS", "WITH_ISSUES"]);
+// Conjunto arquivado não decide onde mora a verba de campanha viva, e listá-lo
+// (milhares em conta antiga) pesava a leitura que estourava o tempo.
+const STATUS_CONJUNTO = JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "IN_PROCESS", "WITH_ISSUES"]);
 // Gasto de campanha arquivada ou apagada dentro da janela também é gasto.
 const FILTRO_INSIGHTS = JSON.stringify([{
   field: "campaign.effective_status",
@@ -146,14 +148,19 @@ async function buscarNaMeta(svc: SupabaseClient, conta: Conta, dias: number, tok
   }
   const buscada = { inicio: desde < pedida.inicio ? desde : pedida.inicio, fim: pedida.fim };
 
-  const insights = await metaGetAll<GraphInsight>(`${act}/insights`, {
-    level: "campaign",
-    time_increment: "1",
-    time_range: JSON.stringify({ since: buscada.inicio, until: buscada.fim }),
-    fields: "campaign_id,campaign_name,date_start,spend,impressions,reach,clicks,inline_link_clicks,actions",
-    filtering: FILTRO_INSIGHTS,
-    limit: "500",
-  }, token);
+  // Em fatias de 7 dias e páginas de 200: a janela inteira de uma vez passava
+  // dos 30 s da Meta com centenas de campanhas (02/10/2026).
+  const insights: GraphInsight[] = [];
+  for (const fatia of fatiasDaJanela(buscada)) {
+    insights.push(...await metaGetAll<GraphInsight>(`${act}/insights`, {
+      level: "campaign",
+      time_increment: "1",
+      time_range: JSON.stringify({ since: fatia.inicio, until: fatia.fim }),
+      fields: "campaign_id,campaign_name,date_start,spend,impressions,reach,clicks,inline_link_clicks,actions",
+      filtering: FILTRO_INSIGHTS,
+      limit: "200",
+    }, token));
+  }
 
   const { data: construtoras, error: erroDev } = await svc.from("developers").select("id,name");
   if (erroDev) throw new Error("Não consegui ler as construtoras para sugerir o vínculo.");

@@ -215,3 +215,26 @@ export const parseVgvInput = (raw: string): { value: number | null; invalid: boo
   const typed = raw.replace(/[R$\s]/gi, "") !== "";
   return { value, invalid: typed && value === null };
 };
+
+/**
+ * Leads recebidos hoje, nesta semana (segunda a domingo) e neste mês, pela
+ * data de chegada no horário local (pedido de 02/10/2026). Conta o que a tela
+ * carregou: o recorte por corretor vem de quem chama.
+ */
+export type LeadsPorPeriodo = { hoje: number; semana: number; mes: number };
+
+export function leadsPorPeriodo(leads: Pick<LeadRecord, "created_at">[], agora: Date = new Date()): LeadsPorPeriodo {
+  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()).getTime();
+  const diasDesdeSegunda = (agora.getDay() + 6) % 7;
+  const semana = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - diasDesdeSegunda).getTime();
+  const mes = new Date(agora.getFullYear(), agora.getMonth(), 1).getTime();
+  const conta = { hoje: 0, semana: 0, mes: 0 };
+  for (const lead of leads) {
+    const chegada = Date.parse(lead.created_at);
+    if (Number.isNaN(chegada)) continue;
+    if (chegada >= hoje) conta.hoje++;
+    if (chegada >= semana) conta.semana++;
+    if (chegada >= mes) conta.mes++;
+  }
+  return conta;
+}

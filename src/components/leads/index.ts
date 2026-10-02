@@ -44,7 +44,7 @@ export {
   type ColumnMap,
 } from "./importSheet";
 export {
-  emptyLeadFilters, hasActiveFilter, leadMetrics, matchesFilters, nextActionPreset, noLeadDialogs,
+  emptyLeadFilters, hasActiveFilter, leadMetrics, leadsPorPeriodo, matchesFilters, nextActionPreset, noLeadDialogs,
   overdueByBroker, toDateTimeInput, waNumber,
   type LeadDialogState, type LeadFilterState, type LeadMetrics, type OverdueByBroker,
 } from "./model";

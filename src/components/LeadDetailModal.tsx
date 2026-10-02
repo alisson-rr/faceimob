@@ -18,7 +18,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Loader2, Mail,
-  MessageCircle, Paperclip, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
+  MessageCircle, Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
@@ -81,6 +81,8 @@ export default function LeadDetailModal({
   // lista de Leads e pelo funil, e a próxima ação (que decide o bloqueio dos
   // 20) não pode existir num host e faltar no outro.
   const [askNextAction, setAskNextAction] = useState(false);
+  // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
@@ -400,16 +402,26 @@ export default function LeadDetailModal({
                 da roleta — o corretor perdia no meio da frase o que estava
                 digitando. Quem confere o que está no banco são as linhas acima,
                 que continuam derivadas do registro. */}
-            {writable && (
+            {/* Dados travados até o lápis (02/10/2026): campos abertos de cara
+                eram editados sem querer por quem só queria ler. */}
+            {writable && (editandoId === lead.id ? (
               <EditFields
                 key={lead.id}
                 lead={lead}
+                onCancel={() => setEditandoId(null)}
                 onSaved={() => {
+                  setEditandoId(null);
                   onStageChanged?.();
                   onOpenChange(false);
                 }}
               />
-            )}
+            ) : (
+              <div className="border-t border-border pt-3">
+                <Button size="sm" variant="outline" onClick={() => setEditandoId(lead.id)}>
+                  <Pencil className="h-4 w-4" aria-hidden /> Editar dados
+                </Button>
+              </div>
+            ))}
           </TabsContent>
 
           <TabsContent value="form">
@@ -714,7 +726,7 @@ function DetailFallback({
  * `id` de `useId` — o `<Label>` solto de antes não apontava para nada e o leitor
  * de tela anunciava quatro campos sem nome (X04).
  */
-function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void }) {
+function EditFields({ lead, onSaved, onCancel }: { lead: LeadRecord; onSaved?: () => void; onCancel?: () => void }) {
   const fieldId = useId();
   const [values, setValues] = useState<Record<EditableField, string>>(() => ({
     full_name: lead.full_name ?? "",
@@ -824,9 +836,14 @@ function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void 
           </p>
         </div>
       </div>
-      <Button size="sm" onClick={save} disabled={saving || semPrazo}>
-        <Save className="h-4 w-4" /> {saving ? "Salvando…" : "Salvar"}
-      </Button>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={save} disabled={saving || semPrazo}>
+          <Save className="h-4 w-4" /> {saving ? "Salvando…" : "Salvar"}
+        </Button>
+        {onCancel && (
+          <Button size="sm" variant="outline" onClick={onCancel} disabled={saving}>Cancelar</Button>
+        )}
+      </div>
     </div>
   );
 }

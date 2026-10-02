@@ -4,7 +4,7 @@ import {
   type LeadRecord, type LeadSource,
 } from "@/integrations/supabase/leads";
 import {
-  emptyLeadFilters, fillWhatsappTemplate, hasActiveFilter, leadMetrics, matchesFilters,
+  emptyLeadFilters, fillWhatsappTemplate, hasActiveFilter, leadMetrics, leadsPorPeriodo, matchesFilters,
   nextActionPreset, overdueByBroker, parseVgvInput, toDateTimeInput, waNumber,
 } from "./model";
 import { rowsToLeads } from "./importSheet";
@@ -480,5 +480,15 @@ describe("isLeadUnattended", () => {
 
   it("lead na mão de alguém não está na bandeja, por mais voltas que tenha dado", () => {
     expect(isLeadUnattended(lead({ status: "assigned", roulette_misses: 22 }), 5)).toBe(false);
+  });
+});
+
+describe("leadsPorPeriodo", () => {
+  it("conta hoje, a semana desde segunda e o mês", () => {
+    // Sexta-feira, 02/10/2026, 15h local.
+    const agora = new Date(2026, 9, 2, 15, 0);
+    const em = (d: number, m = 9) => ({ created_at: new Date(2026, m, d, 10, 0).toISOString() });
+    expect(leadsPorPeriodo([em(2), em(2), em(28, 8), em(1), em(29, 8), em(15, 8)], agora))
+      .toEqual({ hoje: 2, semana: 5, mes: 3 });
   });
 });
