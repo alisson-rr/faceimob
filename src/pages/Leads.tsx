@@ -144,7 +144,12 @@ export default function Leads() {
       : base.filter((lead) => (filters.broker === "none" ? !lead.assigned_to : lead.assigned_to === filters.broker)),
     [base, filters.broker],
   );
-  const porPeriodo = useMemo(() => leadsPorPeriodo(doCorretor), [doCorretor]);
+  // A base importada da Leadfy (0188) chega com a data original e não é
+  // "lead recebido" de hoje nem da semana.
+  const porPeriodo = useMemo(
+    () => leadsPorPeriodo(doCorretor.filter((lead) => !lead.external_id?.startsWith("leadfy:"))),
+    [doCorretor],
+  );
   // Para o corretor: o que está esperando o "Atender" dele, no topo da tela.
   const paraAtender = useMemo(
     () => (canReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && lead.status === "assigned")),
