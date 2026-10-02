@@ -7,6 +7,7 @@ import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
 import { AlertTriangle, ChevronLeft, ChevronRight, Download, RefreshCw, Target, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { PreencherDaily } from "@/components/checkpoint/PreencherDaily";
 import { addDays, endOfWeek, format, isValid, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { describeError } from "@/lib/supabaseError";
@@ -367,6 +368,7 @@ export default function Checkpoint() {
           // barras de meta somem justamente na folha levada para a reunião.
           // Exportar CSV é o caminho honesto até a folha existir.
           <>
+            <PreencherDaily />
             <Button size="sm" variant="outline" aria-label="Semana anterior" onClick={() => irPara(addDays(weekStart, -7))}><ChevronLeft className="h-4 w-4" /></Button>
             <div className="px-3 py-1 rounded-md border border-primary/30 bg-primary/5 text-xs">
               {format(weekStart, "dd MMM", { locale: ptBR })} — {format(weekEnd, "dd MMM yyyy", { locale: ptBR })}

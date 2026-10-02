@@ -25,7 +25,11 @@ const hhmm = (value: string) => value.slice(0, 5);
  * uma porta mais curta para o corretor não precisar sair do quadro onde atende.
  */
 export function LeadsCheckinCard() {
-  const { user, role } = useAuth();
+  const { user, roles, previewRole } = useAuth();
+  // Quem tem papel de corretor (inclusive gerente que também vende), e não só
+  // quem tem corretor como papel PRINCIPAL: o card ficava invisível para eles.
+  // Na prévia "Ver como…", vale o papel da prévia.
+  const role = (previewRole ? previewRole === "broker" : roles.includes("broker")) ? "broker" : null;
   const userId = user?.id ?? null;
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<"checkin" | "checkout" | null>(null);
