@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "../_shared/secrets.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { META_GRAPH } from "../_shared/metaAds.ts";
+import { montarMensagemWhatsApp } from "./mensagem.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,6 +50,7 @@ const TEMPLATE_PARAM_LIMIT = 1024;
 type PendingRow = {
   id: string;
   profile_id: string;
+  kind: string | null;
   title: string;
   body: string | null;
   attempts: number;
@@ -162,7 +164,7 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabase
       .from("notifications")
-      .select("id,profile_id,title,body,attempts,profiles(phone,full_name)")
+      .select("id,profile_id,kind,title,body,attempts,profiles(phone,full_name)")
       .eq("channel", "whatsapp")
       .is("sent_at", null)
       .lt("attempts", MAX_ATTEMPTS)
@@ -234,7 +236,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const text = row.body ? `${row.title}\n\n${row.body}` : row.title;
+      const text = montarMensagemWhatsApp(row);
       const result = await sendWhatsApp(token, phoneId, phone, text, templateName);
 
       if (result.ok) {
