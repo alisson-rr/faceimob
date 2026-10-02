@@ -91,12 +91,20 @@ export function linhasDaLeadfy(matriz: unknown[][]): LinhaLeadfy[] {
     || (b.criado_em ?? "").localeCompare(a.criado_em ?? ""));
 }
 
-export type ResumoLeadfy = { total: number; porStatus: Record<string, number>; corretoresEmNegociacao: Record<string, number> };
+export type ResumoLeadfy = {
+  total: number;
+  porStatus: Record<string, number>;
+  corretoresEmNegociacao: Record<string, number>;
+  /** Todo nome de corretor da planilha, em qualquer status: vira apelido no cadastro (0189). */
+  corretores: string[];
+};
 
 export function resumoDaLeadfy(linhas: LinhaLeadfy[]): ResumoLeadfy {
   const porStatus: Record<string, number> = {};
   const corretoresEmNegociacao: Record<string, number> = {};
+  const corretores = new Set<string>();
   for (const l of linhas) {
+    if (l.corretor) corretores.add(l.corretor);
     const status = l.status ?? "Sem status";
     porStatus[status] = (porStatus[status] ?? 0) + 1;
     if (l.status === "Em negociação") {
@@ -104,7 +112,7 @@ export function resumoDaLeadfy(linhas: LinhaLeadfy[]): ResumoLeadfy {
       corretoresEmNegociacao[nome] = (corretoresEmNegociacao[nome] ?? 0) + 1;
     }
   }
-  return { total: linhas.length, porStatus, corretoresEmNegociacao };
+  return { total: linhas.length, porStatus, corretoresEmNegociacao, corretores: [...corretores].sort((a, b) => a.localeCompare(b, "pt-BR")) };
 }
 
 export function emLotes<T>(itens: T[], tamanho = 500): T[][] {

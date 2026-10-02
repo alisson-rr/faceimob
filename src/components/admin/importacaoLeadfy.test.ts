@@ -23,7 +23,7 @@ describe("importação da Leadfy", () => {
     expect(linhas.map((l) => l.id)).toEqual(["c", "b", "a"]);
     expect(linhas[0]).toMatchObject({ corretor: "Bia", status: "Em negociação", cliente: "Cliente c", telefone: "(51) 99999 0000", email: null });
     expect(resumoDaLeadfy(linhas)).toEqual({
-      total: 3, porStatus: { "Em negociação": 1, Arquivado: 2 }, corretoresEmNegociacao: { Bia: 1 },
+      total: 3, porStatus: { "Em negociação": 1, Arquivado: 2 }, corretoresEmNegociacao: { Bia: 1 }, corretores: ["Ana", "Bia"],
     });
   });
 
