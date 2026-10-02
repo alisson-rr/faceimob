@@ -12,9 +12,9 @@ import { useAuth, type AppRole } from "@/contexts/AuthContext";
 import LeadDetailModal from "@/components/LeadDetailModal";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
 import {
-  LeadDialogs, LeadFilters, LeadsSummary, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
+  LeadDialogs, LeadFilters, LeadsIndicadores, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
   SourcePerformanceCard,
-  emptyLeadFilters, hasActiveFilter, leadMetrics, leadsPorPeriodo, matchesFilters, noLeadDialogs,
+  emptyLeadFilters, hasActiveFilter, leadMetrics, leadsDoCorretor, matchesFilters, noLeadDialogs, podeVerPorCorretor,
   useAssignableBrokers, useAutomationSettings, useDebounced, useDistributionGroups, useGroupQueues,
   useInvalidateLeads, useLeadSources,
   useLeads, useLeadsRealtime, useNowTicker, useWhatsappTemplates,
@@ -61,6 +61,9 @@ export default function Leads() {
   const canReassign = can("leads.reassign");
   const canViewQueue = can("leads.view_queue");
   const canDelete = can("leads.delete");
+  // O filtro por corretor é da gestão inteira, não de quem realoca: o gerente
+  // sem `leads.reassign` ficava sem ver um corretor por vez (02/10/2026).
+  const verPorCorretor = podeVerPorCorretor(effectiveRoles, isAdmin);
 
   const [filters, setFilters] = useState(emptyLeadFilters);
   // A busca vai ao BANCO: a lista trunca em `LEADS_PAGE_SIZE` e filtrar no
@@ -78,7 +81,7 @@ export default function Leads() {
   // cache de `leadsQuery`: custo zero no caso comum.
   const baseQuery = useLeads("");
   const sourcesQuery = useLeadSources();
-  const brokersQuery = useAssignableBrokers(canReassign);
+  const brokersQuery = useAssignableBrokers(canReassign || verPorCorretor);
   const groupsQuery = useDistributionGroups();
   const settingsQuery = useAutomationSettings();
   const templatesQuery = useWhatsappTemplates();
@@ -111,7 +114,7 @@ export default function Leads() {
   // Um aviso discreto avisa sem bloquear a lista, que é o que importa aqui.
   const auxErrors = [
     sourcesQuery.error ? "origens" : null,
-    canReassign && brokersQuery.error ? "corretores" : null,
+    (canReassign || verPorCorretor) && brokersQuery.error ? "corretores" : null,
     groupsQuery.error ? "grupos de distribuição" : null,
     templatesQuery.error ? "templates de WhatsApp" : null,
   ].filter((item): item is string => Boolean(item));
@@ -138,18 +141,7 @@ export default function Leads() {
         : `${num(filtered.length)} leads encontrados`;
   // Gerente e diretor olham um corretor por vez (02/10/2026): o mesmo filtro da
   // lista recorta os indicadores, para os números falarem do mesmo corretor.
-  const doCorretor = useMemo(
-    () => filters.broker === "all"
-      ? base
-      : base.filter((lead) => (filters.broker === "none" ? !lead.assigned_to : lead.assigned_to === filters.broker)),
-    [base, filters.broker],
-  );
-  // A base importada da Leadfy (0188) chega com a data original e não é
-  // "lead recebido" de hoje nem da semana.
-  const porPeriodo = useMemo(
-    () => leadsPorPeriodo(doCorretor.filter((lead) => !lead.external_id?.startsWith("leadfy:"))),
-    [doCorretor],
-  );
+  const doCorretor = useMemo(() => leadsDoCorretor(base, filters.broker), [base, filters.broker]);
   // Para o corretor: o que está esperando o "Atender" dele, no topo da tela.
   const paraAtender = useMemo(
     () => (canReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && lead.status === "assigned")),
@@ -423,33 +415,14 @@ export default function Leads() {
             </SectionCard>
           )}
 
-          <section aria-label="Leads recebidos" className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center">
-            <div className="grid flex-1 grid-cols-3 gap-3">
-              {([["Hoje", porPeriodo.hoje], ["Esta semana", porPeriodo.semana], ["Este mês", porPeriodo.mes]] as const).map(([rotulo, valor]) => (
-                <div key={rotulo} className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
-                  <p className="text-eyebrow">Leads · {rotulo}</p>
-                  <p className="text-2xl font-bold tabular-nums">{num(valor)}</p>
-                </div>
-              ))}
-            </div>
-            {canReassign && (brokersQuery.data?.length ?? 0) > 0 && (
-              <div className="w-full lg:w-64">
-                <label htmlFor="leads-corretor" className="text-eyebrow">Ver por corretor</label>
-                <Select value={filters.broker} onValueChange={(broker) => setFilters((f) => ({ ...f, broker }))}>
-                  <SelectTrigger id="leads-corretor" className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent className="max-h-80">
-                    <SelectItem value="all">Todos os corretores</SelectItem>
-                    {canViewQueue && <SelectItem value="none">Sem corretor (fila)</SelectItem>}
-                    {(brokersQuery.data ?? []).map((broker) => (
-                      <SelectItem key={broker.id} value={broker.id}>{broker.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </section>
-
-          <LeadsSummary metrics={metrics} canViewQueue={canViewQueue} />
+          <LeadsIndicadores
+            leads={doCorretor}
+            metrics={metrics}
+            broker={filters.broker}
+            onBroker={(broker) => setFilters((f) => ({ ...f, broker }))}
+            brokers={verPorCorretor ? brokersQuery.data ?? [] : []}
+            canViewQueue={canViewQueue}
+          />
 
           {showSources && <SourcePerformanceCard leads={base} />}
 
@@ -493,7 +466,7 @@ export default function Leads() {
                 filters={filters}
                 onChange={setFilters}
                 sources={sources}
-                brokers={canReassign ? brokersQuery.data ?? [] : []}
+                brokers={canReassign || verPorCorretor ? brokersQuery.data ?? [] : []}
                 groups={canViewQueue ? groupsQuery.data ?? [] : []}
               />
             </div>

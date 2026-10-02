@@ -22,6 +22,11 @@ import { getMetaPageCredentials } from "../_shared/metaPageTokensStore.ts";
  * em todo o sistema — POST /{page}/subscribed_apps com `leadgen`. Os dois usam o
  * token da página, não o da Marketing API.
  *
+ * Formulários (02/10/2026): `listar_formularios` lê /{page}/leadgen_forms de
+ * cada página do cofre, para a roleta (Admin → Automação de leads) oferecer o
+ * formulário antes do primeiro lead dele chegar. Porta própria:
+ * `menu.admin_lead_automation`, a da tela que usa a lista.
+ *
  * 200 com o resultado · 409 sem token · 422 corpo inválido · 502 quando a Meta
  * falha, com a frase de `descreverFalhaMeta`. Nenhuma URL nem token no log.
  */
@@ -54,7 +59,8 @@ type Pedido =
   | { action: "testar" }
   | { action: "salvar"; act_ids: string[] }
   | { action: "diagnosticar_leads" }
-  | { action: "assinar_pagina" };
+  | { action: "assinar_pagina" }
+  | { action: "listar_formularios" };
 
 /** As contas que o token alcança. O `id` vem como act_<número>, o único formato que o banco aceita. */
 async function contasDoToken(token: string): Promise<ContaAlcancada[]> {
@@ -81,6 +87,7 @@ function lerPedido(body: unknown): Pedido | null {
   if (b?.action === "testar") return { action: "testar" };
   if (b?.action === "diagnosticar_leads") return { action: "diagnosticar_leads" };
   if (b?.action === "assinar_pagina") return { action: "assinar_pagina" };
+  if (b?.action === "listar_formularios") return { action: "listar_formularios" };
   if (b?.action !== "salvar") return null;
   const ids = b.act_ids;
   if (!Array.isArray(ids) || ids.length > 500) return null;
@@ -281,17 +288,53 @@ async function assinarPagina() {
   return json({ ok: true, pagina: paginas[0] ?? null, paginas });
 }
 
+type FormularioGraph = { id?: string; name?: string; status?: string };
+
+/** Formulários de lead de todas as páginas do cofre. Página que falha não derruba as outras. */
+async function listarFormularios() {
+  const credentials = await getMetaPageCredentials();
+  if (!credentials.length) {
+    return json({ error: "Nenhum token de página cadastrado. Cadastre meta/page_access_token ou meta/page_access_tokens em Integrações." }, 409);
+  }
+  const formularios: Array<{ form_id: string; form_name: string | null; status: string | null; pagina: string | null }> = [];
+  const erros: string[] = [];
+  for (const credential of credentials) {
+    try {
+      const pagina = await paginaAutorizada(credential);
+      const linhas = await metaGetAll<FormularioGraph>(
+        `${pagina.id}/leadgen_forms`, { fields: "id,name,status", limit: "100" }, pagina.token,
+      );
+      for (const f of linhas) {
+        if (!f.id || !/^\d+$/.test(f.id)) continue;
+        formularios.push({ form_id: f.id, form_name: f.name ?? null, status: f.status ?? null, pagina: pagina.name });
+      }
+    } catch (e) {
+      console.error(
+        "meta-ads-connect: leitura dos formulários falhou",
+        e instanceof MetaApiError ? `status=${e.status} code=${e.code ?? "-"}` : "leitura interrompida",
+      );
+      erros.push(e instanceof Error && !(e instanceof MetaApiError) ? e.message : falhaDaPagina(e));
+    }
+  }
+  if (!formularios.length && erros.length) return json({ error: erros.join(" ") }, 502);
+  return json({ ok: true, formularios, erros });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Use POST." }, 405);
 
-  const gate = await requireUserPermission(req, "settings.integrations", corsHeaders);
-  if (gate.denied) return gate.denied;
-
   const pedido = lerPedido(await req.json().catch(() => null));
   if (!pedido) {
-    return json({ error: "Pedido inválido: envie {action:'testar'}, {action:'salvar', act_ids:['act_…']}, {action:'diagnosticar_leads'} ou {action:'assinar_pagina'}." }, 422);
+    return json({ error: "Pedido inválido: envie {action:'testar'}, {action:'salvar', act_ids:['act_…']}, {action:'diagnosticar_leads'}, {action:'assinar_pagina'} ou {action:'listar_formularios'}." }, 422);
   }
+
+  // Ler formulários é da tela da roleta (diretor incluso); o resto é do cofre.
+  const porta = pedido.action === "listar_formularios" ? "menu.admin_lead_automation" : "settings.integrations";
+  const gate = await requireUserPermission(req, porta, corsHeaders);
+  if (gate.denied) return gate.denied;
+
+  if (pedido.action === "listar_formularios") return await listarFormularios();
 
   if (pedido.action === "diagnosticar_leads") return await diagnosticarLeads();
   if (pedido.action === "assinar_pagina") return await assinarPagina();
