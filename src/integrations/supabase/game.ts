@@ -1,5 +1,10 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
 import { dbError, describeError } from "@/lib/supabaseError";
+
+// `nickname` nasce na migration 0183; o cast local pode ser removido quando
+// `supabase gen types` for executado contra o banco já migrado.
+const untyped = supabase as unknown as SupabaseClient;
 
 /**
  * Gamificação — temporadas, regras de pontuação e ranking.
@@ -60,6 +65,8 @@ export type RankingRow = {
   season_id: string;
   profile_id: string;
   full_name: string;
+  /** Apelido do cadastro, com fallback aplicado no cliente. */
+  display_name?: string | null;
   avatar_url: string | null;
   active: boolean;
   points: number;
@@ -252,7 +259,46 @@ export async function listRanking(seasonId: string, week?: WeekRange | null): Pr
     .rpc("visible_game_ranking", args)
     .order("points", { ascending: false });
   if (error) throw dbError("visible_game_ranking", error);
-  return (data ?? []) as RankingRow[];
+  const rows = (data ?? []) as RankingRow[];
+  if (!rows.length) return rows;
+
+  // A RPC preserva `full_name`, usado para casar participantes dos negócios.
+  // O apelido é enriquecido por id e serve apenas à apresentação.
+  const { data: profiles, error: profileError } = await untyped
+    .from("profiles")
+    .select("id,nickname")
+    .in("id", rows.map((row) => row.profile_id));
+  // Deploy seguro em duas etapas: se o front chegar antes da migration, o
+  // ranking continua com o nome completo em vez de desaparecer inteiro.
+  if (profileError) return rows.map((row) => ({ ...row, display_name: row.full_name }));
+  const nicknames = new Map((profiles ?? []).map((profile) => [profile.id, profile.nickname?.trim() || null]));
+  return rows.map((row) => ({
+    ...row,
+    display_name: nicknames.get(row.profile_id) || row.full_name,
+  }));
+}
+
+/**
+ * Negócios que realmente renderam ponto positivo para a pessoa no intervalo.
+ * Serve ao painel para não chamar de "proposta do game" todo negócio aberto do
+ * pipeline: a fonte de verdade da pontuação é `game_events`.
+ */
+export async function listScoredDealIds(
+  seasonId: string,
+  profileId: string,
+  range: WeekRange,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("game_events")
+    .select("ref_id")
+    .eq("season_id", seasonId)
+    .eq("profile_id", profileId)
+    .eq("ref_type", "deal")
+    .gt("points", 0)
+    .gte("occurred_at", `${range.from}T00:00:00-03:00`)
+    .lte("occurred_at", `${range.to}T23:59:59.999-03:00`);
+  if (error) throw dbError("game_events", error);
+  return new Set((data ?? []).flatMap((row) => row.ref_id ? [row.ref_id] : []));
 }
 
 /**

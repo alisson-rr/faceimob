@@ -484,7 +484,14 @@ export default function DealDetailModal({
 
           {tab === "historico" && dealId && <DealHistoryPanel dealId={dealId} />}
 
-          {tab === "cca" && dealId && <DealCcaPanel dealId={dealId} value={cca} onChange={setCca} />}
+          {tab === "cca" && dealId && (
+            <DealCcaPanel
+              dealId={dealId}
+              value={cca}
+              onChange={setCca}
+              onCommentAdded={() => setComentarios((total) => total + 1)}
+            />
+          )}
         </div>
 
         <div className="flex justify-end gap-3 border-t border-border p-4">

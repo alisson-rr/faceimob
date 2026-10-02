@@ -5,8 +5,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX, FileStack,
-  AlertTriangle, Pencil, Check, X,
+  AlertTriangle, Pencil, Check, X, Eye,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +40,7 @@ import {
   renameDealDocument,
   reviewDealDocuments,
   signedDocumentUrl,
+  signedDocumentPreviewUrl,
   submitBlockReason,
   submitDealForManagerReview,
   uploadDealDocument,
@@ -153,6 +157,8 @@ export default function DealDocumentUpload({
   /** Linha em edição de apelido (0106). Uma por vez: abrir duas caixas de texto
    *  sobre a mesma lista é convite para salvar na linha errada. */
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
+  const [preview, setPreview] = useState<{ doc: DealDocumentRecord; url: string } | null>(null);
+  const [previewing, setPreviewing] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
@@ -300,6 +306,22 @@ export default function DealDocumentUpload({
         ),
         variant: "destructive",
       });
+    }
+  };
+
+  /** Abre no próprio modal: não troca de aba e não dispara download. */
+  const previewDocument = async (doc: DealDocumentRecord) => {
+    setPreviewing(doc.id);
+    try {
+      setPreview({ doc, url: await signedDocumentPreviewUrl(doc) });
+    } catch (e) {
+      toast({
+        title: "Não foi possível visualizar o documento",
+        description: describeError(e, "O arquivo não está disponível para visualização."),
+        variant: "destructive",
+      });
+    } finally {
+      setPreviewing(null);
     }
   };
 
@@ -1037,14 +1059,28 @@ export default function DealDocumentUpload({
                             </button>
                           )
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => download(d)}
-                            aria-label={`Baixar ${nome}`}
-                            className="text-primary hover:text-primary/80 flex items-center gap-1"
-                          >
-                            <Download className="h-3 w-3" /> Baixar
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void previewDocument(d)}
+                              disabled={previewing === d.id}
+                              aria-label={`Visualizar ${nome}`}
+                              className="flex items-center gap-1 text-info hover:text-info/80 disabled:opacity-50"
+                            >
+                              {previewing === d.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Eye className="h-3 w-3" />}
+                              Visualizar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => download(d)}
+                              aria-label={`Baixar ${nome}`}
+                              className="text-primary hover:text-primary/80 flex items-center gap-1"
+                            >
+                              <Download className="h-3 w-3" /> Baixar
+                            </button>
+                          </>
                         )}
                         {canDelete && !d.superseded_at && (
                           <button
@@ -1097,6 +1133,36 @@ export default function DealDocumentUpload({
           onChanged={onReviewChanged}
         />
       )}
+
+      <Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }}>
+        <DialogContent className="flex h-[88vh] max-w-5xl flex-col overflow-hidden p-0">
+          <DialogHeader className="border-b border-border px-5 py-4">
+            <DialogTitle className="truncate pr-8">
+              {preview ? documentDisplayName(preview.doc) : "Visualizar documento"}
+            </DialogTitle>
+            <DialogDescription>
+              Visualização rápida. Use Baixar se o navegador não conseguir exibir este formato.
+            </DialogDescription>
+          </DialogHeader>
+          {preview && (
+            <div className="min-h-0 flex-1 bg-slate-950/60 p-2">
+              {preview.doc.mime_type?.startsWith("image/") ? (
+                <img
+                  src={preview.url}
+                  alt={documentDisplayName(preview.doc)}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <iframe
+                  title={`Visualização de ${documentDisplayName(preview.doc)}`}
+                  src={preview.url}
+                  className="h-full w-full rounded-md bg-white"
+                />
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

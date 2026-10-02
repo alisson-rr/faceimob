@@ -1,13 +1,17 @@
-import { useEffect, useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState } from "@/components/shared";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/hooks/use-toast";
+import { addDealComment } from "./DealCommentsPanel";
 import { ccaKeys, loadCcaCase, type CcaAnalysis } from "./ccaData";
 
 const CCA_FIELDS: { key: string; label: string; options?: string[] }[] = [
@@ -38,14 +42,17 @@ const CCA_FIELDS: { key: string; label: string; options?: string[] }[] = [
  * admin desmarcar `cca.review` na tela de Permissões para o analista continuar
  * com o painel habilitado e a gravação ser descartada pela RLS.
  */
-export function DealCcaPanel({ dealId, value, onChange }: {
+export function DealCcaPanel({ dealId, value, onChange, onCommentAdded }: {
   dealId: string;
   value: CcaAnalysis;
   /** O mesmo `setState` do pai — a semeadura precisa do updater funcional. */
   onChange: React.Dispatch<React.SetStateAction<CcaAnalysis>>;
+  onCommentAdded?: () => void;
 }) {
   const { can } = useAuth();
   const id = useId();
+  const [comment, setComment] = useState("");
+  const [sendingComment, setSendingComment] = useState(false);
 
   // `useQuery` no lugar do `useState` + `useEffect` com `if (!error && data)`:
   // aquele `if` engolia a falha do SELECT e a aba afirmava "ainda não entrou na
@@ -75,6 +82,26 @@ export function DealCcaPanel({ dealId, value, onChange }: {
   }, [query.data]);
 
   const set = (key: string, next: string) => canEdit && onChange({ ...value, [key]: next });
+
+  const sendComment = async () => {
+    const body = comment.trim();
+    if (!body || !canEdit) return;
+    setSendingComment(true);
+    try {
+      await addDealComment(dealId, `CCA — ${body}`);
+      setComment("");
+      onCommentAdded?.();
+      toast({ variant: "success", title: "Comentário do CCA adicionado", description: "Ele já está na aba Comentários." });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível adicionar o comentário",
+        description: describeError(error, "Tente de novo."),
+      });
+    } finally {
+      setSendingComment(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -127,6 +154,33 @@ export function DealCcaPanel({ dealId, value, onChange }: {
             )}
           </div>
         ))}
+      </div>
+
+      <div className="rounded-xl border border-blue-800/40 bg-blue-950/35 p-3">
+        <Label htmlFor={`${id}-comentario`} className="text-eyebrow">Comentário do CCA</Label>
+        <p className="mb-2 mt-1 text-xs text-muted-foreground">
+          O texto entra no histórico auditado e aparece para todos na aba Comentários.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Textarea
+            id={`${id}-comentario`}
+            rows={3}
+            maxLength={4000}
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            disabled={!canEdit}
+            placeholder="Escreva a orientação, pendência ou decisão do CCA…"
+            className="min-h-24 flex-1 border-slate-300 bg-white text-slate-950 placeholder:text-slate-500"
+          />
+          <Button
+            type="button"
+            className="self-end"
+            disabled={!canEdit || !comment.trim() || sendingComment}
+            onClick={() => void sendComment()}
+          >
+            <Send className="h-4 w-4" /> {sendingComment ? "Enviando…" : "Adicionar aos comentários"}
+          </Button>
+        </div>
       </div>
     </div>
   );

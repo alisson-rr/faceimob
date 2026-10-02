@@ -401,7 +401,14 @@ export default function LeadDetailModal({
                 digitando. Quem confere o que está no banco são as linhas acima,
                 que continuam derivadas do registro. */}
             {writable && (
-              <EditFields key={lead.id} lead={lead} onSaved={() => onStageChanged?.()} />
+              <EditFields
+                key={lead.id}
+                lead={lead}
+                onSaved={() => {
+                  onStageChanged?.();
+                  onOpenChange(false);
+                }}
+              />
             )}
           </TabsContent>
 

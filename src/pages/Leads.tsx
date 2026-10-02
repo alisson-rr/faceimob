@@ -8,6 +8,7 @@ import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth, type AppRole } from "@/contexts/AuthContext";
 import LeadDetailModal from "@/components/LeadDetailModal";
+import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
 import {
   LeadDialogs, LeadFilters, LeadsSummary, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
   SourcePerformanceCard,
@@ -351,6 +352,8 @@ export default function Leads() {
           <span>Parte dos filtros não carregou ({auxErrors.join(", ")}). A lista de leads continua correta.</span>
         </p>
       )}
+
+      <LeadsCheckinCard />
 
       {leadsQuery.error || baseQuery.error ? (
         <EmptyState

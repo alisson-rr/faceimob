@@ -60,6 +60,7 @@ const DETAIL_COLUMNS = Object.keys(EMPTY_DETAILS).join(",");
  */
 export type ProfileIdentity = {
   full_name: string | null;
+  nickname?: string | null;
   email: string | null;
   phone: string | null;
   avatar_url: string | null;
@@ -75,10 +76,11 @@ export type ProfileIdentity = {
 
 export type ProfileStatus = "active" | "suspended" | "terminated";
 
-const IDENTITY_COLUMNS = "full_name,email,phone,avatar_url,status";
+const IDENTITY_COLUMNS = "full_name,nickname,email,phone,avatar_url,status";
 
 export type ProfileFields = ProfileDetails & {
   full_name: string;
+  nickname?: string | null;
   email: string;
   phone: string | null;
   avatar_url: string | null;
@@ -155,6 +157,7 @@ export async function getPersonDetails(
     roles: (rolesRes.data ?? []).map((row) => row.role as NewAppRole),
     identity: {
       full_name: (perfil.full_name as string | null) ?? null,
+      nickname: (perfil.nickname as string | null) ?? null,
       email: (perfil.email as string | null) ?? null,
       phone: (perfil.phone as string | null) ?? null,
       avatar_url: (perfil.avatar_url as string | null) ?? null,
@@ -549,6 +552,7 @@ export async function listAccessTrail(limit = 20): Promise<TrailEntry[]> {
 export type PersonFormValues = ProfileDetails & {
   id: string;
   full_name?: string | null;
+  nickname?: string | null;
   name?: string | null;
   celular?: string | null;
   avatar_url?: string | null;
@@ -606,6 +610,7 @@ export function buildPersonSave(
     badge_delivered_at: form.badge_delivered_at || null,
   } : {
     full_name,
+    nickname: form.nickname?.trim() || null,
     email: (email || "").trim(),
     phone: form.celular || null,
     avatar_url: form.avatar_url ?? null,
