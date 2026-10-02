@@ -120,7 +120,7 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     envName: "META_PAGE_ACCESS_TOKENS_JSON",
     usedBy: "meta-ads-webhook, meta-ads-connect",
     help: "Recebe leads de várias Páginas no mesmo webhook. Cole um JSON com page_id, name e access_token de cada página.",
-    ondePegar: { passos: "Use tokens de Página permanentes, um por página, no formato [{\"page_id\":\"123\",\"name\":\"Faceimob\",\"access_token\":\"...\"}]. Cada página precisa das permissões leads_retrieval, pages_read_engagement e pages_manage_metadata." },
+    ondePegar: { passos: "Use um token permanente de usuário de sistema com acesso às páginas, repetido por page_id no formato [{\"page_id\":\"123\",\"name\":\"Faceimob\",\"access_token\":\"...\"}]. Cada página precisa das permissões leads_retrieval, pages_read_engagement e pages_manage_metadata." },
   },
   {
     provider: "meta",
