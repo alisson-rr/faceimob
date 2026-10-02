@@ -26,6 +26,11 @@
 -- =============================================================================
 
 \set ON_ERROR_STOP on
+
+-- Os cenários abaixo atribuem leads com data retroativa; o recomeço da 0187
+-- (gravado quando a migration roda) os esconderia do corretor e da contagem
+-- de atrasados. Sem recomeço, vale a regra de sempre.
+update public.automation_settings set leads_recomeco_em = null;
 \pset tuples_only on
 \pset format unaligned
 

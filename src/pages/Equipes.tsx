@@ -14,13 +14,14 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, Link2, Search, Crown, Shield, UserCog, User, Loader2, UserPlus, AlertTriangle, IdCard } from "lucide-react";
+import { Users, Link2, Search, Crown, Shield, UserCog, User, Loader2, UserPlus, AlertTriangle, IdCard, FileSpreadsheet } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { slugify } from "@/lib/utils";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { listPeople } from "@/integrations/supabase/newSchema";
+import { baixarListaDeCorretores } from "@/components/equipes/listaDeCorretores";
 import { activeTeamIdOfManager, createTeamForManager, deactivateTeam, leadsProfile, listTeamLeaderNames, moveTeamMember } from "@/integrations/supabase/people";
 
 import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
@@ -313,6 +314,25 @@ export default function Equipes() {
 
   const directors = useMemo(() => rows.filter(r => r.role === "director"), [rows]);
   const managers = useMemo(() => rows.filter(r => r.role === "manager"), [rows]);
+  // Para VINCULAR, só quem está ativo (02/10/2026); o líder já gravado na ficha
+  // continua na lista para não sumir do Select. As vendas antigas seguem com o
+  // nome de quem saiu: elas leem o participante do negócio, não esta lista.
+  const lideresParaVincular = (lista: BrokerRow[], atual?: string | null) =>
+    lista.filter(p => p.active || p.id === atual).map(p => ({ id: p.id, name: p.name }));
+  const fichaAberta = profileEdit ? rows.find(r => r.id === profileEdit.id) : undefined;
+
+  const [extraindo, setExtraindo] = useState(false);
+  const extrairCorretores = async () => {
+    setExtraindo(true);
+    try {
+      const total = await baixarListaDeCorretores(await listPeople());
+      toast({ variant: "success", title: "Lista de corretores gerada", description: `${total} corretor(es).` });
+    } catch (erro) {
+      toast({ variant: "destructive", title: "Não foi possível gerar a lista", description: describeError(erro, "Tente de novo em instantes.") });
+    } finally {
+      setExtraindo(false);
+    }
+  };
   const brokers = useMemo(() => rows.filter(r => r.role === "broker"), [rows]);
   const ccas = useMemo(() => rows.filter(r => r.role === "cca"), [rows]);
   /**
@@ -632,6 +652,12 @@ export default function Equipes() {
                 <UserPlus className="h-3.5 w-3.5 mr-1" /> Novo colaborador
               </Button>
             )}
+            {/* Relatório só sai com admin e sócio (0185). */}
+            {isAdmin && (
+              <Button size="sm" variant="outline" className="h-8 text-xs" disabled={extraindo} onClick={() => void extrairCorretores()}>
+                <FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> {extraindo ? "Gerando…" : "Extrair corretores"}
+              </Button>
+            )}
           </>
         }
       />
@@ -941,8 +967,8 @@ export default function Equipes() {
         open={creating}
         broker={null}
         criando
-        managers={managers.map(m => ({ id: m.id, name: m.name }))}
-        directors={directors.map(d => ({ id: d.id, name: d.name }))}
+        managers={lideresParaVincular(managers)}
+        directors={lideresParaVincular(directors)}
         isAdmin={isAdmin}
         onClose={() => setCreating(false)}
         onSaved={() => { setCreating(false); load(); }}
@@ -965,8 +991,8 @@ export default function Equipes() {
       <BrokerEditModal
         open={!!profileEdit}
         broker={profileEdit}
-        managers={managers.map(m => ({ id: m.id, name: m.name }))}
-        directors={directors.map(d => ({ id: d.id, name: d.name }))}
+        managers={lideresParaVincular(managers, fichaAberta?.manager_id)}
+        directors={lideresParaVincular(directors, fichaAberta?.director_id)}
         isAdmin={isAdmin}
         // A meta de VGV saiu do cartão junto com o resto e passou a morar aqui.
         // `goals_write` é admin e diretor — a mesma regra de `canEdit`.
