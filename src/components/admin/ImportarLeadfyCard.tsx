@@ -9,11 +9,12 @@ import { num } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { emLotes, linhasDaLeadfy, resumoDaLeadfy, type LinhaLeadfy, type ResumoLeadfy } from "./importacaoLeadfy";
 
-// RPCs da 0188, ainda fora do `types.ts` gerado.
+// RPCs da 0188 e 0189, ainda fora do `types.ts` gerado.
 const untyped = supabase as unknown as SupabaseClient;
 
 type Casamento = { nome: string; perfil: string | null };
 type Total = { inseridos: number; em_atendimento: number; duplicados: number; invalidos: number };
+type Apelido = { nome: string; perfil: string | null; situacao: string };
 
 /**
  * Importação da base da Leadfy (pedido de 02/10/2026). A planilha é lida no
@@ -29,11 +30,14 @@ export function ImportarLeadfyCard() {
   const [lendo, setLendo] = useState(false);
   const [progresso, setProgresso] = useState<{ feitos: number; total: number } | null>(null);
   const [total, setTotal] = useState<Total | null>(null);
+  const [apelidos, setApelidos] = useState<Apelido[] | null>(null);
+  const [gravandoApelidos, setGravandoApelidos] = useState(false);
 
   const ler = async (arquivo: File | undefined) => {
     if (!arquivo) return;
     setLendo(true);
     setTotal(null);
+    setApelidos(null);
     try {
       const { readSheet } = await import("read-excel-file/browser");
       const matriz = await readSheet(arquivo, 1);
@@ -80,6 +84,25 @@ export function ImportarLeadfyCard() {
       });
     } finally {
       setProgresso(null);
+    }
+  };
+
+  // O nome curto da Leadfy vira apelido de quem ainda não tem um (0189).
+  const gravarApelidos = async () => {
+    if (!resumo) return;
+    setGravandoApelidos(true);
+    try {
+      const { data, error } = await untyped.rpc("gravar_apelidos_leadfy", { p_nomes: resumo.corretores });
+      if (error) throw dbError("gravar_apelidos_leadfy", error);
+      const lista = (data ?? []) as Apelido[];
+      setApelidos(lista);
+      toast.success("Apelidos gravados", {
+        description: `${num(lista.filter((a) => a.situacao === "gravado").length)} corretor(es) ganharam o nome da Leadfy como apelido.`,
+      });
+    } catch (err) {
+      toast.error("Não consegui gravar os apelidos", { description: describeError(err, "Tente de novo.") });
+    } finally {
+      setGravandoApelidos(false);
     }
   };
 
@@ -130,11 +153,18 @@ export function ImportarLeadfyCard() {
                 </ul>
               </details>
             )}
-            <Button size="sm" disabled={progresso !== null} onClick={() => void importar()}>
-              {progresso ? `Importando… ${num(progresso.feitos)} de ${num(progresso.total)}` : `Importar ${num(linhas.length)} leads`}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={progresso !== null} onClick={() => void importar()}>
+                {progresso ? `Importando… ${num(progresso.feitos)} de ${num(progresso.total)}` : `Importar ${num(linhas.length)} leads`}
+              </Button>
+              <Button size="sm" variant="outline" disabled={gravandoApelidos || resumo.corretores.length === 0} onClick={() => void gravarApelidos()}>
+                {gravandoApelidos ? "Gravando apelidos…" : "Gravar nomes da Leadfy como apelido"}
+              </Button>
+            </div>
           </div>
         )}
+
+        {apelidos && <ResultadoApelidos apelidos={apelidos} />}
 
         {total && (
           <p role="status" className="rounded-xl border border-success/40 bg-success/10 p-3">
@@ -145,5 +175,36 @@ export function ImportarLeadfyCard() {
         )}
       </div>
     </SectionCard>
+  );
+}
+
+function ResultadoApelidos({ apelidos }: { apelidos: Apelido[] }) {
+  const gravados = apelidos.filter((a) => a.situacao === "gravado");
+  const jaEram = apelidos.filter((a) => a.situacao === "ja_era");
+  const mantidos = apelidos.filter((a) => a.situacao.startsWith("mantido"));
+  const sem = apelidos.filter((a) => a.situacao === "sem_corretor");
+  return (
+    <div role="status" className="space-y-1 rounded-xl border border-success/40 bg-success/10 p-3">
+      <p>
+        {num(gravados.length)} apelido(s) gravado(s) · {num(jaEram.length)} já estava(m) certo(s) ·{" "}
+        {num(mantidos.length)} com outro apelido (mantido) · {num(sem.length)} sem corretor no CRM.
+      </p>
+      {gravados.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-xs font-semibold">Gravados ({gravados.length})</summary>
+          <ul className="mt-1 max-h-48 overflow-y-auto text-xs">
+            {gravados.map((a) => <li key={a.nome}>{a.perfil} → <strong>{a.nome}</strong></li>)}
+          </ul>
+        </details>
+      )}
+      {mantidos.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-xs font-semibold">Já tinham outro apelido ({mantidos.length})</summary>
+          <ul className="mt-1 max-h-48 overflow-y-auto text-xs text-muted-foreground">
+            {mantidos.map((a) => <li key={a.nome}>{a.perfil}: fica "{a.situacao.replace(/^mantido: /, "")}" (Leadfy: {a.nome})</li>)}
+          </ul>
+        </details>
+      )}
+    </div>
   );
 }

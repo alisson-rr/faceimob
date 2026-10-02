@@ -45,6 +45,11 @@ describe("describeError", () => {
       .toBe("Você não tem permissão para esta ação.");
   });
 
+  it("diz quando o banco estourou o tempo, em vez da frase de conexão", () => {
+    expect(describeError(dbError("deals", { code: "57014", message: "canceling statement due to statement timeout" }), "erro"))
+      .toBe("O banco demorou demais para responder. Aguarde alguns instantes e tente de novo.");
+  });
+
   it("usa o fallback em vez de vazar ingles quando nao reconhece o erro", () => {
     expect(describeError({ code: "XX000", message: "internal error" }, "erro")).toBe("erro");
     expect(describeError(new Error("relation \"deals\" does not exist"), "erro")).toBe("erro");

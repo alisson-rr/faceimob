@@ -30,6 +30,8 @@ const BY_CODE: Record<string, string> = {
   "22P02": "Um dos campos está em formato inválido.",
   "23514": "Um dos campos está fora do valor permitido.",
   "42501": "Você não tem permissão para esta ação.",
+  // statement_timeout (8 s): banco ocupado, por exemplo durante uma importação grande.
+  "57014": "O banco demorou demais para responder. Aguarde alguns instantes e tente de novo.",
 };
 
 /** Códigos das nossas `raise exception`: a mensagem já está em pt-BR. */
