@@ -18,6 +18,7 @@ import { MetaAdScores } from "@/components/marketing/MetaAdScores";
 import { MetaAlertsPanel } from "@/components/marketing/MetaAlertsPanel";
 import { MetaCampaignPlanner } from "@/components/marketing/MetaCampaignPlanner";
 import { MetaTrafficManager } from "@/components/marketing/MetaTrafficManager";
+import { GestaoDeAnuncios } from "@/components/marketing/GestaoDeAnuncios";
 import {
   AD_PLATFORM_LABEL,
   adStatusLabel,
@@ -306,6 +307,15 @@ export default function Marketing() {
         </div>
 
         <TabsContent value="campanhas" className="mt-5 space-y-5">
+          <GestaoDeAnuncios podeConectar={canConnectMeta} />
+
+          {/* O que existia antes do painel de gestão (02/10/2026): cadastro à mão,
+              conversão em negócio e o detalhe por campanha. Recolhido, sem sumir. */}
+          <details className="group rounded-2xl border border-border bg-card/50 p-4">
+            <summary className="cursor-pointer select-none text-sm font-semibold">
+              Cadastro manual e conversão por campanha
+            </summary>
+            <div className="mt-4 space-y-5">
           {/* O painel carrega, erra e esvazia junto com o resto da tela: uma consulta só.
               Recebe `filtered` para não contradizer a tabela de baixo quando há filtro,
               e a lista INTEIRA de construtoras — a tabela de baixo nomeia a inativa
@@ -513,6 +523,8 @@ export default function Marketing() {
           {/* Quem pausou, ativou ou mudou verba na Meta, pelo CRM ou pela fila do
               gestor IA — o registro que as ações do painel acima deixam. */}
           <MetaActionsLog />
+            </div>
+          </details>
         </TabsContent>
 
         <TabsContent value="construtoras" className="mt-5">
