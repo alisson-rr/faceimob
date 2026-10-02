@@ -382,9 +382,12 @@ export default function Checkpoint() {
             >
               <RefreshCw className={`h-4 w-4 ${catalogo.isFetching || semana.isFetching ? "animate-spin" : ""}`} /> Atualizar
             </Button>
-            <Button size="sm" variant="outline" onClick={exportar} disabled={filteredTeams.length === 0}>
-              <Download className="h-4 w-4" /> Exportar CSV
-            </Button>
+            {/* Relatório só sai com admin e sócio (02/10/2026). */}
+            {isAdmin && (
+              <Button size="sm" variant="outline" onClick={exportar} disabled={filteredTeams.length === 0}>
+                <Download className="h-4 w-4" /> Exportar CSV
+              </Button>
+            )}
             <Select value={teamFilter} onValueChange={filtrarEquipe}>
               <SelectTrigger className="w-full sm:w-56 h-8 text-xs" aria-label="Filtrar equipe"><SelectValue placeholder="Filtrar equipe" /></SelectTrigger>
               <SelectContent>

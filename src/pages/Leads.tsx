@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { AlertTriangle, BarChart3, Inbox, Plus, Upload, Users, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState, PageHeader, SectionCard } from "@/components/shared";
+import { ListaDeLigacaoButton } from "@/components/leads/ListaDeLigacaoButton";
 import { toast } from "@/components/ui/sonner";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
@@ -329,6 +330,7 @@ export default function Leads() {
         }
         actions={
           <>
+            <ListaDeLigacaoButton />
             <Button variant="outline" size="sm" onClick={() => setShowSources((open) => !open)}>
               <BarChart3 className="h-4 w-4" /> {showSources ? "Ocultar origens" : "Origens"}
             </Button>
