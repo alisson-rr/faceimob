@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import { brl, parseBrl } from "@/lib/format";
 import { invocarAcaoMeta } from "./acaoMeta";
@@ -86,7 +87,12 @@ async function enviar(pedido: Pedido): Promise<Resposta> {
   return { tipo: "falha", mensagem: SEM_STATUS };
 }
 
-export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; onDone: () => void }) {
+export function MetaCampaignActions({ campaign, onDone, compacto = false }: {
+  campaign: Campanha;
+  onDone: () => void;
+  /** Linha do painel de gestão: interruptor liga/desliga e ícone de verba (02/10/2026). */
+  compacto?: boolean;
+}) {
   const { can } = useAuth();
   const queryClient = useQueryClient();
   const baseId = useId();
@@ -168,8 +174,33 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
   const aviso = aprendizado?.aviso;
   const confirma = aberta ? CONFIRMA[aberta] : null;
 
+  const ativa = campaign.status === "ACTIVE";
+
   return (
     <div className="space-y-1">
+      {compacto ? (
+        <div className="flex items-center gap-1">
+          {/* Controlado e sem `onCheckedChange`: o clique só abre a confirmação;
+              quem muda o estado é a Meta, na próxima leitura. */}
+          <Switch
+            checked={ativa}
+            disabled={pendente}
+            aria-label={ativa ? `Pausar ${campaign.name} na Meta` : `Ativar ${campaign.name} na Meta`}
+            onClick={(e) => abrir(ativa ? "pausar" : "ativar", e.currentTarget)}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            disabled={pendente || travaVerba !== null}
+            title={travaVerba ?? "Mudar verba diária"}
+            aria-label={`Mudar verba de ${campaign.name} na Meta`}
+            onClick={(e) => abrir("verba", e.currentTarget)}
+          >
+            <Wallet className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+      ) : (
       <div className="flex flex-wrap gap-2">
         {campaign.status !== "PAUSED" && (
           <Button
@@ -207,7 +238,8 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
           Mudar verba
         </Button>
       </div>
-      {travaVerba && <p id={travaId} className="text-xs text-muted-foreground">{travaVerba}</p>}
+      )}
+      {!compacto && travaVerba && <p id={travaId} className="text-xs text-muted-foreground">{travaVerba}</p>}
 
       <AlertDialog open={aberta !== null} onOpenChange={(abrirDialogo) => { if (!abrirDialogo && !pendente) setAberta(null); }}>
         <AlertDialogContent onCloseAutoFocus={devolverFoco}>
