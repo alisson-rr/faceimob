@@ -32,10 +32,24 @@ export function lerLinhas(data: unknown): LinhaDeLigacao[] {
     .filter((linha) => linha.telefone !== "");
 }
 
+/**
+ * Ordem aleatória (02/10/2026): pela ordem do banco a lista saía agrupada por
+ * campanha, e quem liga passava a manhã numa construtora só. Fisher–Yates;
+ * `sorteio` é injetável para o teste ser determinista.
+ */
+export function embaralhar<T>(itens: T[], sorteio: () => number = Math.random): T[] {
+  const copia = [...itens];
+  for (let i = copia.length - 1; i > 0; i--) {
+    const j = Math.floor(sorteio() * (i + 1));
+    [copia[i], copia[j]] = [copia[j], copia[i]];
+  }
+  return copia;
+}
+
 export async function buscarListaDeLigacao(): Promise<LinhaDeLigacao[]> {
   const { data, error } = await untyped.rpc("lista_de_ligacao");
   if (error) throw dbError("lista_de_ligacao", error);
-  return lerLinhas(data);
+  return embaralhar(lerLinhas(data));
 }
 
 const nomeDoArquivo = (extensao: string) =>

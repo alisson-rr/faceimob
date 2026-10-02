@@ -36,7 +36,9 @@ if (import.meta.main) {
       const worker = await EdgeRuntime.userWorkers.create({
         servicePath: `/home/deno/functions/${result}`,
         memoryLimitMb: 150,
-        workerTimeoutMs: 60_000,
+        // 150 s: a sincronização da Meta lê a janela em fatias e passava de 60 s
+        // na primeira vez de uma conta grande (02/10/2026).
+        workerTimeoutMs: 150_000,
         noModuleCache: false,
         envVars: Object.entries({ ...Deno.env.toObject(), SUPABASE_FUNCTION_SLUG: result }),
       });

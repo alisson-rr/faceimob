@@ -102,6 +102,19 @@ describe("filtro de negócios por id", () => {
 });
 
 describe("demais filtros", () => {
+  it("Status 2 aceita vários de uma vez; vazio é todos", () => {
+    const linhas = [
+      deal({ id: "a", status: "06. ENVIO DE RP" }),
+      deal({ id: "b", status: "13. ESTEIRA AGIL" }),
+      deal({ id: "c", status: "PROPOSTA" }),
+    ];
+    const marcados = { ...EMPTY_FILTERS, status2: ["06. ENVIO DE RP", "13. ESTEIRA AGIL"] };
+    expect(applyDealFilters(linhas, marcados).map((r) => r.id)).toEqual(["a", "b"]);
+    expect(applyDealFilters(linhas, EMPTY_FILTERS)).toHaveLength(3);
+    expect(hasActiveFilter(marcados)).toBe(true);
+    expect(hasActiveFilter({ ...EMPTY_FILTERS, status2: [] })).toBe(false);
+  });
+
   it("CPF casa com e sem pontuação", () => {
     const linhas = [deal({ id: "a", cpf: "123.456.789-00" })];
     expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, cpf: "12345678900" })).toHaveLength(1);

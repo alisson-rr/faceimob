@@ -43,7 +43,8 @@ export type DealFilterState = {
   stage: string;
   /** `deals.status_group_id` ou `ALL`. */
   status1: string;
-  status2: string;
+  /** Status 2 escolhidos (vários de uma vez, 02/10/2026). Vazio = todos. */
+  status2: string[];
   documentReview: string;
   developerId: string;
   brokerId: string;
@@ -61,7 +62,7 @@ export const EMPTY_FILTERS: DealFilterState = {
   team: ALL,
   stage: ALL,
   status1: ALL,
-  status2: ALL,
+  status2: [],
   documentReview: ALL,
   developerId: ALL,
   brokerId: ALL,
@@ -75,9 +76,10 @@ export const EMPTY_FILTERS: DealFilterState = {
 };
 
 export const hasActiveFilter = (filters: DealFilterState): boolean =>
-  (Object.keys(EMPTY_FILTERS) as (keyof DealFilterState)[]).some(
-    (key) => filters[key] !== EMPTY_FILTERS[key],
-  );
+  (Object.keys(EMPTY_FILTERS) as (keyof DealFilterState)[]).some((key) => {
+    const valor = filters[key];
+    return Array.isArray(valor) ? valor.length > 0 : valor !== EMPTY_FILTERS[key];
+  });
 
 const includes = (value: string | null | undefined, needle: string) =>
   (value || "").toLowerCase().includes(needle.toLowerCase());
@@ -190,7 +192,7 @@ export function applyDealFilters(
         if (!contaComoVenda(deal)) return false;
       } else if (deal.status_group_id !== filters.status1) return false;
     }
-    if (filters.status2 !== ALL && deal.status !== filters.status2) return false;
+    if (filters.status2.length > 0 && !filters.status2.includes(deal.status)) return false;
     if (filters.documentReview !== ALL && deal.document_review_status !== filters.documentReview) return false;
     if (filters.month !== ALL && dealMonth(deal) !== filters.month) return false;
     if (filters.client && !includes(deal.client, filters.client)) return false;

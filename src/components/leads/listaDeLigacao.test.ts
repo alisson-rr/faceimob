@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
-import { lerLinhas, montarListaPdf, paraPdf } from "./listaDeLigacao";
+import { embaralhar, lerLinhas, montarListaPdf, paraPdf } from "./listaDeLigacao";
 
 describe("lista de ligação", () => {
   it("valida as linhas da RPC e descarta quem não tem telefone", () => {
@@ -22,5 +22,14 @@ describe("lista de ligação", () => {
     }));
     const pdf = await PDFDocument.load(await montarListaPdf(linhas));
     expect(pdf.getPageCount()).toBeGreaterThan(1);
+  });
+
+  it("embaralha sem perder nem repetir ninguém", () => {
+    const itens = Array.from({ length: 20 }, (_, i) => i);
+    let semente = 7;
+    const sorteio = () => ((semente = (semente * 9301 + 49297) % 233280) / 233280);
+    const misturado = embaralhar(itens, sorteio);
+    expect(misturado).not.toEqual(itens);
+    expect([...misturado].sort((a, b) => a - b)).toEqual(itens);
   });
 });
