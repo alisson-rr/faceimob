@@ -50,7 +50,10 @@ type Window = {
 };
 
 type Broker = { id: string; name: string; active: boolean };
-type FormRef = { form_id: string; form_name: string | null };
+type FormRef = { form_id: string; form_name: string | null; pagina?: string | null };
+
+/** Busca sem acento nem caixa: "mrv viamao" acha "CAMPANHA MRV VIAMÃO". */
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 /**
  * Formulários das páginas da Meta (edge `meta-ads-connect`, 02/10/2026). Antes
@@ -66,7 +69,7 @@ async function formulariosDaMeta(): Promise<FormRef[]> {
     const corpo = await (error as { context?: Response }).context?.json?.().catch(() => null);
     throw new Error(corpo?.error ?? "Não consegui ler os formulários na Meta.");
   }
-  return (data?.formularios ?? []).map((f) => ({ form_id: f.form_id, form_name: f.form_name }));
+  return (data?.formularios ?? []).map((f) => ({ form_id: f.form_id, form_name: f.form_name, pagina: f.pagina ?? null }));
 }
 type Group = {
   id: string;
@@ -92,9 +95,12 @@ const REGRAS_NUMERICAS: Array<{
   campo: "roleta_seconds" | "no_response_hours" | "inactivity_alert_hours" | "overdue_block_threshold";
   rotulo: string;
   min: number;
+  /** O piso como a pessoa digita, quando o campo mostra outra unidade. */
+  minTexto?: string;
   consequencia: string;
 }> = [
-  { campo: "roleta_seconds", rotulo: "Roleta (s)", min: 30, consequencia: "É o tempo que o corretor tem para atender antes de o lead voltar para a fila." },
+  // Guardada em segundos (attend_timeout_seconds); a tela mostra em minutos.
+  { campo: "roleta_seconds", rotulo: "Roleta (min)", min: 30, minTexto: "0,5", consequencia: "É o tempo que o corretor tem para atender antes de o lead voltar para a fila." },
   { campo: "no_response_hours", rotulo: "Sem resposta (h)", min: 1, consequencia: "Com 0 a varredura de leads sem resposta é desligada e ninguém é avisado no sino." },
   { campo: "inactivity_alert_hours", rotulo: "Inatividade (h)", min: 1, consequencia: "Com 0 nenhum lead é destacado como parado na lista." },
   { campo: "overdue_block_threshold", rotulo: "Vencidos p/ bloquear", min: 1, consequencia: "É quantos leads vencidos tiram o corretor da fila." },
@@ -190,9 +196,12 @@ export default function AdminLeadAutomation() {
   const metaForms = useQuery({ queryKey: ["meta", "leadgen-forms"], queryFn: formulariosDaMeta, staleTime: 5 * 60_000, retry: false });
   // O nome que a Meta dá ganha do vazio; o vínculo já gravado mantém o dele.
   const conhecidos = (() => {
-    const map = new Map(detectedForms.map((f) => [f.form_id, f.form_name] as const));
-    for (const f of metaForms.data ?? []) if (!map.get(f.form_id)) map.set(f.form_id, f.form_name);
-    return Array.from(map, ([form_id, form_name]) => ({ form_id, form_name }));
+    const map = new Map<string, FormRef>(detectedForms.map((f) => [f.form_id, f]));
+    for (const f of metaForms.data ?? []) {
+      const atual = map.get(f.form_id);
+      map.set(f.form_id, { form_id: f.form_id, form_name: atual?.form_name || f.form_name, pagina: f.pagina });
+    }
+    return Array.from(map.values());
   })();
   // `groups` fica inteiro de propósito: o dono de um formulário ("grupo: X") e
   // o diálogo aberto seguem verdadeiros quando uma remoção tira a roleta do
@@ -205,10 +214,25 @@ export default function AdminLeadAutomation() {
   // União: o que o grupo já tem (inclusive form manual sem lead nenhum) na
   // frente, depois os demais detectados. Só `detectedForms` escondia o vínculo
   // manual e não deixava desmarcá-lo.
-  const formOptions = editingGroup
+  const [buscaForm, setBuscaForm] = useState("");
+  const [buscaCorretor, setBuscaCorretor] = useState("");
+  const termoCorretor = semAcento(buscaCorretor.trim());
+  const corretoresNaLista = brokers.filter((b) => !termoCorretor || semAcento(b.name).includes(termoCorretor));
+  const paginaDoForm = new Map(conhecidos.map((f) => [f.form_id, f.pagina] as const));
+  const termoForm = semAcento(buscaForm.trim());
+  const formOptions = (editingGroup
     ? [...editingGroup.forms, ...conhecidos.filter((d) => !editingGroup.forms.some((f) => f.form_id === d.form_id))]
-    : conhecidos;
+    : conhecidos
+  ).filter((f) => !termoForm || semAcento(`${f.form_name ?? ""} ${f.form_id} ${paginaDoForm.get(f.form_id) ?? ""}`).includes(termoForm));
   const groupOwning = (formId: string) => groups.find((g) => g.forms.some((f) => f.form_id === formId)) ?? null;
+  // Formulário de outro grupo fica de fora do "Marcar todos": um formulário
+  // alimenta uma roleta só (índice único da 0004).
+  const formsParaMarcar = editingGroup
+    ? formOptions.filter((f) => !editingGroup.forms.some((g) => g.form_id === f.form_id) && !groupOwning(f.form_id))
+    : [];
+  const formsParaDesmarcar = editingGroup
+    ? formOptions.filter((f) => editingGroup.forms.some((g) => g.form_id === f.form_id))
+    : [];
 
   const load = async () => {
     try {
@@ -298,7 +322,7 @@ export default function AdminLeadAutomation() {
       return !Number.isFinite(valor) || valor < min;
     });
     if (invalido) {
-      toast.error(`"${invalido.rotulo}" precisa ser no mínimo ${invalido.min}`, {
+      toast.error(`"${invalido.rotulo}" precisa ser no mínimo ${invalido.minTexto ?? invalido.min}`, {
         description: invalido.consequencia,
       });
       return;
@@ -466,6 +490,35 @@ export default function AdminLeadAutomation() {
     // Recarrega sempre: na recusa, a tela precisa mostrar o estado real.
     load();
   };
+  // Em lote (02/10/2026): "Marcar todos" e "Desmarcar todos" valem para a lista
+  // filtrada pela busca e gravam numa escrita só, em vez de um clique por nome.
+  const marcarCorretores = async (groupId: string, ids: string[], on: boolean) => {
+    if (!ids.length) return;
+    const ok = await wrote(
+      on
+        ? supabase.from("distribution_group_members")
+          .upsert(ids.map((profile_id) => ({ group_id: groupId, profile_id, active: true }))).select("profile_id")
+        : supabase.from("distribution_group_members").delete().eq("group_id", groupId).in("profile_id", ids).select("profile_id"),
+      on ? "Não foi possível incluir os corretores na roleta" : "Não foi possível remover os corretores da roleta",
+      isAdmin ? {} : { "42501": RECUSA_FILIACAO },
+      "Nenhum corretor mudou. Lista recarregada.",
+    );
+    if (ok) toast.success(on ? `${ids.length} corretor(es) incluído(s) na roleta` : `${ids.length} corretor(es) removido(s) da roleta`);
+    load();
+  };
+  const marcarFormularios = async (groupId: string, forms: FormRef[], on: boolean) => {
+    if (!forms.length) return;
+    const ok = await wrote(
+      on
+        ? supabase.from("distribution_group_forms")
+          .insert(forms.map((f) => ({ group_id: groupId, form_id: f.form_id, form_name: f.form_name }))).select("form_id")
+        : supabase.from("distribution_group_forms").delete().eq("group_id", groupId).in("form_id", forms.map((f) => f.form_id)).select("form_id"),
+      on ? "Não foi possível vincular os formulários" : "Não foi possível desvincular os formulários",
+      { "23505": "Um dos formulários já pertence a outro grupo. Recarregue e tente de novo." },
+    );
+    if (ok) toast.success(on ? `${forms.length} formulário(s) vinculado(s)` : `${forms.length} formulário(s) desvinculado(s)`);
+    load();
+  };
   const addGroupForm = async (groupId: string, formId: string, form_name: string | null) => {
     const form_id = formId.trim();
     if (!form_id) return false;
@@ -538,9 +591,10 @@ export default function AdminLeadAutomation() {
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
             <div className="space-y-1">
-              <Label htmlFor="roleta-seconds" className="text-xs">Roleta (s)</Label>
-              <Input id="roleta-seconds" className="h-8" type="number" min={30} value={settings.roleta_seconds} disabled={readOnly}
-                onChange={e => setSettings(s => ({ ...s, roleta_seconds: +e.target.value }))} />
+              <Label htmlFor="roleta-seconds" className="text-xs">Roleta (min)</Label>
+              {/* Minutos na tela (pedido de 02/10/2026); o banco segue em segundos. */}
+              <Input id="roleta-seconds" className="h-8" type="number" min={0.5} step={0.5} value={settings.roleta_seconds / 60} disabled={readOnly}
+                onChange={e => setSettings(s => ({ ...s, roleta_seconds: Math.round(+e.target.value * 60) }))} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="no-response-hours" className="text-xs">Sem resposta (h)</Label>
@@ -695,9 +749,32 @@ export default function AdminLeadAutomation() {
                     Se tirar a última pessoa da sua equipe desta roleta, ela pode sair do seu alcance (e a fila dela) e só o administrador religa.
                   </p>
                 )}
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Input
+                    value={buscaCorretor}
+                    onChange={(e) => setBuscaCorretor(e.target.value)}
+                    placeholder="Buscar corretor…"
+                    aria-label="Buscar corretor"
+                    className="h-8 min-w-0 flex-1"
+                  />
+                  <Button
+                    type="button" variant="outline" size="sm"
+                    disabled={!!bloqueioMembros || corretoresNaLista.every((b) => editingGroup.brokers.includes(b.id))}
+                    onClick={() => void marcarCorretores(editingGroup.id, corretoresNaLista.filter((b) => !editingGroup.brokers.includes(b.id)).map((b) => b.id), true)}
+                  >
+                    Marcar todos
+                  </Button>
+                  <Button
+                    type="button" variant="outline" size="sm"
+                    disabled={!!bloqueioMembros || !corretoresNaLista.some((b) => editingGroup.brokers.includes(b.id))}
+                    onClick={() => void marcarCorretores(editingGroup.id, corretoresNaLista.filter((b) => editingGroup.brokers.includes(b.id)).map((b) => b.id), false)}
+                  >
+                    Desmarcar todos
+                  </Button>
+                </div>
                 <ScrollArea className="h-72 rounded border border-border/60 p-2">
                   <div className="space-y-1">
-                    {brokers.map((b) => {
+                    {corretoresNaLista.map((b) => {
                       const on = editingGroup.brokers.includes(b.id);
                       return (
                         <label key={b.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-muted/50 cursor-pointer">
@@ -706,7 +783,9 @@ export default function AdminLeadAutomation() {
                         </label>
                       );
                     })}
-                    {brokers.length === 0 && <p className="text-xs text-muted-foreground p-2">Nenhum corretor ativo.</p>}
+                    {corretoresNaLista.length === 0 && (
+                      <p className="text-xs text-muted-foreground p-2">{termoCorretor ? "Nenhum corretor com esse nome." : "Nenhum corretor ativo."}</p>
+                    )}
                   </div>
                 </ScrollArea>
               </div>
@@ -717,6 +796,40 @@ export default function AdminLeadAutomation() {
                   </h3>
                   <Badge variant="secondary">{editingGroup.forms.length} selecionados</Badge>
                 </div>
+                <div className="mb-2 flex items-center gap-2">
+                  <Input
+                    value={buscaForm}
+                    onChange={(e) => setBuscaForm(e.target.value)}
+                    placeholder="Buscar formulário…"
+                    aria-label="Buscar formulário"
+                    className="h-8"
+                  />
+                  <Button
+                    type="button" variant="outline" size="sm" className="shrink-0"
+                    disabled={metaForms.isFetching}
+                    onClick={() => void metaForms.refetch()}
+                  >
+                    {metaForms.isFetching ? "Atualizando…" : "Atualizar formulários"}
+                  </Button>
+                </div>
+                {!readOnly && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      disabled={!formsParaMarcar.length}
+                      onClick={() => void marcarFormularios(editingGroup.id, formsParaMarcar, true)}
+                    >
+                      Marcar todos
+                    </Button>
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      disabled={!formsParaDesmarcar.length}
+                      onClick={() => void marcarFormularios(editingGroup.id, formsParaDesmarcar, false)}
+                    >
+                      Desmarcar todos
+                    </Button>
+                  </div>
+                )}
                 <ScrollArea className="h-72 rounded border border-border/60 p-2">
                   <div className="space-y-1">
                     {formOptions.map((d) => {
@@ -733,14 +846,20 @@ export default function AdminLeadAutomation() {
                             }}
                           />
                           <span className="truncate flex-1">{d.form_name || d.form_id}</span>
-                          {d.form_name && <span className="text-xs text-muted-foreground truncate">{d.form_id}</span>}
+                          {(paginaDoForm.get(d.form_id) || d.form_name) && (
+                            <span className="text-xs text-muted-foreground truncate">{paginaDoForm.get(d.form_id) || d.form_id}</span>
+                          )}
                           {owner && <span className="text-xs text-warning truncate">grupo: {owner.name}</span>}
                         </label>
                       );
                     })}
                     {formOptions.length === 0 && (
                       <p className="text-xs text-muted-foreground p-2">
-                        {metaForms.isPending ? "Buscando os formulários na Meta…" : "Nenhum formulário detectado ainda. Use \"Adicionar form manual\" abaixo."}
+                        {metaForms.isPending
+                          ? "Buscando os formulários na Meta…"
+                          : termoForm
+                            ? "Nenhum formulário com esse nome."
+                            : "Nenhum formulário detectado ainda. Use \"Adicionar form manual\" abaixo."}
                       </p>
                     )}
                     {metaForms.error && (
