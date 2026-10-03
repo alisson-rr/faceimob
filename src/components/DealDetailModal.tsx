@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -293,6 +293,22 @@ export default function DealDetailModal({
     }
   };
 
+  // Batida ao sair do campo CPF (0205): o corretor sabe na hora, não só ao
+  // salvar. Um CPF já conferido não abre o popup de novo a cada saída do campo.
+  const cpfConferido = useRef<string | null>(null);
+  const conferirCpf = async (cpf: string) => {
+    const digitos = cpfsParaBatida({ cpf })[0];
+    if (!digitos || cpfConferido.current === digitos) return;
+    cpfConferido.current = digitos;
+    try {
+      const achado = await negocioDoCpf([digitos]);
+      if (achado) setBatida({ negocio: achado, enviando: false, erro: null });
+    } catch {
+      // Sem resposta agora, a batida roda de novo ao salvar.
+      cpfConferido.current = null;
+    }
+  };
+
   const assumir = async (comentario: string) => {
     if (!batida) return;
     setBatida({ ...batida, enviando: true, erro: null });
@@ -300,8 +316,8 @@ export default function DealDetailModal({
       await assumirNegocioDoCpf(batida.negocio.deal_id, comentario);
       toast({
         variant: "success",
-        title: "Negócio assumido",
-        description: "Os dados do cliente vieram junto e você é o corretor agora.",
+        title: "Negociação retomada",
+        description: "O negócio veio com dados, histórico e documentos, e você é o corretor agora.",
       });
       setBatida(null);
       onClose();
@@ -435,6 +451,7 @@ export default function DealDetailModal({
                 developerError={developerError}
                 onPedirConferencia={() => setConferencia({ enviando: false, erro: null })}
                 dealId={isNew ? null : dealId}
+                onCpfBlur={isNew ? (cpf) => void conferirCpf(cpf) : undefined}
               />
               {isNew && (
                 <div className="mt-4 space-y-1.5">

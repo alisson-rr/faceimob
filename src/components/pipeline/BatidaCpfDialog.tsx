@@ -6,15 +6,20 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { bareStatus } from "@/lib/dealStatus";
+import { dateTime } from "@/lib/format";
 import type { NegocioDoCpf } from "@/integrations/supabase/batidaCpf";
 
 /**
- * Resultado da batida de CPF na criação do negócio (0179, pedido de 01/10/2026).
+ * Resultado da batida de CPF (0179; 0205: ao sair do campo CPF, pedido de
+ * 03/10/2026).
  *
- *  · ATIVO: não cadastra. Diz com quem o cliente está para o corretor levar a
- *    situação ao gerente dele.
- *  · ENCERRADO (OFF, QUEDA, DISTRATO): o corretor assume aquele negócio, com
- *    comentário obrigatório. Nenhum negócio novo é criado.
+ *  · ATIVO: não cadastra. Diz com quem o cliente está e o último comentário do
+ *    negócio, e orienta a falar com o gerente sobre o fifty.
+ *  · OFF ou QUEDA: o cliente já existe no Pipeline; "retomar" traz o negócio
+ *    com tudo (dados, histórico, documentos) para quem cadastra, reaberto em
+ *    PROPOSTA. Nenhum negócio novo é criado.
+ *  · DISTRATO: só avisa. Já foi contabilizado em mês anterior; retomar é com o
+ *    gerente.
  */
 export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }: {
   negocio: NegocioDoCpf;
@@ -25,27 +30,41 @@ export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }:
 }) {
   const id = useId();
   const [comentario, setComentario] = useState("");
-  const limpo = comentario.trim();
   const cliente = negocio.cliente ?? "Este cliente";
   const corretor = negocio.corretor ?? "sem corretor";
   const gerente = negocio.gerente ?? "sem gerente";
   const status = negocio.status2 ? bareStatus(negocio.status2) : null;
 
-  if (negocio.situacao === "ativo") {
+  const quemEsta = (
+    <>
+      <strong className="text-foreground">{cliente}</strong> já está no Pipeline com o corretor{" "}
+      <strong className="text-foreground">{corretor}</strong> e o gerente{" "}
+      <strong className="text-foreground">{gerente}</strong>
+      {status ? <> (Status 2: {status})</> : null}.
+    </>
+  );
+
+  if (negocio.situacao === "ativo" || negocio.situacao === "distrato") {
+    const distrato = negocio.situacao === "distrato";
     return (
       <Dialog open onOpenChange={(aberto) => { if (!aberto) onClose(); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>CPF já cadastrado</DialogTitle>
-            <DialogDescription>
-              <strong className="text-foreground">{cliente}</strong> já está cadastrado com o corretor{" "}
-              <strong className="text-foreground">{corretor}</strong> e o gerente{" "}
-              <strong className="text-foreground">{gerente}</strong>
-              {status ? <> (Status 2: {status})</> : null}.
-            </DialogDescription>
+            <DialogTitle>{distrato ? "Cliente com distrato no Pipeline" : "Cliente já está no Pipeline"}</DialogTitle>
+            <DialogDescription>{quemEsta}</DialogDescription>
           </DialogHeader>
+          {negocio.ultimo_comentario && (
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+              <p className="text-eyebrow">
+                Último comentário{negocio.ultimo_comentario_em ? ` · ${dateTime(negocio.ultimo_comentario_em)}` : ""}
+              </p>
+              <p className="mt-1 whitespace-pre-line">{negocio.ultimo_comentario}</p>
+            </div>
+          )}
           <p className="text-sm text-muted-foreground">
-            Reporte a situação ao seu gerente para ele verificar o andamento. O negócio não foi cadastrado de novo.
+            {distrato
+              ? "Este negócio já foi contabilizado em mês anterior. Para retomar, fale com o seu gerente."
+              : "Fale com o seu gerente para combinar o fifty com o corretor do negócio. O cliente não foi cadastrado de novo."}
           </p>
           <DialogFooter>
             <Button onClick={onClose}>Entendi</Button>
@@ -59,21 +78,21 @@ export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }:
     <Dialog open onOpenChange={(aberto) => { if (!aberto && !enviando) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>CPF com negócio encerrado</DialogTitle>
+          <DialogTitle>Cliente já existe no Pipeline</DialogTitle>
           <DialogDescription>
             <strong className="text-foreground">{cliente}</strong> tem um negócio
             {status ? <> em <strong className="text-foreground">{status}</strong></> : " encerrado"} com o corretor{" "}
-            {corretor} e o gerente {gerente}.
+            {corretor} e o gerente {gerente}. Quer retomar a negociação?
           </DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Para seguir, assuma esse negócio: os dados do cliente vêm junto e você passa a ser o corretor, com o seu
-          gerente e diretor. Nenhum cadastro novo é criado.
+          Retomando, o negócio vem para você com tudo o que já existe — dados do cliente, histórico e documentos — e
+          volta para PROPOSTA, com o seu gerente e diretor. Nenhum cadastro novo é criado.
         </p>
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-comentario`}>Comentário (obrigatório)</Label>
+          <Label htmlFor={`${id}-comentario`}>Comentário (opcional)</Label>
           <Textarea
-            id={`${id}-comentario`} rows={3} maxLength={2000} required
+            id={`${id}-comentario`} rows={2} maxLength={2000}
             value={comentario} onChange={(e) => setComentario(e.target.value)}
             aria-describedby={erro ? `${id}-erro` : undefined}
             placeholder="Ex.: cliente voltou pelo site e quer retomar a compra."
@@ -85,9 +104,9 @@ export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }:
           </p>
         )}
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={onClose} disabled={enviando}>Cancelar</Button>
-          <Button onClick={() => onAssumir(limpo)} disabled={limpo.length < 5 || enviando}>
-            {enviando ? "Assumindo…" : "Assumir negócio"}
+          <Button variant="outline" onClick={onClose} disabled={enviando}>Não</Button>
+          <Button onClick={() => onAssumir(comentario)} disabled={enviando}>
+            {enviando ? "Retomando…" : "Sim, retomar negociação"}
           </Button>
         </DialogFooter>
       </DialogContent>

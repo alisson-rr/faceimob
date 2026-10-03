@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cpfsParaBatida, lerNegocioDoCpf } from "./batidaCpf";
+import { comentarioDaRetomada, cpfsParaBatida, lerNegocioDoCpf } from "./batidaCpf";
 
 describe("batida de CPF", () => {
   it("bate só CPF com 11 dígitos, com ou sem máscara, sem repetir", () => {
@@ -13,5 +13,16 @@ describe("batida de CPF", () => {
       .toMatchObject({ deal_id: "d1", situacao: "encerrado", corretor: "Ana", gerente: null });
     expect(lerNegocioDoCpf({ deal_id: "d1", situacao: "outra" })).toBeNull();
     expect(lerNegocioDoCpf(null)).toBeNull();
+  });
+
+  it("distrato e o último comentário chegam do banco (0205)", () => {
+    expect(lerNegocioDoCpf({
+      deal_id: "d2", situacao: "distrato", ultimo_comentario: "Distrato assinado", ultimo_comentario_em: "2026-09-10T14:30:00Z",
+    })).toMatchObject({ situacao: "distrato", ultimo_comentario: "Distrato assinado", ultimo_comentario_em: "2026-09-10T14:30:00Z" });
+  });
+
+  it("retomar sem escrever nada registra o motivo padrão", () => {
+    expect(comentarioDaRetomada("  ")).toBe("Negociação retomada pela batida de CPF.");
+    expect(comentarioDaRetomada(" voltou pelo site ")).toBe("voltou pelo site");
   });
 });
