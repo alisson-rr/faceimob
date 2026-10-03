@@ -143,10 +143,16 @@ describe("signOut", () => {
 });
 
 describe("perfilFalhou", () => {
+  // As leituras tentam três vezes (1 s e 3 s de espera) antes de desistir.
+  const esgotarTentativas = () => act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+
   it("distingue leitura que falhou de conta sem papel", async () => {
+    vi.useFakeTimers();
     mocks.getCurrentProfile.mockRejectedValue(new Error("PGRST301"));
     const desmontar = await montar();
+    await esgotarTentativas();
 
+    expect(mocks.getCurrentProfile).toHaveBeenCalledTimes(3);
     // Falha fechada continua valendo: `can()` tem de negar tudo.
     expect(ctx!.roles).toEqual([]);
     expect(ctx!.can("menu.dashboard")).toBe(false);
@@ -156,20 +162,59 @@ describe("perfilFalhou", () => {
     expect(ctx!.profile?.email).toBe("corretor@faceimob.test");
 
     await desmontar();
+    vi.useRealTimers();
   });
 
   it("volta a false quando a leitura seguinte dá certo", async () => {
-    mocks.getCurrentProfile.mockRejectedValueOnce(new Error("PGRST301"));
+    vi.useFakeTimers();
+    mocks.getCurrentProfile.mockRejectedValue(new Error("PGRST301"));
     const desmontar = await montar();
+    await esgotarTentativas();
     expect(ctx!.perfilFalhou).toBe(true);
 
     // Mesmo usuário, nova leitura (TOKEN_REFRESHED): o sinal não pode ficar
     // preso, senão a tela acusa erro que já passou.
+    mocks.getCurrentProfile.mockResolvedValue({
+      profile: { full_name: "Corretor", email: "corretor@faceimob.test", phone: null, avatar_url: null },
+      role: "broker",
+      roles: ["broker"],
+    });
     await act(async () => { mocks.emitir?.("TOKEN_REFRESHED", SESSAO); });
     expect(ctx!.perfilFalhou).toBe(false);
     expect(ctx!.roles).toEqual(["broker"]);
 
     await desmontar();
+    vi.useRealTimers();
+  });
+
+  it("falha passageira não tranca a tela: a nova tentativa recupera (03/10/2026)", async () => {
+    vi.useFakeTimers();
+    mocks.getCurrentProfile.mockRejectedValueOnce(new Error("rede voltando"));
+    const desmontar = await montar();
+    await esgotarTentativas();
+
+    expect(ctx!.perfilFalhou).toBe(false);
+    expect(ctx!.roles).toEqual(["broker"]);
+
+    await desmontar();
+    vi.useRealTimers();
+  });
+
+  it("renovação de token que falha mantém as permissões que já valiam", async () => {
+    vi.useFakeTimers();
+    const desmontar = await montar();
+    expect(ctx!.roles).toEqual(["broker"]);
+
+    // Celular acordando: o token renova e a rede ainda não voltou.
+    mocks.getCurrentProfile.mockRejectedValue(new Error("Failed to fetch"));
+    await act(async () => { mocks.emitir?.("TOKEN_REFRESHED", SESSAO); });
+    await esgotarTentativas();
+
+    expect(ctx!.roles).toEqual(["broker"]);
+    expect(ctx!.perfilFalhou).toBe(false);
+
+    await desmontar();
+    vi.useRealTimers();
   });
 });
 

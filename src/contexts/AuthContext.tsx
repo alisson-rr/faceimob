@@ -210,14 +210,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // A comparação com o usuário já carregado evita remontar a rota a cada
     // TOKEN_REFRESHED/USER_UPDATED do mesmo usuário, o que derrubaria filtro,
     // modal e formulário abertos sem motivo.
-    if (loadedForUser.current !== nextSession.user.id) setLoading(true);
+    const mesmoUsuario = loadedForUser.current === nextSession.user.id;
+    if (!mesmoUsuario) setLoading(true);
 
     try {
-      const [current, rp, sp] = await Promise.all([
+      // Celular que acorda renova o token com a rede ainda voltando: uma falha
+      // passageira aqui virava "Acesso não liberado" até recarregar a página —
+      // o corretor tocava no aviso do lead e perdia o prazo (03/10/2026).
+      // Três tentativas antes de desistir.
+      const carregar = () => Promise.all([
         getCurrentProfile(nextSession.user.id),
         listRolePermissions(),
         listStagePermissions(),
       ]);
+      const [current, rp, sp] = await carregar()
+        .catch(() => new Promise((r) => setTimeout(r, 1000)).then(carregar))
+        .catch(() => new Promise((r) => setTimeout(r, 3000)).then(carregar));
       setProfile(manter({
         name: current.profile?.full_name || nextSession.user.email || "Usuário",
         email: current.profile?.email || nextSession.user.email || null,
@@ -231,6 +239,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStagePerms(manter(sp));
     } catch (error) {
       console.error("Falha ao carregar perfil autenticado:", error);
+      // Mesmo usuário já carregado (renovação de token): o que valia continua
+      // valendo. Zerar a matriz aqui trancava a tela aberta por um soluço de rede.
+      if (mesmoUsuario) return;
       const metadata = nextSession.user.user_metadata || {};
       setProfile({
         name: metadata.full_name || metadata.name || nextSession.user.email || "Usuário",

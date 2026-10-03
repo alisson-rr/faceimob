@@ -56,11 +56,12 @@ const iniciais = (nome: string) => nome.split(" ").map((p) => p[0]).slice(0, 2).
  */
 export function MotivationalPopup() {
   const navigate = useNavigate();
-  const { user, roles } = useAuth();
+  const { user, roles, isAdmin } = useAuth();
   const apelido = useMeuApelido();
   const [open, setOpen] = useState(false);
   const [msg] = useState(() => messages[Math.floor(Math.random() * messages.length)]);
-  const gerente = roles.includes("manager");
+  // Admin também: confere o que está sem gerente vinculado (0199).
+  const gerente = roles.includes("manager") || isAdmin;
 
   const aniversariantes = useQuery({
     queryKey: ["boas-vindas", "aniversariantes", hojeLocal()],

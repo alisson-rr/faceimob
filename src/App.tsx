@@ -10,6 +10,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import NotFound from "./pages/NotFound";
+import { Button } from "@/components/ui/button";
 
 /** Imports das telas logadas, para a pré-carga — o mesmo `import()` do `lazy`. */
 const importsDasTelas: Array<() => Promise<unknown>> = [];
@@ -188,11 +189,27 @@ function HomeRedirect() {
  * mas uma tela vazia sem explicação parece defeito; esta é a mensagem honesta.
  */
 function RequirePermission() {
-  const { can, loading, previewRole } = useAuth();
+  const { can, loading, previewRole, perfilFalhou } = useAuth();
   const location = useLocation();
 
   if (bypassAuth) return <Outlet />;
   if (loading) return null;
+
+  // Falha de leitura não é falta de permissão: dizer "seu perfil não tem
+  // permissão" mandava o corretor reclamar de acesso que ele tem (03/10/2026).
+  if (perfilFalhou) {
+    return (
+      <div className="grid place-items-center py-24 text-center">
+        <div className="max-w-sm space-y-3">
+          <p className="text-sm font-semibold text-foreground">Não consegui carregar suas permissões</p>
+          <p className="text-xs text-muted-foreground">A conexão oscilou. Toque para tentar de novo.</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+            Tentar de novo
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const code = permissionForPath(location.pathname);
   if (code && !can(code)) {

@@ -187,7 +187,7 @@ describe("apelido do anexo", () => {
  */
 describe("submitBlockReason", () => {
   const obrigatorio = type({ id: "t1" });
-  const completo = { types: [obrigatorio], documents: [doc()], hasDeveloper: true, managerCount: 1 };
+  const completo = { types: [obrigatorio], documents: [doc()], hasDeveloper: true };
 
   it("libera o envio quando construtora, gerente e obrigatórios estão de pé", () => {
     expect(submitBlockReason(completo)).toBeNull();
@@ -203,8 +203,8 @@ describe("submitBlockReason", () => {
     expect(submitBlockReason({ ...completo, hasDeveloper: false })).toContain("construtora");
   });
 
-  it("sem gerente no rateio explica quem confere", () => {
-    expect(submitBlockReason({ ...completo, managerCount: 0 })).toContain("gerente");
+  it("sem gerente no negócio o envio vale: o administrador confere (0199)", () => {
+    expect(submitBlockReason(completo)).toBeNull();
   });
 
   it("conta quantos obrigatórios faltam", () => {
