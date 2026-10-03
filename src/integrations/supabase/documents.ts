@@ -559,6 +559,7 @@ export function submitBlockReason(input: {
   types: DocumentTypeRecord[];
   documents: DealDocumentRecord[];
   hasDeveloper: boolean;
+  managerCount: number;
   /** Mês-base congelado (`YYYY-MM`), quando houver. */
   closedMonth?: string | null;
   /** Mês-base cujo fechamento não pôde ser confirmado (`YYYY-MM`): a consulta de
@@ -580,6 +581,9 @@ export function submitBlockReason(input: {
   }
   if (!input.hasDeveloper) {
     return "Escolha a construtora na aba Detalhes e confirme as alterações antes de enviar.";
+  }
+  if (input.managerCount === 0) {
+    return "Vincule ao menos um gerente ao negócio na aba Detalhes: é quem confere o dossiê.";
   }
   const faltam = missingRequiredTypes(input.types, input.documents);
   return faltam.length > 0

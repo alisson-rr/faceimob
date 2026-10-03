@@ -1,6 +1,6 @@
 -- =============================================================================
--- 0199 — o corretor vê gerente e diretor para o negócio; negócio sem gerente
--- vai à conferência do admin.
+-- 0199 — o corretor vê gerente e diretor para o negócio; o admin vê e aprova
+-- a conferência quando o gerente está indisponível.
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -24,7 +24,6 @@ declare
   ger  uuid := '00000000-0000-0000-0000-000001990002';
   dir  uuid := '00000000-0000-0000-0000-000001990003';
   cor  uuid := '00000000-0000-0000-0000-000001990004';
-  solo uuid := '00000000-0000-0000-0000-000001990005';
   v_team uuid;
   v_dev uuid;
   v_lead uuid;
@@ -35,10 +34,9 @@ begin
     (adm,  'adm@l199.test',  '{"full_name":"Admin 199"}'),
     (ger,  'ger@l199.test',  '{"full_name":"Gerente 199"}'),
     (dir,  'dir@l199.test',  '{"full_name":"Diretor 199"}'),
-    (cor,  'cor@l199.test',  '{"full_name":"Corretor 199"}'),
-    (solo, 'solo@l199.test', '{"full_name":"Corretor Sem Equipe 199"}');
+    (cor,  'cor@l199.test',  '{"full_name":"Corretor 199"}');
   insert into public.user_roles (profile_id, role) values
-    (adm, 'admin'), (ger, 'manager'), (dir, 'director'), (cor, 'broker'), (solo, 'broker')
+    (adm, 'admin'), (ger, 'manager'), (dir, 'director'), (cor, 'broker')
   on conflict do nothing;
   insert into public.teams (name, manager_id, director_id) values ('Equipe 199', ger, dir) returning id into v_team;
   insert into public.team_members (team_id, profile_id) values (v_team, cor);
@@ -55,44 +53,40 @@ begin
     'a equipe do corretor sugere o gerente e o diretor dela');
   reset role;
 
-  -- 2. Negócio de corretor sem equipe: sem gerente, o envio vai ao admin.
+  -- 2. Gerente indisponível: o admin vê a pendência no popup e aprova.
   insert into public.developers (name, flow) values ('Construtora 199', 'internal') returning id into v_dev;
   delete from public.closed_months where period = public.month_start(current_date);
   insert into public.leads (full_name, phone, status, assigned_to)
-  values ('Cliente 199', '11955199001', 'in_progress', solo) returning id into v_lead;
+  values ('Cliente 199', '11955199001', 'in_progress', cor) returning id into v_lead;
 
-  perform pg_temp.como(solo);
+  perform pg_temp.como(cor);
   set local role authenticated;
   v_deal := public.convert_lead_to_deal(v_lead, v_dev, null, '199', 300000);
   reset role;
-  perform pg_temp.ok(not exists (select 1 from public.deal_participants where deal_id = v_deal.id and role = 'manager'),
-    'negócio nasce sem gerente (corretor sem equipe)');
+  perform pg_temp.ok(exists (select 1 from public.deal_participants where deal_id = v_deal.id and role = 'manager' and profile_id = ger),
+    'o gerente da equipe entra no negócio');
 
   for v_type in select id, code from public.document_types where active and required_for_conversion loop
     insert into public.deal_documents (deal_id, document_type_id, storage_path, original_name, stored_name, uploaded_by)
-    values (v_deal.id, v_type.id, 'l199/' || v_deal.id || '/' || v_type.code || '.pdf', v_type.code || '.pdf', v_type.code || '.pdf', solo);
+    values (v_deal.id, v_type.id, 'l199/' || v_deal.id || '/' || v_type.code || '.pdf', v_type.code || '.pdf', v_type.code || '.pdf', cor);
   end loop;
 
-  perform pg_temp.como(solo);
+  perform pg_temp.como(cor);
   set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê sem gerente na equipe');
+  perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê para conferir');
   reset role;
-  perform pg_temp.ok((select document_review_status = 'pending' from public.deals where id = v_deal.id),
-    'envio sem gerente é aceito');
-  perform pg_temp.ok(exists (select 1 from public.notifications where profile_id = adm and kind = 'document_review_requested'),
-    'o admin recebe o aviso para conferir');
 
   perform pg_temp.como(adm);
   set local role authenticated;
-  perform pg_temp.ok(public.minhas_conferencias_pendentes() >= 1, 'o popup do admin conta o negócio sem gerente');
+  perform pg_temp.ok(public.minhas_conferencias_pendentes() >= 1, 'o popup do admin conta a conferência pendente');
   perform public.review_deal_documents(v_deal.id, true, null);
   reset role;
-  perform pg_temp.ok((select document_review_status = 'approved' from public.deals where id = v_deal.id),
-    'o admin aprova na falta do gerente');
+  perform pg_temp.ok((select document_review_status = 'approved' and document_reviewed_by = adm from public.deals where id = v_deal.id),
+    'o admin aprova no lugar do gerente indisponível');
 
   perform pg_temp.como(ger);
   set local role authenticated;
-  perform pg_temp.ok(public.minhas_conferencias_pendentes() = 0, 'gerente não conta negócio que não é dele');
+  perform pg_temp.ok(public.minhas_conferencias_pendentes() = 0, 'aprovado, sai da contagem do gerente');
   reset role;
 end;
 $$;

@@ -546,7 +546,7 @@ export default function DealDocumentUpload({
   // Motivo e trava saem da MESMA função (coberta em `documents.test.ts`): o
   // botão só habilita quando não há o que dizer.
   const submitHint = submitBlockReason({
-    types, documents: comArquivo, hasDeveloper, closedMonth, unconfirmedMonth,
+    types, documents: comArquivo, hasDeveloper, managerCount, closedMonth, unconfirmedMonth,
   });
   const canSend = submitHint === null;
   // São TRÊS gravações em `deals` nesta aba — enviar, devolver e aprovar — e o
@@ -663,9 +663,7 @@ export default function DealDocumentUpload({
               <p className="text-xs text-muted-foreground">
                 {submitHint
                   ?? (envioMensagem.trim()
-                    ? managerCount === 0
-                      ? "Negócio sem gerente: o dossiê vai para o administrador conferir."
-                      : "Dossiê pronto para o gerente conferir."
+                    ? "Dossiê pronto para o gerente conferir."
                     : "Escreva a mensagem do envio: ela fica registrada no negócio e avisa o gerente.")}
               </p>
               <Button
@@ -734,7 +732,7 @@ export default function DealDocumentUpload({
 
         {status === "pending" && !canReview && (
           <p className="text-xs text-muted-foreground">
-            Aguardando a decisão de um gerente vinculado ao negócio{managerCount === 0 ? " ou, na falta dele, de um administrador" : ""}.
+            Aguardando a decisão de um gerente vinculado ao negócio ou, na falta dele, de um administrador.
           </p>
         )}
         {status === "approved" && (
