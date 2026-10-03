@@ -64,6 +64,26 @@ export function describeError(error: unknown, fallback: string): string {
   return BY_CODE[code] ?? fallback;
 }
 
+/**
+ * Por que a leitura falhou, para a tela dizer o que fazer (03/10/2026: um
+ * corretor ficava em "Não consegui carregar suas permissões" sem pista).
+ *  - sessao: o servidor recusou o login (PGRST30x, JWT vencido ou com data no
+ *    futuro — relógio do computador errado). Recarregar não resolve; entrar de
+ *    novo, ou acertar data e hora, resolve.
+ *  - rede: a requisição nem chegou (sem internet, antivírus, proxy).
+ *  - banco: o resto (banco lento, erro de leitura).
+ */
+export type TipoDeFalha = "sessao" | "rede" | "banco";
+
+export function tipoDaFalha(error: unknown): TipoDeFalha {
+  const source = unwrap(error);
+  const code = typeof source?.code === "string" ? source.code : "";
+  const message = `${source?.message ?? ""} ${error instanceof Error ? error.message : ""}`;
+  if (code.startsWith("PGRST3") || /\bjwt\b|jws|token is expired|issued at|\biat\b/i.test(message)) return "sessao";
+  if (error instanceof TypeError || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) return "rede";
+  return "banco";
+}
+
 function unwrap(error: unknown): DbErrorLike | null {
   if (!error || typeof error !== "object") return null;
   return (error as { db?: DbErrorLike }).db ?? (error as DbErrorLike);

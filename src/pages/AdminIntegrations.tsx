@@ -30,6 +30,7 @@ import { dateTime } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
 import { MigracaoSiteCard } from "@/components/admin/MigracaoSiteCard";
+import { FilaDeEmails } from "@/components/admin/FilaDeEmails";
 
 /**
  * Nome de secret de edge function (`OPENAI_API_KEY`). O catálogo usa "—" nos
@@ -764,7 +765,8 @@ export default function AdminIntegrations() {
                     /><EmailDaCcaSwitch tipo="pipeline" podeLigar={isAdmin}
                       brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret}
                     /><EmailDaCcaSwitch tipo="conferencia" podeLigar={isAdmin}
-                      brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret} /></>
+                      brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret}
+                    />{isAdmin && <FilaDeEmails />}</>
                   )}
                 </CardContent>
               </Card>

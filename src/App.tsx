@@ -189,7 +189,7 @@ function HomeRedirect() {
  * mas uma tela vazia sem explicação parece defeito; esta é a mensagem honesta.
  */
 function RequirePermission() {
-  const { can, loading, previewRole, perfilFalhou } = useAuth();
+  const { can, loading, previewRole, perfilFalhou, perfilFalha, signOut } = useAuth();
   const location = useLocation();
 
   if (bypassAuth) return <Outlet />;
@@ -202,10 +202,23 @@ function RequirePermission() {
       <div className="grid place-items-center py-24 text-center">
         <div className="max-w-sm space-y-3">
           <p className="text-sm font-semibold text-foreground">Não consegui carregar suas permissões</p>
-          <p className="text-xs text-muted-foreground">A conexão oscilou. Toque para tentar de novo.</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
-            Tentar de novo
-          </Button>
+          {/* O motivo muda o que fazer: sessão recusada não volta recarregando
+              (relógio do computador errado é o caso comum no app de desktop). */}
+          <p className="text-xs text-muted-foreground">
+            {perfilFalha === "sessao"
+              ? "O servidor recusou o seu acesso. Confira se a data e a hora do computador estão certas e entre de novo."
+              : perfilFalha === "rede"
+                ? "Sem conexão com o servidor. Confira a internet (ou antivírus/firewall) e tente de novo."
+                : "O servidor não respondeu a tempo. Tente de novo em instantes."}
+          </p>
+          <div className="flex justify-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+              Tentar de novo
+            </Button>
+            <Button type="button" size="sm" onClick={() => void signOut()}>
+              Sair e entrar de novo
+            </Button>
+          </div>
         </div>
       </div>
     );
