@@ -124,6 +124,8 @@ interface Props {
   onPedirConferencia?: () => void;
   /** Negócio já gravado: gerente e diretor trocam o mês-base com motivo (0201). */
   dealId?: string | null;
+  /** Negócio novo: a batida de CPF roda ao sair do campo (0205). */
+  onCpfBlur?: (cpf: string) => void;
 }
 
 /** Aba "Detalhes" do negócio: o formulário inteiro. */
@@ -221,7 +223,7 @@ export function lideresDoNegocio(people: PersonRecord[], daRpc: LiderancaSelecio
 }
 
 export function DealForm({
-  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia, dealId,
+  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia, dealId, onCpfBlur,
 }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const canExitStage = useCanExitStage();
@@ -483,7 +485,7 @@ export function DealForm({
 
       <Section title="Cliente" className="deal-tone-blue deal-field-light">
         <TextField id={field("client")} label="Cliente *" value={form.client} onChange={(v) => onChange({ client: v })} />
-        <TextField id={field("cpf")} label="CPF" value={form.cpf} onChange={(v) => onChange({ cpf: v })} />
+        <TextField id={field("cpf")} label="CPF" value={form.cpf} onChange={(v) => onChange({ cpf: v })} onBlur={onCpfBlur} />
         <TextField id={field("contato")} label="Contato" value={form.contato} onChange={(v) => onChange({ contato: v })} />
         <TextField id={field("pis")} label="Número do PIS" value={form.numero_pis} onChange={(v) => onChange({ numero_pis: v })} />
         <TextField id={field("civil")} label="Estado civil" value={form.estado_civil} onChange={(v) => onChange({ estado_civil: v })} />
@@ -499,7 +501,7 @@ export function DealForm({
       {form.has_second_client && (
         <Section title="2º cliente" className="deal-tone-gold deal-field-light">
           <TextField id={field("client2")} label="Cliente" value={form.client2} onChange={(v) => onChange({ client2: v })} />
-          <TextField id={field("cpf2")} label="CPF" value={form.cpf2} onChange={(v) => onChange({ cpf2: v })} />
+          <TextField id={field("cpf2")} label="CPF" value={form.cpf2} onChange={(v) => onChange({ cpf2: v })} onBlur={onCpfBlur} />
           <TextField id={field("contato2")} label="Contato" value={form.contato2} onChange={(v) => onChange({ contato2: v })} />
           <TextField id={field("pis2")} label="Número do PIS" value={form.numero_pis2} onChange={(v) => onChange({ numero_pis2: v })} />
           <TextField id={field("civil2")} label="Estado civil" value={form.estado_civil2} onChange={(v) => onChange({ estado_civil2: v })} />

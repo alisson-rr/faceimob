@@ -9,11 +9,17 @@ export type NegocioDoCpf = {
   deal_id: string;
   codigo: string | null;
   cliente: string | null;
-  situacao: "ativo" | "encerrado";
+  /** "distrato" (0205): já contabilizado em mês anterior, não é retomado pelo corretor. */
+  situacao: "ativo" | "encerrado" | "distrato";
   status2: string | null;
   corretor: string | null;
   gerente: string | null;
+  /** Último comentário do histórico e quando foi feito (0205). */
+  ultimo_comentario: string | null;
+  ultimo_comentario_em: string | null;
 };
+
+const SITUACOES = ["ativo", "encerrado", "distrato"] as const;
 
 export const cpfDigitos = (cpf: string | null | undefined): string => (cpf ?? "").replace(/\D/g, "");
 
@@ -27,15 +33,18 @@ const texto = (value: unknown): string | null => (typeof value === "string" && v
 export function lerNegocioDoCpf(row: unknown): NegocioDoCpf | null {
   if (!row || typeof row !== "object") return null;
   const r = row as Record<string, unknown>;
-  if (typeof r.deal_id !== "string" || (r.situacao !== "ativo" && r.situacao !== "encerrado")) return null;
+  const situacao = SITUACOES.find((s) => s === r.situacao);
+  if (typeof r.deal_id !== "string" || !situacao) return null;
   return {
     deal_id: r.deal_id,
     codigo: texto(r.codigo),
     cliente: texto(r.cliente),
-    situacao: r.situacao,
+    situacao,
     status2: texto(r.status2),
     corretor: texto(r.corretor),
     gerente: texto(r.gerente),
+    ultimo_comentario: texto(r.ultimo_comentario),
+    ultimo_comentario_em: texto(r.ultimo_comentario_em),
   };
 }
 
@@ -48,14 +57,20 @@ export async function negocioDoCpf(cpfs: string[]): Promise<NegocioDoCpf | null>
     const negocio = lerNegocioDoCpf(Array.isArray(data) ? data[0] : data);
     if (negocio) achados.push(negocio);
   }
-  return achados.find((n) => n.situacao === "ativo") ?? achados[0] ?? null;
+  return achados.find((n) => n.situacao === "ativo")
+    ?? achados.find((n) => n.situacao === "distrato")
+    ?? achados[0] ?? null;
 }
 
-/** Assume o negócio encerrado achado na batida, com comentário obrigatório. */
+/** O banco exige um comentário: sem um escrito, fica registrado o motivo padrão. */
+export const comentarioDaRetomada = (comentario: string): string =>
+  comentario.trim() || "Negociação retomada pela batida de CPF.";
+
+/** Retoma o negócio em OFF ou QUEDA achado na batida: tudo vem junto para o novo corretor. */
 export async function assumirNegocioDoCpf(dealId: string, comentario: string): Promise<void> {
   const { error } = await untyped.rpc("assumir_negocio_do_cpf", {
     p_deal_id: dealId,
-    p_comentario: comentario.trim(),
+    p_comentario: comentarioDaRetomada(comentario),
   });
   if (error) throw dbError("assumir_negocio_do_cpf", error);
 }

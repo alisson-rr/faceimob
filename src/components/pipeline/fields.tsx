@@ -27,8 +27,9 @@ export function Section({ title, className, children }: { title: string; classNa
   );
 }
 
-export function TextField({ id, label, value, onChange, type }: {
+export function TextField({ id, label, value, onChange, type, onBlur }: {
   id: string; label: string; value?: string; type?: string; onChange: (value: string) => void;
+  onBlur?: (value: string) => void;
 }) {
   return (
     <div>
@@ -36,6 +37,7 @@ export function TextField({ id, label, value, onChange, type }: {
       <Input
         id={id} type={type} value={value ?? ""} className="mt-1 text-xs"
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur ? (event) => onBlur(event.target.value) : undefined}
       />
     </div>
   );

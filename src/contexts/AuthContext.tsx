@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { getCurrentProfile } from "@/integrations/supabase/newSchema";
+import { tipoDaFalha, type TipoDeFalha } from "@/lib/supabaseError";
 import { signOutWithPush, syncPushSubscription } from "@/lib/push";
 import {
   listRolePermissions,
@@ -88,6 +89,8 @@ interface AuthContextType {
    * afirma a primeira coisa quando a verdadeira é a segunda.
    */
   perfilFalhou: boolean;
+  /** Por que a leitura falhou (`tipoDaFalha`), para a tela dizer o que fazer. */
+  perfilFalha: TipoDeFalha | null;
   isAdmin: boolean;
   loading: boolean;
   /** Papel sendo pré-visualizado por um admin, ou null. */
@@ -104,7 +107,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null, session: null, profile: null,
   role: 'broker', roles: [], realRole: 'broker', realRoles: [], realIsAdmin: false,
-  perfilFalhou: false, isAdmin: false, loading: true,
+  perfilFalhou: false, perfilFalha: null, isAdmin: false, loading: true,
   refreshProfile: async () => {},
   previewRole: null, setPreviewRole: () => {},
   can: () => false, canEnterStage: () => false,
@@ -120,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole>('broker');
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [perfilFalhou, setPerfilFalhou] = useState(false);
+  const [perfilFalha, setPerfilFalha] = useState<TipoDeFalha | null>(null);
   const [profile, setProfile] = useState<{ name: string; email: string | null; phone: string | null; avatar_url: string | null } | null>(null);
   const [rolePerms, setRolePerms] = useState<RolePermissionRecord[]>([]);
   const [stagePerms, setStagePerms] = useState<StagePermissionRecord[]>([]);
@@ -194,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole('broker');
       setRoles([]);
       setPerfilFalhou(false);
+      setPerfilFalha(null);
       setRolePerms([]);
       setStagePerms([]);
       setPreviewRoleState(null);
@@ -235,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(current.role as AppRole);
       setRoles(manter(current.roles as AppRole[]));
       setPerfilFalhou(false);
+      setPerfilFalha(null);
       setRolePerms(manter(rp));
       setStagePerms(manter(sp));
     } catch (error) {
@@ -258,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // que houve foi um erro de leitura.
       setRoles([]);
       setPerfilFalhou(true);
+      setPerfilFalha(tipoDaFalha(error));
       setRolePerms([]);
       setStagePerms([]);
     } finally {
@@ -383,12 +390,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Objeto literal a cada render mudaria o valor do contexto e re-renderizaria
   // todas as telas mesmo quando nenhum campo mudou.
   const value = useMemo<AuthContextType>(() => ({
-    user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
+    user, session, profile, perfilFalhou, perfilFalha, isAdmin, loading, refreshProfile,
     role: effectiveRole, roles: effectiveRoles, realRole: role, realRoles: roles, realIsAdmin,
     previewRole: previewRoleState, setPreviewRole,
     can, canEnterStage, signOut,
   }), [
-    user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
+    user, session, profile, perfilFalhou, perfilFalha, isAdmin, loading, refreshProfile,
     effectiveRole, effectiveRoles, role, roles, realIsAdmin,
     previewRoleState, setPreviewRole, can, canEnterStage, signOut,
   ]);
