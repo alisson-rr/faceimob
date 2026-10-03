@@ -127,7 +127,7 @@ export default function LeadFunnel({
 
   const threshold = settingsQuery.data?.overdue_block_threshold ?? 20;
   const inactivityHours = settingsQuery.data?.inactivity_alert_hours ?? 48;
-  const attendTimeout = settingsQuery.data?.attend_timeout_seconds ?? 300;
+  const attendTimeout = settingsQuery.data?.attend_timeout_seconds ?? 600;
   const timeoutsToday = profileId ? releasesQuery.data?.get(profileId) ?? 0 : 0;
 
   // Sem aviso de sucesso aqui: "Lead em atendimento" sai do realtime de
@@ -419,6 +419,9 @@ const LeadCardMini = memo(function LeadCardMini({
           <HandMetal className="h-3.5 w-3.5" /> Atender
           <AttendCountdown lead={lead} bare />
         </Button>
+      )}
+      {claimable && (
+        <p className="mt-1 text-center text-xs text-muted-foreground">Só fica seu ao clicar em "Atender"</p>
       )}
     </div>
   );

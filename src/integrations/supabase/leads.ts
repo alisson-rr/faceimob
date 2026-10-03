@@ -316,7 +316,7 @@ export type AutomationSettings = {
 };
 
 const AUTOMATION_DEFAULTS: AutomationSettings = {
-  attend_timeout_seconds: 300,
+  attend_timeout_seconds: 600,
   overdue_block_threshold: 20,
   inactivity_alert_hours: 48,
   no_response_hours: 24,
