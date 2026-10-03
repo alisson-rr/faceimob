@@ -122,7 +122,7 @@ export function FilaEmFormacao() {
           </section>
         ))}
         <p className="text-xs text-muted-foreground">
-          A vez é de quem está há mais tempo sem receber. "Abre HH:MM" = bateu ponto e entra na fila quando a
+          Ordem de chegada: quem faz check-in entra no fim e quem recebe vai para o fim. "Abre HH:MM" = bateu ponto e entra na fila quando a
           distribuição do turno abrir; bloqueado = leads atrasados acima do limite.
         </p>
       </div>

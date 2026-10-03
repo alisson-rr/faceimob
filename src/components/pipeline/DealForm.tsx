@@ -38,6 +38,7 @@ import { pct } from "./filters";
 import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
 import { offDistratoBlocked } from "./useDealActions";
 import { DOCUMENT_REVIEW_META } from "./review";
+import { MesBaseComMotivo } from "./MesBaseComMotivo";
 import { funnelStages, type PipelineStage } from "./stages";
 
 const SIM_NAO = ["NÃO", "SIM"];
@@ -121,6 +122,8 @@ interface Props {
   /** "Em análise" ou "Esteira Ágil" escolhidos por quem não os grava direto:
    *  abre o envio ao gerente em vez de trocar o Status 2 (01/10/2026). */
   onPedirConferencia?: () => void;
+  /** Negócio já gravado: gerente e diretor trocam o mês-base com motivo (0201). */
+  dealId?: string | null;
 }
 
 /** Aba "Detalhes" do negócio: o formulário inteiro. */
@@ -218,7 +221,7 @@ export function lideresDoNegocio(people: PersonRecord[], daRpc: LiderancaSelecio
 }
 
 export function DealForm({
-  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia,
+  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia, dealId,
 }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const canExitStage = useCanExitStage();
@@ -430,9 +433,19 @@ export function DealForm({
               `lock`) e o único sem frase: o mês-base define em qual ciclo o
               negócio conta e o que o fechamento congela, por isso só o admin o
               digita. Sem esta linha o campo parecia defeito. */}
-          {!isAdmin && (
+          {!isAdmin && dealId && (roles.includes("manager") || roles.includes("director")) ? (
+            <>
+            <p id={field("month-hint")} className="mt-1 text-xs text-muted-foreground">Para trocar, informe o motivo.</p>
+            <MesBaseComMotivo
+              dealId={dealId}
+              atual={form.month_base}
+              opcoes={mesesDoSeletor(form.month_base).map((mes) => ({ value: mes, label: rotuloDoMes(mes) }))}
+              onTrocado={(mes) => onChange({ month_base: mes })}
+            />
+            </>
+          ) : !isAdmin && (
             <p id={field("month-hint")} className="mt-1 text-xs text-muted-foreground">
-              Só o administrador altera o mês-base: ele decide em qual ciclo o negócio conta.
+              Só o administrador, o gerente ou o diretor altera o mês-base: ele decide em qual ciclo o negócio conta.
             </p>
           )}
         </div>

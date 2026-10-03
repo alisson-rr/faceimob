@@ -30,9 +30,9 @@ type Props = {
 /**
  * Posição do corretor na roleta (ata 23/07).
  *
- * Desde a 0014 a fila ordena pelo *fim* da última vez (`last_turn_at`), então
- * quem estoura o prazo cai para o fim — e é exatamente isso que este indicador
- * deixa visível. Sem ele, o corretor perde a vez e não entende por quê.
+ * A fila é por ordem de chegada (0200): conta o mais recente entre o check-in
+ * e o fim da última vez (`last_turn_at`, 0014), então quem recebe ou estoura o
+ * prazo cai para o fim — e é exatamente isso que este indicador deixa visível. Sem ele, o corretor perde a vez e não entende por quê.
  *
  * A fila só existe a partir da distribuição do turno (`distribution_queue`
  * filtra por `now() >= distribution_start`). Entre o check-in e essa hora ela é
@@ -158,12 +158,13 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
             </summary>
 
             {/* A ordem aparecia sem o critério: o corretor perdia a posição e
-                não entendia por quê. Desde a 0014 a fila ordena pelo FIM da
-                última vez (`last_turn_at`), então deixar o prazo vencer conta
-                como vez consumida — decisão de 30/07 com o cliente. */}
+                não entendia por quê. Desde a 0200 a fila é por ordem de chegada
+                (o mais recente entre o check-in e o fim da última vez); deixar
+                o prazo vencer conta como vez consumida (0014, 30/07). */}
             <p className="mt-2 text-xs text-muted-foreground">
-              A vez é de quem está há mais tempo sem receber. Deixar o prazo de atendimento vencer
-              conta como vez usada: o lead volta para a fila e você vai para o fim.
+              A fila é por ordem de chegada: quem faz check-in entra no fim e quem recebe um lead vai
+              para o fim. Deixar o prazo de atendimento vencer conta como vez usada: o lead volta para a
+              fila e você vai para o fim.
             </p>
             {q.entries.length > 0 && (
               <ol aria-label={`Fila ${q.groupName}`} className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
