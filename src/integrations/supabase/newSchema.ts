@@ -672,7 +672,13 @@ const legacyLeadStatus = (
   return "new";
 };
 
-export async function listLegacyLeads(): Promise<Lead[]> {
+/**
+ * Com `intervalo` (ISO, `ate` exclusivo) a lista vem inteira do período, em
+ * páginas — é o seletor de período da aba Leads do Dashboard (03/10/2026), que
+ * precisa do número exato de "mês passado" mesmo com mais de 1.000 leads.
+ */
+export async function listLegacyLeads(intervalo?: { de: string; ate: string }): Promise<Lead[]> {
+  const colunas = "id,full_name,phone,email,source_id,utm_source,assigned_to,created_at,status,funnel_stage,notes";
   const [leadsRes, sourcesRes, profilesRes] = await Promise.all([
     // `.order("id")` desempata: com `created_at` igual (importação em lote, rajada
     // do webhook da Meta) o Postgres pode devolver as linhas em ordem diferente a
@@ -687,9 +693,11 @@ export async function listLegacyLeads(): Promise<Lead[]> {
     // evoluir para contagem agrupada no banco (por mês, origem, situação e
     // corretor) quando o Dashboard tiver essa RPC. O total da base já é exato
     // em `loadDashboardPayload`.
-    db.from("leads")
-      .select("id,full_name,phone,email,source_id,utm_source,assigned_to,created_at,status,funnel_stage,notes")
-      .order("created_at", { ascending: false }).order("id"),
+    intervalo
+      ? allRows((from, to, count) => db.from("leads").select(colunas, { count })
+        .gte("created_at", intervalo.de).lt("created_at", intervalo.ate)
+        .order("created_at", { ascending: false }).order("id").range(from, to))
+      : db.from("leads").select(colunas).order("created_at", { ascending: false }).order("id"),
     db.from("lead_sources").select("id,label"),
     db.from("profiles").select("id,full_name"),
   ]);
