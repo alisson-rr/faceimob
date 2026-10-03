@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0192 — mensagens prontas: cada um vê as suas e as da equipe; só admin
+-- 0193 — mensagens prontas: cada um vê as suas e as da equipe; só admin
 -- compartilha e mexe nas compartilhadas.
 -- =============================================================================
 \set ON_ERROR_STOP on

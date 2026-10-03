@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
 import { primeiroNome, type MensagemPronta } from "./mensagensProntas";
 
-// Tabela da 0192 e `profiles.nickname` (0183), ainda fora do `types.ts` gerado.
+// Tabela da 0193 e `profiles.nickname` (0183), ainda fora do `types.ts` gerado.
 const untyped = supabase as unknown as SupabaseClient;
 const CHAVE = ["leads", "mensagens-prontas"] as const;
 

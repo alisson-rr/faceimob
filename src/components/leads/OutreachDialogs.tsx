@@ -33,7 +33,7 @@ export function WhatsAppDialog({
 
   const applyTemplate = (value: string) => {
     setTemplateId(value);
-    // Mensagem pronta (0192): primeiro nome, cumprimento pela hora e o apelido de quem manda.
+    // Mensagem pronta (0193): primeiro nome, cumprimento pela hora e o apelido de quem manda.
     if (value.startsWith("pronta:")) {
       const pronta = mensagens.find((item) => item.id === value.slice(7));
       if (pronta) setMessage(preencherMensagem(pronta.texto, { cliente: lead.name, corretor: apelido }));

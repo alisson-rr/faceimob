@@ -18,7 +18,7 @@ const VAZIO: MensagemProntaRascunho = { titulo: "", texto: "", compartilhada: fa
 /**
  * Criar, editar e excluir mensagens prontas, dentro do diálogo de WhatsApp.
  * Cada um mexe nas suas; as da equipe (compartilhadas) só admin e sócio — a
- * mesma regra da RLS da 0192, que é quem decide de verdade.
+ * mesma regra da RLS da 0193, que é quem decide de verdade.
  */
 export function MensagensProntasEditor({ mensagens, onFechar }: { mensagens: MensagemPronta[]; onFechar: () => void }) {
   const id = useId();

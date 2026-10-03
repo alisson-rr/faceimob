@@ -1,5 +1,5 @@
 /**
- * Mensagens prontas de WhatsApp (0192, pedido de 03/10/2026). Puro: o vitest
+ * Mensagens prontas de WhatsApp (0193, pedido de 03/10/2026). Puro: o vitest
  * cobre a troca das variáveis e o cumprimento pela hora.
  */
 export type MensagemPronta = {

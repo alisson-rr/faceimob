@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0192 — mensagens prontas de WhatsApp
+-- 0193 — mensagens prontas de WhatsApp
 --
 -- Pedido do cliente em 03/10/2026: ao mandar WhatsApp para o lead, escolher
 -- uma mensagem pronta com o primeiro nome do cliente, o cumprimento pela hora
@@ -54,4 +54,4 @@ create trigger mensagens_prontas_set_updated_at
   for each row execute function public.set_updated_at();
 
 comment on table public.mensagens_prontas is
-  'Mensagens prontas de WhatsApp (0192). Variáveis {primeiro_nome}, {saudacao} e {corretor} são trocadas na tela.';
+  'Mensagens prontas de WhatsApp (0193). Variáveis {primeiro_nome}, {saudacao} e {corretor} são trocadas na tela.';
