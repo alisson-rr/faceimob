@@ -3,6 +3,47 @@
 @tailwind utilities;
 
 /*
+ * Poppins, a fonte do site (tema aprovado em 03/10/2026): arquivos latinos
+ * servidos pelo proprio bundle (licenca OFL), sem Google Fonts. Pesos que as
+ * telas usam: 400 a 800 (`font-black` cai no 800).
+ */
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("./assets/fonts/poppins-latin-800.woff2") format("woff2");
+}
+
+/*
  * Tokens do design system Faceimob.
  *
  * Escuro e o padrao (`:root`); `.light` no <html> sobrepoe (useTheme.ts).
@@ -19,32 +60,32 @@
  */
 @layer base {
   :root {
-    /* Superficies em camadas — paleta do sistema anterior (Bubble), medida
-       nos prints de 26/09/2026 para a transicao nao estranhar os corretores:
-       fundo indigo quase preto (#1B1A2C) e painel um degrau acima (#202331).
-       Antes era o azul-marinho de 17/09 (217 54% 14%), mais saturado. */
-    --background: 243 26% 14%;
-    --foreground: 210 30% 96%;
-    --card: 229 21% 16%;
-    --card-foreground: 210 30% 96%;
-    --popover: 229 21% 19%;
-    --popover-foreground: 210 30% 96%;
-    --secondary: 229 19% 24%;
-    --secondary-foreground: 210 30% 96%;
-    --muted: 229 19% 21%;
-    --muted-foreground: 228 20% 76%;
-    --accent: 229 19% 26%;
-    --accent-foreground: 210 30% 96%;
-    --border: 229 19% 28%;
-    --input: 229 14% 54%;
+    /* Superficies em camadas — o azul do painel do site (aprovado em
+       03/10/2026, "uma cara so" para CRM e site), medido no print do cliente:
+       fundo #0B1525, cartao #121D33, menu #07101F. Antes era o indigo do
+       Bubble (243 26% 14%), de 26/09. */
+    --background: 217 54% 9%;
+    --foreground: 210 40% 96%;
+    --card: 220 48% 14%;
+    --card-foreground: 210 40% 96%;
+    --popover: 220 45% 16%;
+    --popover-foreground: 210 40% 96%;
+    --secondary: 220 40% 19%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 220 40% 17%;
+    --muted-foreground: 212 16% 72%;
+    --accent: 220 40% 21%;
+    --accent-foreground: 210 40% 96%;
+    --border: 219 32% 22%;
+    --input: 218 20% 46%;
     /* Brilho azul em volta dos paineis, como o "Pipeline Faceimob" do sistema
        anterior (borda #24367B). Decoracao: nao e medido como contraste. */
-    --card-glow: 228 55% 45%;
+    --card-glow: 224 42% 36%;
 
     /* Marca — subiu junto com o fundo para manter 4,5:1 sobre o cartao */
-    --primary: 213 80% 68%;
-    --primary-foreground: 222 45% 10%;
-    --ring: 213 80% 68%;
+    --primary: 215 70% 68%;
+    --primary-foreground: 220 54% 10%;
+    --ring: 215 70% 68%;
 
     /* Semanticos */
     --destructive: 358 80% 68%;
@@ -90,22 +131,22 @@
        propria (no claro e o azul da marca), entao rotulo, destaque do item
        ativo e "Sair" tem tokens proprios em vez de `muted-foreground`,
        `gold` e `destructive`, que sao medidos contra `card`. */
-    --sidebar-background: 243 26% 12%;
-    --sidebar-foreground: 210 25% 88%;
-    --sidebar-muted-foreground: 214 30% 76%;
-    --sidebar-primary: 213 80% 68%;
+    --sidebar-background: 218 63% 7%;
+    --sidebar-foreground: 210 30% 90%;
+    --sidebar-muted-foreground: 212 18% 70%;
+    --sidebar-primary: 147 33% 74%;
     --sidebar-primary-foreground: 222 45% 10%;
-    --sidebar-accent: 243 22% 19%;
-    --sidebar-accent-foreground: 210 30% 96%;
-    --sidebar-border: 243 20% 21%;
-    --sidebar-ring: 213 80% 68%;
-    --sidebar-highlight: 45 96% 62%;
+    --sidebar-accent: 196 27% 17%;
+    --sidebar-accent-foreground: 147 33% 80%;
+    --sidebar-border: 219 40% 13%;
+    --sidebar-ring: 147 33% 74%;
+    --sidebar-highlight: 147 33% 74%;
     --sidebar-destructive: 358 80% 68%;
 
-    /* 6 px, e e o raio do CAMPO (`rounded-xl`). Cartao = `rounded-2xl` = 8 px
-       (era 12 px, e 24 px antes disso; pedido de 17/09/2026, "cantos menos
-       arredondados"). A escala inteira sai daqui — veja `tailwind.config.ts`. */
-    --radius: 0.375rem;
+    /* 12 px, o raio do site (aprovado em 03/10/2026 junto com o tema azul;
+       em 17/09 tinha descido para 6 px, "cantos menos arredondados"). A
+       escala inteira sai daqui — veja `tailwind.config.ts`. */
+    --radius: 0.75rem;
   }
 
   .light {

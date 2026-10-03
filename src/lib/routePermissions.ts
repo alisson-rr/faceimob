@@ -16,6 +16,7 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   "/dashboard": "menu.dashboard",
   "/pipeline": "menu.pipeline",
   "/leads": "menu.leads",
+  "/leads/roleta": "menu.leads",
   "/atividades": "menu.atividades",
   "/cca": "menu.cca",
   "/marketing": "menu.marketing",
@@ -127,3 +128,7 @@ export const firstAllowedRoute = (can: (code: string) => boolean): string => {
   });
   return item?.url ?? "/settings";
 };
+
+/** Só corretor: nenhum papel de gestão, administração ou apoio junto. */
+export const ehSoCorretor = (roles: readonly string[]): boolean =>
+  roles.includes("broker") && roles.every((papel) => papel === "broker");

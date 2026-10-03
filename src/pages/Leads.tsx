@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, BarChart3, HandMetal, Inbox, Plus, Upload, Users, Zap } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { AlertTriangle, BarChart3, HandMetal, Inbox, Plus, Timer, Upload, Users, Zap } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState, PageHeader, SectionCard } from "@/components/shared";
@@ -344,6 +344,9 @@ export default function Leads() {
         actions={
           <>
             <ListaDeLigacaoButton />
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/leads/roleta"><Timer className="h-4 w-4" aria-hidden /> Roleta por corretor</Link>
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setShowSources((open) => !open)}>
               <BarChart3 className="h-4 w-4" /> {showSources ? "Ocultar origens" : "Origens"}
             </Button>

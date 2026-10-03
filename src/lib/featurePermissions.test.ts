@@ -175,8 +175,10 @@ describe("featurePermissions", () => {
     // `current_user` ser sempre o dono, e o guard passaria para todo mundo sem
     // nenhum sintoma. Vale para TODA versão da função no diretório — a próxima
     // reescrita também, que é o que a checagem presa a um arquivo só não pegava.
+    // `as $$` à mão, `AS $function$` quando o corpo veio de `pg_get_functiondef`
+    // (0208): sem aceitar os dois, o cabeçalho "lia" até a função seguinte.
     const definicoes = [...migrationSql.matchAll(
-      /create or replace function public\.deals_guard_status_columns\(\)([\s\S]*?)as \$\$/g,
+      /create or replace function public\.deals_guard_status_columns\(\)([\s\S]*?)as \$(?:function)?\$/gi,
     )];
     expect(definicoes.length).toBeGreaterThan(0);
     for (const [, cabecalho] of definicoes) expect(cabecalho).not.toContain("security definer");

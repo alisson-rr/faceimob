@@ -16,13 +16,14 @@ function cadeia(resultado: { data: unknown; error: unknown }) {
 describe("Central do Corretor", () => {
   beforeEach(() => schema.mockReset());
 
-  it("lê os atalhos do schema site e tira os do sistema antigo (Pipeline e app do Leadfy)", async () => {
+  it("lê os atalhos do schema site e tira os do sistema antigo e o que aponta para o próprio CRM", async () => {
     schema.mockReturnValue(cadeia({
       data: [
         { id: "1", key: "webmail", label: "Webmail", url: "https://mail", description: null },
         { id: "2", key: "pipeline", label: "Pipeline (CRM)", url: "https://bubble", description: null },
         { id: "3", key: "leads_app", label: "App de Leads", url: "https://leadfy", description: null },
         { id: "4", key: "drive", label: "Drive de Portfólio", url: "https://drive", description: null },
+        { id: "5", key: "crm", label: "CRM Faceimob", url: "https://app.faceimob.com.br/", description: null },
       ],
       error: null,
     }));
