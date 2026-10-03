@@ -1,0 +1,68 @@
+import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+/** Fila em formação: só o admin vê; ordem e situação vêm do banco (0198). */
+const m = vi.hoisted(() => ({ admin: true, linhas: [] as unknown[], rpc: vi.fn() }));
+
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ isAdmin: m.admin }) }));
+vi.mock("@/integrations/supabase/client", () => {
+  const canal = { on: () => canal, subscribe: () => canal };
+  return {
+    supabase: {
+      rpc: (...args: unknown[]) => { m.rpc(...args); return Promise.resolve({ data: m.linhas, error: null }); },
+      channel: () => canal,
+      removeChannel: () => Promise.resolve(),
+    },
+  };
+});
+
+import { FilaEmFormacao } from "./FilaEmFormacao";
+
+let root: Root | null = null;
+afterEach(() => {
+  root?.unmount();
+  root = null;
+  document.body.innerHTML = "";
+  m.rpc.mockClear();
+});
+
+function montar() {
+  const el = document.body.appendChild(document.createElement("div"));
+  root = createRoot(el);
+  root.render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <span data-pronto="" />
+      <FilaEmFormacao />
+    </QueryClientProvider>,
+  );
+  return el;
+}
+
+const linha = (nome: string, posicao: number | null, situacao: string, extra = {}) => ({
+  group_id: "g1", group_name: "Roleta Centro", profile_id: nome, full_name: nome, posicao, situacao,
+  checked_in_at: "2026-10-03T11:05:00Z", abre_as: "08:30", last_turn_at: null, atrasados: 0, ...extra,
+});
+
+describe("FilaEmFormacao", () => {
+  it("mostra ao admin a ordem, quem aguarda a abertura e quem está bloqueado", async () => {
+    m.admin = true;
+    m.linhas = [linha("Ana", 1, "aguardando"), linha("Bia", 2, "aguardando"), linha("Caio", null, "bloqueado", { atrasados: 3 })];
+    const el = montar();
+    await vi.waitFor(() => expect(el.textContent).toContain("Ana"));
+    expect(m.rpc).toHaveBeenCalledWith("fila_em_formacao");
+    const itens = [...el.querySelectorAll("li")].map((li) => li.textContent);
+    expect(itens[0]).toContain("1º");
+    expect(itens[0]).toContain("abre 08:30");
+    expect(itens[2]).toContain("3 atrasado(s)");
+    expect(el.textContent).toContain("2 corretor(es) em check-in hoje");
+  });
+
+  it("não aparece nem consulta para quem não é admin", async () => {
+    m.admin = false;
+    const el = montar();
+    await vi.waitFor(() => expect(el.querySelector("[data-pronto]")).not.toBeNull());
+    expect(el.textContent).toBe("");
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
+});
