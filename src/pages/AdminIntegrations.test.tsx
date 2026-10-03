@@ -47,6 +47,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/components/admin/FilaDeEmails", () => ({ FilaDeEmails: () => null }));
 const auth = vi.hoisted(() => ({ isAdmin: false }));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ can: (codigo: string) => codigo === "settings.integrations", isAdmin: auth.isAdmin }),
