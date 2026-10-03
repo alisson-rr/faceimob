@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, ClipboardList, MessageCircle, RefreshCw, Search, TrendingUp, Wallet } from "lucide-react";
+import { BarChart3, ClipboardList, MessageCircle, RefreshCw, Search, Target, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import { brl, num } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 import { MetaCampaignActions } from "./MetaCampaignActions";
+import { SimuladorDeVerba } from "./SimuladorDeVerba";
 import {
   ROTULO_DO_RESULTADO, linhasDoPainel, resumoDoPainel, type CampanhaDaConta, type LinhaDoPainel,
 } from "./gestaoDeAnuncios";
@@ -94,6 +95,8 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
     queryKey: ["marketing", "gestao-anuncios", periodo],
     queryFn: () => carregar(periodo),
     staleTime: 60_000,
+    // A sincronização roda de hora em hora (0197); a tela aberta pega a nova sozinha.
+    refetchInterval: 10 * 60_000,
   });
 
   const todas = useMemo(() => consulta.data?.linhas ?? [], [consulta.data]);
@@ -131,6 +134,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
   }
 
   const { cplLimite, limitePadrao, saldo, sincronizadoEm } = consulta.data;
+  const cplAcima = resumo.cpl !== null && resumo.cpl > cplLimite;
   const diasDeSaldo = saldo !== null && resumo.verbaDiaria > 0 ? Math.floor(saldo / resumo.verbaDiaria) : null;
 
   return (
@@ -142,6 +146,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
             {sincronizadoEm
               ? `Números da Meta até ${new Date(sincronizadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`
               : "Ainda sem sincronização com a Meta"}
+            {" · atualiza sozinho de hora em hora"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -168,20 +173,40 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
         />
       ) : (
         <>
-          {saldo !== null && (
-            <div className="flex items-center gap-4 rounded-2xl border border-success/40 bg-success/5 p-4">
-              <Wallet className="h-8 w-8 text-success" aria-hidden />
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* CPL em destaque (pedido de 03/10/2026): a métrica que o cliente acompanha. */}
+            <div
+              className={cn(
+                "flex items-center gap-4 rounded-2xl border p-4",
+                cplAcima ? "border-warning/50 bg-warning/10" : "border-primary/40 bg-primary/5",
+              )}
+            >
+              <Target className={cn("h-8 w-8", cplAcima ? "text-warning" : "text-primary")} aria-hidden />
               <div>
-                <p className="text-eyebrow">Saldo da conta Meta Ads</p>
-                <p className="text-2xl font-bold tabular-nums">{reais(saldo)}</p>
-                {diasDeSaldo !== null && (
-                  <p className="text-xs text-muted-foreground">
-                    ~{num(diasDeSaldo)} dia(s) de campanha com a verba diária atual ({reais(resumo.verbaDiaria)}/dia)
-                  </p>
-                )}
+                <p className="text-eyebrow">CPL R$ · {PERIODO_META_LABEL[periodo]}</p>
+                <p className={cn("text-3xl font-bold tabular-nums", cplAcima ? "text-warning" : "text-primary")}>
+                  {resumo.cpl === null ? "—" : reais(resumo.cpl)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Limite {reais(cplLimite)}{limitePadrao ? " (padrão)" : ""} · {reais(resumo.investido)} investidos
+                </p>
               </div>
             </div>
-          )}
+            {saldo !== null && (
+              <div className="flex items-center gap-4 rounded-2xl border border-success/40 bg-success/5 p-4">
+                <Wallet className="h-8 w-8 text-success" aria-hidden />
+                <div>
+                  <p className="text-eyebrow">Saldo da conta Meta Ads</p>
+                  <p className="text-2xl font-bold tabular-nums">{reais(saldo)}</p>
+                  {diasDeSaldo !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      ~{num(diasDeSaldo)} dia(s) de campanha com a verba diária atual ({reais(resumo.verbaDiaria)}/dia)
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           <KpiGrid cols={4}>
             <KpiCard label="Ativas" value={num(resumo.ativas)} icon={TrendingUp} hint={`Verba/dia ${reais(resumo.verbaDiaria)}`} />
@@ -194,6 +219,8 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
               hint={`${num(resumo.comCplAlto)} com CPL > ${reais(cplLimite)} · ${num(resumo.semLead)} sem lead`}
             />
           </KpiGrid>
+
+          <SimuladorDeVerba linhas={todas} podeGerir={podeGerir} />
 
           <div className="rounded-2xl border border-border bg-card p-3">
             <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -228,7 +255,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
                     <th className="px-3 text-right font-semibold">Budget/dia</th>
                     <th className="px-3 text-right font-semibold">Investido</th>
                     <th className="px-3 text-right font-semibold">Resultados</th>
-                    <th className="px-3 text-right font-semibold">CPL / custo</th>
+                    <th className="px-3 text-right font-semibold text-foreground">CPL R$</th>
                     <th className="px-3 text-right font-semibold">CTR</th>
                   </tr>
                 </thead>
@@ -258,7 +285,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
                       <td className="px-3 text-right tabular-nums">{reais(l.dailyBudget)}</td>
                       <td className="px-3 text-right tabular-nums">{reais(l.investido)}</td>
                       <td className="px-3 text-right font-semibold tabular-nums">{num(l.resultados)}</td>
-                      <td className={cn("px-3 text-right font-bold tabular-nums", COR_DO_CUSTO[l.alerta])}>
+                      <td className={cn("px-3 text-right text-base font-bold tabular-nums", COR_DO_CUSTO[l.alerta])}>
                         {l.custoPorResultado === null ? "—" : reais(l.custoPorResultado)}
                       </td>
                       <td className="rounded-r-xl border-r px-3 text-right tabular-nums text-muted-foreground">{pct(l.ctr)}</td>

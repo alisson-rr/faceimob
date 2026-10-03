@@ -69,6 +69,9 @@ describe("GestaoDeAnuncios", () => {
     expect(linha("PAUSADA")).toBeUndefined();
     expect(el.textContent).toContain("3 de 4");
     expect(el.textContent).toContain("Saldo da conta Meta Ads");
+    // CPL geral em destaque: 109 investidos ÷ 5 resultados, acima do limite de 12.
+    expect(el.textContent).toMatch(/CPL R\$ · .*R\$\s21,80/);
+    expect(el.textContent).toContain("Simulador de budget diário");
   });
 
   it("sem campanha sincronizada, manda conectar a Meta", async () => {

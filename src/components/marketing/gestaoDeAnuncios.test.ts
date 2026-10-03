@@ -37,7 +37,7 @@ describe("gestão de anúncios", () => {
     );
     expect(resumoDoPainel(linhas)).toMatchObject({
       ativas: 2, verbaDiaria: 70, cadastros: 5, custoPorCadastro: 18, conversas: 4, custoPorConversa: 2.5,
-      investido: 100, semLead: 1,
+      investido: 100, cpl: 100 / 9, semLead: 1,
     });
   });
 });
