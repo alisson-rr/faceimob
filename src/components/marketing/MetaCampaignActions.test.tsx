@@ -230,7 +230,8 @@ describe("MetaCampaignActions", () => {
     await vi.waitFor(() => expect(botao(dialogo()!, "Mudar verba na Meta")?.disabled).toBe(false));
     clicar(botao(dialogo()!, "Mudar verba na Meta"));
 
-    await vi.waitFor(() => expect(dialogo()?.textContent).toContain("fase de aprendizado"));
+    // O título do segundo aviso: o primeiro diálogo também mostra a variação ao digitar.
+    await vi.waitFor(() => expect(dialogo()?.textContent).toContain("volta para a fase de aprendizado"));
     expect(dialogo()!.textContent).toContain("+50%");
     expect(m.invoke).toHaveBeenNthCalledWith(1, "meta-campaign-action", {
       body: { campaign_id: "camp-1", acao: "verba", verba_diaria: 150 },
@@ -274,5 +275,51 @@ describe("MetaCampaignActions", () => {
     });
     expect(m.toast.success).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("compacto: +20% abre a confirmação já preenchida e manda o degrau sem aviso de aprendizado", async () => {
+    m.invoke.mockResolvedValue(feito("executada"));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    root.render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MetaCampaignActions compacto campaign={campanha({ dailyBudget: 50 })} onDone={onDone} />
+      </QueryClientProvider>,
+    );
+    const el = container;
+    await vi.waitFor(() => expect(el.querySelector('[aria-label^="Subir 20%"]')).not.toBeNull());
+    clicar(el.querySelector<HTMLButtonElement>('[aria-label^="Subir 20%"]') ?? undefined);
+    await vi.waitFor(() => expect(dialogo()?.querySelector("input")?.value).toBe("60,00"));
+    expect(dialogo()!.textContent).toContain("sem reiniciar o aprendizado");
+    clicar(botao(dialogo()!, "Mudar verba na Meta"));
+    await vi.waitFor(() => expect(m.invoke).toHaveBeenCalledWith("meta-campaign-action", {
+      body: { campaign_id: "camp-1", acao: "verba", verba_diaria: 60 },
+    }));
+  });
+
+  it("compacto: renomear manda o nome novo aparado e não aceita o mesmo nome", async () => {
+    m.invoke.mockResolvedValue(feito("executada"));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    root.render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MetaCampaignActions compacto campaign={campanha()} onDone={onDone} />
+      </QueryClientProvider>,
+    );
+    const el = container;
+    await vi.waitFor(() => expect(el.querySelector('[aria-label^="Renomear"]')).not.toBeNull());
+    clicar(el.querySelector<HTMLButtonElement>('[aria-label^="Renomear"]') ?? undefined);
+    await vi.waitFor(() => expect(dialogo()?.querySelector("input")).not.toBeNull());
+    expect(botao(dialogo()!, "Renomear na Meta")?.disabled).toBe(true);
+    digitar(dialogo()!.querySelector("input")!, "  [FORM] Novo nome  ");
+    await vi.waitFor(() => expect(botao(dialogo()!, "Renomear na Meta")?.disabled).toBe(false));
+    clicar(botao(dialogo()!, "Renomear na Meta"));
+    await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(m.invoke).toHaveBeenCalledWith("meta-campaign-action", {
+      body: { campaign_id: "camp-1", acao: "renomear", nome: "[FORM] Novo nome" },
+    });
+    expect(m.toast.success).toHaveBeenCalledWith("Campanha renomeada na Meta", { description: "Novo nome: [FORM] Novo nome" });
   });
 });

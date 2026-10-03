@@ -86,6 +86,8 @@ export type ResumoDoPainel = {
   conversas: number;
   custoPorConversa: number | null;
   investido: number;
+  /** CPL geral do período: todo o investimento sobre todos os resultados. */
+  cpl: number | null;
   comCplAlto: number;
   semLead: number;
 };
@@ -100,6 +102,8 @@ export function resumoDoPainel(linhas: LinhaDoPainel[]): ResumoDoPainel {
   const conversas = soma(whats, (l) => l.resultados);
   const gastoForm = soma(form, (l) => l.investido);
   const gastoWhats = soma(whats, (l) => l.investido);
+  const investido = soma(() => true, (l) => l.investido);
+  const resultados = soma(() => true, (l) => l.resultados);
   return {
     ativas: ativas.length,
     verbaDiaria: ativas.reduce((total, l) => total + (l.dailyBudget ?? 0), 0),
@@ -107,7 +111,8 @@ export function resumoDoPainel(linhas: LinhaDoPainel[]): ResumoDoPainel {
     custoPorCadastro: cadastros > 0 ? gastoForm / cadastros : null,
     conversas,
     custoPorConversa: conversas > 0 ? gastoWhats / conversas : null,
-    investido: soma(() => true, (l) => l.investido),
+    investido,
+    cpl: resultados > 0 ? investido / resultados : null,
     comCplAlto: linhas.filter((l) => l.alerta === "cpl_alto").length,
     semLead: linhas.filter((l) => l.alerta === "sem_lead").length,
   };

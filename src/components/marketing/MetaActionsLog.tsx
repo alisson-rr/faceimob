@@ -32,7 +32,8 @@ type LinhaAcao = {
   campaign_name: string | null;
   campaign_external_id: string;
   origem: "manual" | "ia";
-  acao: "pausar" | "ativar" | "verba";
+  acao: "pausar" | "ativar" | "verba" | "renomear";
+  nome_novo: string | null;
   verba_anterior: number | null;
   verba_nova: number | null;
   status: string;
@@ -62,7 +63,7 @@ async function lerHistorico(): Promise<Historico> {
   const { data, error } = await untyped
     .from("meta_actions")
     .select(
-      "id, created_at, decided_at, executed_at, campaign_name, campaign_external_id, origem, acao, verba_anterior, verba_nova, status, requested_by, decided_by, motivo, resultado, erro",
+      "id, created_at, decided_at, executed_at, campaign_name, campaign_external_id, origem, acao, nome_novo, verba_anterior, verba_nova, status, requested_by, decided_by, motivo, resultado, erro",
     )
     .neq("status", "proposta")
     .order("created_at", { ascending: false })
@@ -85,6 +86,8 @@ async function lerHistorico(): Promise<Historico> {
 }
 
 function oQue(l: LinhaAcao): string {
+  // campaign_name é a foto de antes: na troca de nome, o nome antigo.
+  if (l.acao === "renomear") return `Nome trocado para "${l.nome_novo ?? "—"}"`;
   if (l.acao !== "verba") {
     const antes = l.resultado?.antes?.status;
     const verbo = l.acao === "pausar" ? "Pausar" : "Ativar";

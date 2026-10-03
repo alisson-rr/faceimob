@@ -107,7 +107,8 @@ export function resumoDaLeadfy(linhas: LinhaLeadfy[]): ResumoLeadfy {
     if (l.corretor) corretores.add(l.corretor);
     const status = l.status ?? "Sem status";
     porStatus[status] = (porStatus[status] ?? 0) + 1;
-    if (l.status === "Em negociação") {
+    // "Novo" com corretor também vai para ele desde a 0194.
+    if (l.status === "Em negociação" || l.status === "Novo") {
       const nome = l.corretor ?? "Sem corretor";
       corretoresEmNegociacao[nome] = (corretoresEmNegociacao[nome] ?? 0) + 1;
     }

@@ -19,6 +19,9 @@ import { ordenarRanking } from "../ranking";
 
 export type ItemDoGame = { code: string; label: string; points: number };
 
+/** Códigos lançados sem regra de pontuação (0195: pontos do sistema anterior). */
+const ROTULO_SEM_REGRA: Record<string, string> = { migracao: "Pontos do sistema anterior" };
+
 export function itensDoGame(
   ranking: RankingRow[],
   regras: ScoringRule[],
@@ -43,7 +46,7 @@ export function itensDoGame(
   const itens = [...codigos]
     .map((code) => ({
       code,
-      label: regraPorCodigo.get(code)?.label ?? code,
+      label: regraPorCodigo.get(code)?.label ?? ROTULO_SEM_REGRA[code] ?? code,
       points: somas.get(code) ?? 0,
       peso: regraPorCodigo.get(code)?.points ?? Number.POSITIVE_INFINITY,
     }))

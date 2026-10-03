@@ -115,8 +115,8 @@ export function ImportarLeadfyCard() {
     <SectionCard title="Importar base da Leadfy">
       <div className="space-y-3 text-sm">
         <p className="text-muted-foreground">
-          Suba a exportação "Leads Todos" da Leadfy. Em negociação com corretor ativo no CRM vira atendimento dele;
-          o resto (arquivados, novos e corretores que não estão no CRM) fica na base, para exportação. Telefone ou
+          Suba a exportação "Leads Todos" da Leadfy. Em negociação ou novo com corretor ativo no CRM vira atendimento dele;
+          o resto (arquivados e corretores que não estão no CRM) fica na base, para exportação. Telefone ou
           e-mail que já existe no CRM não é duplicado, e repetir a mesma planilha é seguro.
         </p>
         <label htmlFor={`${id}-arquivo`} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-input px-3 py-2 hover:bg-muted">
@@ -134,7 +134,7 @@ export function ImportarLeadfyCard() {
               {Object.entries(resumo.porStatus).map(([s, n]) => `${s}: ${num(n)}`).join(" · ")}
             </p>
             <p>
-              Em negociação: <strong>{num(emAtendimentoPrevisto)}</strong> vão para {num(casados.length)} corretor(es) do CRM.
+              Para os corretores (em negociação e novos): <strong>{num(emAtendimentoPrevisto)}</strong> vão para {num(casados.length)} corretor(es) do CRM.
               {semCorretor.length > 0 && ` ${num(semCorretor.reduce((t, c) => t + c.leads, 0))} ficam na base (nome sem corretor ativo no CRM).`}
             </p>
             {casados.length > 0 && (
