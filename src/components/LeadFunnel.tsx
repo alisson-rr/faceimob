@@ -13,10 +13,11 @@ import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import LeadDetailModal from "./LeadDetailModal";
 import {
-  LeadsIndicadores, leadMetrics, leadsDoCorretor, podeVerPorCorretor,
+  LeadsIndicadores, leadsDoCorretor, podeVerPorCorretor,
   useAssignableBrokers, useAutomationSettings, useInvalidateLeads, useLeads, useLeadsRealtime, useNowTicker,
-  useOpenLeads, useTimeoutReleasesToday, waNumber,
+  useOpenLeads, useTimeoutReleasesToday, useWhatsappTemplates, waNumber,
 } from "@/components/leads";
+import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
 import { AttendCountdown } from "@/components/leads/LeadsTable";
 import { sameLeadProps } from "@/components/leads/sameLeadProps";
@@ -70,6 +71,9 @@ export default function LeadFunnel({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overdueOpen, setOverdueOpen] = useState(false);
+  // WhatsApp com mensagem pronta (03/10/2026) em vez de abrir a conversa vazia.
+  const [whatsappId, setWhatsappId] = useState<string | null>(null);
+  const templatesQuery = useWhatsappTemplates();
 
   const leads = useMemo(() => leadsDoCorretor(leadsQuery.data ?? [], broker), [leadsQuery.data, broker]);
   const base = useMemo(() => leadsDoCorretor(baseQuery.data ?? [], broker), [baseQuery.data, broker]);
@@ -117,7 +121,8 @@ export default function LeadFunnel({
     [leads, selectedId],
   );
 
-  const metrics = useMemo(() => leadMetrics(base, now, profileId), [base, now, profileId]);
+
+  const whatsappLead = whatsappId ? leads.find((lead) => lead.id === whatsappId) ?? null : null;
 
   const threshold = settingsQuery.data?.overdue_block_threshold ?? 20;
   const inactivityHours = settingsQuery.data?.inactivity_alert_hours ?? 48;
@@ -166,7 +171,6 @@ export default function LeadFunnel({
         {baseQuery.data && (
           <LeadsIndicadores
             leads={base}
-            metrics={metrics}
             broker={broker}
             onBroker={setBroker}
             brokers={verPorCorretor ? brokersQuery.data ?? [] : []}
@@ -229,6 +233,7 @@ export default function LeadFunnel({
                     stageTone={stage.tone}
                     onOpen={setSelectedId}
                     onAttend={onAttend}
+                    onWhatsApp={setWhatsappId}
                   />
                 ))}
                 {items.length === 0 && (
@@ -239,6 +244,14 @@ export default function LeadFunnel({
           );
         })}
       </div>
+
+      {whatsappLead && (
+        <WhatsAppDialog
+          lead={whatsappLead}
+          templates={templatesQuery.data ?? []}
+          onClose={() => setWhatsappId(null)}
+        />
+      )}
 
       <LeadDetailModal
         lead={selected}
@@ -315,7 +328,7 @@ export default function LeadFunnel({
  * "novo", "inativo" e o "há X minutos" precisam andar a cada tique de 30 s.
  */
 const LeadCardMini = memo(function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend,
+  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend, onWhatsApp,
 }: {
   lead: LeadRecord;
   now: number;
@@ -328,6 +341,7 @@ const LeadCardMini = memo(function LeadCardMini({
   stageTone: LeadTone;
   onOpen: (leadId: string) => void;
   onAttend: (lead: LeadRecord) => void;
+  onWhatsApp: (leadId: string) => void;
 }) {
   const isBrandNew = now - new Date(lead.created_at).getTime() < attendTimeout * 1000;
   const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
@@ -386,10 +400,7 @@ const LeadCardMini = memo(function LeadCardMini({
           <Button
             variant="ghost" size="icon" className="ml-auto h-7 w-7 text-success hover:text-success"
             aria-label={`Abrir WhatsApp de ${lead.name}`}
-            onClick={() => {
-              window.open(`https://wa.me/${number}`, "_blank", "noopener");
-              toast("WhatsApp aberto", { description: `Conversa com ${lead.name}.`, duration: 2500 });
-            }}
+            onClick={() => onWhatsApp(lead.id)}
           >
             <MessageCircle className="h-4 w-4" />
           </Button>

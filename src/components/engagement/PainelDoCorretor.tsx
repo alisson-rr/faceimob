@@ -101,7 +101,9 @@ export default function PainelDoCorretor({ open, onOpenChange, pipeline }: Paine
 
         {/* O conteúdo é um filho para os hooks dele só rodarem com o modal
             ABERTO: o Radix não monta o portal enquanto fechado. */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        {/* No computador o Painel cabe na tela (03/10/2026): só cada coluna rola
+            por dentro, se precisar. No celular continua rolando inteiro. */}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 lg:flex lg:flex-col lg:space-y-0 lg:gap-3 lg:overflow-hidden">
           {pipeline && <ResultadosDoPipeline {...pipeline} />}
           <Colunas deals={pipeline?.deals} />
         </div>
@@ -118,7 +120,7 @@ export default function PainelDoCorretor({ open, onOpenChange, pipeline }: Paine
 
 function Colunas({ deals }: { deals?: LegacyDealRecord[] }) {
   return (
-    <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:grid-cols-3 lg:overflow-hidden">
+    <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
       <Pontuacao />
       <Mural />
       <Destaques deals={deals} />
@@ -129,8 +131,8 @@ function Colunas({ deals }: { deals?: LegacyDealRecord[] }) {
 /** Caixa comum das três colunas: título âmbar e o conteúdo logo abaixo, como no print. */
 function Caixa({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
-    <section className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-4 text-card-foreground">
-      <h3 className="mb-3 font-display text-sm font-bold text-warning">{titulo}</h3>
+    <section className="flex min-h-0 flex-col rounded-2xl border border-border bg-card p-3 text-card-foreground">
+      <h3 className="mb-2 font-display text-sm font-bold text-warning">{titulo}</h3>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </section>
   );
@@ -202,20 +204,20 @@ function Pontuacao() {
 
   return (
     <Caixa titulo={titulo}>
-      <p className="mb-4 font-display text-2xl font-bold tabular-nums text-gold">{num(total)} pts</p>
-      <ul className="space-y-4">
+      <p className="mb-2 font-display text-xl font-bold tabular-nums text-gold">{num(total)} pts</p>
+      <ul className="space-y-2">
         {itens.map((item) => {
           // Piso de 4% para valor > 0: um item pequeno ao lado de uma venda
           // some no trilho. Zero e negativo (distrato) ficam sem preenchimento
           // — o número ao lado diz o resto.
           const pct = item.points > 0 ? Math.max(4, Math.round((item.points / maior) * 100)) : 0;
           return (
-            <li key={item.code} className="space-y-1.5">
-              <p className="text-sm font-semibold text-foreground">{item.label}</p>
+            <li key={item.code} className="space-y-0.5">
+              <p className="text-xs font-semibold text-foreground">{item.label}</p>
               <div className="flex items-center gap-2">
                 <div
                   aria-hidden
-                  className="h-3 min-w-0 flex-1 overflow-hidden rounded-sm border border-border bg-muted"
+                  className="h-2 min-w-0 flex-1 overflow-hidden rounded-sm border border-border bg-muted"
                 >
                   <div
                     className={cn(
@@ -275,7 +277,7 @@ function Mural() {
 
   return (
     <Caixa titulo="Recados Faceimob">
-      <div className="space-y-4">
+      <div className="space-y-3">
         {recados.length === 0 && (
           <p className="text-sm text-muted-foreground">Nenhum recado publicado no momento.</p>
         )}
@@ -394,28 +396,26 @@ function Destaques({ deals }: { deals?: LegacyDealRecord[] }) {
       );
     }
 
-    const listaDoGrupo = (grupo: (typeof grupos)[number]) => (
-      <ol className="space-y-3">
-        {grupo.linhas.map((linha, i) => {
+    const linhaDoPlacar = (linha: (typeof ordenado)[number], i: number) => {
           const eu = linha.profile_id === user?.id;
           const nome = exibir(linha.display_name || linha.full_name);
           const mostraContagem = contagem && (gestor || eu);
           return (
             <li
               key={linha.profile_id}
-              className={cn("flex items-center gap-3 rounded-lg", eu && "bg-primary/10 p-1.5 ring-1 ring-primary/40")}
+              className="flex items-center gap-2"
               aria-label={`${i + 1}º lugar: ${nome}${eu ? " (você)" : ""}, ${num(linha.points)} pontos`}
             >
               {MEDALHA_DO_PODIO[i] ? (
-                <img src={MEDALHA_DO_PODIO[i]} alt="" aria-hidden className="-my-1 h-12 w-12 shrink-0 object-contain" />
+                <img src={MEDALHA_DO_PODIO[i]} alt="" aria-hidden className="-my-1 h-9 w-9 shrink-0 object-contain" />
               ) : (
-                <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center text-base font-bold tabular-nums text-muted-foreground">
+                <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center text-sm font-bold tabular-nums text-muted-foreground">
                   {i + 1}º
                 </span>
               )}
               <Avatar
                 className={cn(
-                  "h-10 w-10 shrink-0 ring-2 ring-offset-2 ring-offset-card",
+                  "h-8 w-8 shrink-0 ring-2 ring-offset-2 ring-offset-card",
                   podiumRingClass(i),
                 )}
               >
@@ -425,8 +425,10 @@ function Destaques({ deals }: { deals?: LegacyDealRecord[] }) {
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground">
-                  {nome}{eu && <span className="ml-1 text-xs font-normal text-primary">(você)</span>}
+                {/* Quem olha é destacado só na cor do texto (03/10/2026): a faixa
+                    azul quebrava o alinhamento com as outras linhas. */}
+                <p className={cn("text-sm font-semibold", eu ? "text-warning" : "text-foreground")}>
+                  {nome}{eu && <span className="ml-1 text-xs font-normal">(você)</span>}
                 </p>
                 {mostraContagem && (
                   <p className="text-xs tabular-nums text-muted-foreground">
@@ -434,13 +436,29 @@ function Destaques({ deals }: { deals?: LegacyDealRecord[] }) {
                   </p>
                 )}
               </div>
-              <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+              <span className={cn("shrink-0 text-sm font-semibold tabular-nums", eu ? "text-warning" : "text-foreground")}>
                 {num(linha.points)} pts
               </span>
             </li>
           );
-        })}
-      </ol>
+    };
+
+    // Pódio aberto e o resto recolhido (03/10/2026): "Ver os demais" expande.
+    const listaDoGrupo = (grupo: (typeof grupos)[number]) => (
+      <div className="space-y-2">
+        <ol className="space-y-2">{grupo.linhas.slice(0, 3).map((linha, i) => linhaDoPlacar(linha, i))}</ol>
+        {grupo.linhas.length > 3 && (
+          <details className="group/demais">
+            <summary className="cursor-pointer list-none text-xs font-semibold text-primary hover:underline [&::-webkit-details-marker]:hidden">
+              <span className="group-open/demais:hidden">Ver os demais ({grupo.linhas.length - 3})</span>
+              <span className="hidden group-open/demais:inline">Ver menos</span>
+            </summary>
+            <ol start={4} className="mt-2 space-y-2">
+              {grupo.linhas.slice(3).map((linha, i) => linhaDoPlacar(linha, i + 3))}
+            </ol>
+          </details>
+        )}
+      </div>
     );
 
     return (
