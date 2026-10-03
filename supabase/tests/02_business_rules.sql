@@ -206,6 +206,11 @@ declare
 begin
   select id into grupo from public.distribution_groups where kind = 'general' limit 1;
 
+  -- Os dois bateram ponto há 1 hora: desde a 0200 a fila conta a partir do
+  -- mais recente entre o check-in e o fim da última vez.
+  update public.checkins set checked_in_at = now() - interval '1 hour'
+   where profile_id in (c1, c2) and work_date = public.current_work_date();
+
   -- c1 recebeu há 10 min e perdeu o lead no prazo há 1 min.
   update public.lead_assignments
      set assigned_at = now() - interval '10 minutes'

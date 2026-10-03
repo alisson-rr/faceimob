@@ -434,6 +434,7 @@ export default function DealDetailModal({
                 people={people} developers={developers} stages={stages} isNew={isNew}
                 developerError={developerError}
                 onPedirConferencia={() => setConferencia({ enviando: false, erro: null })}
+                dealId={isNew ? null : dealId}
               />
               {isNew && (
                 <div className="mt-4 space-y-1.5">

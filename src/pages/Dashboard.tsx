@@ -37,6 +37,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { num } from "@/lib/format";
 import { LeadershipReport } from "@/components/dashboard/LeadershipReport";
+import { ResumoDaDiretoria } from "@/components/dashboard/ResumoDaDiretoria";
 
 /**
  * Primeira tela depois do login: a leitura do mes em indicadores, graficos e
@@ -307,6 +308,9 @@ export default function Dashboard() {
               </div>
               <DeveloperOverview rows={view.developers} />
               {payload && <LeadershipReport deals={deals} people={payload.people} month={activeMonth} />}
+              {/* A diretoria inteira para o gerente (03/10/2026): a RLS só lhe
+                  entrega a própria equipe, os números vêm agregados (0202). */}
+              <ResumoDaDiretoria month={activeMonth} />
               {/* Histórico: recebe `deals` inteiro, não `view.rows`. A grade
                   compara ano com ano e ignora o filtro de período do topo — o
                   mesmo acordo do `MonthlyTrend`. */}
