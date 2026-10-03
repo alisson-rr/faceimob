@@ -417,7 +417,6 @@ export default function Leads() {
 
           <LeadsIndicadores
             leads={doCorretor}
-            metrics={metrics}
             broker={filters.broker}
             onBroker={(broker) => setFilters((f) => ({ ...f, broker }))}
             brokers={verPorCorretor ? brokersQuery.data ?? [] : []}

@@ -353,8 +353,19 @@ export function useDashboardLeads() {
   return useQuery({
     // Mesmo motivo do payload: `leads_select` recorta por usuario.
     queryKey: ["dashboard", "leads", profileId],
-    queryFn: listLegacyLeads,
+    queryFn: () => listLegacyLeads(),
     enabled: !!profileId,
+  });
+}
+
+/** Os leads de um intervalo (seletor de período da aba Leads), contados no banco. */
+export function useDashboardLeadsNoIntervalo(intervalo: { de: string; ate: string } | null) {
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+  return useQuery({
+    queryKey: ["dashboard", "leads", profileId, "intervalo", intervalo?.de ?? null, intervalo?.ate ?? null],
+    queryFn: () => listLegacyLeads(intervalo ?? undefined),
+    enabled: !!profileId && !!intervalo,
   });
 }
 

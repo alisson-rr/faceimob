@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { KpiCard, KpiGrid } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dealsForLeader } from "@/components/pipeline/filters";
@@ -64,7 +63,7 @@ export function ResultadosDoPipeline({ deals, people, loading, error, onOpen }: 
   }, 0);
   const managers = people.filter((p) => p.id !== ownId && p.director_id === ownId && p.roles.includes("manager"));
   const scopeName = isAdmin ? "Empresa" : director ? "Sua diretoria" : manager ? "Sua equipe" : "Seus resultados";
-  return <section className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3" aria-label="Resultados e propostas">
+  return <section className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3" aria-label="Resultados e propostas">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h3 className="font-display font-bold">{scopeName}</h3>
         <p className="text-xs text-muted-foreground">Mês vigente · {monthLabel}</p></div>
@@ -78,13 +77,21 @@ export function ResultadosDoPipeline({ deals, people, loading, error, onOpen }: 
     {error || scored.isError ? <p role="alert" className="text-sm text-destructive">Não foi possível carregar os resultados e propostas do game.</p>
       : loading || scored.isPending ? <p role="status" className="text-sm text-muted-foreground">Carregando resultados do mês…</p>
       : <>
-        <KpiGrid cols={4}>
-          <KpiCard label="Negócios" value={num(scoped.length)} />
-          <KpiCard label="Propostas em andamento" value={num(proposals.length)} />
-          <KpiCard label="Vendas" value={num(sales.length)} />
-          <KpiCard label={isAdmin || director || manager ? "VGV vendido" : "Seu VGV vendido"} value={brl(vgv)} variant="highlight" />
-        </KpiGrid>
-        <details className="rounded-lg border border-border bg-card p-3">
+        {/* Blocos baixos (03/10/2026): os KpiCards grandes faziam o Painel rolar. */}
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {([
+            ["Negócios", num(scoped.length), false],
+            ["Propostas em andamento", num(proposals.length), false],
+            ["Vendas", num(sales.length), false],
+            [isAdmin || director || manager ? "VGV vendido" : "Seu VGV vendido", brl(vgv), true],
+          ] as const).map(([rotulo, valor, destaque]) => (
+            <div key={rotulo} className={`rounded-lg border bg-card px-3 py-2 ${destaque ? "border-gold/50" : "border-border"}`}>
+              <dt className="text-eyebrow">{rotulo}</dt>
+              <dd className={`text-lg font-bold tabular-nums ${destaque ? "text-gold" : ""}`}>{valor}</dd>
+            </div>
+          ))}
+        </dl>
+        <details className="rounded-lg border border-border bg-card px-3 py-2">
           <summary className="cursor-pointer text-sm font-semibold">Suas propostas que pontuaram ({proposals.length})</summary>
           <div className="mt-2 max-h-64 space-y-2 overflow-y-auto">
             {proposals.slice(0, limit).map((d) => <button type="button" key={d.id} onClick={() => onOpen(d)}

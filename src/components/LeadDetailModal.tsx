@@ -33,6 +33,7 @@ import {
   type LeadFunnelStage, type LeadPatch,
 } from "@/integrations/supabase/leads";
 import { toDateTimeInput } from "@/components/leads";
+import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
 
 type EditableField = "full_name" | "phone" | "email" | "document";
 
@@ -81,6 +82,8 @@ export default function LeadDetailModal({
   // lista de Leads e pelo funil, e a próxima ação (que decide o bloqueio dos
   // 20) não pode existir num host e faltar no outro.
   const [askNextAction, setAskNextAction] = useState(false);
+  // Mensagem pronta antes de abrir o WhatsApp (03/10/2026).
+  const [whatsappAberto, setWhatsappAberto] = useState(false);
   // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -320,8 +323,8 @@ export default function LeadDetailModal({
             </Button>
           )}
           {!claimable && waLink && (
-            <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" asChild onClick={contactClick}>
-              <a href={waLink} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+            <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" onClick={() => setWhatsappAberto(true)}>
+              <MessageCircle className="h-4 w-4" /> WhatsApp
             </Button>
           )}
           {!claimable && lead.phone && (
@@ -598,6 +601,10 @@ export default function LeadDetailModal({
           onClose={() => setClosing(false)}
           onClosed={() => { onStageChanged?.(); onOpenChange(false); }}
         />
+      )}
+
+      {whatsappAberto && (
+        <WhatsAppDialog lead={lead} onClose={() => setWhatsappAberto(false)} onSent={() => void contactClick()} />
       )}
     </Dialog>
   );

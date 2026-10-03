@@ -3,19 +3,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
 import type { LeadRecord } from "@/integrations/supabase/leads";
 import { num } from "@/lib/format";
-import { LeadsSummary } from "./LeadsSummary";
-import { leadsPorPeriodo, type LeadMetrics } from "./model";
+import { leadsPorPeriodo } from "./model";
 
 /**
- * Leads de hoje, da semana e do mês, o "Ver por corretor" e a régua de KPIs.
+ * Leads de hoje, da semana e do mês e o "Ver por corretor". A régua de KPIs
+ * (total, fila, em atendimento…) saiu em 03/10/2026: ocupava a tela do celular.
  * Mesmo bloco na tela de Leads e na aba Leads do Pipeline: `leads` já chega
  * recortado pelo corretor escolhido, para os números falarem dele.
  */
 export function LeadsIndicadores({
-  leads, metrics, broker, onBroker, brokers, canViewQueue,
+  leads, broker, onBroker, brokers, canViewQueue,
 }: {
   leads: LeadRecord[];
-  metrics: LeadMetrics;
   broker: string;
   onBroker: (broker: string) => void;
   /** Vazio esconde o seletor. */
@@ -34,9 +33,9 @@ export function LeadsIndicadores({
       <section aria-label="Leads recebidos" className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center">
         <div className="grid flex-1 grid-cols-3 gap-3">
           {([["Hoje", porPeriodo.hoje], ["Esta semana", porPeriodo.semana], ["Este mês", porPeriodo.mes]] as const).map(([rotulo, valor]) => (
-            <div key={rotulo} className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
+            <div key={rotulo} className="rounded-xl border border-primary/25 bg-primary/5 px-2 py-1.5 sm:px-3 sm:py-2">
               <p className="text-eyebrow">Leads · {rotulo}</p>
-              <p className="text-2xl font-bold tabular-nums">{num(valor)}</p>
+              <p className="text-xl font-bold tabular-nums sm:text-2xl">{num(valor)}</p>
             </div>
           ))}
         </div>
@@ -56,8 +55,6 @@ export function LeadsIndicadores({
           </div>
         )}
       </section>
-
-      <LeadsSummary metrics={metrics} canViewQueue={canViewQueue} />
     </>
   );
 }

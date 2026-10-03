@@ -1,29 +1,45 @@
 import { useId, useState } from "react";
-import { Mail, MessageCircle, Send } from "lucide-react";
+import { Mail, MessageCircle, Send, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { emailTemplates, renderTemplate } from "@/lib/automationEngine";
 import type { LeadRecord, WhatsappTemplate } from "@/integrations/supabase/leads";
 import { fillWhatsappTemplate, waNumber } from "./model";
+import { preencherMensagem } from "./mensagensProntas";
+import { useMensagensProntas, useMeuApelido } from "./mensagensProntasData";
+import { MensagensProntasEditor } from "./MensagensProntasEditor";
 
 /** Abre o WhatsApp Web com a mensagem pronta — o envio é no aplicativo. */
 export function WhatsAppDialog({
-  lead, templates, onClose,
+  lead, templates = [], onClose, onSent,
 }: {
   lead: LeadRecord;
-  templates: WhatsappTemplate[];
+  templates?: WhatsappTemplate[];
   onClose: () => void;
+  /** Só no envio, não no cancelar: a ficha do lead marca o primeiro contato. */
+  onSent?: () => void;
 }) {
   const fieldId = useId();
   const [templateId, setTemplateId] = useState("");
   const [message, setMessage] = useState("");
+  const [gerenciando, setGerenciando] = useState(false);
+  const prontas = useMensagensProntas();
+  const apelido = useMeuApelido();
+  const mensagens = prontas.data ?? [];
 
-  const applyTemplate = (id: string) => {
-    setTemplateId(id);
+  const applyTemplate = (value: string) => {
+    setTemplateId(value);
+    // Mensagem pronta (0193): primeiro nome, cumprimento pela hora e o apelido de quem manda.
+    if (value.startsWith("pronta:")) {
+      const pronta = mensagens.find((item) => item.id === value.slice(7));
+      if (pronta) setMessage(preencherMensagem(pronta.texto, { cliente: lead.name, corretor: apelido }));
+      return;
+    }
+    const id = value.slice("meta:".length);
     const template = templates.find((item) => item.id === id);
     if (!template) return;
     const broker = lead.broker_name || "Faceimob";
@@ -54,6 +70,7 @@ export function WhatsAppDialog({
     }
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, "_blank", "noopener");
     toast({ title: "WhatsApp aberto", description: `Mensagem preparada para ${lead.name}.` });
+    onSent?.();
     onClose();
   };
 
@@ -67,17 +84,40 @@ export function WhatsAppDialog({
           <DialogDescription>A mensagem abre no WhatsApp; o envio continua sendo seu.</DialogDescription>
         </DialogHeader>
 
+        {gerenciando ? (
+          <MensagensProntasEditor mensagens={mensagens} onFechar={() => setGerenciando(false)} />
+        ) : (
+        <>
         <div className="space-y-1.5">
-          <Label htmlFor={fieldId}>Template</Label>
-          {templates.length === 0 ? (
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor={fieldId}>Mensagem pronta</Label>
+            <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setGerenciando(true)}>
+              <Settings2 className="h-3.5 w-3.5" aria-hidden /> Criar e editar
+            </Button>
+          </div>
+          {mensagens.length === 0 && templates.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nenhum template cadastrado. Cadastre os templates ativos no módulo SDR IA (aba WhatsApp).
+              Nenhuma mensagem pronta ainda. Clique em "Criar e editar" para montar a sua, com o nome do cliente, o
+              cumprimento pela hora e o seu apelido.
             </p>
           ) : (
             <Select value={templateId} onValueChange={applyTemplate}>
-              <SelectTrigger id={fieldId}><SelectValue placeholder="Selecione um template" /></SelectTrigger>
+              <SelectTrigger id={fieldId}><SelectValue placeholder="Escolha uma mensagem" /></SelectTrigger>
               <SelectContent>
-                {templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}
+                {mensagens.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Mensagens prontas</SelectLabel>
+                    {mensagens.map((m) => (
+                      <SelectItem key={m.id} value={`pronta:${m.id}`}>{m.titulo}{m.compartilhada ? " · equipe" : ""}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {templates.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Templates da Meta</SelectLabel>
+                    {templates.map((template) => <SelectItem key={template.id} value={`meta:${template.id}`}>{template.name}</SelectItem>)}
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
           )}
@@ -88,7 +128,7 @@ export function WhatsAppDialog({
           <Textarea
             id={`${fieldId}-msg`} rows={6} value={message}
             onChange={(event) => setMessage(event.target.value)}
-            placeholder="Escreva ou selecione um template…"
+            placeholder="Escreva ou escolha uma mensagem pronta…"
           />
         </div>
 
@@ -98,6 +138,8 @@ export function WhatsAppDialog({
             <Send className="h-4 w-4" /> Abrir WhatsApp
           </Button>
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );
