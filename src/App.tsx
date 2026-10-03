@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { firstAllowedRoute, permissionForPath, safeRedirect } from "@/lib/routePermissions";
+import { ehSoCorretor, firstAllowedRoute, permissionForPath, safeRedirect } from "@/lib/routePermissions";
 import { UpdateNotifier } from "@/components/UpdateNotifier";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import AppLayout from "@/components/layout/AppLayout";
@@ -32,6 +32,7 @@ const Resultados = tela(() => import("@/pages/Resultados"));
 const Links = tela(() => import("@/pages/Links"));
 const CentralCorretor = tela(() => import("@/pages/CentralCorretor"));
 const CentralSuporte = tela(() => import("@/pages/CentralSuporte"));
+const RelatorioRoleta = tela(() => import("@/pages/RelatorioRoleta"));
 const CcaPipeline = tela(() => import("@/pages/CcaPipeline"));
 const AdminPermissions = tela(() => import("@/pages/AdminPermissions"));
 const AdminIntegrations = tela(() => import("@/pages/AdminIntegrations"));
@@ -177,11 +178,14 @@ function ResetPasswordRoute() {
  * certa.
  */
 function HomeRedirect() {
-  const { can, loading } = useAuth();
+  const { can, loading, roles } = useAuth();
 
   if (bypassAuth) return <Navigate to="/dashboard" replace />;
   if (loading) return telaDeCarregamento;
 
+  // O corretor começa na Central do Corretor (pedido de 03/10/2026); quem
+  // também gerencia, dirige ou administra segue para o primeiro item do menu.
+  if (ehSoCorretor(roles) && can("menu.central")) return <Navigate to="/central" replace />;
   return <Navigate to={firstAllowedRoute(can)} replace />;
 }
 
@@ -272,6 +276,7 @@ const App = () => (
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/cca" element={<CcaPipeline />} />
               <Route path="/leads" element={<Leads />} />
+              <Route path="/leads/roleta" element={<RelatorioRoleta />} />
               <Route path="/atividades" element={<Activities />} />
               <Route path="/resultados" element={<Resultados />} />
               <Route path="/marketing" element={<Marketing />} />

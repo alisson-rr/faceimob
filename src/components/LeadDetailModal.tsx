@@ -297,6 +297,20 @@ export default function LeadDetailModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Abrir o lead não reserva (queixas de 03/10/2026: "cliquei no lead e
+            perdi antes dos 10 minutos"). Só "Atender" para o cronômetro. */}
+        {claimable && (
+          <p role="status" className="flex items-start gap-2 rounded-2xl border border-warning/50 bg-warning/10 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+            <span>
+              <strong>Este lead ainda não é seu.</strong> Abrir o lead não reserva: clique em{" "}
+              <strong>"Atender"</strong>
+              {secondsLeft !== null && <> em até <span className="tabular-nums font-semibold">{formatCountdown(secondsLeft)}</span></>}
+              , senão ele volta para a roleta e vai para o próximo da fila.
+            </span>
+          </p>
+        )}
+
         {/* Próxima ação comercial — antes da agenda e das partes técnicas. */}
         <section className="rounded-2xl border border-info/30 bg-info/10 p-3" aria-labelledby="lead-next-step">
           <div className="mb-2 flex items-start gap-2">

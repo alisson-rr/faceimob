@@ -29,6 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, group: "principal" },
   { title: "Pipeline", url: "/pipeline", icon: GitBranch, group: "principal" },
   { title: "Leads", url: "/leads", icon: UserSearch, group: "principal" },
+  { title: "Roleta por corretor", url: "/leads/roleta", icon: UserSearch, group: "principal", hidden: true },
   { title: "Atividades", url: "/atividades", icon: CalendarClock, group: "principal" },
   { title: "Esteira CCA", url: "/cca", icon: CreditCard, group: "principal" },
   { title: "Marketing", url: "/marketing", icon: Megaphone, group: "principal" },

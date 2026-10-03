@@ -80,6 +80,8 @@ type Group = {
   kind: string;
   brokers: string[];      // broker ids
   forms: FormRef[];
+  /** Prazo para clicar em "Atender" nesta roleta (0211: 10 min por padrão). */
+  attend_timeout_seconds: number | null;
 };
 
 const NO_PERMISSION = "Sem permissão: só o administrador altera a automação.";
@@ -100,7 +102,7 @@ const REGRAS_NUMERICAS: Array<{
   consequencia: string;
 }> = [
   // Guardada em segundos (attend_timeout_seconds); a tela mostra em minutos.
-  { campo: "roleta_seconds", rotulo: "Roleta (min)", min: 30, minTexto: "0,5", consequencia: "É o tempo que o corretor tem para atender antes de o lead voltar para a fila." },
+  { campo: "roleta_seconds", rotulo: "Roleta padrão (min)", min: 30, minTexto: "0,5", consequencia: "É o tempo para clicar em \"Atender\" nas roletas sem prazo próprio; cada roleta tem o seu no cartão dela." },
   { campo: "no_response_hours", rotulo: "Sem resposta (h)", min: 1, consequencia: "Com 0 a varredura de leads sem resposta é desligada e ninguém é avisado no sino." },
   { campo: "inactivity_alert_hours", rotulo: "Inatividade (h)", min: 1, consequencia: "Com 0 nenhum lead é destacado como parado na lista." },
   { campo: "overdue_block_threshold", rotulo: "Vencidos p/ bloquear", min: 1, consequencia: "É quantos leads vencidos tiram o corretor da fila." },
@@ -158,7 +160,7 @@ export default function AdminLeadAutomation() {
   const isDirector = roles.includes("director");
 
   const [settings, setSettings] = useState<Settings>({
-    roleta_seconds: 300,
+    roleta_seconds: 600,
     no_response_hours: 24,
     inactivity_alert_hours: 24,
     // Mesmo default da 0004: o Switch não pode nascer ligado e desligar sozinho
@@ -278,6 +280,7 @@ export default function AdminLeadAutomation() {
       const links = gf.data ?? [];
       setGroups((g.data ?? []).map((row) => ({
         id: row.id, name: row.name, active: row.active, kind: row.kind,
+        attend_timeout_seconds: row.attend_timeout_seconds,
         brokers: (gb.data ?? []).filter((x) => x.group_id === row.id && x.active).map((x) => x.profile_id),
         forms: links.filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
       })));
@@ -453,6 +456,18 @@ export default function AdminLeadAutomation() {
     if (!formDialog || !id) return;
     // Na falha o diálogo fica aberto com o id digitado, para corrigir e repetir.
     if (await addGroupForm(formDialog.groupId, id, formDialog.form_name.trim() || null)) setFormDialog(null);
+  };
+  /** Prazo próprio da roleta, em minutos na tela e segundos no banco. */
+  const salvarPrazoDoGrupo = async (g: Group, minutos: number) => {
+    const segundos = Math.round(minutos * 60);
+    if (!Number.isFinite(segundos) || segundos < 30 || segundos === g.attend_timeout_seconds) return;
+    if (await wrote(
+      supabase.from("distribution_groups").update({ attend_timeout_seconds: segundos }).eq("id", g.id).select("id"),
+      "Não foi possível salvar o prazo da roleta",
+    )) {
+      toast.success(`Prazo de ${g.name}: ${minutos} min para clicar em "Atender"`, { duration: 2500 });
+      load();
+    }
   };
   const toggleGroup = async (id: string, active: boolean) => {
     if (await wrote(supabase.from("distribution_groups").update({ active }).eq("id", id).select("id"), "Não foi possível alterar o grupo")) {
@@ -705,6 +720,18 @@ export default function AdminLeadAutomation() {
                     </div>
                     <p className="text-lg font-bold leading-tight">{g.forms.length}</p>
                   </div>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-md bg-muted/40 p-2">
+                  <Label htmlFor={`prazo-${g.id}`} className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Timer className="h-3 w-3" aria-hidden /> Prazo para atender (min)
+                  </Label>
+                  <Input
+                    id={`prazo-${g.id}`} type="number" min={0.5} step={0.5} className="h-7 w-20 text-right"
+                    key={`${g.id}-${g.attend_timeout_seconds ?? settings.roleta_seconds}`}
+                    defaultValue={(g.attend_timeout_seconds ?? settings.roleta_seconds) / 60}
+                    disabled={readOnly}
+                    onBlur={(e) => void salvarPrazoDoGrupo(g, Number(e.target.value))}
+                  />
                 </div>
                 <Button size="sm" variant="outline" className="w-full mt-3 h-8 text-xs" onClick={() => setEditingGroupId(g.id)} aria-label={`Configurar ${g.name}`}>
                   <Settings2 className="h-3.5 w-3.5 mr-1" /> Configurar

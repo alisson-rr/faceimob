@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ROUTE_PERMISSION, firstAllowedRoute, permissionForPath, safeRedirect } from "@/lib/routePermissions";
+import { ROUTE_PERMISSION, ehSoCorretor, firstAllowedRoute, permissionForPath, safeRedirect } from "@/lib/routePermissions";
 
 /**
  * A matriz abaixo é `role_permissions` como está no banco de homologação —
@@ -146,5 +146,14 @@ describe("safeRedirect", () => {
     expect(safeRedirect({ from: "/\r/evil" })).toBe("/");
     expect(safeRedirect({ from: "/\n/evil" })).toBe("/");
     expect(safeRedirect({ from: "/ evil" })).toBe("/");
+  });
+});
+
+describe("ehSoCorretor (tela inicial na Central do Corretor)", () => {
+  it("só o corretor puro começa na Central; quem acumula papel de gestão não", () => {
+    expect(ehSoCorretor(["broker"])).toBe(true);
+    expect(ehSoCorretor(["broker", "manager"])).toBe(false);
+    expect(ehSoCorretor(["director"])).toBe(false);
+    expect(ehSoCorretor([])).toBe(false);
   });
 });

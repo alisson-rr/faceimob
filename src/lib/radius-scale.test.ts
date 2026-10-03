@@ -56,11 +56,13 @@ describe("escala de raio", () => {
     expect(escala[0][1], "o menor degrau nao pode zerar").toBeGreaterThanOrEqual(2);
   });
 
-  it("mantem o cartao mais arredondado que o campo, e os dois discretos", () => {
+  it("mantem o cartao mais arredondado que o campo, no raio do site", () => {
     const px = Object.fromEntries(escala);
-    // `rounded-2xl` = cartao, `rounded-xl` = campo e cartao interno.
+    // `rounded-2xl` = cartao, `rounded-xl` = campo e cartao interno. O teto
+    // subiu com o tema do site (aprovado em 03/10/2026, "cantos mais
+    // arredondados"); em 17/09 era 8 px, "cantos menos arredondados".
     expect(px.xl).toBeLessThan(px["2xl"]);
-    expect(px["2xl"]).toBeLessThanOrEqual(8);
+    expect(px["2xl"]).toBeLessThanOrEqual(16);
   });
 
   it("nao deixa raio literal no estilo dos graficos", () => {

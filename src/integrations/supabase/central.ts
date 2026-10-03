@@ -20,10 +20,22 @@ export type LinkDoCorretor = {
 };
 
 /**
- * Cartões que levavam ao sistema antigo (Pipeline do Bubble e app do Leadfy):
- * dentro do CRM eles apontam para ele mesmo. Pedido de 03/10/2026.
+ * Cartões que levavam ao sistema antigo (Pipeline do Bubble e app do Leadfy)
+ * ou ao próprio CRM ("CRM Faceimob"): dentro do CRM quem leva a Negócios e a
+ * Leads são os cartões da própria Central. Pedidos de 03/10/2026.
  */
 const FORA_DA_CENTRAL = new Set(["pipeline", "leads_app"]);
+const HOSTS_DO_CRM = new Set(["app.faceimob.com.br"]);
+
+export function apontaParaOCrm(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).host.toLowerCase();
+    return HOSTS_DO_CRM.has(host) || host === window.location.host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
 
 export async function listarLinksDoCorretor(): Promise<LinkDoCorretor[]> {
   const { data, error } = await site()
@@ -32,7 +44,7 @@ export async function listarLinksDoCorretor(): Promise<LinkDoCorretor[]> {
     .eq("active", true)
     .order("sort_order");
   if (error) throw error;
-  return ((data ?? []) as LinkDoCorretor[]).filter((l) => !FORA_DA_CENTRAL.has(l.key));
+  return ((data ?? []) as LinkDoCorretor[]).filter((l) => !FORA_DA_CENTRAL.has(l.key) && !apontaParaOCrm(l.url));
 }
 
 export type ProgressoUniversidade = { assistidas: number; total: number };

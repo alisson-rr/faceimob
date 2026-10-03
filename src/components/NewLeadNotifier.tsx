@@ -317,6 +317,13 @@ export default function NewLeadNotifier() {
                   : "Prazo estourado — o lead está voltando para a fila"}
               </p>
             )}
+            {/* 03/10/2026: corretor achava que abrir o lead já reservava. */}
+            {assigned && secondsLeft !== 0 && (
+              <p className="text-xs text-muted-foreground">
+                O lead só fica com você quando você clica em <strong className="text-foreground">"Atender"</strong>.
+                Abrir ou deixar para depois não segura o lead.
+              </p>
+            )}
           </div>
         )}
         <DialogFooter className="gap-2">
