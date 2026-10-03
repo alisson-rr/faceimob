@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 
-// `source` e as colunas novas (0157, 0203) ainda não estão no `types.ts` gerado.
+// `source` e as colunas novas (0157, 0203, 0206) ainda não estão no `types.ts` gerado.
 const untyped = supabase as unknown as SupabaseClient;
 
 type LinhaDaFila = {
@@ -18,6 +18,7 @@ type LinhaDaFila = {
   source: "cca" | "pipeline" | "conferencia";
   status: "queued" | "sending" | "sent" | "failed" | "expired";
   last_error: string | null;
+  copia: boolean;
 };
 
 const STATUS = {
@@ -41,7 +42,7 @@ export function FilaDeEmails() {
     queryFn: async (): Promise<LinhaDaFila[]> => {
       const { data, error } = await untyped
         .from("cca_move_emails")
-        .select("id,created_at,to_email,stage_name,source,status,last_error")
+        .select("id,created_at,to_email,stage_name,source,status,last_error,copia")
         .order("created_at", { ascending: false })
         .limit(15);
       if (error) throw error;
@@ -79,7 +80,7 @@ export function FilaDeEmails() {
                 <span className="text-muted-foreground tabular-nums">{dateTime(l.created_at)}</span>
                 <span className="font-medium">{ORIGEM[l.source] ?? l.source}</span>
                 <span className="min-w-0 flex-1 truncate">{l.stage_name}</span>
-                <span className="truncate text-muted-foreground">{l.to_email}</span>
+                <span className="truncate text-muted-foreground">{l.to_email}{l.copia ? " (cópia)" : ""}</span>
               </div>
               {l.last_error && l.status !== "sent" && <p className="mt-0.5 text-warning">{l.last_error}</p>}
             </li>

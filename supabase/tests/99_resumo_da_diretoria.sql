@@ -60,6 +60,17 @@ begin
     'por equipe, com o gerente');
   reset role;
 
+  -- 0207: quem perdeu a função de gerente não aparece mais como gerente; a
+  -- equipe e a venda dela continuam contando.
+  delete from public.user_roles where profile_id = g2 and role = 'manager';
+  perform set_config('request.jwt.claims', json_build_object('sub', dir::text, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  perform pg_temp.ok((select manager_name is null and vendas = 1 from public.resumo_da_diretoria(v_mes) where team_name = 'Equipe Dois 202'),
+    'ex-gerente sai do resumo; a equipe segue com a venda');
+  perform pg_temp.ok((select manager_name = 'Gerente Um 202' from public.resumo_da_diretoria(v_mes) where team_name = 'Equipe Um 202'),
+    'gerente com a função continua aparecendo');
+  reset role;
+
   perform set_config('request.jwt.claims', json_build_object('sub', c1::text, 'role', 'authenticated')::text, true);
   set local role authenticated;
   perform pg_temp.ok((select count(*) from public.resumo_da_diretoria(v_mes)) = 0, 'corretor não vê a diretoria');

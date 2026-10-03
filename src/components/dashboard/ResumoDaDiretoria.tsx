@@ -92,7 +92,10 @@ export function ResumoDaDiretoria({ month }: { month: string }) {
               <li key={e.team_id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <span className="min-w-0 flex-1 truncate font-medium">
                   {e.team_name}
-                  {e.manager_name && <span className="text-muted-foreground"> · {e.manager_name}</span>}
+                  {/* Sem nome: o líder da equipe perdeu a função de gerente (0207). */}
+                  {e.manager_name
+                    ? <span className="text-muted-foreground"> · {e.manager_name}</span>
+                    : <span className="text-warning"> · sem gerente — ajuste em Equipes</span>}
                 </span>
                 <span className="tabular-nums">{num(e.vendas)} venda(s)</span>
                 <span className="w-32 text-right tabular-nums text-muted-foreground">{brl(Number(e.vgv), { cents: true })}</span>
