@@ -731,7 +731,9 @@ export default function DealDocumentUpload({
         )}
 
         {status === "pending" && !canReview && (
-          <p className="text-xs text-muted-foreground">Aguardando a decisão de um gerente vinculado ao negócio.</p>
+          <p className="text-xs text-muted-foreground">
+            Aguardando a decisão de um gerente vinculado ao negócio ou, na falta dele, de um administrador.
+          </p>
         )}
         {status === "approved" && (
           // "Esteira Ágil" é como a operação chama esta fronteira (CONTEXT.md), e

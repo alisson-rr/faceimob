@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +32,7 @@ const statusRequiresNote = (catalog: DealStatusCatalog, value: string) => {
   const indice = catalog.indexByKey.get(statusKey(value));
   return indice !== undefined && catalog.statuses[indice].requires_note;
 };
-import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
+import { useCanExitStage, useDealWriteLock, useSelectableBrokers, useSelectableLeaders, type LiderancaSelecionavel } from "./data";
 import { ChoiceField, MoneyField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
 import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
@@ -189,6 +189,34 @@ export function sugestaoDeLideres(
   return patch;
 }
 
+/**
+ * Opções de Gerente e Diretor e a liderança de cada corretor para a sugestão.
+ * Mesma união da lista de corretores: a visível mais a das RPCs da 0199, que
+ * entregam ao corretor os gerentes e diretores que a RLS de `profiles` esconde
+ * dele. A equipe de quem a lista visível já traz prevalece.
+ */
+export function lideresDoNegocio(people: PersonRecord[], daRpc: LiderancaSelecionavel | null) {
+  const unir = (visiveis: { id: string; name: string }[], extras: { id: string; name: string }[]) => {
+    const porId = new Map(visiveis.map((p) => [p.id, { id: p.id, name: p.name }]));
+    for (const row of extras) if (!porId.has(row.id)) porId.set(row.id, { id: row.id, name: row.name });
+    return [...porId.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  };
+  const lideres = daRpc?.lideres ?? [];
+  const equipes = new Map((daRpc?.equipes ?? []).map((e) => [e.id, e]));
+  const lideranca: Lideranca[] = [
+    ...people.map((p) => (p.manager_id || p.director_id ? p : { ...p, ...equipes.get(p.id) })),
+    ...[...equipes.values()].filter((e) => !people.some((p) => p.id === e.id)),
+  ];
+  return {
+    managers: unir(
+      people.filter((person) => person.active && (person.roles.includes("manager") || person.roles.includes("director"))),
+      lideres.filter((l) => l.isManager || l.isDirector),
+    ),
+    directors: unir(people.filter((person) => person.active && person.roles.includes("director")), lideres.filter((l) => l.isDirector)),
+    lideranca,
+  };
+}
+
 export function DealForm({
   form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia,
 }: Props) {
@@ -200,6 +228,7 @@ export function DealForm({
    *  tela ("Sem empreendimentos"), num campo obrigatório. */
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const selectableBrokers = useSelectableBrokers();
+  const selectableLeaders = useSelectableLeaders();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
 
   // Status 1 (0149). O banco o deriva do Status 2 e só aceita troca à mão de
@@ -294,9 +323,10 @@ export function DealForm({
     return [...porId.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [people, selectableBrokers.data]);
 
-  const managers = people.filter((person) => person.active
-    && (person.roles.includes("manager") || person.roles.includes("director")));
-  const directors = people.filter((person) => person.active && person.roles.includes("director"));
+  const { managers, directors, lideranca } = useMemo(
+    () => lideresDoNegocio(people, selectableLeaders.data ?? null),
+    [people, selectableLeaders.data],
+  );
 
   /**
    * Sugestão de gerente e diretor pela equipe do corretor (pedido de
@@ -306,11 +336,26 @@ export function DealForm({
    * corretores da mesma equipe não viram "Gerente 1 = Gerente 2". Vem de `people`, que traz o gestor
    * da equipe de cada perfil, e só preenche quem a lista mostra — um id fora da
    * visibilidade apareceria como "Fora da sua visibilidade". Para o corretor,
-   * que não enxerga o gerente, não há sugestão na tela: o gatilho
-   * `deal_participants_autofill` vincula a equipe ao salvar, como já fazia.
+   * que não enxerga a equipe pela RLS, a liderança e os nomes vêm das RPCs da
+   * 0199; o gatilho `deal_participants_autofill` continua cobrindo o resto.
    */
   const sugestaoDaEquipe = (brokerId: string | null, slot: 1 | 2 | 3) =>
-    sugestaoDeLideres(form, brokerId, slot, people, managers, directors);
+    sugestaoDeLideres(form, brokerId, slot, lideranca, managers, directors);
+
+  // O negócio que nasce do lead já vem com o Corretor 1 preenchido e o
+  // `onChange` do campo nunca dispara: sem isto, Gerente 1 e Diretor 1 abriam
+  // em branco (03/10/2026). Preenche só o que está vazio, uma vez por corretor.
+  const sugeridoPara = useRef<string | null>(null);
+  useEffect(() => {
+    const corretor = form.broker1_id;
+    if (!corretor || sugeridoPara.current === corretor || !lideranca.some((p) => p.id === corretor)) return;
+    sugeridoPara.current = corretor;
+    const patch = sugestaoDeLideres(form, corretor, 1, lideranca, managers, directors);
+    const vazio: Partial<SaveLegacyDealInput> = {};
+    if (patch.manager1_id && !form.manager1_id) vazio.manager1_id = patch.manager1_id;
+    if (patch.director1_id && !form.director1_id) vazio.director1_id = patch.director1_id;
+    if (Object.keys(vazio).length) onChange(vazio);
+  }, [form, lideranca, managers, directors, onChange]);
 
   const loadProjects = useCallback(async (developerName: string) => {
     const developer = developers.find((row) => row.name === developerName);
