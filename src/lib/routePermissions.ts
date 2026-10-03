@@ -26,6 +26,8 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   "/checkpoint": "menu.checkpoint",
   "/checkin": "menu.checkin",
   "/sdr": "menu.sdr",
+  "/central": "menu.central",
+  "/central/suporte": "menu.central",
   "/data": "menu.data",
   // `/settings` NÃO entra aqui de propósito — ver `firstAllowedRoute`.
   "/admin/permissions": "menu.admin_permissions",
