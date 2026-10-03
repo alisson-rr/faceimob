@@ -25,6 +25,17 @@ describe("montarEmailDeMovimento", () => {
     );
   });
 
+  it("aviso da conferência (0203): o evento em destaque, a mensagem do envio e o selo Conferência", () => {
+    const { subject, html } = montarEmailDeMovimento({
+      ...base, source: "conferencia", stage_name: "Análise enviada para conferência",
+      message: "ENVIO ESTEIRA ÁGIL: dossiê completo",
+      detalhes: { ...detalhes, status2: "Análise enviada para conferência", observacao: "ENVIO ESTEIRA ÁGIL: dossiê completo" },
+    });
+    expect(subject.startsWith("Análise enviada para conferência | JULYA DE PAIVA SCAPIN")).toBe(true);
+    expect(html).toContain("Conferência · NEG-001227");
+    expect(html).toContain("ENVIO ESTEIRA ÁGIL: dossiê completo");
+  });
+
   it("corpo com Status 2 em destaque, antes, Status 1, dados, observação, logo e link", () => {
     const { html } = montarEmailDeMovimento({ ...base, source: "pipeline", detalhes }, "https://app.exemplo.com.br");
     expect(html).toContain(">ESTEIRA AGIL</span>");

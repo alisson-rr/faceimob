@@ -11,7 +11,8 @@
  */
 
 export type CcaMoveEmail = {
-  source?: "cca" | "pipeline";
+  /** "conferencia" (0203): enviada, aprovada ou devolvida na conferência do gerente. */
+  source?: "cca" | "pipeline" | "conferencia";
   deal_code: string | null;
   client_name: string | null;
   stage_name: string;
@@ -141,7 +142,7 @@ export function montarEmailDeMovimento(
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
 <tr><td style="background:#1b2a4a;padding:18px 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td>${marca}</td>
-<td align="right" style="color:#aebbd6;font-size:12px;">${pipeline ? "Pipeline" : "Crédito"} · ${escapeHtml(codigo)}</td>
+<td align="right" style="color:#aebbd6;font-size:12px;">${pipeline ? "Pipeline" : email.source === "conferencia" ? "Conferência" : "Crédito"} · ${escapeHtml(codigo)}</td>
 </tr></table></td></tr>
 <tr><td style="padding:28px 28px 8px;">
 <div style="font-size:11px;letter-spacing:1.6px;color:#6b7280;font-weight:bold;">STATUS 2</div>
