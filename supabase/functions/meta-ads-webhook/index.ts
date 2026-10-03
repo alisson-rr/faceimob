@@ -51,6 +51,7 @@ type IncomingLead = {
 }
 
 const textValue = (value: unknown) => typeof value === 'string' ? value : ''
+const metaFieldKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, '_')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -102,7 +103,7 @@ async function fetchLeadFromGraph(
   if (!json) return null
   const fields: Record<string, string> = {}
   for (const f of json.field_data || []) {
-    fields[(f.name || '').toLowerCase()] = String(f.values?.[0] ?? '')
+    fields[metaFieldKey(f.name || '')] = String(f.values?.[0] ?? '')
   }
   return { fields, graph: json }
 }
@@ -265,7 +266,7 @@ Deno.serve(async (req) => {
             // 1) inline (test tool sometimes)
             if (v.field_data) {
               for (const f of v.field_data) {
-                fields[(f.name || '').toLowerCase()] = String(f.values?.[0] ?? '')
+                fields[metaFieldKey(f.name || '')] = String(f.values?.[0] ?? '')
               }
             }
 
