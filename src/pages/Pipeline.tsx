@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Download, Filter, GitBranch, ListChecks, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -185,9 +185,14 @@ export default function Pipeline() {
   const propostaId = catalog.groups.find((group) => group.code === "PROPOSTA")?.id ?? ALL;
   const vendaId = catalog.groups.find((group) => group.code === "VENDA")?.id ?? null;
   const filtrosLimpos = useMemo(() => ({ ...EMPTY_FILTERS, status1: propostaId }), [propostaId]);
+  // "Conferir agora" do popup do gerente (0196) abre direto na fila da conferência.
+  const [searchParams] = useSearchParams();
+  const abreNaConferencia = searchParams.get("conferencia") === "pendente";
   const filters = useMemo(
-    () => filtrosEscolhidos ?? { ...filtrosLimpos, team: recorteInicial },
-    [filtrosEscolhidos, filtrosLimpos, recorteInicial],
+    () => filtrosEscolhidos ?? (abreNaConferencia
+      ? { ...filtrosLimpos, status1: ALL, team: recorteInicial, documentReview: "pending" }
+      : { ...filtrosLimpos, team: recorteInicial }),
+    [filtrosEscolhidos, filtrosLimpos, recorteInicial, abreNaConferencia],
   );
 
   const brokers = useMemo(
