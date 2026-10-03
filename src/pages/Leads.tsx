@@ -11,6 +11,7 @@ import { describeError } from "@/lib/supabaseError";
 import { useAuth, type AppRole } from "@/contexts/AuthContext";
 import LeadDetailModal from "@/components/LeadDetailModal";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
+import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
 import {
   LeadDialogs, LeadFilters, LeadsIndicadores, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
   SourcePerformanceCard,
@@ -368,6 +369,7 @@ export default function Leads() {
       )}
 
       <LeadsCheckinCard />
+      <FilaEmFormacao />
 
       {leadsQuery.error || baseQuery.error ? (
         <EmptyState

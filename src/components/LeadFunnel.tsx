@@ -19,6 +19,7 @@ import {
 } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
+import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
 import { AttendCountdown } from "@/components/leads/LeadsTable";
 import { sameLeadProps } from "@/components/leads/sameLeadProps";
 import {
@@ -168,6 +169,7 @@ export default function LeadFunnel({
     <>
       <div className="mb-4 flex flex-col gap-4">
         <LeadsCheckinCard />
+        <FilaEmFormacao />
         {baseQuery.data && (
           <LeadsIndicadores
             leads={base}

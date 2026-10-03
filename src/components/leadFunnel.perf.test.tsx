@@ -15,6 +15,7 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "eu" }, roles: ["broker"], previewRole: null, isAdmin: false, can: () => false }),
 }));
 vi.mock("@/components/checkin/LeadsCheckinCard", () => ({ LeadsCheckinCard: () => null }));
+vi.mock("@/components/checkin/FilaEmFormacao", () => ({ FilaEmFormacao: () => null }));
 vi.mock("@/components/LeadDetailModal", () => ({ default: () => null }));
 vi.mock("@/components/leads", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/components/leads")>();
