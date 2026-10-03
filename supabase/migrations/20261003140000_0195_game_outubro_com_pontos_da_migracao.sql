@@ -18,7 +18,13 @@
 create table if not exists private.game_events_antes_0195 (like public.game_events);
 revoke all on private.game_events_antes_0195 from public, anon, authenticated;
 
-do $$
+-- Função (e não um DO solto) para o teste SQL poder reaplicar a regra numa
+-- temporada criada por ele; só o dono do banco executa.
+create or replace function private.game_outubro_pontos_da_migracao_0195()
+returns void
+language plpgsql
+set search_path = public, pg_temp
+as $$
 declare
   v_temporada uuid;
   v_perfil uuid;
@@ -64,3 +70,7 @@ begin
   end loop;
 end;
 $$;
+
+revoke all on function private.game_outubro_pontos_da_migracao_0195() from public, anon, authenticated;
+
+select private.game_outubro_pontos_da_migracao_0195();

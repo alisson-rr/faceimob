@@ -27,7 +27,9 @@ begin
 end;
 $$;
 
-\i supabase/migrations/20261003140000_0195_game_outubro_com_pontos_da_migracao.sql
+-- A mesma regra da migration; `\i` não serve: o CI manda o arquivo ao
+-- container pelo stdin, sem o repositório.
+select private.game_outubro_pontos_da_migracao_0195();
 
 select pg_temp.ok(
   (select coalesce(sum(points), 0) from public.game_events
