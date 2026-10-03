@@ -62,6 +62,12 @@ begin
     'o motivo fica registrado nos comentários do negócio, com o de → para');
   perform pg_temp.ok(pg_temp.tenta(dir, v_deal.id, public.month_start(current_date), 'Voltou para este mês') = 'ok', 'diretor também troca');
   perform pg_temp.ok(pg_temp.tenta(dir, v_deal.id, public.month_start(current_date), 'De novo') = '22023', 'mesmo mês é recusado');
+  -- 0207: no máximo dois meses à frente.
+  delete from public.closed_months where period in ((date_trunc('month', current_date) + interval '2 months')::date);
+  perform pg_temp.ok(pg_temp.tenta(ger, v_deal.id, (date_trunc('month', current_date) + interval '3 months')::date, 'Longe demais') = '22023',
+    'três meses à frente é recusado');
+  perform pg_temp.ok(pg_temp.tenta(ger, v_deal.id, (date_trunc('month', current_date) + interval '2 months')::date, 'Dois meses à frente') = 'ok',
+    'dois meses à frente é aceito');
 end;
 $$;
 

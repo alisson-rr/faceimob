@@ -243,10 +243,10 @@ begin
       where kind = 'cca_status_changed' and body like '%Aprovar <script>%') = 2,
     'o aviso sai para os dois');
   perform pg_temp.check155(
-    (select count(*) from public.cca_move_emails where deal_id = pg_temp.deal155()) = 1,
+    (select count(*) from public.cca_move_emails where deal_id = pg_temp.deal155() and not copia) = 1,
     'um e-mail só: o gerente sem e-mail é pulado e o movimento não quebra');
 
-  select * into v_linha from public.cca_move_emails where deal_id = pg_temp.deal155();
+  select * into v_linha from public.cca_move_emails where deal_id = pg_temp.deal155() and not copia;
   perform pg_temp.check155(
     v_linha.to_email = 'cor@avisa155.test'
     and v_linha.profile_id = '00000000-0000-0000-0000-000001550003'
@@ -284,7 +284,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', '00000000-0000-0000-0000-000001550001', 'role', 'authenticated')::text, false);
   set local role authenticated;
-  select count(*) into v_adm from public.cca_move_emails where deal_id = pg_temp.deal155();
+  select count(*) into v_adm from public.cca_move_emails where deal_id = pg_temp.deal155() and not copia;
   reset role;
 
   perform set_config('request.jwt.claims', json_build_object('role', 'anon')::text, false);
@@ -324,7 +324,7 @@ begin
     (select status = 'failed' from public.cca_move_emails where id = '00000000-0000-0000-0000-000001550031'),
     'o que esgotou as tentativas segue failed');
   perform pg_temp.check155(
-    (select status = 'queued' from public.cca_move_emails
+    (select bool_and(status = 'queued') from public.cca_move_emails
       where deal_id = pg_temp.deal155() and stage_name = 'Avisa 155'),
     'o recente continua na fila');
 end
@@ -341,7 +341,7 @@ begin
   perform public.dispatch_pending_cca_emails();
 
   perform pg_temp.check155(
-    (select status = 'expired' and last_error like '%desligado%'
+    (select bool_and(status = 'expired' and last_error like '%desligado%')
        from public.cca_move_emails
       where deal_id = pg_temp.deal155() and stage_name = 'Avisa 155'),
     'desligado, o que estava na fila vira expired, com o motivo');

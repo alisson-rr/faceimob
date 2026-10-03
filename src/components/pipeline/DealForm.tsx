@@ -141,15 +141,17 @@ const rotuloDoMes = (mes: string) => {
 };
 
 /**
- * Meses do seletor de mês-base, do mais novo para o mais antigo: do ano que
- * vem até dois anos atrás. O mês gravado entra mesmo fora da faixa — negócio
- * antigo não pode abrir com o campo vazio e trocar de mês ao salvar.
+ * Meses do seletor de mês-base, do mais novo para o mais antigo: de dois meses
+ * à frente (pedido de 03/10/2026; o banco recusa além disso, 0206) até janeiro
+ * de dois anos atrás. O mês gravado entra mesmo fora da faixa — negócio antigo
+ * não pode abrir com o campo vazio e trocar de mês ao salvar.
  */
 const mesesDoSeletor = (atual?: string): string[] => {
-  const ano = new Date().getFullYear();
+  const hoje = new Date();
   const meses: string[] = [];
-  for (let a = ano + 1; a >= ano - 2; a -= 1) {
-    for (let m = 12; m >= 1; m -= 1) meses.push(`${String(m).padStart(2, "0")}/${a}`);
+  const ultimo = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 1);
+  for (let d = ultimo; d.getFullYear() >= hoje.getFullYear() - 2; d = new Date(d.getFullYear(), d.getMonth() - 1, 1)) {
+    meses.push(`${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`);
   }
   if (atual && /^\d{2}\/\d{4}$/.test(atual) && !meses.includes(atual)) meses.push(atual);
   return meses;

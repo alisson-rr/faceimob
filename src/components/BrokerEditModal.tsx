@@ -788,6 +788,11 @@ export function BrokerEditModal({
               <SelectContent>
                 <SelectItem value="__none__">— sem gerente —</SelectItem>
                 {managers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                {/* Diretor também lidera equipe (03/10/2026); a equipe dele nasce
+                    ao vincular a primeira pessoa (`equipeDoLider`). */}
+                {directors.filter(d => !managers.some(m => m.id === d.id)).map(d => (
+                  <SelectItem key={d.id} value={d.id}>{d.name} (diretor)</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </Field>
