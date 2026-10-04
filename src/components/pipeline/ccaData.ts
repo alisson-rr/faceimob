@@ -40,6 +40,8 @@ export interface CcaDeal {
   dealId: string;
   client: string;
   developer: string;
+  /** Cor da construtora no cadastro (0152), `#rrggbb`; nula = cor pelo nome. */
+  developerColor?: string | null;
   project: string;
   broker: string;
   value: number;
@@ -290,6 +292,7 @@ export async function loadCcaBoard(
       dealId: row.deal_id,
       client: deal?.client || "Cliente não informado",
       developer: deal?.developer || "",
+      developerColor: deal?.developer_color ?? null,
       project: deal?.project || "",
       broker: deal?.broker1 || "",
       value: deal?.deal_value || 0,

@@ -268,7 +268,8 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
       ],
       leadsCount: 0,
       ccaCounts: {},
-      staff: { brokersTotal: 0, active: 0, managers: 0, directors: 0 },
+      ccaDealIds: [],
+      staff: { brokersTotal: 0, active: 0, managers: 0, directors: 0, staff: 0 },
       closedMonths: ["08/2026"],
     };
     // Cache já preenchido e sem prazo de validade: o hook lê daqui e não vai à rede.
@@ -302,7 +303,8 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
       deals: [venda({ id: "agosto", month_base: "08/2026" })],
       leadsCount: 0,
       ccaCounts: {},
-      staff: { brokersTotal: 0, active: 0, managers: 0, directors: 0 },
+      ccaDealIds: [],
+      staff: { brokersTotal: 0, active: 0, managers: 0, directors: 0, staff: 0 },
       closedMonths: [],
     };
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });

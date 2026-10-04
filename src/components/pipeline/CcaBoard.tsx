@@ -10,6 +10,26 @@ import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
 import { elapsedDays, elapsedLabel } from "./ccaTime";
 import { cn } from "@/lib/utils";
+import { developerDot, isHexColor } from "@/lib/tone";
+
+/**
+ * Selo da construtora no cartão do CCA com a cor do cadastro (pedido de
+ * 04/10/2026), a mesma da bolinha do Pipeline. A cor tinge fundo e borda; o
+ * texto fica na cor do tema, para ler em qualquer cor escolhida.
+ */
+function SeloDaConstrutora({ nome, cor }: { nome: string; cor?: string | null }) {
+  const bolinha = developerDot(nome, cor);
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1.5 text-xs"
+      style={isHexColor(cor) ? { borderColor: cor, backgroundColor: `${cor}33` } : undefined}
+    >
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} aria-hidden />
+      {nome}
+    </Badge>
+  );
+}
 
 /** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
 const POR_COLUNA = 200;
@@ -295,7 +315,7 @@ export const CcaBoard = memo(function CcaBoard({
                               </Badge>
                             ) : null}
                           </div>
-                          {deal.developer && <Badge variant="outline" className="text-xs">{deal.developer}</Badge>}
+                          {deal.developer && <SeloDaConstrutora nome={deal.developer} cor={deal.developerColor} />}
                         </div>
 
                         <p className="w-fit rounded-md border border-info/30 bg-info/10 px-2 py-1 text-xs font-semibold tabular-nums"

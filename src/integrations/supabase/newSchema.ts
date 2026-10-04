@@ -105,6 +105,8 @@ const rolePriority: NewAppRole[] = [
  * gerente e diretor, e por isso não serve para decidir quem ATENDE. Só devolve
  * `'broker'` para quem não carrega nenhum outro papel.
  */
+const STAFF_ROLES = new Set<NewAppRole>(["admin", "partner", "cca"]);
+
 export const primaryRole = (roles: NewAppRole[]): NewAppRole =>
   rolePriority.find((role) => roles.includes(role)) || "broker";
 
@@ -735,14 +737,37 @@ export type DashboardPayload = {
   /** Total de leads que a RLS deixa ver — contagem exata, sem baixar a lista. */
   leadsCount: number;
   ccaCounts: Record<string, number>;
+  /** Negócios que passaram pelo CCA (têm caso em `cca_cases`), de qualquer mês. */
+  ccaDealIds: string[];
   staff: {
     brokersTotal: number;
     active: number;
     managers: number;
     directors: number;
+    /** Admin, sócio e CCA que não lideram equipe. */
+    staff: number;
   };
   closedMonths: string[];
 };
+
+/**
+ * Composição do time (04/10/2026): cada pessoa ativa num grupo só. Todo perfil
+ * nasce com `broker`, então "corretor" é quem não lidera nem é do staff; staff
+ * = admin, sócio e CCA que não lideram equipe; diretor que também é gerente
+ * conta como diretor.
+ */
+export function contarTime(people: Pick<PersonRecord, "active" | "roles">[]): DashboardPayload["staff"] {
+  const ativos = people.filter((person) => person.active);
+  const lidera = (roles: NewAppRole[]) => roles.includes("director") || roles.includes("manager");
+  const doStaff = (roles: NewAppRole[]) => roles.some((role) => STAFF_ROLES.has(role));
+  return {
+    brokersTotal: ativos.filter((p) => p.roles.includes("broker") && !lidera(p.roles) && !doStaff(p.roles)).length,
+    active: ativos.length,
+    managers: ativos.filter((p) => p.roles.includes("manager") && !p.roles.includes("director")).length,
+    directors: ativos.filter((p) => p.roles.includes("director")).length,
+    staff: ativos.filter((p) => doStaff(p.roles) && !lidera(p.roles)).length,
+  };
+}
 
 export async function loadDashboardPayload(
   loadDeals: () => Promise<LegacyDealRecord[]> = () => listLegacyDeals(),
@@ -792,15 +817,8 @@ export async function loadDashboardPayload(
     activeMonth,
     leadsCount: leadsRes.count ?? 0,
     ccaCounts,
-    staff: (() => {
-      const activePeople = people.filter((person) => person.active);
-      return {
-        brokersTotal: activePeople.filter((person) => person.roles.includes("broker")).length,
-        active: activePeople.length,
-        managers: activePeople.filter((person) => person.roles.includes("manager")).length,
-        directors: activePeople.filter((person) => person.roles.includes("director")).length,
-      };
-    })(),
+    ccaDealIds: [...new Set(ccaRes.data.map((row) => row.deal_id))],
+    staff: contarTime(people),
     closedMonths: (closedRes.data || [])
       .map((row) => isoMonthToDisplay(row.period))
       .filter(Boolean) as string[],
