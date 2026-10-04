@@ -32,6 +32,8 @@ const Resultados = tela(() => import("@/pages/Resultados"));
 const Links = tela(() => import("@/pages/Links"));
 const CentralCorretor = tela(() => import("@/pages/CentralCorretor"));
 const CentralSuporte = tela(() => import("@/pages/CentralSuporte"));
+const CentralDrive = tela(() => import("@/pages/CentralDrive"));
+const CentralMapa = tela(() => import("@/pages/CentralMapa"));
 const RelatorioRoleta = tela(() => import("@/pages/RelatorioRoleta"));
 const CcaPipeline = tela(() => import("@/pages/CcaPipeline"));
 const AdminPermissions = tela(() => import("@/pages/AdminPermissions"));
@@ -286,6 +288,8 @@ const App = () => (
               <Route path="/links" element={<Links />} />
               <Route path="/central" element={<CentralCorretor />} />
               <Route path="/central/suporte" element={<CentralSuporte />} />
+              <Route path="/central/drive" element={<CentralDrive />} />
+              <Route path="/central/mapa" element={<CentralMapa />} />
               <Route path="/data" element={<DataManagement />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/admin/permissions" element={<AdminPermissions />} />

@@ -151,7 +151,7 @@ export default function Leads() {
   const metrics = useMemo(() => leadMetrics(doCorretor, now, profileId), [doCorretor, now, profileId]);
   const overdueLeads = useMemo(() => doCorretor.filter((lead) => isLeadOverdue(lead, now)), [doCorretor, now]);
   const queuedLeads = useMemo(() => base.filter((lead) => lead.status === "queued"), [base]);
-  const maxRounds = settingsQuery.data?.roulette_max_rounds ?? 5;
+  const maxRounds = settingsQuery.data?.roulette_max_rounds ?? 0;
   // A bandeja é do gestor, mas o número precisa aparecer no cabeçalho: um lead
   // fora da roleta não volta sozinho, e ninguém abre um card por hábito.
   const semAtendimento = useMemo(

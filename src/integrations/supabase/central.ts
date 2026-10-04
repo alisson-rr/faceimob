@@ -22,9 +22,10 @@ export type LinkDoCorretor = {
 /**
  * Cartões que levavam ao sistema antigo (Pipeline do Bubble e app do Leadfy)
  * ou ao próprio CRM ("CRM Faceimob"): dentro do CRM quem leva a Negócios e a
- * Leads são os cartões da própria Central. Pedidos de 03/10/2026.
+ * Leads são os cartões da própria Central. Pedidos de 03/10/2026. O "drive"
+ * virou a tela /central/drive (04/10/2026).
  */
-const FORA_DA_CENTRAL = new Set(["pipeline", "leads_app"]);
+const FORA_DA_CENTRAL = new Set(["pipeline", "leads_app", "drive"]);
 const HOSTS_DO_CRM = new Set(["app.faceimob.com.br"]);
 
 export function apontaParaOCrm(url: string | null): boolean {
@@ -47,7 +48,102 @@ export async function listarLinksDoCorretor(): Promise<LinkDoCorretor[]> {
   return ((data ?? []) as LinkDoCorretor[]).filter((l) => !FORA_DA_CENTRAL.has(l.key) && !apontaParaOCrm(l.url));
 }
 
-export type ProgressoUniversidade = { assistidas: number; total: number };
+/** Selo "CCA próprio" por construtora (chave: nome em minúsculas, sem espaços nas pontas). */
+async function selosDoCca(): Promise<Map<string, string>> {
+  const { data, error } = await site().from("cca_developers").select("developer,label").eq("active", true);
+  if (error) throw error;
+  return new Map(((data ?? []) as { developer: string; label: string }[])
+    .map((r) => [chaveDaConstrutora(r.developer), r.label]));
+}
+
+export const chaveDaConstrutora = (nome: string | null | undefined) => (nome ?? "").trim().toLowerCase();
+
+export type LinkDoDrive = { name: string; url: string };
+export type PastaDoDrive = {
+  id: string;
+  developer: string;
+  logo_url: string | null;
+  links: LinkDoDrive[];
+  cca: string | null;
+};
+
+/**
+ * Drive de Construtoras (página do site trazida ao CRM em 04/10/2026). Até 3
+ * links por construtora; sem lista, vale o `drive_url`. As pastas são do
+ * Google Drive das construtoras — abrir o arquivo é lá, não tem como trazer.
+ */
+export function linksDaPasta(p: { drive_url: string | null; links: unknown }): LinkDoDrive[] {
+  const lista = Array.isArray(p.links)
+    ? p.links.flatMap((l): LinkDoDrive[] => {
+      if (typeof l !== "object" || l === null || !("url" in l) || typeof l.url !== "string" || !l.url) return [];
+      const nome = "name" in l && typeof l.name === "string" ? l.name.trim() : "";
+      return [{ name: nome, url: l.url }];
+    })
+    : [];
+  if (lista.length > 0) return lista.slice(0, 3);
+  return p.drive_url ? [{ name: "Abrir Drive", url: p.drive_url }] : [];
+}
+
+export async function listarPastasDoDrive(): Promise<PastaDoDrive[]> {
+  const [pastas, selos] = await Promise.all([
+    site().from("developer_folders")
+      .select("id,developer,drive_url,logo_url,links")
+      .eq("active", true).order("sort_order").order("developer"),
+    selosDoCca(),
+  ]);
+  if (pastas.error) throw pastas.error;
+  type Linha = { id: string; developer: string; drive_url: string | null; logo_url: string | null; links: unknown };
+  return ((pastas.data ?? []) as Linha[]).map((p) => ({
+    id: p.id,
+    developer: p.developer,
+    logo_url: p.logo_url,
+    links: linksDaPasta(p),
+    cca: selos.get(chaveDaConstrutora(p.developer)) ?? null,
+  }));
+}
+
+export type ImovelDoMapa = {
+  id: string;
+  title: string;
+  city: string;
+  neighborhood: string | null;
+  price: number | null;
+  price_from: number | null;
+  status: string;
+  bedrooms: number | null;
+  developer: string | null;
+  imagem: string | null;
+  cca: string | null;
+};
+
+/** Imóveis ativos do site, com a primeira foto e o selo do CCA — base do Mapa de Imóveis. */
+export async function listarImoveisDoMapa(): Promise<ImovelDoMapa[]> {
+  const [imoveis, selos] = await Promise.all([
+    site().from("properties")
+      .select("id,title,city,neighborhood,price,price_from,status,bedrooms,developer")
+      .eq("active", true).order("title"),
+    selosDoCca(),
+  ]);
+  if (imoveis.error) throw imoveis.error;
+  type Linha = Omit<ImovelDoMapa, "imagem" | "cca">;
+  const linhas = (imoveis.data ?? []) as Linha[];
+  const fotos = new Map<string, string>();
+  if (linhas.length > 0) {
+    const { data, error } = await site().from("property_images")
+      .select("property_id,url").in("property_id", linhas.map((l) => l.id)).order("sort_order");
+    if (error) throw error;
+    for (const f of (data ?? []) as { property_id: string; url: string }[]) {
+      if (!fotos.has(f.property_id)) fotos.set(f.property_id, f.url);
+    }
+  }
+  return linhas.map((l) => ({
+    ...l,
+    imagem: fotos.get(l.id) ?? null,
+    cca: selos.get(chaveDaConstrutora(l.developer)) ?? null,
+  }));
+}
+
+export type ProgressoUniversidade ={ assistidas: number; total: number };
 
 export async function progressoDaUniversidade(userId: string): Promise<ProgressoUniversidade> {
   const [videos, vistos] = await Promise.all([

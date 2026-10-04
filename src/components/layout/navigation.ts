@@ -40,6 +40,8 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "SDR IA", url: "/sdr", icon: Bot, group: "principal" },
   { title: "Central do Corretor", url: "/central", icon: LayoutGrid, group: "principal" },
   { title: "Suporte para Análise", url: "/central/suporte", icon: LayoutGrid, group: "principal", hidden: true },
+  { title: "Drive de Construtoras", url: "/central/drive", icon: LayoutGrid, group: "principal", hidden: true },
+  { title: "Mapa de Imóveis", url: "/central/mapa", icon: LayoutGrid, group: "principal", hidden: true },
 
   { title: "Configurações", url: "/settings", icon: Settings, group: "configuracoes" },
   { title: "Resultados", url: "/resultados", icon: TrendingUp, group: "configuracoes" },

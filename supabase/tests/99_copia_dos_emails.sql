@@ -1,7 +1,7 @@
 -- =============================================================================
 -- 0206 — cópia dos e-mails de movimento: o admin recebe tudo; o sócio só venda,
--- distrato e queda de venda; ninguém recebe duas vezes nem a cópia da própria
--- ação. As contagens olham só as pessoas deste arquivo.
+-- distrato e queda de venda; ninguém recebe duas vezes. Desde a 0213 quem agiu
+-- também recebe a cópia da própria ação. As contagens olham só as pessoas deste arquivo.
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -70,10 +70,10 @@ begin
   perform pg_temp.ok(pg_temp.copias(v_deal, soc, '%EM PROCESSAMENTO%') = 0, 'fora da venda: sócio não recebe');
   perform pg_temp.ok(pg_temp.copias(v_deal, adm, '%EM PROCESSAMENTO%') = 1, 'fora da venda: admin recebe');
 
-  -- 5. O admin que move não recebe a cópia da própria ação.
+  -- 5. O admin que move também recebe a cópia da própria ação (0213).
   perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
   update public.deals set status_detail = '16. PENDENTE' where id = v_deal;
-  perform pg_temp.ok(pg_temp.copias(v_deal, adm, '%PENDENTE%') = 0, 'quem agiu não recebe a cópia');
+  perform pg_temp.ok(pg_temp.copias(v_deal, adm, '%PENDENTE%') = 1, 'quem agiu também recebe a cópia');
 
   -- 6. Admin que já é participante não recebe em dobro.
   insert into public.deal_participants (deal_id, profile_id, role, ordinal) values (v_deal, adm, 'director', 1)
