@@ -38,6 +38,7 @@ import { describeError } from "@/lib/supabaseError";
 import { num } from "@/lib/format";
 import { LeadershipReport } from "@/components/dashboard/LeadershipReport";
 import { ResumoDaDiretoria } from "@/components/dashboard/ResumoDaDiretoria";
+import { FunilDeVendasPanel } from "@/components/dashboard/FunilDeVendasPanel";
 
 /**
  * Primeira tela depois do login: a leitura do mes em indicadores, graficos e
@@ -123,8 +124,14 @@ export default function Dashboard() {
   const periodo = activeMonth === ALL_MONTHS ? "todos os meses" : activeMonth;
   const atualizando = query.isFetching || leadsQuery.isFetching;
 
+  // Funil de Vendas (04/10/2026): da liderança — admin, sócio, diretor e
+  // gerente. Em "todos os meses" o funil mostra o mês corrente.
+  const temFunil = seesEveryone || temAbaDeLideranca;
+  const mesDoFunil = activeMonth === ALL_MONTHS ? `${new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 8)}01` : activeMonth;
+
   const tabs: [string, string][] = [
     ["geral", "Visão geral"],
+    ...(temFunil ? ([["funil", "Funil de Vendas"]] as [string, string][]) : []),
     ["propostas", "Propostas"],
     ["vendas", "Vendas"],
     ["leads", "Leads"],
@@ -285,7 +292,7 @@ export default function Dashboard() {
             diretoria some — sem este desvio a area de conteudo ficaria em
             branco, com nenhuma aba marcada. */}
         <Tabs
-          value={tab === "diretoria" && !temAbaDeLideranca ? "geral" : tab}
+          value={(tab === "diretoria" && !temAbaDeLideranca) || (tab === "funil" && !temFunil) ? "geral" : tab}
           onValueChange={setTab}
           className="flex flex-col gap-5"
         >
@@ -374,6 +381,12 @@ export default function Dashboard() {
               <MonthlyTrend series={monthly} />
             </div>
           </TabsContent>
+
+          {temFunil && (
+            <TabsContent value="funil" className="mt-0">
+              <FunilDeVendasPanel month={mesDoFunil} />
+            </TabsContent>
+          )}
 
           {temAbaDeLideranca && (
             <TabsContent value="diretoria" className="mt-0">
