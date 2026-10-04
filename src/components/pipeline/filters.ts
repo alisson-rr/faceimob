@@ -41,8 +41,8 @@ export type DealFilterState = {
   /** `ALL` ou `MY_TEAM` — o recorte por equipe. */
   team: string;
   stage: string;
-  /** `deals.status_group_id` ou `ALL`. */
-  status1: string;
+  /** Status 1 escolhidos (`deals.status_group_id`, vários de uma vez, 04/10/2026). Vazio = todos. */
+  status1: string[];
   /** Status 2 escolhidos (vários de uma vez, 02/10/2026). Vazio = todos. */
   status2: string[];
   documentReview: string;
@@ -61,7 +61,7 @@ export const EMPTY_FILTERS: DealFilterState = {
   search: "",
   team: ALL,
   stage: ALL,
-  status1: ALL,
+  status1: [],
   status2: [],
   documentReview: ALL,
   developerId: ALL,
@@ -183,14 +183,15 @@ export function applyDealFilters(
     if (filters.brokerId !== ALL && !participantIds(deal).includes(filters.brokerId)) return false;
     if (filters.managerId !== ALL && !managerIds(deal).includes(filters.managerId)) return false;
     if (filters.stage !== ALL && deal.stage !== filters.stage) return false;
-    if (filters.status1 !== ALL) {
+    if (filters.status1.length > 0) {
       // "VENDA — todas as vendas" precisa responder à mesma pergunta do
       // Dashboard: inclui tanto o grupo VENDA ainda aberto quanto negócios já
       // ganhos que avançaram para PÓS VENDA. Comparar apenas o id do grupo
-      // escondia exatamente essa última venda do mês.
-      if (vendaGroupId && filters.status1 === vendaGroupId) {
-        if (!contaComoVenda(deal)) return false;
-      } else if (deal.status_group_id !== filters.status1) return false;
+      // escondia exatamente essa última venda do mês. Vários marcados: basta
+      // casar um deles.
+      const casa = filters.status1.some((grupo) =>
+        vendaGroupId && grupo === vendaGroupId ? contaComoVenda(deal) : deal.status_group_id === grupo);
+      if (!casa) return false;
     }
     if (filters.status2.length > 0 && !filters.status2.includes(deal.status)) return false;
     if (filters.documentReview !== ALL && deal.document_review_status !== filters.documentReview) return false;

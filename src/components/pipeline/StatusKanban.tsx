@@ -23,8 +23,8 @@ const COLUNA_INICIAL = "Em preparação (sem Status 2)";
 
 interface Props {
   catalog: DealStatusCatalog;
-  /** Status 1 escolhido no filtro; `null` = todos. As colunas são os Status 2 dele. */
-  statusGroupId: string | null;
+  /** Status 1 escolhidos no filtro; `null` = todos. As colunas são os Status 2 deles. */
+  statusGroupIds: string[] | null;
   deals: LegacyDealRecord[];
   onOpen: (deal: LegacyDealRecord) => void;
   /** O `moveStatus` do `useDealActions`, estável: o cartão é `memo`. */
@@ -49,7 +49,7 @@ interface Props {
  * continua recebendo o cartão solto nela.
  */
 export function StatusKanban({
-  catalog, statusGroupId, deals, onOpen, onMoveStatus, onLose, canWrite, closedMonths,
+  catalog, statusGroupIds, deals, onOpen, onMoveStatus, onLose, canWrite, closedMonths,
 }: Props) {
   const [dragged, setDragged] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export function StatusKanban({
 
   const colunas = useMemo<Coluna[]>(() => {
     const doCadastro = ordemDeEvolucao(catalog.statuses.filter((status) =>
-      status.active && (!statusGroupId || status.group_id === statusGroupId)));
+      status.active && (!statusGroupIds || statusGroupIds.includes(status.group_id))));
     const porChave = new Map<string, LegacyDealRecord[]>();
     const fora: LegacyDealRecord[] = [];
     const chaves = new Set(doCadastro.map((status) => statusKey(status.value)));
@@ -85,7 +85,7 @@ export function StatusKanban({
       });
     }
     return lista;
-  }, [catalog, statusGroupId, deals]);
+  }, [catalog, statusGroupIds, deals]);
 
   const statusPorColuna = useMemo(
     () => new Map(colunas.map((coluna) => [coluna.stage.id, coluna.status])),

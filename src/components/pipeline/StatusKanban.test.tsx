@@ -31,7 +31,7 @@ async function montar(deals: LegacyDealRecord[], onMove = vi.fn(), catalog = cat
   await act(async () => {
     root.render(
       <StatusKanban
-        catalog={catalog} statusGroupId={GRUPOS.PROPOSTA.id} deals={deals}
+        catalog={catalog} statusGroupIds={[GRUPOS.PROPOSTA.id]} deals={deals}
         onOpen={() => undefined} onMoveStatus={onMove} onLose={() => undefined}
         canWrite closedMonths={[]}
       />,

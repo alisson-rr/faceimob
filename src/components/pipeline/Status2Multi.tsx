@@ -9,11 +9,13 @@ type Opcao = { value: string; label: string; active: boolean };
  * Status 2 com vários marcados de uma vez (pedido de 02/10/2026). Botão com a
  * lista de caixas abaixo; fecha com Esc ou clique fora. Vazio = todos.
  */
-export function Status2Multi({ id, valores, opcoes, onChange }: {
+export function Status2Multi({ id, valores, opcoes, onChange, nome = "Status 2" }: {
   id: string;
   valores: string[];
   opcoes: Opcao[];
   onChange: (valores: string[]) => void;
+  /** "Status 2" ou "Status 1": o rótulo do "todos" e do grupo de caixas. */
+  nome?: string;
 }) {
   const [aberto, setAberto] = useState(false);
   const caixa = useRef<HTMLDivElement>(null);
@@ -31,7 +33,7 @@ export function Status2Multi({ id, valores, opcoes, onChange }: {
   }, [aberto]);
 
   const rotulo = valores.length === 0
-    ? "Todos os Status 2"
+    ? `Todos os ${nome}`
     : valores.length === 1
       ? opcoes.find((o) => o.value === valores[0])?.label ?? valores[0]
       : `${valores.length} status selecionados`;
@@ -58,7 +60,7 @@ export function Status2Multi({ id, valores, opcoes, onChange }: {
       {aberto && (
         <div
           role="group"
-          aria-label="Status 2"
+          aria-label={nome}
           className="absolute z-50 mt-1 max-h-80 w-full min-w-[14rem] overflow-y-auto rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
         >
           {valores.length > 0 && (
