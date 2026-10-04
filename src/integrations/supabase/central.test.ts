@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { schema } = vi.hoisted(() => ({ schema: vi.fn() }));
 vi.mock("./client", () => ({ supabase: { schema, storage: { from: vi.fn() } } }));
 
-import { extensaoDe, listarLinksDoCorretor, nomeDoArquivo, type DocumentoDeSuporte } from "./central";
+import { extensaoDe, linksDaPasta, listarLinksDoCorretor, nomeDoArquivo, type DocumentoDeSuporte } from "./central";
 
 /** Cadeia mínima do PostgREST: todo método devolve a cadeia, e ela resolve no resultado. */
 function cadeia(resultado: { data: unknown; error: unknown }) {
@@ -16,7 +16,7 @@ function cadeia(resultado: { data: unknown; error: unknown }) {
 describe("Central do Corretor", () => {
   beforeEach(() => schema.mockReset());
 
-  it("lê os atalhos do schema site e tira os do sistema antigo e o que aponta para o próprio CRM", async () => {
+  it("lê os atalhos do schema site e tira os do sistema antigo, o Drive (tela própria) e o que aponta para o próprio CRM", async () => {
     schema.mockReturnValue(cadeia({
       data: [
         { id: "1", key: "webmail", label: "Webmail", url: "https://mail", description: null },
@@ -31,12 +31,24 @@ describe("Central do Corretor", () => {
     const links = await listarLinksDoCorretor();
 
     expect(schema).toHaveBeenCalledWith("site");
-    expect(links.map((l) => l.key)).toEqual(["webmail", "drive"]);
+    expect(links.map((l) => l.key)).toEqual(["webmail"]);
   });
 
   it("erro do banco sobe, e não vira Central vazia", async () => {
     schema.mockReturnValue(cadeia({ data: null, error: { message: "permission denied" } }));
     await expect(listarLinksDoCorretor()).rejects.toMatchObject({ message: "permission denied" });
+  });
+
+  it("pasta do Drive: até 3 links válidos, e sem lista vale o drive_url", () => {
+    const links = [
+      { name: "Tabela", url: "https://a" }, { name: "Sem url" }, "lixo", { url: "https://b" },
+      { name: "C", url: "https://c" }, { name: "D", url: "https://d" },
+    ];
+    expect(linksDaPasta({ drive_url: "https://x", links })).toEqual([
+      { name: "Tabela", url: "https://a" }, { name: "", url: "https://b" }, { name: "C", url: "https://c" },
+    ]);
+    expect(linksDaPasta({ drive_url: "https://x", links: null })).toEqual([{ name: "Abrir Drive", url: "https://x" }]);
+    expect(linksDaPasta({ drive_url: null, links: [] })).toEqual([]);
   });
 
   it("o arquivo baixa com o nome original, ou com o título e a extensão", () => {

@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  ArrowRight, ExternalLink, FileText, GitBranch, GraduationCap, Link2, MessageCircle, Sparkles, TrendingUp, UserSearch,
+  ArrowRight, ExternalLink, FileText, FolderKanban, GitBranch, GraduationCap, Link2, Map as MapIcon, MessageCircle, Sparkles,
+  TrendingUp, UserSearch,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -251,6 +252,30 @@ export default function CentralCorretor() {
             </div>
           </Card>
         </a>
+
+        <Link to="/central/drive" className={FOCO}>
+          <Card className={CARTAO}>
+            <span className="w-fit rounded-xl bg-primary/15 p-2.5 text-primary">
+              <FolderKanban className="h-5 w-5" aria-hidden />
+            </span>
+            <div>
+              <p className="font-display text-base font-semibold">Drive de Construtoras</p>
+              <p className="mt-1 text-xs text-muted-foreground">Pastas oficiais com tabelas, plantas e materiais</p>
+            </div>
+          </Card>
+        </Link>
+
+        <Link to="/central/mapa" className={FOCO}>
+          <Card className={CARTAO}>
+            <span className="w-fit rounded-xl bg-primary/15 p-2.5 text-primary">
+              <MapIcon className="h-5 w-5" aria-hidden />
+            </span>
+            <div>
+              <p className="font-display text-base font-semibold">Mapa de Imóveis</p>
+              <p className="mt-1 text-xs text-muted-foreground">Empreendimentos por cidade da Região Metropolitana</p>
+            </div>
+          </Card>
+        </Link>
 
         <Link to="/central/suporte" className={FOCO}>
           <Card className={CARTAO}>
