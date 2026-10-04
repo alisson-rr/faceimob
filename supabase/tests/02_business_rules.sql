@@ -105,22 +105,32 @@ begin
   insert into public.leads (full_name, phone) values ('Lead B', '11900000002') returning id into l2;
   insert into public.leads (full_name, phone) values ('Lead C', '11900000003') returning id into l3;
 
+  -- Fila tem exatamente os dois presentes.
+  perform pg_temp.check(
+    (select count(*) from public.distribution_queue(
+       (select id from public.distribution_groups where kind = 'general' limit 1))) = 2,
+    'fila da roleta lista apenas os 2 com check-in');
+
   a1 := public.assign_lead(l1);
   a2 := public.assign_lead(l2);
   a3 := public.assign_lead(l3);
 
   perform pg_temp.check(a1 is not null, 'primeiro lead foi atribuído');
   perform pg_temp.check(a1 <> a2, 'segundo lead foi para outro corretor (round-robin)');
-  perform pg_temp.check(a3 = a1, 'terceiro lead voltou ao primeiro da fila');
+  -- 0220: um lead por vez — com os dois esperando "Atender", o terceiro espera.
+  perform pg_temp.check(a3 is null, 'terceiro lead espera: os dois ainda não atenderam');
+
+  update public.lead_assignments set responded_at = now()
+   where lead_id = l1 and released_at is null;
+  a3 := public.assign_lead(l3);
+  perform pg_temp.check(a3 = a1, 'terceiro lead volta ao primeiro, que já atendeu');
   perform pg_temp.check(
     a1 <> c3 and a2 <> c3 and a3 <> c3,
     'corretor sem check-in não recebeu lead');
 
-  -- Fila tem exatamente os dois presentes.
-  perform pg_temp.check(
-    (select count(*) from public.distribution_queue(
-       (select id from public.distribution_groups where kind = 'general' limit 1))) = 2,
-    'fila da roleta lista apenas os 2 com check-in');
+  -- Os dois atendem: os próximos blocos começam com a fila livre.
+  update public.lead_assignments set responded_at = now()
+   where lead_id in (l2, l3) and released_at is null;
 end
 $$;
 
@@ -220,10 +230,12 @@ begin
    where profile_id = c1
      and assigned_at = (select max(assigned_at) from public.lead_assignments where profile_id = c1);
 
-  -- c2 recebeu há 5 min e continua com o lead.
+  -- c2 recebeu há 5 min e continua com o lead — já clicou em "Atender"
+  -- (responded_at); sem isso a 0220 o tiraria da vez.
   update public.lead_assignments
      set assigned_at = now() - interval '5 minutes',
-         released_at = null, release_reason = null
+         released_at = null, release_reason = null,
+         responded_at = coalesce(responded_at, now() - interval '4 minutes')
    where profile_id = c2;
 
   select queue_position into v_pos1 from public.distribution_queue(grupo) where profile_id = c1;

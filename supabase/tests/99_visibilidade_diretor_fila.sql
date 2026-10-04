@@ -465,6 +465,11 @@ begin
     (select count(*)::int from public.notifications n
       where n.kind = 'lead_unattended' and n.link = '/leads?lead=' || v_lead), 0,
     'depois de 5 voltas ninguém é avisado');
+
+  -- O Beto atende: um lead dele esperando "Atender" o tiraria da vez (0220)
+  -- no bloco 7, que conta com ele na fila.
+  update public.lead_assignments set responded_at = now()
+   where lead_id = v_lead and released_at is null;
 end
 $$;
 
