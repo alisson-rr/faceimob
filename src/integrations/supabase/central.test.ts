@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { schema, storageFrom } = vi.hoisted(() => ({ schema: vi.fn(), storageFrom: vi.fn() }));
 vi.mock("./client", () => ({ supabase: { schema, storage: { from: storageFrom } } }));
 
-import { extensaoDe, linksDaPasta, listarLinksDoCorretor, nomeDoArquivo, urlDaFoto, type DocumentoDeSuporte } from "./central";
+import {
+  extensaoDe, linksDaPasta, listarLinksDoCorretor, materiaisDaAula, nomeDoArquivo, playerDaAula, segundosDaDuracao, urlDaFoto,
+  type DocumentoDeSuporte,
+} from "./central";
 
 /** Cadeia mínima do PostgREST: todo método devolve a cadeia, e ela resolve no resultado. */
 function cadeia(resultado: { data: unknown; error: unknown }) {
@@ -57,6 +60,19 @@ describe("Central do Corretor", () => {
     expect(urlDaFoto({ url: "", storage_path: "abc/1.jpg" })).toBe("https://crm/storage/abc/1.jpg");
     expect(storageFrom).toHaveBeenCalledWith("property-images");
     expect(urlDaFoto({ url: "https://cdn/1.jpg", storage_path: null })).toBe("https://cdn/1.jpg");
+  });
+
+  it("Universidade: player de YouTube/Vimeo/arquivo, duração e materiais", () => {
+    expect(playerDaAula("https://www.youtube.com/watch?v=abc123XYZ")).toEqual({ tipo: "iframe", src: "https://www.youtube.com/embed/abc123XYZ?rel=0" });
+    expect(playerDaAula("https://youtu.be/abc123XYZ")?.src).toBe("https://www.youtube.com/embed/abc123XYZ?rel=0");
+    expect(playerDaAula("https://vimeo.com/76979871")).toEqual({ tipo: "iframe", src: "https://player.vimeo.com/video/76979871" });
+    expect(playerDaAula("https://cdn/aula.mp4")).toEqual({ tipo: "video", src: "https://cdn/aula.mp4" });
+    expect(playerDaAula("javascript:alert(1)")).toBeNull();
+    expect(segundosDaDuracao("12:30")).toBe(750);
+    expect(segundosDaDuracao("1:02:03")).toBe(3723);
+    expect(segundosDaDuracao("12 min")).toBeNull();
+    expect(materiaisDaAula([{ name: "PDF", url: "https://a/b.pdf" }, { name: "x", url: "javascript:x" }, "lixo"]))
+      .toEqual([{ name: "PDF", url: "https://a/b.pdf" }]);
   });
 
   it("o arquivo baixa com o nome original, ou com o título e a extensão", () => {

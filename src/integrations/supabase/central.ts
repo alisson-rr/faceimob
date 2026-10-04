@@ -278,3 +278,106 @@ export async function excluirDocumentoDeSuporte(doc: DocumentoDeSuporte): Promis
   if (error) throw error;
   if (doc.file_path) await supabase.storage.from(BUCKET_SUPORTE).remove([doc.file_path]);
 }
+
+export type MaterialDaAula = { name: string; url: string };
+
+export type AulaDaUniversidade = {
+  id: string;
+  title: string;
+  description: string | null;
+  cover_url: string | null;
+  video_url: string | null;
+  duration_label: string | null;
+  views_count: number;
+  materials: MaterialDaAula[];
+  concluida: boolean;
+};
+
+export type SecaoDaUniversidade = {
+  id: string;
+  title: string;
+  description: string | null;
+  aulas: AulaDaUniversidade[];
+};
+
+export type Universidade = {
+  secoes: SecaoDaUniversidade[];
+  experiencia: number;
+  nivel: number;
+};
+
+/** Materiais da aula: só itens com nome e link válidos. */
+export function materiaisDaAula(valor: unknown): MaterialDaAula[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.flatMap((m): MaterialDaAula[] =>
+    typeof m === "object" && m !== null && "name" in m && "url" in m
+      && typeof m.name === "string" && typeof m.url === "string" && /^https?:\/\//i.test(m.url)
+      ? [{ name: m.name, url: m.url }]
+      : []);
+}
+
+/**
+ * Universidade dentro do CRM (etapa 1 da administração do site no CRM,
+ * 04/10/2026): seções e aulas ativas do site, o que o corretor já concluiu e o
+ * XP dele. Mesma RLS do site (0169).
+ */
+export async function carregarUniversidade(userId: string): Promise<Universidade> {
+  const [secoes, aulas, vistas, evolucao] = await Promise.all([
+    site().from("university_sections").select("id,title,description").eq("active", true).order("sort_order"),
+    site().from("university_videos")
+      .select("id,section_id,title,description,cover_url,video_url,duration_label,views_count,materials")
+      .eq("active", true).order("sort_order"),
+    site().from("university_watched").select("video_id,completed_at").eq("user_id", userId),
+    site().from("evolucao_universidade").select("experiencia,nivel").eq("user_id", userId).maybeSingle(),
+  ]);
+  for (const r of [secoes, aulas, vistas, evolucao]) if (r.error) throw r.error;
+  const concluidas = new Set(((vistas.data ?? []) as { video_id: string; completed_at: string | null }[])
+    .filter((v) => v.completed_at).map((v) => v.video_id));
+  type LinhaAula = Omit<AulaDaUniversidade, "materials" | "concluida"> & { section_id: string; materials: unknown };
+  const porSecao = new Map<string, AulaDaUniversidade[]>();
+  for (const a of (aulas.data ?? []) as LinhaAula[]) {
+    const { section_id, materials, ...resto } = a;
+    porSecao.set(section_id, [...(porSecao.get(section_id) ?? []),
+      { ...resto, views_count: resto.views_count ?? 0, materials: materiaisDaAula(materials), concluida: concluidas.has(a.id) }]);
+  }
+  const evo = evolucao.data as { experiencia: number; nivel: number } | null;
+  return {
+    secoes: ((secoes.data ?? []) as Omit<SecaoDaUniversidade, "aulas">[])
+      .map((s) => ({ ...s, aulas: porSecao.get(s.id) ?? [] }))
+      .filter((s) => s.aulas.length > 0),
+    experiencia: evo?.experiencia ?? 0,
+    nivel: evo?.nivel ?? 1,
+  };
+}
+
+export async function registrarVisualizacao(aulaId: string): Promise<void> {
+  const { error } = await (supabase as unknown as SupabaseClient)
+    .rpc("universidade_registrar_visualizacao", { p_video: aulaId });
+  if (error) throw error;
+}
+
+export type ConclusaoDaAula = { primeira: boolean; experiencia: number; nivel: number };
+
+export async function concluirAula(aulaId: string): Promise<ConclusaoDaAula> {
+  const { data, error } = await (supabase as unknown as SupabaseClient)
+    .rpc("universidade_concluir_aula", { p_video: aulaId });
+  if (error) throw error;
+  return data as ConclusaoDaAula;
+}
+
+/** Endereço de player embutido: YouTube e Vimeo viram iframe; o resto, arquivo de vídeo. */
+export function playerDaAula(url: string | null): { tipo: "iframe" | "video"; src: string } | null {
+  if (!url) return null;
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/);
+  if (yt) return { tipo: "iframe", src: `https://www.youtube.com/embed/${yt[1]}?rel=0` };
+  const vm = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vm) return { tipo: "iframe", src: `https://player.vimeo.com/video/${vm[1]}` };
+  return /^https?:\/\//i.test(url) ? { tipo: "video", src: url } : null;
+}
+
+/** "12:30" ou "1:02:03" em segundos; sem formato, `null`. */
+export function segundosDaDuracao(rotulo: string | null): number | null {
+  const partes = (rotulo ?? "").trim().split(":").map(Number);
+  if (partes.length < 2 || partes.some((n) => !Number.isFinite(n))) return null;
+  return partes.reduce((total, n) => total * 60 + n, 0);
+}

@@ -42,6 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Suporte para Análise", url: "/central/suporte", icon: LayoutGrid, group: "principal", hidden: true },
   { title: "Drive de Construtoras", url: "/central/drive", icon: LayoutGrid, group: "principal", hidden: true },
   { title: "Mapa de Imóveis", url: "/central/mapa", icon: LayoutGrid, group: "principal", hidden: true },
+  { title: "Universidade", url: "/central/universidade", icon: LayoutGrid, group: "principal", hidden: true },
 
   { title: "Configurações", url: "/settings", icon: Settings, group: "configuracoes" },
   { title: "Resultados", url: "/resultados", icon: TrendingUp, group: "configuracoes" },
