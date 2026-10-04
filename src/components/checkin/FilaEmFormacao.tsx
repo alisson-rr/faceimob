@@ -16,7 +16,8 @@ export type LinhaDaFila = {
   profile_id: string;
   full_name: string;
   posicao: number | null;
-  situacao: "na_fila" | "aguardando" | "bloqueado";
+  /** `com_lead` (0220): tem lead da roleta esperando "Atender" — sai da vez até atender. */
+  situacao: "na_fila" | "aguardando" | "bloqueado" | "com_lead";
   checked_in_at: string;
   abre_as: string;
   last_turn_at: string | null;
@@ -27,6 +28,7 @@ const SITUACAO = {
   na_fila: { tone: "success", texto: "na fila" },
   aguardando: { tone: "info", texto: "aguardando" },
   bloqueado: { tone: "danger", texto: "bloqueado" },
+  com_lead: { tone: "warning", texto: "com lead para atender" },
 } as const;
 
 const hora = (iso: string) =>

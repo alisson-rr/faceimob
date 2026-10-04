@@ -49,12 +49,14 @@ begin
   -- Caio recebeu ontem; Ana recebeu há 5 minutos.
   insert into public.leads (full_name, phone, status, assigned_to, assigned_at, next_action_at)
   values ('Ontem 200', '11900200001', 'attending', caio, now() - interval '1 day', now() + interval '1 day') returning id into l_ontem;
-  insert into public.lead_assignments (lead_id, profile_id, group_id, sequence, deadline, assigned_at)
-  values (l_ontem, caio, g, 1, now(), now() - interval '1 day');
+  -- Leads em atendimento: o "Atender" já foi clicado (responded_at), como no
+  -- `claim_lead` — senão a 0220 os tiraria da vez.
+  insert into public.lead_assignments (lead_id, profile_id, group_id, sequence, deadline, assigned_at, responded_at)
+  values (l_ontem, caio, g, 1, now(), now() - interval '1 day', now() - interval '1 day');
   insert into public.leads (full_name, phone, status, assigned_to, assigned_at, next_action_at)
   values ('Ana 200', '11900200002', 'attending', ana, now() - interval '5 minutes', now() + interval '1 day') returning id into l_ana;
-  insert into public.lead_assignments (lead_id, profile_id, group_id, sequence, deadline, assigned_at)
-  values (l_ana, ana, g, 1, now(), now() - interval '5 minutes');
+  insert into public.lead_assignments (lead_id, profile_id, group_id, sequence, deadline, assigned_at, responded_at)
+  values (l_ana, ana, g, 1, now(), now() - interval '5 minutes', now() - interval '4 minutes');
 
   select string_agg(p.full_name, ' > ' order by q.queue_position) into ordem
     from public.distribution_queue_interna(g) q join public.profiles p on p.id = q.profile_id;
