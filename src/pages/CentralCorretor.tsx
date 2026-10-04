@@ -37,8 +37,6 @@ const GRUPOS_WHATSAPP = [
   { nome: "Esperanza", url: "https://chat.whatsapp.com/Kgpq08lPwSX6haYthtRn9U" },
 ] as const;
 
-/** Até a Universidade entrar no CRM (próxima etapa), o cartão abre a do site. */
-const UNIVERSIDADE_NO_SITE = "https://faceimob.com.br/corretor/universidade";
 
 const CARTAO = "group flex h-full flex-col justify-between gap-6 p-5 transition-colors hover:border-primary/60";
 const FOCO = "rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -160,7 +158,7 @@ export default function CentralCorretor() {
           </div>
         </Card>
 
-        <a href={UNIVERSIDADE_NO_SITE} target="_blank" rel="noopener noreferrer" className={FOCO}>
+        <Link to="/central/universidade" className={FOCO}>
           <Card className="flex h-full flex-col justify-between gap-4 border-highlight/40 p-6">
             <div className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-3">
@@ -187,7 +185,7 @@ export default function CentralCorretor() {
               </p>
             </div>
           </Card>
-        </a>
+        </Link>
       </div>
 
       {links.isError && (
@@ -238,20 +236,17 @@ export default function CentralCorretor() {
             );
           })}
 
-        <a href={UNIVERSIDADE_NO_SITE} target="_blank" rel="noopener noreferrer" className={FOCO}>
+        <Link to="/central/universidade" className={FOCO}>
           <Card className={cn(CARTAO, "border-highlight/40")}>
-            <div className="flex items-start justify-between">
-              <span className="rounded-xl bg-highlight/15 p-2.5 text-gold">
-                <GraduationCap className="h-5 w-5" aria-hidden />
-              </span>
-              <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary" aria-hidden />
-            </div>
+            <span className="w-fit rounded-xl bg-highlight/15 p-2.5 text-gold">
+              <GraduationCap className="h-5 w-5" aria-hidden />
+            </span>
             <div>
               <p className="font-display text-base font-semibold">Universidade Faceimob</p>
               <p className="mt-1 text-xs text-muted-foreground">Vídeo aulas de Meta Ads, atendimento e fechamento</p>
             </div>
           </Card>
-        </a>
+        </Link>
 
         <Link to="/central/drive" className={FOCO}>
           <Card className={CARTAO}>

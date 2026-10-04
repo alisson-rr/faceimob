@@ -31,6 +31,7 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   "/central/suporte": "menu.central",
   "/central/drive": "menu.central",
   "/central/mapa": "menu.central",
+  "/central/universidade": "menu.central",
   "/data": "menu.data",
   // `/settings` NÃO entra aqui de propósito — ver `firstAllowedRoute`.
   "/admin/permissions": "menu.admin_permissions",
