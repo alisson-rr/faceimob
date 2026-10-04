@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, BedDouble, Building2, Map as MapIcon, MapPin, X } from "lucide-react";
+import { ArrowLeft, BedDouble, Building2, ExternalLink, Map as MapIcon, MapPin, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
-import { listarImoveisDoMapa, type ImovelDoMapa } from "@/integrations/supabase/central";
+import { SITE_PUBLICO, listarImoveisDoMapa, type ImovelDoMapa } from "@/integrations/supabase/central";
 import { brl } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
@@ -176,27 +176,36 @@ export default function CentralMapa() {
                       </div>
                       <ul className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto pr-1">
                         {cidadeAberta.imoveis.map((im) => (
-                          <li key={im.id} className="flex gap-3 rounded-xl border border-border p-2">
-                            <span className="h-16 w-20 shrink-0 overflow-hidden rounded-lg bg-muted">
-                              {im.imagem
-                                ? <img src={im.imagem} alt="" className="h-full w-full object-cover" loading="lazy" />
-                                : <span className="flex h-full items-center justify-center text-muted-foreground"><Building2 className="h-6 w-6" aria-hidden /></span>}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-semibold">{im.title}</span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {[im.neighborhood, STATUS_DO_IMOVEL[im.status] ?? im.status, im.developer].filter(Boolean).join(" · ")}
+                          <li key={im.id}>
+                            {/* Abre a página do imóvel no site (pedido de 04/10/2026). */}
+                            <a
+                              href={`${SITE_PUBLICO}/imovel/${encodeURIComponent(im.slug)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group flex gap-3 rounded-xl border border-border p-2 transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <span className="h-16 w-20 shrink-0 overflow-hidden rounded-lg bg-muted">
+                                {im.imagem
+                                  ? <img src={im.imagem} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                  : <span className="flex h-full items-center justify-center text-muted-foreground"><Building2 className="h-6 w-6" aria-hidden /></span>}
                               </span>
-                              <span className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                                <span className="font-semibold text-gold">{preco(im)}</span>
-                                {im.bedrooms ? (
-                                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                    <BedDouble className="h-3.5 w-3.5" aria-hidden /> {im.bedrooms}
-                                  </span>
-                                ) : null}
-                                {im.cca && <StatusBadge tone="warning">{im.cca}</StatusBadge>}
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-semibold group-hover:text-primary">{im.title}</span>
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {[im.neighborhood, STATUS_DO_IMOVEL[im.status] ?? im.status, im.developer].filter(Boolean).join(" · ")}
+                                </span>
+                                <span className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                  <span className="font-semibold text-gold">{preco(im)}</span>
+                                  {im.bedrooms ? (
+                                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                      <BedDouble className="h-3.5 w-3.5" aria-hidden /> {im.bedrooms}
+                                    </span>
+                                  ) : null}
+                                  {im.cca && <StatusBadge tone="warning">{im.cca}</StatusBadge>}
+                                </span>
                               </span>
-                            </span>
+                              <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden />
+                            </a>
                           </li>
                         ))}
                       </ul>

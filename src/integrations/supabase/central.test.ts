@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { schema } = vi.hoisted(() => ({ schema: vi.fn() }));
-vi.mock("./client", () => ({ supabase: { schema, storage: { from: vi.fn() } } }));
+const { schema, storageFrom } = vi.hoisted(() => ({ schema: vi.fn(), storageFrom: vi.fn() }));
+vi.mock("./client", () => ({ supabase: { schema, storage: { from: storageFrom } } }));
 
-import { extensaoDe, linksDaPasta, listarLinksDoCorretor, nomeDoArquivo, type DocumentoDeSuporte } from "./central";
+import { extensaoDe, linksDaPasta, listarLinksDoCorretor, nomeDoArquivo, urlDaFoto, type DocumentoDeSuporte } from "./central";
 
 /** Cadeia mínima do PostgREST: todo método devolve a cadeia, e ela resolve no resultado. */
 function cadeia(resultado: { data: unknown; error: unknown }) {
@@ -49,6 +49,14 @@ describe("Central do Corretor", () => {
     ]);
     expect(linksDaPasta({ drive_url: "https://x", links: null })).toEqual([{ name: "Abrir Drive", url: "https://x" }]);
     expect(linksDaPasta({ drive_url: null, links: [] })).toEqual([]);
+  });
+
+  it("a foto do imóvel sai do arquivo no bucket; sem arquivo, do endereço gravado", () => {
+    storageFrom.mockReturnValue({ getPublicUrl: (path: string) => ({ data: { publicUrl: `https://crm/storage/${path}` } }) });
+    // O robô do site grava `url` vazio e só o arquivo: era a miniatura vazia do mapa.
+    expect(urlDaFoto({ url: "", storage_path: "abc/1.jpg" })).toBe("https://crm/storage/abc/1.jpg");
+    expect(storageFrom).toHaveBeenCalledWith("property-images");
+    expect(urlDaFoto({ url: "https://cdn/1.jpg", storage_path: null })).toBe("https://cdn/1.jpg");
   });
 
   it("o arquivo baixa com o nome original, ou com o título e a extensão", () => {

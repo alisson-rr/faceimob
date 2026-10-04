@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ccaColumnOf, ccaColumnStatusAllowed, loadCcaBoard, periodoValido, ultimos30Dias, type CcaStage,
+  ccaColumnOf, ccaColumnStatusAllowed, foraDaEsteiraDoCca, loadCcaBoard, periodoValido, ultimos30Dias, type CcaStage,
 } from "./ccaData";
 
 const h = vi.hoisted(() => ({
@@ -171,5 +171,15 @@ describe("loadCcaBoard · só o período, filtrado no banco", () => {
     expect(board.negocios.map((deal) => deal.id)).toEqual(["d2", "d1"]);
     expect(board.deals[0]).toMatchObject({ cpf: "12345678900", agile: true, submittedAt: "2026-09-01T12:00:00Z", stageEnteredAt: "2026-09-02T12:00:00Z" });
     expect(board.deals[1].agile).toBe(false);
+  });
+});
+
+describe("foraDaEsteiraDoCca", () => {
+  it("análise externa de construtora sem CCA próprio fica fora; a do CCA próprio e os demais status ficam", () => {
+    const proprio = new Set(["tenda"]);
+    expect(foraDaEsteiraDoCca("ANÁLISE EXTERNA", "MRV", proprio)).toBe(true);
+    expect(foraDaEsteiraDoCca("ANÁLISE EXTERNA", " Tenda ", proprio)).toBe(false);
+    expect(foraDaEsteiraDoCca("12. EM PROCESSAMENTO", "MRV", proprio)).toBe(false);
+    expect(foraDaEsteiraDoCca("ANÁLISE EXTERNA", "MRV", null)).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 -- =============================================================================
--- 0214 — Funil de Vendas: leads → docs → aprovadas → vendas por diretoria, a
--- régua da imobiliária, os parados há mais de 3 dias e quem pode ver o quê.
+-- 0214/0216 — Funil de Vendas: leads → docs → aprovadas → vendas por
+-- diretoria, contando docs e aprovadas pelo que se MOVEU no mês (0216), a régua
+-- da imobiliária, os parados há mais de 3 dias e quem pode ver o quê.
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -63,11 +64,14 @@ begin
   select 'Lead 214 #' || i, '1195521400' || i, 'assigned', case when i <= 3 then cor else fora end
     from generate_series(1, 5) i;
 
-  d_docs  := pg_temp.negocio(cor, '12. EM PROCESSAMENTO', 'PROPOSTA');
+  d_docs  := pg_temp.negocio(cor, '13. ESTEIRA AGIL', 'PROPOSTA');
   d_aprov := pg_temp.negocio(cor, '09. APROV. TOTAL', 'PROPOSTA');
   d_venda := pg_temp.negocio(cor, '04. EM CONTRATO', 'VENDA');
   d_fora  := pg_temp.negocio(fora, '10. APROV. COND.', 'PROPOSTA');
   update public.deals set status_detail_changed_at = now() - interval '5 days' where id in (d_aprov, d_fora);
+  -- Aprovação de MESES atrás não conta no mês (0216).
+  insert into public.deal_status_history (deal_id, to_status, changed_at)
+  values (d_venda, '09. APROV. TOTAL', now() - interval '3 months');
 
   -- 1. O gatilho marca quando o Status 2 muda.
   perform pg_temp.ok((select status_detail_changed_at > now() - interval '1 minute' from public.deals where id = d_docs),
@@ -75,15 +79,21 @@ begin
   update public.deals set status_detail = '11. AG. RET. AGENCIA' where id = d_docs;
   perform pg_temp.ok((select status_detail_changed_at > now() - interval '1 minute' from public.deals where id = d_docs),
     'mudar o Status 2 atualiza a data');
+  perform pg_temp.ok(
+    (select count(*) from public.deal_status_history where deal_id = d_docs) = 2
+    and exists (select 1 from public.deal_status_history where deal_id = d_docs
+                 and from_status = '13. ESTEIRA AGIL' and to_status = '11. AG. RET. AGENCIA'),
+    'cada troca do Status 2 fica no histórico (0216)');
 
   -- 2. A diretoria: 3 leads, 3 docs, 2 aprovadas (a aprovada e a venda), 1 venda.
   perform pg_temp.como(dir);
   set local role authenticated;
   r := public.funil_de_vendas(mes, dir);
   reset role;
-  perform pg_temp.ok(r -> 'recorte' = '{"leads":3,"docs":3,"aprovadas":2,"vendas":1}'::jsonb,
-    'diretoria: 3 leads, 3 docs, 2 aprovadas, 1 venda (' || (r ->> 'recorte') || ')');
-  perform pg_temp.ok((r -> 'imob' ->> 'docs')::int >= 4 and (r -> 'imob' ->> 'leads')::int >= 5,
+  -- Docs: só a que entrou na esteira no mês; aprovadas: só a aprovada no mês.
+  perform pg_temp.ok(r -> 'recorte' = '{"leads":3,"docs":1,"aprovadas":1,"vendas":1}'::jsonb,
+    'diretoria: 3 leads, 1 doc e 1 aprovada movimentadas no mês, 1 venda (' || (r ->> 'recorte') || ')');
+  perform pg_temp.ok((r -> 'imob' ->> 'aprovadas')::int >= 2 and (r -> 'imob' ->> 'leads')::int >= 5,
     'a régua da imobiliária conta também quem está fora da diretoria');
   perform pg_temp.ok(jsonb_path_exists(r -> 'parados', '$[*] ? (@.deal_id == $id)', jsonb_build_object('id', d_aprov)),
     'aprovada parada há 5 dias aparece no alerta');
@@ -124,7 +134,7 @@ begin
   set local role authenticated;
   r := public.funil_de_vendas(mes, null);
   reset role;
-  perform pg_temp.ok((r ->> 'diretor')::uuid = dir and (r -> 'recorte' ->> 'docs')::int = 3,
+  perform pg_temp.ok((r ->> 'diretor')::uuid = dir and (r -> 'recorte' ->> 'docs')::int = 1,
     'diretora sem escolher abre a própria diretoria, não a imobiliária');
 
   perform pg_temp.como(adm);
