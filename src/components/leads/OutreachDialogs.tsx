@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { Mail, MessageCircle, Send, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +13,17 @@ import { fillWhatsappTemplate, waNumber } from "./model";
 import { preencherMensagem } from "./mensagensProntas";
 import { useMensagensProntas, useMeuApelido } from "./mensagensProntasData";
 import { MensagensProntasEditor } from "./MensagensProntasEditor";
+import { baixarContato, nomeDoContato } from "./contatoVcard";
+
+/** Preferência do aparelho: salvar o contato junto com o WhatsApp (padrão: sim). */
+const CHAVE_SALVAR_CONTATO = "faceimob:salvar-contato-no-whatsapp";
+const lerSalvarContato = () => {
+  try {
+    return localStorage.getItem(CHAVE_SALVAR_CONTATO) !== "nao";
+  } catch {
+    return true;
+  }
+};
 
 /** Abre o WhatsApp Web com a mensagem pronta — o envio é no aplicativo. */
 export function WhatsAppDialog({
@@ -27,6 +39,7 @@ export function WhatsAppDialog({
   const [templateId, setTemplateId] = useState("");
   const [message, setMessage] = useState("");
   const [gerenciando, setGerenciando] = useState(false);
+  const [salvarContato, setSalvarContato] = useState(lerSalvarContato);
   const prontas = useMensagensProntas();
   const apelido = useMeuApelido();
   const mensagens = prontas.data ?? [];
@@ -68,6 +81,8 @@ export function WhatsAppDialog({
       toast({ variant: "destructive", title: "Lead sem telefone", description: "Cadastre o telefone antes de mandar WhatsApp." });
       return;
     }
+    // Contato no celular num toque (04/10/2026): o .vcf abre "Adicionar contato".
+    if (salvarContato) baixarContato(lead);
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, "_blank", "noopener");
     toast({ title: "WhatsApp aberto", description: `Mensagem preparada para ${lead.name}.` });
     onSent?.();
@@ -130,6 +145,26 @@ export function WhatsAppDialog({
             onChange={(event) => setMessage(event.target.value)}
             placeholder="Escreva ou escolha uma mensagem pronta…"
           />
+        </div>
+
+        <div className="flex items-start gap-2 rounded-lg border border-border p-3">
+          <Checkbox
+            id={`${fieldId}-contato`}
+            checked={salvarContato}
+            onCheckedChange={(marcado) => {
+              const valor = marcado === true;
+              setSalvarContato(valor);
+              try {
+                localStorage.setItem(CHAVE_SALVAR_CONTATO, valor ? "sim" : "nao");
+              } catch {
+                // Sem armazenamento local, vale só nesta janela.
+              }
+            }}
+          />
+          <Label htmlFor={`${fieldId}-contato`} className="cursor-pointer text-sm font-normal leading-snug">
+            Salvar contato no celular
+            <span className="block text-xs text-muted-foreground">{nomeDoContato(lead)}</span>
+          </Label>
         </div>
 
         <DialogFooter>
