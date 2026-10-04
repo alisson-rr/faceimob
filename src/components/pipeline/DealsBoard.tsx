@@ -14,7 +14,8 @@ interface Props {
   /** Colunas do kanban: os Status 2 do cadastro (0164). */
   catalog: DealStatusCatalog;
   /** Status 1 do filtro; `null` = todos. */
-  statusGroupId: string | null;
+  /** Status 1 cujos Status 2 viram colunas; `null` = todos. */
+  statusGroupIds: string[] | null;
   isPending: boolean;
   error: unknown;
   filtered: boolean;
@@ -44,7 +45,7 @@ interface Props {
  * e vazio-de-verdade são telas distintas, cada uma com a sua saída.
  */
 export function DealsBoard({
-  view, deals, catalog, statusGroupId, isPending, error, filtered, canWrite, closedMonths,
+  view, deals, catalog, statusGroupIds, isPending, error, filtered, canWrite, closedMonths,
   onRetry, onClearFilters, onNewDeal, onOpen, onStatusChange, onScheduleVisit, onLose,
   onReopen,
 }: Props) {
@@ -83,7 +84,7 @@ export function DealsBoard({
   return view === "kanban" ? (
     <StatusKanban
       catalog={catalog}
-      statusGroupId={statusGroupId}
+      statusGroupIds={statusGroupIds}
       deals={deals}
       onOpen={onOpen}
       onMoveStatus={onStatusChange}

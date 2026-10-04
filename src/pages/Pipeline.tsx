@@ -184,13 +184,16 @@ export default function Pipeline() {
    */
   const propostaId = catalog.groups.find((group) => group.code === "PROPOSTA")?.id ?? ALL;
   const vendaId = catalog.groups.find((group) => group.code === "VENDA")?.id ?? null;
-  const filtrosLimpos = useMemo(() => ({ ...EMPTY_FILTERS, status1: propostaId }), [propostaId]);
+  const filtrosLimpos = useMemo(
+    () => ({ ...EMPTY_FILTERS, status1: propostaId === ALL ? [] : [propostaId] }),
+    [propostaId],
+  );
   // "Conferir agora" do popup do gerente (0196) abre direto na fila da conferência.
   const [searchParams] = useSearchParams();
   const abreNaConferencia = searchParams.get("conferencia") === "pendente";
   const filters = useMemo(
     () => filtrosEscolhidos ?? (abreNaConferencia
-      ? { ...filtrosLimpos, status1: ALL, team: recorteInicial, documentReview: "pending" }
+      ? { ...filtrosLimpos, status1: [], team: recorteInicial, documentReview: "pending" }
       : { ...filtrosLimpos, team: recorteInicial }),
     [filtrosEscolhidos, filtrosLimpos, recorteInicial, abreNaConferencia],
   );
@@ -455,7 +458,9 @@ export default function Pipeline() {
               view={view}
               deals={visible}
               catalog={catalog}
-              statusGroupId={filters.status1 === ALL || filters.status1 === vendaId ? null : filters.status1}
+              // Colunas dos Status 1 marcados; "VENDA — todas as vendas" inclui o
+              // pós-venda, então com ela marcada o quadro mostra todas.
+              statusGroupIds={filters.status1.length === 0 || (vendaId && filters.status1.includes(vendaId)) ? null : filters.status1}
               // A trava do mês fechado e as listas de pessoas/construtoras
               // entram na espera junto com a matriz de etapas, e pelo mesmo
               // motivo: `closedMonths` falhando devolvia `[]`, e mês congelado

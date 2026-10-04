@@ -14,7 +14,7 @@
 import type { StatusTone } from "@/components/shared";
 import { bareStatus, isSystemStatus } from "@/lib/dealStatus";
 import { TONE_HEX, isHexColor, textOn } from "@/lib/tone";
-import { statusKey, type DealStatusCatalog, type DealStatusGroup } from "@/integrations/supabase/dealStatuses";
+import { statusKey, type DealStatus, type DealStatusCatalog, type DealStatusGroup } from "@/integrations/supabase/dealStatuses";
 
 export type StatusOption = { value: string; label: string; tone: StatusTone; color: string };
 
@@ -104,3 +104,29 @@ export const STATUS_TONE_CLASS: Record<StatusTone, string> = {
   neutral: "bg-muted-foreground text-background",
   highlight: "bg-highlight text-highlight-foreground",
 };
+
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/\p{M}/gu, "");
+
+/**
+ * Ordem de evolução do negócio no quadro (pedido de 04/10/2026): da entrada na
+ * esteira à venda, depois o legado e os encerramentos. O cadastro numera ao
+ * contrário (01 = RC emitida), então a ordem dele não serve aqui. Status novo,
+ * fora desta lista, vai para o fim na ordem do cadastro.
+ */
+const EVOLUCAO = [
+  "ESTEIRA AGIL", "RET. ESTEIRA AGIL", "EM PROCESSAMENTO", "AG. RET. AGENCIA", "PENDENTE",
+  "APROV. TOTAL", "APROV. COND.", "APROV. AG. CONT.",
+  "ANALISE P/ VIRAR NEGOCIO", "PENDENTE P/ VIRAR NEGOCIO", "MUDAR CONSTRUTORA P/ NEGOCIO", "VIROU NEGOCIO",
+  "ENVIO DE RP", "RP APROVADO", "EM CONTRATO", "ASSINADO", "ASS. BANCO", "RC EMITIDA",
+  "ANALISE P/ POTENCIAL", "ANALISE EXTERNA", "PENDENTE C/ RESTRICAO", "APROVADO POTENCIAL",
+  "APROV. TOT. RESTRICAO", "APROV. COND. RESTRICAO", "INTERNALIZADO", "COMPRA ASSISTIDA",
+  "INCOMPLETO", "BACEN", "RESTRICAO", "REPROVADO",
+  "DISTRATO", "QUEDA", "OFF",
+].map((chave, indice) => [chave, indice] as const);
+const POSICAO_NA_EVOLUCAO = new Map(EVOLUCAO);
+
+export function ordemDeEvolucao<T extends Pick<DealStatus, "value">>(statuses: T[]): T[] {
+  const posicao = (status: T) => POSICAO_NA_EVOLUCAO.get(semAcento(statusKey(status.value))) ?? EVOLUCAO.length;
+  // `sort` estável: entre os de fora da lista vale a ordem do cadastro.
+  return [...statuses].sort((a, b) => posicao(a) - posicao(b));
+}

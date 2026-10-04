@@ -94,22 +94,18 @@ export function DealFilters({
             opções de edição. */}
         <div>
           <Label htmlFor={field("status1")}>Status 1</Label>
-          <Select value={filters.status1} onValueChange={(v) => onChange({ status1: v })}>
-            <SelectTrigger id={field("status1")} className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os Status 1</SelectItem>
-              {catalog.groups.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  <span>
-                    {option.code === "VENDA"
-                      ? `${option.label} — todas as vendas`
-                      : option.label}
-                  </span>
-                  {!option.active && <span className="text-muted-foreground"> (inativo)</span>}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Vários de uma vez (04/10/2026), como o Status 2. */}
+          <Status2Multi
+            id={field("status1")}
+            nome="Status 1"
+            valores={filters.status1}
+            opcoes={catalog.groups.map((option) => ({
+              value: option.id,
+              label: option.code === "VENDA" ? `${option.label} — todas as vendas` : option.label,
+              active: option.active,
+            }))}
+            onChange={(status1) => onChange({ status1 })}
+          />
         </div>
 
         <div>

@@ -10,17 +10,21 @@ import { DealCard } from "./DealCard";
 import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import { dealLock } from "./guards";
 import type { PipelineStage } from "./stages";
-import { faceimobStatusColor } from "./statuses";
+import { faceimobStatusColor, ordemDeEvolucao } from "./statuses";
 
 /** Coluna do quadro: um Status 2 do cadastro, ou a de quem está fora dele. */
 type Coluna = { stage: PipelineStage; status: DealStatus | null; deals: LegacyDealRecord[] };
 
 const FORA_DO_CADASTRO = "fora-do-cadastro";
 
+/** Coluna de quem ainda não tem Status 2: o negócio recém-cadastrado, com a
+ *  documentação em preparação ou já conferida, antes de entrar na esteira. */
+const COLUNA_INICIAL = "Em preparação (sem Status 2)";
+
 interface Props {
   catalog: DealStatusCatalog;
-  /** Status 1 escolhido no filtro; `null` = todos. As colunas são os Status 2 dele. */
-  statusGroupId: string | null;
+  /** Status 1 escolhidos no filtro; `null` = todos. As colunas são os Status 2 deles. */
+  statusGroupIds: string[] | null;
   deals: LegacyDealRecord[];
   onOpen: (deal: LegacyDealRecord) => void;
   /** O `moveStatus` do `useDealActions`, estável: o cartão é `memo`. */
@@ -34,7 +38,8 @@ interface Props {
  * Kanban pelo Status 2 (pedido de 29/09/2026: "deixe com os mesmos estágios
  * existentes no Status 2 … o que iremos mover é somente o Status 2").
  *
- * As colunas são os Status 2 ativos do cadastro, na ordem dele. Mover o cartão
+ * As colunas são os Status 2 ativos do cadastro, na ordem de evolução do
+ * negócio (`ordemDeEvolucao`). Mover o cartão
  * troca SÓ o Status 2; a etapa e o Status 1 seguem no banco (0164). Quem pode
  * colocar e tirar de cada coluna é a matriz por função do cadastro — a mesma
  * resposta que o banco dá, desenhada antes do gesto.
@@ -44,7 +49,7 @@ interface Props {
  * continua recebendo o cartão solto nela.
  */
 export function StatusKanban({
-  catalog, statusGroupId, deals, onOpen, onMoveStatus, onLose, canWrite, closedMonths,
+  catalog, statusGroupIds, deals, onOpen, onMoveStatus, onLose, canWrite, closedMonths,
 }: Props) {
   const [dragged, setDragged] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -52,8 +57,8 @@ export function StatusKanban({
   const { isAdmin, roles } = useAuth();
 
   const colunas = useMemo<Coluna[]>(() => {
-    const doCadastro = catalog.statuses.filter((status) =>
-      status.active && (!statusGroupId || status.group_id === statusGroupId));
+    const doCadastro = ordemDeEvolucao(catalog.statuses.filter((status) =>
+      status.active && (!statusGroupIds || statusGroupIds.includes(status.group_id))));
     const porChave = new Map<string, LegacyDealRecord[]>();
     const fora: LegacyDealRecord[] = [];
     const chaves = new Set(doCadastro.map((status) => statusKey(status.value)));
@@ -76,11 +81,11 @@ export function StatusKanban({
       lista.unshift({
         status: null,
         deals: fora,
-        stage: { id: FORA_DO_CADASTRO, code: FORA_DO_CADASTRO, label: "Sem Status 2 do cadastro", position: -1, color: "#94a3b8" },
+        stage: { id: FORA_DO_CADASTRO, code: FORA_DO_CADASTRO, label: COLUNA_INICIAL, position: -1, color: "#94a3b8" },
       });
     }
     return lista;
-  }, [catalog, statusGroupId, deals]);
+  }, [catalog, statusGroupIds, deals]);
 
   const statusPorColuna = useMemo(
     () => new Map(colunas.map((coluna) => [coluna.stage.id, coluna.status])),

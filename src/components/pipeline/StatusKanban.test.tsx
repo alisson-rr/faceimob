@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({ auth: { isAdmin: true, roles: ["admin"] as string[
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => h.auth }));
 
 import { StatusKanban } from "./StatusKanban";
+import { ordemDeEvolucao } from "./statuses";
 
 /**
  * Kanban pelo Status 2 (29/09/2026, 0164): as colunas são os Status 2 do
@@ -30,7 +31,7 @@ async function montar(deals: LegacyDealRecord[], onMove = vi.fn(), catalog = cat
   await act(async () => {
     root.render(
       <StatusKanban
-        catalog={catalog} statusGroupId={GRUPOS.PROPOSTA.id} deals={deals}
+        catalog={catalog} statusGroupIds={[GRUPOS.PROPOSTA.id]} deals={deals}
         onOpen={() => undefined} onMoveStatus={onMove} onLose={() => undefined}
         canWrite closedMonths={[]}
       />,
@@ -64,7 +65,7 @@ describe("StatusKanban", () => {
   it("negócio fora do cadastro não some: coluna própria no começo", async () => {
     h.auth = { isAdmin: true, roles: ["admin"] };
     const tela = await montar([deal("a", "TEXTO ANTIGO", 1), deal("b", "16. PENDENTE", 1)]);
-    expect(tela.container.querySelector("h3")?.textContent).toBe("Sem Status 2 do cadastro");
+    expect(tela.container.querySelector("h3")?.textContent).toBe("Em preparação (sem Status 2)");
     tela.sair();
   });
 
@@ -91,5 +92,19 @@ describe("StatusKanban", () => {
     expect(tela.container.querySelector('[role="status"]')?.textContent)
       .toBe('Seu perfil não coloca o negócio em "VIROU NEGÓCIO".');
     tela.sair();
+  });
+});
+
+describe("ordemDeEvolucao", () => {
+  it("põe as colunas da entrada na esteira até a venda, e o status novo no fim", () => {
+    const status = (value: string) => ({ value });
+    const ordem = ordemDeEvolucao([
+      status("01. RC EMITIDA"), status("08. VIROU NEGÓCIO"), status("NOVO STATUS"), status("09. APROV. TOTAL"),
+      status("04. EM CONTRATO"), status("13. ESTEIRA AGIL"), status("16. PENDENTE"), status("18. QUEDA"),
+    ]).map((s) => s.value);
+    expect(ordem).toEqual([
+      "13. ESTEIRA AGIL", "16. PENDENTE", "09. APROV. TOTAL", "08. VIROU NEGÓCIO",
+      "04. EM CONTRATO", "01. RC EMITIDA", "18. QUEDA", "NOVO STATUS",
+    ]);
   });
 });

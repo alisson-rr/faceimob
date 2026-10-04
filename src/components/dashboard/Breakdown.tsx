@@ -1,8 +1,9 @@
 import { Layers, UserCog } from "lucide-react";
-import { EmptyState, KpiGrid, SectionCard } from "@/components/shared";
+import { KpiGrid, SectionCard } from "@/components/shared";
 import { num } from "@/lib/format";
-import { labelToken, tone } from "@/lib/tone";
+import { tone } from "@/lib/tone";
 import type { DashboardPayload } from "@/integrations/supabase/newSchema";
+import type { EsteiraDoMes } from "./esteiraDoMes";
 
 type CountItem = { label: string; value: number; token: string };
 
@@ -26,67 +27,28 @@ function CountGrid({ items }: { items: CountItem[] }) {
   );
 }
 
-/**
- * Situação dos processos na esteira de crédito. O rotulo ja vem traduzido de
- * `loadDashboardPayload`, que hoje usa o mesmo `ccaStatusLabel` da tela do CCA —
- * as chaves aqui seguem esse vocabulario. Antes divergiam ("Análise de
- * Viabilidade", "Assinatura no Banco") e a cor semantica caia no fallback.
- */
-const CCA_TOKEN: Record<string, string> = {
-  "Aguardando documentos": "warning",
-  // As tres situacoes em andamento sao FRIAS de proposito: so o desfecho pinta
-  // verde ou vermelho. `chart-4` saiu daqui quando virou rosa (17/09/2026) — em
-  // grade tingida a 10%, "Em análise" rosa ao lado de "Reprovado" vermelho
-  // anunciava dois problemas onde ha um.
-  "Em análise": "chart-5",
-  "Enviado à construtora": "info",
-  "Enviado à agência": "chart-1",
-  Aprovado: "success",
-  Reprovado: "destructive",
-  Cancelado: "muted-foreground",
-};
+const ESTEIRA: { chave: keyof EsteiraDoMes; rotulo: string; token: string }[] = [
+  { chave: "docs", rotulo: "Docs enviadas", token: "chart-1" },
+  { chave: "aprovados", rotulo: "Aprovados", token: "success" },
+  { chave: "pendentes", rotulo: "Pendentes", token: "warning" },
+  { chave: "reprovados", rotulo: "Reprovados", token: "destructive" },
+  { chave: "virouNegocio", rotulo: "Virou negócio", token: "chart-5" },
+  { chave: "convertidos", rotulo: "Convertidos em venda", token: "chart-2" },
+];
 
 /**
- * `toda` = quem le a esteira inteira (`cca_cases_select` libera tudo para admin
- * e cca; para os demais vale `can_see_deal`). Sem essa distincao o corretor lia
- * "Nenhum processo no CCA" sob o titulo da empresa e entendia que a operacao
- * inteira estava parada, quando a contagem era so o recorte dele.
+ * Esteira de crédito pelo Status 2 (04/10/2026): seis contagens fixas, na
+ * ordem do caminho do processo. `toda` = quem lê a esteira inteira; os demais
+ * veem o recorte dos próprios negócios.
  */
-export function CcaStatusCard({
-  counts,
-  toda,
-}: {
-  counts: Record<string, number>;
-  toda: boolean;
-}) {
-  // Fora do mapa semantico a cor sai do ROTULO, nao do indice: `Object.entries`
-  // segue a ordem de chegada da contagem, entao uma situacao nova no meio
-  // repintava todas as seguintes.
-  const items = Object.entries(counts).map(([label, value]) => ({
-    label,
-    value,
-    token: CCA_TOKEN[label] ?? labelToken(label),
-  }));
-
+export function CcaStatusCard({ esteira, toda }: { esteira: EsteiraDoMes; toda: boolean }) {
   return (
     <SectionCard
       title="Esteira de crédito"
       description={toda ? "Processos do CCA no mês vigente" : "Processos do CCA nos seus negócios no mês vigente"}
       icon={Layers}
     >
-      {items.length === 0 ? (
-        <EmptyState
-          icon={Layers}
-          title={toda ? "Nenhum processo no CCA" : "Nenhum processo do CCA nos seus negócios"}
-          description={
-            toda
-              ? "Assim que um negócio entrar na esteira de crédito, a situação dele aparece aqui."
-              : "Assim que um dos seus negócios entrar na esteira de crédito, a situação dele aparece aqui."
-          }
-        />
-      ) : (
-        <CountGrid items={items} />
-      )}
+      <CountGrid items={ESTEIRA.map((e) => ({ label: e.rotulo, value: esteira[e.chave], token: e.token }))} />
     </SectionCard>
   );
 }
@@ -96,7 +58,8 @@ export function StaffCard({ staff }: { staff: DashboardPayload["staff"] }) {
     { label: "Corretores", value: staff.brokersTotal, token: "chart-1" },
     { label: "Gerentes", value: staff.managers, token: "chart-5" },
     { label: "Diretores", value: staff.directors, token: "chart-3" },
-    { label: "Pessoas ativas", value: staff.active, token: "chart-2" },
+    { label: "Staff (admin, sócios e CCA)", value: staff.staff, token: "chart-4" },
+    { label: "Total ativo", value: staff.active, token: "chart-2" },
   ];
 
   return (

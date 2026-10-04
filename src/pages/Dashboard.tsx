@@ -35,10 +35,11 @@ import {
 } from "@/components/dashboard";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
-import { num } from "@/lib/format";
+import { num, parseMonthStart } from "@/lib/format";
 import { LeadershipReport } from "@/components/dashboard/LeadershipReport";
 import { ResumoDaDiretoria } from "@/components/dashboard/ResumoDaDiretoria";
 import { FunilDeVendasPanel } from "@/components/dashboard/FunilDeVendasPanel";
+import { esteiraDoMes } from "@/components/dashboard/esteiraDoMes";
 
 /**
  * Primeira tela depois do login: a leitura do mes em indicadores, graficos e
@@ -103,6 +104,13 @@ export default function Dashboard() {
       avatars: new Map(people.map((person) => [person.id, person.avatar_url])),
     };
   }, [view, payload?.people]);
+  const esteira = useMemo(
+    () => esteiraDoMes(
+      activeMonth === ALL_MONTHS ? deals : deals.filter((deal) => deal.month_base === activeMonth),
+      new Set(payload?.ccaDealIds ?? []),
+    ),
+    [deals, activeMonth, payload?.ccaDealIds],
+  );
   const monthly = useMonthlySeries(deals);
   const goal = useSalesGoal(activeMonth);
   const vgvGoal = useVgvGoal(activeMonth);
@@ -127,7 +135,9 @@ export default function Dashboard() {
   // Funil de Vendas (04/10/2026): da liderança — admin, sócio, diretor e
   // gerente. Em "todos os meses" o funil mostra o mês corrente.
   const temFunil = seesEveryone || temAbaDeLideranca;
-  const mesDoFunil = activeMonth === ALL_MONTHS ? `${new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 8)}01` : activeMonth;
+  // O painel guarda o mês como "10/2026"; o banco quer a data do dia 1.
+  const mesDoFunil = (activeMonth !== ALL_MONTHS && parseMonthStart(activeMonth))
+    || `${new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 8)}01`;
 
   const tabs: [string, string][] = [
     ["geral", "Visão geral"],
@@ -328,7 +338,7 @@ export default function Dashboard() {
           <TabsContent value="propostas" className="mt-0">
             <div className="flex flex-col gap-5">
               <DeveloperRanking rows={view.developers} />
-              <CcaStatusCard counts={payload?.ccaCounts ?? {}} toda={seesAllCca} />
+              <CcaStatusCard esteira={esteira} toda={seesAllCca} />
               {/* So quem enxerga todos os perfis: para corretor e gerente o card
                   contava o proprio recorte da RLS e dizia "Gerentes 0 · Diretores 0"
                   sob o titulo "Composicao da operacao hoje", enquanto a aba
