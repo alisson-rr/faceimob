@@ -49,6 +49,22 @@ describe("montarEmailDeMovimento", () => {
     expect(html).not.toContain("Corretor 2");
   });
 
+  it("leva o último comentário do negócio, com autor e data, sem repetir a observação (0217)", () => {
+    const comComentario = {
+      ...detalhes, ultimo_comentario: "Cliente vai mandar holerite amanhã",
+      ultimo_comentario_autor: "Tabhata Nobre", ultimo_comentario_quando: "03/10/2026 às 18:02",
+    };
+    const { html } = montarEmailDeMovimento({ ...base, source: "pipeline", detalhes: comComentario });
+    expect(html).toContain("ÚLTIMO COMENTÁRIO");
+    expect(html).toContain("Cliente vai mandar holerite amanhã");
+    expect(html).toContain("Tabhata Nobre · 03/10/2026 às 18:02");
+
+    const repetido = montarEmailDeMovimento({
+      ...base, source: "pipeline", detalhes: { ...detalhes, ultimo_comentario: "ESTEIRA AGIL: favor reanalizar" },
+    });
+    expect(repetido.html).not.toContain("ÚLTIMO COMENTÁRIO");
+  });
+
   it("CCA: a mensagem da análise vira a observação", () => {
     const { html } = montarEmailDeMovimento({ ...base, detalhes: { ...detalhes, observacao: undefined } });
     expect(html).toContain("Crédito aprovado.<br>Agendar assinatura.");

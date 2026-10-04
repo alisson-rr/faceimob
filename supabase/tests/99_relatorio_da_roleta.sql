@@ -24,6 +24,8 @@ declare
   ana uuid := '00000000-0000-0000-0000-000002100002';
   bia uuid := '00000000-0000-0000-0000-000002100003';
   l1 uuid; l2 uuid; l3 uuid;
+  -- Período de ontem a hoje: logo depois da meia-noite de São Paulo, o
+  -- "30 minutos atrás" das atribuições ainda é ontem.
   hoje date := (now() at time zone 'America/Sao_Paulo')::date;
   r record;
 begin
@@ -48,20 +50,20 @@ begin
 
   perform pg_temp.como(adm);
   set local role authenticated;
-  select * into r from public.relatorio_da_roleta(hoje, hoje) where profile_id = ana;
+  select * into r from public.relatorio_da_roleta(hoje - 1, hoje) where profile_id = ana;
   perform pg_temp.ok(r.recebidos = 2 and r.atendidos = 1 and r.perdidos = 1 and r.realocados = 0,
     'Ana: 2 recebidos, 1 atendido, 1 perdido');
   perform pg_temp.ok(r.resposta_media_seg = 120, 'resposta média de 2 min (' || r.resposta_media_seg || ' s)');
   perform pg_temp.ok(r.prazo_min_seg = 300 and r.prazo_max_seg = 600, 'o relatório mostra que um prazo foi de 5 min');
-  select * into r from public.perdas_na_roleta(ana, hoje, hoje);
+  select * into r from public.perdas_na_roleta(ana, hoje - 1, hoje);
   perform pg_temp.ok(r.cliente = 'Cliente B 210' and r.prazo_seg = 300, 'a perda vem com o cliente e o prazo de 5 min');
   reset role;
 
   perform pg_temp.como(bia);
   set local role authenticated;
-  perform pg_temp.ok((select count(*) from public.relatorio_da_roleta(hoje, hoje) where profile_id in (ana, bia)) = 1,
+  perform pg_temp.ok((select count(*) from public.relatorio_da_roleta(hoje - 1, hoje) where profile_id in (ana, bia)) = 1,
     'o corretor só vê a própria linha');
-  perform pg_temp.ok(not exists (select 1 from public.perdas_na_roleta(ana, hoje, hoje)),
+  perform pg_temp.ok(not exists (select 1 from public.perdas_na_roleta(ana, hoje - 1, hoje)),
     'o corretor não vê as perdas de outro');
   reset role;
 end;

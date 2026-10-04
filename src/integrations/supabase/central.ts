@@ -58,6 +58,11 @@ async function selosDoCca(): Promise<Map<string, string>> {
 
 export const chaveDaConstrutora = (nome: string | null | undefined) => (nome ?? "").trim().toLowerCase();
 
+/** Construtoras que são CCA próprio (o selo do site), pela chave do nome. */
+export async function construtorasDoCcaProprio(): Promise<Set<string>> {
+  return new Set((await selosDoCca()).keys());
+}
+
 export type LinkDoDrive = { name: string; url: string };
 export type PastaDoDrive = {
   id: string;
@@ -104,6 +109,7 @@ export async function listarPastasDoDrive(): Promise<PastaDoDrive[]> {
 
 export type ImovelDoMapa = {
   id: string;
+  slug: string;
   title: string;
   city: string;
   neighborhood: string | null;
@@ -116,11 +122,25 @@ export type ImovelDoMapa = {
   cca: string | null;
 };
 
+/** Endereço público do site, para abrir a página do imóvel (`/imovel/:slug`). */
+export const SITE_PUBLICO = "https://faceimob.com.br";
+export const BUCKET_DE_FOTOS = "property-images";
+
+/**
+ * A foto pelo arquivo do bucket, como o site faz: o `url` gravado pode
+ * apontar para o armazenamento antigo (Lovable) e não abrir mais — era por isso
+ * que algumas miniaturas do mapa ficavam vazias (04/10/2026).
+ */
+export function urlDaFoto(f: { url: string; storage_path: string | null }): string {
+  if (!f.storage_path) return f.url;
+  return supabase.storage.from(BUCKET_DE_FOTOS).getPublicUrl(f.storage_path).data.publicUrl || f.url;
+}
+
 /** Imóveis ativos do site, com a primeira foto e o selo do CCA — base do Mapa de Imóveis. */
 export async function listarImoveisDoMapa(): Promise<ImovelDoMapa[]> {
   const [imoveis, selos] = await Promise.all([
     site().from("properties")
-      .select("id,title,city,neighborhood,price,price_from,status,bedrooms,developer")
+      .select("id,slug,title,city,neighborhood,price,price_from,status,bedrooms,developer")
       .eq("active", true).order("title"),
     selosDoCca(),
   ]);
@@ -130,10 +150,10 @@ export async function listarImoveisDoMapa(): Promise<ImovelDoMapa[]> {
   const fotos = new Map<string, string>();
   if (linhas.length > 0) {
     const { data, error } = await site().from("property_images")
-      .select("property_id,url").in("property_id", linhas.map((l) => l.id)).order("sort_order");
+      .select("property_id,url,storage_path").in("property_id", linhas.map((l) => l.id)).order("sort_order");
     if (error) throw error;
-    for (const f of (data ?? []) as { property_id: string; url: string }[]) {
-      if (!fotos.has(f.property_id)) fotos.set(f.property_id, f.url);
+    for (const f of (data ?? []) as { property_id: string; url: string; storage_path: string | null }[]) {
+      if (!fotos.has(f.property_id)) fotos.set(f.property_id, urlDaFoto(f));
     }
   }
   return linhas.map((l) => ({
