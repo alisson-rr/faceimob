@@ -139,7 +139,7 @@ export default function LeadDetailModal({
   const claimable = canClaim(lead, profileId);
   const tracking = trackingFields(lead);
   const grupo = (groupsQuery.data ?? []).find((item) => item.id === lead.distribution_group_id);
-  const semAtendimento = isLeadUnattended(lead, settingsQuery.data?.roulette_max_rounds ?? 5);
+  const semAtendimento = isLeadUnattended(lead, settingsQuery.data?.roulette_max_rounds ?? 0);
   const encerravel = !["converted", "lost", "discarded"].includes(lead.status)
     && !lead.converted_deal_id;
 

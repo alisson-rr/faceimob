@@ -149,7 +149,7 @@ export default function CentralMapa() {
                         : "border-sidebar-primary/60 bg-background/80 text-sidebar-primary group-hover:border-sidebar-primary",
                     )}>
                       <MapPin className="h-3.5 w-3.5" aria-hidden /> {c.nome}
-                      <span className="rounded-full bg-sidebar-primary px-1.5 text-[10px] font-bold text-background">{c.imoveis.length}</span>
+                      <span className="rounded-full bg-sidebar-primary px-1.5 text-xs font-bold text-background">{c.imoveis.length}</span>
                     </span>
                   </button>
                 ))}
