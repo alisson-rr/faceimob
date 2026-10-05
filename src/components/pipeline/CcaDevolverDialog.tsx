@@ -14,12 +14,13 @@ import type { CcaDeal } from "./ccaData";
 const semTipos = supabase as unknown as SupabaseClient;
 
 /**
- * "Devolver ao comercial" (pedido da CCA em 05/10/2026): o negócio INCOMPLETO
- * sai da esteira, mantém o Status 2 e volta ao corretor com a mensagem do que
- * falta, para ele completar e reenviar.
+ * "Devolver ao comercial" (pedido da CCA em 05/10/2026): o negócio sai da
+ * esteira, mantém o Status 2 e volta ao corretor com a mensagem do que falta,
+ * para ele completar e reenviar. Abre do card da CCA e da aba Documentos do
+ * negócio — o caso parado de meses atrás não aparece no quadro do mês.
  */
 export function CcaDevolverDialog({ deal, onClose, onDone }: {
-  deal: CcaDeal;
+  deal: Pick<CcaDeal, "dealId" | "client">;
   onClose: () => void;
   onDone: () => void | Promise<void>;
 }) {

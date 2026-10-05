@@ -49,7 +49,7 @@ export interface CcaDeal {
   stageId: string;
   notes: string;
   status: string;
-  /** Status 2 do negócio (0229: INCOMPLETO ganha "Devolver ao comercial"). */
+  /** Status 2 do negócio. */
   dealStatus?: string | null;
   cpf?: string;
   submittedAt?: string | null;

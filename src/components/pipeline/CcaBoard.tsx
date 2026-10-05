@@ -8,9 +8,9 @@ import { brl, num } from "@/lib/format";
 import { ccaStageColor } from "./ccaStage";
 import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
+import { ccaCaseIsOpen } from "@/integrations/supabase/documents";
 import { elapsedDays, elapsedLabel } from "./ccaTime";
 import { cn } from "@/lib/utils";
-import { bareStatus } from "@/lib/dealStatus";
 import { developerDot, isHexColor } from "@/lib/tone";
 
 /**
@@ -63,7 +63,7 @@ interface Props {
   /** Abre o negócio no `DealDetailModal` — o MESMO editor do Pipeline. */
   onOpen: (deal: CcaDeal) => void;
   onMove: (deal: CcaDeal, stage: CcaStage) => void;
-  /** INCOMPLETO: tira da esteira e devolve ao corretor no mesmo status (0229). */
+  /** Caso aberto: tira da esteira e devolve ao corretor no mesmo status (0229). */
   onDevolver?: (deal: CcaDeal) => void;
 }
 
@@ -346,7 +346,7 @@ export const CcaBoard = memo(function CcaBoard({
                       </div>
 
                       {canAct && <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />}
-                      {canAct && onDevolver && bareStatus(deal.dealStatus ?? "") === "INCOMPLETO" && (
+                      {canAct && onDevolver && ccaCaseIsOpen(deal.status) && (
                         <Button
                           type="button" variant="outline" size="sm" className="h-7 w-full text-xs"
                           onClick={() => onDevolver(deal)}

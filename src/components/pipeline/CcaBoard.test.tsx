@@ -435,3 +435,41 @@ describe("CcaBoard · recolher indicadores", () => {
     await board.encerrar();
   });
 });
+
+describe("CcaBoard · devolver ao comercial", () => {
+  async function botoes(status: CcaDeal["status"]) {
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    const devolvidos: string[] = [];
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[STAGE]}
+          deals={[{ ...DEAL, status, dealStatus: "EM ANÁLISE" }]}
+          canAct
+          onOpen={() => undefined}
+          onMove={() => undefined}
+          onDevolver={(deal) => devolvidos.push(deal.dealId)}
+        /> as ReactNode,
+      );
+    });
+    const botao = [...container.querySelectorAll("button")]
+      .find((b) => b.textContent?.includes("Devolver ao comercial"));
+    await act(async () => { botao?.click(); });
+    await act(async () => { root.unmount(); });
+    container.remove();
+    return { temBotao: Boolean(botao), devolvidos };
+  }
+
+  // Cliente retomado com caso parado desde março (05/10/2026): o botão valia só
+  // no INCOMPLETO e o corretor ficava sem anexar para sempre.
+  it("aparece em qualquer caso aberto, não só no INCOMPLETO", async () => {
+    expect(await botoes("under_review")).toEqual({ temBotao: true, devolvidos: ["d1"] });
+    expect(await botoes("pending_documents")).toEqual({ temBotao: true, devolvidos: ["d1"] });
+  });
+
+  it("some no caso encerrado: não há o que devolver", async () => {
+    expect((await botoes("approved")).temBotao).toBe(false);
+    expect((await botoes("cancelled")).temBotao).toBe(false);
+  });
+});
