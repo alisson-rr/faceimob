@@ -43,6 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Drive de Construtoras", url: "/central/drive", icon: LayoutGrid, group: "principal", hidden: true },
   { title: "Mapa de Imóveis", url: "/central/mapa", icon: LayoutGrid, group: "principal", hidden: true },
   { title: "Universidade", url: "/central/universidade", icon: LayoutGrid, group: "principal", hidden: true },
+  { title: "Imóveis e preços", url: "/central/imoveis", icon: LayoutGrid, group: "principal", hidden: true },
 
   { title: "Configurações", url: "/settings", icon: Settings, group: "configuracoes" },
   { title: "Resultados", url: "/resultados", icon: TrendingUp, group: "configuracoes" },

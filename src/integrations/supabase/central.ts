@@ -115,7 +115,7 @@ export type ImovelDoMapa = {
   neighborhood: string | null;
   price: number | null;
   price_from: number | null;
-  status: string;
+  status: StatusDoImovel;
   bedrooms: number | null;
   developer: string | null;
   imagem: string | null;
@@ -161,6 +161,57 @@ export async function listarImoveisDoMapa(): Promise<ImovelDoMapa[]> {
     imagem: fotos.get(l.id) ?? null,
     cca: selos.get(chaveDaConstrutora(l.developer)) ?? null,
   }));
+}
+
+/**
+ * Cadastro de imóveis e preços no CRM (05/10/2026, etapa 2 de trazer a
+ * administração do site): mesma tabela do site, com a RLS de lá — só admin e
+ * sócio gravam (`site.has_role(…, 'admin')`).
+ */
+export const STATUS_DO_IMOVEL = {
+  lancamento: "Lançamento",
+  em_obras: "Em obras",
+  pronto_para_morar: "Pronto para morar",
+  entregue: "Entregue",
+} as const;
+export type StatusDoImovel = keyof typeof STATUS_DO_IMOVEL;
+
+export type ImovelDoCadastro = {
+  id: string;
+  code: string;
+  slug: string;
+  title: string;
+  city: string;
+  neighborhood: string | null;
+  developer: string | null;
+  price: number | null;
+  price_from: number | null;
+  bedrooms: number | null;
+  status: StatusDoImovel;
+  active: boolean;
+  featured: boolean;
+};
+
+export type AlteracaoDoImovel = Partial<Omit<ImovelDoCadastro, "id" | "code" | "slug">>;
+
+export async function listarImoveisDoCadastro(): Promise<ImovelDoCadastro[]> {
+  const { data, error } = await site().from("properties")
+    .select("id,code,slug,title,city,neighborhood,developer,price,price_from,bedrooms,status,active,featured")
+    .order("developer").order("code");
+  if (error) throw error;
+  // numeric chega como string pelo PostgREST quando passa de 15 dígitos; aqui são preços.
+  return ((data ?? []) as ImovelDoCadastro[]).map((i) => ({
+    ...i,
+    price: i.price == null ? null : Number(i.price),
+    price_from: i.price_from == null ? null : Number(i.price_from),
+  }));
+}
+
+/** Grava e confere: sem permissão a RLS devolve 0 linhas em vez de erro. */
+export async function salvarImovel(id: string, alteracao: AlteracaoDoImovel): Promise<void> {
+  const { data, error } = await site().from("properties").update(alteracao).eq("id", id).select("id");
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error("Sem permissão para alterar este imóvel.");
 }
 
 export type ProgressoUniversidade ={ assistidas: number; total: number };
