@@ -32,7 +32,7 @@ import {
 } from "@/components/pipeline";
 // Direto do módulo, e não do barril: o `index.ts` de `components/pipeline` é de
 // outra frente nesta rodada. Mesmo caminho que o `useDealActions` abaixo já usa.
-import { ALL, MY_TEAM, teamProfileIds, dealsForLeader } from "@/components/pipeline/filters";
+import { ALL, MY_TEAM, status1DeAbertura, teamProfileIds, dealsForLeader } from "@/components/pipeline/filters";
 import { DirectorPipelineCards } from "@/components/pipeline/DirectorPipelineCards";
 import { BUSCA_MINIMA, listActiveDealsWithUnit, useDealSearch, useDealsRange } from "@/components/pipeline/data";
 import { periodoValido } from "@/components/pipeline/ccaData";
@@ -177,16 +177,17 @@ export default function Pipeline() {
    */
   const recorteInicial = !isAdmin && myTeam.size > 1 && roles.includes("manager") ? MY_TEAM : ALL;
   /**
-   * A lista abre só nas propostas — Status 1 PROPOSTA (pedido de 28/09/2026) —,
-   * e "Limpar filtros" volta para elas, não para tudo. O filtro continua
-   * trocável. `code` e não o rótulo: o código do grupo é imutável (0149), o
-   * rótulo é editável no cadastro. Sem catálogo ainda, não há o que recortar.
+   * A lista abre nas propostas (e no legado, para o corretor) e "Limpar filtros"
+   * volta para elas, não para tudo — `status1DeAbertura`. O filtro continua
+   * trocável e de múltipla escolha.
    */
-  const propostaId = catalog.groups.find((group) => group.code === "PROPOSTA")?.id ?? ALL;
   const vendaId = catalog.groups.find((group) => group.code === "VENDA")?.id ?? null;
+  // Corretor abre em Proposta + Legado; quem lidera segue só em Proposta.
+  const soCorretor = !isAdmin && roles.includes("broker")
+    && !roles.includes("manager") && !roles.includes("director");
   const filtrosLimpos = useMemo(
-    () => ({ ...EMPTY_FILTERS, status1: propostaId === ALL ? [] : [propostaId] }),
-    [propostaId],
+    () => ({ ...EMPTY_FILTERS, status1: status1DeAbertura(catalog.groups, soCorretor) }),
+    [catalog.groups, soCorretor],
   );
   // "Conferir agora" do popup do gerente (0196) abre direto na fila da conferência.
   const [searchParams] = useSearchParams();

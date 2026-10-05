@@ -17,6 +17,20 @@ export const ALL = "all";
 export const MY_TEAM = "mine";
 
 /**
+ * Status 1 com que a lista abre — e para onde "Limpar filtros" volta. Todos em
+ * PROPOSTA (28/09/2026); o corretor em PROPOSTA + LEGADO (05/10/2026), porque o
+ * legado é carteira dele em andamento. Por `code`, imutável (0149). Sem
+ * catálogo carregado, nada a recortar.
+ */
+export function status1DeAbertura(groups: DealStatusCatalog["groups"], soCorretor: boolean): string[] {
+  const id = (code: string) => groups.find((group) => group.code === code)?.id;
+  const proposta = id("PROPOSTA");
+  if (!proposta) return [];
+  const legado = soCorretor ? id("LEGADO") : undefined;
+  return legado ? [proposta, legado] : [proposta];
+}
+
+/**
  * Percentual em pt-BR — o rateio do corretor e as taxas do painel.
  *
  * Eram QUATRO cópias do mesmo `toLocaleString` (cartão, tabela, formulário e

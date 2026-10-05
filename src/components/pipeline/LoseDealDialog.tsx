@@ -17,6 +17,7 @@ import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supab
 import { updateDeal } from "./data";
 import { LOST_STAGE_CODE, type PipelineStage } from "./stages";
 import { statusLabel } from "./statuses";
+import { offDistratoBlocked } from "./useDealActions";
 
 interface Props {
   deal: LegacyDealRecord;
@@ -71,11 +72,13 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
   const id = useId();
   const lostStage = stages.find((stage) => stage.code === LOST_STAGE_CODE);
   const podeOffDistrato = can("deals.mark_off_distrato");
+  /** Motivo que o perfil não grava: OFF é de admin e sócio, DISTRATO também da CCA (0230). */
+  const travado = (motivo: string) => offDistratoBlocked(can, motivo) !== null;
   const [status, setStatus] = useState(
     // Um preset de OFF/distrato vindo do Select da tabela não entra pela janela:
     // sem permissão o campo nasce vazio, como se ninguém tivesse escolhido.
     presetStatus && isLossStatus(presetStatus)
-      && (podeOffDistrato || !isOffOrDistrato(presetStatus))
+      && !travado(presetStatus)
       ? presetStatus
       : "",
   );
@@ -90,7 +93,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
   // Um preset sem prefixo ("QUEDA", vindo de importação) é motivo válido e não
   // está na lista literal: sem ele nas opções o Select abriria em branco.
   const choices = !status || LOSS_REASONS.includes(status) ? LOSS_REASONS : [status, ...LOSS_REASONS];
-  const motivoBloqueado = !podeOffDistrato && isOffOrDistrato(status);
+  const motivoBloqueado = travado(status);
 
   const confirm = async () => {
     if (!lostStage || !status || motivoBloqueado || !allowed) return;
@@ -147,12 +150,12 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
                     OFF e distrato aparecem DESABILITADOS para quem não pode, e
                     não sumidos: opção que some não ensina o motivo. */}
                 {choices.map((option) => {
-                  const bloqueado = !podeOffDistrato && isOffOrDistrato(option);
+                  const bloqueado = travado(option);
                   return (
                     <SelectItem key={option} value={option} disabled={bloqueado}>
                       <span>{statusLabel(catalog, option)}</span>
                       {bloqueado && (
-                        <span className="text-muted-foreground"> — só administrador e sócio</span>
+                        <span className="text-muted-foreground"> — {offDistratoBlocked(can, option)}</span>
                       )}
                     </SelectItem>
                   );
@@ -161,8 +164,9 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
             </Select>
             {!podeOffDistrato && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Marcar OFF ou distrato é do administrador e do sócio. Encerrar por
-                queda ou reprovado continua com você.
+                {can("deals.mark_distrato")
+                  ? "Marcar OFF é do administrador e do sócio. Distrato, queda e reprovado continuam com você."
+                  : "Marcar OFF ou distrato é do administrador e do sócio. Encerrar por queda ou reprovado continua com você."}
               </p>
             )}
           </div>

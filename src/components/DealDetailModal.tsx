@@ -341,6 +341,19 @@ export default function DealDetailModal({
     setTab("anexos");
   };
 
+  // Negócio novo: as outras abas precisam do id. Clicar nelas grava a ficha
+  // (com as mesmas cobranças do "Criar negócio") e abre a aba — antes elas
+  // nasciam apagadas e o corretor achava que não podia anexar nem comentar
+  // (05/10/2026).
+  const abrirAba = async (key: TabKey) => {
+    if (isNew && key !== "detalhes") {
+      if (saving) return;
+      const gravado = await handleSave({ fechar: false });
+      if (!gravado) return;
+    }
+    setTab(key);
+  };
+
   const tabs: { key: TabKey; label: string }[] = [
     { key: "detalhes", label: "Detalhes" },
     { key: "comentarios", label: comentarios > 0 ? `Comentários (${comentarios})` : "Comentários" },
@@ -361,7 +374,7 @@ export default function DealDetailModal({
             outras abas nascem cinzas — o que só o `title` do botão explicava. */}
         <DialogDescription className="sr-only">
           {isNew
-            ? "Cadastro do negócio em seis abas; comentários, anexos, agenda, histórico e CCA abrem depois de salvar."
+            ? "Cadastro do negócio em seis abas; abrir comentários, anexos, agenda, histórico ou CCA salva o negócio antes."
             : "Negócio em seis abas: detalhes, comentários, anexos, agenda, histórico e CCA."}
         </DialogDescription>
 
@@ -381,16 +394,16 @@ export default function DealDetailModal({
             aria-label="Seções do negócio"
           >
             {tabs.map((item) => {
-              const enabled = item.key === "detalhes" || !isNew;
+              const salvaAntes = isNew && item.key !== "detalhes";
               return (
                 <button
                   key={item.key}
                   type="button"
                   role="tab"
                   aria-selected={tab === item.key}
-                  disabled={!enabled}
-                  title={enabled ? undefined : "Disponível depois de salvar o negócio"}
-                  onClick={() => setTab(item.key)}
+                  disabled={salvaAntes && (saving || lock.readOnly)}
+                  title={salvaAntes ? "Salva o negócio e abre esta aba" : undefined}
+                  onClick={() => void abrirAba(item.key)}
                   className={cn(
                     "whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
