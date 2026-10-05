@@ -559,8 +559,10 @@ export async function listLegacyDeals(
         primary?.is_shareholder == null
           ? undefined
           : primary.is_shareholder
-            ? "Sim"
-            : "Não",
+            // Mesmo texto das opções do campo (SIM_NAO no DealForm): com "Sim"
+            // o Select não achava a opção e o Cotista abria vazio (05/10/2026).
+            ? "SIM"
+            : "NÃO",
       dependente: primary?.dependents || undefined,
       data_admissao: primary?.admission_date || undefined,
       referencia_cch: primary?.cch_reference || undefined,
@@ -577,8 +579,10 @@ export async function listLegacyDeals(
         secondary?.is_shareholder == null
           ? undefined
           : secondary.is_shareholder
-            ? "Sim"
-            : "Não",
+            // Mesmo texto das opções do campo (SIM_NAO no DealForm): com "Sim"
+            // o Select não achava a opção e o Cotista abria vazio (05/10/2026).
+            ? "SIM"
+            : "NÃO",
       dependente2: secondary?.dependents || undefined,
       data_admissao2: secondary?.admission_date || undefined,
       referencia_cch2: secondary?.cch_reference || undefined,

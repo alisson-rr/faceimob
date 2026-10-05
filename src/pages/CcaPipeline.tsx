@@ -221,7 +221,9 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
  *   `useDealWriteLock()`, e é de lá que sai o que a analista pode tocar.
  */
 export default function CcaPipeline() {
-  const { can, isAdmin } = useAuth();
+  const { can, isAdmin, roles } = useAuth();
+  // 0228: a CCA organiza a ordem das colunas (só a ordem).
+  const ordenaColunas = isAdmin || roles.includes("cca");
   // `null` = ninguém mexeu no período: valem os últimos 30 dias, recalculados a
   // cada render para a virada do dia não congelar o "até hoje" (como no Pipeline).
   const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo | null>(null);
@@ -364,6 +366,10 @@ export default function CcaPipeline() {
                 <Settings className="mr-1 h-4 w-4" aria-hidden /> Gerenciar estágios
               </Button>
             </>
+          ) : ordenaColunas ? (
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Settings className="mr-1 h-4 w-4" aria-hidden /> Ordem das colunas
+            </Button>
           ) : !canAct ? (
             <StatusBadge tone="neutral">Somente leitura</StatusBadge>
           ) : undefined
@@ -488,8 +494,9 @@ export default function CcaPipeline() {
         />
       )}
 
-      {settingsOpen && isAdmin && (
+      {settingsOpen && ordenaColunas && (
         <CcaStageSettingsDialog
+          somenteOrdem={!isAdmin}
           stages={stages}
           onClose={() => setSettingsOpen(false)}
           onChanged={refresh}
