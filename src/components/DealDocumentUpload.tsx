@@ -143,6 +143,7 @@ export default function DealDocumentUpload({
   // para anexar"). O botão "Anexar" continua o caminho de teclado.
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [juntando, setJuntando] = useState(false);
+  const [baixandoTodos, setBaixandoTodos] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
   const [envioMensagem, setEnvioMensagem] = useState(mensagemInicial ?? "");
@@ -282,22 +283,27 @@ export default function DealDocumentUpload({
   };
 
   /**
-   * A aba abre ANTES de assinar a URL, de propósito.
-   *
-   * `window.open` depois de um `await` perde o gesto do usuário: em iOS/Safari o
-   * pop-up é bloqueado sem lançar erro, o `catch` não dispara e o botão "Baixar"
-   * simplesmente não faz nada. Abrindo em branco no clique e trocando o endereço
-   * quando a assinatura chega, o gesto continua valendo.
+   * Baixa o arquivo direto, sem abrir aba (pedido da CCA em 05/10/2026: "cada
+   * arquivo que eu baixo abre uma nova janela"). Busca pela URL assinada e salva
+   * pelo próprio navegador, com o nome guardado (que tem a extensão).
    */
+  const salvarArquivo = async (doc: DealDocumentRecord) => {
+    const resposta = await fetch(await signedDocumentUrl(doc));
+    if (!resposta.ok) throw new Error(`O armazenamento respondeu ${resposta.status}.`);
+    const url = URL.createObjectURL(await resposta.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = doc.stored_name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
   const download = async (doc: DealDocumentRecord) => {
-    const janela = window.open("", "_blank");
-    if (janela) janela.opener = null;
     try {
-      const url = await signedDocumentUrl(doc);
-      if (janela) janela.location.href = url;
-      else window.open(url, "_blank", "noopener,noreferrer");
+      await salvarArquivo(doc);
     } catch (e) {
-      janela?.close();
       toast({
         title: "Não foi possível baixar o documento",
         description: describeError(
@@ -307,6 +313,31 @@ export default function DealDocumentUpload({
         variant: "destructive",
       });
     }
+  };
+
+  /**
+   * "Baixar todos" (pedido da CCA em 05/10/2026): cada documento vigente como
+   * arquivo separado, um depois do outro, sem juntar em PDF. A pausa curta evita
+   * que o navegador descarte downloads disparados no mesmo instante; na primeira
+   * vez ele pode perguntar se o site pode baixar vários arquivos.
+   */
+  const baixarTodos = async (vigentes: DealDocumentRecord[]) => {
+    if (vigentes.length === 0 || baixandoTodos) return;
+    setBaixandoTodos(true);
+    const falharam: string[] = [];
+    for (const doc of vigentes) {
+      try {
+        await salvarArquivo(doc);
+      } catch {
+        falharam.push(documentDisplayName(doc));
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    setBaixandoTodos(false);
+    const ok = vigentes.length - falharam.length;
+    toast(falharam.length
+      ? { variant: "destructive", title: `${ok} de ${vigentes.length} arquivos baixados`, description: `Não baixaram: ${falharam.join(", ")}.` }
+      : { variant: "success", title: `${ok} arquivo${ok > 1 ? "s" : ""} baixado${ok > 1 ? "s" : ""}` });
   };
 
   /** Abre no próprio modal: não troca de aba e não dispara download. */
@@ -795,6 +826,18 @@ export default function DealDocumentUpload({
           >
             {juntando ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileStack className="h-3 w-3" />}
             {juntando ? "Montando PDF…" : "Baixar tudo em PDF"}
+          </Button>
+        )}
+        {vigentes.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 text-xs gap-1"
+            disabled={baixandoTodos}
+            onClick={() => void baixarTodos(vigentes)}
+          >
+            {baixandoTodos ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+            {baixandoTodos ? "Baixando…" : `Baixar todos (${vigentes.length})`}
           </Button>
         )}
         <Button
