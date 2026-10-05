@@ -223,6 +223,19 @@
   [data-sonner-toast] {
     --toast-accent: var(--primary);
   }
+  /* Listas de seleção (Radix) com barra de rolagem visível (pedido da CCA em
+     05/10/2026): o Radix esconde a barra e a lista longa parecia não rolar. */
+  [data-radix-select-viewport][data-radix-select-viewport] {
+    scrollbar-width: thin !important;
+  }
+  [data-radix-select-viewport][data-radix-select-viewport]::-webkit-scrollbar {
+    display: block !important;
+    width: 8px;
+  }
+  [data-radix-select-viewport]::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.4);
+    border-radius: 9999px;
+  }
   * {
     @apply border-border;
     -webkit-font-smoothing: antialiased;

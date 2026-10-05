@@ -264,7 +264,12 @@ describe("canAttachNow", () => {
 
   it("some depois do envio ao gerente: o dossiê vira prova", () => {
     expect(canAttachNow({ ...base, status: "pending" })).toBe(false);
-    expect(canAttachNow({ ...base, status: "approved" })).toBe(false);
+    expect(canAttachNow({ ...base, status: "approved", caseStatus: "under_review" })).toBe(false);
+  });
+
+  it("aprovado sem caso em análise na CCA volta ao corretor (pendência, 0229)", () => {
+    expect(canAttachNow({ ...base, status: "approved", caseStatus: "pending_documents" })).toBe(true);
+    expect(canAttachNow({ ...base, status: "approved", caseStatus: "cancelled" })).toBe(true);
   });
 
   it("o CCA continua juntando documento com o dossiê já aprovado", () => {

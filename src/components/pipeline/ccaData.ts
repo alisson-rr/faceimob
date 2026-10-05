@@ -49,6 +49,8 @@ export interface CcaDeal {
   stageId: string;
   notes: string;
   status: string;
+  /** Status 2 do negócio (0229: INCOMPLETO ganha "Devolver ao comercial"). */
+  dealStatus?: string | null;
   cpf?: string;
   submittedAt?: string | null;
   stageEnteredAt?: string | null;
@@ -316,6 +318,7 @@ export async function loadCcaBoard(
       stageId: stage.id,
       notes: row.decision_notes || deal?.notes || "",
       status: row.status,
+      dealStatus: deal?.status ?? null,
       cpf: deal?.cpf || "",
       submittedAt: row.submitted_at,
       stageEnteredAt: row.stage_entered_at ?? null,
