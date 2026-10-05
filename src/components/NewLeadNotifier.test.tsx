@@ -28,6 +28,13 @@ vi.mock("@/integrations/supabase/leads", () => ({
 type Aviso = { title?: string; description?: string; action?: { label: string; onClick: () => void } };
 const avisos = vi.hoisted(() => [] as Aviso[]);
 vi.mock("@/hooks/use-toast", () => ({ toast: (aviso: Aviso) => { avisos.push(aviso); } }));
+// O aviso de lead tem cara própria (`avisarLead`, 05/10/2026); o que se cobra
+// aqui é QUANDO ele sai e para onde leva, não o visual.
+vi.mock("@/components/ui/avisos", () => ({
+  avisarLead: (title: string, o: { descricao?: string; acao?: Aviso["action"] } = {}) => {
+    avisos.push({ title, description: o.descricao, action: o.acao });
+  },
+}));
 
 /** Handler que o componente registra no realtime, por evento. */
 const realtime = vi.hoisted(() => new Map<string, (payload: unknown) => void>());
@@ -95,7 +102,7 @@ describe("NewLeadNotifier · lead atribuído", () => {
     });
     expect(dialogo()).toContain("Ana");
     expect(avisos).toHaveLength(1);
-    expect(avisos[0].title).toBe("Lead atribuído a você");
+    expect(avisos[0].title).toBe("Lead atribuído a você!");
     expect(avisos[0].description).toContain("Bruno");
     await desmontar();
   });

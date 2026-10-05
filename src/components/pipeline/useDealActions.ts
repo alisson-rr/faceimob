@@ -1,7 +1,8 @@
 import { useCallback } from "react";
 import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
-import { isLossStatus, isSystemStatus, normalizeStatus } from "@/lib/dealStatus";
+import { ehDesfechoRuim, isLossStatus, isSystemStatus, normalizeStatus } from "@/lib/dealStatus";
+import { avisarQueda } from "@/components/ui/avisos";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
@@ -127,7 +128,9 @@ export function useDealActions({ catalog, closedMonths, onNeedsLossConfirmation,
       // Status 1 VENDA é venda do jogo (0163): com corretor, quem confirma é o
       // card de venda do `EngagementLayer`.
       const venda = catalog.groupById.get(status.group_id)?.code === "VENDA";
-      if (!venda || !vendaTemCard(deal)) {
+      if (ehDesfechoRuim(status.value, catalog.groupById.get(status.group_id)?.code)) {
+        avisarQueda(`Negócio movido para ${status.label}`, deal.client);
+      } else if (!venda || !vendaTemCard(deal)) {
         toast.success(`Negócio movido para ${status.label}`, { duration: 2500 });
       }
     } catch (err) {

@@ -69,6 +69,21 @@ const LOSS_LABELS = new Set(LOSS_REASONS.map(bareStatus));
 export const isLossStatus = (s: string | null | undefined): boolean => LOSS_LABELS.has(bareStatus(s));
 
 /**
+ * O negócio piorou? OFF, distrato, queda ou motivo que encerra (reprovado…),
+ * pelo rótulo do Status 2 ou pelo grupo (Status 1) dele. Decide o aviso em
+ * vermelho do Pipeline (05/10/2026).
+ */
+export const ehDesfechoRuim = (s: string | null | undefined, codigoDoGrupo?: string | null): boolean => {
+  const n = normalizeStatus(s);
+  return n === "OFF" || n === "DISTRATO" || n === "QUEDA" || isLossStatus(s)
+    || codigoDoGrupo === "OFF" || codigoDoGrupo === "DISTRATO";
+};
+
+/** O mesmo, num texto livre de aviso ("Fulano foi para 18. QUEDA"). */
+export const textoDeDesfechoRuim = (texto: string): boolean =>
+  /\b(OFF|DISTRATO|QUEDA|REPROVAD[OA])\b/i.test(texto);
+
+/**
  * Os rótulos do Status 2 que o **sistema** escreve e ninguém escolhe.
  *
  * "Esteira Ágil" é a entrada do negócio na análise de crédito — o mesmo evento

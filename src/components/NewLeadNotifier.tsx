@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
+import { avisarLead } from "@/components/ui/avisos";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -140,13 +141,13 @@ export default function NewLeadNotifier() {
       return;
     }
     celebrate("lead_new");
-    toast({
-      title: nextKind === "assigned" ? "Lead atribuído a você" : "Novo lead na fila",
-      description: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
+    avisarLead(nextKind === "assigned" ? "Lead atribuído a você!" : "Novo lead na fila", {
+      descricao: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
+      frase: nextKind === "assigned" ? "É seu! Atenda rápido e converta. 🚀" : "Corre que esse lead é ouro! ⚡",
       // O destino que o diálogo oferecia, sem o diálogo. Só quando a pessoa
       // pode mesmo abrir a tela: `menu.leads` não é dado ao marketing, e o
       // botão levava direto ao "Acesso não liberado" do guard de rota.
-      action: podeAbrirLeads
+      acao: podeAbrirLeads
         ? { label: "Abrir leads", onClick: () => navigateRef.current("/leads") }
         : undefined,
     });
