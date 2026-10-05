@@ -28,7 +28,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "eu" }, isAdmin: false, can: () => false }),
+  useAuth: () => ({ user: { id: "eu" }, isAdmin: false, can: () => false, roles: [] }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }), toast: vi.fn() }));
 vi.mock("@/components/pipeline/ccaData", () => ({ loadCcaCase: async () => null }));

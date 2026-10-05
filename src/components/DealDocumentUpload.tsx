@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX, FileStack,
-  AlertTriangle, Pencil, Check, X, Eye,
+  AlertTriangle, Pencil, Check, X, Eye, Undo2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +18,7 @@ import { cn, slugify } from "@/lib/utils";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import { loadCcaCase } from "@/components/pipeline/ccaData";
+import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
 import {
   DEVELOPER_WITHOUT_EMAIL,
@@ -26,6 +27,7 @@ import {
   REVIEW_ESTEIRA_LABEL,
   canAttachNow,
   canEditDeal,
+  ccaCaseIsOpen,
   countDealManagers,
   dealParticipantNames,
   deleteDealDocument,
@@ -119,7 +121,7 @@ export default function DealDocumentUpload({
   dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged, mensagemInicial,
 }: Props) {
   const { toast } = useToast();
-  const { user, isAdmin, can } = useAuth();
+  const { user, isAdmin, can, roles } = useAuth();
   const fieldId = useId();
   const [types, setTypes] = useState<DocumentTypeRecord[]>([]);
   const [docs, setDocs] = useState<DealDocumentRecord[]>([]);
@@ -154,6 +156,7 @@ export default function DealDocumentUpload({
   /** Construtora do negócio: decide o "Enviar à construtora" do gerente. */
   const [developer, setDeveloper] = useState<DealDeveloper | null>(null);
   const [envioAberto, setEnvioAberto] = useState(false);
+  const [devolvendo, setDevolvendo] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   /** Linha em edição de apelido (0106). Uma por vez: abrir duas caixas de texto
    *  sobre a mesma lista é convite para salvar na linha errada. */
@@ -586,6 +589,11 @@ export default function DealDocumentUpload({
   // trocava a versão que o gerente aprovou e que o analista ia baixar, e o
   // banco aceitava calado. O CCA continua podendo juntar documento depois.
   const canAttach = canUpload && canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review"), caseStatus });
+  // Caso aberto na CCA prende o dossiê aprovado. Um caso parado de meses atrás
+  // (cliente retomado, 05/10/2026) não aparece no quadro do mês, então a CCA
+  // devolve daqui também — a mesma checagem de `devolver_ao_comercial`.
+  const casoAberto = ccaCaseIsOpen(caseStatus);
+  const podeDevolverAoComercial = casoAberto && (isAdmin || roles.includes("cca"));
   const meta = DOCUMENT_REVIEW_META[status];
   const enviadoPor = assinatura(review?.document_review_requested_by ?? null, review?.document_review_requested_at ?? null, nomes);
   const decididoPor = assinatura(review?.document_reviewed_by ?? null, review?.document_reviewed_at ?? null, nomes);
@@ -900,8 +908,26 @@ export default function DealDocumentUpload({
         <p className="rounded-md border border-border/50 bg-muted/20 p-2 text-xs text-muted-foreground">
           {status === "pending"
             ? "O dossiê está com o gerente: trocar um arquivo agora mudaria o que ele está conferindo. Peça a devolução para anexar de novo."
-            : "A conferência foi aprovada e o dossiê seguiu para a análise de crédito. Só o CCA junta documento a partir daqui."}
+            : casoAberto
+              ? "O dossiê está em análise na CCA e não recebe arquivo do comercial agora. Para anexar, peça à CCA para «Devolver ao comercial»: o negócio volta para você no mesmo status."
+              : "Anexar está travado neste dossiê. Fale com a CCA."}
         </p>
+      )}
+
+      {podeDevolverAoComercial && (
+        <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setDevolvendo(true)}>
+          <Undo2 className="mr-1 h-4 w-4" aria-hidden /> Devolver ao comercial
+        </Button>
+      )}
+      {devolvendo && (
+        <CcaDevolverDialog
+          deal={{ dealId, client: clientName }}
+          onClose={() => setDevolvendo(false)}
+          onDone={async () => {
+            await load();
+            await onReviewChanged?.();
+          }}
+        />
       )}
 
       {semCatalogo && (
@@ -1176,7 +1202,9 @@ export default function DealDocumentUpload({
                   {canAttach
                     ? "Nenhum arquivo anexado"
                     : canUpload
-                      ? "Nenhum arquivo anexado. O dossiê saiu para a conferência e não recebe mais arquivo."
+                      ? status === "pending"
+                        ? "Nenhum arquivo anexado. O dossiê está com o gerente; peça a devolução para anexar."
+                        : "Nenhum arquivo anexado. O dossiê está em análise na CCA; peça a devolução ao comercial para anexar."
                       : "Nenhum arquivo anexado. Você acompanha este dossiê; anexar é de quem edita o negócio."}
                 </p>
               )}

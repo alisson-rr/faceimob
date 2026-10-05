@@ -146,6 +146,10 @@ export function canAttachNow(input: {
     || (input.status === "approved" && !emAnalise);
 }
 
+/** Caso ainda na esteira da CCA — o mesmo filtro de `devolver_ao_comercial` (0229). */
+export const ccaCaseIsOpen = (status: string | null | undefined): boolean =>
+  Boolean(status) && !["approved", "rejected", "cancelled"].includes(status ?? "");
+
 export async function listDocumentTypes(): Promise<DocumentTypeRecord[]> {
   const { data, error } = await supabase
     .from("document_types")
