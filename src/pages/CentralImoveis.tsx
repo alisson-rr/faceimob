@@ -1,21 +1,21 @@
-import { useMemo, useRef, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Building2, Download, ExternalLink, Pencil, Percent, Save, Upload, Undo2 } from "lucide-react";
+import { ArrowLeft, Building2, Download, ExternalLink, Pencil, Percent, Plus, Save, Upload, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
+import { EditorDeImovel } from "@/components/central/EditorDeImovel";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import {
   SITE_PUBLICO, STATUS_DO_IMOVEL, listarImoveisDoCadastro, salvarImovel,
-  type AlteracaoDoImovel, type ImovelDoCadastro, type StatusDoImovel,
+  type AlteracaoDoImovel, type ImovelDoCadastro,
 } from "@/integrations/supabase/central";
 import { gerarPlanilha, lerPlanilha } from "@/lib/planilhaPrecos";
 import { describeError } from "@/lib/supabaseError";
@@ -26,14 +26,13 @@ const TODAS = "__todas__";
 
 type Preco = { price?: number | null; price_from?: number | null };
 
-const ehStatus = (v: string): v is StatusDoImovel => v in STATUS_DO_IMOVEL;
-
 /**
  * Imóveis e preços dentro do CRM (05/10/2026, etapa 2 de trazer a
  * administração do site): preços na linha, reajuste em % nos filtrados e a
  * planilha (baixar, mudar no Excel, subir). Os preços mudados ficam marcados
- * até "Salvar"; ativo, destaque e os dados do imóvel gravam na hora. Fotos,
- * descrição e book continuam no painel do site por enquanto.
+ * até "Salvar"; ativo e destaque gravam na hora. `?imovel=<id>|novo` abre o
+ * cadastro completo (dados, textos, book e fotos) na mesma rota, que já passa
+ * pelo guard de permissão.
  */
 export default function CentralImoveis() {
   const { isAdmin } = useAuth();
@@ -42,7 +41,9 @@ export default function CentralImoveis() {
   const [construtora, setConstrutora] = useState(TODAS);
   const [precos, setPrecos] = useState<Record<string, Preco>>({});
   const [reajuste, setReajuste] = useState("");
-  const [editando, setEditando] = useState<ImovelDoCadastro | null>(null);
+  const [params, setParams] = useSearchParams();
+  const aberto = params.get("imovel");
+  const abrir = (id: string | null) => setParams(id ? { imovel: id } : {});
   const arquivo = useRef<HTMLInputElement>(null);
 
   const imoveis = useQuery({ queryKey: CHAVE, queryFn: listarImoveisDoCadastro, enabled: isAdmin });
@@ -66,7 +67,7 @@ export default function CentralImoveis() {
 
   const salvarUm = useMutation({
     mutationFn: ({ id, alteracao }: { id: string; alteracao: AlteracaoDoImovel }) => salvarImovel(id, alteracao),
-    onSuccess: () => { void atualizar(); setEditando(null); },
+    onSuccess: () => { void atualizar(); },
     onError: (e) => toast({ variant: "destructive", title: describeError(e, "Não consegui salvar o imóvel.") }),
   });
 
@@ -160,6 +161,15 @@ export default function CentralImoveis() {
     return <EmptyState icon={Building2} title="Só admin e sócios" description="O cadastro de imóveis e preços é restrito à administração." />;
   }
 
+  if (aberto) {
+    return (
+      <EditorDeImovel
+        id={aberto === "novo" ? null : aberto} construtoras={construtoras}
+        onFechar={() => abrir(null)} onCriado={(id) => abrir(id)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Link to="/central/mapa" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -172,6 +182,9 @@ export default function CentralImoveis() {
         description="O que você salva aqui aparece no site na hora."
         actions={
           <>
+            <Button onClick={() => abrir("novo")}>
+              <Plus className="h-4 w-4" /> Novo imóvel
+            </Button>
             <Button variant="outline" onClick={baixar} disabled={filtrados.length === 0}>
               <Download className="h-4 w-4" /> Baixar planilha
             </Button>
@@ -282,7 +295,7 @@ export default function CentralImoveis() {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => setEditando(i)} aria-label={`Editar ${i.title}`}>
+                        <Button variant="ghost" size="icon" onClick={() => abrir(i.id)} aria-label={`Editar ${i.title}`}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" asChild>
@@ -300,85 +313,6 @@ export default function CentralImoveis() {
         </Card>
       )}
 
-      <Dialog open={Boolean(editando)} onOpenChange={(o) => { if (!o) setEditando(null); }}>
-        <DialogContent>
-          {editando && (
-            <EditarImovel
-              imovel={editando}
-              salvando={salvarUm.isPending}
-              onSalvar={(alteracao) => salvarUm.mutate({ id: editando.id, alteracao })}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
-  );
-}
-
-function EditarImovel({ imovel, salvando, onSalvar }: {
-  imovel: ImovelDoCadastro; salvando: boolean; onSalvar: (a: AlteracaoDoImovel) => void;
-}) {
-  const [status, setStatus] = useState<StatusDoImovel>(imovel.status);
-
-  const enviar = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const texto = (nome: string) => String(f.get(nome) ?? "").trim();
-    const title = texto("title");
-    const city = texto("city");
-    if (!title || !city) {
-      toast({ variant: "destructive", title: "Nome e cidade são obrigatórios." });
-      return;
-    }
-    const quartos = texto("bedrooms");
-    onSalvar({
-      title, city, status,
-      neighborhood: texto("neighborhood") || null,
-      developer: texto("developer") || null,
-      bedrooms: quartos ? Math.max(0, Math.trunc(Number(quartos))) : null,
-    });
-  };
-
-  return (
-    <form onSubmit={enviar} className="space-y-4">
-      <DialogHeader>
-        <DialogTitle>Editar imóvel</DialogTitle>
-        <DialogDescription>{imovel.code} · fotos, descrição e book seguem no painel do site.</DialogDescription>
-      </DialogHeader>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1 sm:col-span-2">
-          <Label htmlFor="im-title">Nome do empreendimento</Label>
-          <Input id="im-title" name="title" defaultValue={imovel.title} required maxLength={200} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="im-city">Cidade</Label>
-          <Input id="im-city" name="city" defaultValue={imovel.city} required maxLength={100} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="im-neighborhood">Bairro</Label>
-          <Input id="im-neighborhood" name="neighborhood" defaultValue={imovel.neighborhood ?? ""} maxLength={100} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="im-developer">Construtora</Label>
-          <Input id="im-developer" name="developer" defaultValue={imovel.developer ?? ""} maxLength={100} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="im-bedrooms">Dormitórios</Label>
-          <Input id="im-bedrooms" name="bedrooms" type="number" min={0} max={20} defaultValue={imovel.bedrooms ?? ""} />
-        </div>
-        <div className="space-y-1 sm:col-span-2">
-          <Label htmlFor="im-status">Situação da obra</Label>
-          <Select value={status} onValueChange={(v) => { if (ehStatus(v)) setStatus(v); }}>
-            <SelectTrigger id="im-status"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {Object.entries(STATUS_DO_IMOVEL).map(([v, nome]) => <SelectItem key={v} value={v}>{nome}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button type="submit" disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
-      </DialogFooter>
-    </form>
   );
 }

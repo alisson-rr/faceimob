@@ -31,6 +31,8 @@ vi.mock("sonner", () => ({
   }),
 }));
 vi.mock("@/lib/engagement/audio", () => ({ playSound: tocar }));
+const confete = vi.hoisted(() => vi.fn());
+vi.mock("@/components/engagement/Confetti", () => ({ fireConfetti: confete }));
 
 /** Opções que chegaram ao sonner numa chamada de um dos mocks. */
 const opcoesDe = (chamada: unknown[] | undefined) => (chamada?.[1] ?? {}) as Record<string, unknown>;
@@ -92,5 +94,20 @@ describe("som", () => {
     avisar({ title: "Não foi possível atender", variant: "destructive" });
     avisar({ title: "Colaborador cadastrado", variant: "success" });
     expect(tocar.mock.calls).toEqual([["error"], ["success"]]);
+  });
+});
+
+describe("comemoração no sucesso", () => {
+  it("sucesso solta confete e ganha frase de ânimo quando veio sem descrição", () => {
+    toast.success("Origem cadastrada");
+    expect(confete).toHaveBeenCalledWith("burst", expect.anything());
+    expect(String(opcoesDe(nativo.success.mock.calls[0]).description)).toMatch(/\S/);
+  });
+
+  it("descrição de quem chamou vence a frase; erro não comemora", () => {
+    toast.success("Importação concluída", { description: "42 leads" });
+    expect(opcoesDe(nativo.success.mock.calls[0]).description).toBe("42 leads");
+    toast.error("Não foi possível salvar");
+    expect(confete).toHaveBeenCalledTimes(1);
   });
 });
