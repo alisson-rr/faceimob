@@ -218,6 +218,11 @@
 }
 
 @layer base {
+  /* Cor de destaque dos avisos (ui/sonner.tsx): azul no neutro. Os tipos e os
+     avisos especiais trocam por classe utilitária ou style, que vencem a base. */
+  [data-sonner-toast] {
+    --toast-accent: var(--primary);
+  }
   * {
     @apply border-border;
     -webkit-font-smoothing: antialiased;

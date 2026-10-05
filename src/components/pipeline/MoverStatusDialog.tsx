@@ -5,7 +5,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { avisarQueda } from "@/components/ui/avisos";
 import { toast } from "@/components/ui/sonner";
+import { ehDesfechoRuim } from "@/lib/dealStatus";
 import { describeError } from "@/lib/supabaseError";
 import { moveDealStatus, statusKey, type DealStatus } from "@/integrations/supabase/dealStatuses";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
@@ -50,7 +52,8 @@ export function MoverStatusDialog({ movimento, envioParaAnalise, onClose, onMove
         });
       } else {
         await moveDealStatus(deal.id, status.value, limpo);
-        toast.success(`Negócio movido para ${status.label}`, { duration: 2500 });
+        if (ehDesfechoRuim(status.value)) avisarQueda(`Negócio movido para ${status.label}`, deal.client);
+        else toast.success(`Negócio movido para ${status.label}`, { duration: 2500 });
       }
       await onMoved();
       onClose();

@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { avisarLead, avisarQueda } from "@/components/ui/avisos";
 import { toast } from "@/components/ui/sonner";
+import { textoDeDesfechoRuim } from "@/lib/dealStatus";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { resolveLink } from "@/lib/notificationLink";
@@ -137,15 +139,19 @@ export default function NotificationBell() {
           const nova = payload.new as { kind?: unknown; title?: unknown; body?: unknown; link?: unknown };
           if (nova.kind === "lead_new_admin" && typeof nova.title === "string") {
             const link = typeof nova.link === "string" ? nova.link : "/leads";
-            toast(nova.title, {
-              description: typeof nova.body === "string" ? nova.body : undefined,
-              duration: 10_000,
-              action: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },
+            avisarLead(nova.title, {
+              descricao: typeof nova.body === "string" ? nova.body : undefined,
+              frase: "Mais um lead chegando! 🔥",
+              acao: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },
             });
           }
           if (typeof nova.kind === "string" && POPUP_KINDS.has(nova.kind) && typeof nova.title === "string") {
             const link = typeof nova.link === "string" ? nova.link : "/pipeline";
-            toast(nova.title, {
+            // Negócio que caiu (OFF, distrato, queda, reprovado) sai em vermelho.
+            const corpo = typeof nova.body === "string" ? nova.body : "";
+            if (textoDeDesfechoRuim(`${nova.title} ${corpo}`)) {
+              avisarQueda(nova.title, corpo || undefined);
+            } else toast(nova.title, {
               description: typeof nova.body === "string" ? nova.body : undefined,
               duration: 10_000,
               action: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },

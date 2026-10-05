@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { avisarQueda } from "@/components/ui/avisos";
 import { describeError } from "@/lib/supabaseError";
 import { LOSS_REASONS, bareStatus, isLossStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
@@ -104,7 +105,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
       });
       // `reason` acima é dado gravado e leva o rótulo inteiro; o aviso é tela e
       // segue a mesma regra do Select.
-      toast({ variant: "success", title: "Negócio encerrado", description: `${deal.client} — ${statusLabel(catalog, status)}.` });
+      avisarQueda("Negócio encerrado", `${deal.client} — ${statusLabel(catalog, status)}.`);
       await onConfirmed();
       onClose();
     } catch (err) {

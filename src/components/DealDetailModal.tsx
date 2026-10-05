@@ -238,7 +238,7 @@ export default function DealDetailModal({
         }
       }
       if (dealId && Object.keys(cca).length > 0) await saveCcaAnalysis(dealId, cca);
-      if (avisar && !virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado" : "Negócio atualizado" });
+      if (avisar && !virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado! 🚀" : "Negócio atualizado" });
       if (fechar) {
         onClose();
       } else if (isNew && gravado) {

@@ -218,3 +218,16 @@ describe("legacyDealFields · lost_reason com status_detail nulo", () => {
     expect(campos.lost_reason).toBeUndefined();
   });
 });
+
+describe("desfecho ruim (aviso em vermelho do Pipeline)", () => {
+  it("OFF, distrato, queda e reprovado, pelo rótulo ou pelo grupo", async () => {
+    const { ehDesfechoRuim, textoDeDesfechoRuim } = await import("./dealStatus");
+    expect(ehDesfechoRuim("18. QUEDA")).toBe(true);
+    expect(ehDesfechoRuim("OFF")).toBe(true);
+    expect(ehDesfechoRuim("19. REPROVADO")).toBe(true);
+    expect(ehDesfechoRuim("CANCELOU A COMPRA", "DISTRATO")).toBe(true);
+    expect(ehDesfechoRuim("APROV. TOTAL", "PROPOSTA")).toBe(false);
+    expect(textoDeDesfechoRuim("Maria foi para 18. QUEDA")).toBe(true);
+    expect(textoDeDesfechoRuim("Maria foi para APROV. TOTAL")).toBe(false);
+  });
+});
