@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
   ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealBrokers, dealMonth, hasActiveFilter,
-  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds, dealsForLeader,
+  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, status1DeAbertura, teamProfileIds, dealsForLeader,
 } from "./filters";
 import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 
@@ -420,5 +420,16 @@ describe("pct · percentual do rateio", () => {
 
   it("quem precisa de mais casas pede", () => {
     expect(pct(33.333, { casas: 2 })).toBe("33,33%");
+  });
+});
+
+describe("status1DeAbertura", () => {
+  it("corretor abre em Proposta + Legado; quem lidera, só em Proposta", () => {
+    expect(status1DeAbertura(catalogo.groups, true)).toEqual([GRUPOS.PROPOSTA.id, GRUPOS.LEGADO.id]);
+    expect(status1DeAbertura(catalogo.groups, false)).toEqual([GRUPOS.PROPOSTA.id]);
+  });
+
+  it("sem catálogo carregado não recorta nada", () => {
+    expect(status1DeAbertura([], true)).toEqual([]);
   });
 });
