@@ -22,7 +22,7 @@ import {
   type LeadDialogState, type LeadPermissions, type LeadRowActions,
 } from "@/components/leads";
 import {
-  canWriteLead, claimLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE,
+  canWriteLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE,
   type LeadRecord,
 } from "@/integrations/supabase/leads";
 
@@ -241,27 +241,15 @@ export default function Leads() {
     [leads, base, detailLeadId],
   );
 
-  // "Atender": trava o lead com o corretor (`claim_lead`) e para o cronômetro.
-  // O toast e o som de comemoração saem do realtime de `lead_events` no
-  // EngagementLayer — chamar `celebrate()` aqui tocaria o som duas vezes.
-  //
-  // Em seguida abre o detalhe no convite de contato. Agendar antes de tentar
-  // falar transformava a primeira ação em "deixar para depois"; a agenda só é
-  // perguntada depois que WhatsApp ou ligação forem usados.
+  // "Pegar lead" (05/10/2026): pergunta antes quando vai retornar o contato;
+  // ao confirmar, `claim_lead` trava o lead com o corretor, evolui para
+  // "conversa iniciada" e cria a atividade. Depois abre o card com as ações.
   const attend = async (lead: LeadRecord) => {
-    let travado = false;
-    try {
-      await claimLead(lead.id);
-      travado = true;
-    } catch (err) {
-      // Caso comum: outro corretor assumiu antes, ou o prazo estourou e o lead
-      // voltou à fila.
-      toast.error("Não foi possível atender o lead", {
-        description: describeError(err, "outro corretor pode ter assumido antes; a lista já foi atualizada"),
-      });
-    }
+    openDialog({ pegar: lead });
+  };
+  const pegou = async (lead: LeadRecord) => {
     await invalidateLeads();
-    if (travado) setDetailLeadId(lead.id);
+    setDetailLeadId(lead.id);
   };
 
   /**
@@ -397,7 +385,7 @@ export default function Leads() {
             <SectionCard
               title="Para atender agora"
               description={paraAtender.length > 0
-                ? "Leads que caíram para você. Clique em Atender antes de o prazo acabar."
+                ? "Leads que caíram para você. Clique em Pegar lead antes de o prazo acabar."
                 : "Nenhum lead esperando você agora. Mantenha o check-in ativo para receber."}
               icon={HandMetal}
               flush={paraAtender.length > 0}
@@ -411,7 +399,7 @@ export default function Leads() {
                         <p className="truncate text-xs text-muted-foreground">{lead.campaign_name || lead.phone || "Sem campanha"}</p>
                       </button>
                       <Button size="sm" className="gap-1" onClick={() => actions.onAttend(lead)}>
-                        <HandMetal className="h-4 w-4" aria-hidden /> Atender
+                        <HandMetal className="h-4 w-4" aria-hidden /> Pegar lead
                       </Button>
                     </li>
                   ))}
@@ -516,6 +504,7 @@ export default function Leads() {
         brokers={brokersQuery.data ?? []}
         templates={templatesQuery.data ?? []}
         actorName={profile?.name}
+        onPegou={(lead) => { void pegou(lead); }}
       />
 
       {/* Detalhe do lead — pela lista e pela notificação (`?lead=<id>`). */}

@@ -653,8 +653,12 @@ export async function moveLeadStage(
  * O banco recusa se o lead não é dele ou já saiu de `assigned` — é essa recusa
  * que garante que dois corretores não atendem o mesmo lead.
  */
-export async function claimLead(id: string): Promise<void> {
-  const { error } = await db.rpc("claim_lead", { p_lead_id: id });
+export async function claimLead(id: string, nextActionAt?: Date): Promise<void> {
+  // `p_next_action_at` (0227) ainda não está no types.ts gerado.
+  const { error } = await untyped.rpc("claim_lead", {
+    p_lead_id: id,
+    ...(nextActionAt ? { p_next_action_at: nextActionAt.toISOString() } : {}),
+  });
   asError("atender lead", error);
 }
 

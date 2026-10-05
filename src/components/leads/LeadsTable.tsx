@@ -202,7 +202,9 @@ const LeadRow = memo(function LeadRow({
           {lead.source || "Sem origem"} · {lead.broker_name || "sem corretor"} · {dateTime(lead.created_at)}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
-          {lead.phone && (
+          {/* Antes de pegar, o lead não é do corretor (05/10/2026: "não sabemos se
+              o lead passa a ser meu ao clicar em WhatsApp"): só "Pegar lead". */}
+          {lead.phone && !claimable && (
             <Button
               variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-success hover:text-success"
               onClick={() => actions.onWhatsApp(lead)}
@@ -210,7 +212,7 @@ const LeadRow = memo(function LeadRow({
               <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
             </Button>
           )}
-          {lead.email && (
+          {lead.email && !claimable && (
             <Button
               variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs"
               onClick={() => actions.onEmail(lead)}
@@ -240,7 +242,7 @@ const LeadRow = memo(function LeadRow({
         <div className="flex flex-wrap items-center justify-end gap-1">
           {claimable && (
             <Button size="sm" className="h-8 gap-1" onClick={() => actions.onAttend(lead)}>
-              <HandMetal className="h-3.5 w-3.5" /> Atender
+              <HandMetal className="h-3.5 w-3.5" /> Pegar lead
             </Button>
           )}
           {writable && (

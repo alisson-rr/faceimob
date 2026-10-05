@@ -25,7 +25,7 @@ import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import {
   addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
-  updateLead, moveLeadStage, claimLead,
+  updateLead, moveLeadStage,
   ATTACHMENT_HINT, FUNNEL_STAGES, LEAD_ROADMAP, funnelStageLabel, funnelStageTone, leadSourceTone,
   leadStatusLabel, leadStatusTone,
   attendSecondsLeft, canWriteLead, formatCountdown, canClaim, isLeadUnattended, trackingFields,
@@ -84,6 +84,7 @@ export default function LeadDetailModal({
   const [askNextAction, setAskNextAction] = useState(false);
   // Mensagem pronta antes de abrir o WhatsApp (03/10/2026).
   const [whatsappAberto, setWhatsappAberto] = useState(false);
+  const [pegarAberto, setPegarAberto] = useState(false);
   // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -143,20 +144,8 @@ export default function LeadDetailModal({
   const encerravel = !["converted", "lost", "discarded"].includes(lead.status)
     && !lead.converted_deal_id;
 
-  const attend = async () => {
-    try {
-      await claimLead(lead.id);
-      // "Lead em atendimento" sai do realtime no EngagementLayer, com som.
-      toast.success("Lead reservado para você", {
-        description: "Agora fale com o cliente pelo WhatsApp ou por ligação.",
-      });
-    } catch (err) {
-      toast.error("Não foi possível atender o lead", {
-        description: describeError(err, "outro corretor pode ter assumido antes"),
-      });
-    }
-    onStageChanged?.();
-  };
+  // "Pegar lead" (05/10/2026): pergunta o retorno e trava o lead pelo diálogo.
+  const attend = () => setPegarAberto(true);
 
   const moveTo = async (stage: LeadFunnelStage) => {
     const etapa = funnelStageLabel(stage);
@@ -304,7 +293,7 @@ export default function LeadDetailModal({
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
             <span>
               <strong>Este lead ainda não é seu.</strong> Abrir o lead não reserva: clique em{" "}
-              <strong>"Atender"</strong>
+              <strong>"Pegar lead"</strong>
               {secondsLeft !== null && <> em até <span className="tabular-nums font-semibold">{formatCountdown(secondsLeft)}</span></>}
               , senão ele volta para a roleta e vai para o próximo da fila.
             </span>
@@ -332,7 +321,7 @@ export default function LeadDetailModal({
           <div className="flex flex-wrap gap-2">
           {claimable && (
             <Button size="sm" variant="highlight" onClick={attend}>
-              <HandMetal className="h-4 w-4" /> Atender e falar agora
+              <HandMetal className="h-4 w-4" /> Pegar lead
               {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
             </Button>
           )}
@@ -614,6 +603,15 @@ export default function LeadDetailModal({
           lead={lead}
           onClose={() => setClosing(false)}
           onClosed={() => { onStageChanged?.(); onOpenChange(false); }}
+        />
+      )}
+
+      {pegarAberto && (
+        <NextActionDialog
+          pegar
+          lead={lead}
+          onClose={() => setPegarAberto(false)}
+          onSaved={() => onStageChanged?.()}
         />
       )}
 
