@@ -119,6 +119,7 @@ declare
     "task_due": "lead_prazo",
     "lead_comment": "lead_atividade",
     "lead_new_admin": "lead_atividade",
+    "lead_marca_do_dia": "lead_atividade",
     "task_assigned": "lead_atividade",
     "visit_scheduled": "lead_atividade",
     "whatsapp_human_turn": "lead_atividade",
