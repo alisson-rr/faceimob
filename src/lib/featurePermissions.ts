@@ -101,6 +101,10 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
     where: "Negócio: marcar os desfechos OFF e DISTRATO, que tiram o negócio do funil, do VGV e do ranking (gatilho deals_guard_status_columns). Também exige Alterar Status 2. A Etapa segue a matriz de etapas (can_enter/can_exit), na aba ao lado",
     enforcedBy: "banco",
   },
+  "deals.mark_distrato": {
+    where: "Negócio: encerrar por DISTRATO, sem OFF (gatilho deals_guard_status_columns, 0230). Ligada para a CCA. Também exige Alterar Status 2",
+    enforcedBy: "banco",
+  },
   "deals.manage_statuses": {
     where: "Pipeline · botão \"Status do negócio\": criar, renomear, reordenar, ativar e desativar o Status 1 e o Status 2 (policies de deal_status_groups e deal_statuses, 0149). Não muda o status de nenhum negócio, e os status usados por regras do sistema não se desativam",
     enforcedBy: "banco",

@@ -35,10 +35,14 @@ export const offDistratoBlocked = (
   status: string | null | undefined,
 ): string | null => {
   const outcome = normalizeStatus(status);
-  if (outcome !== "OFF" && outcome !== "DISTRATO") return null;
-  return can("deals.mark_off_distrato")
+  if (outcome === "OFF") {
+    return can("deals.mark_off_distrato") ? null : "Só administrador e sócio marcam OFF.";
+  }
+  if (outcome !== "DISTRATO") return null;
+  // DISTRATO também com `deals.mark_distrato`, a da CCA (0230).
+  return can("deals.mark_off_distrato") || can("deals.mark_distrato")
     ? null
-    : "Só administrador e sócio marcam OFF e distrato.";
+    : "Só administrador, sócio e CCA marcam distrato.";
 };
 
 /**
