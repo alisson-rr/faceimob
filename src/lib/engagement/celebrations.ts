@@ -38,6 +38,23 @@ export const CELEBRATION: Record<
   goal:         { sound: "goal",        confetti: "fireworks", visual: "toast" },
 };
 
+/**
+ * Frase do aviso de sucesso que veio sem descrição (pedido de 05/10/2026: "dê
+ * vida nesses popups, alegria e motivação"). Curta, para não brigar com o
+ * título, que é o que de fato confirma a ação.
+ */
+export const FRASES_DE_SUCESSO = [
+  "Mandou bem! 🚀",
+  "Isso aí, segue o jogo! 💪",
+  "Mais um passo rumo à meta! 🎯",
+  "Show! O time agradece. 🙌",
+  "Feito! Bora pra próxima. ⚡",
+  "Você está voando hoje! ✨",
+] as const;
+
+export const fraseDeSucesso = (sorteio: () => number = Math.random): string =>
+  FRASES_DE_SUCESSO[Math.min(FRASES_DE_SUCESSO.length - 1, Math.floor(sorteio() * FRASES_DE_SUCESSO.length))];
+
 // ── venda: um negócio, uma comemoração ───────────────────────────────────────
 
 export type SaleEvent = { id: string; profileId: string; refId: string | null };

@@ -1,7 +1,9 @@
 import type { ComponentProps, CSSProperties } from "react";
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 import { Toaster as Sonner, toast } from "sonner";
+import { fireConfetti } from "@/components/engagement/Confetti";
 import { playSound } from "@/lib/engagement/audio";
+import { fraseDeSucesso } from "@/lib/engagement/celebrations";
 
 type ToasterProps = ComponentProps<typeof Sonner>;
 
@@ -20,9 +22,15 @@ type ToasterProps = ComponentProps<typeof Sonner>;
  */
 const sucessoNativo = toast.success;
 const erroNativo = toast.error;
+/**
+ * Sucesso também comemora (05/10/2026, "alegria e motivação"): um confete
+ * curto saindo do aviso, no meio da tela, e uma frase de ânimo quando quem
+ * chamou não mandou descrição. O confete respeita "reduzir movimento".
+ */
 toast.success = (mensagem, opcoes) => {
   playSound("success");
-  return sucessoNativo(mensagem, opcoes);
+  fireConfetti("burst", { x: 0.5, y: 0.45 });
+  return sucessoNativo(mensagem, opcoes?.description ? opcoes : { ...opcoes, description: fraseDeSucesso() });
 };
 toast.error = (mensagem, opcoes) => {
   playSound("error");
@@ -73,7 +81,7 @@ const Toaster = ({ ...props }: ToasterProps) => (
     className={classeDaLista}
     style={larguraDaLista}
     icons={{
-      success: <CheckCircle2 className="size-5 text-success" aria-hidden />,
+      success: <CheckCircle2 className="size-5 text-success animate-in zoom-in-50 spin-in-45 duration-500 motion-reduce:animate-none" aria-hidden />,
       error: <XCircle className="size-5 text-destructive" aria-hidden />,
       warning: <AlertTriangle className="size-5 text-warning" aria-hidden />,
       info: <Info className="size-5 text-info" aria-hidden />,
