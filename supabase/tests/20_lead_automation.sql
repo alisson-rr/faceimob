@@ -91,7 +91,8 @@ begin
   perform pg_temp.check20(v_stage = 'qualified',
     'lead que já saiu de new mantém a etapa ao Atender');
 
-  -- Desligado: comportamento anterior, o corretor move à mão.
+  -- 0227 (pedido de 05/10/2026): pegar o lead SEMPRE começa a conversa, com o
+  -- auto ligado ou não, e já nasce com a atividade "Retornar contato".
   update public.automation_settings set auto_first_contact = false where id;
 
   insert into public.leads (full_name, phone, status, assigned_to, funnel_stage)
@@ -103,8 +104,12 @@ begin
   reset role;
 
   select funnel_stage into v_stage from public.leads where id = v_lead;
-  perform pg_temp.check20(v_stage = 'new',
-    'com o auto desligado, Atender deixa o lead em new');
+  perform pg_temp.check20(v_stage = 'first_contact',
+    'pegar o lead evolui para first_contact mesmo com o auto desligado (0227)');
+  perform pg_temp.check20(exists (select 1 from public.tasks t
+                                   where t.ref_type = 'lead' and t.ref_id = v_lead and t.status = 'open'
+                                     and t.due_at = (select next_action_at from public.leads where id = v_lead)),
+    'pegar o lead cria a atividade com o prazo do próximo contato (0227)');
 end
 $$;
 

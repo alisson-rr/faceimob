@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, HandMetal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
-import { updateLead, type LeadRecord } from "@/integrations/supabase/leads";
+import { claimLead, updateLead, type LeadRecord } from "@/integrations/supabase/leads";
 import { useInvalidateLeads } from "./data";
 import { nextActionPreset, toDateTimeInput } from "./model";
 
-const PRESETS: { key: "2h" | "amanha" | "3d"; label: string }[] = [
+const PRESETS: { key: "2h" | "amanha" | "48h" | "3d"; label: string }[] = [
   { key: "2h", label: "Em 2 horas" },
   { key: "amanha", label: "Amanhã, 9h" },
+  { key: "48h", label: "Em 48 horas" },
   { key: "3d", label: "Em 3 dias" },
 ];
 
@@ -33,16 +34,22 @@ const PRESETS: { key: "2h" | "amanha" | "3d"; label: string }[] = [
  * nada aqui justifica um seletor próprio.
  */
 export function NextActionDialog({
-  lead, onClose, onSaved,
+  lead, onClose, onSaved, pegar = false,
 }: {
   lead: LeadRecord;
   onClose: () => void;
   onSaved?: () => void;
+  /**
+   * "Pegar lead" (pedido de 05/10/2026): o mesmo campo de data, mas gravar é
+   * `claim_lead` — o lead passa a ser do corretor, vai para "conversa
+   * iniciada" e ganha a atividade "Retornar contato" com esse prazo.
+   */
+  pegar?: boolean;
 }) {
   const invalidateLeads = useInvalidateLeads();
   const fieldId = useId();
   const [value, setValue] = useState(() =>
-    toDateTimeInput(lead.next_action_at ? new Date(lead.next_action_at) : nextActionPreset("amanha")),
+    toDateTimeInput(!pegar && lead.next_action_at ? new Date(lead.next_action_at) : nextActionPreset("amanha")),
   );
   const [saving, setSaving] = useState(false);
 
@@ -53,11 +60,14 @@ export function NextActionDialog({
     if (invalid) return;
     setSaving(true);
     try {
-      await updateLead(lead.id, { next_action_at: parsed.toISOString() });
+      if (pegar) await claimLead(lead.id, parsed);
+      else await updateLead(lead.id, { next_action_at: parsed.toISOString() });
       toast({
         variant: "success",
-        title: "Próxima ação marcada",
-        description: `${lead.name}: ${dateTime(parsed.toISOString())}.`,
+        title: pegar ? "Lead é seu! Fale com ele agora" : "Próxima ação marcada",
+        description: pegar
+          ? `${lead.name}: retorno marcado para ${dateTime(parsed.toISOString())}. A atividade já está na sua agenda.`
+          : `${lead.name}: ${dateTime(parsed.toISOString())}.`,
       });
       await invalidateLeads();
       onSaved?.();
@@ -65,7 +75,7 @@ export function NextActionDialog({
     } catch (err) {
       toast({
         variant: "destructive",
-        title: "Não foi possível marcar a próxima ação",
+        title: pegar ? "Não foi possível pegar o lead" : "Não foi possível marcar a próxima ação",
         description: describeError(err, "tente de novo"),
       });
     } finally {
@@ -78,17 +88,28 @@ export function NextActionDialog({
       <DialogContent className="glass-strong max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarClock className="h-5 w-5 text-primary" aria-hidden /> Próxima ação
+            {pegar
+              ? <><HandMetal className="h-5 w-5 text-primary" aria-hidden /> Pegar lead</>
+              : <><CalendarClock className="h-5 w-5 text-primary" aria-hidden /> Próxima ação</>}
           </DialogTitle>
           <DialogDescription>
-            <span className="font-medium text-foreground">{lead.name}</span> — quando você volta a
-            falar com este cliente. Passou da hora e o lead conta como atrasado; 20 atrasados travam
-            seu check-in.
+            {pegar ? (
+              <>
+                <span className="font-medium text-foreground">{lead.name}</span> passa a ser seu ao
+                confirmar. Escolha quando vai retornar o contato: vira uma atividade na sua agenda.
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-foreground">{lead.name}</span> — quando você volta a
+                falar com este cliente. Passou da hora e o lead conta como atrasado; 20 atrasados travam
+                seu check-in.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-1.5">
-          <Label htmlFor={fieldId}>Data e hora</Label>
+          <Label htmlFor={fieldId}>{pegar ? "Retornar o contato em" : "Data e hora"}</Label>
           <Input
             id={fieldId}
             type="datetime-local"
@@ -113,9 +134,9 @@ export function NextActionDialog({
         </div>
 
         <DialogFooter>
-          <DialogClose asChild><Button variant="outline" size="sm">Agora não</Button></DialogClose>
+          <DialogClose asChild><Button variant="outline" size="sm">{pegar ? "Cancelar" : "Agora não"}</Button></DialogClose>
           <Button size="sm" onClick={save} disabled={invalid || saving}>
-            {saving ? "Marcando…" : "Marcar"}
+            {pegar ? (saving ? "Pegando…" : "Pegar lead") : (saving ? "Marcando…" : "Marcar")}
           </Button>
         </DialogFooter>
       </DialogContent>

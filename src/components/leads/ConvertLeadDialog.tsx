@@ -228,15 +228,21 @@ export function ConvertLeadDialog({
           </div>
 
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor={`${fieldId}-empreendimento`}>Empreendimento</Label>
+            {/* Obrigatório desde 05/10/2026 (pedido do cliente). */}
+            <Label htmlFor={`${fieldId}-empreendimento`}>Empreendimento *</Label>
             <Select value={projectId} onValueChange={setProjectId} disabled={!developerId || projectList.length === 0}>
               <SelectTrigger id={`${fieldId}-empreendimento`}>
-                <SelectValue placeholder={developerId ? (projectList.length ? "Opcional" : "Sem empreendimentos") : "Escolha a construtora"} />
+                <SelectValue placeholder={developerId ? (projectList.length ? "Escolha o empreendimento" : "Sem empreendimentos") : "Escolha a construtora"} />
               </SelectTrigger>
               <SelectContent>
                 {projectList.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
               </SelectContent>
             </Select>
+            {developerId && !projects.isPending && projectList.length === 0 && (
+              <p role="alert" className="text-xs text-destructive">
+                Esta construtora não tem empreendimento cadastrado. Peça ao administrador para cadastrar em Construtoras antes de converter.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -294,7 +300,7 @@ export function ConvertLeadDialog({
           <Button
             size="sm"
             onClick={submit}
-            disabled={!developerId || vgvInvalid || converting || (encerrado && !reabrir)}
+            disabled={!developerId || !projectId || vgvInvalid || converting || (encerrado && !reabrir)}
           >
             {converting ? "Convertendo…" : "Converter"}
           </Button>
