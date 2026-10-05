@@ -49,10 +49,12 @@ const COR_INICIAL = TONE_HEX.info;
  * negócio" é `deal_status_id` preenchido; desligado grava `null`, e mover pela
  * esteira não toca o Status 2.
  */
-export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
+export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrdem = false }: {
   stages: CcaStage[];
   onClose: () => void;
   onChanged: () => void | Promise<void>;
+  /** CCA (0228): só as setas de ordem; criar, editar e excluir são do admin. */
+  somenteOrdem?: boolean;
 }) {
   const nomeRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<CcaStage | null>(null);
@@ -168,15 +170,17 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
         <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-lg">
           <DialogHeader className="shrink-0 border-b border-border p-4 pr-12 sm:p-6 sm:pr-12">
             <DialogTitle className="break-words leading-tight">
-              {editing ? `Editar "${editing.name}"` : "Gerenciar estágios do CCA"}
+              {somenteOrdem ? "Ordem das colunas" : editing ? `Editar "${editing.name}"` : "Gerenciar estágios do CCA"}
             </DialogTitle>
             <DialogDescription>
-              O desfecho liga o estágio ao ciclo fixo do crédito: é ele que decide o caso e move o
-              negócio no Pipeline. Cada coluna diz se avisa o comercial e se muda o status do negócio.
+              {somenteOrdem
+                ? "Use as setas para colocar as colunas na ordem do seu trabalho. Vale para todos que usam a esteira."
+                : "O desfecho liga o estágio ao ciclo fixo do crédito: é ele que decide o caso e move o negócio no Pipeline. Cada coluna diz se avisa o comercial e se muda o status do negócio."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+            {!somenteOrdem && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <Label htmlFor="cca-stage-name">Nome</Label>
@@ -280,6 +284,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                 {editing && <Button size="sm" variant="ghost" onClick={reset}>Cancelar edição</Button>}
               </div>
             </div>
+            )}
 
             <ul className="space-y-2">
               {stages.map((stage, index) => {
@@ -311,6 +316,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                         aria-label={`Mover ${stage.name} para a esquerda`} onClick={() => void reorder(index, -1)}><ArrowUp className="h-3 w-3" /></Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7" disabled={saving || index === stages.length - 1}
                         aria-label={`Mover ${stage.name} para a direita`} onClick={() => void reorder(index, 1)}><ArrowDown className="h-3 w-3" /></Button>
+                      {!somenteOrdem && (<>
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7"
                         aria-label={`Editar o estágio ${stage.name}`}
@@ -339,6 +345,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged }: {
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
+                      </>)}
                     </div>
                   </li>
                 );

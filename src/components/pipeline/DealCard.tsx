@@ -11,7 +11,7 @@ import { calcDealProbability } from "@/lib/aiAnalytics";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { dealBrokers, dealMonth, pct } from "./filters";
 import type { DealLock } from "./guards";
-import { DOCUMENT_REVIEW_META } from "./review";
+import { conferenciaDoNegocio } from "./review";
 import { comissaoPrevista } from "./comissao";
 import type { PipelineStage } from "./stages";
 
@@ -81,7 +81,7 @@ function DealCardBase({
   deal, color, onOpen, onMove, onLose, lock, canExit, blockedMove, onBlockedMove,
   previousStage, nextStage, dragging, onDragStart, onDragEnd,
 }: Props) {
-  const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
+  const review = conferenciaDoNegocio(deal.document_review_status, deal.status);
   const probability = calcDealProbability(deal);
   const idade = dealAgeTone(deal.days_in_pipeline);
   const movable = !lock.locked && canExit;

@@ -211,7 +211,12 @@ export function lideresDoNegocio(people: PersonRecord[], daRpc: LiderancaSelecio
   const lideres = daRpc?.lideres ?? [];
   const equipes = new Map((daRpc?.equipes ?? []).map((e) => [e.id, e]));
   const lideranca: Lideranca[] = [
-    ...people.map((p) => (p.manager_id || p.director_id ? p : { ...p, ...equipes.get(p.id) })),
+    // Campo a campo: a lista visível pode trazer o gerente e não o diretor (ou
+    // nenhum dos dois, quando a RLS esconde a equipe do corretor).
+    ...people.map((p) => {
+      const e = equipes.get(p.id);
+      return { ...p, manager_id: p.manager_id ?? e?.manager_id ?? null, director_id: p.director_id ?? e?.director_id ?? null };
+    }),
     ...[...equipes.values()].filter((e) => !people.some((p) => p.id === e.id)),
   ];
   return {
@@ -355,6 +360,10 @@ export function DealForm({
   const sugeridoPara = useRef<string | null>(null);
   useEffect(() => {
     const corretor = form.broker1_id;
+    // Espera a liderança das RPCs (0199): sem ela, o corretor via só o próprio
+    // perfil sem equipe, a sugestão saía vazia e ficava marcada como feita —
+    // Gerente 1 e Diretor 1 abriam em branco (Rudinei, 05/10/2026).
+    if (selectableLeaders.isPending) return;
     if (!corretor || sugeridoPara.current === corretor || !lideranca.some((p) => p.id === corretor)) return;
     sugeridoPara.current = corretor;
     const patch = sugestaoDeLideres(form, corretor, 1, lideranca, managers, directors);
@@ -362,7 +371,7 @@ export function DealForm({
     if (patch.manager1_id && !form.manager1_id) vazio.manager1_id = patch.manager1_id;
     if (patch.director1_id && !form.director1_id) vazio.director1_id = patch.director1_id;
     if (Object.keys(vazio).length) onChange(vazio);
-  }, [form, lideranca, managers, directors, onChange]);
+  }, [form, lideranca, managers, directors, onChange, selectableLeaders.isPending]);
 
   const loadProjects = useCallback(async (developerName: string) => {
     const developer = developers.find((row) => row.name === developerName);
