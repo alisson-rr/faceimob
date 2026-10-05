@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useState, type DragEvent } from "react";
-import { Building2, ChevronDown, ChevronUp, DollarSign, User } from "lucide-react";
+import { Building2, ChevronDown, ChevronUp, DollarSign, Undo2, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,6 +10,7 @@ import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
 import { elapsedDays, elapsedLabel } from "./ccaTime";
 import { cn } from "@/lib/utils";
+import { bareStatus } from "@/lib/dealStatus";
 import { developerDot, isHexColor } from "@/lib/tone";
 
 /**
@@ -62,6 +63,8 @@ interface Props {
   /** Abre o negócio no `DealDetailModal` — o MESMO editor do Pipeline. */
   onOpen: (deal: CcaDeal) => void;
   onMove: (deal: CcaDeal, stage: CcaStage) => void;
+  /** INCOMPLETO: tira da esteira e devolve ao corretor no mesmo status (0229). */
+  onDevolver?: (deal: CcaDeal) => void;
 }
 
 /**
@@ -85,7 +88,7 @@ interface Props {
  * `memo`: abrir um diálogo da tela não redesenha os cartões.
  */
 export const CcaBoard = memo(function CcaBoard({
-  stages, deals, canAct, sendCounts, onOpen, onMove,
+  stages, deals, canAct, sendCounts, onOpen, onMove, onDevolver,
 }: Props) {
   const faixaId = useId();
   const [now, setNow] = useState(Date.now);
@@ -343,6 +346,14 @@ export const CcaBoard = memo(function CcaBoard({
                       </div>
 
                       {canAct && <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />}
+                      {canAct && onDevolver && bareStatus(deal.dealStatus ?? "") === "INCOMPLETO" && (
+                        <Button
+                          type="button" variant="outline" size="sm" className="h-7 w-full text-xs"
+                          onClick={() => onDevolver(deal)}
+                        >
+                          <Undo2 className="mr-1 h-3 w-3" aria-hidden /> Devolver ao comercial
+                        </Button>
+                      )}
                     </article>
                   );
                 })}

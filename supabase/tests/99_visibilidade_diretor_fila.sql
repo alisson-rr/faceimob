@@ -600,7 +600,7 @@ begin
     true, 'apagar arquivo respeita a trava do dossiê enviado, igual a deal_documents_delete');
   perform pg_temp.assert_eq(
     (select with_check from pg_policies
-      where schemaname = 'storage' and policyname = 'deal_documents_storage_insert') like '%document_review_status%',
+      where schemaname = 'storage' and policyname = 'deal_documents_storage_insert') like '%dossie_com_o_comercial%',
     true, 'gravar arquivo respeita a trava do dossiê enviado, igual a deal_documents_insert');
   perform pg_temp.assert_eq(
     (select qual from pg_policies

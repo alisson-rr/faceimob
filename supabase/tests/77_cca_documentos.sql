@@ -401,7 +401,8 @@ begin
   select pg_get_expr(p.polwithcheck, p.polrelid) into v_check
     from pg_policy p where p.polname = 'deal_documents_insert'
      and p.polrelid = 'public.deal_documents'::regclass;
-  perform pg_temp.check77(position('document_review_status' in coalesce(v_check, '')) > 0,
+  -- 0229: o estado da conferência passa por `dossie_com_o_comercial`.
+  perform pg_temp.check77(position('dossie_com_o_comercial' in coalesce(v_check, '')) > 0,
     'anexar passa a olhar o estado da conferência, como já fazia o excluir');
   perform pg_temp.check77(position('has_permission' in coalesce(v_check, '')) > 0,
     'a exceção do CCA está na policy, não só na tela');

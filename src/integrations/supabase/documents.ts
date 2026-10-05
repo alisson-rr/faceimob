@@ -137,9 +137,13 @@ export function canAttachNow(input: {
   status: DocumentReviewStatus;
   isAdmin: boolean;
   hasCcaReview: boolean;
+  /** Status do caso na CCA; aprovado sem caso em análise volta ao comercial (0229). */
+  caseStatus?: string | null;
 }): boolean {
+  const emAnalise = ["under_review", "sent_to_agency", "sent_to_developer"].includes(input.caseStatus ?? "");
   return input.isAdmin || input.hasCcaReview
-    || input.status === "draft" || input.status === "returned";
+    || input.status === "draft" || input.status === "returned"
+    || (input.status === "approved" && !emAnalise);
 }
 
 export async function listDocumentTypes(): Promise<DocumentTypeRecord[]> {

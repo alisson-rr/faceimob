@@ -13,6 +13,7 @@ import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import DealDetailModal from "@/components/DealDetailModal";
+import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import {
   listDocumentTypesForAdmin, updateDocumentType, type DocumentTypeAdminRecord,
 } from "@/integrations/supabase/documents";
@@ -244,6 +245,7 @@ export default function CcaPipeline() {
   const periodoMsgId = useId();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [devolvendo, setDevolvendo] = useState<CcaDeal | null>(null);
   const [typesOpen, setTypesOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
@@ -458,6 +460,7 @@ export default function CcaPipeline() {
           sendCounts={envios.data}
           onOpen={abrirNegocio}
           onMove={moverCaso}
+          onDevolver={setDevolvendo}
         />
       )}
 
@@ -492,6 +495,10 @@ export default function CcaPipeline() {
             // veio fazer.
           }}
         />
+      )}
+
+      {devolvendo && (
+        <CcaDevolverDialog deal={devolvendo} onClose={() => setDevolvendo(null)} onDone={refresh} />
       )}
 
       {settingsOpen && ordenaColunas && (

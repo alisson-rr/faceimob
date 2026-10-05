@@ -316,28 +316,53 @@ export default function DealDocumentUpload({
   };
 
   /**
-   * "Baixar todos" (pedido da CCA em 05/10/2026): cada documento vigente como
-   * arquivo separado, um depois do outro, sem juntar em PDF. A pausa curta evita
-   * que o navegador descarte downloads disparados no mesmo instante; na primeira
-   * vez ele pode perguntar se o site pode baixar vários arquivos.
+   * "Baixar todos" (pedido da CCA em 05/10/2026): os documentos vigentes,
+   * cada um como arquivo separado, dentro de UMA pasta compactada (.zip) — um
+   * clique para salvar, sem juntar em PDF e sem o navegador perguntar arquivo
+   * por arquivo.
    */
   const baixarTodos = async (vigentes: DealDocumentRecord[]) => {
     if (vigentes.length === 0 || baixandoTodos) return;
     setBaixandoTodos(true);
-    const falharam: string[] = [];
-    for (const doc of vigentes) {
-      try {
-        await salvarArquivo(doc);
-      } catch {
-        falharam.push(documentDisplayName(doc));
-      }
-      await new Promise((r) => setTimeout(r, 400));
+    try {
+      const { montarZip } = await import("@/lib/zipSimples");
+      const pasta = slugify(dealCode || "negocio") || "negocio";
+      const usados = new Set<string>();
+      const falharam: string[] = [];
+      const arquivos = (await Promise.all(vigentes.map(async (doc) => {
+        try {
+          const resposta = await fetch(await signedDocumentUrl(doc));
+          if (!resposta.ok) throw new Error(String(resposta.status));
+          return { doc, bytes: new Uint8Array(await resposta.arrayBuffer()) };
+        } catch {
+          falharam.push(documentDisplayName(doc));
+          return null;
+        }
+      }))).flatMap((item) => {
+        if (!item) return [];
+        // Dois arquivos com o mesmo nome não podem coexistir na pasta.
+        let nome = item.doc.stored_name;
+        for (let n = 2; usados.has(nome); n++) nome = item.doc.stored_name.replace(/(\.[^.]*)?$/, ` (${n})$1`);
+        usados.add(nome);
+        return [{ nome: `${pasta}/${nome}`, bytes: item.bytes }];
+      });
+      if (arquivos.length === 0) throw new Error("Nenhum arquivo pôde ser baixado.");
+      const url = URL.createObjectURL(new Blob([montarZip(arquivos)], { type: "application/zip" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${pasta}-documentos.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast(falharam.length
+        ? { variant: "destructive", title: `Pasta com ${arquivos.length} de ${vigentes.length} arquivos`, description: `Não entraram: ${falharam.join(", ")}.` }
+        : { variant: "success", title: `Pasta com ${arquivos.length} arquivo${arquivos.length > 1 ? "s" : ""} baixada` });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Não foi possível baixar os documentos", description: describeError(e, "Tente de novo.") });
+    } finally {
+      setBaixandoTodos(false);
     }
-    setBaixandoTodos(false);
-    const ok = vigentes.length - falharam.length;
-    toast(falharam.length
-      ? { variant: "destructive", title: `${ok} de ${vigentes.length} arquivos baixados`, description: `Não baixaram: ${falharam.join(", ")}.` }
-      : { variant: "success", title: `${ok} arquivo${ok > 1 ? "s" : ""} baixado${ok > 1 ? "s" : ""}` });
   };
 
   /** Abre no próprio modal: não troca de aba e não dispara download. */
@@ -560,7 +585,7 @@ export default function DealDocumentUpload({
   // 0077: depois do envio ao gerente o dossiê é prova. Sem isto o corretor
   // trocava a versão que o gerente aprovou e que o analista ia baixar, e o
   // banco aceitava calado. O CCA continua podendo juntar documento depois.
-  const canAttach = canUpload && canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review") });
+  const canAttach = canUpload && canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review"), caseStatus });
   const meta = DOCUMENT_REVIEW_META[status];
   const enviadoPor = assinatura(review?.document_review_requested_by ?? null, review?.document_review_requested_at ?? null, nomes);
   const decididoPor = assinatura(review?.document_reviewed_by ?? null, review?.document_reviewed_at ?? null, nomes);
@@ -837,7 +862,7 @@ export default function DealDocumentUpload({
             onClick={() => void baixarTodos(vigentes)}
           >
             {baixandoTodos ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-            {baixandoTodos ? "Baixando…" : `Baixar todos (${vigentes.length})`}
+            {baixandoTodos ? "Montando pasta…" : `Baixar todos em pasta (${vigentes.length})`}
           </Button>
         )}
         <Button
