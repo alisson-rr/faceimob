@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, BedDouble, Building2, ExternalLink, Map as MapIcon, MapPin, X } from "lucide-react";
+import { ArrowLeft, BedDouble, Building2, Pencil, ExternalLink, Map as MapIcon, MapPin, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
-import { SITE_PUBLICO, listarImoveisDoMapa, type ImovelDoMapa } from "@/integrations/supabase/central";
+import { SITE_PUBLICO, STATUS_DO_IMOVEL, listarImoveisDoMapa, type ImovelDoMapa } from "@/integrations/supabase/central";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 import { brl } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
@@ -41,13 +43,6 @@ const POSICAO_DA_CIDADE: Record<string, { x: number; y: number }> = {
 const MAPA_GOOGLE =
   "https://www.google.com/maps/d/u/0/embed?mid=1gyhEad0cjyHOalVWap1H0TssJaiIf20&ll=-30.07673837976231%2C-51.02201918265033&z=11";
 
-const STATUS_DO_IMOVEL: Record<string, string> = {
-  lancamento: "Lançamento",
-  em_obras: "Em obras",
-  pronto_para_morar: "Pronto para morar",
-  entregue: "Entregue",
-};
-
 type Cidade = { chave: string; nome: string; imoveis: ImovelDoMapa[]; pos: { x: number; y: number } | null };
 
 const preco = (i: ImovelDoMapa) =>
@@ -56,6 +51,7 @@ const preco = (i: ImovelDoMapa) =>
 /** Mapa de Imóveis dentro do CRM (pedido de 04/10/2026), com os imóveis ativos do site. */
 export default function CentralMapa() {
   const parado = useReducedMotion();
+  const { isAdmin } = useAuth();
   const imoveis = useQuery({ queryKey: ["central", "mapa"], queryFn: listarImoveisDoMapa });
   const [aberta, setAberta] = useState<string | null>(null);
 
@@ -86,6 +82,11 @@ export default function CentralMapa() {
         eyebrow="Central do Corretor"
         title="Mapa de Imóveis"
         description="Clique numa cidade para ver os empreendimentos de lá."
+        actions={isAdmin && (
+          <Button variant="outline" asChild>
+            <Link to="/central/imoveis"><Pencil className="h-4 w-4" /> Imóveis e preços</Link>
+          </Button>
+        )}
       />
 
       <Tabs defaultValue="faceimob">
