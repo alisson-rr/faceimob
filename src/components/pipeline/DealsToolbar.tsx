@@ -123,10 +123,10 @@ export function DealsToolbar({
           type="button"
           onClick={onFilterPendingReviews}
           disabled={countsUnknown}
-          className="inline-flex items-center gap-1 rounded transition-colors hover:text-warning focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md bg-warning/20 px-2 py-0.5 text-warning transition-colors hover:bg-warning/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
         >
           <FileCheck2 className="h-3 w-3" aria-hidden />
-          <strong className="tabular-nums text-warning">{conta(pendingReviews)}</strong> aguardando gerente
+          <strong className="tabular-nums">{conta(pendingReviews)}</strong> aguardando gerente
         </button>
       </div>
     </div>

@@ -32,6 +32,7 @@ import { CelebrationContext, type Celebrate, type CelebrationPayload } from "./c
 import SaleCelebration from "@/components/SaleCelebration";
 import NewLeadNotifier from "@/components/NewLeadNotifier";
 import { MotivationalPopup } from "@/components/MotivationalPopup";
+import { LeadQueueNotifier } from "./LeadQueueNotifier";
 
 /**
  * Camada de engajamento — o único lugar do app que toca som e solta confete.
@@ -561,6 +562,7 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
       )}
       <MotivationalPopup />
       <NewLeadNotifier />
+      <LeadQueueNotifier />
     </CelebrationContext.Provider>
   );
 }

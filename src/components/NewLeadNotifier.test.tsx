@@ -39,18 +39,28 @@ vi.mock("@/components/ui/avisos", () => ({
 /** Handler que o componente registra no realtime, por evento. */
 const realtime = vi.hoisted(() => new Map<string, (payload: unknown) => void>());
 /** Quantas vezes o canal foi aberto e removido. */
-const canal = vi.hoisted(() => ({ abertos: 0, removidos: 0 }));
+const canal = vi.hoisted(() => ({
+  abertos: 0,
+  removidos: 0,
+  status: null as null | ((status: string) => void),
+}));
 vi.mock("@/integrations/supabase/client", () => {
-  const channel = {
-    on: (_tipo: string, filtro: { event: string }, handler: (payload: unknown) => void) => {
-      realtime.set(filtro.event, handler);
-      return channel;
-    },
-    subscribe: () => channel,
-  };
   return {
     supabase: {
-      channel: () => { canal.abertos += 1; return channel; },
+      channel: () => {
+        canal.abertos += 1;
+        const channel = {
+          on: (_tipo: string, filtro: { event: string }, handler: (payload: unknown) => void) => {
+            realtime.set(filtro.event, handler);
+            return channel;
+          },
+          subscribe: (callback?: (status: string) => void) => {
+            canal.status = callback ?? null;
+            return channel;
+          },
+        };
+        return channel;
+      },
       removeChannel: () => { canal.removidos += 1; },
     },
   };
@@ -158,5 +168,22 @@ describe("NewLeadNotifier · troca de rota", () => {
 
     await act(async () => { root.unmount(); });
     container.remove();
+  });
+
+  it("refaz a assinatura quando o canal realtime cai", async () => {
+    vi.useFakeTimers();
+    const desmontar = await montar();
+    const abertos = canal.abertos;
+    const removidos = canal.removidos;
+
+    await act(async () => {
+      canal.status?.("CHANNEL_ERROR");
+      await vi.advanceTimersByTimeAsync(4_000);
+    });
+
+    expect(canal.abertos - abertos).toBe(1);
+    expect(canal.removidos - removidos).toBe(1);
+    await desmontar();
+    vi.useRealTimers();
   });
 });

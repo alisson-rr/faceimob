@@ -21,6 +21,7 @@ export { DealStatusSettingsDialog } from "./DealStatusSettingsDialog";
 export { LoseDealDialog } from "./LoseDealDialog";
 export { PipelineAnalytics } from "./PipelineAnalytics";
 export { ReopenDealDialog } from "./ReopenDealDialog";
+export { ReactivateDealDialog } from "./ReactivateDealDialog";
 export { ReopenMonthDialog } from "./ReopenMonthDialog";
 export { ScheduleVisitDialog } from "./ScheduleVisitDialog";
 export { ChoiceField, PersonField, Section, TextField } from "./fields";

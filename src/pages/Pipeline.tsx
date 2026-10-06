@@ -22,7 +22,7 @@ import { MoverStatusDialog, type MovimentoComTexto } from "@/components/pipeline
 import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
   CloseMonthDialog, DealFilters, DealStatusSettingsDialog, DealsBoard, DealsToolbar,
-  EMPTY_FILTERS, LoseDealDialog, PipelineAnalytics, ReopenDealDialog, ReopenMonthDialog,
+  EMPTY_FILTERS, LoseDealDialog, PipelineAnalytics, ReactivateDealDialog, ReopenDealDialog, ReopenMonthDialog,
   ScheduleVisitDialog,
   applyDealFilters, canWriteDeals, dealMonth, dealRangeError, dealRequiredError,
   baixarPlanilhaDeNegocios, findDuplicateDeal, hasActiveFilter, sortDeals,
@@ -39,6 +39,7 @@ import { BUSCA_MINIMA, listActiveDealsWithUnit, useDealSearch, useDealsRange } f
 import { periodoValido } from "@/components/pipeline/ccaData";
 import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
 import { useDealActions } from "@/components/pipeline/useDealActions";
+import { useMyCcaQueue } from "@/integrations/supabase/cca";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
 type EditorState = { deal: LegacyDealRecord | null } | null;
@@ -102,6 +103,7 @@ export default function Pipeline() {
   /** Mover para um Status 2 que pede texto: envio para análise ou observação (0164). */
   const [comTexto, setComTexto] = useState<{ movimento: MovimentoComTexto; envio: boolean } | null>(null);
   const [reopening, setReopening] = useState<LegacyDealRecord | null>(null);
+  const [reactivating, setReactivating] = useState<LegacyDealRecord | null>(null);
   const [closeMonthOpen, setCloseMonthOpen] = useState(false);
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
   const [statusSettingsOpen, setStatusSettingsOpen] = useState(false);
@@ -126,6 +128,7 @@ export default function Pipeline() {
   // rápido levava "Movimentação não permitida" por corrida, não por regra.
   const stagePerms = useStagePermissions();
   const openSeason = useOpenSeason();
+  const ccaQueue = useMyCcaQueue();
   const invalidateDeals = useInvalidateDeals();
   usePipelineRealtime();
   // Nome, cor e ordem do Status 2 e o nome do Status 1 saem daqui. Entra na
@@ -287,6 +290,10 @@ export default function Pipeline() {
   const seasonMonth = openSeason.data
     ? `${openSeason.data.period_start.slice(5, 7)}/${openSeason.data.period_start.slice(0, 4)}`
     : null;
+  const ccaQueuePositions = useMemo(
+    () => new Map((ccaQueue.data ?? []).map((entry) => [entry.deal_id, entry.queue_position])),
+    [ccaQueue.data],
+  );
   // O cabeçalho e a régua de contadores afirmavam sobre o banco ANTES de ler o
   // banco: com as consultas em voo, `visible` é `[]` e o `<h1>` dizia "0
   // negócio(s) ativo(s) · R$ 0 em VGV", a régua "0 ativos" e o botão do admin
@@ -495,6 +502,9 @@ export default function Pipeline() {
               onScheduleVisit={setVisitDeal}
               onLose={abrirPerda}
               onReopen={setReopening}
+              onReactivate={setReactivating}
+              currentMonth={seasonMonth ?? currentMonthBase()}
+              ccaQueuePositions={ccaQueuePositions}
               closedMonths={closed}
             />
           </div>
@@ -598,6 +608,15 @@ export default function Pipeline() {
           stages={stages}
           onClose={() => setReopening(null)}
           onReopened={invalidateDeals}
+        />
+      )}
+
+      {reactivating && (
+        <ReactivateDealDialog
+          deal={reactivating}
+          people={people}
+          onClose={() => setReactivating(null)}
+          onReactivated={invalidateDeals}
         />
       )}
 

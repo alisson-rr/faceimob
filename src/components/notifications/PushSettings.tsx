@@ -177,6 +177,11 @@ export default function PushSettings() {
         icon={BellRing}
       >
         <div className="space-y-5">
+          <p className="rounded-lg border border-blue-800/40 bg-blue-950/30 p-3 text-xs text-blue-200">
+            <strong>Importante:</strong> cada aparelho (celular, notebook, tablet) precisa ativar os avisos
+            separadamente. Se você usa o Faceimob no celular e no computador, ative aqui em cada um deles.
+            O sistema envia para todos os aparelhos registrados — nenhum tem preferência sobre o outro.
+          </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p role="status" aria-live="polite" className="text-sm">
               {status === null

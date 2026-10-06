@@ -19,7 +19,7 @@ import { brl, num } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 import { MetaCampaignActions } from "./MetaCampaignActions";
-import { SimuladorDeVerba } from "./SimuladorDeVerba";
+import { SimuladorDeVerba } from "./SimuladorDeVerbaPanel";
 import {
   ROTULO_DO_RESULTADO, linhasDoPainel, resumoDoPainel, type CampanhaDaConta, type LinhaDoPainel,
 } from "./gestaoDeAnuncios";

@@ -13,11 +13,6 @@ import { elapsedDays, elapsedLabel } from "./ccaTime";
 import { cn } from "@/lib/utils";
 import { developerDot, isHexColor } from "@/lib/tone";
 
-/**
- * Selo da construtora no cartão do CCA com a cor do cadastro (pedido de
- * 04/10/2026), a mesma da bolinha do Pipeline. A cor tinge fundo e borda; o
- * texto fica na cor do tema, para ler em qualquer cor escolhida.
- */
 function SeloDaConstrutora({ nome, cor }: { nome: string; cor?: string | null }) {
   const bolinha = developerDot(nome, cor);
   return (
@@ -63,7 +58,7 @@ interface Props {
   /** Abre o negócio no `DealDetailModal` — o MESMO editor do Pipeline. */
   onOpen: (deal: CcaDeal) => void;
   onMove: (deal: CcaDeal, stage: CcaStage) => void;
-  /** Caso aberto: tira da esteira e devolve ao corretor no mesmo status (0229). */
+  /** Cancela o caso na CCA e devolve o dossiê ao comercial com comentário. */
   onDevolver?: (deal: CcaDeal) => void;
 }
 

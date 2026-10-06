@@ -1,13 +1,15 @@
 import { memo, type KeyboardEvent, type MouseEvent } from "react";
 import {
   AlertCircle, CalendarCheck, ChevronLeft, ChevronRight, GripVertical, Lock, StickyNote, User,
-  XCircle,
+  XCircle, RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
 import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS, developerDot } from "@/lib/tone";
 import { calcDealProbability } from "@/lib/aiAnalytics";
+import { bareStatus, compareMonth } from "@/lib/dealStatus";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { dealBrokers, dealMonth, pct } from "./filters";
 import type { DealLock } from "./guards";
@@ -53,6 +55,12 @@ interface Props {
   /** Encerrar o negócio (abre o diálogo de perda com motivo). No kanban não
    *  havia como perder: era preciso voltar para a visão de tabela. */
   onLose: (deal: LegacyDealRecord) => void;
+  /** Abre a confirmação/seleção de corretor da reativação. */
+  onReactivate?: (deal: LegacyDealRecord) => void;
+  /** Competência aberta, MM/AAAA. OFF só reativa quando é anterior a ela. */
+  currentMonth?: string | null;
+  /** Posição global deste negócio na fila de análise do CCA. */
+  ccaQueuePosition?: number | null;
   previousStage?: PipelineStage;
   nextStage?: PipelineStage;
   dragging: boolean;
@@ -78,7 +86,8 @@ interface Props {
  * único de abrir/arrastar/Shift+seta; o rodapé com os dois botões é irmão dele.
  */
 function DealCardBase({
-  deal, color, onOpen, onMove, onLose, lock, canExit, blockedMove, onBlockedMove,
+  deal, color, onOpen, onMove, onLose, onReactivate, currentMonth, ccaQueuePosition,
+  lock, canExit, blockedMove, onBlockedMove,
   previousStage, nextStage, dragging, onDragStart, onDragEnd,
 }: Props) {
   const review = conferenciaDoNegocio(deal.document_review_status, deal.status);
@@ -89,6 +98,12 @@ function DealCardBase({
   const corretores = dealBrokers(deal);
   const bolinha = developerDot(deal.developer, deal.developer_color);
   const comissao = comissaoPrevista(deal);
+  // Só OFF de competência anterior pode voltar; DISTRATO permanece histórico.
+  const statusBare = bareStatus(deal.status_detail);
+  const mesAtual = new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
+  const isOffMesAnterior = Boolean(
+    onReactivate && statusBare === "OFF" && mes && compareMonth(mes, mesAtual) < 0,
+  );
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -150,16 +165,30 @@ function DealCardBase({
   const impedimento = !canExit
     ? "seu perfil não pode tirar o negócio desta etapa"
     : lock.reason.replace(/^\s*—\s*/, "");
-
+  const offOverlay = isOffMesAnterior ? (
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-card/60 backdrop-blur-[2px]">
+      <Button
+        size="sm"
+        variant="success"
+        onClick={(event) => { event.stopPropagation(); onReactivate?.(deal); }}
+        aria-label={`Reativar proposta ${deal.client}`}
+        className="gap-1.5 shadow-lg"
+      >
+        <RefreshCw className="h-3.5 w-3.5" /> Reativar Proposta
+      </Button>
+    </div>
+  ) : null;
   return (
     <article
       className={cn(
-        "rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
+        "relative rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
         "hover:border-primary/30 hover:shadow-lg",
         dragging && "scale-95 opacity-40",
+        isOffMesAnterior && "opacity-70",
       )}
       style={{ borderLeftColor: color }}
     >
+      {offOverlay}
       <div
         role="button"
         tabIndex={0}
@@ -205,6 +234,11 @@ function DealCardBase({
         <Badge variant="outline" className={cn("mb-2 h-5 px-1.5 text-xs", review.className)}>
           {review.label}
         </Badge>
+        {ccaQueuePosition ? (
+          <Badge variant="secondary" className="mb-2 ml-1 h-5 px-1.5 text-xs tabular-nums">
+            CCA: {ccaQueuePosition}º na fila
+          </Badge>
+        ) : null}
 
         {/* Previsão de comissão a partir da aprovação (29/09/2026): o número que
             motiva o corretor, no cartão que ele olha todo dia. */}
