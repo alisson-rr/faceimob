@@ -49,14 +49,19 @@ export function TextField({ id, label, value, onChange, type, onBlur }: {
  * existe texto intermediário inválido para o banco recusar depois, e o valor
  * que sobe é sempre número. Vazio = 0, com o placeholder "R$ 0,00".
  */
-export function MoneyField({ id, label, value, onChange }: {
+export function MoneyField({ id, label, value, onChange, disabled, hint }: {
   id: string; label: string; value?: number | null; onChange: (value: number) => void;
+  disabled?: boolean;
+  /** Por que o campo está travado; ligado ao campo por `aria-describedby`. */
+  hint?: string;
 }) {
   return (
     <div>
       <Label htmlFor={id} className="text-eyebrow">{label}</Label>
       <Input
         id={id} inputMode="numeric" className="mt-1 text-xs tabular-nums" placeholder="R$ 0,00"
+        disabled={disabled}
+        aria-describedby={hint ? `${id}-hint` : undefined}
         value={value ? brl(value, { cents: true }) : ""}
         onChange={(event) => {
           // 13 dígitos = R$ 99 bilhões: acima disso o `number` perde centavo.
@@ -64,6 +69,7 @@ export function MoneyField({ id, label, value, onChange }: {
           onChange(digitos ? Number(digitos) / 100 : 0);
         }}
       />
+      {hint && <p id={`${id}-hint`} className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
