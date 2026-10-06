@@ -233,6 +233,7 @@ export function DealForm({
   form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia, dealId, onCpfBlur,
 }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
+  const vgvTravado = !isNew && !can("deals.edit_value");
   const canExitStage = useCanExitStage();
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   /** Falha de carga do catálogo de empreendimentos — separada do "não tem
@@ -684,8 +685,18 @@ export function DealForm({
             digita; desconto acima do bruto quem barra é `dealRangeError` no
             salvamento, com o nome do campo — o CHECK da 0159 sozinho voltaria
             como 23514 sem dizer qual. */}
-        <MoneyField id={field("vgv")} label="VGV bruto" value={form.vgv_bruto} onChange={(v) => onChange({ vgv_bruto: v })} />
-        <MoneyField id={field("desconto")} label="Desconto" value={form.desconto} onChange={(v) => onChange({ desconto: v })} />
+        {/* Depois de criado, VGV e desconto são de quem tem `deals.edit_value`
+            (gerente, diretor, admin; `deals_guard_value`). Campo aberto para
+            quem não tem deixava digitar e só recusava no salvar, levando junto
+            o resto da ficha (06/10/2026). */}
+        <MoneyField
+          id={field("vgv")} label="VGV bruto" value={form.vgv_bruto} onChange={(v) => onChange({ vgv_bruto: v })}
+          disabled={vgvTravado} hint={vgvTravado ? "Só gerente, diretor e admin alteram o VGV." : undefined}
+        />
+        <MoneyField
+          id={field("desconto")} label="Desconto" value={form.desconto} onChange={(v) => onChange({ desconto: v })}
+          disabled={vgvTravado}
+        />
         <div>
           {/* Não é campo: é leitura, e não se edita. A conta é a mesma da coluna
               gerada `vgv_net` (0159), feita aqui na hora para quem digita ver o
