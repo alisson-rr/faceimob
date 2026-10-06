@@ -295,7 +295,7 @@ export function DealsTable({
                           // E a matriz por função do cadastro (0164).
                           const semPermissao = option.value === status
                             ? null
-                            : offDistratoBlocked(can, option.value)
+                            : offDistratoBlocked(can, option.value, status)
                               ?? statusMoveBlock(catalog, status, option.value, { isAdmin, roles });
                           return (
                             <SelectItem

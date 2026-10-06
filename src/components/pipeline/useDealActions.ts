@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
-import { ehDesfechoRuim, isLossStatus, isSystemStatus, normalizeStatus } from "@/lib/dealStatus";
+import { bareStatus, ehDesfechoRuim, isLossStatus, isSystemStatus, normalizeStatus } from "@/lib/dealStatus";
 import { avisarQueda } from "@/components/ui/avisos";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
@@ -33,9 +33,12 @@ import { useInvalidateDeals } from "./data";
 export const offDistratoBlocked = (
   can: (code: string) => boolean,
   status: string | null | undefined,
+  /** Status 2 atual: de REPROVADO, quem edita o negócio arquiva como OFF (0231). */
+  from?: string | null,
 ): string | null => {
   const outcome = normalizeStatus(status);
   if (outcome === "OFF") {
+    if (bareStatus(from ?? "") === "REPROVADO") return null;
     return can("deals.mark_off_distrato") ? null : "Só administrador e sócio marcam OFF.";
   }
   if (outcome !== "DISTRATO") return null;
@@ -97,7 +100,7 @@ export function useDealActions({ catalog, closedMonths, onNeedsLossConfirmation,
     if (!isAdmin && closedMonths.includes(deal.month_base)) {
       return falhou("Mês fechado: o negócio não muda mais de status.");
     }
-    const offDistrato = offDistratoBlocked(can, status.value);
+    const offDistrato = offDistratoBlocked(can, status.value, deal.status);
     if (offDistrato) return falhou(offDistrato);
 
     if (isSystemStatus(status.value)) {

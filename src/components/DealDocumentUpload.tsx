@@ -732,6 +732,7 @@ export default function DealDocumentUpload({
               </p>
               <Button
                 size="sm"
+                variant="success"
                 className="h-8 text-xs gap-1 shrink-0"
                 disabled={reviewBusy || !canSend || !envioMensagem.trim()}
                 onClick={() => void submitForReview(esteiraEnvio)}
@@ -769,8 +770,8 @@ export default function DealDocumentUpload({
             <div className="flex justify-end gap-2">
               <Button
                 size="sm"
-                variant="outline"
-                className="h-8 text-xs gap-1 text-destructive border-destructive/40"
+                variant="devolver"
+                className="h-8 text-xs gap-1"
                 disabled={reviewBusy || !reviewReason.trim() || monthBlocked}
                 onClick={() => decideReview(false)}
               >
@@ -915,7 +916,7 @@ export default function DealDocumentUpload({
       )}
 
       {podeDevolverAoComercial && (
-        <Button type="button" variant="outline" size="sm" className="w-full" onClick={() => setDevolvendo(true)}>
+        <Button type="button" variant="devolver" size="sm" className="w-full" onClick={() => setDevolvendo(true)}>
           <Undo2 className="mr-1 h-4 w-4" aria-hidden /> Devolver ao comercial
         </Button>
       )}

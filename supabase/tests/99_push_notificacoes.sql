@@ -850,7 +850,7 @@ begin
 
   perform pg_temp.check143(
     exists (select 1 from public.notifications
-             where profile_id = cor_a and kind = 'cca_status_changed' and link = '/pipeline'
+             where profile_id = cor_a and kind = 'cca_status_changed' and link like '/pipeline?negocio=%'
                and title = 'Crédito ' || v_code || ': Aprovado'
                and body like '%de "Em análise" para "Aprovado".'),
     'o corretor do negócio é avisado da mudança de status do crédito, com os rótulos da tela');

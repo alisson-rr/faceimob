@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, Clock, HandMetal, MessageCircle } from "lucide-react";
+import { AlertTriangle, Clock, HandMetal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
@@ -18,6 +18,7 @@ import {
   useOpenLeads, useTimeoutReleasesToday, useWhatsappTemplates, waNumber,
 } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
 import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
 import { AttendCountdown } from "@/components/leads/LeadsTable";
@@ -404,7 +405,7 @@ const LeadCardMini = memo(function LeadCardMini({
             aria-label={`Abrir WhatsApp de ${lead.name}`}
             onClick={() => onWhatsApp(lead.id)}
           >
-            <MessageCircle className="h-4 w-4" />
+            <WhatsAppIcon className="h-4 w-4" />
           </Button>
         )}
       </div>

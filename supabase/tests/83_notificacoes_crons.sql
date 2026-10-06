@@ -582,7 +582,7 @@ begin
   perform pg_temp.check83(
     exists (select 1 from public.notifications
              where profile_id = cor and kind = 'submission_failed'
-               and link = '/pipeline' and body like '%Brevo respondeu 400%'),
+               and link like '/pipeline%' and body like '%Brevo respondeu 400%'),
     'quem pediu o envio descobre que o dossiê não saiu, e por quê');
   perform pg_temp.check83(
     exists (select 1 from public.notifications

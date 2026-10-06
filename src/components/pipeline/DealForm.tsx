@@ -851,7 +851,7 @@ export function DealForm({
                 // Pipeline, que pede o texto.
                 const bloqueio = option.value === form.status || pedeConferencia(option.value)
                   ? null
-                  : offDistratoBlocked(can, option.value)
+                  : offDistratoBlocked(can, option.value, isNew ? null : form.status)
                     ?? (isNew ? null : statusMoveBlock(catalog, form.status, option.value, { isAdmin, roles }))
                     ?? (!isAdmin && statusRequiresNote(catalog, option.value) ? "com observação, pelo Pipeline" : null);
                 const semPermissao = bloqueio;

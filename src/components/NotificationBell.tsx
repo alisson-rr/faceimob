@@ -385,7 +385,13 @@ export default function NotificationBell() {
                         {!i.read_at && <span className="sr-only">Não lida. </span>}
                         <p className="text-xs font-medium truncate">{i.title}</p>
                         {i.body && <p className="text-xs text-muted-foreground line-clamp-2">{i.body}</p>}
-                        <p className="text-xs text-muted-foreground">{dateTime(i.created_at)}</p>
+                        <p className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                          {dateTime(i.created_at)}
+                          {/* Pedido de 06/10/2026: dizer que o aviso leva ao card. */}
+                          {i.link && (
+                            <span className="font-semibold text-primary" aria-hidden>Abrir card →</span>
+                          )}
+                        </p>
                       </button>
                       <button
                         type="button"

@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  ArrowRight, ExternalLink, FileText, FolderKanban, GitBranch, GraduationCap, Link2, Map as MapIcon, MessageCircle, Sparkles,
+  ArrowRight, ExternalLink, FileText, FolderKanban, GitBranch, GraduationCap, Link2, Map as MapIcon, Sparkles,
   TrendingUp, UserSearch,
 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { LoadingState } from "@/components/shared";
@@ -289,7 +290,7 @@ export default function CentralCorretor() {
         <button type="button" onClick={() => setGruposAbertos(true)} className={cn(FOCO, "text-left")}>
           <Card className={cn(CARTAO, "border-success/40")}>
             <span className="w-fit rounded-xl bg-success/15 p-2.5 text-success">
-              <MessageCircle className="h-5 w-5" aria-hidden />
+              <WhatsAppIcon className="h-5 w-5" />
             </span>
             <div>
               <p className="font-display text-base font-semibold">Grupos de WhatsApp</p>
@@ -316,7 +317,7 @@ export default function CentralCorretor() {
                   className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
                 >
                   <span className="flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-success" aria-hidden /> {g.nome}
+                    <WhatsAppIcon className="h-4 w-4" /> {g.nome}
                   </span>
                   <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
                 </a>

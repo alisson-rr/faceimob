@@ -41,6 +41,16 @@ const buttonVariants = cva(
         tintInfo: "border border-primary/60 bg-primary/10 text-foreground hover:bg-primary/20",
         tintSuccess: "border border-success bg-success/10 text-foreground hover:bg-success/20",
         tintGold: "border border-gold/60 bg-gold/10 text-foreground hover:bg-gold/20",
+        // Cores por intenção (pedido de 06/10/2026: "está tudo muito azul"):
+        // vermelho perde/encerra, verde evolui, amarelo é check-in, laranja
+        // devolve. O azul (`default`) fica para ação neutra.
+        success: "bg-success text-success-foreground shadow-[0_6px_20px_-8px_hsl(var(--success)/0.7)] hover:bg-success/90 hover:-translate-y-0.5",
+        checkin: "bg-gold text-gold-foreground shadow-[0_6px_20px_-8px_hsl(var(--gold)/0.7)] hover:bg-gold/90 hover:-translate-y-0.5",
+        devolver: "bg-warning text-warning-foreground shadow-[0_6px_20px_-8px_hsl(var(--warning)/0.7)] hover:bg-warning/90 hover:-translate-y-0.5",
+        tintDanger: "border border-destructive/60 bg-destructive/10 text-foreground hover:bg-destructive/20",
+        tintWarning: "border border-warning/60 bg-warning/10 text-foreground hover:bg-warning/20",
+        // Verde da marca com texto escuro: branco sobre #25D366 não passa contraste.
+        whatsapp: "bg-[#25D366] text-[#052e16] shadow-[0_6px_20px_-8px_rgba(37,211,102,0.7)] hover:bg-[#1ebe5a] hover:-translate-y-0.5",
       },
       size: {
         default: "h-10 px-5 py-2",
