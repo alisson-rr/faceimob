@@ -1,14 +1,19 @@
 import { memo, type KeyboardEvent, type MouseEvent } from "react";
 import {
   AlertCircle, CalendarCheck, ChevronLeft, ChevronRight, GripVertical, Lock, StickyNote, User,
-  XCircle,
+  XCircle, RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
 import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS, developerDot } from "@/lib/tone";
 import { calcDealProbability } from "@/lib/aiAnalytics";
+import { bareStatus } from "@/lib/dealStatus";
+import { toast } from "@/hooks/use-toast";
+import { describeError } from "@/lib/supabaseError";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { useReactivateDeal } from "@/integrations/supabase/cca";
 import { dealBrokers, dealMonth, pct } from "./filters";
 import type { DealLock } from "./guards";
 import { conferenciaDoNegocio } from "./review";
@@ -89,6 +94,20 @@ function DealCardBase({
   const corretores = dealBrokers(deal);
   const bolinha = developerDot(deal.developer, deal.developer_color);
   const comissao = comissaoPrevista(deal);
+  const reactivateMutation = useReactivateDeal();
+
+  // Negocio OFF/DISTRATO de mes anterior fica em blur com botao de reativar (0184)
+  const statusBare = bareStatus(deal.status_detail);
+  const isOffOrDistratoMesAnterior = (statusBare === "OFF" || statusBare === "DISTRATO") && deal.month_base !== undefined;
+
+  const handleReactivate = async () => {
+    try {
+      await reactivateMutation.mutateAsync({ dealId: deal.id });
+      toast({ variant: "success", title: "Negocio reativado", description: `${deal.client} voltou para o mes vigente.` });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Nao foi possivel reativar", description: describeError(err, "O negocio nao foi reativado.") });
+    }
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -147,18 +166,56 @@ function DealCardBase({
   // O motivo da imobilidade vai para o nome acessível: `lock.reason` já é a
   // frase da tabela (" — perfil somente leitura", " — negócio encerrado",
   // " — mês MM/AAAA fechado") e `can_exit` é o caso que só o kanban tem.
-  const impedimento = !canExit
-    ? "seu perfil não pode tirar o negócio desta etapa"
-    : lock.reason.replace(/^\s*—\s*/, "");
-
-  return (
-    <article
-      className={cn(
-        "rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
-        "hover:border-primary/30 hover:shadow-lg",
-        dragging && "scale-95 opacity-40",
-      )}
-      style={{ borderLeftColor: color }}
+const impedimento = !canExit
+? "seu perfil não pode tirar o negócio desta etapa"
+: lock.reason.replace(/^s*—s*/, "");
+// Blur overlay para OFF/DISTRATO de mês anterior (0184)
+const offOverlay = isOffOrDistratoMesAnterior ? (
+<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-card/60 backdrop-blur-[2px]">
+<Button
+size="sm"
+variant="success"
+onClick={(e) => { e.stopPropagation(); handleReactivate(); }}
+disabled={reactivateMutation.isPending}
+aria-label={`Reativar proposta ${deal.client}`}
+className="gap-1.5 shadow-lg"
+>
+<RefreshCw className={cn("h-3.5 w-3.5", reactivateMutation.isPending && "animate-spin")} />
+{reactivateMutation.isPending ? "Reativando…" : "Reativar Proposta"}
+</Button>
+</div>
+) : null;
+return (
+<article
+className={cn(
+"relative rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
+"hover:border-primary/30 hover:shadow-lg",
+dragging && "scale-95 opacity-40",
+isOffOrDistratoMesAnterior && "opacity-70",
+)}
+style={{ borderLeftColor: color }}
+>
+{offOverlay}
+<div
+className="gap-1.5 shadow-lg"
+>
+<RefreshCw className={cn("h-3.5 w-3.5", reactivateMutation.isPending && "animate-spin")} />
+{reactivateMutation.isPending ? "Reativando…" : "Reativar Proposta"}
+</Button>
+</div>
+) : null;
+return (
+<article
+className={cn(
+"relative rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
+"hover:border-primary/30 hover:shadow-lg",
+dragging && "scale-95 opacity-40",
+isOffOrDistratoMesAnterior && "opacity-70",
+)}
+style={{ borderLeftColor: color }}
+>
+{offOverlay}
+<div
     >
       <div
         role="button"
