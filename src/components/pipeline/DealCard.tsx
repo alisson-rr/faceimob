@@ -100,8 +100,9 @@ function DealCardBase({
   const comissao = comissaoPrevista(deal);
   // Só OFF de competência anterior pode voltar; DISTRATO permanece histórico.
   const statusBare = bareStatus(deal.status_detail);
+  const mesAtual = new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
   const isOffMesAnterior = Boolean(
-    onReactivate && currentMonth && statusBare === "OFF" && mes && compareMonth(mes, currentMonth) < 0,
+    onReactivate && statusBare === "OFF" && mes && compareMonth(mes, mesAtual) < 0,
   );
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
