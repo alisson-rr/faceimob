@@ -267,6 +267,8 @@ begin
   return new;
 end;
 $$;
+revoke all on function public.deals_guard_queda_distrato_month()
+  from public, anon, authenticated;
 drop trigger if exists deals_guard_queda_distrato_month on public.deals;
 create trigger deals_guard_queda_distrato_month
 before insert or update of status_detail, month_base on public.deals
