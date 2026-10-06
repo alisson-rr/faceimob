@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { StatusBadge } from "@/components/shared";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, statusMoveBlock, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
-import { DOCUMENT_REVIEW_META } from "./review";
+import { conferenciaDoNegocio } from "./review";
 import { faceimobStatusStyle, statusChoices, statusGroupLabel, STATUS_TONE_CLASS } from "./statuses";
 import { dealLock } from "./guards";
 import { offDistratoBlocked } from "./useDealActions";
@@ -166,7 +166,7 @@ export function DealsTable({
             {rows.map((deal, index) => {
               const construtora = deal.developer || "";
               const abreGrupo = agrupada && (index === 0 || (rows[index - 1].developer || "") !== construtora);
-              const review = DOCUMENT_REVIEW_META[deal.document_review_status ?? "draft"];
+              const review = conferenciaDoNegocio(deal.document_review_status, deal.status);
               const status = deal.status || "PROPOSTA";
               const grupo = statusGroupLabel(catalog, deal.status_group_id);
               const bolinha = developerDot(deal.developer, deal.developer_color);
@@ -295,7 +295,7 @@ export function DealsTable({
                           // E a matriz por função do cadastro (0164).
                           const semPermissao = option.value === status
                             ? null
-                            : offDistratoBlocked(can, option.value)
+                            : offDistratoBlocked(can, option.value, status)
                               ?? statusMoveBlock(catalog, status, option.value, { isAdmin, roles });
                           return (
                             <SelectItem

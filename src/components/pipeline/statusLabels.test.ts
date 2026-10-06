@@ -18,7 +18,8 @@ import { statusChoices, statusLabel } from "./statuses";
 
 /** Os lugares que exibem um Status 2 e o filho de JSX que cada um precisa ter. */
 const RENDERS: Record<string, string> = {
-  "DealFilters.tsx": ">{option.label}<",
+  // O filtro de Status 2 do Pipeline virou multisseleção (02/10/2026).
+  "Status2Multi.tsx": ">{o.label}<",
   "DealForm.tsx": ">{option.label}<",
   "DealsTable.tsx": ">{option.label}<",
   "LoseDealDialog.tsx": ">{statusLabel(catalog,option)}<",

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ListOrdered, Loader2, RefreshCcw } from "lucide-react";
+import { ChevronDown, ListOrdered, Loader2, RefreshCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getMyQueues, type QueueEntry } from "@/integrations/supabase/checkin";
@@ -30,9 +30,9 @@ type Props = {
 /**
  * Posição do corretor na roleta (ata 23/07).
  *
- * Desde a 0014 a fila ordena pelo *fim* da última vez (`last_turn_at`), então
- * quem estoura o prazo cai para o fim — e é exatamente isso que este indicador
- * deixa visível. Sem ele, o corretor perde a vez e não entende por quê.
+ * A fila é por ordem de chegada (0200): conta o mais recente entre o check-in
+ * e o fim da última vez (`last_turn_at`, 0014), então quem recebe ou estoura o
+ * prazo cai para o fim — e é exatamente isso que este indicador deixa visível. Sem ele, o corretor perde a vez e não entende por quê.
  *
  * A fila só existe a partir da distribuição do turno (`distribution_queue`
  * filtra por `now() >= distribution_start`). Entre o check-in e essa hora ela é
@@ -122,8 +122,10 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
       {queues.map((q) => {
         const mine = q.entries.findIndex((e) => e.profile_id === user?.id);
         return (
-          <div key={q.groupId} className="space-y-2 rounded-md border border-border/40 p-2.5">
-            <div className="flex items-center gap-2 flex-wrap">
+          // Recolhida por padrão (03/10/2026): no celular a lista de 13 nomes
+          // empurrava o resto da tela. A posição fica no resumo; a fila abre no toque.
+          <details key={q.groupId} className="group rounded-md border border-border/40 p-2.5">
+            <summary className="flex cursor-pointer list-none items-center gap-2 flex-wrap [&::-webkit-details-marker]:hidden">
               <ListOrdered className="h-4 w-4 text-primary shrink-0" />
               <span className="text-xs font-medium">{q.groupName}:</span>
               {mine >= 0 ? (
@@ -147,18 +149,25 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
                   em check-in, mas fora da fila agora
                 </span>
               )}
-            </div>
+              {q.entries.length > 0 && (
+                <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                  ver fila ({q.entries.length})
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden />
+                </span>
+              )}
+            </summary>
 
             {/* A ordem aparecia sem o critério: o corretor perdia a posição e
-                não entendia por quê. Desde a 0014 a fila ordena pelo FIM da
-                última vez (`last_turn_at`), então deixar o prazo vencer conta
-                como vez consumida — decisão de 30/07 com o cliente. */}
-            <p className="text-xs text-muted-foreground">
-              A vez é de quem está há mais tempo sem receber. Deixar o prazo de atendimento vencer
-              conta como vez usada: o lead volta para a fila e você vai para o fim.
+                não entendia por quê. Desde a 0200 a fila é por ordem de chegada
+                (o mais recente entre o check-in e o fim da última vez); deixar
+                o prazo vencer conta como vez consumida (0014, 30/07). */}
+            <p className="mt-2 text-xs text-muted-foreground">
+              A fila é por ordem de chegada: quem faz check-in entra no fim e quem recebe um lead vai
+              para o fim. Deixar o prazo de atendimento vencer conta como vez usada: o lead volta para a
+              fila e você vai para o fim.
             </p>
             {q.entries.length > 0 && (
-              <ol aria-label={`Fila ${q.groupName}`} className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+              <ol aria-label={`Fila ${q.groupName}`} className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
                 {q.entries.map((entry) => {
                   const isMine = entry.profile_id === user?.id;
                   return (
@@ -172,7 +181,7 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
                 })}
               </ol>
             )}
-          </div>
+          </details>
         );
       })}
     </div>

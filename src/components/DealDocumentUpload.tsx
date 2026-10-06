@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX, FileStack,
-  AlertTriangle, Pencil, Check, X, Eye,
+  AlertTriangle, Pencil, Check, X, Eye, Undo2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +18,7 @@ import { cn, slugify } from "@/lib/utils";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import { loadCcaCase } from "@/components/pipeline/ccaData";
+import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
 import {
   DEVELOPER_WITHOUT_EMAIL,
@@ -26,6 +27,7 @@ import {
   REVIEW_ESTEIRA_LABEL,
   canAttachNow,
   canEditDeal,
+  ccaCaseIsOpen,
   countDealManagers,
   dealParticipantNames,
   deleteDealDocument,
@@ -75,6 +77,13 @@ type Props = {
    *  o modal já mostra a mesma explicação acima das abas. */
   unconfirmedMonth?: string | null;
   onReviewChanged?: () => void | Promise<void>;
+  /**
+   * Grava a ficha aberta antes de enviar, aprovar ou devolver: o que foi
+   * digitado em Detalhes (PIS, renda, cotista…) e não confirmado sumia no envio
+   * pela aba Anexos, e o gerente e a CCA recebiam o campo vazio (06/10/2026).
+   * `false` = não gravou (o aviso já saiu), e o envio não acontece.
+   */
+  salvarFicha?: () => Promise<boolean>;
   /** Mensagem já escrita no popup de conferência da ficha (01/10/2026). */
   mensagemInicial?: string;
 };
@@ -117,9 +126,10 @@ const assinatura = (
  */
 export default function DealDocumentUpload({
   dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged, mensagemInicial,
+  salvarFicha,
 }: Props) {
   const { toast } = useToast();
-  const { user, isAdmin, can } = useAuth();
+  const { user, isAdmin, can, roles } = useAuth();
   const fieldId = useId();
   const [types, setTypes] = useState<DocumentTypeRecord[]>([]);
   const [docs, setDocs] = useState<DealDocumentRecord[]>([]);
@@ -143,6 +153,7 @@ export default function DealDocumentUpload({
   // para anexar"). O botão "Anexar" continua o caminho de teclado.
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [juntando, setJuntando] = useState(false);
+  const [baixandoTodos, setBaixandoTodos] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
   const [envioMensagem, setEnvioMensagem] = useState(mensagemInicial ?? "");
@@ -153,6 +164,7 @@ export default function DealDocumentUpload({
   /** Construtora do negócio: decide o "Enviar à construtora" do gerente. */
   const [developer, setDeveloper] = useState<DealDeveloper | null>(null);
   const [envioAberto, setEnvioAberto] = useState(false);
+  const [devolvendo, setDevolvendo] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   /** Linha em edição de apelido (0106). Uma por vez: abrir duas caixas de texto
    *  sobre a mesma lista é convite para salvar na linha errada. */
@@ -282,22 +294,27 @@ export default function DealDocumentUpload({
   };
 
   /**
-   * A aba abre ANTES de assinar a URL, de propósito.
-   *
-   * `window.open` depois de um `await` perde o gesto do usuário: em iOS/Safari o
-   * pop-up é bloqueado sem lançar erro, o `catch` não dispara e o botão "Baixar"
-   * simplesmente não faz nada. Abrindo em branco no clique e trocando o endereço
-   * quando a assinatura chega, o gesto continua valendo.
+   * Baixa o arquivo direto, sem abrir aba (pedido da CCA em 05/10/2026: "cada
+   * arquivo que eu baixo abre uma nova janela"). Busca pela URL assinada e salva
+   * pelo próprio navegador, com o nome guardado (que tem a extensão).
    */
+  const salvarArquivo = async (doc: DealDocumentRecord) => {
+    const resposta = await fetch(await signedDocumentUrl(doc));
+    if (!resposta.ok) throw new Error(`O armazenamento respondeu ${resposta.status}.`);
+    const url = URL.createObjectURL(await resposta.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = doc.stored_name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
   const download = async (doc: DealDocumentRecord) => {
-    const janela = window.open("", "_blank");
-    if (janela) janela.opener = null;
     try {
-      const url = await signedDocumentUrl(doc);
-      if (janela) janela.location.href = url;
-      else window.open(url, "_blank", "noopener,noreferrer");
+      await salvarArquivo(doc);
     } catch (e) {
-      janela?.close();
       toast({
         title: "Não foi possível baixar o documento",
         description: describeError(
@@ -306,6 +323,56 @@ export default function DealDocumentUpload({
         ),
         variant: "destructive",
       });
+    }
+  };
+
+  /**
+   * "Baixar todos" (pedido da CCA em 05/10/2026): os documentos vigentes,
+   * cada um como arquivo separado, dentro de UMA pasta compactada (.zip) — um
+   * clique para salvar, sem juntar em PDF e sem o navegador perguntar arquivo
+   * por arquivo.
+   */
+  const baixarTodos = async (vigentes: DealDocumentRecord[]) => {
+    if (vigentes.length === 0 || baixandoTodos) return;
+    setBaixandoTodos(true);
+    try {
+      const { montarZip } = await import("@/lib/zipSimples");
+      const pasta = slugify(dealCode || "negocio") || "negocio";
+      const usados = new Set<string>();
+      const falharam: string[] = [];
+      const arquivos = (await Promise.all(vigentes.map(async (doc) => {
+        try {
+          const resposta = await fetch(await signedDocumentUrl(doc));
+          if (!resposta.ok) throw new Error(String(resposta.status));
+          return { doc, bytes: new Uint8Array(await resposta.arrayBuffer()) };
+        } catch {
+          falharam.push(documentDisplayName(doc));
+          return null;
+        }
+      }))).flatMap((item) => {
+        if (!item) return [];
+        // Dois arquivos com o mesmo nome não podem coexistir na pasta.
+        let nome = item.doc.stored_name;
+        for (let n = 2; usados.has(nome); n++) nome = item.doc.stored_name.replace(/(\.[^.]*)?$/, ` (${n})$1`);
+        usados.add(nome);
+        return [{ nome: `${pasta}/${nome}`, bytes: item.bytes }];
+      });
+      if (arquivos.length === 0) throw new Error("Nenhum arquivo pôde ser baixado.");
+      const url = URL.createObjectURL(new Blob([montarZip(arquivos)], { type: "application/zip" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${pasta}-documentos.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast(falharam.length
+        ? { variant: "destructive", title: `Pasta com ${arquivos.length} de ${vigentes.length} arquivos`, description: `Não entraram: ${falharam.join(", ")}.` }
+        : { variant: "success", title: `Pasta com ${arquivos.length} arquivo${arquivos.length > 1 ? "s" : ""} baixada` });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Não foi possível baixar os documentos", description: describeError(e, "Tente de novo.") });
+    } finally {
+      setBaixandoTodos(false);
     }
   };
 
@@ -436,6 +503,7 @@ export default function DealDocumentUpload({
   const submitForReview = async (esteiraEnvio: ReviewEsteira) => {
     setReviewBusy(true);
     try {
+      if (salvarFicha && !(await salvarFicha())) return;
       await submitDealForManagerReview(dealId, envioMensagem, esteiraEnvio);
       setEnvioMensagem("");
       setEsteira(null);
@@ -460,6 +528,7 @@ export default function DealDocumentUpload({
   const decideReview = async (approve: boolean) => {
     setReviewBusy(true);
     try {
+      if (salvarFicha && !(await salvarFicha())) return;
       await reviewDealDocuments({ dealId, approve, reason: reviewReason });
       setReviewReason("");
       await load();
@@ -529,7 +598,12 @@ export default function DealDocumentUpload({
   // 0077: depois do envio ao gerente o dossiê é prova. Sem isto o corretor
   // trocava a versão que o gerente aprovou e que o analista ia baixar, e o
   // banco aceitava calado. O CCA continua podendo juntar documento depois.
-  const canAttach = canUpload && canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review") });
+  const canAttach = canUpload && canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review"), caseStatus });
+  // Caso aberto na CCA prende o dossiê aprovado. Um caso parado de meses atrás
+  // (cliente retomado, 05/10/2026) não aparece no quadro do mês, então a CCA
+  // devolve daqui também — a mesma checagem de `devolver_ao_comercial`.
+  const casoAberto = ccaCaseIsOpen(caseStatus);
+  const podeDevolverAoComercial = casoAberto && (isAdmin || roles.includes("cca"));
   const meta = DOCUMENT_REVIEW_META[status];
   const enviadoPor = assinatura(review?.document_review_requested_by ?? null, review?.document_review_requested_at ?? null, nomes);
   const decididoPor = assinatura(review?.document_reviewed_by ?? null, review?.document_reviewed_at ?? null, nomes);
@@ -668,6 +742,7 @@ export default function DealDocumentUpload({
               </p>
               <Button
                 size="sm"
+                variant="success"
                 className="h-8 text-xs gap-1 shrink-0"
                 disabled={reviewBusy || !canSend || !envioMensagem.trim()}
                 onClick={() => void submitForReview(esteiraEnvio)}
@@ -705,8 +780,8 @@ export default function DealDocumentUpload({
             <div className="flex justify-end gap-2">
               <Button
                 size="sm"
-                variant="outline"
-                className="h-8 text-xs gap-1 text-destructive border-destructive/40"
+                variant="devolver"
+                className="h-8 text-xs gap-1"
                 disabled={reviewBusy || !reviewReason.trim() || monthBlocked}
                 onClick={() => decideReview(false)}
               >
@@ -731,7 +806,9 @@ export default function DealDocumentUpload({
         )}
 
         {status === "pending" && !canReview && (
-          <p className="text-xs text-muted-foreground">Aguardando a decisão de um gerente vinculado ao negócio.</p>
+          <p className="text-xs text-muted-foreground">
+            Aguardando a decisão de um gerente vinculado ao negócio ou, na falta dele, de um administrador.
+          </p>
         )}
         {status === "approved" && (
           // "Esteira Ágil" é como a operação chama esta fronteira (CONTEXT.md), e
@@ -795,6 +872,18 @@ export default function DealDocumentUpload({
             {juntando ? "Montando PDF…" : "Baixar tudo em PDF"}
           </Button>
         )}
+        {vigentes.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 text-xs gap-1"
+            disabled={baixandoTodos}
+            onClick={() => void baixarTodos(vigentes)}
+          >
+            {baixandoTodos ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+            {baixandoTodos ? "Montando pasta…" : `Baixar todos em pasta (${vigentes.length})`}
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -830,8 +919,26 @@ export default function DealDocumentUpload({
         <p className="rounded-md border border-border/50 bg-muted/20 p-2 text-xs text-muted-foreground">
           {status === "pending"
             ? "O dossiê está com o gerente: trocar um arquivo agora mudaria o que ele está conferindo. Peça a devolução para anexar de novo."
-            : "A conferência foi aprovada e o dossiê seguiu para a análise de crédito. Só o CCA junta documento a partir daqui."}
+            : casoAberto
+              ? "O dossiê está em análise na CCA e não recebe arquivo do comercial agora. Para anexar, peça à CCA para «Devolver ao comercial»: o negócio volta para você no mesmo status."
+              : "Anexar está travado neste dossiê. Fale com a CCA."}
         </p>
+      )}
+
+      {podeDevolverAoComercial && (
+        <Button type="button" variant="devolver" size="sm" className="w-full" onClick={() => setDevolvendo(true)}>
+          <Undo2 className="mr-1 h-4 w-4" aria-hidden /> Devolver ao comercial
+        </Button>
+      )}
+      {devolvendo && (
+        <CcaDevolverDialog
+          deal={{ dealId, client: clientName }}
+          onClose={() => setDevolvendo(false)}
+          onDone={async () => {
+            await load();
+            await onReviewChanged?.();
+          }}
+        />
       )}
 
       {semCatalogo && (
@@ -1106,7 +1213,9 @@ export default function DealDocumentUpload({
                   {canAttach
                     ? "Nenhum arquivo anexado"
                     : canUpload
-                      ? "Nenhum arquivo anexado. O dossiê saiu para a conferência e não recebe mais arquivo."
+                      ? status === "pending"
+                        ? "Nenhum arquivo anexado. O dossiê está com o gerente; peça a devolução para anexar."
+                        : "Nenhum arquivo anexado. O dossiê está em análise na CCA; peça a devolução ao comercial para anexar."
                       : "Nenhum arquivo anexado. Você acompanha este dossiê; anexar é de quem edita o negócio."}
                 </p>
               )}

@@ -24,11 +24,12 @@ const h = vi.hoisted(() => ({
   docs: [] as DealDocumentRecord[],
   podeEditar: false,
   upload: vi.fn(async () => ({ stored_name: "novo.pdf" })),
+  revisar: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "eu" }, isAdmin: false, can: () => false }),
+  useAuth: () => ({ user: { id: "eu" }, isAdmin: false, can: () => false, roles: [] }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }), toast: vi.fn() }));
 vi.mock("@/components/pipeline/ccaData", () => ({ loadCcaCase: async () => null }));
@@ -59,6 +60,7 @@ vi.mock("@/integrations/supabase/documents", async (original) => ({
   dealParticipantNames: async () => ({}),
   missingStoragePaths: async () => new Set<string>(),
   getDealDeveloper: async () => h.construtora,
+  reviewDealDocuments: h.revisar,
 }));
 
 let root: Root;
@@ -170,5 +172,38 @@ describe("DealDocumentUpload — arrastar e PDF único", () => {
     h.docs = [doc({ superseded_at: "2026-09-28T10:00:00Z" })];
     await montar();
     expect([...container.querySelectorAll("button")].some((b) => b.textContent === "Baixar tudo em PDF")).toBe(false);
+  });
+});
+
+describe("DealDocumentUpload — grava a ficha antes de decidir", () => {
+  // PIS digitado em Detalhes sumia: aprovar ou enviar pela aba Anexos não
+  // gravava a ficha (06/10/2026). A decisão só sai depois de gravar.
+  async function aprovar(salvarFicha: () => Promise<boolean>) {
+    h.status = "pending";
+    h.revisar.mockClear();
+    container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <DealDocumentUpload dealId="deal-1" clientName="Cliente" dealCode="N-1" hasDeveloper salvarFicha={salvarFicha} />,
+      );
+    });
+    const botao = [...container.querySelectorAll("button")].find((b) => /aprovar/i.test(b.textContent ?? ""));
+    await act(async () => { botao?.click(); });
+    return Boolean(botao);
+  }
+
+  it("não aprova quando a ficha não gravou", async () => {
+    const salvar = vi.fn(async () => false);
+    expect(await aprovar(salvar)).toBe(true);
+    expect(salvar).toHaveBeenCalledOnce();
+    expect(h.revisar).not.toHaveBeenCalled();
+  });
+
+  it("grava a ficha e então aprova", async () => {
+    const salvar = vi.fn(async () => true);
+    expect(await aprovar(salvar)).toBe(true);
+    expect(salvar).toHaveBeenCalledOnce();
+    expect(h.revisar).toHaveBeenCalledOnce();
   });
 });

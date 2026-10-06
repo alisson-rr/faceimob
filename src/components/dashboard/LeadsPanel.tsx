@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Flame, Inbox, Percent, TrendingUp, Users } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, KpiCard, KpiGrid, LoadingState, SectionCard } from "@/components/shared";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
@@ -10,7 +12,10 @@ import { chartAxis, chartGrid, chartStill, chartTooltip, seriesToken, tone } fro
 import { LEAD_STATUSES } from "@/types/crm";
 import { BarList } from "./BarList";
 import { ChartData } from "./ChartData";
-import { ALL_MONTHS, leadsInMonth, useDashboardLeads } from "./data";
+import { ALL_MONTHS, leadsInMonth, useDashboardLeads, useDashboardLeadsNoIntervalo } from "./data";
+import {
+  PERIODOS_DE_LEADS, diasDoIntervalo, intervaloDoPeriodo, rotuloDoIntervalo, type PeriodoLeads,
+} from "./periodoLeads";
 
 const statusLabel = (value: string) =>
   LEAD_STATUSES.find((status) => status.value === value)?.label ?? value;
@@ -101,12 +106,26 @@ export interface LeadsPanelProps {
  */
 export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amostra = null }: LeadsPanelProps) {
   const { data: leads, isPending, error, refetch } = useDashboardLeads();
+  // Seletor próprio da aba (03/10/2026): hoje, ontem, semana, mês, mês passado
+  // ou um intervalo. "filtro" segue o mês do topo, como sempre foi.
+  const campo = useId();
+  const [periodoEscolhido, setPeriodoEscolhido] = useState<PeriodoLeads>("filtro");
+  const [custom, setCustom] = useState({ de: "", ate: "" });
+  const intervalo = useMemo(
+    () => intervaloDoPeriodo(periodoEscolhido, new Date(), custom),
+    [periodoEscolhido, custom],
+  );
+  const doIntervalo = useDashboardLeadsNoIntervalo(
+    intervalo ? { de: intervalo.de.toISOString(), ate: intervalo.ate.toISOString() } : null,
+  );
+  const usaIntervalo = periodoEscolhido !== "filtro";
 
   const view = useMemo(() => {
     const base = leads ?? [];
-    const rows = leadsInMonth(base, month);
+    const rows = usaIntervalo ? doIntervalo.data ?? [] : leadsInMonth(base, month);
+    const dias = usaIntervalo && intervalo ? diasDoIntervalo(intervalo) : diasDaSerie(month);
 
-    const porDia = new Map<string, number>(diasDaSerie(month).map((dia) => [dia, 0]));
+    const porDia = new Map<string, number>(dias.map((dia) => [dia, 0]));
     const porOrigem = new Map<string, number>();
     const porSituacao = new Map<string, number>();
     const porCorretor = new Map<string, number>();
@@ -153,17 +172,44 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
       porSituacao: ordenar(porSituacao).map((row) => ({ ...row, token: situacaoToken(row.label) })),
       porCorretor: ordenar(porCorretor).slice(0, 10),
     };
-  }, [leads, month]);
+  }, [leads, month, usaIntervalo, doIntervalo.data, intervalo]);
 
-  if (error) {
+  const seletor = (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="w-full sm:w-56">
+        <label htmlFor={`${campo}-periodo`} className="text-eyebrow">Período dos leads</label>
+        <Select value={periodoEscolhido} onValueChange={(v) => setPeriodoEscolhido(v as PeriodoLeads)}>
+          <SelectTrigger id={`${campo}-periodo`} className="mt-1"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {PERIODOS_DE_LEADS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      {periodoEscolhido === "custom" && (
+        <>
+          <div>
+            <label htmlFor={`${campo}-de`} className="text-eyebrow">De</label>
+            <Input id={`${campo}-de`} type="date" className="mt-1" value={custom.de} onChange={(e) => setCustom((c) => ({ ...c, de: e.target.value }))} />
+          </div>
+          <div>
+            <label htmlFor={`${campo}-ate`} className="text-eyebrow">Até</label>
+            <Input id={`${campo}-ate`} type="date" className="mt-1" value={custom.ate} onChange={(e) => setCustom((c) => ({ ...c, ate: e.target.value }))} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  const erro = error ?? (usaIntervalo ? doIntervalo.error : null);
+  if (erro) {
     return (
       <EmptyState
         icon={AlertTriangle}
         tone="danger"
         title="Não consegui carregar os leads"
-        description={describeError(error, "A consulta de leads falhou. Verifique a conexão e tente de novo.")}
+        description={describeError(erro, "A consulta de leads falhou. Verifique a conexão e tente de novo.")}
         action={
-          <Button variant="outline" onClick={() => void refetch()}>
+          <Button variant="outline" onClick={() => { void refetch(); if (usaIntervalo) void doIntervalo.refetch(); }}>
             Tentar de novo
           </Button>
         }
@@ -171,9 +217,10 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
     );
   }
 
-  if (isPending) {
+  if (isPending || (usaIntervalo && intervalo && doIntervalo.isPending)) {
     return (
       <div className="flex flex-col gap-5">
+        {usaIntervalo && seletor}
         <LoadingState variant="kpi" rows={3} label="Carregando os leads…" />
         <LoadingState variant="block" />
       </div>
@@ -198,16 +245,39 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
     );
   }
 
-  const periodo = month === ALL_MONTHS ? "todos os meses" : month;
+  const periodo = usaIntervalo
+    ? intervalo ? rotuloDoIntervalo(periodoEscolhido, intervalo) : "o intervalo escolhido"
+    : month === ALL_MONTHS ? "todos os meses" : month;
+
+  // Personalizado sem as duas datas: só o seletor, com o que falta.
+  if (usaIntervalo && !intervalo) {
+    return (
+      <div className="flex flex-col gap-5">
+        {seletor}
+        <p className="text-sm text-muted-foreground">Escolha a data inicial e a final (a final não pode ser antes da inicial).</p>
+      </div>
+    );
+  }
 
   // Base cheia e periodo vazio nao e a mesma coisa que base vazia: dizer "nenhum
   // lead na base" com 42 leads em outro mes mandava procurar defeito onde ha so
   // filtro.
+  if (view.total === 0 && usaIntervalo) {
+    return (
+      <div className="flex flex-col gap-5">
+        {seletor}
+        <EmptyState icon={Inbox} title={`Nenhum lead em ${periodo}`} description="Troque o período para ver outros dias." />
+      </div>
+    );
+  }
+
   if (view.total === 0) {
     // Com a lista cortada, "a base tem 1.000 leads, mas nenhum neste período"
     // seria duas mentiras: a base é maior e o período pode ter lead mais antigo
     // que o corte.
     return (
+      <div className="flex flex-col gap-5">
+      {seletor}
       <EmptyState
         icon={Inbox}
         title={amostra ? `Nenhum lead de ${periodo} nos ${amostra}` : `Nenhum lead em ${periodo}`}
@@ -217,12 +287,18 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
             : `${toda ? "A base tem" : "Você enxerga"} ${num(view.base)} ${view.base === 1 ? "lead" : "leads"}, mas nenhum foi criado neste período. Troque o mês no filtro do topo.`
         }
       />
+      </div>
     );
   }
 
+  const serieTitulo = usaIntervalo
+    ? `Entrada diária · ${periodo}`
+    : month === ALL_MONTHS ? `Entrada diária nos últimos ${DIAS} dias` : `Entrada diária em ${month}`;
+
   return (
     <div className="flex flex-col gap-5">
-      {amostra && (
+      {seletor}
+      {amostra && !usaIntervalo && (
         <p className="text-xs text-muted-foreground">
           Calculado sobre os {amostra} — os mais antigos não entram nesta aba.
         </p>
@@ -247,11 +323,11 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
 
       <SectionCard
         title="Leads por dia"
-        description={month === ALL_MONTHS ? `Entrada diária nos últimos ${DIAS} dias` : `Entrada diária em ${month}`}
+        description={serieTitulo}
         icon={TrendingUp}
       >
         <ChartData
-          caption={month === ALL_MONTHS ? `Leads por dia nos últimos ${DIAS} dias` : `Leads por dia em ${month}`}
+          caption={serieTitulo}
           columns={["Dia", "Leads"]}
           rows={view.porDia.map((row) => [row.name, row.value])}
         />

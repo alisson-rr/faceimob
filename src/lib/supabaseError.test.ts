@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dbError, describeError } from "./supabaseError";
+import { dbError, describeError, tipoDaFalha } from "./supabaseError";
 
 describe("describeError", () => {
   it("traduz os codigos do Postgres sem citar tabela ou coluna", () => {
@@ -45,6 +45,11 @@ describe("describeError", () => {
       .toBe("Você não tem permissão para esta ação.");
   });
 
+  it("diz quando o banco estourou o tempo, em vez da frase de conexão", () => {
+    expect(describeError(dbError("deals", { code: "57014", message: "canceling statement due to statement timeout" }), "erro"))
+      .toBe("O banco demorou demais para responder. Aguarde alguns instantes e tente de novo.");
+  });
+
   it("usa o fallback em vez de vazar ingles quando nao reconhece o erro", () => {
     expect(describeError({ code: "XX000", message: "internal error" }, "erro")).toBe("erro");
     expect(describeError(new Error("relation \"deals\" does not exist"), "erro")).toBe("erro");
@@ -58,5 +63,18 @@ describe("describeError", () => {
     expect(describeError(err, "erro")).toBe("Lead já convertido.");
     expect(describeError(dbError("leads", { code: "42501", message: "permission denied" }), "erro"))
       .toBe("Você não tem permissão para esta ação.");
+  });
+});
+
+describe("tipoDaFalha", () => {
+  it("sessão recusada (JWT vencido ou relógio errado) não é rede nem banco", () => {
+    expect(tipoDaFalha(dbError("profiles", { code: "PGRST303", message: "JWT issued at future" }))).toBe("sessao");
+    expect(tipoDaFalha(dbError("profiles", { code: "PGRST301", message: "JWT expired" }))).toBe("sessao");
+  });
+  it("requisição que não chegou é rede", () => {
+    expect(tipoDaFalha(new TypeError("Failed to fetch"))).toBe("rede");
+  });
+  it("o resto é banco", () => {
+    expect(tipoDaFalha(dbError("profiles", { code: "57014", message: "canceling statement due to statement timeout" }))).toBe("banco");
   });
 });

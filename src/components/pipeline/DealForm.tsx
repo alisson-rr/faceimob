@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,12 +32,13 @@ const statusRequiresNote = (catalog: DealStatusCatalog, value: string) => {
   const indice = catalog.indexByKey.get(statusKey(value));
   return indice !== undefined && catalog.statuses[indice].requires_note;
 };
-import { useCanExitStage, useDealWriteLock, useSelectableBrokers } from "./data";
+import { useCanExitStage, useDealWriteLock, useSelectableBrokers, useSelectableLeaders, type LiderancaSelecionavel } from "./data";
 import { ChoiceField, MoneyField, PersonField, Section, TextField } from "./fields";
 import { pct } from "./filters";
 import { groupChoices, statusChoices, statusGroupOf } from "./statuses";
 import { offDistratoBlocked } from "./useDealActions";
 import { DOCUMENT_REVIEW_META } from "./review";
+import { MesBaseComMotivo } from "./MesBaseComMotivo";
 import { funnelStages, type PipelineStage } from "./stages";
 
 const SIM_NAO = ["NÃO", "SIM"];
@@ -121,6 +122,10 @@ interface Props {
   /** "Em análise" ou "Esteira Ágil" escolhidos por quem não os grava direto:
    *  abre o envio ao gerente em vez de trocar o Status 2 (01/10/2026). */
   onPedirConferencia?: () => void;
+  /** Negócio já gravado: gerente e diretor trocam o mês-base com motivo (0201). */
+  dealId?: string | null;
+  /** Negócio novo: a batida de CPF roda ao sair do campo (0205). */
+  onCpfBlur?: (cpf: string) => void;
 }
 
 /** Aba "Detalhes" do negócio: o formulário inteiro. */
@@ -136,15 +141,17 @@ const rotuloDoMes = (mes: string) => {
 };
 
 /**
- * Meses do seletor de mês-base, do mais novo para o mais antigo: do ano que
- * vem até dois anos atrás. O mês gravado entra mesmo fora da faixa — negócio
- * antigo não pode abrir com o campo vazio e trocar de mês ao salvar.
+ * Meses do seletor de mês-base, do mais novo para o mais antigo: de dois meses
+ * à frente (pedido de 03/10/2026; o banco recusa além disso, 0206) até janeiro
+ * de dois anos atrás. O mês gravado entra mesmo fora da faixa — negócio antigo
+ * não pode abrir com o campo vazio e trocar de mês ao salvar.
  */
 const mesesDoSeletor = (atual?: string): string[] => {
-  const ano = new Date().getFullYear();
+  const hoje = new Date();
   const meses: string[] = [];
-  for (let a = ano + 1; a >= ano - 2; a -= 1) {
-    for (let m = 12; m >= 1; m -= 1) meses.push(`${String(m).padStart(2, "0")}/${a}`);
+  const ultimo = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 1);
+  for (let d = ultimo; d.getFullYear() >= hoje.getFullYear() - 2; d = new Date(d.getFullYear(), d.getMonth() - 1, 1)) {
+    meses.push(`${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`);
   }
   if (atual && /^\d{2}\/\d{4}$/.test(atual) && !meses.includes(atual)) meses.push(atual);
   return meses;
@@ -189,10 +196,44 @@ export function sugestaoDeLideres(
   return patch;
 }
 
+/**
+ * Opções de Gerente e Diretor e a liderança de cada corretor para a sugestão.
+ * Mesma união da lista de corretores: a visível mais a das RPCs da 0199, que
+ * entregam ao corretor os gerentes e diretores que a RLS de `profiles` esconde
+ * dele. A equipe de quem a lista visível já traz prevalece.
+ */
+export function lideresDoNegocio(people: PersonRecord[], daRpc: LiderancaSelecionavel | null) {
+  const unir = (visiveis: { id: string; name: string }[], extras: { id: string; name: string }[]) => {
+    const porId = new Map(visiveis.map((p) => [p.id, { id: p.id, name: p.name }]));
+    for (const row of extras) if (!porId.has(row.id)) porId.set(row.id, { id: row.id, name: row.name });
+    return [...porId.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  };
+  const lideres = daRpc?.lideres ?? [];
+  const equipes = new Map((daRpc?.equipes ?? []).map((e) => [e.id, e]));
+  const lideranca: Lideranca[] = [
+    // Campo a campo: a lista visível pode trazer o gerente e não o diretor (ou
+    // nenhum dos dois, quando a RLS esconde a equipe do corretor).
+    ...people.map((p) => {
+      const e = equipes.get(p.id);
+      return { ...p, manager_id: p.manager_id ?? e?.manager_id ?? null, director_id: p.director_id ?? e?.director_id ?? null };
+    }),
+    ...[...equipes.values()].filter((e) => !people.some((p) => p.id === e.id)),
+  ];
+  return {
+    managers: unir(
+      people.filter((person) => person.active && (person.roles.includes("manager") || person.roles.includes("director"))),
+      lideres.filter((l) => l.isManager || l.isDirector),
+    ),
+    directors: unir(people.filter((person) => person.active && person.roles.includes("director")), lideres.filter((l) => l.isDirector)),
+    lideranca,
+  };
+}
+
 export function DealForm({
-  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia,
+  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia, dealId, onCpfBlur,
 }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
+  const vgvTravado = !isNew && !can("deals.edit_value");
   const canExitStage = useCanExitStage();
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   /** Falha de carga do catálogo de empreendimentos — separada do "não tem
@@ -200,6 +241,7 @@ export function DealForm({
    *  tela ("Sem empreendimentos"), num campo obrigatório. */
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const selectableBrokers = useSelectableBrokers();
+  const selectableLeaders = useSelectableLeaders();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
 
   // Status 1 (0149). O banco o deriva do Status 2 e só aceita troca à mão de
@@ -294,9 +336,10 @@ export function DealForm({
     return [...porId.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [people, selectableBrokers.data]);
 
-  const managers = people.filter((person) => person.active
-    && (person.roles.includes("manager") || person.roles.includes("director")));
-  const directors = people.filter((person) => person.active && person.roles.includes("director"));
+  const { managers, directors, lideranca } = useMemo(
+    () => lideresDoNegocio(people, selectableLeaders.data ?? null),
+    [people, selectableLeaders.data],
+  );
 
   /**
    * Sugestão de gerente e diretor pela equipe do corretor (pedido de
@@ -306,11 +349,30 @@ export function DealForm({
    * corretores da mesma equipe não viram "Gerente 1 = Gerente 2". Vem de `people`, que traz o gestor
    * da equipe de cada perfil, e só preenche quem a lista mostra — um id fora da
    * visibilidade apareceria como "Fora da sua visibilidade". Para o corretor,
-   * que não enxerga o gerente, não há sugestão na tela: o gatilho
-   * `deal_participants_autofill` vincula a equipe ao salvar, como já fazia.
+   * que não enxerga a equipe pela RLS, a liderança e os nomes vêm das RPCs da
+   * 0199; o gatilho `deal_participants_autofill` continua cobrindo o resto.
    */
   const sugestaoDaEquipe = (brokerId: string | null, slot: 1 | 2 | 3) =>
-    sugestaoDeLideres(form, brokerId, slot, people, managers, directors);
+    sugestaoDeLideres(form, brokerId, slot, lideranca, managers, directors);
+
+  // O negócio que nasce do lead já vem com o Corretor 1 preenchido e o
+  // `onChange` do campo nunca dispara: sem isto, Gerente 1 e Diretor 1 abriam
+  // em branco (03/10/2026). Preenche só o que está vazio, uma vez por corretor.
+  const sugeridoPara = useRef<string | null>(null);
+  useEffect(() => {
+    const corretor = form.broker1_id;
+    // Espera a liderança das RPCs (0199): sem ela, o corretor via só o próprio
+    // perfil sem equipe, a sugestão saía vazia e ficava marcada como feita —
+    // Gerente 1 e Diretor 1 abriam em branco (Rudinei, 05/10/2026).
+    if (selectableLeaders.isPending) return;
+    if (!corretor || sugeridoPara.current === corretor || !lideranca.some((p) => p.id === corretor)) return;
+    sugeridoPara.current = corretor;
+    const patch = sugestaoDeLideres(form, corretor, 1, lideranca, managers, directors);
+    const vazio: Partial<SaveLegacyDealInput> = {};
+    if (patch.manager1_id && !form.manager1_id) vazio.manager1_id = patch.manager1_id;
+    if (patch.director1_id && !form.director1_id) vazio.director1_id = patch.director1_id;
+    if (Object.keys(vazio).length) onChange(vazio);
+  }, [form, lideranca, managers, directors, onChange, selectableLeaders.isPending]);
 
   const loadProjects = useCallback(async (developerName: string) => {
     const developer = developers.find((row) => row.name === developerName);
@@ -385,9 +447,19 @@ export function DealForm({
               `lock`) e o único sem frase: o mês-base define em qual ciclo o
               negócio conta e o que o fechamento congela, por isso só o admin o
               digita. Sem esta linha o campo parecia defeito. */}
-          {!isAdmin && (
+          {!isAdmin && dealId && (roles.includes("manager") || roles.includes("director")) ? (
+            <>
+            <p id={field("month-hint")} className="mt-1 text-xs text-muted-foreground">Para trocar, informe o motivo.</p>
+            <MesBaseComMotivo
+              dealId={dealId}
+              atual={form.month_base}
+              opcoes={mesesDoSeletor(form.month_base).map((mes) => ({ value: mes, label: rotuloDoMes(mes) }))}
+              onTrocado={(mes) => onChange({ month_base: mes })}
+            />
+            </>
+          ) : !isAdmin && (
             <p id={field("month-hint")} className="mt-1 text-xs text-muted-foreground">
-              Só o administrador altera o mês-base: ele decide em qual ciclo o negócio conta.
+              Só o administrador, o gerente ou o diretor altera o mês-base: ele decide em qual ciclo o negócio conta.
             </p>
           )}
         </div>
@@ -425,7 +497,7 @@ export function DealForm({
 
       <Section title="Cliente" className="deal-tone-blue deal-field-light">
         <TextField id={field("client")} label="Cliente *" value={form.client} onChange={(v) => onChange({ client: v })} />
-        <TextField id={field("cpf")} label="CPF" value={form.cpf} onChange={(v) => onChange({ cpf: v })} />
+        <TextField id={field("cpf")} label="CPF" value={form.cpf} onChange={(v) => onChange({ cpf: v })} onBlur={onCpfBlur} />
         <TextField id={field("contato")} label="Contato" value={form.contato} onChange={(v) => onChange({ contato: v })} />
         <TextField id={field("pis")} label="Número do PIS" value={form.numero_pis} onChange={(v) => onChange({ numero_pis: v })} />
         <TextField id={field("civil")} label="Estado civil" value={form.estado_civil} onChange={(v) => onChange({ estado_civil: v })} />
@@ -441,7 +513,7 @@ export function DealForm({
       {form.has_second_client && (
         <Section title="2º cliente" className="deal-tone-gold deal-field-light">
           <TextField id={field("client2")} label="Cliente" value={form.client2} onChange={(v) => onChange({ client2: v })} />
-          <TextField id={field("cpf2")} label="CPF" value={form.cpf2} onChange={(v) => onChange({ cpf2: v })} />
+          <TextField id={field("cpf2")} label="CPF" value={form.cpf2} onChange={(v) => onChange({ cpf2: v })} onBlur={onCpfBlur} />
           <TextField id={field("contato2")} label="Contato" value={form.contato2} onChange={(v) => onChange({ contato2: v })} />
           <TextField id={field("pis2")} label="Número do PIS" value={form.numero_pis2} onChange={(v) => onChange({ numero_pis2: v })} />
           <TextField id={field("civil2")} label="Estado civil" value={form.estado_civil2} onChange={(v) => onChange({ estado_civil2: v })} />
@@ -613,8 +685,18 @@ export function DealForm({
             digita; desconto acima do bruto quem barra é `dealRangeError` no
             salvamento, com o nome do campo — o CHECK da 0159 sozinho voltaria
             como 23514 sem dizer qual. */}
-        <MoneyField id={field("vgv")} label="VGV bruto" value={form.vgv_bruto} onChange={(v) => onChange({ vgv_bruto: v })} />
-        <MoneyField id={field("desconto")} label="Desconto" value={form.desconto} onChange={(v) => onChange({ desconto: v })} />
+        {/* Depois de criado, VGV e desconto são de quem tem `deals.edit_value`
+            (gerente, diretor, admin; `deals_guard_value`). Campo aberto para
+            quem não tem deixava digitar e só recusava no salvar, levando junto
+            o resto da ficha (06/10/2026). */}
+        <MoneyField
+          id={field("vgv")} label="VGV bruto" value={form.vgv_bruto} onChange={(v) => onChange({ vgv_bruto: v })}
+          disabled={vgvTravado} hint={vgvTravado ? "Só gerente, diretor e admin alteram o VGV." : undefined}
+        />
+        <MoneyField
+          id={field("desconto")} label="Desconto" value={form.desconto} onChange={(v) => onChange({ desconto: v })}
+          disabled={vgvTravado}
+        />
         <div>
           {/* Não é campo: é leitura, e não se edita. A conta é a mesma da coluna
               gerada `vgv_net` (0159), feita aqui na hora para quem digita ver o
@@ -780,7 +862,7 @@ export function DealForm({
                 // Pipeline, que pede o texto.
                 const bloqueio = option.value === form.status || pedeConferencia(option.value)
                   ? null
-                  : offDistratoBlocked(can, option.value)
+                  : offDistratoBlocked(can, option.value, isNew ? null : form.status)
                     ?? (isNew ? null : statusMoveBlock(catalog, form.status, option.value, { isAdmin, roles }))
                     ?? (!isAdmin && statusRequiresNote(catalog, option.value) ? "com observação, pelo Pipeline" : null);
                 const semPermissao = bloqueio;

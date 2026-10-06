@@ -20,7 +20,7 @@ import {
 const CATALOGO = [
   "leads.view_queue", "leads.reassign", "leads.delete",
   "deals.view_all", "deals.edit_value", "deals.delete",
-  "deals.mark_off_distrato",
+  "deals.mark_off_distrato", "deals.mark_distrato",
   "deals.manage_statuses", "deals.edit_status_group", "deals.edit_status_detail",
   "cca.review", "reports.view_finance", "teams.manage",
   "users.manage_roles", "settings.integrations", "game.close_season",
@@ -175,8 +175,10 @@ describe("featurePermissions", () => {
     // `current_user` ser sempre o dono, e o guard passaria para todo mundo sem
     // nenhum sintoma. Vale para TODA versão da função no diretório — a próxima
     // reescrita também, que é o que a checagem presa a um arquivo só não pegava.
+    // `as $$` à mão, `AS $function$` quando o corpo veio de `pg_get_functiondef`
+    // (0208): sem aceitar os dois, o cabeçalho "lia" até a função seguinte.
     const definicoes = [...migrationSql.matchAll(
-      /create or replace function public\.deals_guard_status_columns\(\)([\s\S]*?)as \$\$/g,
+      /create or replace function public\.deals_guard_status_columns\(\)([\s\S]*?)as \$(?:function)?\$/gi,
     )];
     expect(definicoes.length).toBeGreaterThan(0);
     for (const [, cabecalho] of definicoes) expect(cabecalho).not.toContain("security definer");

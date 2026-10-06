@@ -896,24 +896,29 @@ describe("DirectorPanel", () => {
 });
 
 describe("Breakdown", () => {
-  it("o CCA diz de quem e a contagem — a empresa ou so os seus negocios", async () => {
-    const toda = await render(<CcaStatusCard counts={{ Aprovado: 3 }} toda />);
+  it("o CCA mostra as seis contagens da esteira e diz de quem é o recorte", async () => {
+    const esteira = { docs: 4, aprovados: 3, pendentes: 2, reprovados: 1, virouNegocio: 5, convertidos: 6 };
+    const toda = await render(<CcaStatusCard esteira={esteira} toda />);
     expect(toda.text).toContain("Processos do CCA no mês vigente");
+    for (const rotulo of ["Docs enviadas", "Aprovados", "Pendentes", "Reprovados", "Virou negócio", "Convertidos em venda"]) {
+      expect(toda.text).toContain(rotulo);
+    }
     await toda.cleanup();
 
-    const minha = await render(<CcaStatusCard counts={{}} toda={false} />);
-    expect(minha.text).toContain("Nenhum processo do CCA nos seus negócios");
+    const minha = await render(<CcaStatusCard esteira={esteira} toda={false} />);
+    expect(minha.text).toContain("Processos do CCA nos seus negócios");
     await minha.cleanup();
   });
 
-  it("o card de time mostra as quatro contagens", async () => {
+  it("o card de time mostra corretores, liderança, staff e o total", async () => {
     const { text, cleanup } = await render(
-      <StaffCard staff={{ brokersTotal: 12, active: 15, managers: 3, directors: 2 }} />,
+      <StaffCard staff={{ brokersTotal: 12, active: 20, managers: 3, directors: 2, staff: 3 }} />,
     );
     expect(text).toContain("Corretores");
     expect(text).toContain("Gerentes");
     expect(text).toContain("Diretores");
-    expect(text).toContain("Pessoas ativas");
+    expect(text).toContain("Staff (admin, sócios e CCA)");
+    expect(text).toContain("Total ativo");
     await cleanup();
   });
 });

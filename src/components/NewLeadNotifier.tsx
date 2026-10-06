@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
+import { avisarLead } from "@/components/ui/avisos";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -140,13 +141,13 @@ export default function NewLeadNotifier() {
       return;
     }
     celebrate("lead_new");
-    toast({
-      title: nextKind === "assigned" ? "Lead atribuído a você" : "Novo lead na fila",
-      description: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
+    avisarLead(nextKind === "assigned" ? "Lead atribuído a você!" : "Novo lead na fila", {
+      descricao: `${row.full_name || "Sem nome"} — ${row.campaign_name || row.utm_source || "origem —"}`,
+      frase: nextKind === "assigned" ? "É seu! Atenda rápido e converta. 🚀" : "Corre que esse lead é ouro! ⚡",
       // O destino que o diálogo oferecia, sem o diálogo. Só quando a pessoa
       // pode mesmo abrir a tela: `menu.leads` não é dado ao marketing, e o
       // botão levava direto ao "Acesso não liberado" do guard de rota.
-      action: podeAbrirLeads
+      acao: podeAbrirLeads
         ? { label: "Abrir leads", onClick: () => navigateRef.current("/leads") }
         : undefined,
     });
@@ -315,6 +316,13 @@ export default function NewLeadNotifier() {
                 {secondsLeft > 0
                   ? `${formatCountdown(secondsLeft)} para atender antes de voltar à fila`
                   : "Prazo estourado — o lead está voltando para a fila"}
+              </p>
+            )}
+            {/* 03/10/2026: corretor achava que abrir o lead já reservava. */}
+            {assigned && secondsLeft !== 0 && (
+              <p className="text-xs text-muted-foreground">
+                O lead só fica com você quando você clica em <strong className="text-foreground">"Atender"</strong>.
+                Abrir ou deixar para depois não segura o lead.
               </p>
             )}
           </div>

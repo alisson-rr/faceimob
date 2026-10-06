@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
+import { ImportarLeadfyCard } from "@/components/admin/ImportarLeadfyCard";
 import { FileDropzone, ImportError, parseSheet } from "@/components/leads";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -367,6 +368,7 @@ export default function DataManagement() {
       />
 
       <div className="mt-6 space-y-4">
+        {isAdmin && <ImportarLeadfyCard />}
         <div className={cn("grid gap-4", canEditAporte && "md:grid-cols-2")}>
           <SectionCard
             title={`Aporte de mídia — ${monthLabel(period)}`}

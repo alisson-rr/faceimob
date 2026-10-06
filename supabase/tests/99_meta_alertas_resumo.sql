@@ -223,7 +223,7 @@ begin
 end
 $$;
 
-\echo '== 3. estado: o mesmo estado duas vezes avisa UMA; a volta avisa "voltou a rodar" =='
+\echo '== 3. estado: o mesmo estado duas vezes avisa UMA; a volta avisa "saldo restabelecido" =='
 
 do $$
 declare
@@ -283,8 +283,36 @@ begin
   perform pg_temp.check117(r3->>'estado_conta' = 'rodando'
     and (select count(*) from public.notifications
           where profile_id = soc and kind = 'meta_conta_estado'
-            and title = 'A conta de anúncios Conta 0117 voltou a rodar') = 2,
-    'a volta de sem_saldo para rodando avisa "voltou a rodar"');
+            and title = 'Saldo restabelecido na conta Conta 0117') = 2,
+    'a volta de sem_saldo para rodando avisa "saldo restabelecido" (0232)');
+
+  -- 0232: pré-paga abaixo de R$ 400 avisa com o valor; a volta informa o saldo.
+  update public.meta_ad_accounts
+     set is_prepay = true, prepay_available = 312.40, saldo_baixo_limite = 400,
+         account_checked_at = clock_timestamp()
+   where id = conta;
+  set local role service_role;
+  perform pg_temp.servico117();
+  r1 := public.meta_avaliar_alertas(conta);
+  reset role;
+  perform set_config('request.jwt.claims', '', false);
+  perform pg_temp.check117(r1->>'estado_conta' = 'saldo_baixo'
+    and exists (select 1 from public.notifications
+                 where profile_id = soc and kind = 'meta_conta_estado'
+                   and title = 'Saldo abaixo de R$ 400,00 na conta Conta 0117: R$ 312,40'),
+    'saldo pré-pago abaixo de R$ 400 avisa com o valor no título (0232)');
+
+  update public.meta_ad_accounts set prepay_available = 1500, account_checked_at = clock_timestamp() where id = conta;
+  set local role service_role;
+  perform pg_temp.servico117();
+  r2 := public.meta_avaliar_alertas(conta);
+  reset role;
+  perform set_config('request.jwt.claims', '', false);
+  perform pg_temp.check117(r2->>'estado_conta' = 'rodando'
+    and exists (select 1 from public.notifications
+                 where profile_id = soc and kind = 'meta_conta_estado'
+                   and title = 'Saldo restabelecido na conta Conta 0117: R$ 1.500,00'),
+    'saldo de volta informa o valor restabelecido (0232)');
 end
 $$;
 

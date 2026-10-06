@@ -8,14 +8,17 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { avisarQueda } from "@/components/ui/avisos";
 import { describeError } from "@/lib/supabaseError";
 import { LOSS_REASONS, bareStatus, isLossStatus } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
-import { updateDeal, useCanExitStage } from "./data";
+import { updateDeal } from "./data";
 import { LOST_STAGE_CODE, type PipelineStage } from "./stages";
 import { statusLabel } from "./statuses";
+import { offDistratoBlocked } from "./useDealActions";
+import { buttonVariants } from "@/components/ui/button";
 
 interface Props {
   deal: LegacyDealRecord;
@@ -48,8 +51,8 @@ export const isOffOrDistrato = (status: string | null | undefined): boolean =>
  * O caminho antigo era um `Switch` em `scale-75` na última coluna: um clique
  * gravava `stage=lost` com o motivo fixo "Arquivado manualmente" — e a própria
  * tela avisava que negócio encerrado não reabre por ali. Agora a perda é ação
- * nomeada, com motivo obrigatório, e passa pela mesma trava de etapa que o
- * arrastar do kanban.
+ * nomeada, com motivo obrigatório. Desde a 0208 ela segue a matriz do Status 2,
+ * não a de etapa.
  *
  * **Encerrar é do corretor; OFF e distrato não.** A restrição do cliente é por
  * MOTIVO, não pelo ato: quem não tem `deals.mark_off_distrato` continua
@@ -65,33 +68,33 @@ export const isOffOrDistrato = (status: string | null | undefined): boolean =>
  * ali a escolha já foi feita, pedir de novo é atrito à toa.
  */
 export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirmed }: Props) {
-  const { can, canEnterStage } = useAuth();
-  const canExitStage = useCanExitStage();
+  const { can } = useAuth();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const id = useId();
   const lostStage = stages.find((stage) => stage.code === LOST_STAGE_CODE);
   const podeOffDistrato = can("deals.mark_off_distrato");
+  /** Motivo que o perfil não grava: OFF é de admin e sócio, DISTRATO também da CCA (0230). */
+  const travado = (motivo: string) => offDistratoBlocked(can, motivo, deal.status) !== null;
   const [status, setStatus] = useState(
     // Um preset de OFF/distrato vindo do Select da tabela não entra pela janela:
     // sem permissão o campo nasce vazio, como se ninguém tivesse escolhido.
     presetStatus && isLossStatus(presetStatus)
-      && (podeOffDistrato || !isOffOrDistrato(presetStatus))
+      && !travado(presetStatus)
       ? presetStatus
       : "",
   );
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // As DUAS metades da matriz: `deals_guard_stage` cobra `can_exit_stage` da
-  // etapa atual antes de olhar a de destino, e só o "entrar" era espelhado aqui
-  // — hoje corretor e gerente não saem de "Aprovado", e o diálogo abria o
-  // confirmar assim mesmo, para levar 42501.
-  const canLeave = canExitStage(deal.stage_id);
-  const allowed = Boolean(lostStage) && canEnterStage(lostStage?.id ?? "") && canLeave && can("deals.edit_status_detail");
+  // Encerrar é troca de Status 2 (0208): vale a matriz do Status 2 e a
+  // permissão de OFF/distrato, não a de etapa. Antes, negócio parado numa etapa
+  // de que o perfil não sai ("Em Análise" com Status 2 já em pendente) não
+  // encerrava nem com OFF (pedido de 03/10/2026).
+  const allowed = Boolean(lostStage) && can("deals.edit_status_detail");
   // Um preset sem prefixo ("QUEDA", vindo de importação) é motivo válido e não
   // está na lista literal: sem ele nas opções o Select abriria em branco.
   const choices = !status || LOSS_REASONS.includes(status) ? LOSS_REASONS : [status, ...LOSS_REASONS];
-  const motivoBloqueado = !podeOffDistrato && isOffOrDistrato(status);
+  const motivoBloqueado = travado(status);
 
   const confirm = async () => {
     if (!lostStage || !status || motivoBloqueado || !allowed) return;
@@ -106,7 +109,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
       });
       // `reason` acima é dado gravado e leva o rótulo inteiro; o aviso é tela e
       // segue a mesma regra do Select.
-      toast({ variant: "success", title: "Negócio encerrado", description: `${deal.client} — ${statusLabel(catalog, status)}.` });
+      avisarQueda("Negócio encerrado", `${deal.client} — ${statusLabel(catalog, status)}.`);
       await onConfirmed();
       onClose();
     } catch (err) {
@@ -148,12 +151,12 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
                     OFF e distrato aparecem DESABILITADOS para quem não pode, e
                     não sumidos: opção que some não ensina o motivo. */}
                 {choices.map((option) => {
-                  const bloqueado = !podeOffDistrato && isOffOrDistrato(option);
+                  const bloqueado = travado(option);
                   return (
                     <SelectItem key={option} value={option} disabled={bloqueado}>
                       <span>{statusLabel(catalog, option)}</span>
                       {bloqueado && (
-                        <span className="text-muted-foreground"> — só administrador e sócio</span>
+                        <span className="text-muted-foreground"> — {offDistratoBlocked(can, option, deal.status)}</span>
                       )}
                     </SelectItem>
                   );
@@ -162,8 +165,9 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
             </Select>
             {!podeOffDistrato && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Marcar OFF ou distrato é do administrador e do sócio. Encerrar por
-                queda ou reprovado continua com você.
+                {can("deals.mark_distrato")
+                  ? "Marcar OFF é do administrador e do sócio. Distrato, queda e reprovado continuam com você."
+                  : "Marcar OFF ou distrato é do administrador e do sócio. Encerrar por queda ou reprovado continua com você."}
               </p>
             )}
           </div>
@@ -177,10 +181,9 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
           </div>
           {!allowed && (
             <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-              {!can("deals.edit_status_detail") ? "Seu perfil não pode alterar o Status 2. A permissão é definida em Administração → Permissões."
-                : canLeave
-                ? "Seu perfil não pode mover negócios para a etapa de perda. Peça a um gestor."
-                : `Seu perfil não pode tirar um negócio de "${deal.stage_label}". Peça a um gestor.`}
+              {!can("deals.edit_status_detail")
+                ? "Seu perfil não pode alterar o Status 2. A permissão é definida em Administração → Permissões."
+                : "A etapa de perda não está configurada no Pipeline. Fale com o administrador."}
             </p>
           )}
         </div>
@@ -188,6 +191,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction
+            className={buttonVariants({ variant: "destructive" })}
             disabled={saving || !allowed || !status || motivoBloqueado}
             onClick={(event) => { event.preventDefault(); void confirm(); }}
           >

@@ -4,12 +4,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { firstAllowedRoute, permissionForPath, safeRedirect } from "@/lib/routePermissions";
+import { ehSoCorretor, firstAllowedRoute, permissionForPath, safeRedirect } from "@/lib/routePermissions";
 import { UpdateNotifier } from "@/components/UpdateNotifier";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import NotFound from "./pages/NotFound";
+import { Button } from "@/components/ui/button";
 
 /** Imports das telas logadas, para a pré-carga — o mesmo `import()` do `lazy`. */
 const importsDasTelas: Array<() => Promise<unknown>> = [];
@@ -29,6 +30,13 @@ const DataManagement = tela(() => import("@/pages/DataManagement"));
 const SettingsPage = tela(() => import("@/pages/Settings"));
 const Resultados = tela(() => import("@/pages/Resultados"));
 const Links = tela(() => import("@/pages/Links"));
+const CentralCorretor = tela(() => import("@/pages/CentralCorretor"));
+const CentralSuporte = tela(() => import("@/pages/CentralSuporte"));
+const CentralDrive = tela(() => import("@/pages/CentralDrive"));
+const CentralMapa = tela(() => import("@/pages/CentralMapa"));
+const CentralUniversidade = tela(() => import("@/pages/CentralUniversidade"));
+const CentralImoveis = tela(() => import("@/pages/CentralImoveis"));
+const RelatorioRoleta = tela(() => import("@/pages/RelatorioRoleta"));
 const CcaPipeline = tela(() => import("@/pages/CcaPipeline"));
 const AdminPermissions = tela(() => import("@/pages/AdminPermissions"));
 const AdminIntegrations = tela(() => import("@/pages/AdminIntegrations"));
@@ -174,11 +182,14 @@ function ResetPasswordRoute() {
  * certa.
  */
 function HomeRedirect() {
-  const { can, loading } = useAuth();
+  const { can, loading, roles } = useAuth();
 
   if (bypassAuth) return <Navigate to="/dashboard" replace />;
   if (loading) return telaDeCarregamento;
 
+  // O corretor começa na Central do Corretor (pedido de 03/10/2026); quem
+  // também gerencia, dirige ou administra segue para o primeiro item do menu.
+  if (ehSoCorretor(roles) && can("menu.central")) return <Navigate to="/central" replace />;
   return <Navigate to={firstAllowedRoute(can)} replace />;
 }
 
@@ -188,11 +199,40 @@ function HomeRedirect() {
  * mas uma tela vazia sem explicação parece defeito; esta é a mensagem honesta.
  */
 function RequirePermission() {
-  const { can, loading, previewRole } = useAuth();
+  const { can, loading, previewRole, perfilFalhou, perfilFalha, signOut } = useAuth();
   const location = useLocation();
 
   if (bypassAuth) return <Outlet />;
   if (loading) return null;
+
+  // Falha de leitura não é falta de permissão: dizer "seu perfil não tem
+  // permissão" mandava o corretor reclamar de acesso que ele tem (03/10/2026).
+  if (perfilFalhou) {
+    return (
+      <div className="grid place-items-center py-24 text-center">
+        <div className="max-w-sm space-y-3">
+          <p className="text-sm font-semibold text-foreground">Não consegui carregar suas permissões</p>
+          {/* O motivo muda o que fazer: sessão recusada não volta recarregando
+              (relógio do computador errado é o caso comum no app de desktop). */}
+          <p className="text-xs text-muted-foreground">
+            {perfilFalha === "sessao"
+              ? "O servidor recusou o seu acesso. Confira se a data e a hora do computador estão certas e entre de novo."
+              : perfilFalha === "rede"
+                ? "Sem conexão com o servidor. Confira a internet (ou antivírus/firewall) e tente de novo."
+                : "O servidor não respondeu a tempo. Tente de novo em instantes."}
+          </p>
+          <div className="flex justify-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+              Tentar de novo
+            </Button>
+            <Button type="button" size="sm" onClick={() => void signOut()}>
+              Sair e entrar de novo
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const code = permissionForPath(location.pathname);
   if (code && !can(code)) {
@@ -240,6 +280,7 @@ const App = () => (
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/cca" element={<CcaPipeline />} />
               <Route path="/leads" element={<Leads />} />
+              <Route path="/leads/roleta" element={<RelatorioRoleta />} />
               <Route path="/atividades" element={<Activities />} />
               <Route path="/resultados" element={<Resultados />} />
               <Route path="/marketing" element={<Marketing />} />
@@ -247,6 +288,12 @@ const App = () => (
               <Route path="/team" element={<Navigate to="/equipes" replace />} />
               <Route path="/profile" element={<Navigate to="/equipes" replace />} />
               <Route path="/links" element={<Links />} />
+              <Route path="/central" element={<CentralCorretor />} />
+              <Route path="/central/suporte" element={<CentralSuporte />} />
+              <Route path="/central/drive" element={<CentralDrive />} />
+              <Route path="/central/mapa" element={<CentralMapa />} />
+              <Route path="/central/universidade" element={<CentralUniversidade />} />
+              <Route path="/central/imoveis" element={<CentralImoveis />} />
               <Route path="/data" element={<DataManagement />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/admin/permissions" element={<AdminPermissions />} />

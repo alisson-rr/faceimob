@@ -41,8 +41,8 @@ vi.mock("@/integrations/supabase/client", async () => {
 });
 
 import {
-  createdAtBounds, dealStageCodeFor, last30DaysRange, legacyDealFields, listLegacyDeals, listSelectableBrokers,
-  saleBlockedReason, STAGES_REQUIRING_REVIEW, toNumberOrNull, type SaveLegacyDealInput,
+  contarTime, createdAtBounds, dealStageCodeFor, last30DaysRange, legacyDealFields, listLegacyDeals, listSelectableBrokers,
+  saleBlockedReason, STAGES_REQUIRING_REVIEW, toNumberOrNull, type NewAppRole, type SaveLegacyDealInput,
 } from "./newSchema";
 
 const form = (patch: Partial<SaveLegacyDealInput> = {}): SaveLegacyDealInput => ({
@@ -364,5 +364,22 @@ describe("listSelectableBrokers", () => {
     rede.tabelas["rpc/selectable_brokers"] = [{ id: "b1", full_name: "Diego" }];
     await expect(listSelectableBrokers()).resolves.toEqual([{ id: "b1", name: "Diego" }]);
     delete rede.tabelas["rpc/selectable_brokers"];
+  });
+});
+
+describe("contarTime", () => {
+  it("conta cada pessoa ativa num grupo só: corretor, gerente, diretor ou staff", () => {
+    const p = (roles: NewAppRole[], active = true) => ({ roles, active });
+    expect(contarTime([
+      p(["broker"]),
+      p(["broker"]),
+      p(["broker"], false),
+      p(["broker", "manager"]),
+      p(["broker", "manager", "director"]),
+      p(["broker", "admin"]),
+      p(["broker", "partner"]),
+      p(["broker", "cca"]),
+      p(["broker", "partner", "director"]),
+    ])).toEqual({ brokersTotal: 2, managers: 1, directors: 2, staff: 3, active: 8 });
   });
 });

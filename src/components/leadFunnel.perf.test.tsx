@@ -11,7 +11,11 @@ import type { LeadRecord } from "@/integrations/supabase/leads";
  */
 const estado = vi.hoisted(() => ({ cartoes: 0, leads: [] as LeadRecord[] }));
 
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "eu" } }) }));
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "eu" }, roles: ["broker"], previewRole: null, isAdmin: false, can: () => false }),
+}));
+vi.mock("@/components/checkin/LeadsCheckinCard", () => ({ LeadsCheckinCard: () => null }));
+vi.mock("@/components/checkin/FilaEmFormacao", () => ({ FilaEmFormacao: () => null }));
 vi.mock("@/components/LeadDetailModal", () => ({ default: () => null }));
 vi.mock("@/components/leads", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/components/leads")>();
@@ -19,6 +23,9 @@ vi.mock("@/components/leads", async (importOriginal) => {
   return {
     ...real,
     useOpenLeads: () => ({ data: estado.leads, error: null, isPending: false, refetch: noop }),
+    useLeads: () => ({ data: undefined }),
+    useAssignableBrokers: () => ({ data: undefined }),
+    useWhatsappTemplates: () => ({ data: undefined }),
     useAutomationSettings: () => ({ data: undefined }),
     useTimeoutReleasesToday: () => ({ data: undefined }),
     useInvalidateLeads: () => noop,

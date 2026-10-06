@@ -33,6 +33,7 @@ export { FileDropzone } from "./FileDropzone";
 export { LeadFilters } from "./LeadFilters";
 export { LeadFormDialog } from "./LeadFormDialog";
 export { LeadImportDialog } from "./LeadImportDialog";
+export { LeadsIndicadores } from "./LeadsIndicadores";
 export { LeadsSummary } from "./LeadsSummary";
 export { LeadsTable, type LeadPermissions, type LeadRowActions } from "./LeadsTable";
 export { EmailDialog, WhatsAppDialog } from "./OutreachDialogs";
@@ -44,7 +45,7 @@ export {
   type ColumnMap,
 } from "./importSheet";
 export {
-  emptyLeadFilters, hasActiveFilter, leadMetrics, matchesFilters, nextActionPreset, noLeadDialogs,
-  overdueByBroker, toDateTimeInput, waNumber,
+  emptyLeadFilters, hasActiveFilter, leadMetrics, leadsDoCorretor, leadsPorPeriodo, matchesFilters, nextActionPreset,
+  noLeadDialogs, overdueByBroker, podeVerPorCorretor, toDateTimeInput, waNumber,
   type LeadDialogState, type LeadFilterState, type LeadMetrics, type OverdueByBroker,
 } from "./model";

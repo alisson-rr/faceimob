@@ -98,9 +98,11 @@ Deno.serve(async (req) => {
     for (const row of pending) {
       // Reconfere o interruptor inclusive em chamada manual do worker.
       const { data: settings, error: settingsError } = await supabase.from("automation_settings")
-        .select("cca_move_email,pipeline_move_email").eq("id", true).single();
+        .select("cca_move_email,pipeline_move_email,conferencia_email").eq("id", true).single();
       if (settingsError) throw settingsError;
-      if (!(row.source === "pipeline" ? settings.pipeline_move_email : settings.cca_move_email)
+      const ligado = row.source === "pipeline" ? settings.pipeline_move_email
+        : row.source === "conferencia" ? settings.conferencia_email : settings.cca_move_email;
+      if (!ligado
           || Date.parse(row.created_at) < Date.now() - 86_400_000) {
         const { error: expireError } = await supabase.from("cca_move_emails")
           .update({ status: "expired", last_error: "Envio desligado ou movimento com mais de 24 h." })

@@ -369,7 +369,7 @@ begin
   perform pg_temp.check65(
     exists (select 1 from public.notifications
              where profile_id = cca and kind = 'cca_pending'
-               and channel = 'in_app' and link = '/cca'),
+               and channel = 'in_app' and link like '/cca?negocio=%'),
     'analista de crédito é avisado quando o dossiê entra na esteira');
 
   -- O kind existia só em dado de seed: nenhum produtor no código o gerava.

@@ -2,8 +2,8 @@
 -- 99 · Gatilhos de cron da sincronização da Meta (migration 0118)
 --
 -- O que cada bloco defende, e o que quebra sem ele:
---   1. Os dois jobs (sincronização diária e estado da conta de hora em hora)
---      estão agendados chamando a dispatch certa.
+--   1. A sincronização completa está agendada de hora em hora (0197) chamando
+--      a dispatch certa, e o job só de estado saiu.
 --   2. Só a service role dispara: authenticated e anon não executam.
 --   3. Sem conta ligada ou sem URL/chave no cofre, nenhuma chamada HTTP; modo
 --      inválido leva 22023. A falta do token da Meta NÃO faz a dispatch voltar
@@ -30,14 +30,15 @@ end;
 $$;
 
 \echo '== 1. agendamento =='
+-- A 0197 trocou a diária das 06:00 pela completa de hora em hora, que já lê o
+-- estado da conta: o job só de estado saiu.
 select pg_temp.check118(exists (
   select 1 from cron.job where jobname = 'faceimob-meta-sync'
-     and schedule = '0 9 * * *' and command like '%dispatch_meta_sync()%'),
-  'faceimob-meta-sync às 09:00 UTC (06:00 em São Paulo) chamando dispatch_meta_sync()');
-select pg_temp.check118(exists (
-  select 1 from cron.job where jobname = 'faceimob-meta-estado-conta'
-     and schedule = '0 0,1,11-23 * * *' and command like '%dispatch_meta_sync_modo(''estado'')%'),
-  'faceimob-meta-estado-conta de hora em hora (08:00–22:00 em São Paulo) no modo estado');
+     and schedule = '0 * * * *' and command like '%dispatch_meta_sync()%'),
+  'faceimob-meta-sync de hora em hora chamando dispatch_meta_sync() (0197)');
+select pg_temp.check118(not exists (
+  select 1 from cron.job where jobname = 'faceimob-meta-estado-conta'),
+  'faceimob-meta-estado-conta saiu: a completa de hora em hora já lê o estado (0197)');
 
 \echo '== 2. grants =='
 select pg_temp.check118(not has_function_privilege('authenticated', 'public.dispatch_meta_sync()', 'execute'),

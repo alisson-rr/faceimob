@@ -4,6 +4,7 @@ import { SAO_PAULO_UTC_OFFSET } from "@/integrations/supabase/checkin";
 import { dbError } from "@/lib/supabaseError";
 import { allRows, last30DaysRange, listLegacyDeals, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { bareStatus } from "@/lib/dealStatus";
+import { chaveDaConstrutora, construtorasDoCcaProprio } from "@/integrations/supabase/central";
 import type { CcaCaseStatus } from "./ccaStage";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -40,12 +41,16 @@ export interface CcaDeal {
   dealId: string;
   client: string;
   developer: string;
+  /** Cor da construtora no cadastro (0152), `#rrggbb`; nula = cor pelo nome. */
+  developerColor?: string | null;
   project: string;
   broker: string;
   value: number;
   stageId: string;
   notes: string;
   status: string;
+  /** Status 2 do negócio. */
+  dealStatus?: string | null;
   cpf?: string;
   submittedAt?: string | null;
   stageEnteredAt?: string | null;
@@ -241,6 +246,20 @@ export async function saveCcaAnalysis(dealId: string, analysis: CcaAnalysis): Pr
  * na coluna de mesmo desfecho (`ccaColumnOf`); sem coluna o caso sai do quadro,
  * mas `outside` conta quantos, e a tela diz.
  */
+/**
+ * Análise externa de construtora que NÃO é nosso CCA não entra na esteira do
+ * CCA (pedido de 04/10/2026): a análise é de fora, não há o que a CCA fazer.
+ * Sem a lista do CCA próprio (`null`, leitura falhou) não se esconde nada.
+ */
+export const foraDaEsteiraDoCca = (
+  dealStatus: string | null | undefined,
+  construtora: string | null | undefined,
+  ccaProprio: ReadonlySet<string> | null,
+): boolean =>
+  ccaProprio !== null
+  && foldStatus(dealStatus) === "ANALISE EXTERNA"
+  && !ccaProprio.has(chaveDaConstrutora(construtora));
+
 export async function loadCcaBoard(
   periodo: CcaPeriodo,
   signal: AbortSignal = new AbortController().signal,
@@ -260,11 +279,12 @@ export async function loadCcaBoard(
     }
     return response;
   };
-  const [stagesResponse, casesResponse] = await Promise.all([
+  const [stagesResponse, casesResponse, ccaProprio] = await Promise.all([
     supabase.from("cca_stages")
       .select("id,name,color,position,status,active,deal_status_id,notify_sales,deal_status:deal_statuses(label)")
       .eq("active", true).order("position").abortSignal(signal),
     casesWithCompatibility(),
+    construtorasDoCcaProprio().catch(() => null),
   ]);
   if (stagesResponse.error) throw stagesResponse.error;
   if (casesResponse.error) throw casesResponse.error;
@@ -280,6 +300,7 @@ export async function loadCcaBoard(
   let outside = 0;
   for (const row of casesResponse.data) {
     const deal = dealById.get(row.deal_id);
+    if (foraDaEsteiraDoCca(deal?.status, deal?.developer, ccaProprio)) continue;
     const stage = ccaColumnOf(stages, row, deal?.status);
     if (!stage) {
       outside += 1;
@@ -290,12 +311,14 @@ export async function loadCcaBoard(
       dealId: row.deal_id,
       client: deal?.client || "Cliente não informado",
       developer: deal?.developer || "",
+      developerColor: deal?.developer_color ?? null,
       project: deal?.project || "",
       broker: deal?.broker1 || "",
       value: deal?.deal_value || 0,
       stageId: stage.id,
       notes: row.decision_notes || deal?.notes || "",
       status: row.status,
+      dealStatus: deal?.status ?? null,
       cpf: deal?.cpf || "",
       submittedAt: row.submitted_at,
       stageEnteredAt: row.stage_entered_at ?? null,

@@ -73,6 +73,7 @@ export const pipelineKeys = {
   people: ["pipeline", "people"] as const,
   developers: ["pipeline", "developers"] as const,
   selectableBrokers: ["pipeline", "selectable-brokers"] as const,
+  selectableLeaders: ["pipeline", "selectable-leaders"] as const,
   closedMonths: ["closed_months"] as const,
   stagePermissions: ["pipeline", "stage-permissions"] as const,
   queue: ["pipeline", "checkins"] as const,
@@ -261,6 +262,48 @@ export const useSelectableBrokers = () =>
   useQuery({
     queryKey: pipelineKeys.selectableBrokers,
     queryFn: listSelectableBrokers,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+export type LiderSelecionavel = { id: string; name: string; isManager: boolean; isDirector: boolean };
+export type LiderancaSelecionavel = {
+  lideres: LiderSelecionavel[];
+  /** Gerente e diretor da equipe de cada corretor ativo. */
+  equipes: { id: string; manager_id: string | null; director_id: string | null }[];
+};
+
+// RPCs da 0199, ainda fora do `types.ts` gerado.
+const semTipos = supabase as unknown as {
+  rpc: (fn: string) => PromiseLike<{ data: unknown[] | null; error: { code?: string; message: string } | null }>;
+};
+
+/**
+ * Gerentes, diretores e a liderança de cada corretor, por RPC `security
+ * definer` (0199): a RLS de `profiles` entrega ao corretor só ele mesmo, e os
+ * campos Gerente e Diretor do negócio abriam vazios, sem sugestão. `null` =
+ * funções ainda ausentes (deploy na ordem errada): fica a lista visível.
+ */
+export const useSelectableLeaders = () =>
+  useQuery({
+    queryKey: pipelineKeys.selectableLeaders,
+    queryFn: async (): Promise<LiderancaSelecionavel | null> => {
+      const [lideres, equipes] = await Promise.all([
+        semTipos.rpc("selectable_leaders"),
+        semTipos.rpc("lideranca_dos_corretores"),
+      ]);
+      const erro = lideres.error ?? equipes.error;
+      if (erro) {
+        if (erro.code === "PGRST202" || erro.code === "42883") return null;
+        throw dbError("selectable_leaders", erro);
+      }
+      return {
+        lideres: ((lideres.data ?? []) as { id: string; full_name: string; is_manager: boolean; is_director: boolean }[])
+          .map((l) => ({ id: l.id, name: l.full_name, isManager: l.is_manager, isDirector: l.is_director })),
+        equipes: ((equipes.data ?? []) as { broker_id: string; manager_id: string | null; director_id: string | null }[])
+          .map((e) => ({ id: e.broker_id, manager_id: e.manager_id, director_id: e.director_id })),
+      };
+    },
     staleTime: 5 * 60_000,
     retry: false,
   });

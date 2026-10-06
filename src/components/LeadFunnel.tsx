@@ -7,15 +7,20 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, Clock, HandMetal, MessageCircle } from "lucide-react";
+import { AlertTriangle, Clock, HandMetal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import LeadDetailModal from "./LeadDetailModal";
 import {
-  useAutomationSettings, useInvalidateLeads, useLeadsRealtime, useNowTicker,
-  useOpenLeads, useTimeoutReleasesToday, waNumber,
+  LeadsIndicadores, leadsDoCorretor, podeVerPorCorretor,
+  useAssignableBrokers, useAutomationSettings, useInvalidateLeads, useLeads, useLeadsRealtime, useNowTicker,
+  useOpenLeads, useTimeoutReleasesToday, useWhatsappTemplates, waNumber,
 } from "@/components/leads";
+import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
+import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
+import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
 import { AttendCountdown } from "@/components/leads/LeadsTable";
 import { sameLeadProps } from "@/components/leads/sameLeadProps";
 import {
@@ -48,10 +53,19 @@ const stageSurface: Record<LeadTone, string> = {
 export default function LeadFunnel({
   actorName, onConvert,
 }: { actorName: string; onConvert: (l: LeadRecord) => void }) {
-  const { user } = useAuth();
+  const { user, roles, previewRole, isAdmin, can } = useAuth();
   const profileId = user?.id || null;
+  // Mesmo recorte da tela de Leads (02/10/2026): a gestão olha um corretor
+  // por vez, e o funil e os indicadores falam do mesmo corretor.
+  const verPorCorretor = podeVerPorCorretor(previewRole ? [previewRole] : roles, isAdmin);
+  const canViewQueue = can("leads.view_queue");
+  const [broker, setBroker] = useState("all");
 
   const leadsQuery = useOpenLeads();
+  // Panorama (hoje/semana/mês e a régua): a mesma base da tela de Leads, que
+  // divide a entrada de cache com ela.
+  const baseQuery = useLeads("");
+  const brokersQuery = useAssignableBrokers(verPorCorretor);
   const settingsQuery = useAutomationSettings();
   const releasesQuery = useTimeoutReleasesToday();
   const invalidateLeads = useInvalidateLeads();
@@ -59,8 +73,12 @@ export default function LeadFunnel({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [overdueOpen, setOverdueOpen] = useState(false);
+  // WhatsApp com mensagem pronta (03/10/2026) em vez de abrir a conversa vazia.
+  const [whatsappId, setWhatsappId] = useState<string | null>(null);
+  const templatesQuery = useWhatsappTemplates();
 
-  const leads = useMemo(() => leadsQuery.data ?? [], [leadsQuery.data]);
+  const leads = useMemo(() => leadsDoCorretor(leadsQuery.data ?? [], broker), [leadsQuery.data, broker]);
+  const base = useMemo(() => leadsDoCorretor(baseQuery.data ?? [], broker), [baseQuery.data, broker]);
   // Relógio lento: "atrasado", "inativo" e "novo" andam de 30 em 30 s. O
   // cronômetro da trava tem o próprio tique de 1 s (`AttendCountdown`): com o
   // relógio aqui, 1 lead em trava refazia os até 500 cartões a cada segundo.
@@ -105,9 +123,12 @@ export default function LeadFunnel({
     [leads, selectedId],
   );
 
+
+  const whatsappLead = whatsappId ? leads.find((lead) => lead.id === whatsappId) ?? null : null;
+
   const threshold = settingsQuery.data?.overdue_block_threshold ?? 20;
   const inactivityHours = settingsQuery.data?.inactivity_alert_hours ?? 48;
-  const attendTimeout = settingsQuery.data?.attend_timeout_seconds ?? 300;
+  const attendTimeout = settingsQuery.data?.attend_timeout_seconds ?? 600;
   const timeoutsToday = profileId ? releasesQuery.data?.get(profileId) ?? 0 : 0;
 
   // Sem aviso de sucesso aqui: "Lead em atendimento" sai do realtime de
@@ -147,6 +168,20 @@ export default function LeadFunnel({
 
   return (
     <>
+      <div className="mb-4 flex flex-col gap-4">
+        <LeadsCheckinCard />
+        <FilaEmFormacao />
+        {baseQuery.data && (
+          <LeadsIndicadores
+            leads={base}
+            broker={broker}
+            onBroker={setBroker}
+            brokers={verPorCorretor ? brokersQuery.data ?? [] : []}
+            canViewQueue={canViewQueue}
+          />
+        )}
+      </div>
+
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button
           size="sm"
@@ -201,6 +236,7 @@ export default function LeadFunnel({
                     stageTone={stage.tone}
                     onOpen={setSelectedId}
                     onAttend={onAttend}
+                    onWhatsApp={setWhatsappId}
                   />
                 ))}
                 {items.length === 0 && (
@@ -211,6 +247,14 @@ export default function LeadFunnel({
           );
         })}
       </div>
+
+      {whatsappLead && (
+        <WhatsAppDialog
+          lead={whatsappLead}
+          templates={templatesQuery.data ?? []}
+          onClose={() => setWhatsappId(null)}
+        />
+      )}
 
       <LeadDetailModal
         lead={selected}
@@ -287,7 +331,7 @@ export default function LeadFunnel({
  * "novo", "inativo" e o "há X minutos" precisam andar a cada tique de 30 s.
  */
 const LeadCardMini = memo(function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend,
+  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend, onWhatsApp,
 }: {
   lead: LeadRecord;
   now: number;
@@ -300,6 +344,7 @@ const LeadCardMini = memo(function LeadCardMini({
   stageTone: LeadTone;
   onOpen: (leadId: string) => void;
   onAttend: (lead: LeadRecord) => void;
+  onWhatsApp: (leadId: string) => void;
 }) {
   const isBrandNew = now - new Date(lead.created_at).getTime() < attendTimeout * 1000;
   const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
@@ -358,12 +403,9 @@ const LeadCardMini = memo(function LeadCardMini({
           <Button
             variant="ghost" size="icon" className="ml-auto h-7 w-7 text-success hover:text-success"
             aria-label={`Abrir WhatsApp de ${lead.name}`}
-            onClick={() => {
-              window.open(`https://wa.me/${number}`, "_blank", "noopener");
-              toast("WhatsApp aberto", { description: `Conversa com ${lead.name}.`, duration: 2500 });
-            }}
+            onClick={() => onWhatsApp(lead.id)}
           >
-            <MessageCircle className="h-4 w-4" />
+            <WhatsAppIcon className="h-4 w-4" />
           </Button>
         )}
       </div>
@@ -378,6 +420,9 @@ const LeadCardMini = memo(function LeadCardMini({
           <HandMetal className="h-3.5 w-3.5" /> Atender
           <AttendCountdown lead={lead} bare />
         </Button>
+      )}
+      {claimable && (
+        <p className="mt-1 text-center text-xs text-muted-foreground">Só fica seu ao clicar em "Atender"</p>
       )}
     </div>
   );

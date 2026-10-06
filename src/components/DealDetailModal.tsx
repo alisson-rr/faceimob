@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -104,6 +104,11 @@ export default function DealDetailModal({
     return emptyDeal(stages[0]?.code ?? "incomplete", defaultMonth, self?.id);
   });
   const [tab, setTab] = useState<TabKey>("detalhes");
+  // Aba visitada fica montada (escondida) até a ficha fechar: o texto que o
+  // corretor e a CCA começam numa aba sobrevive à ida a outra para consultar
+  // (pedido de 06/10/2026). Antes cada troca desmontava o painel e o rascunho ia junto.
+  const [visitadas, setVisitadas] = useState<ReadonlySet<TabKey>>(() => new Set(["detalhes"]));
+  const montada = (key: TabKey) => tab === key || visitadas.has(key);
   const [cca, setCca] = useState<CcaAnalysis>({});
   const [saving, setSaving] = useState(false);
   /** Negócio novo: comentário que vai para a aba Comentários depois de criado. */
@@ -238,7 +243,7 @@ export default function DealDetailModal({
         }
       }
       if (dealId && Object.keys(cca).length > 0) await saveCcaAnalysis(dealId, cca);
-      if (avisar && !virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado" : "Negócio atualizado" });
+      if (avisar && !virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado! 🚀" : "Negócio atualizado" });
       if (fechar) {
         onClose();
       } else if (isNew && gravado) {
@@ -293,6 +298,22 @@ export default function DealDetailModal({
     }
   };
 
+  // Batida ao sair do campo CPF (0205): o corretor sabe na hora, não só ao
+  // salvar. Um CPF já conferido não abre o popup de novo a cada saída do campo.
+  const cpfConferido = useRef<string | null>(null);
+  const conferirCpf = async (cpf: string) => {
+    const digitos = cpfsParaBatida({ cpf })[0];
+    if (!digitos || cpfConferido.current === digitos) return;
+    cpfConferido.current = digitos;
+    try {
+      const achado = await negocioDoCpf([digitos]);
+      if (achado) setBatida({ negocio: achado, enviando: false, erro: null });
+    } catch {
+      // Sem resposta agora, a batida roda de novo ao salvar.
+      cpfConferido.current = null;
+    }
+  };
+
   const assumir = async (comentario: string) => {
     if (!batida) return;
     setBatida({ ...batida, enviando: true, erro: null });
@@ -300,8 +321,8 @@ export default function DealDetailModal({
       await assumirNegocioDoCpf(batida.negocio.deal_id, comentario);
       toast({
         variant: "success",
-        title: "Negócio assumido",
-        description: "Os dados do cliente vieram junto e você é o corretor agora.",
+        title: "Negociação retomada",
+        description: "O negócio veio com dados, histórico e documentos, e você é o corretor agora.",
       });
       setBatida(null);
       onClose();
@@ -322,7 +343,24 @@ export default function DealDetailModal({
     }
     setMensagemEnvio(mensagem);
     setConferencia(null);
+    // Direto, sem `abrirAba`: a ficha nova já foi gravada acima, e nesta
+    // renderização `isNew` ainda é verdadeiro — `abrirAba` gravaria de novo.
     setTab("anexos");
+    setVisitadas((atual) => new Set([...atual, "anexos"]));
+  };
+
+  // Negócio novo: as outras abas precisam do id. Clicar nelas grava a ficha
+  // (com as mesmas cobranças do "Criar negócio") e abre a aba — antes elas
+  // nasciam apagadas e o corretor achava que não podia anexar nem comentar
+  // (05/10/2026).
+  const abrirAba = async (key: TabKey) => {
+    if (isNew && key !== "detalhes") {
+      if (saving) return;
+      const gravado = await handleSave({ fechar: false });
+      if (!gravado) return;
+    }
+    setTab(key);
+    setVisitadas((atual) => (atual.has(key) ? atual : new Set([...atual, key])));
   };
 
   const tabs: { key: TabKey; label: string }[] = [
@@ -345,7 +383,7 @@ export default function DealDetailModal({
             outras abas nascem cinzas — o que só o `title` do botão explicava. */}
         <DialogDescription className="sr-only">
           {isNew
-            ? "Cadastro do negócio em seis abas; comentários, anexos, agenda, histórico e CCA abrem depois de salvar."
+            ? "Cadastro do negócio em seis abas; abrir comentários, anexos, agenda, histórico ou CCA salva o negócio antes."
             : "Negócio em seis abas: detalhes, comentários, anexos, agenda, histórico e CCA."}
         </DialogDescription>
 
@@ -365,16 +403,16 @@ export default function DealDetailModal({
             aria-label="Seções do negócio"
           >
             {tabs.map((item) => {
-              const enabled = item.key === "detalhes" || !isNew;
+              const salvaAntes = isNew && item.key !== "detalhes";
               return (
                 <button
                   key={item.key}
                   type="button"
                   role="tab"
                   aria-selected={tab === item.key}
-                  disabled={!enabled}
-                  title={enabled ? undefined : "Disponível depois de salvar o negócio"}
-                  onClick={() => setTab(item.key)}
+                  disabled={salvaAntes && (saving || lock.readOnly)}
+                  title={salvaAntes ? "Salva o negócio e abre esta aba" : undefined}
+                  onClick={() => void abrirAba(item.key)}
                   className={cn(
                     "whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -427,13 +465,14 @@ export default function DealDetailModal({
             </p>
           )}
 
-          {tab === "detalhes" && (
-            <>
+          <div hidden={tab !== "detalhes"}>
               <DealForm
                 form={form} onChange={patch} field={field}
                 people={people} developers={developers} stages={stages} isNew={isNew}
                 developerError={developerError}
                 onPedirConferencia={() => setConferencia({ enviando: false, erro: null })}
+                dealId={isNew ? null : dealId}
+                onCpfBlur={isNew ? (cpf) => void conferirCpf(cpf) : undefined}
               />
               {isNew && (
                 <div className="mt-4 space-y-1.5">
@@ -449,12 +488,14 @@ export default function DealDetailModal({
                   <p className="text-xs text-muted-foreground">Entra na aba Comentários quando o negócio for criado.</p>
                 </div>
               )}
-            </>
+          </div>
+
+          {montada("comentarios") && dealId && (
+            <div hidden={tab !== "comentarios"}><DealCommentsPanel dealId={dealId} people={people} /></div>
           )}
 
-          {tab === "comentarios" && dealId && <DealCommentsPanel dealId={dealId} people={people} />}
-
-          {tab === "anexos" && dealId && (
+          {montada("anexos") && dealId && (
+            <div hidden={tab !== "anexos"}>
             <DealDocumentUpload
               dealId={dealId}
               clientName={form.client}
@@ -472,25 +513,31 @@ export default function DealDetailModal({
               unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
               onReviewChanged={onReviewChanged}
               mensagemInicial={mensagemEnvio}
+              salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
             />
+            </div>
           )}
 
-          {tab === "agenda" && dealId && (
-            <div className="space-y-4">
+          {montada("agenda") && dealId && (
+            <div className="space-y-4" hidden={tab !== "agenda"}>
               <TaskPanel refType="deal" refId={dealId} />
               <div className="border-t border-border pt-3"><VisitPanel dealId={dealId} /></div>
             </div>
           )}
 
-          {tab === "historico" && dealId && <DealHistoryPanel dealId={dealId} />}
+          {montada("historico") && dealId && (
+            <div hidden={tab !== "historico"}><DealHistoryPanel dealId={dealId} /></div>
+          )}
 
-          {tab === "cca" && dealId && (
+          {montada("cca") && dealId && (
+            <div hidden={tab !== "cca"}>
             <DealCcaPanel
               dealId={dealId}
               value={cca}
               onChange={setCca}
               onCommentAdded={() => setComentarios((total) => total + 1)}
             />
+            </div>
           )}
         </div>
 

@@ -26,6 +26,11 @@
 -- =============================================================================
 
 \set ON_ERROR_STOP on
+
+-- Os cenários abaixo atribuem leads com data retroativa; o recomeço da 0187
+-- (gravado quando a migration roda) os esconderia do corretor e da contagem
+-- de atrasados. Sem recomeço, vale a regra de sempre.
+update public.automation_settings set leads_recomeco_em = null;
 \pset tuples_only on
 \pset format unaligned
 
@@ -92,83 +97,63 @@ end
 $$;
 
 -- -----------------------------------------------------------------------------
-\echo '== 1. com DOIS corretores na fila o lead para de circular no teto =='
+\echo '== 1. sem teto (0212): o lead gira até alguém atender, sem aviso =='
 -- -----------------------------------------------------------------------------
 do $$
 declare
   v_group uuid;
   v_lead  uuid;
   v_alvo  uuid;
-  v_max   int;
+  v_anterior uuid;
   v_status public.lead_status;
   v_misses int;
   i int;
 begin
   select id into v_group from public.distribution_groups where slug = 'roleta-74';
-  select roulette_max_rounds into v_max from public.automation_settings where id;
-  perform pg_temp.check74(coalesce(v_max, 0) > 0, 'existe teto de voltas configurado');
+  perform pg_temp.check74(
+    (select roulette_max_rounds from public.automation_settings where id) = 0,
+    'o teto de voltas está desligado (0 = sem teto)');
 
   insert into public.leads (full_name, phone, distribution_group_id)
   values ('Lead Laco 74', '11900740001', v_group)
   returning id into v_lead;
 
-  perform pg_temp.check74(public.assign_lead(v_lead) is not null,
+  v_alvo := public.assign_lead(v_lead);
+  perform pg_temp.check74(v_alvo is not null,
     'o lead entra na roleta com dois corretores na fila');
 
   -- Cada volta é o que `release_expired_leads` faz: fecha a atribuição por
-  -- prazo, devolve o lead à fila e reatribui.
-  for i in 1..v_max loop
+  -- prazo, devolve o lead à fila e reatribui. 8 voltas passam do antigo teto 5.
+  for i in 1..8 loop
+    v_anterior := v_alvo;
+    -- clock_timestamp: dentro do mesmo bloco now() não anda, e "quem deixou
+    -- vencer por último" precisa de horários diferentes.
     update public.lead_assignments
-       set released_at = now(), release_reason = 'timeout'
+       set released_at = clock_timestamp(), release_reason = 'timeout'
      where lead_id = v_lead and released_at is null;
     update public.leads
        set status = 'queued', assigned_to = null, assigned_at = null, attend_deadline = null
      where id = v_lead;
     v_alvo := public.assign_lead(v_lead);
-    if i < v_max then
-      perform pg_temp.check74(v_alvo is not null,
-        format('volta %s/%s ainda é entregue a alguém', i, v_max));
-    end if;
+    perform pg_temp.check74(v_alvo is not null,
+      format('volta %s ainda é entregue a alguém', i));
+    perform pg_temp.check74(v_alvo <> v_anterior,
+      format('volta %s: quem deixou vencer não recebe de novo havendo outro na fila', i));
   end loop;
 
   select status, roulette_misses into v_status, v_misses
     from public.leads where id = v_lead;
+  perform pg_temp.check74(v_status = 'assigned', 'depois de 8 voltas o lead segue com um corretor');
+  perform pg_temp.check74(v_misses = 8, 'o contador de voltas do lead bate com os prazos vencidos');
 
-  perform pg_temp.check74(v_alvo is null,
-    format('no teto de %s voltas o lead sai da roleta em vez de circular', v_max));
-  perform pg_temp.check74(v_misses = v_max,
-    'o contador de voltas do lead bate com os prazos vencidos');
-  perform pg_temp.check74(v_status = 'queued',
-    'o lead sem atendimento espera na bandeja, não some da fila');
-
-  -- 2. Alguém precisa ser avisado — era isto que faltava: o lead parava e o
-  -- gestor só descobria abrindo o card de saúde da roleta.
   perform pg_temp.check74(
-    exists (select 1 from public.lead_events e
-             where e.lead_id = v_lead and e.kind = 'unattended'),
-    'o lead sem atendimento entra no histórico do próprio lead');
+    not exists (select 1 from public.lead_events e
+                 where e.lead_id = v_lead and e.kind = 'unattended'),
+    'nenhum "saiu da roleta" no histórico');
   perform pg_temp.check74(
-    exists (select 1 from public.notifications n
-             where n.profile_id = '00000000-0000-0000-0000-000000740002'
-               and n.kind = 'lead_unattended'),
-    'o gerente é notificado quando o lead estoura o teto de voltas');
-
-  -- Um aviso por travessia: o cron chama `assign_lead` a cada minuto e não
-  -- pode encher a caixa do gestor com o mesmo lead.
-  perform public.assign_lead(v_lead);
-  perform public.assign_lead(v_lead);
-  perform pg_temp.check74(
-    (select count(*) from public.lead_events e
-      where e.lead_id = v_lead and e.kind = 'unattended') = 1,
-    'o cron insistindo não repete o aviso do mesmo lead');
-
-  -- 3. A válvula: o gestor ainda distribui à mão.
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', '00000000-0000-0000-0000-000000740002'::text,
-                      'role', 'authenticated')::text, false);
-  perform pg_temp.check74(public.distribute_queued_lead(v_lead) is not null,
-    'o botão Distribuir do gestor ignora o teto e tira o lead da bandeja');
-  perform set_config('request.jwt.claims', '', false);
+    not exists (select 1 from public.notifications n
+                 where n.kind = 'lead_unattended' and n.link = '/leads?lead=' || v_lead),
+    'ninguém recebe o aviso de lead sem atendimento');
 
   delete from public.leads where id = v_lead;
 end
@@ -326,12 +311,10 @@ end
 $$;
 
 -- -----------------------------------------------------------------------------
-\echo '== 7. a bandeja não trava a janela de 50 da varredura da fila =='
+\echo '== 7. o lead parado na antiga bandeja volta a girar =='
 --
--- `assign_queued_leads()` olha 50 leads por rodada, ordenados por `created_at`.
--- Os leads que estouraram o teto ficam em `queued` para sempre e são os MAIS
--- ANTIGOS: sem excluí-los, eles ocupam a janela inteira e o lead novo nunca é
--- alcançado — o cron roda a cada minuto sem distribuir nada.
+-- Sem teto (0212), o lead que tinha ficado parado na bandeja "sem atendimento"
+-- volta a girar na próxima varredura do cron.
 --
 -- Em transação própria porque a varredura é global (mexe em qualquer lead em
 -- `queued`, inclusive os do catálogo) e o teste não pode deixar rastro.
@@ -341,40 +324,21 @@ begin;
 do $$
 declare
   v_group uuid;
-  v_max   int;
-  v_novo  uuid;
   v_preso uuid;
   v_status public.lead_status;
-  i int;
 begin
   select id into v_group from public.distribution_groups where slug = 'roleta-74';
-  select coalesce(roulette_max_rounds, 5) into v_max from public.automation_settings where id;
 
-  -- 50 leads presos na bandeja, os mais antigos da base inteira.
-  for i in 1..50 loop
-    insert into public.leads
-      (full_name, phone, distribution_group_id, status, roulette_misses, created_at)
-    values (format('Lead Preso 74 #%s', i), format('1190074%s', 1000 + i), v_group,
-            'queued', v_max, timestamptz '2000-01-01' + (i || ' seconds')::interval)
-    returning id into v_preso;
-  end loop;
-
-  -- O 51º da ordem: novo na operação, velho no relógio, para caber na janela
-  -- assim que os presos saírem dela.
   insert into public.leads
-    (full_name, phone, distribution_group_id, status, created_at)
-  values ('Lead Novo 74', '11900741999', v_group, 'queued', timestamptz '2000-01-02')
-  returning id into v_novo;
+    (full_name, phone, distribution_group_id, status, roulette_misses, created_at)
+  values ('Lead Preso 74', '11900741001', v_group, 'queued', 5, timestamptz '2000-01-01')
+  returning id into v_preso;
 
   perform public.assign_queued_leads();
 
-  select status into v_status from public.leads where id = v_novo;
-  perform pg_temp.check74(v_status <> 'queued',
-    'a varredura alcança o lead novo mesmo com 50 leads presos na bandeja à frente');
-
   select status into v_status from public.leads where id = v_preso;
-  perform pg_temp.check74(v_status = 'queued',
-    'o lead que estourou o teto continua na bandeja, não volta a circular');
+  perform pg_temp.check74(v_status = 'assigned',
+    'o lead que estava parado depois de 5 voltas volta a ser entregue');
 end
 $$;
 

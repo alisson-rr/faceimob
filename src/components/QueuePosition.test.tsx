@@ -71,7 +71,7 @@ describe("QueuePosition", () => {
     expect(container.textContent).toMatch(/você é o 2º de 2/i);
     // O critério de ordem aparece junto: sem ele o corretor perde a vez e não
     // entende por quê.
-    expect(container.textContent).toMatch(/há mais tempo sem receber/i);
+    expect(container.textContent).toMatch(/ordem de chegada/i);
     await cleanup();
   });
 

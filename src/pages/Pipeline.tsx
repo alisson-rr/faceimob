@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Download, Filter, GitBranch, ListChecks, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,8 @@ import {
 } from "@/components/pipeline";
 // Direto do módulo, e não do barril: o `index.ts` de `components/pipeline` é de
 // outra frente nesta rodada. Mesmo caminho que o `useDealActions` abaixo já usa.
-import { ALL, MY_TEAM, teamProfileIds, dealsForLeader } from "@/components/pipeline/filters";
+import { useNegocioDoLink } from "@/components/pipeline/useNegocioDoLink";
+import { ALL, MY_TEAM, status1DeAbertura, teamProfileIds, dealsForLeader } from "@/components/pipeline/filters";
 import { DirectorPipelineCards } from "@/components/pipeline/DirectorPipelineCards";
 import { BUSCA_MINIMA, listActiveDealsWithUnit, useDealSearch, useDealsRange } from "@/components/pipeline/data";
 import { periodoValido } from "@/components/pipeline/ccaData";
@@ -156,6 +157,7 @@ export default function Pipeline() {
   /** Estável para o `memo` do cartão do kanban: um fecho novo a cada render do
    *  Pipeline refazia os 2.288 cartões ativos (ver `DealsKanban`). */
   const abrirNegocio = useCallback((deal: LegacyDealRecord) => setEditor({ deal }), []);
+  useNegocioDoLink(abrirNegocio);
   const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
   const pedirTexto = useCallback(
     (deal: LegacyDealRecord, status: DealStatus, envio: boolean) => setComTexto({ movimento: { deal, status }, envio }),
@@ -177,17 +179,26 @@ export default function Pipeline() {
    */
   const recorteInicial = !isAdmin && myTeam.size > 1 && roles.includes("manager") ? MY_TEAM : ALL;
   /**
-   * A lista abre só nas propostas — Status 1 PROPOSTA (pedido de 28/09/2026) —,
-   * e "Limpar filtros" volta para elas, não para tudo. O filtro continua
-   * trocável. `code` e não o rótulo: o código do grupo é imutável (0149), o
-   * rótulo é editável no cadastro. Sem catálogo ainda, não há o que recortar.
+   * A lista abre nas propostas (e no legado, para o corretor) e "Limpar filtros"
+   * volta para elas, não para tudo — `status1DeAbertura`. O filtro continua
+   * trocável e de múltipla escolha.
    */
-  const propostaId = catalog.groups.find((group) => group.code === "PROPOSTA")?.id ?? ALL;
   const vendaId = catalog.groups.find((group) => group.code === "VENDA")?.id ?? null;
-  const filtrosLimpos = useMemo(() => ({ ...EMPTY_FILTERS, status1: propostaId }), [propostaId]);
+  // Corretor abre em Proposta + Legado; quem lidera segue só em Proposta.
+  const soCorretor = !isAdmin && roles.includes("broker")
+    && !roles.includes("manager") && !roles.includes("director");
+  const filtrosLimpos = useMemo(
+    () => ({ ...EMPTY_FILTERS, status1: status1DeAbertura(catalog.groups, soCorretor) }),
+    [catalog.groups, soCorretor],
+  );
+  // "Conferir agora" do popup do gerente (0196) abre direto na fila da conferência.
+  const [searchParams] = useSearchParams();
+  const abreNaConferencia = searchParams.get("conferencia") === "pendente";
   const filters = useMemo(
-    () => filtrosEscolhidos ?? { ...filtrosLimpos, team: recorteInicial },
-    [filtrosEscolhidos, filtrosLimpos, recorteInicial],
+    () => filtrosEscolhidos ?? (abreNaConferencia
+      ? { ...filtrosLimpos, status1: [], team: recorteInicial, documentReview: "pending" }
+      : { ...filtrosLimpos, team: recorteInicial }),
+    [filtrosEscolhidos, filtrosLimpos, recorteInicial, abreNaConferencia],
   );
 
   const brokers = useMemo(
@@ -450,7 +461,9 @@ export default function Pipeline() {
               view={view}
               deals={visible}
               catalog={catalog}
-              statusGroupId={filters.status1 === ALL || filters.status1 === vendaId ? null : filters.status1}
+              // Colunas dos Status 1 marcados; "VENDA — todas as vendas" inclui o
+              // pós-venda, então com ela marcada o quadro mostra todas.
+              statusGroupIds={filters.status1.length === 0 || (vendaId && filters.status1.includes(vendaId)) ? null : filters.status1}
               // A trava do mês fechado e as listas de pessoas/construtoras
               // entram na espera junto com a matriz de etapas, e pelo mesmo
               // motivo: `closedMonths` falhando devolvia `[]`, e mês congelado

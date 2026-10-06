@@ -15,7 +15,7 @@
  * sozinhos. Toda falha aqui é silenciosa.
  */
 
-export type SoundName = "leadNew" | "leadClaimed" | "checkin" | "rankUp" | "sale" | "goal" | "success" | "error";
+export type SoundName = "leadNew" | "leadClaimed" | "checkin" | "rankUp" | "sale" | "goal" | "success" | "error" | "birthday";
 
 type Note = { freq: number; at: number; dur: number };
 
@@ -28,6 +28,24 @@ const MASTER_GAIN = 0.32;
 const STORAGE_KEY = "faceimob-sound";
 
 const CATALOG: Record<SoundName, Preset> = {
+  // "Parabéns pra você" (03/10/2026): as duas primeiras frases, em compasso 3/4.
+  birthday: {
+    notes: [
+      { freq: 392.0, at: 0.0, dur: 0.2 },
+      { freq: 392.0, at: 0.3, dur: 0.12 },
+      { freq: 440.0, at: 0.45, dur: 0.4 },
+      { freq: 392.0, at: 0.9, dur: 0.4 },
+      { freq: 523.25, at: 1.35, dur: 0.4 },
+      { freq: 493.88, at: 1.8, dur: 0.7 },
+      { freq: 392.0, at: 2.6, dur: 0.2 },
+      { freq: 392.0, at: 2.9, dur: 0.12 },
+      { freq: 440.0, at: 3.05, dur: 0.4 },
+      { freq: 392.0, at: 3.5, dur: 0.4 },
+      { freq: 587.33, at: 3.95, dur: 0.4 },
+      { freq: 523.25, at: 4.4, dur: 0.8 },
+    ],
+    peak: 0.26,
+  },
   // Três toques ascendentes e distintos — precisa ser percebido mesmo com o
   // corretor em outra tela, sem competir com a fanfarra de venda.
   leadNew: {

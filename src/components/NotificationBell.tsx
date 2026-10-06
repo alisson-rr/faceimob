@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { avisarLead, avisarQueda } from "@/components/ui/avisos";
 import { toast } from "@/components/ui/sonner";
+import { textoDeDesfechoRuim } from "@/lib/dealStatus";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { resolveLink } from "@/lib/notificationLink";
@@ -137,15 +139,19 @@ export default function NotificationBell() {
           const nova = payload.new as { kind?: unknown; title?: unknown; body?: unknown; link?: unknown };
           if (nova.kind === "lead_new_admin" && typeof nova.title === "string") {
             const link = typeof nova.link === "string" ? nova.link : "/leads";
-            toast(nova.title, {
-              description: typeof nova.body === "string" ? nova.body : undefined,
-              duration: 10_000,
-              action: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },
+            avisarLead(nova.title, {
+              descricao: typeof nova.body === "string" ? nova.body : undefined,
+              frase: "Mais um lead chegando! 🔥",
+              acao: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },
             });
           }
           if (typeof nova.kind === "string" && POPUP_KINDS.has(nova.kind) && typeof nova.title === "string") {
             const link = typeof nova.link === "string" ? nova.link : "/pipeline";
-            toast(nova.title, {
+            // Negócio que caiu (OFF, distrato, queda, reprovado) sai em vermelho.
+            const corpo = typeof nova.body === "string" ? nova.body : "";
+            if (textoDeDesfechoRuim(`${nova.title} ${corpo}`)) {
+              avisarQueda(nova.title, corpo || undefined);
+            } else toast(nova.title, {
               description: typeof nova.body === "string" ? nova.body : undefined,
               duration: 10_000,
               action: { label: "Abrir", onClick: () => navigateRef.current(resolveLink(link)) },
@@ -379,7 +385,13 @@ export default function NotificationBell() {
                         {!i.read_at && <span className="sr-only">Não lida. </span>}
                         <p className="text-xs font-medium truncate">{i.title}</p>
                         {i.body && <p className="text-xs text-muted-foreground line-clamp-2">{i.body}</p>}
-                        <p className="text-xs text-muted-foreground">{dateTime(i.created_at)}</p>
+                        <p className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                          {dateTime(i.created_at)}
+                          {/* Pedido de 06/10/2026: dizer que o aviso leva ao card. */}
+                          {i.link && (
+                            <span className="font-semibold text-primary" aria-hidden>Abrir card →</span>
+                          )}
+                        </p>
                       </button>
                       <button
                         type="button"

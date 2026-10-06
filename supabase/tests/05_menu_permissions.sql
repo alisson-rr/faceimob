@@ -79,7 +79,8 @@ begin
   -- tinha 7 concessões e NENHUMA policy o consultava — interruptor que a tela
   -- de Permissões oferecia e que não mudava nada. `/settings` mexe só no
   -- próprio perfil e na própria sessão, e quem autoriza é a RLS.
-  perform pg_temp.check5(n = 20, format('catálogo tem os 20 códigos menu.* (tem %s)', n));
+  -- 21 com a Central do Corretor (0209), concedida a todos os papéis.
+  perform pg_temp.check5(n = 21, format('catálogo tem os 21 códigos menu.* (tem %s)', n));
 
   perform pg_temp.check5(
     exists (select 1 from public.permissions where code = 'menu.dashboard'),

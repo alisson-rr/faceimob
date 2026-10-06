@@ -59,18 +59,18 @@ begin
 
   update public.automation_settings set pipeline_move_email=true;
   update public.deals set status_detail='12. EM PROCESSAMENTO' where id=v_deal;
-  perform pg_temp.check_pipeline((select count(*)=3 from public.cca_move_emails where deal_id=v_deal and source='pipeline'), 'corretor, gerente e diretor recebem uma vez');
+  perform pg_temp.check_pipeline((select count(*)=3 from public.cca_move_emails where deal_id=v_deal and source='pipeline' and not copia), 'corretor, gerente e diretor recebem uma vez');
   perform pg_temp.check_pipeline((select bool_and(message like '%ENVIO DE RP%' and message like '%EM PROCESSAMENTO%') from public.cca_move_emails where deal_id=v_deal), 'e-mail contém antes e depois');
   update public.deals set notes='Sem movimentação',status_detail='12. EM PROCESSAMENTO' where id=v_deal;
-  perform pg_temp.check_pipeline((select count(*)=3 from public.cca_move_emails where deal_id=v_deal), 'salvar mesmo status não duplica');
+  perform pg_temp.check_pipeline((select count(*)=3 from public.cca_move_emails where deal_id=v_deal and not copia), 'salvar mesmo status não duplica');
   update public.deals set status_group_id=(select id from public.deal_status_groups where id is distinct from deals.status_group_id limit 1) where id=v_deal;
-  perform pg_temp.check_pipeline((select count(*)=6 from public.cca_move_emails where deal_id=v_deal), 'Status 1 manual também enfileira');
+  perform pg_temp.check_pipeline((select count(*)=6 from public.cca_move_emails where deal_id=v_deal and not copia), 'Status 1 manual também enfileira');
 
   -- A CCA conserva o próprio aviso, sem e-mail duplicado do Pipeline.
   perform set_config('faceimob.cca_move','on',true);
   update public.deals set status_detail='16. PENDENTE' where id=v_deal;
   perform set_config('faceimob.cca_move','',true);
-  perform pg_temp.check_pipeline((select count(*)=6 from public.cca_move_emails where deal_id=v_deal), 'movimento da CCA não duplica fila do Pipeline');
+  perform pg_temp.check_pipeline((select count(*)=6 from public.cca_move_emails where deal_id=v_deal and not copia), 'movimento da CCA não duplica fila do Pipeline');
   update public.automation_settings set pipeline_move_email=false;
   perform public.dispatch_pending_cca_emails();
   perform pg_temp.check_pipeline((select bool_and(status='expired') from public.cca_move_emails where deal_id=v_deal), 'desligar expira pendências');

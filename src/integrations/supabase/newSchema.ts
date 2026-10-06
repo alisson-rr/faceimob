@@ -105,6 +105,8 @@ const rolePriority: NewAppRole[] = [
  * gerente e diretor, e por isso não serve para decidir quem ATENDE. Só devolve
  * `'broker'` para quem não carrega nenhum outro papel.
  */
+const STAFF_ROLES = new Set<NewAppRole>(["admin", "partner", "cca"]);
+
 export const primaryRole = (roles: NewAppRole[]): NewAppRole =>
   rolePriority.find((role) => roles.includes(role)) || "broker";
 
@@ -557,8 +559,10 @@ export async function listLegacyDeals(
         primary?.is_shareholder == null
           ? undefined
           : primary.is_shareholder
-            ? "Sim"
-            : "Não",
+            // Mesmo texto das opções do campo (SIM_NAO no DealForm): com "Sim"
+            // o Select não achava a opção e o Cotista abria vazio (05/10/2026).
+            ? "SIM"
+            : "NÃO",
       dependente: primary?.dependents || undefined,
       data_admissao: primary?.admission_date || undefined,
       referencia_cch: primary?.cch_reference || undefined,
@@ -575,8 +579,10 @@ export async function listLegacyDeals(
         secondary?.is_shareholder == null
           ? undefined
           : secondary.is_shareholder
-            ? "Sim"
-            : "Não",
+            // Mesmo texto das opções do campo (SIM_NAO no DealForm): com "Sim"
+            // o Select não achava a opção e o Cotista abria vazio (05/10/2026).
+            ? "SIM"
+            : "NÃO",
       dependente2: secondary?.dependents || undefined,
       data_admissao2: secondary?.admission_date || undefined,
       referencia_cch2: secondary?.cch_reference || undefined,
@@ -672,7 +678,13 @@ const legacyLeadStatus = (
   return "new";
 };
 
-export async function listLegacyLeads(): Promise<Lead[]> {
+/**
+ * Com `intervalo` (ISO, `ate` exclusivo) a lista vem inteira do período, em
+ * páginas — é o seletor de período da aba Leads do Dashboard (03/10/2026), que
+ * precisa do número exato de "mês passado" mesmo com mais de 1.000 leads.
+ */
+export async function listLegacyLeads(intervalo?: { de: string; ate: string }): Promise<Lead[]> {
+  const colunas = "id,full_name,phone,email,source_id,utm_source,assigned_to,created_at,status,funnel_stage,notes";
   const [leadsRes, sourcesRes, profilesRes] = await Promise.all([
     // `.order("id")` desempata: com `created_at` igual (importação em lote, rajada
     // do webhook da Meta) o Postgres pode devolver as linhas em ordem diferente a
@@ -687,9 +699,11 @@ export async function listLegacyLeads(): Promise<Lead[]> {
     // evoluir para contagem agrupada no banco (por mês, origem, situação e
     // corretor) quando o Dashboard tiver essa RPC. O total da base já é exato
     // em `loadDashboardPayload`.
-    db.from("leads")
-      .select("id,full_name,phone,email,source_id,utm_source,assigned_to,created_at,status,funnel_stage,notes")
-      .order("created_at", { ascending: false }).order("id"),
+    intervalo
+      ? allRows((from, to, count) => db.from("leads").select(colunas, { count })
+        .gte("created_at", intervalo.de).lt("created_at", intervalo.ate)
+        .order("created_at", { ascending: false }).order("id").range(from, to))
+      : db.from("leads").select(colunas).order("created_at", { ascending: false }).order("id"),
     db.from("lead_sources").select("id,label"),
     db.from("profiles").select("id,full_name"),
   ]);
@@ -727,14 +741,37 @@ export type DashboardPayload = {
   /** Total de leads que a RLS deixa ver — contagem exata, sem baixar a lista. */
   leadsCount: number;
   ccaCounts: Record<string, number>;
+  /** Negócios que passaram pelo CCA (têm caso em `cca_cases`), de qualquer mês. */
+  ccaDealIds: string[];
   staff: {
     brokersTotal: number;
     active: number;
     managers: number;
     directors: number;
+    /** Admin, sócio e CCA que não lideram equipe. */
+    staff: number;
   };
   closedMonths: string[];
 };
+
+/**
+ * Composição do time (04/10/2026): cada pessoa ativa num grupo só. Todo perfil
+ * nasce com `broker`, então "corretor" é quem não lidera nem é do staff; staff
+ * = admin, sócio e CCA que não lideram equipe; diretor que também é gerente
+ * conta como diretor.
+ */
+export function contarTime(people: Pick<PersonRecord, "active" | "roles">[]): DashboardPayload["staff"] {
+  const ativos = people.filter((person) => person.active);
+  const lidera = (roles: NewAppRole[]) => roles.includes("director") || roles.includes("manager");
+  const doStaff = (roles: NewAppRole[]) => roles.some((role) => STAFF_ROLES.has(role));
+  return {
+    brokersTotal: ativos.filter((p) => p.roles.includes("broker") && !lidera(p.roles) && !doStaff(p.roles)).length,
+    active: ativos.length,
+    managers: ativos.filter((p) => p.roles.includes("manager") && !p.roles.includes("director")).length,
+    directors: ativos.filter((p) => p.roles.includes("director")).length,
+    staff: ativos.filter((p) => doStaff(p.roles) && !lidera(p.roles)).length,
+  };
+}
 
 export async function loadDashboardPayload(
   loadDeals: () => Promise<LegacyDealRecord[]> = () => listLegacyDeals(),
@@ -784,15 +821,8 @@ export async function loadDashboardPayload(
     activeMonth,
     leadsCount: leadsRes.count ?? 0,
     ccaCounts,
-    staff: (() => {
-      const activePeople = people.filter((person) => person.active);
-      return {
-        brokersTotal: activePeople.filter((person) => person.roles.includes("broker")).length,
-        active: activePeople.length,
-        managers: activePeople.filter((person) => person.roles.includes("manager")).length,
-        directors: activePeople.filter((person) => person.roles.includes("director")).length,
-      };
-    })(),
+    ccaDealIds: [...new Set(ccaRes.data.map((row) => row.deal_id))],
+    staff: contarTime(people),
     closedMonths: (closedRes.data || [])
       .map((row) => isoMonthToDisplay(row.period))
       .filter(Boolean) as string[],

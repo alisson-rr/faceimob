@@ -1,33 +1,10 @@
 import type { ComponentProps, CSSProperties } from "react";
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
-import { Toaster as Sonner, toast } from "sonner";
-import { playSound } from "@/lib/engagement/audio";
+import { Toaster as Sonner } from "sonner";
+import { SeloDoAviso } from "@/components/ui/selo-do-aviso";
+import { toast } from "@/components/ui/toast-faceimob";
 
 type ToasterProps = ComponentProps<typeof Sonner>;
-
-/**
- * Som nos avisos de sucesso e de erro (decisão de 12/09/2026).
- *
- * O sonner não tem gancho de "aviso exibido", e várias telas importam `toast`
- * direto de "sonner". Trocar a propriedade aqui, no módulo que o App carrega
- * para montar o Toaster (e que o `use-toast` usa), alcança todas as chamadas
- * sem editar tela por tela. Aviso, info e neutro ficam mudos: som em todo aviso
- * vira ruído, e os neutros do `EngagementLayer` já tocam o som da comemoração.
- *
- * Se o som sai quem decide é o `audio.ts` (mudo global, rajada de avisos,
- * comemoração soando no mesmo instante). Por isso reaplicar a troca (HMR) só
- * empilha um segundo pedido no mesmo instante, que ele descarta.
- */
-const sucessoNativo = toast.success;
-const erroNativo = toast.error;
-toast.success = (mensagem, opcoes) => {
-  playSound("success");
-  return sucessoNativo(mensagem, opcoes);
-};
-toast.error = (mensagem, opcoes) => {
-  playSound("error");
-  return erroNativo(mensagem, opcoes);
-};
 
 /**
  * Todo aviso no meio da tela: sucesso, erro, aviso, info e neutro.
@@ -73,35 +50,38 @@ const Toaster = ({ ...props }: ToasterProps) => (
     className={classeDaLista}
     style={larguraDaLista}
     icons={{
-      success: <CheckCircle2 className="size-5 text-success" aria-hidden />,
-      error: <XCircle className="size-5 text-destructive" aria-hidden />,
-      warning: <AlertTriangle className="size-5 text-warning" aria-hidden />,
-      info: <Info className="size-5 text-info" aria-hidden />,
+      success: <SeloDoAviso tom="success"><CheckCircle2 /></SeloDoAviso>,
+      error: <SeloDoAviso tom="destructive"><XCircle /></SeloDoAviso>,
+      warning: <SeloDoAviso tom="warning"><AlertTriangle /></SeloDoAviso>,
+      info: <SeloDoAviso tom="info"><Info /></SeloDoAviso>,
     }}
     toastOptions={{
       classNames: {
+        // Cartão com faixa de cor à esquerda, brilho da mesma cor saindo dela e
+        // anel fino (05/10/2026: "deixe bonitão os popups do CRM"). A cor é a
+        // variável `--toast-accent`: o tipo define a dele (abaixo) e um aviso
+        // especial (lead, queda) troca pelo `style`, que vence a classe — sem
+        // duas classes de cor brigando pela ordem do Tailwind.
         toast:
-          "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg group-[.toaster]:rounded-xl group-[.toaster]:px-5 group-[.toaster]:py-4 group-[.toaster]:gap-3 [&_[data-icon]]:size-5 [&_[data-title]]:text-base [&_[data-title]]:font-semibold",
+          "group toast relative overflow-hidden group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-2xl group-[.toaster]:rounded-2xl group-[.toaster]:pl-6 group-[.toaster]:pr-10 group-[.toaster]:py-4 group-[.toaster]:gap-4 " +
+          "ring-1 ring-[hsl(var(--toast-accent)/0.45)] bg-gradient-to-r from-[hsl(var(--toast-accent)/0.18)] via-[hsl(var(--toast-accent)/0.05)] to-transparent " +
+          "before:absolute before:inset-y-0 before:left-0 before:w-1.5 before:bg-[hsl(var(--toast-accent))] " +
+          "[&_[data-icon]]:size-10 [&_[data-icon]]:m-0 [&_[data-title]]:font-display [&_[data-title]]:text-base [&_[data-title]]:font-bold",
         description: "group-[.toast]:text-sm group-[.toast]:text-muted-foreground",
-        actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
+        // `!` porque o sonner pinta o botão por estilo próprio (`[data-button]`),
+        // que saía preto por cima do tema.
+        actionButton:
+          "!bg-primary !text-primary-foreground !font-semibold !rounded-lg !h-8 !px-3 hover:!bg-primary/90",
         cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
         // 24 px contra os 20 px do sonner: fechar tem de ser fácil. Cores dos
         // tokens porque o padrão do sonner segue o tema "light" dele, não o do app.
+        // No canto direito: no esquerdo (padrão do sonner) ele cobria a faixa de cor.
         closeButton:
-          "group-[.toast]:size-6 group-[.toast]:bg-background group-[.toast]:text-foreground group-[.toast]:border-border group-[.toast]:hover:bg-muted",
-        // Realce por tipo: anel, sombra e degradê saindo da esquerda, no token do
-        // tipo (par com contraste garantido nos dois temas). Só propriedades que
-        // a linha `toast` acima NÃO define — trocar a cor de fundo ou da borda
-        // dependeria da ordem em que o Tailwind gera as regras; o degradê é
-        // `background-image` e soma com a cor de fundo.
-        success:
-          "group-[.toaster]:ring-2 group-[.toaster]:ring-success/50 group-[.toaster]:shadow-success/30 bg-gradient-to-r from-success/15 to-transparent to-60%",
-        error:
-          "group-[.toaster]:ring-2 group-[.toaster]:ring-destructive/60 group-[.toaster]:shadow-destructive/30 bg-gradient-to-r from-destructive/15 to-transparent to-60%",
-        warning:
-          "group-[.toaster]:ring-2 group-[.toaster]:ring-warning/50 group-[.toaster]:shadow-warning/30 bg-gradient-to-r from-warning/15 to-transparent to-60%",
-        // Informação não é alarme: só o anel fino.
-        info: "group-[.toaster]:ring-1 group-[.toaster]:ring-info/30",
+          "group-[.toast]:size-6 group-[.toast]:bg-background group-[.toast]:text-foreground group-[.toast]:border-border group-[.toast]:hover:bg-muted !left-auto !right-1.5 !top-1.5 !transform-none",
+        success: "[--toast-accent:var(--success)]",
+        error: "[--toast-accent:var(--destructive)]",
+        warning: "[--toast-accent:var(--warning)]",
+        info: "[--toast-accent:var(--info)]",
       },
     }}
     {...props}

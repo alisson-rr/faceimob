@@ -439,45 +439,37 @@ select pg_temp.assert_eq(
   'sem sessão (cron) a roleta continua enxergando a fila');
 
 -- -----------------------------------------------------------------------------
-\echo '== 5b. aviso de lead sem atendimento só a quem alcança a roleta =='
+\echo '== 5b. sem teto de voltas (0212): ninguém recebe aviso de lead sem atendimento =='
 -- -----------------------------------------------------------------------------
+-- O aviso saía com o nome do cliente e era o que este bloco protegia (só a
+-- quem alcança a roleta). Desde a 0212 ele não sai para ninguém.
 do $$
 declare
-  ari   uuid := '00000000-0000-0000-0000-000000014101';
-  dirce uuid := '00000000-0000-0000-0000-000000014103';
-  gil   uuid := '00000000-0000-0000-0000-000000014104';
-  hugo  uuid := '00000000-0000-0000-0000-000000014106';
   beto  uuid := '00000000-0000-0000-0000-000000014107';
   gB    uuid := '00000000-0000-0000-0000-0000000141b2';
   v_lead uuid;
-  v_max  int;
   i int;
 begin
-  v_max := coalesce((select s.roulette_max_rounds from public.automation_settings s where s.id), 5);
-
   insert into public.leads (full_name, phone, status, distribution_group_id)
   values ('Sem atendimento B 0141', '11955514120', 'queued', gB)
   returning id into v_lead;
   -- As voltas vencidas que release_expired_leads teria registrado, todas do Beto.
-  for i in 1..v_max loop
+  for i in 1..5 loop
     insert into public.lead_assignments (lead_id, profile_id, group_id, sequence, deadline, released_at, release_reason)
     values (v_lead, beto, gB, i, now(), now(), 'timeout');
   end loop;
 
-  perform pg_temp.assert_eq(public.assign_lead(v_lead), null::uuid, 'no teto de voltas o lead sai da roleta');
+  perform public.assign_lead(v_lead);
 
   perform pg_temp.assert_eq(
     (select count(*)::int from public.notifications n
-      where n.kind = 'lead_unattended' and n.link = '/leads?lead=' || v_lead and n.profile_id = hugo), 1,
-    'o gerente da roleta B é avisado');
-  perform pg_temp.assert_eq(
-    (select count(*)::int from public.notifications n
-      where n.kind = 'lead_unattended' and n.link = '/leads?lead=' || v_lead and n.profile_id = ari), 1,
-    'o administrador é avisado');
-  perform pg_temp.assert_eq(
-    (select count(*)::int from public.notifications n
-      where n.kind = 'lead_unattended' and n.link = '/leads?lead=' || v_lead and n.profile_id in (gil, dirce)), 0,
-    'gerente e diretora da outra equipe NÃO recebem o nome do cliente');
+      where n.kind = 'lead_unattended' and n.link = '/leads?lead=' || v_lead), 0,
+    'depois de 5 voltas ninguém é avisado');
+
+  -- O Beto atende: um lead dele esperando "Atender" o tiraria da vez (0220)
+  -- no bloco 7, que conta com ele na fila.
+  update public.lead_assignments set responded_at = now()
+   where lead_id = v_lead and released_at is null;
 end
 $$;
 
@@ -608,7 +600,7 @@ begin
     true, 'apagar arquivo respeita a trava do dossiê enviado, igual a deal_documents_delete');
   perform pg_temp.assert_eq(
     (select with_check from pg_policies
-      where schemaname = 'storage' and policyname = 'deal_documents_storage_insert') like '%document_review_status%',
+      where schemaname = 'storage' and policyname = 'deal_documents_storage_insert') like '%dossie_com_o_comercial%',
     true, 'gravar arquivo respeita a trava do dossiê enviado, igual a deal_documents_insert');
   perform pg_temp.assert_eq(
     (select qual from pg_policies

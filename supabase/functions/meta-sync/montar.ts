@@ -112,6 +112,24 @@ export function janelaPedida(hoje: string, dias: number, ultimaOk: string | null
   return { inicio: new Date(Math.min(...candidatos)).toISOString().slice(0, 10), fim: hoje };
 }
 
+/**
+ * A janela buscada em fatias de `dias` dias (padrão 7), em ordem. Pedir os
+ * insights diários de centenas de campanhas de uma vez passava dos 30 s da
+ * Meta na primeira sincronização (02/10/2026); fatia pequena responde rápido.
+ */
+export function fatiasDaJanela(janela: Janela, dias = 7): Janela[] {
+  if (!DATA.test(janela.inicio) || !DATA.test(janela.fim) || janela.inicio > janela.fim) {
+    throw new Error("Janela inválida para dividir a sincronização.");
+  }
+  const fim = Date.parse(`${janela.fim}T00:00:00Z`);
+  const fatias: Janela[] = [];
+  for (let ini = Date.parse(`${janela.inicio}T00:00:00Z`); ini <= fim; ini += dias * DIA_MS) {
+    const ate = Math.min(ini + (dias - 1) * DIA_MS, fim);
+    fatias.push({ inicio: new Date(ini).toISOString().slice(0, 10), fim: new Date(ate).toISOString().slice(0, 10) });
+  }
+  return fatias;
+}
+
 const inteiroOuNulo = (v: unknown) => (typeof v === "number" && Number.isInteger(v) ? v : null);
 
 /** Os campos crus da conta, em reais. `balance` não entra: na Meta é valor a pagar. */

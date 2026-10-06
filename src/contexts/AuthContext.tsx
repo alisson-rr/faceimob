@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { getCurrentProfile } from "@/integrations/supabase/newSchema";
+import { tipoDaFalha, type TipoDeFalha } from "@/lib/supabaseError";
 import { signOutWithPush, syncPushSubscription } from "@/lib/push";
 import {
   listRolePermissions,
@@ -88,6 +89,8 @@ interface AuthContextType {
    * afirma a primeira coisa quando a verdadeira é a segunda.
    */
   perfilFalhou: boolean;
+  /** Por que a leitura falhou (`tipoDaFalha`), para a tela dizer o que fazer. */
+  perfilFalha: TipoDeFalha | null;
   isAdmin: boolean;
   loading: boolean;
   /** Papel sendo pré-visualizado por um admin, ou null. */
@@ -104,7 +107,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null, session: null, profile: null,
   role: 'broker', roles: [], realRole: 'broker', realRoles: [], realIsAdmin: false,
-  perfilFalhou: false, isAdmin: false, loading: true,
+  perfilFalhou: false, perfilFalha: null, isAdmin: false, loading: true,
   refreshProfile: async () => {},
   previewRole: null, setPreviewRole: () => {},
   can: () => false, canEnterStage: () => false,
@@ -120,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole>('broker');
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [perfilFalhou, setPerfilFalhou] = useState(false);
+  const [perfilFalha, setPerfilFalha] = useState<TipoDeFalha | null>(null);
   const [profile, setProfile] = useState<{ name: string; email: string | null; phone: string | null; avatar_url: string | null } | null>(null);
   const [rolePerms, setRolePerms] = useState<RolePermissionRecord[]>([]);
   const [stagePerms, setStagePerms] = useState<StagePermissionRecord[]>([]);
@@ -194,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole('broker');
       setRoles([]);
       setPerfilFalhou(false);
+      setPerfilFalha(null);
       setRolePerms([]);
       setStagePerms([]);
       setPreviewRoleState(null);
@@ -210,14 +215,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // A comparação com o usuário já carregado evita remontar a rota a cada
     // TOKEN_REFRESHED/USER_UPDATED do mesmo usuário, o que derrubaria filtro,
     // modal e formulário abertos sem motivo.
-    if (loadedForUser.current !== nextSession.user.id) setLoading(true);
+    const mesmoUsuario = loadedForUser.current === nextSession.user.id;
+    if (!mesmoUsuario) setLoading(true);
 
     try {
-      const [current, rp, sp] = await Promise.all([
+      // Celular que acorda renova o token com a rede ainda voltando: uma falha
+      // passageira aqui virava "Acesso não liberado" até recarregar a página —
+      // o corretor tocava no aviso do lead e perdia o prazo (03/10/2026).
+      // Três tentativas antes de desistir.
+      const carregar = () => Promise.all([
         getCurrentProfile(nextSession.user.id),
         listRolePermissions(),
         listStagePermissions(),
       ]);
+      const [current, rp, sp] = await carregar()
+        .catch(() => new Promise((r) => setTimeout(r, 1000)).then(carregar))
+        .catch(() => new Promise((r) => setTimeout(r, 3000)).then(carregar));
       setProfile(manter({
         name: current.profile?.full_name || nextSession.user.email || "Usuário",
         email: current.profile?.email || nextSession.user.email || null,
@@ -227,10 +240,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(current.role as AppRole);
       setRoles(manter(current.roles as AppRole[]));
       setPerfilFalhou(false);
+      setPerfilFalha(null);
       setRolePerms(manter(rp));
       setStagePerms(manter(sp));
     } catch (error) {
       console.error("Falha ao carregar perfil autenticado:", error);
+      // Mesmo usuário já carregado (renovação de token): o que valia continua
+      // valendo. Zerar a matriz aqui trancava a tela aberta por um soluço de rede.
+      if (mesmoUsuario) return;
       const metadata = nextSession.user.user_metadata || {};
       setProfile({
         name: metadata.full_name || metadata.name || nextSession.user.email || "Usuário",
@@ -247,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // que houve foi um erro de leitura.
       setRoles([]);
       setPerfilFalhou(true);
+      setPerfilFalha(tipoDaFalha(error));
       setRolePerms([]);
       setStagePerms([]);
     } finally {
@@ -372,12 +390,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Objeto literal a cada render mudaria o valor do contexto e re-renderizaria
   // todas as telas mesmo quando nenhum campo mudou.
   const value = useMemo<AuthContextType>(() => ({
-    user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
+    user, session, profile, perfilFalhou, perfilFalha, isAdmin, loading, refreshProfile,
     role: effectiveRole, roles: effectiveRoles, realRole: role, realRoles: roles, realIsAdmin,
     previewRole: previewRoleState, setPreviewRole,
     can, canEnterStage, signOut,
   }), [
-    user, session, profile, perfilFalhou, isAdmin, loading, refreshProfile,
+    user, session, profile, perfilFalhou, perfilFalha, isAdmin, loading, refreshProfile,
     effectiveRole, effectiveRoles, role, roles, realIsAdmin,
     previewRoleState, setPreviewRole, can, canEnterStage, signOut,
   ]);

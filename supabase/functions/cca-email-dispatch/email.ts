@@ -11,7 +11,8 @@
  */
 
 export type CcaMoveEmail = {
-  source?: "cca" | "pipeline";
+  /** "conferencia" (0203): enviada, aprovada ou devolvida na conferência do gerente. */
+  source?: "cca" | "pipeline" | "conferencia";
   deal_code: string | null;
   client_name: string | null;
   stage_name: string;
@@ -46,7 +47,8 @@ export function linkDoPipeline(appUrl: string | null | undefined): string | null
 /** Dados do negócio para o e-mail (0177: `email_detalhes_do_negocio`). Tudo texto, tudo opcional. */
 export type DetalhesDoNegocio = Partial<Record<
   | "codigo" | "cliente" | "cpf" | "empreendimento" | "construtora" | "status1" | "status2" | "status2_tom"
-  | "status2_antes" | "corretor1" | "corretor2" | "gerente1" | "gerente2" | "observacao" | "quando",
+  | "status2_antes" | "corretor1" | "corretor2" | "gerente1" | "gerente2" | "observacao" | "quando"
+  | "ultimo_comentario" | "ultimo_comentario_autor" | "ultimo_comentario_quando",
   string
 >>;
 
@@ -105,6 +107,11 @@ export function montarEmailDeMovimento(
   const quem = umaLinha(email.actor_name) || "Alguém";
   // Pipeline: a observação escrita na troca. CCA: a mensagem da análise.
   const observacao = (pipeline ? d.observacao ?? "" : email.message ?? "").trim();
+  // 0217: o último comentário do histórico. A troca com observação grava um
+  // comentário "STATUS: observação" — esse já está no quadro acima e não repete.
+  const comentario = (d.ultimo_comentario ?? "").trim();
+  const mostraComentario = Boolean(comentario) && !(observacao && comentario.endsWith(observacao));
+  const autoria = [umaLinha(d.ultimo_comentario_autor), umaLinha(d.ultimo_comentario_quando)].filter(Boolean).join(" · ");
   const cor = COR_DO_TOM[umaLinha(d.status2_tom)] ?? COR_DO_TOM.info;
   const link = linkDoPipeline(appUrl);
   const origem = origemDoApp(appUrl);
@@ -141,7 +148,7 @@ export function montarEmailDeMovimento(
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
 <tr><td style="background:#1b2a4a;padding:18px 28px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td>${marca}</td>
-<td align="right" style="color:#aebbd6;font-size:12px;">${pipeline ? "Pipeline" : "Crédito"} · ${escapeHtml(codigo)}</td>
+<td align="right" style="color:#aebbd6;font-size:12px;">${pipeline ? "Pipeline" : email.source === "conferencia" ? "Conferência" : "Crédito"} · ${escapeHtml(codigo)}</td>
 </tr></table></td></tr>
 <tr><td style="padding:28px 28px 8px;">
 <div style="font-size:11px;letter-spacing:1.6px;color:#6b7280;font-weight:bold;">STATUS 2</div>
@@ -156,6 +163,11 @@ ${subtitulo ? `<div style="font-size:13px;color:#64748b;margin-top:4px;">${escap
 ${observacao ? `<tr><td style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fff8e6;border-left:4px solid #f5b400;border-radius:8px;"><tr><td style="padding:12px 14px;">
 <div style="font-size:11px;letter-spacing:1px;color:#8a6d00;font-weight:bold;">OBSERVAÇÃO</div>
 <div style="font-size:14px;color:#3f3a2a;margin-top:4px;">${escapeHtml(observacao).replace(/\r?\n/g, "<br>")}</div>
+</td></tr></table></td></tr>` : ""}
+${mostraComentario ? `<tr><td style="padding:14px 28px 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef4ff;border-left:4px solid #2563eb;border-radius:8px;"><tr><td style="padding:12px 14px;">
+<div style="font-size:11px;letter-spacing:1px;color:#1e40af;font-weight:bold;">ÚLTIMO COMENTÁRIO</div>
+<div style="font-size:14px;color:#1f2937;margin-top:4px;">${escapeHtml(comentario).replace(/\r?\n/g, "<br>")}</div>
+${autoria ? `<div style="font-size:12px;color:#64748b;margin-top:6px;">${escapeHtml(autoria)}</div>` : ""}
 </td></tr></table></td></tr>` : ""}
 <tr><td align="center" style="padding:24px 28px 8px;">${link
     ? `<a href="${escapeHtml(link)}" style="display:inline-block;background:#1b2a4a;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:13px 26px;border-radius:10px;">Abrir o negócio no FACEIMOB</a>

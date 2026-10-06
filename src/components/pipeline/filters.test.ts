@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
   ALL, EMPTY_FILTERS, MY_TEAM, applyDealFilters, dealBrokers, dealMonth, hasActiveFilter,
-  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, teamProfileIds, dealsForLeader,
+  inconsistentClosedMonths, monthClosePreview, pct, sortDeals, sortDealsBy, status1DeAbertura, teamProfileIds, dealsForLeader,
 } from "./filters";
 import { GRUPOS, catalogoDeTeste as catalogo } from "./statusCatalog.fixture";
 
@@ -102,6 +102,19 @@ describe("filtro de negócios por id", () => {
 });
 
 describe("demais filtros", () => {
+  it("Status 2 aceita vários de uma vez; vazio é todos", () => {
+    const linhas = [
+      deal({ id: "a", status: "06. ENVIO DE RP" }),
+      deal({ id: "b", status: "13. ESTEIRA AGIL" }),
+      deal({ id: "c", status: "PROPOSTA" }),
+    ];
+    const marcados = { ...EMPTY_FILTERS, status2: ["06. ENVIO DE RP", "13. ESTEIRA AGIL"] };
+    expect(applyDealFilters(linhas, marcados).map((r) => r.id)).toEqual(["a", "b"]);
+    expect(applyDealFilters(linhas, EMPTY_FILTERS)).toHaveLength(3);
+    expect(hasActiveFilter(marcados)).toBe(true);
+    expect(hasActiveFilter({ ...EMPTY_FILTERS, status2: [] })).toBe(false);
+  });
+
   it("CPF casa com e sem pontuação", () => {
     const linhas = [deal({ id: "a", cpf: "123.456.789-00" })];
     expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, cpf: "12345678900" })).toHaveLength(1);
@@ -193,10 +206,13 @@ describe("filtro de Status 1", () => {
       deal({ id: "off", status_group_id: GRUPOS.OFF.id }),
       deal({ id: "sem", status_group_id: null }),
     ];
-    expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, status1: GRUPOS.VENDA.id }).map((r) => r.id))
+    expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, status1: [GRUPOS.VENDA.id] }).map((r) => r.id))
       .toEqual(["venda"]);
+    // Vários Status 1 marcados (04/10/2026): basta casar um deles.
+    expect(applyDealFilters(linhas, { ...EMPTY_FILTERS, status1: [GRUPOS.VENDA.id, GRUPOS.OFF.id] }).map((r) => r.id))
+      .toEqual(["venda", "off"]);
     expect(applyDealFilters(linhas, EMPTY_FILTERS)).toHaveLength(3);
-    expect(hasActiveFilter({ ...EMPTY_FILTERS, status1: GRUPOS.OFF.id })).toBe(true);
+    expect(hasActiveFilter({ ...EMPTY_FILTERS, status1: [GRUPOS.OFF.id] })).toBe(true);
   });
 
   it("VENDA — todas as vendas inclui negócio ganho que já avançou para pós-venda", () => {
@@ -208,7 +224,7 @@ describe("filtro de Status 1", () => {
 
     expect(applyDealFilters(
       linhas,
-      { ...EMPTY_FILTERS, status1: GRUPOS.VENDA.id },
+      { ...EMPTY_FILTERS, status1: [GRUPOS.VENDA.id] },
       new Set(),
       GRUPOS.VENDA.id,
     ).map((row) => row.id)).toEqual(["venda-aberta", "pos-venda"]);
@@ -404,5 +420,16 @@ describe("pct · percentual do rateio", () => {
 
   it("quem precisa de mais casas pede", () => {
     expect(pct(33.333, { casas: 2 })).toBe("33,33%");
+  });
+});
+
+describe("status1DeAbertura", () => {
+  it("corretor abre em Proposta + Legado; quem lidera, só em Proposta", () => {
+    expect(status1DeAbertura(catalogo.groups, true)).toEqual([GRUPOS.PROPOSTA.id, GRUPOS.LEGADO.id]);
+    expect(status1DeAbertura(catalogo.groups, false)).toEqual([GRUPOS.PROPOSTA.id]);
+  });
+
+  it("sem catálogo carregado não recorta nada", () => {
+    expect(status1DeAbertura([], true)).toEqual([]);
   });
 });

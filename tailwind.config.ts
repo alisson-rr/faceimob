@@ -26,8 +26,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["'DM Sans Variable'", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
-        display: ["'Bricolage Grotesque Variable'", "system-ui", "Segoe UI", "sans-serif"],
+        // Poppins (index.css), a do site: uma cara so para CRM e site.
+        sans: ["Poppins", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        display: ["Poppins", "system-ui", "Segoe UI", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",

@@ -193,10 +193,8 @@ export type LeadRecord = {
   updated_at: string;
   /**
    * Quantas vezes este lead voltou à fila por prazo de atendimento vencido
-   * (`leads.roulette_misses`, 0074). Batido o teto de
-   * `automation_settings.roulette_max_rounds`, ele sai da roleta e espera na
-   * bandeja "sem atendimento" — antes circulava sem fim (havia leads com 22
-   * voltas em homologação) e nenhuma tela sabia distingui-lo de um lead novo.
+   * (`leads.roulette_misses`, 0074). O teto de voltas que tirava o lead da
+   * roleta foi desligado na 0212 (04/10/2026): ele gira até alguém atender.
    */
   roulette_misses: number;
 
@@ -316,12 +314,13 @@ export type AutomationSettings = {
 };
 
 const AUTOMATION_DEFAULTS: AutomationSettings = {
-  attend_timeout_seconds: 300,
+  attend_timeout_seconds: 600,
   overdue_block_threshold: 20,
   inactivity_alert_hours: 48,
   no_response_hours: 24,
   leads_paused: false,
-  roulette_max_rounds: 5,
+  // 0 = sem teto (0212): a roleta gira até alguém atender.
+  roulette_max_rounds: 0,
 };
 
 export async function getAutomationSettings(): Promise<AutomationSettings> {
@@ -654,8 +653,12 @@ export async function moveLeadStage(
  * O banco recusa se o lead não é dele ou já saiu de `assigned` — é essa recusa
  * que garante que dois corretores não atendem o mesmo lead.
  */
-export async function claimLead(id: string): Promise<void> {
-  const { error } = await db.rpc("claim_lead", { p_lead_id: id });
+export async function claimLead(id: string, nextActionAt?: Date): Promise<void> {
+  // `p_next_action_at` (0227) ainda não está no types.ts gerado.
+  const { error } = await untyped.rpc("claim_lead", {
+    p_lead_id: id,
+    ...(nextActionAt ? { p_next_action_at: nextActionAt.toISOString() } : {}),
+  });
   asError("atender lead", error);
 }
 

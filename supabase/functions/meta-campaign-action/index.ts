@@ -20,6 +20,9 @@ import {
  * USUÁRIO, que gravam quem pediu e quem decidiu).
  *   - {campaign_id, acao, verba_diaria?, confirma_aprendizado?} → ação manual.
  *   - {action_id, decisao, confirma_aprendizado?} → aprovar ou recusar proposta.
+ *   - {campaign_id, acao:'renomear', nome} → trocar o nome (0197). Sem fila nem
+ *     regra de verba: meta_action_renomear registra já 'executando', a edge
+ *     confere a conta dona, manda o nome e encerra com meta_action_finish.
  *
  * O executor, na ordem, sem atalho:
  *   1. meta_action_claim (aprovada → executando; a segunda chamada não acha nada);
@@ -58,6 +61,7 @@ const SEM_TOKEN =
 
 type Pedido =
   | { tipo: "acao"; campaign_id: string; acao: Acao; verba_diaria: number | null; confirma: boolean }
+  | { tipo: "renomear"; campaign_id: string; nome: string }
   | { tipo: "decisao"; action_id: string; decisao: "aprovar" | "recusar"; confirma: boolean };
 
 /** O que meta_action_create e meta_action_decide devolvem. */
@@ -104,6 +108,11 @@ function lerPedido(body: unknown): Pedido | null {
   }
 
   if (typeof b.campaign_id !== "string" || !UUID.test(b.campaign_id)) return null;
+  if (b.acao === "renomear") {
+    // O banco apara e confere de novo (1 a 400); aqui só barra o que nem é texto.
+    if (typeof b.nome !== "string" || !b.nome.trim() || b.nome.length > 1000 || b.verba_diaria !== undefined) return null;
+    return { tipo: "renomear", campaign_id: b.campaign_id, nome: b.nome };
+  }
   const acao = ACOES.find((a) => a === b.acao);
   if (!acao) return null;
   if (acao !== "verba") {
@@ -146,14 +155,14 @@ function aceitou(resposta: unknown): void {
  * leitura ao vivo, não do banco, que só sabe onde a campanha estava na última
  * sincronização. Devolve a frase da recusa, ou null quando pode seguir.
  */
-async function conferirDono(campanha: CampanhaAoVivo, a: Claim, svc: SupabaseClient): Promise<string | null> {
+async function conferirDono(campanha: CampanhaAoVivo, esperado: string | null, svc: SupabaseClient): Promise<string | null> {
   let act: string;
   try {
     act = actId(String(campanha.account_id ?? ""));
   } catch {
     return "A Meta não informou a conta de anúncios desta campanha: nada foi feito.";
   }
-  if (act !== a.act_id) {
+  if (act !== esperado) {
     return `Na Meta esta campanha está na conta ${act}, e não na conta em que foi sincronizada: nada foi feito. Sincronize de novo antes de agir.`;
   }
   const { data, error } = await svc
@@ -171,7 +180,7 @@ async function aplicar(a: Claim, token: string, svc: SupabaseClient): Promise<Fi
   );
   const antes = { status: campanha.status ?? null, effective_status: campanha.effective_status ?? null };
 
-  const recusa = await conferirDono(campanha, a, svc);
+  const recusa = await conferirDono(campanha, a.act_id, svc);
   if (recusa) return { status: "falhou", resultado: { antes }, erro: recusa };
 
   if (a.acao !== "verba") {
@@ -310,6 +319,61 @@ async function executar(actionId: string, token: string): Promise<Response> {
   return json({ ok: true, action_id: actionId, status: fim.status, ...(fim.erro ? { error: fim.erro } : {}) });
 }
 
+/** O que meta_action_renomear devolve (0197). */
+type Renomeio = {
+  action_id: string;
+  campaign_external_id: string;
+  act_id: string | null;
+  nome_anterior: string | null;
+  nome_novo: string;
+};
+
+/** Troca o nome na Meta e encerra a ação. O nome entra em ad_campaigns só depois
+ *  de a Meta aceitar; a sincronização seguinte confirma. */
+async function renomear(campaignId: string, r: Renomeio, token: string): Promise<Response> {
+  const svc = serviceClient();
+  const antes = { name: r.nome_anterior };
+  let fim: Fim;
+  try {
+    const campanha = await metaGet<CampanhaAoVivo>(r.campaign_external_id, { fields: "account_id" }, token);
+    const recusa = await conferirDono(campanha, r.act_id, svc);
+    if (recusa) {
+      fim = { status: "falhou", resultado: { antes }, erro: recusa };
+    } else {
+      aceitou(await metaPost(r.campaign_external_id, { name: r.nome_novo }, token));
+      fim = { status: "executada", resultado: { antes, depois: { name: r.nome_novo } }, erro: null };
+    }
+  } catch (e) {
+    console.error(
+      "meta-campaign-action: renomear falhou",
+      e instanceof MetaApiError ? `status=${e.status} code=${e.code ?? "-"}` : "sem código da Meta",
+    );
+    fim = { status: "falhou", resultado: { antes }, erro: descreverFalhaMeta(e) };
+  }
+
+  const { error: erroFim } = await svc.rpc("meta_action_finish", {
+    p_action_id: r.action_id,
+    p_status: fim.status,
+    p_resultado: fim.resultado,
+    p_erro: fim.erro,
+  });
+  if (fim.status === "executada") {
+    const { error } = await svc.from("ad_campaigns").update({ name: r.nome_novo }).eq("id", campaignId);
+    if (error) console.error("meta-campaign-action: nome não gravado na campanha", error.code ?? "-");
+  }
+  if (erroFim) {
+    console.error("meta-campaign-action: meta_action_finish falhou", erroFim.code ?? "-");
+    return json({
+      ok: false,
+      action_id: r.action_id,
+      status: fim.status,
+      error: `A Meta terminou como '${fim.status}', mas o registro não foi gravado. Confira a campanha no Gerenciador de Anúncios.`,
+    }, 500);
+  }
+  if (fim.status === "falhou") return json({ ok: false, action_id: r.action_id, status: "falhou", error: fim.erro }, 502);
+  return json({ ok: true, action_id: r.action_id, status: "executada" });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Use POST." }, 405);
@@ -321,18 +385,38 @@ Deno.serve(async (req) => {
   if (!pedido) {
     return json({
       error:
-        "Pedido inválido: envie {campaign_id, acao:'pausar'|'ativar'|'verba', verba_diaria?} " +
+        "Pedido inválido: envie {campaign_id, acao:'pausar'|'ativar'|'verba', verba_diaria?}, " +
+        "{campaign_id, acao:'renomear', nome} " +
         "ou {action_id, decisao:'aprovar'|'recusar'}.",
     }, 422);
   }
 
   // Sem token, nada é registrado: a proposta da IA não pode ser consumida por
   // falta de configuração. Recusar proposta não fala com a Meta e dispensa.
-  const vaiNaMeta = pedido.tipo === "acao" || pedido.decisao === "aprovar";
+  const vaiNaMeta = pedido.tipo !== "decisao" || pedido.decisao === "aprovar";
   const token = vaiNaMeta ? await metaToken() : null;
   if (vaiNaMeta && !token) return json({ error: SEM_TOKEN, code: "sem_token" }, 422);
 
   const usuario = clienteDoUsuario(req);
+  if (pedido.tipo === "renomear") {
+    const { data: reg, error: erroReg } = await usuario.rpc("meta_action_renomear", {
+      p_campaign_id: pedido.campaign_id,
+      p_nome: pedido.nome,
+    });
+    if (erroReg) return recusaDoBanco(erroReg);
+    const r = (reg ?? {}) as Partial<Renomeio>;
+    if (typeof r.action_id !== "string" || typeof r.campaign_external_id !== "string" || typeof r.nome_novo !== "string" || !token) {
+      console.error("meta-campaign-action: resposta inesperada ao renomear");
+      return json({ error: "Resposta inesperada ao registrar a troca de nome: nada foi feito na Meta." }, 500);
+    }
+    return await renomear(pedido.campaign_id, {
+      action_id: r.action_id,
+      campaign_external_id: r.campaign_external_id,
+      act_id: r.act_id ?? null,
+      nome_anterior: r.nome_anterior ?? null,
+      nome_novo: r.nome_novo,
+    }, token);
+  }
   const { data, error } = pedido.tipo === "acao"
     ? await usuario.rpc("meta_action_create", {
       p_campaign_id: pedido.campaign_id,

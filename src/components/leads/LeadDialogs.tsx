@@ -1,4 +1,4 @@
-import type { LeadSource, WhatsappTemplate } from "@/integrations/supabase/leads";
+import type { LeadRecord, LeadSource, WhatsappTemplate } from "@/integrations/supabase/leads";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
 import { CloseLeadDialog } from "./CloseLeadDialog";
 import { ConvertLeadDialog } from "./ConvertLeadDialog";
@@ -18,7 +18,7 @@ import type { LeadDialogState } from "./model";
  * precisa de efeito para se ressincronizar quando o alvo muda.
  */
 export function LeadDialogs({
-  state, onClose, sources, brokers, templates, actorName,
+  state, onClose, sources, brokers, templates, actorName, onPegou,
 }: {
   state: LeadDialogState;
   onClose: (patch: Partial<LeadDialogState>) => void;
@@ -27,6 +27,8 @@ export function LeadDialogs({
   templates: WhatsappTemplate[];
   /** Quem está logado — vira o corretor do negócio ao converter lead sem dono. */
   actorName?: string;
+  /** Depois de "Pegar lead": a tela abre o card do lead com as ações. */
+  onPegou?: (lead: LeadRecord) => void;
 }) {
   return (
     <>
@@ -57,6 +59,15 @@ export function LeadDialogs({
 
       {state.nextAction && (
         <NextActionDialog lead={state.nextAction} onClose={() => onClose({ nextAction: null })} />
+      )}
+
+      {state.pegar && (
+        <NextActionDialog
+          pegar
+          lead={state.pegar}
+          onClose={() => onClose({ pegar: null })}
+          onSaved={() => { if (state.pegar) onPegou?.(state.pegar); }}
+        />
       )}
 
       {state.close && (

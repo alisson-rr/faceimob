@@ -161,8 +161,9 @@ begin
   perform pg_temp.check56(public.assign_lead(v_lead) = cora,
     'com um só na fila, o lead vai para ele');
 
-  -- Três prazos estourados seguidos. Do quarto em diante o lead fica parado.
-  for i in 1..3 loop
+  -- Sem teto (0212): com um só na fila, o lead volta para ele a cada prazo
+  -- vencido, até ele clicar em "Atender".
+  for i in 1..5 loop
     update public.lead_assignments
        set released_at = now(), release_reason = 'timeout'
      where lead_id = v_lead and released_at is null;
@@ -170,27 +171,13 @@ begin
        set status = 'queued', assigned_to = null, assigned_at = null, attend_deadline = null
      where id = v_lead;
     v_alvo := public.assign_lead(v_lead);
-    if i < 3 then
-      perform pg_temp.check56(v_alvo = cora,
-        format('reentrega %s/3 continua permitida com fila de um', i));
-    end if;
+    perform pg_temp.check56(v_alvo = cora,
+      format('reentrega %s continua com fila de um', i));
   end loop;
 
   select status into v_status from public.leads where id = v_lead;
-  perform pg_temp.check56(v_alvo is null,
-    'depois de 3 prazos vencidos o mesmo lead não é reentregue em laço');
-  perform pg_temp.check56(v_status = 'queued',
-    'o lead preso fica na fila, visível no card de saúde da roleta');
-
-  -- A VÁLVULA. Sem ela o lead que bateu o teto não tinha saída nenhuma: o cron
-  -- falhava a cada minuto e o botão "Distribuir" caía no mesmo teto, sobrando
-  -- só `reassign_lead`, que fura o rodízio. `p_force` é do gestor, não do cron.
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', '00000000-0000-0000-0000-000000560002'::text, 'role', 'authenticated')::text,
-    false);
-  perform pg_temp.check56(public.distribute_queued_lead(v_lead) = cora,
-    'o lead que bateu o teto de reentregas ainda é distribuível à mão pelo gestor');
-  perform set_config('request.jwt.claims', '', false);
+  perform pg_temp.check56(v_status = 'assigned',
+    'depois de 5 prazos vencidos o lead segue entregue, sem limbo');
 
   delete from public.leads where id = v_lead;
   update public.checkins set checked_out_at = null where profile_id = corb;

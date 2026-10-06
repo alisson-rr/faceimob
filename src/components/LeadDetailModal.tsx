@@ -18,14 +18,14 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Loader2, Mail,
-  MessageCircle, Paperclip, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
+  Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import {
   addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
-  updateLead, moveLeadStage, claimLead,
+  updateLead, moveLeadStage,
   ATTACHMENT_HINT, FUNNEL_STAGES, LEAD_ROADMAP, funnelStageLabel, funnelStageTone, leadSourceTone,
   leadStatusLabel, leadStatusTone,
   attendSecondsLeft, canWriteLead, formatCountdown, canClaim, isLeadUnattended, trackingFields,
@@ -33,6 +33,8 @@ import {
   type LeadFunnelStage, type LeadPatch,
 } from "@/integrations/supabase/leads";
 import { toDateTimeInput } from "@/components/leads";
+import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 
 type EditableField = "full_name" | "phone" | "email" | "document";
 
@@ -81,6 +83,11 @@ export default function LeadDetailModal({
   // lista de Leads e pelo funil, e a próxima ação (que decide o bloqueio dos
   // 20) não pode existir num host e faltar no outro.
   const [askNextAction, setAskNextAction] = useState(false);
+  // Mensagem pronta antes de abrir o WhatsApp (03/10/2026).
+  const [whatsappAberto, setWhatsappAberto] = useState(false);
+  const [pegarAberto, setPegarAberto] = useState(false);
+  // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
@@ -134,24 +141,12 @@ export default function LeadDetailModal({
   const claimable = canClaim(lead, profileId);
   const tracking = trackingFields(lead);
   const grupo = (groupsQuery.data ?? []).find((item) => item.id === lead.distribution_group_id);
-  const semAtendimento = isLeadUnattended(lead, settingsQuery.data?.roulette_max_rounds ?? 5);
+  const semAtendimento = isLeadUnattended(lead, settingsQuery.data?.roulette_max_rounds ?? 0);
   const encerravel = !["converted", "lost", "discarded"].includes(lead.status)
     && !lead.converted_deal_id;
 
-  const attend = async () => {
-    try {
-      await claimLead(lead.id);
-      // "Lead em atendimento" sai do realtime no EngagementLayer, com som.
-      toast.success("Lead reservado para você", {
-        description: "Agora fale com o cliente pelo WhatsApp ou por ligação.",
-      });
-    } catch (err) {
-      toast.error("Não foi possível atender o lead", {
-        description: describeError(err, "outro corretor pode ter assumido antes"),
-      });
-    }
-    onStageChanged?.();
-  };
+  // "Pegar lead" (05/10/2026): pergunta o retorno e trava o lead pelo diálogo.
+  const attend = () => setPegarAberto(true);
 
   const moveTo = async (stage: LeadFunnelStage) => {
     const etapa = funnelStageLabel(stage);
@@ -292,6 +287,20 @@ export default function LeadDetailModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Abrir o lead não reserva (queixas de 03/10/2026: "cliquei no lead e
+            perdi antes dos 10 minutos"). Só "Atender" para o cronômetro. */}
+        {claimable && (
+          <p role="status" className="flex items-start gap-2 rounded-2xl border border-warning/50 bg-warning/10 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+            <span>
+              <strong>Este lead ainda não é seu.</strong> Abrir o lead não reserva: clique em{" "}
+              <strong>"Pegar lead"</strong>
+              {secondsLeft !== null && <> em até <span className="tabular-nums font-semibold">{formatCountdown(secondsLeft)}</span></>}
+              , senão ele volta para a roleta e vai para o próximo da fila.
+            </span>
+          </p>
+        )}
+
         {/* Próxima ação comercial — antes da agenda e das partes técnicas. */}
         <section className="rounded-2xl border border-info/30 bg-info/10 p-3" aria-labelledby="lead-next-step">
           <div className="mb-2 flex items-start gap-2">
@@ -312,14 +321,14 @@ export default function LeadDetailModal({
           </div>
           <div className="flex flex-wrap gap-2">
           {claimable && (
-            <Button size="sm" variant="highlight" onClick={attend}>
-              <HandMetal className="h-4 w-4" /> Atender e falar agora
+            <Button size="sm" variant="success" onClick={attend}>
+              <HandMetal className="h-4 w-4" /> Pegar lead
               {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
             </Button>
           )}
           {!claimable && waLink && (
-            <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" asChild onClick={contactClick}>
-              <a href={waLink} target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+            <Button size="sm" variant="whatsapp" onClick={() => setWhatsappAberto(true)}>
+              <WhatsAppIcon className="h-4 w-4 fill-[#052e16]" /> WhatsApp
             </Button>
           )}
           {!claimable && lead.phone && (
@@ -341,14 +350,14 @@ export default function LeadDetailModal({
               o mesmo `writable` da lista. Sem ele o sócio via o botão aceso,
               preenchia construtora e VGV e só então tomava 42501. */}
           {writable && lead.status !== "converted" && !lead.converted_deal_id && (
-            <Button size="sm" className="sm:ml-auto" onClick={() => onConvert(lead)}>
+            <Button size="sm" variant="success" className="sm:ml-auto" onClick={() => onConvert(lead)}>
               <ArrowRightCircle className="h-4 w-4" /> Converter
             </Button>
           )}
           {/* Encerrar com motivo: a saída que faltava. Sem ela o único jeito de
               tirar o lead da conta dos atrasados era reagendar para sempre. */}
           {writable && encerravel && (
-            <Button size="sm" variant="outline" onClick={() => setClosing(true)}>
+            <Button size="sm" variant="tintDanger" onClick={() => setClosing(true)}>
               <XCircle className="h-4 w-4" /> Encerrar
             </Button>
           )}
@@ -400,16 +409,26 @@ export default function LeadDetailModal({
                 da roleta — o corretor perdia no meio da frase o que estava
                 digitando. Quem confere o que está no banco são as linhas acima,
                 que continuam derivadas do registro. */}
-            {writable && (
+            {/* Dados travados até o lápis (02/10/2026): campos abertos de cara
+                eram editados sem querer por quem só queria ler. */}
+            {writable && (editandoId === lead.id ? (
               <EditFields
                 key={lead.id}
                 lead={lead}
+                onCancel={() => setEditandoId(null)}
                 onSaved={() => {
+                  setEditandoId(null);
                   onStageChanged?.();
                   onOpenChange(false);
                 }}
               />
-            )}
+            ) : (
+              <div className="border-t border-border pt-3">
+                <Button size="sm" variant="outline" onClick={() => setEditandoId(lead.id)}>
+                  <Pencil className="h-4 w-4" aria-hidden /> Editar dados
+                </Button>
+              </div>
+            ))}
           </TabsContent>
 
           <TabsContent value="form">
@@ -472,7 +491,9 @@ export default function LeadDetailModal({
             )}
           </TabsContent>
 
-          <TabsContent value="attachments" className="space-y-3">
+          {/* `forceMount` + escondida: o rascunho da Agenda e dos Anexos fica
+              ao trocar de aba para consultar (pedido de 06/10/2026). */}
+          <TabsContent value="attachments" forceMount className="space-y-3 data-[state=inactive]:hidden">
             <input ref={fileRef} type="file" className="hidden" onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void upload(file);
@@ -555,7 +576,7 @@ export default function LeadDetailModal({
             </div>
           </TabsContent>
 
-          <TabsContent value="agenda" className="space-y-4">
+          <TabsContent value="agenda" forceMount className="space-y-4 data-[state=inactive]:hidden">
             <TaskPanel refType="lead" refId={lead.id} defaultAssignee={lead.assigned_to ?? null} />
             <div className="border-t border-border pt-3">
               <VisitPanel leadId={lead.id} brokerId={lead.assigned_to ?? null} />
@@ -586,6 +607,19 @@ export default function LeadDetailModal({
           onClose={() => setClosing(false)}
           onClosed={() => { onStageChanged?.(); onOpenChange(false); }}
         />
+      )}
+
+      {pegarAberto && (
+        <NextActionDialog
+          pegar
+          lead={lead}
+          onClose={() => setPegarAberto(false)}
+          onSaved={() => onStageChanged?.()}
+        />
+      )}
+
+      {whatsappAberto && (
+        <WhatsAppDialog lead={lead} onClose={() => setWhatsappAberto(false)} onSent={() => void contactClick()} />
       )}
     </Dialog>
   );
@@ -714,7 +748,7 @@ function DetailFallback({
  * `id` de `useId` — o `<Label>` solto de antes não apontava para nada e o leitor
  * de tela anunciava quatro campos sem nome (X04).
  */
-function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void }) {
+function EditFields({ lead, onSaved, onCancel }: { lead: LeadRecord; onSaved?: () => void; onCancel?: () => void }) {
   const fieldId = useId();
   const [values, setValues] = useState<Record<EditableField, string>>(() => ({
     full_name: lead.full_name ?? "",
@@ -824,9 +858,14 @@ function EditFields({ lead, onSaved }: { lead: LeadRecord; onSaved?: () => void 
           </p>
         </div>
       </div>
-      <Button size="sm" onClick={save} disabled={saving || semPrazo}>
-        <Save className="h-4 w-4" /> {saving ? "Salvando…" : "Salvar"}
-      </Button>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={save} disabled={saving || semPrazo}>
+          <Save className="h-4 w-4" /> {saving ? "Salvando…" : "Salvar"}
+        </Button>
+        {onCancel && (
+          <Button size="sm" variant="outline" onClick={onCancel} disabled={saving}>Cancelar</Button>
+        )}
+      </div>
     </div>
   );
 }

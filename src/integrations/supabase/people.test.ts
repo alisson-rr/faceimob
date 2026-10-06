@@ -200,10 +200,26 @@ describe("setTeamByManager", () => {
   });
 
   it("gerente sem equipe ativa é recusado antes de fechar qualquer filiação", async () => {
-    const chamadas = prepararTabelas({ teams: [ok(null)] });
+    const chamadas = prepararTabelas({ teams: [ok(null)], user_roles: [vazio] });
 
     await expect(setTeamByManager("p1", "ger1")).rejects.toThrow(/não possui uma equipe ativa/);
     expect(chamadas.some((c) => c.tabela === "team_members")).toBe(false);
+  });
+
+  it("diretor sem equipe própria ganha uma na diretoria dele e recebe a pessoa", async () => {
+    const chamadas = prepararTabelas({
+      teams: [vazio, ok({ id: "eq-dir" })],
+      user_roles: [ok([{ profile: { full_name: "Fábio Batista" } }])],
+    });
+    rpc.mockResolvedValue({ data: null, error: null });
+
+    await setTeamByManager("p1", "dir1");
+
+    const insercao = chamadas.find((c) => c.tabela === "teams" && c.metodo === "insert");
+    expect(insercao?.argumentos[0]).toEqual({
+      manager_id: "dir1", director_id: "dir1", name: "Equipe Fábio Batista", slug: "equipe-fabio-batista",
+    });
+    expect(rpc).toHaveBeenCalledWith("move_team_member", { p_profile_id: "p1", p_team_id: "eq-dir" });
   });
 });
 

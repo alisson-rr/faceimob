@@ -30,6 +30,7 @@ import { dateTime } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
 import { MigracaoSiteCard } from "@/components/admin/MigracaoSiteCard";
+import { FilaDeEmails } from "@/components/admin/FilaDeEmails";
 
 /**
  * Nome de secret de edge function (`OPENAI_API_KEY`). O catálogo usa "—" nos
@@ -162,9 +163,33 @@ const revogarCredencial = (provider: string, label: string) =>
  * reais — e, desligado, `move_cca_case` não enfileira nada: ligar não dispara
  * fila velha. Escrita só `is_admin()` (policy da 0004).
  */
-function EmailDaCcaSwitch({ podeLigar, brevoPronta, pipeline = false }: { podeLigar: boolean; brevoPronta: boolean; pipeline?: boolean }) {
-  const setting = pipeline ? "pipeline_move_email" : "cca_move_email";
-  const fieldId = pipeline ? "pipeline-move-email" : "cca-move-email";
+type TipoDeEmail = "cca" | "pipeline" | "conferencia";
+
+const EMAIL: Record<TipoDeEmail, { setting: "cca_move_email" | "pipeline_move_email" | "conferencia_email"; titulo: string; ajuda: string; ligado: string }> = {
+  cca: {
+    setting: "cca_move_email",
+    titulo: "Enviar e-mail nas movimentações da CCA",
+    ajuda: "Cada movimento da esteira que avisa o comercial manda também um e-mail ao corretor e ao gerente do negócio.",
+    ligado: "A partir do próximo movimento da CCA que avisa o comercial.",
+  },
+  pipeline: {
+    setting: "pipeline_move_email",
+    titulo: "Enviar e-mail nas movimentações do Pipeline",
+    ajuda: "Mudanças de Status 1 e Status 2 enviam e-mail ao corretor, gerente e diretor responsáveis, com os valores anterior e novo.",
+    ligado: "A partir da próxima alteração de Status 1 ou Status 2 no Pipeline.",
+  },
+  // 0203: análise enviada para conferência, aprovada (vai ao CCA) ou devolvida.
+  conferencia: {
+    setting: "conferencia_email",
+    titulo: "Enviar e-mail nos avisos da conferência",
+    ajuda: "Análise enviada para conferência, aprovada e enviada ao CCA, ou devolvida: e-mail ao corretor, gerente, diretor, administradores e, na aprovação, ao CCA.",
+    ligado: "A partir do próximo envio, aprovação ou devolução da conferência.",
+  },
+};
+
+function EmailDaCcaSwitch({ podeLigar, brevoPronta, tipo = "cca" }: { podeLigar: boolean; brevoPronta: boolean; tipo?: TipoDeEmail }) {
+  const { setting, titulo, ajuda, ligado: textoLigado } = EMAIL[tipo];
+  const fieldId = setting.replace(/_/g, "-");
   const { toast } = useToast();
   const [ligado, setLigado] = useState<boolean | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -173,8 +198,8 @@ function EmailDaCcaSwitch({ podeLigar, brevoPronta, pipeline = false }: { podeLi
 
   useEffect(() => {
     let vivo = true;
-    void supabase.from("automation_settings").select("cca_move_email,pipeline_move_email")
-      .returns<{ cca_move_email: boolean; pipeline_move_email: boolean }[]>().maybeSingle().then(({ data, error }) => {
+    void supabase.from("automation_settings").select("cca_move_email,pipeline_move_email,conferencia_email")
+      .returns<{ cca_move_email: boolean; pipeline_move_email: boolean; conferencia_email: boolean }[]>().maybeSingle().then(({ data, error }) => {
       if (!vivo) return;
       if (error) return setErro(describeError(error, "Não consegui ler se o envio está ligado."));
       setLigado(data?.[setting] === true);
@@ -186,7 +211,8 @@ function EmailDaCcaSwitch({ podeLigar, brevoPronta, pipeline = false }: { podeLi
     setSalvando(true);
     try {
       const { data, error } = await supabase.from("automation_settings")
-        .update(pipeline ? { pipeline_move_email: valor } as never : { cca_move_email: valor }).eq("id", true).select("id");
+        // `as never`: as colunas novas (0157, 0203) ainda não estão no types.ts gerado.
+        .update({ [setting]: valor } as never).eq("id", true).select("id");
       if (error) throw error;
       // UPDATE que a RLS recusa volta 204 sem erro (mesma regra de `updateDeal`).
       if (!data?.length) {
@@ -196,9 +222,7 @@ function EmailDaCcaSwitch({ podeLigar, brevoPronta, pipeline = false }: { podeLi
       toast({
         variant: "success",
         title: valor ? "E-mail das movimentações ligado" : "E-mail das movimentações desligado",
-        description: valor
-          ? pipeline ? "A partir da próxima alteração de Status 1 ou Status 2 no Pipeline." : "A partir do próximo movimento da CCA que avisa o comercial."
-          : "Nenhum e-mail novo entra na fila.",
+        description: valor ? textoLigado : "Nenhum e-mail novo entra na fila.",
       });
     } catch (e) {
       toast({ variant: "destructive", title: "Não foi possível trocar o envio", description: describeError(e, "Tente de novo.") });
@@ -210,10 +234,9 @@ function EmailDaCcaSwitch({ podeLigar, brevoPronta, pipeline = false }: { podeLi
   return (
     <div className="flex items-start justify-between gap-3 rounded-xl border border-border/50 p-3">
       <div className="min-w-0">
-        <Label htmlFor={fieldId}>Enviar e-mail nas movimentações {pipeline ? "do Pipeline" : "da CCA"}</Label>
+        <Label htmlFor={fieldId}>{titulo}</Label>
         <p id={`${fieldId}-help`} className="mt-0.5 text-xs text-muted-foreground">
-          {pipeline ? "Mudanças de Status 1 e Status 2 enviam e-mail ao corretor, gerente e diretor responsáveis, com os valores anterior e novo."
-            : "Cada movimento da esteira que avisa o comercial manda também um e-mail ao corretor e ao gerente do negócio."}
+          {ajuda}
           {" "}Desligado: nenhum e-mail novo entra na fila. Teste a conexão antes de ligar.
         </p>
         {erro && <p role="alert" className="mt-1 text-xs text-destructive">{erro}</p>}
@@ -739,8 +762,11 @@ export default function AdminIntegrations() {
                     <><EmailDaCcaSwitch
                       podeLigar={isAdmin}
                       brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret}
-                    /><EmailDaCcaSwitch pipeline podeLigar={isAdmin}
-                      brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret} /></>
+                    /><EmailDaCcaSwitch tipo="pipeline" podeLigar={isAdmin}
+                      brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret}
+                    /><EmailDaCcaSwitch tipo="conferencia" podeLigar={isAdmin}
+                      brevoPronta={configured && !!storedByKey.get(slotKey("brevo", "api_key"))?.has_secret}
+                    />{isAdmin && <FilaDeEmails />}</>
                   )}
                 </CardContent>
               </Card>

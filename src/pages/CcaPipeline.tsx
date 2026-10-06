@@ -13,10 +13,12 @@ import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import DealDetailModal from "@/components/DealDetailModal";
+import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import {
   listDocumentTypesForAdmin, updateDocumentType, type DocumentTypeAdminRecord,
 } from "@/integrations/supabase/documents";
-import { saveLegacyDeal } from "@/integrations/supabase/newSchema";
+import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { useNegocioDoLink } from "@/components/pipeline/useNegocioDoLink";
 import {
   CcaBoard, CcaMoveDialog, CcaStageSettingsDialog,
   dealRangeError, useCcaBoard, useDevelopers, useInvalidateCcaBoard,
@@ -221,7 +223,9 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
  *   `useDealWriteLock()`, e é de lá que sai o que a analista pode tocar.
  */
 export default function CcaPipeline() {
-  const { can, isAdmin } = useAuth();
+  const { can, isAdmin, roles } = useAuth();
+  // 0228: a CCA organiza a ordem das colunas (só a ordem).
+  const ordenaColunas = isAdmin || roles.includes("cca");
   // `null` = ninguém mexeu no período: valem os últimos 30 dias, recalculados a
   // cada render para a virada do dia não congelar o "até hoje" (como no Pipeline).
   const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo | null>(null);
@@ -242,12 +246,20 @@ export default function CcaPipeline() {
   const periodoMsgId = useId();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [devolvendo, setDevolvendo] = useState<CcaDeal | null>(null);
   const [typesOpen, setTypesOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
   /** Negócio aberto no editor — o `id`, não a linha: assim o modal acompanha o
    *  refetch do quadro em vez de segurar uma cópia congelada. */
   const [openDealId, setOpenDealId] = useState<string | null>(null);
+  /** Negócio vindo do aviso do sino (`?negocio=`), que pode estar fora do período do quadro. */
+  const [doLink, setDoLink] = useState<LegacyDealRecord | null>(null);
+  const abrirDoLink = useCallback((deal: LegacyDealRecord) => {
+    setDoLink(deal);
+    setOpenDealId(deal.id);
+  }, []);
+  useNegocioDoLink(abrirDoLink);
 
   const canAct = can("cca.review");
   const stages = useMemo(() => board.data?.stages ?? [], [board.data]);
@@ -257,8 +269,9 @@ export default function CcaPipeline() {
   // Fora do gate de espera: o selo é complemento, e sem ele o quadro continua útil.
   const envios = useCcaSendCounts(dealIds, canAct);
   const openDeal = useMemo(
-    () => negocios?.find((row) => row.id === openDealId) ?? null,
-    [negocios, openDealId],
+    () => negocios?.find((row) => row.id === openDealId)
+      ?? (doLink?.id === openDealId ? doLink : null),
+    [negocios, openDealId, doLink],
   );
 
   const visiveis = useMemo(() => {
@@ -364,6 +377,10 @@ export default function CcaPipeline() {
                 <Settings className="mr-1 h-4 w-4" aria-hidden /> Gerenciar estágios
               </Button>
             </>
+          ) : ordenaColunas ? (
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Settings className="mr-1 h-4 w-4" aria-hidden /> Ordem das colunas
+            </Button>
           ) : !canAct ? (
             <StatusBadge tone="neutral">Somente leitura</StatusBadge>
           ) : undefined
@@ -452,6 +469,7 @@ export default function CcaPipeline() {
           sendCounts={envios.data}
           onOpen={abrirNegocio}
           onMove={moverCaso}
+          onDevolver={setDevolvendo}
         />
       )}
 
@@ -488,8 +506,13 @@ export default function CcaPipeline() {
         />
       )}
 
-      {settingsOpen && isAdmin && (
+      {devolvendo && (
+        <CcaDevolverDialog deal={devolvendo} onClose={() => setDevolvendo(null)} onDone={refresh} />
+      )}
+
+      {settingsOpen && ordenaColunas && (
         <CcaStageSettingsDialog
+          somenteOrdem={!isAdmin}
           stages={stages}
           onClose={() => setSettingsOpen(false)}
           onChanged={refresh}

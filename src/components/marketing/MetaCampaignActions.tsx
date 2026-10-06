@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pause, Play, Wallet } from "lucide-react";
+import { ArrowDown, ArrowUp, Pause, Pencil, Play, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -9,9 +9,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
 import { brl, parseBrl } from "@/lib/format";
 import { invocarAcaoMeta } from "./acaoMeta";
+import { verbaDoDegrau } from "./simuladorDeVerba";
 
 /**
  * Pausar, ativar e mudar a verba diária de uma campanha sincronizada, na Meta
@@ -25,7 +27,7 @@ import { invocarAcaoMeta } from "./acaoMeta";
  * verba ainda não sincronizado deixam "Mudar verba" desligado, com a frase.
  */
 
-type Acao = "pausar" | "ativar" | "verba";
+type Acao = "pausar" | "ativar" | "verba" | "renomear";
 
 type Campanha = {
   id: string;
@@ -36,7 +38,7 @@ type Campanha = {
   metaBudgetLevel: "campaign" | "adset" | "lifetime" | null;
 };
 
-type Pedido = { campaign_id: string; acao: Acao; verba_diaria?: number; confirma_aprendizado?: true };
+type Pedido = { campaign_id: string; acao: Acao; verba_diaria?: number; nome?: string; confirma_aprendizado?: true };
 type Aviso = { variacao: number | null; verba_atual: number | null; verba_nova: number | null };
 type Resposta =
   | { tipo: "feito"; status: "executada" | "parcial"; erro: string | null }
@@ -62,18 +64,27 @@ const CONFIRMA: Record<Acao, { titulo: (nome: string) => string; texto: string; 
     texto: "O valor vai para a Meta assim que você confirmar. Fica registrado quem mudou, quando e de quanto para quanto.",
     botao: "Mudar verba na Meta",
   },
+  renomear: {
+    titulo: (nome) => `Renomear "${nome}"?`,
+    texto: "O nome muda na Meta assim que você confirmar. Trocar o nome não reinicia a fase de aprendizado. Fica registrado quem mudou e quando.",
+    botao: "Renomear na Meta",
+  },
 };
+
+const paraCampo = (v: number) => v.toFixed(2).replace(".", ",");
 
 const FEITO: Record<Acao, string> = {
   pausar: "Campanha pausada na Meta",
   ativar: "Campanha ativada na Meta",
   verba: "Verba diária alterada na Meta",
+  renomear: "Campanha renomeada na Meta",
 };
 
 const FALHOU: Record<Acao, string> = {
   pausar: "Não foi possível pausar a campanha na Meta",
   ativar: "Não foi possível ativar a campanha na Meta",
   verba: "Não foi possível alterar a verba na Meta",
+  renomear: "Não foi possível renomear a campanha na Meta",
 };
 
 const SEM_STATUS = "A ação respondeu sem dizer o que a Meta fez: confira o histórico de ações.";
@@ -86,13 +97,19 @@ async function enviar(pedido: Pedido): Promise<Resposta> {
   return { tipo: "falha", mensagem: SEM_STATUS };
 }
 
-export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; onDone: () => void }) {
+export function MetaCampaignActions({ campaign, onDone, compacto = false }: {
+  campaign: Campanha;
+  onDone: () => void;
+  /** Linha do painel de gestão: interruptor liga/desliga e ícone de verba (02/10/2026). */
+  compacto?: boolean;
+}) {
   const { can } = useAuth();
   const queryClient = useQueryClient();
   const baseId = useId();
   const origem = useRef<HTMLElement | null>(null);
   const [aberta, setAberta] = useState<Acao | null>(null);
   const [verbaTexto, setVerbaTexto] = useState("");
+  const [nomeTexto, setNomeTexto] = useState("");
   const [aprendizado, setAprendizado] = useState<{ pedido: Pedido; aviso: Aviso } | null>(null);
 
   const mandar = useMutation({
@@ -116,7 +133,7 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
         toast.success(FEITO[pedido.acao], {
           description: pedido.acao === "verba"
             ? `${campaign.name}: ${reais(pedido.verba_diaria)} por dia.`
-            : campaign.name,
+            : pedido.acao === "renomear" ? `Novo nome: ${pedido.nome}` : campaign.name,
         });
       }
       onDone();
@@ -142,10 +159,17 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
         : null;
   const travaId = `${baseId}-trava`;
   const campoId = `${baseId}-verba`;
+  const nomeId = `${baseId}-nome`;
+  const nomeNovo = nomeTexto.trim();
+  const nomeValido = nomeNovo.length > 0 && nomeNovo.length <= 400 && nomeNovo !== campaign.name;
+  const atual = campaign.dailyBudget;
+  const variacao = verbaValida && atual ? (verbaNova - atual) / atual : null;
+  const travaDegrau = travaVerba ?? (atual ? null : "A verba atual ainda não foi sincronizada.");
 
-  const abrir = (acao: Acao, alvo: HTMLElement) => {
+  const abrir = (acao: Acao, alvo: HTMLElement, verbaInicial?: number) => {
     origem.current = alvo;
-    setVerbaTexto("");
+    setVerbaTexto(verbaInicial === undefined ? "" : paraCampo(verbaInicial));
+    setNomeTexto(campaign.name);
     setAberta(acao);
   };
 
@@ -154,6 +178,8 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
       if (verbaNova !== null && verbaNova > 0) {
         mandar.mutate({ campaign_id: campaign.id, acao: "verba", verba_diaria: verbaNova });
       }
+    } else if (aberta === "renomear") {
+      if (nomeValido) mandar.mutate({ campaign_id: campaign.id, acao: "renomear", nome: nomeNovo });
     } else if (aberta) {
       mandar.mutate({ campaign_id: campaign.id, acao: aberta });
     }
@@ -168,8 +194,67 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
   const aviso = aprendizado?.aviso;
   const confirma = aberta ? CONFIRMA[aberta] : null;
 
+  const ativa = campaign.status === "ACTIVE";
+
   return (
     <div className="space-y-1">
+      {compacto ? (
+        <div className="flex items-center gap-1">
+          {/* Controlado e sem `onCheckedChange`: o clique só abre a confirmação;
+              quem muda o estado é a Meta, na próxima leitura. */}
+          <Switch
+            checked={ativa}
+            disabled={pendente}
+            aria-label={ativa ? `Pausar ${campaign.name} na Meta` : `Ativar ${campaign.name} na Meta`}
+            onClick={(e) => abrir(ativa ? "pausar" : "ativar", e.currentTarget)}
+          />
+          {/* ±20%: o degrau que escala sem reiniciar a fase de aprendizado. */}
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            disabled={pendente || travaDegrau !== null}
+            title={travaDegrau ?? "Descer a verba em 20%"}
+            aria-label={`Descer 20% da verba de ${campaign.name}`}
+            onClick={(e) => atual && abrir("verba", e.currentTarget, verbaDoDegrau(atual, -1))}
+          >
+            <ArrowDown className="h-4 w-4 text-destructive" aria-hidden />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            disabled={pendente || travaDegrau !== null}
+            title={travaDegrau ?? "Subir a verba em 20% (sem fase de aprendizado)"}
+            aria-label={`Subir 20% da verba de ${campaign.name}`}
+            onClick={(e) => atual && abrir("verba", e.currentTarget, verbaDoDegrau(atual, 1))}
+          >
+            <ArrowUp className="h-4 w-4 text-success" aria-hidden />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            disabled={pendente || travaVerba !== null}
+            title={travaVerba ?? "Mudar verba diária"}
+            aria-label={`Mudar verba de ${campaign.name} na Meta`}
+            onClick={(e) => abrir("verba", e.currentTarget)}
+          >
+            <Wallet className="h-4 w-4" aria-hidden />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            disabled={pendente}
+            title="Renomear campanha"
+            aria-label={`Renomear ${campaign.name} na Meta`}
+            onClick={(e) => abrir("renomear", e.currentTarget)}
+          >
+            <Pencil className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+      ) : (
       <div className="flex flex-wrap gap-2">
         {campaign.status !== "PAUSED" && (
           <Button
@@ -207,7 +292,8 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
           Mudar verba
         </Button>
       </div>
-      {travaVerba && <p id={travaId} className="text-xs text-muted-foreground">{travaVerba}</p>}
+      )}
+      {!compacto && travaVerba && <p id={travaId} className="text-xs text-muted-foreground">{travaVerba}</p>}
 
       <AlertDialog open={aberta !== null} onOpenChange={(abrirDialogo) => { if (!abrirDialogo && !pendente) setAberta(null); }}>
         <AlertDialogContent onCloseAutoFocus={devolverFoco}>
@@ -238,16 +324,50 @@ export function MetaCampaignActions({ campaign, onDone }: { campaign: Campanha; 
                 {campaign.metaBudgetLevel === "adset" &&
                   " A verba está nos conjuntos: cada conjunto ativo muda na mesma proporção, com mínimo de R$ 1,00."}
               </p>
+              {atual ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" disabled={pendente}
+                    onClick={() => setVerbaTexto(paraCampo(verbaDoDegrau(atual, -1)))}>
+                    −20%
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" disabled={pendente}
+                    onClick={() => setVerbaTexto(paraCampo(verbaDoDegrau(atual, 1)))}>
+                    +20%
+                  </Button>
+                  {variacao !== null && (
+                    <span role="status" className={variacao >= 0.3 ? "text-xs text-warning" : "text-xs text-muted-foreground"}>
+                      {pct.format(variacao)}
+                      {variacao >= 0.3 ? " · reinicia o aprendizado" : " · sem reiniciar o aprendizado"}
+                    </span>
+                  )}
+                </div>
+              ) : null}
               {verbaTexto !== "" && !verbaValida && (
                 <p role="status" className="text-xs text-destructive">Informe um valor maior que zero.</p>
               )}
             </div>
           )}
 
+          {aberta === "renomear" && (
+            <div className="space-y-2">
+              <Label htmlFor={nomeId}>Novo nome da campanha</Label>
+              <Input
+                id={nomeId}
+                autoComplete="off"
+                maxLength={400}
+                value={nomeTexto}
+                disabled={pendente}
+                aria-invalid={!nomeValido}
+                onChange={(e) => setNomeTexto(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmar(); } }}
+              />
+            </div>
+          )}
+
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pendente}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              disabled={pendente || (aberta === "verba" && !verbaValida)}
+              disabled={pendente || (aberta === "verba" && !verbaValida) || (aberta === "renomear" && !nomeValido)}
               onClick={(e) => { e.preventDefault(); confirmar(); }}
             >
               {pendente ? "Enviando à Meta…" : confirma?.botao}

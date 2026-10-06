@@ -215,7 +215,18 @@ export function useInvalidateLeads() {
 export function useLeadsRealtime(channelName = "leads-page") {
   const queryClient = useQueryClient();
   useEffect(() => {
-    const invalidar = () => { void queryClient.invalidateQueries({ queryKey: leadKeys.records }); };
+    // Uma rajada vira UMA recarga, como no Pipeline. A importação da Leadfy
+    // (02/10/2026) gravou ~25 mil leads: cada evento recarregava a lista
+    // inteira em toda tela de Leads aberta e afogou o banco — o Dashboard
+    // ficou sem carregar. O primeiro evento agenda; os da janela entram nela.
+    let agendada: ReturnType<typeof setTimeout> | undefined;
+    const invalidar = () => {
+      if (agendada) return;
+      agendada = setTimeout(() => {
+        agendada = undefined;
+        void queryClient.invalidateQueries({ queryKey: leadKeys.records });
+      }, 1500);
+    };
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, invalidar)
@@ -235,7 +246,10 @@ export function useLeadsRealtime(channelName = "leads-page") {
        */
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, invalidar)
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => {
+      clearTimeout(agendada);
+      void supabase.removeChannel(channel);
+    };
   }, [queryClient, channelName]);
 }
 

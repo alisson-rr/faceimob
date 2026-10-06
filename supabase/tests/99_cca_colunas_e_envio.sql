@@ -91,8 +91,9 @@ begin
     from public.cca_stages s
    where s.active and s.deal_status_id is not null;
 
+  -- 0225: "PENDENTE C/ RESTRIÇÃO" entrou logo depois de PENDENTE (pedido da CCA).
   perform pg_temp.check150(v_nomes = array[
-      'EM ANÁLISE', 'PENDENTE', 'RETORNO À ESTEIRA ÁGIL', 'EM PROCESSAMENTO',
+      'EM ANÁLISE', 'PENDENTE', 'PENDENTE C/ RESTRIÇÃO', 'RETORNO À ESTEIRA ÁGIL', 'EM PROCESSAMENTO',
       'AGUARDANDO RETORNO AGÊNCIA',
       'APROVADO TOTAL', 'APROVADO POTENCIAL', 'APROVADO CONDICIONADO',
       'APROVADO TOTAL COM RESTRIÇÃO', 'APROVADO CONDICIONADO COM RESTRIÇÃO',

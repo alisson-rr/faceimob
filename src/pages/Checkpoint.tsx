@@ -7,6 +7,7 @@ import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
 import { AlertTriangle, ChevronLeft, ChevronRight, Download, RefreshCw, Target, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { PreencherDaily } from "@/components/checkpoint/PreencherDaily";
 import { addDays, endOfWeek, format, isValid, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { describeError } from "@/lib/supabaseError";
@@ -382,36 +383,50 @@ export default function Checkpoint() {
             >
               <RefreshCw className={`h-4 w-4 ${catalogo.isFetching || semana.isFetching ? "animate-spin" : ""}`} /> Atualizar
             </Button>
-            <Button size="sm" variant="outline" onClick={exportar} disabled={filteredTeams.length === 0}>
-              <Download className="h-4 w-4" /> Exportar CSV
-            </Button>
-            <Select value={teamFilter} onValueChange={filtrarEquipe}>
-              <SelectTrigger className="w-full sm:w-56 h-8 text-xs" aria-label="Filtrar equipe"><SelectValue placeholder="Filtrar equipe" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as equipes</SelectItem>
-                {quadro.map(t => <SelectItem key={t.id} value={t.id}>{teamNameFor(t)}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {/* Some para quem não tem ninguém abaixo: seletor com um item só,
-                que é a própria pessoa, é ruído. */}
-            {gerentes.length > 0 && (
-              <Select value={focado && gerenteParam ? gerenteParam : MEU_QUADRO} onValueChange={abrirGerente}>
-                <SelectTrigger className="w-full sm:w-56 h-8 text-xs" aria-label="Abrir o checkpoint de um gerente">
-                  <SelectValue placeholder="Abrir gerente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={MEU_QUADRO}>Meu quadro</SelectItem>
-                  {gerentes.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {nomeDe(g.id)} ({g.teams.length})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
           </>
         }
       />
+
+      {/* Barra própria abaixo do título (02/10/2026): com os botões do daily,
+          a exportação e os dois filtros no cabeçalho, o título e a descrição
+          ficavam espremidos numa coluna de uma palavra por linha. */}
+      <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-border bg-card/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <PreencherDaily />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          {/* Relatório só sai com admin e sócio (02/10/2026). */}
+          {isAdmin && (
+            <Button size="sm" variant="outline" onClick={exportar} disabled={filteredTeams.length === 0}>
+              <Download className="h-4 w-4" /> Exportar CSV
+            </Button>
+          )}
+          <Select value={teamFilter} onValueChange={filtrarEquipe}>
+            <SelectTrigger className="w-full sm:w-56 h-8 text-xs" aria-label="Filtrar equipe"><SelectValue placeholder="Filtrar equipe" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as equipes</SelectItem>
+              {quadro.map(t => <SelectItem key={t.id} value={t.id}>{teamNameFor(t)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {/* Some para quem não tem ninguém abaixo: seletor com um item só,
+              que é a própria pessoa, é ruído. */}
+          {gerentes.length > 0 && (
+            <Select value={focado && gerenteParam ? gerenteParam : MEU_QUADRO} onValueChange={abrirGerente}>
+              <SelectTrigger className="w-full sm:w-56 h-8 text-xs" aria-label="Abrir o checkpoint de um gerente">
+                <SelectValue placeholder="Abrir gerente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={MEU_QUADRO}>Meu quadro</SelectItem>
+                {gerentes.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {nomeDe(g.id)} ({g.teams.length})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
 
       {/* Dentro do checkpoint de outra pessoa: sem esta faixa o diretor lia os
           números do gerente achando que eram os dele. */}

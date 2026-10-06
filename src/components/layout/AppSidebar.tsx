@@ -1,4 +1,4 @@
-import { LogOut, Moon, Sun } from "lucide-react";
+import { Globe, LogOut, Moon, Sun } from "lucide-react";
 import { permissionForPath } from "@/lib/routePermissions";
 import { NavLink } from "@/components/NavLink";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -12,6 +12,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { memo, useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { SITE_PUBLICO } from "@/integrations/supabase/central";
 import { NAV_GROUPS, NAV_ITEMS, type NavItem } from "@/components/layout/navigation";
 
 /** Duração da animação do painel — `duration-500` em `@/components/ui/sidebar`. */
@@ -60,7 +61,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { can, signOut } = useAuth();
+  const { can, signOut, isAdmin } = useAuth();
   const isActive = (path: string) => location.pathname === path;
   const isLight = theme === "light";
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -162,6 +163,19 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
+          {/* Atalho para o painel do site (decisão de 05/10/2026): o site já usa
+              o banco e os logins do CRM, então o painel dele continua lá, em vez
+              de ser refeito tela a tela aqui. Só admin e sócio gravam por lá. */}
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip="Admin do site">
+                <a href={`${SITE_PUBLICO}/admin`} target="_blank" rel="noopener noreferrer" onClick={fecharAoEscolher}>
+                  <Globe className="h-4 w-4" aria-hidden />
+                  {!collapsed && <span>Admin do site</span>}
+                </a>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={toggleTheme}

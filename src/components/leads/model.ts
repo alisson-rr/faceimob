@@ -7,6 +7,7 @@
  */
 import { parseBrl } from "@/lib/format";
 import { isLeadOverdue, searchPhoneDigits, searchTerm, type LeadRecord } from "@/integrations/supabase/leads";
+import type { AppRole } from "@/contexts/AuthContext";
 
 export type LeadFilterState = {
   search: string;
@@ -146,10 +147,10 @@ export const toDateTimeInput = (value: Date): string => {
 };
 
 /** Atalhos da próxima ação. "amanhã" e "3 dias" caem às 9h, início do expediente. */
-export const nextActionPreset = (key: "2h" | "amanha" | "3d", from: Date = new Date()): Date => {
+export const nextActionPreset = (key: "2h" | "amanha" | "48h" | "3d", from: Date = new Date()): Date => {
   const when = new Date(from);
-  if (key === "2h") {
-    when.setHours(when.getHours() + 2);
+  if (key === "2h" || key === "48h") {
+    when.setHours(when.getHours() + (key === "2h" ? 2 : 48));
     return when;
   }
   when.setDate(when.getDate() + (key === "amanha" ? 1 : 3));
@@ -166,6 +167,8 @@ export type LeadDialogState = {
   whatsapp: LeadRecord | null;
   email: LeadRecord | null;
   nextAction: LeadRecord | null;
+  /** "Pegar lead" (0227): pergunta o próximo contato e trava o lead com o corretor. */
+  pegar: LeadRecord | null;
   /** Encerrar como perdido/descartado com motivo (`close_lead`). */
   close: LeadRecord | null;
   remove: LeadRecord | null;
@@ -175,7 +178,7 @@ export type LeadDialogState = {
 export const noLeadDialogs: LeadDialogState = {
   form: { open: false, lead: null },
   reassign: null, convert: null, whatsapp: null, email: null,
-  nextAction: null, close: null, remove: null, import: false,
+  nextAction: null, pegar: null, close: null, remove: null, import: false,
 };
 
 /** `wa.me` exige o número só com dígitos e com DDI; sem telefone, string vazia. */
@@ -215,3 +218,38 @@ export const parseVgvInput = (raw: string): { value: number | null; invalid: boo
   const typed = raw.replace(/[R$\s]/gi, "") !== "";
   return { value, invalid: typed && value === null };
 };
+
+/**
+ * Leads recebidos hoje, nesta semana (segunda a domingo) e neste mês, pela
+ * data de chegada no horário local (pedido de 02/10/2026). Conta o que a tela
+ * carregou: o recorte por corretor vem de quem chama.
+ */
+export type LeadsPorPeriodo = { hoje: number; semana: number; mes: number };
+
+export function leadsPorPeriodo(leads: Pick<LeadRecord, "created_at">[], agora: Date = new Date()): LeadsPorPeriodo {
+  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()).getTime();
+  const diasDesdeSegunda = (agora.getDay() + 6) % 7;
+  const semana = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() - diasDesdeSegunda).getTime();
+  const mes = new Date(agora.getFullYear(), agora.getMonth(), 1).getTime();
+  const conta = { hoje: 0, semana: 0, mes: 0 };
+  for (const lead of leads) {
+    const chegada = Date.parse(lead.created_at);
+    if (Number.isNaN(chegada)) continue;
+    if (chegada >= hoje) conta.hoje++;
+    if (chegada >= semana) conta.semana++;
+    if (chegada >= mes) conta.mes++;
+  }
+  return conta;
+}
+
+/** Quem olha um corretor por vez: a gestão, não o corretor (02/10/2026). */
+const VER_POR_CORRETOR: AppRole[] = ["admin", "partner", "director", "manager"];
+
+export const podeVerPorCorretor = (roles: AppRole[], isAdmin: boolean) =>
+  isAdmin || roles.some((role) => VER_POR_CORRETOR.includes(role));
+
+/** "all" = todos; "none" = sem corretor (fila); senão o id do corretor. */
+export function leadsDoCorretor<T extends Pick<LeadRecord, "assigned_to">>(leads: T[], broker: string): T[] {
+  if (broker === "all") return leads;
+  return leads.filter((lead) => (broker === "none" ? !lead.assigned_to : lead.assigned_to === broker));
+}

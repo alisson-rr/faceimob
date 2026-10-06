@@ -16,6 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
 import type { NewAppRole } from "./newSchema";
 import { dbError, describeError } from "@/lib/supabaseError";
+import { slugify } from "@/lib/utils";
 
 /**
  * As colunas da 0046 (cpf, creci, …) e a RPC `set_profile_roles` ainda não
@@ -170,6 +171,31 @@ export async function getPersonDetails(
 }
 
 /**
+ * O diretor também lidera corretores direto (pedido de 03/10/2026: "coloque os
+ * diretores aqui, eles têm equipe também"). Sem equipe própria, ela nasce ao
+ * vincular a primeira pessoa, na diretoria dele. `null` quando não é diretor.
+ * Ele não entra em `team_members`: já se enxerga, e a filiação dele pode estar
+ * aberta em outra equipe (`team_members_one_active`).
+ */
+async function criarEquipeDoDiretor(liderId: string): Promise<string | null> {
+  const diretor = await supabase
+    .from("user_roles").select("profile:profiles!user_roles_profile_id_fkey(full_name)")
+    .eq("profile_id", liderId).eq("role", "director");
+  if (diretor.error) throw dbError("user_roles", diretor.error);
+  const linha = diretor.data?.[0];
+  if (!linha) return null;
+
+  const nome = `Equipe ${linha.profile?.full_name ?? "do diretor"}`;
+  const { data, error } = await supabase
+    .from("teams")
+    .insert({ manager_id: liderId, director_id: liderId, name: nome, slug: slugify(nome) })
+    .select("id")
+    .single();
+  if (error) throw dbError("teams", error);
+  return data.id;
+}
+
+/**
  * Equipe ativa do gerente — uma só, ou o motivo explícito.
  *
  * `maybeSingle()` aqui estourava PGRST116 num caso que o SCHEMA permite: existe
@@ -178,13 +204,17 @@ export async function getPersonDetails(
  * carregar a equipe do gerente", que não diz nada. Ambiguidade não vira escolha
  * silenciosa: quem chama recebe o nome das equipes e desativa a que sobra.
  */
-export async function activeTeamIdOfManager(managerId: string): Promise<string> {
+export async function activeTeamIdOfManager(managerId: string, criarSeDiretor = false): Promise<string> {
   const { data, error } = await supabase
     .from("teams").select("id,name")
     .eq("manager_id", managerId).eq("active", true)
     .order("created_at", { ascending: true });
   if (error) throw dbError("teams", error);
-  if (!data?.length) throw ruleError("O gerente não possui uma equipe ativa.");
+  if (!data?.length) {
+    const criada = criarSeDiretor ? await criarEquipeDoDiretor(managerId) : null;
+    if (criada) return criada;
+    throw ruleError("O gerente não possui uma equipe ativa.");
+  }
   if (data.length > 1) {
     const nomes = data.map((t) => t.name).join(", ");
     throw ruleError(
@@ -233,7 +263,7 @@ export async function setTeamByManager(
     // Trocar de equipe é UMA operação no banco (0167): fechar e abrir pela
     // tabela recusava o diretor movendo gente entre as equipes dele — depois de
     // fechado o vínculo a pessoa deixa de ser visível e o insert batia na RLS.
-    await moveTeamMember(profileId, await activeTeamIdOfManager(managerId));
+    await moveTeamMember(profileId, await activeTeamIdOfManager(managerId, true));
     return;
   }
   // Sem gerente = sai da equipe: só o fechamento.

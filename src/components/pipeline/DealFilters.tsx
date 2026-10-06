@@ -8,6 +8,7 @@ import type { PersonRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { ALL, MY_TEAM, type DealFilterState } from "./filters";
 import type { PipelineStage } from "./stages";
+import { Status2Multi } from "./Status2Multi";
 
 interface Props {
   filters: DealFilterState;
@@ -93,40 +94,28 @@ export function DealFilters({
             opções de edição. */}
         <div>
           <Label htmlFor={field("status1")}>Status 1</Label>
-          <Select value={filters.status1} onValueChange={(v) => onChange({ status1: v })}>
-            <SelectTrigger id={field("status1")} className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Todos os Status 1</SelectItem>
-              {catalog.groups.map((option) => (
-                <SelectItem key={option.id} value={option.id}>
-                  <span>
-                    {option.code === "VENDA"
-                      ? `${option.label} — todas as vendas`
-                      : option.label}
-                  </span>
-                  {!option.active && <span className="text-muted-foreground"> (inativo)</span>}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Vários de uma vez (04/10/2026), como o Status 2. */}
+          <Status2Multi
+            id={field("status1")}
+            nome="Status 1"
+            valores={filters.status1}
+            opcoes={catalog.groups.map((option) => ({
+              value: option.id,
+              label: option.code === "VENDA" ? `${option.label} — todas as vendas` : option.label,
+              active: option.active,
+            }))}
+            onChange={(status1) => onChange({ status1 })}
+          />
         </div>
 
         <div>
           <Label htmlFor={field("status2")}>Status 2</Label>
-          <Select value={filters.status2} onValueChange={(v) => onChange({ status2: v })}>
-            <SelectTrigger id={field("status2")} className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent className="max-h-80">
-              <SelectItem value={ALL}>Todos os Status 2</SelectItem>
-              {/* `value` é o que está gravado em `deals.status_detail` e filtra;
-                  o texto é o nome exibido do catálogo. */}
-              {catalog.statuses.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  <span>{option.label}</span>
-                  {!option.active && <span className="text-muted-foreground"> (inativo)</span>}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Status2Multi
+            id={field("status2")}
+            valores={filters.status2}
+            opcoes={catalog.statuses.map((option) => ({ value: option.value, label: option.label, active: option.active }))}
+            onChange={(status2) => onChange({ status2 })}
+          />
         </div>
 
         <div>

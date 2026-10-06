@@ -1,8 +1,4 @@
 import { createRoot } from "react-dom/client";
-// Fontes variaveis servidas pelo proprio bundle: uma requisicao a menos e
-// nenhuma dependencia do Google Fonts para a tela abrir com a tipografia certa.
-import "@fontsource-variable/bricolage-grotesque";
-import "@fontsource-variable/dm-sans";
 import App from "./App.tsx";
 import "./index.css";
 import { registerServiceWorker } from "@/lib/push";

@@ -147,7 +147,9 @@ begin
       has_table_privilege('authenticated', c.oid, 'SELECT')
       and (
         has_table_privilege('authenticated', c.oid, 'INSERT')
+        -- `deal_status_history` (0216): só o gatilho de `deals` grava a troca do Status 2.
         or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions', 'cca_cases', 'cca_move_emails',
+                         'deal_status_history',
                          'meta_ad_accounts', 'meta_sync_runs', 'meta_campaign_insights_daily',
                          'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts')
       )

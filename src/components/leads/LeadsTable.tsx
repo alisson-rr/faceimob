@@ -1,8 +1,9 @@
 import { memo, startTransition, useEffect, useState } from "react";
 import {
-  ArrowRightCircle, HandMetal, Mail, MessageCircle, Pencil, RefreshCcw, Timer, Trash2, UserPlus,
+  ArrowRightCircle, HandMetal, Mail, Pencil, RefreshCcw, Timer, Trash2, UserPlus,
   XCircle,
 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared";
@@ -202,15 +203,17 @@ const LeadRow = memo(function LeadRow({
           {lead.source || "Sem origem"} · {lead.broker_name || "sem corretor"} · {dateTime(lead.created_at)}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
-          {lead.phone && (
+          {/* Antes de pegar, o lead não é do corretor (05/10/2026: "não sabemos se
+              o lead passa a ser meu ao clicar em WhatsApp"): só "Pegar lead". */}
+          {lead.phone && !claimable && (
             <Button
               variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-success hover:text-success"
               onClick={() => actions.onWhatsApp(lead)}
             >
-              <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+              <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
             </Button>
           )}
-          {lead.email && (
+          {lead.email && !claimable && (
             <Button
               variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs"
               onClick={() => actions.onEmail(lead)}
@@ -239,8 +242,8 @@ const LeadRow = memo(function LeadRow({
       <TableCell className="align-top">
         <div className="flex flex-wrap items-center justify-end gap-1">
           {claimable && (
-            <Button size="sm" className="h-8 gap-1" onClick={() => actions.onAttend(lead)}>
-              <HandMetal className="h-3.5 w-3.5" /> Atender
+            <Button size="sm" variant="success" className="h-8 gap-1" onClick={() => actions.onAttend(lead)}>
+              <HandMetal className="h-3.5 w-3.5" /> Pegar lead
             </Button>
           )}
           {writable && (
@@ -263,8 +266,8 @@ const LeadRow = memo(function LeadRow({
           )}
           {encerravel && writable && (
             <Button
-              variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              aria-label={`Encerrar ${lead.name} como perdido`} onClick={() => actions.onCloseLead(lead)}
+              variant="ghost" size="icon" className="h-8 w-8 text-destructive/80 hover:text-destructive"
+              aria-label={`Encerrar ${lead.name} (perdido ou descartado)`} title="Encerrar: perdido ou descartado" onClick={() => actions.onCloseLead(lead)}
             >
               <XCircle className="h-4 w-4" />
             </Button>

@@ -46,6 +46,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 vi.mock("@/components/pipeline/data", () => ({
   useCanExitStage: () => () => true,
   useSelectableBrokers: () => ({ data: [], isPending: false, error: null }),
+  useSelectableLeaders: () => ({ data: null, isPending: false, error: null }),
   useDealWriteLock: () => ({ readOnly: false, reason: null, month: null }),
 }));
 

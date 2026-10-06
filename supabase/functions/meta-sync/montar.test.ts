@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type GraphAdset, type GraphInsight, hojeNoFuso, janelaPedida, montarConta, montarPayload } from "./montar.ts";
+import { type GraphAdset, type GraphInsight, fatiasDaJanela, hojeNoFuso, janelaPedida, montarConta, montarPayload } from "./montar.ts";
 
 /**
  * O payload é o que apaga e regrava o livro do gasto. Cada caso trava um jeito
@@ -161,5 +161,20 @@ describe("hojeNoFuso", () => {
     expect(hojeNoFuso("Asia/Tokyo", agora)).toBe("2026-09-11");
     expect(hojeNoFuso("Fuso/Inexistente", agora)).toBe("2026-09-10");
     expect(hojeNoFuso(null, agora)).toBe("2026-09-10");
+  });
+});
+
+describe("fatiasDaJanela", () => {
+  it("divide em blocos de 7 dias sem buraco nem sobreposição", () => {
+    expect(fatiasDaJanela({ inicio: "2026-08-01", fim: "2026-08-20" })).toEqual([
+      { inicio: "2026-08-01", fim: "2026-08-07" },
+      { inicio: "2026-08-08", fim: "2026-08-14" },
+      { inicio: "2026-08-15", fim: "2026-08-20" },
+    ]);
+    expect(fatiasDaJanela({ inicio: "2026-10-02", fim: "2026-10-02" })).toEqual([{ inicio: "2026-10-02", fim: "2026-10-02" }]);
+  });
+
+  it("recusa janela invertida", () => {
+    expect(() => fatiasDaJanela({ inicio: "2026-10-03", fim: "2026-10-02" })).toThrow();
   });
 });

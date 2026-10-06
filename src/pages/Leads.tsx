@@ -1,25 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, BarChart3, Inbox, Plus, Upload, Users, Zap } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { AlertTriangle, BarChart3, HandMetal, Inbox, Plus, Timer, Upload, Users, Zap } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState, PageHeader, SectionCard } from "@/components/shared";
+import { ListaDeLigacaoButton } from "@/components/leads/ListaDeLigacaoButton";
 import { toast } from "@/components/ui/sonner";
 import { num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth, type AppRole } from "@/contexts/AuthContext";
 import LeadDetailModal from "@/components/LeadDetailModal";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
+import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
 import {
-  LeadDialogs, LeadFilters, LeadsSummary, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
+  LeadDialogs, LeadFilters, LeadsIndicadores, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
   SourcePerformanceCard,
-  emptyLeadFilters, hasActiveFilter, leadMetrics, matchesFilters, noLeadDialogs,
+  emptyLeadFilters, hasActiveFilter, leadMetrics, leadsDoCorretor, matchesFilters, noLeadDialogs, podeVerPorCorretor,
   useAssignableBrokers, useAutomationSettings, useDebounced, useDistributionGroups, useGroupQueues,
   useInvalidateLeads, useLeadSources,
   useLeads, useLeadsRealtime, useNowTicker, useWhatsappTemplates,
   type LeadDialogState, type LeadPermissions, type LeadRowActions,
 } from "@/components/leads";
 import {
-  canWriteLead, claimLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE,
+  canWriteLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE,
   type LeadRecord,
 } from "@/integrations/supabase/leads";
 
@@ -59,6 +62,9 @@ export default function Leads() {
   const canReassign = can("leads.reassign");
   const canViewQueue = can("leads.view_queue");
   const canDelete = can("leads.delete");
+  // O filtro por corretor é da gestão inteira, não de quem realoca: o gerente
+  // sem `leads.reassign` ficava sem ver um corretor por vez (02/10/2026).
+  const verPorCorretor = podeVerPorCorretor(effectiveRoles, isAdmin);
 
   const [filters, setFilters] = useState(emptyLeadFilters);
   // A busca vai ao BANCO: a lista trunca em `LEADS_PAGE_SIZE` e filtrar no
@@ -76,7 +82,7 @@ export default function Leads() {
   // cache de `leadsQuery`: custo zero no caso comum.
   const baseQuery = useLeads("");
   const sourcesQuery = useLeadSources();
-  const brokersQuery = useAssignableBrokers(canReassign);
+  const brokersQuery = useAssignableBrokers(canReassign || verPorCorretor);
   const groupsQuery = useDistributionGroups();
   const settingsQuery = useAutomationSettings();
   const templatesQuery = useWhatsappTemplates();
@@ -109,7 +115,7 @@ export default function Leads() {
   // Um aviso discreto avisa sem bloquear a lista, que é o que importa aqui.
   const auxErrors = [
     sourcesQuery.error ? "origens" : null,
-    canReassign && brokersQuery.error ? "corretores" : null,
+    (canReassign || verPorCorretor) && brokersQuery.error ? "corretores" : null,
     groupsQuery.error ? "grupos de distribuição" : null,
     templatesQuery.error ? "templates de WhatsApp" : null,
   ].filter((item): item is string => Boolean(item));
@@ -134,10 +140,18 @@ export default function Leads() {
       : filtered.length === 1
         ? "1 lead encontrado"
         : `${num(filtered.length)} leads encontrados`;
-  const metrics = useMemo(() => leadMetrics(base, now, profileId), [base, now, profileId]);
-  const overdueLeads = useMemo(() => base.filter((lead) => isLeadOverdue(lead, now)), [base, now]);
+  // Gerente e diretor olham um corretor por vez (02/10/2026): o mesmo filtro da
+  // lista recorta os indicadores, para os números falarem do mesmo corretor.
+  const doCorretor = useMemo(() => leadsDoCorretor(base, filters.broker), [base, filters.broker]);
+  // Para o corretor: o que está esperando o "Atender" dele, no topo da tela.
+  const paraAtender = useMemo(
+    () => (canReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && lead.status === "assigned")),
+    [base, canReassign, profileId],
+  );
+  const metrics = useMemo(() => leadMetrics(doCorretor, now, profileId), [doCorretor, now, profileId]);
+  const overdueLeads = useMemo(() => doCorretor.filter((lead) => isLeadOverdue(lead, now)), [doCorretor, now]);
   const queuedLeads = useMemo(() => base.filter((lead) => lead.status === "queued"), [base]);
-  const maxRounds = settingsQuery.data?.roulette_max_rounds ?? 5;
+  const maxRounds = settingsQuery.data?.roulette_max_rounds ?? 0;
   // A bandeja é do gestor, mas o número precisa aparecer no cabeçalho: um lead
   // fora da roleta não volta sozinho, e ninguém abre um card por hábito.
   const semAtendimento = useMemo(
@@ -227,27 +241,15 @@ export default function Leads() {
     [leads, base, detailLeadId],
   );
 
-  // "Atender": trava o lead com o corretor (`claim_lead`) e para o cronômetro.
-  // O toast e o som de comemoração saem do realtime de `lead_events` no
-  // EngagementLayer — chamar `celebrate()` aqui tocaria o som duas vezes.
-  //
-  // Em seguida abre o detalhe no convite de contato. Agendar antes de tentar
-  // falar transformava a primeira ação em "deixar para depois"; a agenda só é
-  // perguntada depois que WhatsApp ou ligação forem usados.
+  // "Pegar lead" (05/10/2026): pergunta antes quando vai retornar o contato;
+  // ao confirmar, `claim_lead` trava o lead com o corretor, evolui para
+  // "conversa iniciada" e cria a atividade. Depois abre o card com as ações.
   const attend = async (lead: LeadRecord) => {
-    let travado = false;
-    try {
-      await claimLead(lead.id);
-      travado = true;
-    } catch (err) {
-      // Caso comum: outro corretor assumiu antes, ou o prazo estourou e o lead
-      // voltou à fila.
-      toast.error("Não foi possível atender o lead", {
-        description: describeError(err, "outro corretor pode ter assumido antes; a lista já foi atualizada"),
-      });
-    }
+    openDialog({ pegar: lead });
+  };
+  const pegou = async (lead: LeadRecord) => {
     await invalidateLeads();
-    if (travado) setDetailLeadId(lead.id);
+    setDetailLeadId(lead.id);
   };
 
   /**
@@ -329,6 +331,10 @@ export default function Leads() {
         }
         actions={
           <>
+            <ListaDeLigacaoButton />
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/leads/roleta"><Timer className="h-4 w-4" aria-hidden /> Roleta por corretor</Link>
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setShowSources((open) => !open)}>
               <BarChart3 className="h-4 w-4" /> {showSources ? "Ocultar origens" : "Origens"}
             </Button>
@@ -354,6 +360,7 @@ export default function Leads() {
       )}
 
       <LeadsCheckinCard />
+      <FilaEmFormacao />
 
       {leadsQuery.error || baseQuery.error ? (
         <EmptyState
@@ -374,7 +381,40 @@ export default function Leads() {
         </>
       ) : (
         <>
-          <LeadsSummary metrics={metrics} canViewQueue={canViewQueue} />
+          {!canReassign && (
+            <SectionCard
+              title="Para atender agora"
+              description={paraAtender.length > 0
+                ? "Leads que caíram para você. Clique em Pegar lead antes de o prazo acabar."
+                : "Nenhum lead esperando você agora. Mantenha o check-in ativo para receber."}
+              icon={HandMetal}
+              flush={paraAtender.length > 0}
+            >
+              {paraAtender.length > 0 && (
+                <ul className="divide-y divide-border">
+                  {paraAtender.map((lead) => (
+                    <li key={lead.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                      <button type="button" className="min-w-0 text-left" onClick={() => actions.onOpen(lead)}>
+                        <p className="truncate font-semibold">{lead.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{lead.campaign_name || lead.phone || "Sem campanha"}</p>
+                      </button>
+                      <Button size="sm" variant="success" className="gap-1" onClick={() => actions.onAttend(lead)}>
+                        <HandMetal className="h-4 w-4" aria-hidden /> Pegar lead
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+          )}
+
+          <LeadsIndicadores
+            leads={doCorretor}
+            broker={filters.broker}
+            onBroker={(broker) => setFilters((f) => ({ ...f, broker }))}
+            brokers={verPorCorretor ? brokersQuery.data ?? [] : []}
+            canViewQueue={canViewQueue}
+          />
 
           {showSources && <SourcePerformanceCard leads={base} />}
 
@@ -418,7 +458,7 @@ export default function Leads() {
                 filters={filters}
                 onChange={setFilters}
                 sources={sources}
-                brokers={canReassign ? brokersQuery.data ?? [] : []}
+                brokers={canReassign || verPorCorretor ? brokersQuery.data ?? [] : []}
                 groups={canViewQueue ? groupsQuery.data ?? [] : []}
               />
             </div>
@@ -464,6 +504,7 @@ export default function Leads() {
         brokers={brokersQuery.data ?? []}
         templates={templatesQuery.data ?? []}
         actorName={profile?.name}
+        onPegou={(lead) => { void pegou(lead); }}
       />
 
       {/* Detalhe do lead — pela lista e pela notificação (`?lead=<id>`). */}

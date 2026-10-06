@@ -4,8 +4,8 @@ import {
   type LeadRecord, type LeadSource,
 } from "@/integrations/supabase/leads";
 import {
-  emptyLeadFilters, fillWhatsappTemplate, hasActiveFilter, leadMetrics, matchesFilters,
-  nextActionPreset, overdueByBroker, parseVgvInput, toDateTimeInput, waNumber,
+  emptyLeadFilters, fillWhatsappTemplate, hasActiveFilter, leadMetrics, leadsDoCorretor, leadsPorPeriodo, matchesFilters,
+  nextActionPreset, overdueByBroker, parseVgvInput, podeVerPorCorretor, toDateTimeInput, waNumber,
 } from "./model";
 import { rowsToLeads } from "./importSheet";
 
@@ -68,6 +68,22 @@ describe("matchesFilters", () => {
     expect(hasActiveFilter(emptyLeadFilters)).toBe(false);
     expect(hasActiveFilter({ ...emptyLeadFilters, search: "   " })).toBe(false);
     expect(hasActiveFilter({ ...emptyLeadFilters, status: "queued" })).toBe(true);
+  });
+});
+
+describe("ver por corretor", () => {
+  it("é da gestão, inclusive do gerente sem permissão de realocar", () => {
+    expect(podeVerPorCorretor(["manager"], false)).toBe(true);
+    expect(podeVerPorCorretor(["director", "broker"], false)).toBe(true);
+    expect(podeVerPorCorretor(["broker"], false)).toBe(false);
+    expect(podeVerPorCorretor([], true)).toBe(true);
+  });
+
+  it("recorta por corretor, pela fila ou deixa todos", () => {
+    const leads = [{ assigned_to: "a" }, { assigned_to: "b" }, { assigned_to: null }];
+    expect(leadsDoCorretor(leads, "all")).toHaveLength(3);
+    expect(leadsDoCorretor(leads, "a")).toEqual([{ assigned_to: "a" }]);
+    expect(leadsDoCorretor(leads, "none")).toEqual([{ assigned_to: null }]);
   });
 });
 
@@ -480,5 +496,15 @@ describe("isLeadUnattended", () => {
 
   it("lead na mão de alguém não está na bandeja, por mais voltas que tenha dado", () => {
     expect(isLeadUnattended(lead({ status: "assigned", roulette_misses: 22 }), 5)).toBe(false);
+  });
+});
+
+describe("leadsPorPeriodo", () => {
+  it("conta hoje, a semana desde segunda e o mês", () => {
+    // Sexta-feira, 02/10/2026, 15h local.
+    const agora = new Date(2026, 9, 2, 15, 0);
+    const em = (d: number, m = 9) => ({ created_at: new Date(2026, m, d, 10, 0).toISOString() });
+    expect(leadsPorPeriodo([em(2), em(2), em(28, 8), em(1), em(29, 8), em(15, 8)], agora))
+      .toEqual({ hoje: 2, semana: 5, mes: 3 });
   });
 });

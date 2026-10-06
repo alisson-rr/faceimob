@@ -2,9 +2,12 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireServiceRole, requireUserPermission, serviceClient } from "../_shared/auth.ts";
 import { descreverFalhaMeta } from "../_shared/metaErros.ts";
 import { actId, MetaApiError, metaGet, metaGetAll, metaToken } from "../_shared/metaAds.ts";
+import { getSecret } from "../_shared/secrets.ts";
+import { getMetaPageCredentials } from "../_shared/metaPageTokensStore.ts";
+import { recuperarLeadsMeta } from "./leads.ts";
 import {
   type GraphAccount, type GraphAdset, type GraphCampaign, type GraphInsight,
-  hojeNoFuso, janelaPedida, montarConta, montarPayload,
+  fatiasDaJanela, hojeNoFuso, janelaPedida, montarConta, montarPayload,
 } from "./montar.ts";
 
 /**
@@ -13,13 +16,15 @@ import {
  * Portas: service role (pg_cron, 0118) ou usuário com marketing.meta_manage
  * (manual, conferido no banco por has_permission).
  *
- * Body {account_id?: uuid, dias?: 1..90, modo?: 'completo' | 'estado'}.
+ * Body {account_id?: uuid, dias?: 1..90, modo?: 'completo' | 'estado' | 'leads'}.
  *  - completo (padrão): por conta, lê conta, campanhas, conjuntos e insights
  *    diários e grava tudo numa transação (meta_sync_apply). Se QUALQUER chamada
  *    à Meta falhar, a execução vira 'falhou' com a frase e nada toca o livro, os
  *    insights nem o estado da conta.
  *  - estado (cron de hora em hora): só act_X com status, bloqueio, limite e
  *    saldo — sem insights, sem IA — e a avaliação só do estado da conta.
+ *  - leads (só service role): recupera contatos novos desde a ativação,
+ *    usando tokens de página e o mesmo webhook de ingestão.
  *
  * 200 {ok, contas:[{account_id, run_id, status, erro?, dias?, campanhas?, conflitos?}]}
  * 409 sem token: no modo completo cada conta ganha a execução 'falhou' com a
@@ -50,7 +55,9 @@ const CAMPOS_ESTADO = [
 // Sem o filtro, /campaigns e /adsets deixam ARCHIVED de fora. DELETED não é
 // listável aqui: a campanha apagada chega pelos insights (montar.ts).
 const STATUS_CAMPANHA = JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED", "IN_PROCESS", "WITH_ISSUES"]);
-const STATUS_CONJUNTO = JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ARCHIVED", "IN_PROCESS", "WITH_ISSUES"]);
+// Conjunto arquivado não decide onde mora a verba de campanha viva, e listá-lo
+// (milhares em conta antiga) pesava a leitura que estourava o tempo.
+const STATUS_CONJUNTO = JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "IN_PROCESS", "WITH_ISSUES"]);
 // Gasto de campanha arquivada ou apagada dentro da janela também é gasto.
 const FILTRO_INSIGHTS = JSON.stringify([{
   field: "campaign.effective_status",
@@ -62,7 +69,7 @@ const NAO_REPETE = new Set([4, 17, 190, 613, 80004]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Pedido = { account_id: string | null; dias: number; modo: "completo" | "estado" };
+type Pedido = { account_id: string | null; dias: number; modo: "completo" | "estado" | "leads" };
 type Conta = { id: string; act_id: string; timezone_name: string | null; last_sync_ok_at: string | null };
 type Resultado = {
   account_id: string;
@@ -88,7 +95,7 @@ function lerPedido(texto: string): Pedido | null {
   const { account_id = null, dias = 7, modo = "completo" } = b as Record<string, unknown>;
   if (account_id !== null && !(typeof account_id === "string" && UUID.test(account_id))) return null;
   if (typeof dias !== "number" || !Number.isInteger(dias) || dias < 1 || dias > 90) return null;
-  if (modo !== "completo" && modo !== "estado") return null;
+  if (modo !== "completo" && modo !== "estado" && modo !== "leads") return null;
   return { account_id, dias, modo };
 }
 
@@ -146,14 +153,19 @@ async function buscarNaMeta(svc: SupabaseClient, conta: Conta, dias: number, tok
   }
   const buscada = { inicio: desde < pedida.inicio ? desde : pedida.inicio, fim: pedida.fim };
 
-  const insights = await metaGetAll<GraphInsight>(`${act}/insights`, {
-    level: "campaign",
-    time_increment: "1",
-    time_range: JSON.stringify({ since: buscada.inicio, until: buscada.fim }),
-    fields: "campaign_id,campaign_name,date_start,spend,impressions,reach,clicks,inline_link_clicks,actions",
-    filtering: FILTRO_INSIGHTS,
-    limit: "500",
-  }, token);
+  // Em fatias de 7 dias e páginas de 200: a janela inteira de uma vez passava
+  // dos 30 s da Meta com centenas de campanhas (02/10/2026).
+  const insights: GraphInsight[] = [];
+  for (const fatia of fatiasDaJanela(buscada)) {
+    insights.push(...await metaGetAll<GraphInsight>(`${act}/insights`, {
+      level: "campaign",
+      time_increment: "1",
+      time_range: JSON.stringify({ since: fatia.inicio, until: fatia.fim }),
+      fields: "campaign_id,campaign_name,date_start,spend,impressions,reach,clicks,inline_link_clicks,actions",
+      filtering: FILTRO_INSIGHTS,
+      limit: "200",
+    }, token));
+  }
 
   const { data: construtoras, error: erroDev } = await svc.from("developers").select("id,name");
   if (erroDev) throw new Error("Não consegui ler as construtoras para sugerir o vínculo.");
@@ -273,10 +285,23 @@ Deno.serve(async (req) => {
 
   const pedido = lerPedido(await req.text());
   if (!pedido) {
-    return json({ error: "Pedido inválido: envie {account_id?: uuid, dias?: 1 a 90, modo?: 'completo' ou 'estado'}." }, 422);
+    return json({ error: "Pedido inválido: envie {account_id?: uuid, dias?: 1 a 90, modo?: 'completo', 'estado' ou 'leads'}." }, 422);
   }
 
   const svc = serviceClient();
+  if (pedido.modo === "leads") {
+    if (!servico) return json({ error: "Recuperação de leads exige a chave de serviço." }, 403);
+    try {
+      const resultado = await recuperarLeadsMeta(
+        svc, await getMetaPageCredentials(), await getSecret("META_APP_SECRET"),
+        `${Deno.env.get("SUPABASE_URL")!.replace(/\/$/, "")}/functions/v1/meta-ads-webhook`,
+      );
+      return json(resultado, resultado.ok ? 200 : 502);
+    } catch (e) {
+      console.error("meta-sync: recuperação de leads falhou", e instanceof MetaApiError ? e.code ?? e.status : "falha");
+      return json({ ok: false, error: "Não consegui recuperar os leads; o próximo ciclo tentará novamente." }, 502);
+    }
+  }
   let consulta = svc.from("meta_ad_accounts")
     .select("id,act_id,timezone_name,last_sync_ok_at")
     .eq("enabled", true)

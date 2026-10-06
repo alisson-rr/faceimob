@@ -17,6 +17,20 @@ export const ALL = "all";
 export const MY_TEAM = "mine";
 
 /**
+ * Status 1 com que a lista abre — e para onde "Limpar filtros" volta. Todos em
+ * PROPOSTA (28/09/2026); o corretor em PROPOSTA + LEGADO (05/10/2026), porque o
+ * legado é carteira dele em andamento. Por `code`, imutável (0149). Sem
+ * catálogo carregado, nada a recortar.
+ */
+export function status1DeAbertura(groups: DealStatusCatalog["groups"], soCorretor: boolean): string[] {
+  const id = (code: string) => groups.find((group) => group.code === code)?.id;
+  const proposta = id("PROPOSTA");
+  if (!proposta) return [];
+  const legado = soCorretor ? id("LEGADO") : undefined;
+  return legado ? [proposta, legado] : [proposta];
+}
+
+/**
  * Percentual em pt-BR — o rateio do corretor e as taxas do painel.
  *
  * Eram QUATRO cópias do mesmo `toLocaleString` (cartão, tabela, formulário e
@@ -41,9 +55,10 @@ export type DealFilterState = {
   /** `ALL` ou `MY_TEAM` — o recorte por equipe. */
   team: string;
   stage: string;
-  /** `deals.status_group_id` ou `ALL`. */
-  status1: string;
-  status2: string;
+  /** Status 1 escolhidos (`deals.status_group_id`, vários de uma vez, 04/10/2026). Vazio = todos. */
+  status1: string[];
+  /** Status 2 escolhidos (vários de uma vez, 02/10/2026). Vazio = todos. */
+  status2: string[];
   documentReview: string;
   developerId: string;
   brokerId: string;
@@ -60,8 +75,8 @@ export const EMPTY_FILTERS: DealFilterState = {
   search: "",
   team: ALL,
   stage: ALL,
-  status1: ALL,
-  status2: ALL,
+  status1: [],
+  status2: [],
   documentReview: ALL,
   developerId: ALL,
   brokerId: ALL,
@@ -75,9 +90,10 @@ export const EMPTY_FILTERS: DealFilterState = {
 };
 
 export const hasActiveFilter = (filters: DealFilterState): boolean =>
-  (Object.keys(EMPTY_FILTERS) as (keyof DealFilterState)[]).some(
-    (key) => filters[key] !== EMPTY_FILTERS[key],
-  );
+  (Object.keys(EMPTY_FILTERS) as (keyof DealFilterState)[]).some((key) => {
+    const valor = filters[key];
+    return Array.isArray(valor) ? valor.length > 0 : valor !== EMPTY_FILTERS[key];
+  });
 
 const includes = (value: string | null | undefined, needle: string) =>
   (value || "").toLowerCase().includes(needle.toLowerCase());
@@ -181,16 +197,17 @@ export function applyDealFilters(
     if (filters.brokerId !== ALL && !participantIds(deal).includes(filters.brokerId)) return false;
     if (filters.managerId !== ALL && !managerIds(deal).includes(filters.managerId)) return false;
     if (filters.stage !== ALL && deal.stage !== filters.stage) return false;
-    if (filters.status1 !== ALL) {
+    if (filters.status1.length > 0) {
       // "VENDA — todas as vendas" precisa responder à mesma pergunta do
       // Dashboard: inclui tanto o grupo VENDA ainda aberto quanto negócios já
       // ganhos que avançaram para PÓS VENDA. Comparar apenas o id do grupo
-      // escondia exatamente essa última venda do mês.
-      if (vendaGroupId && filters.status1 === vendaGroupId) {
-        if (!contaComoVenda(deal)) return false;
-      } else if (deal.status_group_id !== filters.status1) return false;
+      // escondia exatamente essa última venda do mês. Vários marcados: basta
+      // casar um deles.
+      const casa = filters.status1.some((grupo) =>
+        vendaGroupId && grupo === vendaGroupId ? contaComoVenda(deal) : deal.status_group_id === grupo);
+      if (!casa) return false;
     }
-    if (filters.status2 !== ALL && deal.status !== filters.status2) return false;
+    if (filters.status2.length > 0 && !filters.status2.includes(deal.status)) return false;
     if (filters.documentReview !== ALL && deal.document_review_status !== filters.documentReview) return false;
     if (filters.month !== ALL && dealMonth(deal) !== filters.month) return false;
     if (filters.client && !includes(deal.client, filters.client)) return false;

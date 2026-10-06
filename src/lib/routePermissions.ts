@@ -16,6 +16,7 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   "/dashboard": "menu.dashboard",
   "/pipeline": "menu.pipeline",
   "/leads": "menu.leads",
+  "/leads/roleta": "menu.leads",
   "/atividades": "menu.atividades",
   "/cca": "menu.cca",
   "/marketing": "menu.marketing",
@@ -26,6 +27,12 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   "/checkpoint": "menu.checkpoint",
   "/checkin": "menu.checkin",
   "/sdr": "menu.sdr",
+  "/central": "menu.central",
+  "/central/suporte": "menu.central",
+  "/central/drive": "menu.central",
+  "/central/mapa": "menu.central",
+  "/central/universidade": "menu.central",
+  "/central/imoveis": "menu.central",
   "/data": "menu.data",
   // `/settings` NÃO entra aqui de propósito — ver `firstAllowedRoute`.
   "/admin/permissions": "menu.admin_permissions",
@@ -125,3 +132,7 @@ export const firstAllowedRoute = (can: (code: string) => boolean): string => {
   });
   return item?.url ?? "/settings";
 };
+
+/** Só corretor: nenhum papel de gestão, administração ou apoio junto. */
+export const ehSoCorretor = (roles: readonly string[]): boolean =>
+  roles.includes("broker") && roles.every((papel) => papel === "broker");
