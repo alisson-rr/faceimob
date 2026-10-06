@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useState, type DragEvent } from "react";
-import { Building2, ChevronDown, ChevronUp, DollarSign, RotateCcw, User } from "lucide-react";
+import { Building2, ChevronDown, ChevronUp, DollarSign, Undo2, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,8 +8,24 @@ import { brl, num } from "@/lib/format";
 import { ccaStageColor } from "./ccaStage";
 import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import type { CcaDeal, CcaSendCount, CcaStage } from "./ccaData";
+import { ccaCaseIsOpen } from "@/integrations/supabase/documents";
 import { elapsedDays, elapsedLabel } from "./ccaTime";
 import { cn } from "@/lib/utils";
+import { developerDot, isHexColor } from "@/lib/tone";
+
+function SeloDaConstrutora({ nome, cor }: { nome: string; cor?: string | null }) {
+  const bolinha = developerDot(nome, cor);
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1.5 text-xs"
+      style={isHexColor(cor) ? { borderColor: cor, backgroundColor: `${cor}33` } : undefined}
+    >
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", bolinha.className)} style={bolinha.style} aria-hidden />
+      {nome}
+    </Badge>
+  );
+}
 
 /** Cartões por coluna antes do "Mostrar mais" — ver `limites` no `CcaBoard`. */
 const POR_COLUNA = 200;
@@ -42,6 +58,8 @@ interface Props {
   /** Abre o negócio no `DealDetailModal` — o MESMO editor do Pipeline. */
   onOpen: (deal: CcaDeal) => void;
   onMove: (deal: CcaDeal, stage: CcaStage) => void;
+  /** Cancela o caso na CCA e devolve o dossiê ao comercial com comentário. */
+  onDevolver?: (deal: CcaDeal) => void;
 }
 
 /**
@@ -65,7 +83,7 @@ interface Props {
  * `memo`: abrir um diálogo da tela não redesenha os cartões.
  */
 export const CcaBoard = memo(function CcaBoard({
-  stages, deals, canAct, sendCounts, onOpen, onMove,
+  stages, deals, canAct, sendCounts, onOpen, onMove, onDevolver,
 }: Props) {
   const faixaId = useId();
   const [now, setNow] = useState(Date.now);
@@ -295,7 +313,7 @@ export const CcaBoard = memo(function CcaBoard({
                               </Badge>
                             ) : null}
                           </div>
-                          {deal.developer && <Badge variant="outline" className="text-xs">{deal.developer}</Badge>}
+                          {deal.developer && <SeloDaConstrutora nome={deal.developer} cor={deal.developerColor} />}
                         </div>
 
                         <p className="w-fit rounded-md border border-info/30 bg-info/10 px-2 py-1 text-xs font-semibold tabular-nums"
@@ -322,26 +340,14 @@ export const CcaBoard = memo(function CcaBoard({
                         </dl>
                       </div>
 
-                      {canAct && (
-                        <div className="flex gap-2">
-                          <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />
-                          {stage.status !== "approved" && stage.status !== "rejected" && stage.status !== "cancelled" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 flex-1 text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                // Devolver ao comercial = mover para o primeiro estágio que avisa o comercial
-                                const commercialStage = stages.find((s) => s.notify_sales !== false && s.id !== stage.id);
-                                if (commercialStage) onMove(deal, commercialStage);
-                              }}
-                            >
-                              <RotateCcw className="h-3 w-3 mr-1" />
-                              Devolver ao comercial
-                            </Button>
-                          )}
-                        </div>
+                      {canAct && <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />}
+                      {canAct && onDevolver && ccaCaseIsOpen(deal.status) && (
+                        <Button
+                          type="button" variant="tintWarning" size="sm" className="h-7 w-full text-xs"
+                          onClick={() => onDevolver(deal)}
+                        >
+                          <Undo2 className="mr-1 h-3 w-3" aria-hidden /> Devolver ao comercial
+                        </Button>
                       )}
                     </article>
                   );

@@ -48,6 +48,8 @@ async function renderCard(
     /** Motivo devolvido por `blockedMove` — `null` libera o destino. */
     recusa?: string | null;
     extra?: Partial<LegacyDealRecord>;
+    currentMonth?: string;
+    ccaQueuePosition?: number;
   } = {},
 ) {
   const container = document.body.appendChild(document.createElement("div"));
@@ -55,6 +57,7 @@ async function renderCard(
   const perdidos: string[] = [];
   const movidos: string[] = [];
   const recusas: string[] = [];
+  const reativados: string[] = [];
   await act(async () => {
     root.render(
       <DealCard
@@ -63,6 +66,9 @@ async function renderCard(
         onOpen={() => undefined}
         onMove={(_alvo, stage) => movidos.push(stage.label)}
         onLose={(alvo) => perdidos.push(alvo.id)}
+        onReactivate={(alvo) => reativados.push(alvo.id)}
+        currentMonth={opcoes.currentMonth}
+        ccaQueuePosition={opcoes.ccaQueuePosition}
         lock={{ locked: Boolean(opcoes.locked), reason: "", monthClosed: false }}
         canExit
         blockedMove={() => opcoes.recusa ?? null}
@@ -80,6 +86,8 @@ async function renderCard(
     '[aria-label="Perder o negócio de Cliente Teste"]',
   );
   if (perder) await act(async () => { perder.click(); });
+  const reativar = container.querySelector<HTMLButtonElement>('[aria-label="Reativar proposta Cliente Teste"]');
+  if (reativar) await act(async () => { reativar.click(); });
   const corpo = container.querySelector<HTMLElement>('[role="button"]');
   await act(async () => {
     corpo?.dispatchEvent(
@@ -94,6 +102,8 @@ async function renderCard(
     seloNoCartao: Boolean(selo && container.querySelector("article")?.contains(selo)),
     temPerder: Boolean(perder),
     perdidos: [...perdidos],
+    reativados: [...reativados],
+    temReativar: Boolean(reativar),
     texto: container.textContent ?? "",
     // O cartão já mostra a probabilidade em "%": contar é o que separa
     // "tem rateio" de "só tem a probabilidade".
@@ -209,5 +219,34 @@ describe("DealCard · cor da coluna", () => {
   it("pinta a borda esquerda com a cor que a coluna passou", async () => {
     // O jsdom devolve a cor como foi escrita.
     expect((await renderCard()).borda).toBe("#34d399");
+  });
+});
+
+describe("DealCard · fila do CCA e reativação", () => {
+  it("mostra a posição global do negócio na fila do CCA", async () => {
+    expect((await renderCard(undefined, { ccaQueuePosition: 7 })).texto).toContain("CCA: 7º na fila");
+  });
+
+  it("oferece reativar apenas OFF de competência anterior", async () => {
+    const anterior = await renderCard(undefined, {
+      currentMonth: "10/2026",
+      extra: { status_detail: "OFF", month_base: "09/2026", outcome: "lost" },
+    });
+    expect(anterior.temReativar).toBe(true);
+    expect(anterior.reativados).toEqual(["d1"]);
+
+    const vigente = await renderCard(undefined, {
+      currentMonth: "10/2026",
+      extra: { status_detail: "OFF", month_base: "10/2026", outcome: "lost" },
+    });
+    expect(vigente.temReativar).toBe(false);
+  });
+
+  it("não transforma DISTRATO histórico em proposta", async () => {
+    const resultado = await renderCard(undefined, {
+      currentMonth: "10/2026",
+      extra: { status_detail: "17. DISTRATO", month_base: "09/2026", outcome: "lost" },
+    });
+    expect(resultado.temReativar).toBe(false);
   });
 });

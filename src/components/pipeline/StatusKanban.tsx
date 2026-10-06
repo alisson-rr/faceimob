@@ -30,6 +30,9 @@ interface Props {
   /** O `moveStatus` do `useDealActions`, estável: o cartão é `memo`. */
   onMoveStatus: (deal: LegacyDealRecord, statusValue: string) => void;
   onLose: (deal: LegacyDealRecord) => void;
+  onReactivate?: (deal: LegacyDealRecord) => void;
+  currentMonth?: string | null;
+  ccaQueuePositions?: ReadonlyMap<string, number>;
   canWrite: boolean;
   closedMonths: string[];
 }
@@ -49,7 +52,8 @@ interface Props {
  * continua recebendo o cartão solto nela.
  */
 export function StatusKanban({
-  catalog, statusGroupIds, deals, onOpen, onMoveStatus, onLose, canWrite, closedMonths,
+  catalog, statusGroupIds, deals, onOpen, onMoveStatus, onLose, onReactivate,
+  currentMonth, ccaQueuePositions, canWrite, closedMonths,
 }: Props) {
   const [dragged, setDragged] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -209,6 +213,9 @@ export function StatusKanban({
                     previousStage={colunas[index - 1]?.status ? colunas[index - 1].stage : undefined}
                     nextStage={colunas[index + 1]?.stage}
                     onLose={onLose}
+                    onReactivate={onReactivate}
+                    currentMonth={currentMonth}
+                    ccaQueuePosition={ccaQueuePositions?.get(deal.id)}
                     dragging={dragged === deal.id}
                     onDragStart={iniciarArraste}
                     onDragEnd={encerrarArraste}

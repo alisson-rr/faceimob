@@ -10,7 +10,14 @@ export function DirectorPipelineCards({ people, deals, selected, onSelect, onPan
   onSelect: (id: string) => void; onPanel: () => void; loading: boolean; error: boolean;
 }) {
   const directors = useMemo(() => people.filter((p) => p.active && p.roles.includes("director"))
-    .map((p) => ({ ...p, proposals: dealsForLeader(deals, people, p.id).filter((d) => d.outcome === "open").length })), [people, deals]);
+    .map((p) => {
+      const all = dealsForLeader(deals, people, p.id).filter((d) => d.outcome === "open");
+      // Status 1 é a fonte de verdade. O texto da etapa varia por cadastro e
+      // classificava incorretamente vendas e casos sem Status 1 como proposta.
+      const proposals = all.filter((d) => d.status_group_code === "PROPOSTA").length;
+      const legacy = all.filter((d) => d.status_group_code === "LEGADO").length;
+      return { ...p, proposals, legacy };
+    }), [people, deals]);
   return <section aria-label="Pipeline por diretor" className="rounded-2xl border border-primary/30 bg-card p-4 shadow-md">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <h2 className="font-display font-bold">Propostas por diretor</h2>
@@ -29,7 +36,11 @@ export function DirectorPipelineCards({ people, deals, selected, onSelect, onPan
           className={cn("flex items-center gap-3 rounded-xl border border-primary/35 bg-gradient-to-br from-primary/15 to-card p-4 text-left transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", selected === p.id && "border-primary ring-2 ring-primary/50")}>
           <Avatar><AvatarImage src={p.avatar_url ?? undefined} alt="" /><AvatarFallback>{p.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
           <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{p.name}</span><span className="text-xs text-muted-foreground">Diretoria</span></span>
-          <span className="text-center"><span className="block text-2xl font-bold tabular-nums text-primary">{p.proposals}</span><span className="text-xs text-muted-foreground">{p.proposals === 1 ? "proposta" : "propostas"}</span></span>
+          <span className="text-center">
+            <span className="block text-2xl font-bold tabular-nums text-primary">{p.proposals}</span>
+            <span className="text-xs text-muted-foreground">{p.proposals === 1 ? "proposta" : "propostas"}</span>
+            {p.legacy > 0 && <span className="block text-xs text-muted-foreground/70">+{p.legacy} legado</span>}
+          </span>
         </button>)}
       </div>}
   </section>;

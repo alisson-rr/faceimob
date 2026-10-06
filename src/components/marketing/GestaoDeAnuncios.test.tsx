@@ -27,7 +27,7 @@ vi.mock("@/integrations/supabase/client", () => {
 });
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ can: () => false }) }));
 
-import { GestaoDeAnuncios } from "./GestaoDeAnuncios";
+import { GestaoDeAnuncios } from "./GestaoDeAnunciosPanel";
 
 const montados: Root[] = [];
 afterEach(() => {

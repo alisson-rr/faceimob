@@ -40,6 +40,7 @@ const FILA_INTEIRA_ROLES = ["admin"];
 
 /** Janela em que a mudança ainda é "acabou de acontecer". */
 const FRESH_MS = 20_000;
+const REALTIME_RETRY_MS = 4_000;
 
 /**
  * Idade do fato medida com o relógio do servidor.
@@ -177,56 +178,96 @@ export default function NewLeadNotifier() {
 
   useEffect(() => {
     if (!profileId) return;
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    const channel = supabase.channel(`lead-alerts-${profileId}`);
+    // Se o realtime oscilou exatamente na hora da atribuição, o evento não é
+    // repetido pelo servidor. Ao (re)conectar, recuperamos o lead que continua
+    // aguardando este corretor e cujo prazo ainda está correndo.
+    const recoverAssignedLead = async () => {
+      const { data } = await supabase
+        .from("leads")
+        .select("id,full_name,phone,status,assigned_to,assigned_at,attend_deadline,campaign_name,utm_source,form_id,created_at,distribution_group_id")
+        .eq("assigned_to", profileId)
+        .eq("status", "assigned")
+        .gt("attend_deadline", new Date().toISOString())
+        .order("assigned_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!disposed && data) announce(data as IncomingLead, "assigned");
+    };
 
-    // Atribuição pela roleta. `payload.old` só traz a PK (replica identity
-    // default), então não há como comparar o status anterior: o corte é
-    // "atribuído a mim, aguardando atendimento e recém-atribuído".
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "leads", filter: `assigned_to=eq.${profileId}` },
-      (payload) => {
-        const row = payload.new as IncomingLead;
-        if (row?.status !== "assigned") return;
-        if (!isFresh(row.assigned_at, payload.commit_timestamp)) return;
-        announce(row, "assigned");
-      },
-    );
+    const subscribe = () => {
+      if (disposed) return;
+      const nextChannel = supabase.channel(`lead-alerts-${profileId}-${Date.now()}`);
+      channel = nextChannel;
 
-    // Um lead pode ser criado já com corretor (realocação/importação dirigida):
-    // o INSERT também precisa avisar o dono.
-    channel.on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "leads", filter: `assigned_to=eq.${profileId}` },
-      (payload) => {
-        const row = payload.new as IncomingLead;
-        if (row?.status !== "assigned") return;
-        announce(row, "assigned");
-      },
-    );
-
-    if (isGestor) {
-      channel.on(
+      // Atribuição pela roleta. `payload.old` só traz a PK (replica identity
+      // default), então não há como comparar o status anterior: o corte é
+      // "atribuído a mim, aguardando atendimento e recém-atribuído".
+      nextChannel.on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "leads" },
+        { event: "UPDATE", schema: "public", table: "leads", filter: `assigned_to=eq.${profileId}` },
         (payload) => {
           const row = payload.new as IncomingLead;
-          if (row?.assigned_to) return; // já tem dono: o aviso é dele
-          if (!isFresh(row.created_at, payload.commit_timestamp)) return;
-          // Fila geral (sem grupo) é de todo mundo; fila específica é só de
-          // quem tem gente no grupo. Enquanto os grupos não carregaram, o
-          // gestor só recebe o que é da fila geral.
-          if (!veFilaInteira && row.distribution_group_id) {
-            if (!meusGrupos.current?.has(row.distribution_group_id)) return;
-          }
-          announce(row, "queued");
+          if (row?.status !== "assigned") return;
+          if (!isFresh(row.assigned_at, payload.commit_timestamp)) return;
+          announce(row, "assigned");
         },
       );
-    }
 
-    channel.subscribe();
-    return () => { supabase.removeChannel(channel); };
+      // Um lead pode ser criado já com corretor (realocação/importação dirigida):
+      // o INSERT também precisa avisar o dono.
+      nextChannel.on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "leads", filter: `assigned_to=eq.${profileId}` },
+        (payload) => {
+          const row = payload.new as IncomingLead;
+          if (row?.status !== "assigned") return;
+          announce(row, "assigned");
+        },
+      );
+
+      if (isGestor) {
+        nextChannel.on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "leads" },
+          (payload) => {
+            const row = payload.new as IncomingLead;
+            if (row?.assigned_to) return; // já tem dono: o aviso é dele
+            if (!isFresh(row.created_at, payload.commit_timestamp)) return;
+            // Fila geral (sem grupo) é de todo mundo; fila específica é só de
+            // quem tem gente no grupo. Enquanto os grupos não carregaram, o
+            // gestor só recebe o que é da fila geral.
+            if (!veFilaInteira && row.distribution_group_id) {
+              if (!meusGrupos.current?.has(row.distribution_group_id)) return;
+            }
+            announce(row, "queued");
+          },
+        );
+      }
+
+      nextChannel.subscribe((status) => {
+        if (disposed || channel !== nextChannel) return;
+        if (status === "SUBSCRIBED") {
+          void recoverAssignedLead();
+          return;
+        }
+        if (status !== "CHANNEL_ERROR" && status !== "TIMED_OUT" && status !== "CLOSED") return;
+        channel = null;
+        void supabase.removeChannel(nextChannel);
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = setTimeout(subscribe, REALTIME_RETRY_MS);
+      });
+    };
+
+    subscribe();
+    return () => {
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (channel) void supabase.removeChannel(channel);
+    };
   }, [profileId, isGestor, veFilaInteira, announce]);
 
   // Todo fechamento passa por `setLead(null)`; o ref acompanha depois do commit.

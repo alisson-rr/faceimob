@@ -18,7 +18,7 @@ import { MetaAdScores } from "@/components/marketing/MetaAdScores";
 import { MetaAlertsPanel } from "@/components/marketing/MetaAlertsPanel";
 import { MetaCampaignPlanner } from "@/components/marketing/MetaCampaignPlanner";
 import { MetaTrafficManager } from "@/components/marketing/MetaTrafficManager";
-import { GestaoDeAnuncios } from "@/components/marketing/GestaoDeAnuncios";
+import { GestaoDeAnuncios } from "@/components/marketing/GestaoDeAnunciosPanel";
 import {
   AD_PLATFORM_LABEL,
   adStatusLabel,

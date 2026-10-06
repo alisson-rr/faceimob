@@ -34,6 +34,9 @@ interface Props {
   onScheduleVisit: (deal: LegacyDealRecord) => void;
   onLose: (deal: LegacyDealRecord) => void;
   onReopen: (deal: LegacyDealRecord) => void;
+  onReactivate?: (deal: LegacyDealRecord) => void;
+  currentMonth?: string | null;
+  ccaQueuePositions?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -47,7 +50,7 @@ interface Props {
 export function DealsBoard({
   view, deals, catalog, statusGroupIds, isPending, error, filtered, canWrite, closedMonths,
   onRetry, onClearFilters, onNewDeal, onOpen, onStatusChange, onScheduleVisit, onLose,
-  onReopen,
+  onReopen, onReactivate, currentMonth, ccaQueuePositions,
 }: Props) {
   if (isPending) return <LoadingState variant="table" rows={8} label="Carregando negócios…" />;
 
@@ -89,6 +92,9 @@ export function DealsBoard({
       onOpen={onOpen}
       onMoveStatus={onStatusChange}
       onLose={onLose}
+      onReactivate={onReactivate}
+      currentMonth={currentMonth}
+      ccaQueuePositions={ccaQueuePositions}
       canWrite={canWrite}
       closedMonths={closedMonths}
     />

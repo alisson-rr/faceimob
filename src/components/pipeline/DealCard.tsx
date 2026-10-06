@@ -9,11 +9,8 @@ import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
 import { brokerTextClass, dealAgeTone, DEAL_AGE_CLASS, developerDot } from "@/lib/tone";
 import { calcDealProbability } from "@/lib/aiAnalytics";
-import { bareStatus } from "@/lib/dealStatus";
-import { toast } from "@/hooks/use-toast";
-import { describeError } from "@/lib/supabaseError";
+import { bareStatus, compareMonth } from "@/lib/dealStatus";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
-import { useReactivateDeal } from "@/integrations/supabase/cca";
 import { dealBrokers, dealMonth, pct } from "./filters";
 import type { DealLock } from "./guards";
 import { conferenciaDoNegocio } from "./review";
@@ -58,6 +55,12 @@ interface Props {
   /** Encerrar o negócio (abre o diálogo de perda com motivo). No kanban não
    *  havia como perder: era preciso voltar para a visão de tabela. */
   onLose: (deal: LegacyDealRecord) => void;
+  /** Abre a confirmação/seleção de corretor da reativação. */
+  onReactivate?: (deal: LegacyDealRecord) => void;
+  /** Competência aberta, MM/AAAA. OFF só reativa quando é anterior a ela. */
+  currentMonth?: string | null;
+  /** Posição global deste negócio na fila de análise do CCA. */
+  ccaQueuePosition?: number | null;
   previousStage?: PipelineStage;
   nextStage?: PipelineStage;
   dragging: boolean;
@@ -83,7 +86,8 @@ interface Props {
  * único de abrir/arrastar/Shift+seta; o rodapé com os dois botões é irmão dele.
  */
 function DealCardBase({
-  deal, color, onOpen, onMove, onLose, lock, canExit, blockedMove, onBlockedMove,
+  deal, color, onOpen, onMove, onLose, onReactivate, currentMonth, ccaQueuePosition,
+  lock, canExit, blockedMove, onBlockedMove,
   previousStage, nextStage, dragging, onDragStart, onDragEnd,
 }: Props) {
   const review = conferenciaDoNegocio(deal.document_review_status, deal.status);
@@ -94,20 +98,11 @@ function DealCardBase({
   const corretores = dealBrokers(deal);
   const bolinha = developerDot(deal.developer, deal.developer_color);
   const comissao = comissaoPrevista(deal);
-  const reactivateMutation = useReactivateDeal();
-
-  // Negocio OFF/DISTRATO de mes anterior fica em blur com botao de reativar (0184)
+  // Só OFF de competência anterior pode voltar; DISTRATO permanece histórico.
   const statusBare = bareStatus(deal.status_detail);
-  const isOffOrDistratoMesAnterior = (statusBare === "OFF" || statusBare === "DISTRATO") && deal.month_base !== undefined;
-
-  const handleReactivate = async () => {
-    try {
-      await reactivateMutation.mutateAsync({ dealId: deal.id });
-      toast({ variant: "success", title: "Negocio reativado", description: `${deal.client} voltou para o mes vigente.` });
-    } catch (err) {
-      toast({ variant: "destructive", title: "Nao foi possivel reativar", description: describeError(err, "O negocio nao foi reativado.") });
-    }
-  };
+  const isOffMesAnterior = Boolean(
+    onReactivate && currentMonth && statusBare === "OFF" && mes && compareMonth(mes, currentMonth) < 0,
+  );
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -166,57 +161,33 @@ function DealCardBase({
   // O motivo da imobilidade vai para o nome acessível: `lock.reason` já é a
   // frase da tabela (" — perfil somente leitura", " — negócio encerrado",
   // " — mês MM/AAAA fechado") e `can_exit` é o caso que só o kanban tem.
-const impedimento = !canExit
-? "seu perfil não pode tirar o negócio desta etapa"
-: lock.reason.replace(/^s*—s*/, "");
-// Blur overlay para OFF/DISTRATO de mês anterior (0184)
-const offOverlay = isOffOrDistratoMesAnterior ? (
-<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-card/60 backdrop-blur-[2px]">
-<Button
-size="sm"
-variant="success"
-onClick={(e) => { e.stopPropagation(); handleReactivate(); }}
-disabled={reactivateMutation.isPending}
-aria-label={`Reativar proposta ${deal.client}`}
-className="gap-1.5 shadow-lg"
->
-<RefreshCw className={cn("h-3.5 w-3.5", reactivateMutation.isPending && "animate-spin")} />
-{reactivateMutation.isPending ? "Reativando…" : "Reativar Proposta"}
-</Button>
-</div>
-) : null;
-return (
-<article
-className={cn(
-"relative rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
-"hover:border-primary/30 hover:shadow-lg",
-dragging && "scale-95 opacity-40",
-isOffOrDistratoMesAnterior && "opacity-70",
-)}
-style={{ borderLeftColor: color }}
->
-{offOverlay}
-<div
-className="gap-1.5 shadow-lg"
->
-<RefreshCw className={cn("h-3.5 w-3.5", reactivateMutation.isPending && "animate-spin")} />
-{reactivateMutation.isPending ? "Reativando…" : "Reativar Proposta"}
-</Button>
-</div>
-) : null;
-return (
-<article
-className={cn(
-"relative rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
-"hover:border-primary/30 hover:shadow-lg",
-dragging && "scale-95 opacity-40",
-isOffOrDistratoMesAnterior && "opacity-70",
-)}
-style={{ borderLeftColor: color }}
->
-{offOverlay}
-<div
+  const impedimento = !canExit
+    ? "seu perfil não pode tirar o negócio desta etapa"
+    : lock.reason.replace(/^\s*—\s*/, "");
+  const offOverlay = isOffMesAnterior ? (
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-card/60 backdrop-blur-[2px]">
+      <Button
+        size="sm"
+        variant="success"
+        onClick={(event) => { event.stopPropagation(); onReactivate?.(deal); }}
+        aria-label={`Reativar proposta ${deal.client}`}
+        className="gap-1.5 shadow-lg"
+      >
+        <RefreshCw className="h-3.5 w-3.5" /> Reativar Proposta
+      </Button>
+    </div>
+  ) : null;
+  return (
+    <article
+      className={cn(
+        "relative rounded-xl border border-l-4 border-border/40 bg-card p-3 text-left transition-all",
+        "hover:border-primary/30 hover:shadow-lg",
+        dragging && "scale-95 opacity-40",
+        isOffMesAnterior && "opacity-70",
+      )}
+      style={{ borderLeftColor: color }}
     >
+      {offOverlay}
       <div
         role="button"
         tabIndex={0}
@@ -262,6 +233,11 @@ style={{ borderLeftColor: color }}
         <Badge variant="outline" className={cn("mb-2 h-5 px-1.5 text-xs", review.className)}>
           {review.label}
         </Badge>
+        {ccaQueuePosition ? (
+          <Badge variant="secondary" className="mb-2 ml-1 h-5 px-1.5 text-xs tabular-nums">
+            CCA: {ccaQueuePosition}º na fila
+          </Badge>
+        ) : null}
 
         {/* Previsão de comissão a partir da aprovação (29/09/2026): o número que
             motiva o corretor, no cartão que ele olha todo dia. */}
