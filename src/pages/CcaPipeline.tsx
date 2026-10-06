@@ -17,7 +17,8 @@ import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import {
   listDocumentTypesForAdmin, updateDocumentType, type DocumentTypeAdminRecord,
 } from "@/integrations/supabase/documents";
-import { saveLegacyDeal } from "@/integrations/supabase/newSchema";
+import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { useNegocioDoLink } from "@/components/pipeline/useNegocioDoLink";
 import {
   CcaBoard, CcaMoveDialog, CcaStageSettingsDialog,
   dealRangeError, useCcaBoard, useDevelopers, useInvalidateCcaBoard,
@@ -252,6 +253,13 @@ export default function CcaPipeline() {
   /** Negócio aberto no editor — o `id`, não a linha: assim o modal acompanha o
    *  refetch do quadro em vez de segurar uma cópia congelada. */
   const [openDealId, setOpenDealId] = useState<string | null>(null);
+  /** Negócio vindo do aviso do sino (`?negocio=`), que pode estar fora do período do quadro. */
+  const [doLink, setDoLink] = useState<LegacyDealRecord | null>(null);
+  const abrirDoLink = useCallback((deal: LegacyDealRecord) => {
+    setDoLink(deal);
+    setOpenDealId(deal.id);
+  }, []);
+  useNegocioDoLink(abrirDoLink);
 
   const canAct = can("cca.review");
   const stages = useMemo(() => board.data?.stages ?? [], [board.data]);
@@ -261,8 +269,9 @@ export default function CcaPipeline() {
   // Fora do gate de espera: o selo é complemento, e sem ele o quadro continua útil.
   const envios = useCcaSendCounts(dealIds, canAct);
   const openDeal = useMemo(
-    () => negocios?.find((row) => row.id === openDealId) ?? null,
-    [negocios, openDealId],
+    () => negocios?.find((row) => row.id === openDealId)
+      ?? (doLink?.id === openDealId ? doLink : null),
+    [negocios, openDealId, doLink],
   );
 
   const visiveis = useMemo(() => {

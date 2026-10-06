@@ -50,7 +50,7 @@ export function CcaDevolverDialog({ deal, onClose, onDone }: {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Undo2 className="h-5 w-5 text-primary" aria-hidden /> Devolver ao comercial
+            <Undo2 className="h-5 w-5 text-warning" aria-hidden /> Devolver ao comercial
           </DialogTitle>
           <DialogDescription>
             {deal.client} sai da esteira da CCA e volta ao corretor no mesmo status, para completar e reenviar.
@@ -66,7 +66,7 @@ export function CcaDevolverDialog({ deal, onClose, onDone }: {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={enviando}>Cancelar</Button>
-          <Button onClick={() => void devolver()} disabled={!limpa || enviando}>
+          <Button variant="devolver" onClick={() => void devolver()} disabled={!limpa || enviando}>
             {enviando ? "Devolvendo…" : "Devolver ao comercial"}
           </Button>
         </DialogFooter>

@@ -398,7 +398,7 @@ export default function Leads() {
                         <p className="truncate font-semibold">{lead.name}</p>
                         <p className="truncate text-xs text-muted-foreground">{lead.campaign_name || lead.phone || "Sem campanha"}</p>
                       </button>
-                      <Button size="sm" className="gap-1" onClick={() => actions.onAttend(lead)}>
+                      <Button size="sm" variant="success" className="gap-1" onClick={() => actions.onAttend(lead)}>
                         <HandMetal className="h-4 w-4" aria-hidden /> Pegar lead
                       </Button>
                     </li>

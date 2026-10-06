@@ -113,7 +113,7 @@ begin
 end
 $$;
 
-\echo '== 2. mark_no_response_leads: prazo estourado vira Sem Resposta e avisa =='
+\echo '== 2. mark_no_response_leads: prazo estourado vira Aguardando retorno e avisa =='
 
 do $$
 declare

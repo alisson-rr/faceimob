@@ -299,6 +299,7 @@ export function ConvertLeadDialog({
           <DialogClose asChild><Button variant="outline" size="sm">Cancelar</Button></DialogClose>
           <Button
             size="sm"
+            variant="success"
             onClick={submit}
             disabled={!developerId || !projectId || vgvInvalid || converting || (encerrado && !reabrir)}
           >

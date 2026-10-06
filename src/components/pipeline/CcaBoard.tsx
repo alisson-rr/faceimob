@@ -348,7 +348,7 @@ export const CcaBoard = memo(function CcaBoard({
                       {canAct && <MoverPara deal={deal} stages={stages} atual={stage.id} onMove={onMove} />}
                       {canAct && onDevolver && ccaCaseIsOpen(deal.status) && (
                         <Button
-                          type="button" variant="outline" size="sm" className="h-7 w-full text-xs"
+                          type="button" variant="tintWarning" size="sm" className="h-7 w-full text-xs"
                           onClick={() => onDevolver(deal)}
                         >
                           <Undo2 className="mr-1 h-3 w-3" aria-hidden /> Devolver ao comercial

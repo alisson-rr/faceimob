@@ -240,6 +240,8 @@ export function statusMoveBlock(
   who: { isAdmin: boolean; roles: readonly string[] },
 ): string | null {
   if (who.isAdmin) return null;
+  // REPROVADO → OFF é de quem edita o negócio (0231), fora da matriz.
+  if (bareStatus(from ?? "") === "REPROVADO" && bareStatus(to) === "OFF") return null;
   const destinoIndex = catalog.indexByKey.get(statusKey(to));
   const destino = destinoIndex === undefined ? null : catalog.statuses[destinoIndex];
   if (!destino) return "Este Status 2 não está no cadastro.";

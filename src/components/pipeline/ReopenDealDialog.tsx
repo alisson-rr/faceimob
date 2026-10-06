@@ -14,6 +14,7 @@ import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { updateDeal, useCanExitStage } from "./data";
 import { isOffOrDistrato } from "./LoseDealDialog";
 import type { PipelineStage } from "./stages";
+import { buttonVariants } from "@/components/ui/button";
 
 interface Props {
   deal: LegacyDealRecord;
@@ -152,6 +153,7 @@ export function ReopenDealDialog({ deal, stages, onClose, onReopened }: Props) {
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction
+            className={buttonVariants({ variant: "success" })}
             disabled={saving || !allowed}
             onClick={(event) => { event.preventDefault(); void confirm(); }}
           >

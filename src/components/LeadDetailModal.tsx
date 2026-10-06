@@ -18,7 +18,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Loader2, Mail,
-  MessageCircle, Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
+  Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
@@ -34,6 +34,7 @@ import {
 } from "@/integrations/supabase/leads";
 import { toDateTimeInput } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 
 type EditableField = "full_name" | "phone" | "email" | "document";
 
@@ -320,14 +321,14 @@ export default function LeadDetailModal({
           </div>
           <div className="flex flex-wrap gap-2">
           {claimable && (
-            <Button size="sm" variant="highlight" onClick={attend}>
+            <Button size="sm" variant="success" onClick={attend}>
               <HandMetal className="h-4 w-4" /> Pegar lead
               {secondsLeft !== null && <span className="tabular-nums">{formatCountdown(secondsLeft)}</span>}
             </Button>
           )}
           {!claimable && waLink && (
-            <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" onClick={() => setWhatsappAberto(true)}>
-              <MessageCircle className="h-4 w-4" /> WhatsApp
+            <Button size="sm" variant="whatsapp" onClick={() => setWhatsappAberto(true)}>
+              <WhatsAppIcon className="h-4 w-4 fill-[#052e16]" /> WhatsApp
             </Button>
           )}
           {!claimable && lead.phone && (
@@ -349,14 +350,14 @@ export default function LeadDetailModal({
               o mesmo `writable` da lista. Sem ele o sócio via o botão aceso,
               preenchia construtora e VGV e só então tomava 42501. */}
           {writable && lead.status !== "converted" && !lead.converted_deal_id && (
-            <Button size="sm" className="sm:ml-auto" onClick={() => onConvert(lead)}>
+            <Button size="sm" variant="success" className="sm:ml-auto" onClick={() => onConvert(lead)}>
               <ArrowRightCircle className="h-4 w-4" /> Converter
             </Button>
           )}
           {/* Encerrar com motivo: a saída que faltava. Sem ela o único jeito de
               tirar o lead da conta dos atrasados era reagendar para sempre. */}
           {writable && encerravel && (
-            <Button size="sm" variant="outline" onClick={() => setClosing(true)}>
+            <Button size="sm" variant="tintDanger" onClick={() => setClosing(true)}>
               <XCircle className="h-4 w-4" /> Encerrar
             </Button>
           )}
@@ -490,7 +491,9 @@ export default function LeadDetailModal({
             )}
           </TabsContent>
 
-          <TabsContent value="attachments" className="space-y-3">
+          {/* `forceMount` + escondida: o rascunho da Agenda e dos Anexos fica
+              ao trocar de aba para consultar (pedido de 06/10/2026). */}
+          <TabsContent value="attachments" forceMount className="space-y-3 data-[state=inactive]:hidden">
             <input ref={fileRef} type="file" className="hidden" onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void upload(file);
@@ -573,7 +576,7 @@ export default function LeadDetailModal({
             </div>
           </TabsContent>
 
-          <TabsContent value="agenda" className="space-y-4">
+          <TabsContent value="agenda" forceMount className="space-y-4 data-[state=inactive]:hidden">
             <TaskPanel refType="lead" refId={lead.id} defaultAssignee={lead.assigned_to ?? null} />
             <div className="border-t border-border pt-3">
               <VisitPanel leadId={lead.id} brokerId={lead.assigned_to ?? null} />

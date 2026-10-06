@@ -89,7 +89,7 @@ export function NextActionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {pegar
-              ? <><HandMetal className="h-5 w-5 text-primary" aria-hidden /> Pegar lead</>
+              ? <><HandMetal className="h-5 w-5 text-success" aria-hidden /> Pegar lead</>
               : <><CalendarClock className="h-5 w-5 text-primary" aria-hidden /> Próxima ação</>}
           </DialogTitle>
           <DialogDescription>
@@ -135,7 +135,7 @@ export function NextActionDialog({
 
         <DialogFooter>
           <DialogClose asChild><Button variant="outline" size="sm">{pegar ? "Cancelar" : "Agora não"}</Button></DialogClose>
-          <Button size="sm" onClick={save} disabled={invalid || saving}>
+          <Button size="sm" variant={pegar ? "success" : "default"} onClick={save} disabled={invalid || saving}>
             {pegar ? (saving ? "Pegando…" : "Pegar lead") : (saving ? "Marcando…" : "Marcar")}
           </Button>
         </DialogFooter>

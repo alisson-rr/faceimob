@@ -32,6 +32,7 @@ import {
 } from "@/components/pipeline";
 // Direto do módulo, e não do barril: o `index.ts` de `components/pipeline` é de
 // outra frente nesta rodada. Mesmo caminho que o `useDealActions` abaixo já usa.
+import { useNegocioDoLink } from "@/components/pipeline/useNegocioDoLink";
 import { ALL, MY_TEAM, status1DeAbertura, teamProfileIds, dealsForLeader } from "@/components/pipeline/filters";
 import { DirectorPipelineCards } from "@/components/pipeline/DirectorPipelineCards";
 import { BUSCA_MINIMA, listActiveDealsWithUnit, useDealSearch, useDealsRange } from "@/components/pipeline/data";
@@ -156,6 +157,7 @@ export default function Pipeline() {
   /** Estável para o `memo` do cartão do kanban: um fecho novo a cada render do
    *  Pipeline refazia os 2.288 cartões ativos (ver `DealsKanban`). */
   const abrirNegocio = useCallback((deal: LegacyDealRecord) => setEditor({ deal }), []);
+  useNegocioDoLink(abrirNegocio);
   const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
   const pedirTexto = useCallback(
     (deal: LegacyDealRecord, status: DealStatus, envio: boolean) => setComTexto({ movimento: { deal, status }, envio }),

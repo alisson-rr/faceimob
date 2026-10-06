@@ -104,6 +104,11 @@ export default function DealDetailModal({
     return emptyDeal(stages[0]?.code ?? "incomplete", defaultMonth, self?.id);
   });
   const [tab, setTab] = useState<TabKey>("detalhes");
+  // Aba visitada fica montada (escondida) até a ficha fechar: o texto que o
+  // corretor e a CCA começam numa aba sobrevive à ida a outra para consultar
+  // (pedido de 06/10/2026). Antes cada troca desmontava o painel e o rascunho ia junto.
+  const [visitadas, setVisitadas] = useState<ReadonlySet<TabKey>>(() => new Set(["detalhes"]));
+  const montada = (key: TabKey) => tab === key || visitadas.has(key);
   const [cca, setCca] = useState<CcaAnalysis>({});
   const [saving, setSaving] = useState(false);
   /** Negócio novo: comentário que vai para a aba Comentários depois de criado. */
@@ -338,7 +343,10 @@ export default function DealDetailModal({
     }
     setMensagemEnvio(mensagem);
     setConferencia(null);
+    // Direto, sem `abrirAba`: a ficha nova já foi gravada acima, e nesta
+    // renderização `isNew` ainda é verdadeiro — `abrirAba` gravaria de novo.
     setTab("anexos");
+    setVisitadas((atual) => new Set([...atual, "anexos"]));
   };
 
   // Negócio novo: as outras abas precisam do id. Clicar nelas grava a ficha
@@ -352,6 +360,7 @@ export default function DealDetailModal({
       if (!gravado) return;
     }
     setTab(key);
+    setVisitadas((atual) => (atual.has(key) ? atual : new Set([...atual, key])));
   };
 
   const tabs: { key: TabKey; label: string }[] = [
@@ -456,8 +465,7 @@ export default function DealDetailModal({
             </p>
           )}
 
-          {tab === "detalhes" && (
-            <>
+          <div hidden={tab !== "detalhes"}>
               <DealForm
                 form={form} onChange={patch} field={field}
                 people={people} developers={developers} stages={stages} isNew={isNew}
@@ -480,12 +488,14 @@ export default function DealDetailModal({
                   <p className="text-xs text-muted-foreground">Entra na aba Comentários quando o negócio for criado.</p>
                 </div>
               )}
-            </>
+          </div>
+
+          {montada("comentarios") && dealId && (
+            <div hidden={tab !== "comentarios"}><DealCommentsPanel dealId={dealId} people={people} /></div>
           )}
 
-          {tab === "comentarios" && dealId && <DealCommentsPanel dealId={dealId} people={people} />}
-
-          {tab === "anexos" && dealId && (
+          {montada("anexos") && dealId && (
+            <div hidden={tab !== "anexos"}>
             <DealDocumentUpload
               dealId={dealId}
               clientName={form.client}
@@ -504,24 +514,29 @@ export default function DealDetailModal({
               onReviewChanged={onReviewChanged}
               mensagemInicial={mensagemEnvio}
             />
+            </div>
           )}
 
-          {tab === "agenda" && dealId && (
-            <div className="space-y-4">
+          {montada("agenda") && dealId && (
+            <div className="space-y-4" hidden={tab !== "agenda"}>
               <TaskPanel refType="deal" refId={dealId} />
               <div className="border-t border-border pt-3"><VisitPanel dealId={dealId} /></div>
             </div>
           )}
 
-          {tab === "historico" && dealId && <DealHistoryPanel dealId={dealId} />}
+          {montada("historico") && dealId && (
+            <div hidden={tab !== "historico"}><DealHistoryPanel dealId={dealId} /></div>
+          )}
 
-          {tab === "cca" && dealId && (
+          {montada("cca") && dealId && (
+            <div hidden={tab !== "cca"}>
             <DealCcaPanel
               dealId={dealId}
               value={cca}
               onChange={setCca}
               onCommentAdded={() => setComentarios((total) => total + 1)}
             />
+            </div>
           )}
         </div>
 
