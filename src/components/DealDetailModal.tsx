@@ -513,6 +513,7 @@ export default function DealDetailModal({
               unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
               onReviewChanged={onReviewChanged}
               mensagemInicial={mensagemEnvio}
+              salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
             />
             </div>
           )}

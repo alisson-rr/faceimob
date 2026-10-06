@@ -77,6 +77,13 @@ type Props = {
    *  o modal já mostra a mesma explicação acima das abas. */
   unconfirmedMonth?: string | null;
   onReviewChanged?: () => void | Promise<void>;
+  /**
+   * Grava a ficha aberta antes de enviar, aprovar ou devolver: o que foi
+   * digitado em Detalhes (PIS, renda, cotista…) e não confirmado sumia no envio
+   * pela aba Anexos, e o gerente e a CCA recebiam o campo vazio (06/10/2026).
+   * `false` = não gravou (o aviso já saiu), e o envio não acontece.
+   */
+  salvarFicha?: () => Promise<boolean>;
   /** Mensagem já escrita no popup de conferência da ficha (01/10/2026). */
   mensagemInicial?: string;
 };
@@ -119,6 +126,7 @@ const assinatura = (
  */
 export default function DealDocumentUpload({
   dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged, mensagemInicial,
+  salvarFicha,
 }: Props) {
   const { toast } = useToast();
   const { user, isAdmin, can, roles } = useAuth();
@@ -495,6 +503,7 @@ export default function DealDocumentUpload({
   const submitForReview = async (esteiraEnvio: ReviewEsteira) => {
     setReviewBusy(true);
     try {
+      if (salvarFicha && !(await salvarFicha())) return;
       await submitDealForManagerReview(dealId, envioMensagem, esteiraEnvio);
       setEnvioMensagem("");
       setEsteira(null);
@@ -519,6 +528,7 @@ export default function DealDocumentUpload({
   const decideReview = async (approve: boolean) => {
     setReviewBusy(true);
     try {
+      if (salvarFicha && !(await salvarFicha())) return;
       await reviewDealDocuments({ dealId, approve, reason: reviewReason });
       setReviewReason("");
       await load();
