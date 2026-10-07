@@ -94,7 +94,7 @@ begin
   end if;
   if v_by_permission and not v_by_owner and not coalesce(
        case when v_lead.assigned_to is null
-            then public.has_permission('leads.view_queue')
+            then p_lead_id in (select public.auth_queue_lead_ids())
             else v_lead.assigned_to in (select public.auth_visible_profiles())
        end, false) then
     raise exception 'Lead não encontrado.' using errcode = 'P0002';
