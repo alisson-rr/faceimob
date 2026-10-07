@@ -14,9 +14,7 @@ import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
 import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
 import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
-import {
-  last30DaysRange, listLegacyDeals, saveLegacyDeal, type LegacyDealRecord,
-} from "@/integrations/supabase/newSchema";
+import { listLegacyDeals, saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, useDealStatusCatalog, type DealStatus } from "@/integrations/supabase/dealStatuses";
 import { MoverStatusDialog, type MovimentoComTexto } from "@/components/pipeline/MoverStatusDialog";
 import type { LeadRecord } from "@/integrations/supabase/leads";
@@ -44,6 +42,14 @@ import { useMyPendingReviewCount } from "@/integrations/supabase/reviews";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
 type EditorState = { deal: LegacyDealRecord | null } | null;
+
+/** Recorte padrão: a competência vigente do CRM, não uma janela móvel de 30 dias. */
+const activeMonthRange = (monthBase: string): DealPeriod => {
+  const [month, year] = monthBase.split("/").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
+  return { from: `${prefix}-01`, to: `${prefix}-${String(lastDay).padStart(2, "0")}` };
+};
 
 /**
  * Pipeline de negócios.
@@ -115,11 +121,18 @@ export default function Pipeline() {
   // perfil reabre pelo card de game do topo ("Ver mais").
   const painel = usePainelDoCorretor();
 
-  // `null` = ninguém mexeu no período: valem os últimos 30 dias, recalculados a
-  // cada render para a virada do dia não congelar o "até hoje".
+  const openSeason = useOpenSeason();
+  // `null` = ninguém mexeu no período: vale somente a competência vigente. Ao
+  // fechar/virar o mês, a temporada aberta muda e a listagem acompanha.
   const [periodoEscolhido, setPeriodoEscolhido] = useState<DealPeriod | null>(null);
-  const periodo = periodoEscolhido ?? last30DaysRange();
-  const dealsQuery = useDealsRange(periodo.from, periodo.to);
+  const mesVigente = openSeason.data
+    ? `${openSeason.data.period_start.slice(5, 7)}/${openSeason.data.period_start.slice(0, 4)}`
+    : currentMonthBase();
+  const periodo = periodoEscolhido ?? activeMonthRange(mesVigente);
+  // Sem filtro manual, a tela pertence exclusivamente à competência vigente:
+  // ao virar a temporada, os negócios anteriores saem daqui e continuam
+  // acessíveis ao escolher o período histórico.
+  const dealsQuery = useDealsRange(periodo.from, periodo.to, periodoEscolhido === null);
   const stagesQuery = usePipelineStages();
   const peopleQuery = usePeople();
   const developersQuery = useDevelopers();
@@ -129,7 +142,6 @@ export default function Pipeline() {
   // Sem isto o kanban aparecia por um instante sem alça nenhuma — e um arraste
   // rápido levava "Movimentação não permitida" por corrida, não por regra.
   const stagePerms = useStagePermissions();
-  const openSeason = useOpenSeason();
   const ccaQueue = useMyCcaQueue();
   const pendingReviewQueue = useMyPendingReviewCount(user?.id ?? null, canReviewDocuments);
   const invalidateDeals = useInvalidateDeals();
@@ -432,11 +444,11 @@ export default function Pipeline() {
 
       {(ccaQueue.data?.length ?? 0) > 0 && (
         <section
-          aria-label="Sua ordem de análise na CCA"
+          aria-label="Ordem da Esteira Ágil no CCA"
           className="flex flex-wrap items-center gap-2 rounded-xl border border-info/40 bg-info/10 px-3 py-2"
         >
           <Landmark className="h-4 w-4 shrink-0 text-info" aria-hidden />
-          <p className="mr-1 text-sm font-semibold">Sua ordem de análise na CCA</p>
+          <p className="mr-1 text-sm font-semibold">Ordem da Esteira Ágil</p>
           {ccaQueue.data?.map((entry) => (
             <span
               key={entry.deal_id}
@@ -444,7 +456,7 @@ export default function Pipeline() {
             >
               <strong>{entry.client_name}</strong>
               <span className="ml-1 font-bold tabular-nums text-info">
-                {entry.queue_position}º na fila geral
+                {entry.queue_position}º na Esteira Ágil
               </span>
             </span>
           ))}

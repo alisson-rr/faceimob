@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
+import { bareStatus } from "@/lib/dealStatus";
 import { brokerTextClass, dealAgeTone, developerDot, developerColor, isHexColor, textOn, tone, type AgeTone } from "@/lib/tone";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusBadge } from "@/components/shared";
@@ -31,7 +32,7 @@ const AGE_STRIPE: Record<AgeTone, string> = {
 
 interface Props {
   deals: LegacyDealRecord[];
-  /** Posição global dos negócios deste corretor na análise do CCA. */
+  /** Posição global dos negócios visíveis na Esteira Ágil vigente. */
   ccaQueuePositions?: ReadonlyMap<string, number>;
   /** Espelha `can_edit_deal`. O cabeçalho já anuncia "Somente leitura" ao sócio;
    *  sem isto cada linha continuava oferecendo três controles de escrita que o
@@ -44,7 +45,7 @@ interface Props {
   onOpen: (deal: LegacyDealRecord) => void;
   onStatusChange: (deal: LegacyDealRecord, status: string) => void;
   onScheduleVisit: (deal: LegacyDealRecord) => void;
-  onLose: (deal: LegacyDealRecord) => void;
+  onLose: (deal: LegacyDealRecord, preset?: string) => void;
   /** Reabrir negócio encerrado — só o admin, e só por confirmação. */
   onReopen: (deal: LegacyDealRecord) => void;
 }
@@ -329,7 +330,7 @@ export function DealsTable({
                       </Badge>
                       {ccaQueuePosition ? (
                         <Badge variant="secondary" className="whitespace-nowrap text-xs tabular-nums text-info">
-                          Esteira Ágil · {ccaQueuePosition}º na fila do CCA
+                          {ccaQueuePosition}º na Esteira Ágil
                         </Badge>
                       ) : null}
                     </div>
@@ -412,7 +413,16 @@ export function DealsTable({
                           aqui desfazer só existia por SQL direto — o diálogo de
                           perda dizia "reabrir depois exige um gestor" e não havia
                           tela, botão nem RPC que o gestor usasse. */}
-                      {deal.active ? (
+                      {bareStatus(deal.status_detail) === "REPROVADO" ? (
+                        <Button
+                          variant="outline" size="sm"
+                          className="h-7 border-destructive/60 px-2 text-xs text-destructive hover:bg-destructive/10"
+                          aria-label={`Dar OFF no negócio de ${deal.client}`}
+                          onClick={() => onLose(deal, "OFF")}
+                        >
+                          <XCircle className="h-3.5 w-3.5" /> Dar OFF
+                        </Button>
+                      ) : deal.active ? (
                         <Button
                           variant="ghost" size="icon" className="h-7 w-7 text-destructive"
                           aria-label={`Perder o negócio de ${deal.client}${motivo}`}

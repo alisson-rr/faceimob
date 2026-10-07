@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
 
 /**
- * Lista de ligação do diretor (0185, pedido de 02/10/2026): leads de antes do
+ * Lista de ligação da liderança (0185/0239): leads de antes do
  * mês corrente que não viraram negócio — CAMPANHA | CLIENTE | TELEFONE — em
  * Excel e PDF. Quem decide o que entra é o banco (`lista_de_ligacao()`, com a
  * RLS de quem pede); aqui só se monta o arquivo.

@@ -10,7 +10,7 @@ import { reassignLead, type LeadRecord } from "@/integrations/supabase/leads";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
 import { useInvalidateLeads } from "./data";
 
-/** Realocação manual por gestor (`reassign_lead`). Reinicia a trava de atendimento. */
+/** Repasse manual entre corretores ou realocação pela liderança. */
 export function ReassignLeadDialog({
   lead, brokers, onClose,
 }: {
@@ -20,8 +20,9 @@ export function ReassignLeadDialog({
 }) {
   const invalidateLeads = useInvalidateLeads();
   const selectId = useId();
-  const [broker, setBroker] = useState(lead.assigned_to ?? "");
+  const [broker, setBroker] = useState("");
   const [saving, setSaving] = useState(false);
+  const destinos = brokers.filter((person) => person.id !== lead.assigned_to);
 
   const submit = async () => {
     if (!broker) return;
@@ -54,7 +55,7 @@ export function ReassignLeadDialog({
       <DialogContent className="glass-strong max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5 text-primary" aria-hidden /> Realocar lead
+            <UserPlus className="h-5 w-5 text-primary" aria-hidden /> Repassar lead
           </DialogTitle>
           <DialogDescription>
             <span className="font-medium text-foreground">{lead.name}</span> — a trava de atendimento
@@ -67,16 +68,16 @@ export function ReassignLeadDialog({
           <Select value={broker} onValueChange={setBroker}>
             <SelectTrigger id={selectId}><SelectValue placeholder="Selecione o corretor" /></SelectTrigger>
             <SelectContent>
-              {brokers.map((person) => (
+              {destinos.map((person) => (
                 <SelectItem key={person.id} value={person.id}>
                   {person.name}{person.team ? ` — ${person.team}` : ""}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {brokers.length === 0 && (
+          {destinos.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              Nenhum corretor visível para você. Confira a equipe em Equipes.
+              Nenhum outro corretor ativo está disponível para receber este lead.
             </p>
           )}
         </div>
@@ -84,7 +85,7 @@ export function ReassignLeadDialog({
         <DialogFooter>
           <DialogClose asChild><Button variant="outline" size="sm">Cancelar</Button></DialogClose>
           <Button size="sm" onClick={submit} disabled={!broker || saving}>
-            {saving ? "Realocando…" : "Realocar"}
+            {saving ? "Repassando…" : "Repassar lead"}
           </Button>
         </DialogFooter>
       </DialogContent>

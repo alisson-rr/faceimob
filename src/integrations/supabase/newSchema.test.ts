@@ -333,6 +333,15 @@ describe("listLegacyDeals · recorte no banco", () => {
     expect(filtro).toContain("month_base.in.(2026-09-01)");
   });
 
+  it("aceita recorte estrito por competência para a visão mensal vigente", async () => {
+    await listLegacyDeals(undefined, { includeMonthBases: ["2026-10-01"] });
+
+    const pedido = doCaminho("deals")[0];
+    expect(pedido.searchParams.getAll("month_base")).toEqual(["in.(2026-10-01)"]);
+    expect(pedido.searchParams.has("created_at")).toBe(false);
+    expect(pedido.searchParams.has("or")).toBe(false);
+  });
+
   it("com ids, pede em lotes que cabem na URL e devolve do mais recente para o mais antigo", async () => {
     const ids = Array.from({ length: 250 }, (_, i) => `id-${i}`);
     rede.tabelas.deals = [];

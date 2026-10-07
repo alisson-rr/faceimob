@@ -55,6 +55,7 @@ async function renderCard(
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
   const perdidos: string[] = [];
+  const motivos: (string | undefined)[] = [];
   const movidos: string[] = [];
   const recusas: string[] = [];
   const reativados: string[] = [];
@@ -65,7 +66,7 @@ async function renderCard(
         color="#34d399"
         onOpen={() => undefined}
         onMove={(_alvo, stage) => movidos.push(stage.label)}
-        onLose={(alvo) => perdidos.push(alvo.id)}
+        onLose={(alvo, motivo) => { perdidos.push(alvo.id); motivos.push(motivo); }}
         onReactivate={(alvo) => reativados.push(alvo.id)}
         currentMonth={opcoes.currentMonth}
         ccaQueuePosition={opcoes.ccaQueuePosition}
@@ -83,7 +84,7 @@ async function renderCard(
   const selo = container.querySelector('[aria-label="Visita agendada"]');
   const botao = container.querySelector('[role="button"]');
   const perder = container.querySelector<HTMLButtonElement>(
-    '[aria-label="Perder o negócio de Cliente Teste"]',
+    '[aria-label="Perder o negócio de Cliente Teste"], [aria-label="Dar OFF no negócio de Cliente Teste"]',
   );
   if (perder) await act(async () => { perder.click(); });
   const reativar = container.querySelector<HTMLButtonElement>('[aria-label="Reativar proposta Cliente Teste"]');
@@ -102,6 +103,7 @@ async function renderCard(
     seloNoCartao: Boolean(selo && container.querySelector("article")?.contains(selo)),
     temPerder: Boolean(perder),
     perdidos: [...perdidos],
+    motivos: [...motivos],
     reativados: [...reativados],
     temReativar: Boolean(reativar),
     texto: container.textContent ?? "",
@@ -152,6 +154,16 @@ describe("DealCard · perder e rateio", () => {
 
   it("não oferece perder quando a linha está travada", async () => {
     expect((await renderCard(undefined, { locked: true })).temPerder).toBe(false);
+  });
+
+  it("permite dar OFF no REPROVADO mesmo quando o card está travado", async () => {
+    const resultado = await renderCard(undefined, {
+      locked: true,
+      extra: { status_detail: "19. REPROVADO", active: false, outcome: "lost" },
+    });
+    expect(resultado.temPerder).toBe(true);
+    expect(resultado.perdidos).toEqual(["d1"]);
+    expect(resultado.motivos).toEqual(["OFF"]);
   });
 
   it("mostra o rateio do corretor no cartão", async () => {
@@ -225,7 +237,7 @@ describe("DealCard · cor da coluna", () => {
 describe("DealCard · fila do CCA e reativação", () => {
   it("mostra a posição global do negócio na fila do CCA", async () => {
     expect((await renderCard(undefined, { ccaQueuePosition: 7 })).texto)
-      .toContain("Esteira Ágil · 7º na fila do CCA");
+      .toContain("7º na Esteira Ágil");
   });
 
   it("oferece reativar apenas OFF de competência anterior", async () => {

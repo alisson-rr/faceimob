@@ -41,7 +41,8 @@ export type LeadRowActions = {
  */
 export type LeadPermissions = {
   canWrite: (lead: LeadRecord) => boolean;
-  canReassign: boolean;
+  /** Gestor realoca o que enxerga; corretor repassa somente o lead dele. */
+  canReassign: (lead: LeadRecord) => boolean;
   canDelete: boolean;
 };
 
@@ -251,8 +252,8 @@ const LeadRow = memo(function LeadRow({
               <Pencil className="h-4 w-4" />
             </Button>
           )}
-          {permissions.canReassign && (
-            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Realocar ${lead.name}`} onClick={() => actions.onReassign(lead)}>
+          {permissions.canReassign(lead) && (
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Repassar ${lead.name} para outro corretor`} onClick={() => actions.onReassign(lead)}>
               <UserPlus className="h-4 w-4" />
             </Button>
           )}

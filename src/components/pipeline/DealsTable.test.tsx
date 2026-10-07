@@ -64,10 +64,10 @@ async function render(queuePosition?: number) {
 
 describe("DealsTable · posição da Esteira Ágil", () => {
   it("expõe a colocação do negócio na tabela usada pelo corretor", async () => {
-    expect(await render(4)).toContain("Esteira Ágil · 4º na fila do CCA");
+    expect(await render(4)).toContain("4º na Esteira Ágil");
   });
 
   it("não inventa posição para negócio fora da fila", async () => {
-    expect(await render()).not.toContain("na fila do CCA");
+    expect(await render()).not.toContain("na Esteira Ágil");
   });
 });

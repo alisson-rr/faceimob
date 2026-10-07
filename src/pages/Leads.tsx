@@ -22,7 +22,7 @@ import {
   type LeadDialogState, type LeadPermissions, type LeadRowActions,
 } from "@/components/leads";
 import {
-  canWriteLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE,
+  canWriteLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE, OPEN_LEAD_STATUSES,
   type LeadRecord,
 } from "@/integrations/supabase/leads";
 
@@ -59,7 +59,9 @@ export default function Leads() {
     [previewRole, roles],
   );
   const canInsertLead = isAdmin || effectiveRoles.some((role) => LEAD_INSERT_ROLES.includes(role));
-  const canReassign = can("leads.reassign");
+  const canManageReassign = can("leads.reassign");
+  const canPassOwnLead = effectiveRoles.includes("broker");
+  const canReassign = canManageReassign || canPassOwnLead;
   const canViewQueue = can("leads.view_queue");
   const canDelete = can("leads.delete");
   // O filtro por corretor é da gestão inteira, não de quem realoca: o gerente
@@ -145,8 +147,8 @@ export default function Leads() {
   const doCorretor = useMemo(() => leadsDoCorretor(base, filters.broker), [base, filters.broker]);
   // Para o corretor: o que está esperando o "Atender" dele, no topo da tela.
   const paraAtender = useMemo(
-    () => (canReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && lead.status === "assigned")),
-    [base, canReassign, profileId],
+    () => (canManageReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && lead.status === "assigned")),
+    [base, canManageReassign, profileId],
   );
   const metrics = useMemo(() => leadMetrics(doCorretor, now, profileId), [doCorretor, now, profileId]);
   const overdueLeads = useMemo(() => doCorretor.filter((lead) => isLeadOverdue(lead, now)), [doCorretor, now]);
@@ -161,11 +163,12 @@ export default function Leads() {
 
   const permissions = useMemo<LeadPermissions>(() => ({
     canWrite: (lead) => canWriteLead(lead, {
-      profileId, isAdmin, managesTeam: canReassign, canViewQueue,
+      profileId, isAdmin, managesTeam: canManageReassign, canViewQueue,
     }),
-    canReassign,
+    canReassign: (lead) => OPEN_LEAD_STATUSES.includes(lead.status)
+      && (canManageReassign || (canPassOwnLead && lead.assigned_to === profileId)),
     canDelete,
-  }), [profileId, isAdmin, canReassign, canViewQueue, canDelete]);
+  }), [profileId, isAdmin, canManageReassign, canPassOwnLead, canViewQueue, canDelete]);
 
   // A notificação de lead atribuído aponta para o lead: `notify_lead_assigned`
   // grava `/leads/<id>` (rota inexistente) e o sino normaliza para
@@ -381,7 +384,7 @@ export default function Leads() {
         </>
       ) : (
         <>
-          {!canReassign && (
+          {!canManageReassign && (
             <SectionCard
               title="Para atender agora"
               description={paraAtender.length > 0
@@ -458,7 +461,7 @@ export default function Leads() {
                 filters={filters}
                 onChange={setFilters}
                 sources={sources}
-                brokers={canReassign || verPorCorretor ? brokersQuery.data ?? [] : []}
+                brokers={canManageReassign || verPorCorretor ? brokersQuery.data ?? [] : []}
                 groups={canViewQueue ? groupsQuery.data ?? [] : []}
               />
             </div>

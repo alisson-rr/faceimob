@@ -110,15 +110,23 @@ export const CcaBoard = memo(function CcaBoard({
   const [sobreEstagio, setSobreEstagio] = useState<string | null>(null);
   const [anuncio, setAnuncio] = useState("");
 
+  // A consulta já pede `submitted_at.asc`, mas o quadro garante a ordem aqui
+  // também: atualizações realtime e caches mesclados não podem jogar um caso
+  // mais novo acima de quem chegou primeiro.
+  const porChegada = [...deals].sort((a, b) => {
+    const entradaA = a.submittedAt ? Date.parse(a.submittedAt) : Number.POSITIVE_INFINITY;
+    const entradaB = b.submittedAt ? Date.parse(b.submittedAt) : Number.POSITIVE_INFINITY;
+    return entradaA - entradaB || a.caseId.localeCompare(b.caseId);
+  });
   // Um passe só, na ordem de chegada (mais antigos em cima): indicador e
   // coluna leem a mesma lista.
   const porEstagio = new Map<string, CcaDeal[]>();
-  for (const deal of deals) {
+  for (const deal of porChegada) {
     const lista = porEstagio.get(deal.stageId);
     if (lista) lista.push(deal);
     else porEstagio.set(deal.stageId, [deal]);
   }
-  const agile = deals.filter((deal) => deal.agile);
+  const agile = porChegada.filter((deal) => deal.agile);
   const agileAges = agile.flatMap((deal) => {
     const days = elapsedDays(deal.stageEnteredAt ?? deal.submittedAt, now);
     return days === null ? [] : [days];

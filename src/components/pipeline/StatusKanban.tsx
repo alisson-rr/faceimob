@@ -29,7 +29,7 @@ interface Props {
   onOpen: (deal: LegacyDealRecord) => void;
   /** O `moveStatus` do `useDealActions`, estável: o cartão é `memo`. */
   onMoveStatus: (deal: LegacyDealRecord, statusValue: string) => void;
-  onLose: (deal: LegacyDealRecord) => void;
+  onLose: (deal: LegacyDealRecord, preset?: string) => void;
   onReactivate?: (deal: LegacyDealRecord) => void;
   currentMonth?: string | null;
   ccaQueuePositions?: ReadonlyMap<string, number>;

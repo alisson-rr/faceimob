@@ -99,7 +99,7 @@ export function DealsToolbar({
           />
         </div>
         <Button variant="outline" size="sm" className="h-9" onClick={onLast30Days}>
-          Últimos 30 dias
+          Mês vigente
         </Button>
       </div>
       {periodIncomplete && (

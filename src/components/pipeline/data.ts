@@ -124,19 +124,21 @@ export function monthBasesInDateRange(from: string, to: string): string[] {
  * (`periodoValido`): campo apagado tiraria o limite e o ano pela metade da
  * digitação (0002) pediria a base inteira. Enquanto isso fica a lista anterior.
  */
-export function useDealsRange(from: string, to: string) {
+export function useDealsRange(from: string, to: string, monthOnly = false) {
   const { user } = useAuth();
   return useQuery({
-    queryKey: pipelineKeys.dealsRange(from, to, user?.id ?? null),
+    queryKey: [...pipelineKeys.dealsRange(from, to, user?.id ?? null), monthOnly ? "month-only" : "period"],
     // A tela mostra tanto os criados no intervalo quanto os negócios cuja
     // competência toca o intervalo. Sem esse segundo recorte, uma venda criada
     // meses antes e levada a EM CONTRATO em setembro nunca chegava ao navegador:
     // filtrar Mês-base 09/2026 encontrava só 26 das 44 vendas.
-    queryFn: ({ signal }) => listLegacyDeals(signal, {
-      createdFrom: from,
-      createdTo: to,
-      includeMonthBases: monthBasesInDateRange(from, to),
-    }),
+    queryFn: ({ signal }) => listLegacyDeals(signal, monthOnly
+      ? { includeMonthBases: monthBasesInDateRange(from, to) }
+      : {
+        createdFrom: from,
+        createdTo: to,
+        includeMonthBases: monthBasesInDateRange(from, to),
+      }),
     enabled: periodoValido({ de: from, ate: to }),
     placeholderData: keepPreviousData,
   });
