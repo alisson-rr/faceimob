@@ -2507,6 +2507,7 @@ export type Database = {
       lead_assignments: {
         Row: {
           assigned_at: string
+          counts_for_queue: boolean
           deadline: string
           group_id: string | null
           id: string
@@ -2521,6 +2522,7 @@ export type Database = {
         }
         Insert: {
           assigned_at?: string
+          counts_for_queue?: boolean
           deadline: string
           group_id?: string | null
           id?: string
@@ -2535,6 +2537,7 @@ export type Database = {
         }
         Update: {
           assigned_at?: string
+          counts_for_queue?: boolean
           deadline?: string
           group_id?: string | null
           id?: string

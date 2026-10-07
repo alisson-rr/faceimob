@@ -62,6 +62,36 @@ async function render(queuePosition?: number) {
   return text;
 }
 
+async function renderHistoricalOff() {
+  const container = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(container);
+  const reactivated: string[] = [];
+  await act(async () => {
+    root.render(
+      <DealsTable
+        deals={[{ ...NEGOCIO, month_base: "09/2026", status: "OFF", status_detail: "OFF", active: false }]}
+        canWrite={false}
+        closedMonths={["09/2026"]}
+        currentMonth="10/2026"
+        onOpen={() => undefined}
+        onStatusChange={() => undefined}
+        onScheduleVisit={() => undefined}
+        onLose={() => undefined}
+        onReopen={() => undefined}
+        onReactivate={(deal) => reactivated.push(deal.id)}
+      /> as ReactNode,
+    );
+  });
+  const button = container.querySelector<HTMLButtonElement>(
+    '[aria-label="Reativar a proposta de Cliente da Fila no mês vigente"]',
+  );
+  await act(async () => { button?.click(); });
+  const result = { text: container.textContent ?? "", reactivated };
+  await act(async () => { root.unmount(); });
+  container.remove();
+  return result;
+}
+
 describe("DealsTable · posição da Esteira Ágil", () => {
   it("expõe a colocação do negócio na tabela usada pelo corretor", async () => {
     expect(await render(4)).toContain("4º na Esteira Ágil");
@@ -69,5 +99,13 @@ describe("DealsTable · posição da Esteira Ágil", () => {
 
   it("não inventa posição para negócio fora da fila", async () => {
     expect(await render()).not.toContain("na Esteira Ágil");
+  });
+});
+
+describe("DealsTable · reativação de OFF histórico", () => {
+  it("mostra a ação também na tabela e envia o negócio escolhido", async () => {
+    const result = await renderHistoricalOff();
+    expect(result.text).toContain("Reativar proposta");
+    expect(result.reactivated).toEqual(["d1"]);
   });
 });

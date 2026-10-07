@@ -1,14 +1,14 @@
 import { Fragment, useMemo, useState, type MouseEvent } from "react";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
-  Lock, Maximize2, RotateCcw, XCircle,
+  Lock, Maximize2, RefreshCw, RotateCcw, XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
-import { bareStatus } from "@/lib/dealStatus";
+import { bareStatus, compareMonth } from "@/lib/dealStatus";
 import { brokerTextClass, dealAgeTone, developerDot, developerColor, isHexColor, textOn, tone, type AgeTone } from "@/lib/tone";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusBadge } from "@/components/shared";
@@ -48,6 +48,10 @@ interface Props {
   onLose: (deal: LegacyDealRecord, preset?: string) => void;
   /** Reabrir negócio encerrado — só o admin, e só por confirmação. */
   onReopen: (deal: LegacyDealRecord) => void;
+  /** Reativar OFF histórico no mês vigente, preservando dados e documentos. */
+  onReactivate?: (deal: LegacyDealRecord) => void;
+  /** Competência vigente, MM/AAAA. */
+  currentMonth?: string | null;
 }
 
 /**
@@ -65,6 +69,7 @@ interface Props {
  */
 export function DealsTable({
   deals, ccaQueuePositions, canWrite, closedMonths, onOpen, onStatusChange, onScheduleVisit, onLose, onReopen,
+  onReactivate, currentMonth,
 }: Props) {
   const { isAdmin, roles, can } = useAuth();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
@@ -175,6 +180,12 @@ export function DealsTable({
               const grupo = statusGroupLabel(catalog, deal.status_group_id);
               const bolinha = developerDot(deal.developer, deal.developer_color);
               const corretores = dealBrokers(deal);
+              const mes = dealMonth(deal);
+              const mesAtual = currentMonth
+                ?? new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
+              const isOffMesAnterior = Boolean(
+                onReactivate && bareStatus(deal.status_detail) === "OFF" && mes && compareMonth(mes, mesAtual) < 0,
+              );
               // Motivo da trava no NOME acessível, não em `title`: o Button do
               // kit tem `disabled:pointer-events-none`, então a dica nativa
               // nunca abre em botão desabilitado — era explicação morta.
@@ -413,7 +424,16 @@ export function DealsTable({
                           aqui desfazer só existia por SQL direto — o diálogo de
                           perda dizia "reabrir depois exige um gestor" e não havia
                           tela, botão nem RPC que o gestor usasse. */}
-                      {bareStatus(deal.status_detail) === "REPROVADO" ? (
+                      {isOffMesAnterior ? (
+                        <Button
+                          variant="outline" size="sm"
+                          className="h-7 border-success/70 bg-success/10 px-2 text-xs font-bold text-success hover:bg-success/20"
+                          aria-label={`Reativar a proposta de ${deal.client} no mês vigente`}
+                          onClick={() => onReactivate?.(deal)}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" /> Reativar proposta
+                        </Button>
+                      ) : bareStatus(deal.status_detail) === "REPROVADO" ? (
                         <Button
                           variant="outline" size="sm"
                           className="h-7 border-destructive/60 px-2 text-xs text-destructive hover:bg-destructive/10"

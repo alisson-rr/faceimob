@@ -69,6 +69,7 @@ const activeMonthRange = (monthBase: string): DealPeriod => {
  */
 export default function Pipeline() {
   const { user, isAdmin, roles, can } = useAuth();
+  const podeReativarOff = isAdmin || roles.some((role) => ["partner", "director", "manager", "broker"].includes(role));
 
   // Espelha o `with check` de `deals_insert`. O sócio (e, desde a 0053, o SDR e
   // o marketing) tem `menu.pipeline` e enxerga os negócios, mas o banco recusa a
@@ -574,7 +575,7 @@ export default function Pipeline() {
               onScheduleVisit={setVisitDeal}
               onLose={abrirPerda}
               onReopen={setReopening}
-              onReactivate={setReactivating}
+              onReactivate={podeReativarOff ? setReactivating : undefined}
               currentMonth={seasonMonth ?? currentMonthBase()}
               ccaQueuePositions={ccaQueuePositions}
               closedMonths={closed}

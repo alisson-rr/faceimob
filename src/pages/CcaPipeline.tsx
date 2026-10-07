@@ -225,7 +225,7 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
 export default function CcaPipeline() {
   const { can, isAdmin, roles } = useAuth();
   // 0228: a CCA organiza a ordem das colunas (só a ordem).
-  const ordenaColunas = isAdmin || roles.includes("cca");
+  const gerenciaEstagios = isAdmin || roles.includes("cca");
   // `null` = ninguém mexeu no período: valem os últimos 30 dias, recalculados a
   // cada render para a virada do dia não congelar o "até hoje" (como no Pipeline).
   const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo | null>(null);
@@ -377,9 +377,9 @@ export default function CcaPipeline() {
                 <Settings className="mr-1 h-4 w-4" aria-hidden /> Gerenciar estágios
               </Button>
             </>
-          ) : ordenaColunas ? (
+          ) : gerenciaEstagios ? (
             <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
-              <Settings className="mr-1 h-4 w-4" aria-hidden /> Ordem das colunas
+              <Settings className="mr-1 h-4 w-4" aria-hidden /> Gerenciar estágios
             </Button>
           ) : !canAct ? (
             <StatusBadge tone="neutral">Somente leitura</StatusBadge>
@@ -510,9 +510,9 @@ export default function CcaPipeline() {
         <CcaDevolverDialog deal={devolvendo} onClose={() => setDevolvendo(null)} onDone={refresh} />
       )}
 
-      {settingsOpen && ordenaColunas && (
+      {settingsOpen && gerenciaEstagios && (
         <CcaStageSettingsDialog
-          somenteOrdem={!isAdmin}
+          somenteOrdem={false}
           stages={stages}
           onClose={() => setSettingsOpen(false)}
           onChanged={refresh}
