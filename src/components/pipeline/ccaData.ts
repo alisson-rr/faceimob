@@ -66,7 +66,7 @@ export type CcaPeriodo = { de: string; ate: string };
 export interface CcaBoardData {
   stages: CcaStage[];
   deals: CcaDeal[];
-  /** Casos do período sem coluna ativa (cancelados ou sem estágio). */
+  /** Casos do período sem coluna ativa. */
   outside: number;
   /** Negócios dos casos carregados: o editor e o `CcaMoveDialog` leem daqui. */
   negocios: LegacyDealRecord[];
@@ -267,6 +267,10 @@ export async function loadCcaBoard(
   const { desde, antesDe } = limitesDoPeriodo(periodo);
   const readCases = (withClock: boolean) => allRows((from, to, count) => supabase.from("cca_cases")
     .select(`id,deal_id,status,stage_id,decision_notes,submitted_at${withClock ? ",stage_entered_at" : ""}`, { count })
+    // Aprovados e reprovados permanecem nas colunas de desfecho. Só o caso
+    // devolvido ao comercial (`cancelled`) precisa sair do quadro; a coluna
+    // histórica continua gravada apenas para auditoria.
+    .neq("status", "cancelled")
     .gte("submitted_at", desde).lt("submitted_at", antesDe)
     .order("submitted_at", { ascending: true }).order("id").range(from, to).abortSignal(signal)
     .returns<CcaCaseWithClock[]>());
@@ -289,16 +293,21 @@ export async function loadCcaBoard(
   if (stagesResponse.error) throw stagesResponse.error;
   if (casesResponse.error) throw casesResponse.error;
 
+  // A resposta pode vir de cache ou de um mock que não aplique o filtro do
+  // PostgREST. Tire o devolvido antes de buscar os negócios também: além de não
+  // desenhar o card, não baixa dados que já saíram da esteira. Aprovados e
+  // reprovados continuam, pois têm colunas de desfecho no CCA.
+  const boardCases = casesResponse.data.filter((row) => row.status !== "cancelled");
   // Período sem caso não pede negócio nenhum: lista de ids vazia não vira "todos".
-  const negocios = casesResponse.data.length
-    ? await listLegacyDeals(signal, { ids: casesResponse.data.map((row) => row.deal_id) })
+  const negocios = boardCases.length
+    ? await listLegacyDeals(signal, { ids: boardCases.map((row) => row.deal_id) })
     : [];
 
   const stages: CcaStage[] = stagesResponse.data || [];
   const dealById = new Map(negocios.map((deal) => [deal.id, deal]));
   const deals: CcaDeal[] = [];
   let outside = 0;
-  for (const row of casesResponse.data) {
+  for (const row of boardCases) {
     const deal = dealById.get(row.deal_id);
     if (foraDaEsteiraDoCca(deal?.status, deal?.developer, ccaProprio)) continue;
     const stage = ccaColumnOf(stages, row, deal?.status);

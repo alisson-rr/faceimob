@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Download, Filter, GitBranch, ListChecks, Plus, Target, Unlock, Users } from "lucide-react";
+import { Download, FileCheck2, Filter, GitBranch, Landmark, ListChecks, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
@@ -40,6 +40,7 @@ import { periodoValido } from "@/components/pipeline/ccaData";
 import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
 import { useDealActions } from "@/components/pipeline/useDealActions";
 import { useMyCcaQueue } from "@/integrations/supabase/cca";
+import { useMyPendingReviewCount } from "@/integrations/supabase/reviews";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
 type EditorState = { deal: LegacyDealRecord | null } | null;
@@ -70,6 +71,7 @@ export default function Pipeline() {
   // para ele. O `some(includes)` que estava aqui liberava os três, porque todo
   // perfil carrega 'broker' desde o cadastro — daí o papel EFETIVO.
   const canWrite = isAdmin || canWriteDeals(roles);
+  const canReviewDocuments = isAdmin || roles.includes("manager") || roles.includes("director");
 
   /**
    * Extrair a planilha é ato de quem responde pelo número, não de quem trabalha
@@ -129,6 +131,7 @@ export default function Pipeline() {
   const stagePerms = useStagePermissions();
   const openSeason = useOpenSeason();
   const ccaQueue = useMyCcaQueue();
+  const pendingReviewQueue = useMyPendingReviewCount(user?.id ?? null, canReviewDocuments);
   const invalidateDeals = useInvalidateDeals();
   usePipelineRealtime();
   // Nome, cor e ordem do Status 2 e o nome do Status 1 saem daqui. Entra na
@@ -279,7 +282,10 @@ export default function Pipeline() {
     }
   }, [visible, catalog]);
 
-  const pendingReviews = deals.filter((deal) => deal.document_review_status === "pending").length;
+  // A RPC conta a fila desta liderança inteira, sem depender do recorte de
+  // datas da tela. Enquanto ela chega, a contagem do período evita afirmar 0.
+  const pendingReviewsInPeriod = deals.filter((deal) => deal.document_review_status === "pending").length;
+  const pendingReviews = pendingReviewQueue.data ?? pendingReviewsInPeriod;
   // `visible`, e não `deals`: a contagem ao lado, na mesma frase, é filtrada —
   // ler "3 negócio(s) ativo(s) · R$ 12 mi em VGV" com o VGV da base inteira
   // descrevia dois conjuntos diferentes na mesma linha.
@@ -338,6 +344,27 @@ export default function Pipeline() {
           <>
             {tab === "deals" ? (
               <>
+                {canReviewDocuments && (pendingReviewQueue.data ?? 0) > 0 && (
+                  <Button
+                    variant="tintWarning"
+                    size="sm"
+                    className="animate-pulse border-warning bg-warning/20 shadow-[0_0_18px_hsl(var(--warning)/0.35)]"
+                    onClick={() => {
+                      setTab("deals");
+                      setFiltrosEscolhidos({
+                        ...filtrosLimpos,
+                        team: recorteInicial,
+                        documentReview: "pending",
+                      });
+                      setShowFilters(false);
+                    }}
+                  >
+                    <FileCheck2 className="mr-1 h-4 w-4" aria-hidden />
+                    {pendingReviewQueue.data} {pendingReviewQueue.data === 1
+                      ? "aguardando sua aprovação"
+                      : "aguardando suas aprovações"}
+                  </Button>
+                )}
                 {/* Azul, verde e âmbar: as cores de Filtrar, Adicionar e Extrair
                     no sistema anterior, para a transição não estranhar. */}
                 <Button variant="tintInfo" size="sm" onClick={() => setShowFilters((open) => !open)}>
@@ -402,6 +429,27 @@ export default function Pipeline() {
           </>
         }
       />
+
+      {(ccaQueue.data?.length ?? 0) > 0 && (
+        <section
+          aria-label="Sua ordem de análise na CCA"
+          className="flex flex-wrap items-center gap-2 rounded-xl border border-info/40 bg-info/10 px-3 py-2"
+        >
+          <Landmark className="h-4 w-4 shrink-0 text-info" aria-hidden />
+          <p className="mr-1 text-sm font-semibold">Sua ordem de análise na CCA</p>
+          {ccaQueue.data?.map((entry) => (
+            <span
+              key={entry.deal_id}
+              className="rounded-md border border-info/40 bg-background/70 px-2 py-1 text-xs"
+            >
+              <strong>{entry.client_name}</strong>
+              <span className="ml-1 font-bold tabular-nums text-info">
+                {entry.queue_position}º na fila geral
+              </span>
+            </span>
+          ))}
+        </section>
+      )}
 
       {/* Barra de abas centrada como a das demais telas (pedido de 17/09/2026).
           Esta nao usa o `TabsList` compartilhado — e um `role=tablist` proprio,

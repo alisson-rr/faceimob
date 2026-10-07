@@ -366,7 +366,7 @@ export default function CcaPipeline() {
         icon={Landmark}
         // Sem dados (o período falhou) não há contagem a dizer: "0 caso(s)" seria falso.
         description={board.data && (`${deals.length} caso(s) no período, em ${stages.length} estágio(s).`
-          + (board.data.outside ? ` ${board.data.outside} caso(s) fora das colunas ativas (cancelados ou sem coluna).` : ""))}
+          + (board.data.outside ? ` ${board.data.outside} caso(s) sem coluna ativa.` : ""))}
         actions={
           isAdmin ? (
             <>

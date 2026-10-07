@@ -20,6 +20,10 @@ vi.mock("@/integrations/supabase/client", async () => {
     cca_cases: [
       { id: "k2", deal_id: "d2", status: "under_review", stage_id: "s1", decision_notes: null, submitted_at: "2026-09-01T12:00:00Z", stage_entered_at: "2026-09-02T12:00:00Z" },
       { id: "k1", deal_id: "d1", status: "under_review", stage_id: "s1", decision_notes: null },
+      // A coluna antiga fica para auditoria; devolver ao comercial muda apenas
+      // o status para cancelled. Mesmo que uma resposta em cache ainda traga a
+      // linha, ela não pode reaparecer no quadro.
+      { id: "k3", deal_id: "d3", status: "cancelled", stage_id: "s1", decision_notes: "Devolvido" },
     ],
   };
   const fetchFalso = async (input: RequestInfo | URL) => {
@@ -164,6 +168,7 @@ describe("loadCcaBoard · só o período, filtrado no banco", () => {
       "gte.2026-08-16T00:00:00-03:00", "lt.2027-01-01T00:00:00-03:00",
     ]);
     expect(casos?.searchParams.get("order")).toBe("submitted_at.asc,id.asc");
+    expect(casos?.searchParams.get("status")).toBe("neq.cancelled");
     expect(h.listLegacyDeals).toHaveBeenCalledWith(expect.anything(), { ids: ["d2", "d1"] });
 
     // Mantém a ordem do banco, com o nome do negócio e os registros do editor.
@@ -171,6 +176,7 @@ describe("loadCcaBoard · só o período, filtrado no banco", () => {
     expect(board.negocios.map((deal) => deal.id)).toEqual(["d2", "d1"]);
     expect(board.deals[0]).toMatchObject({ cpf: "12345678900", agile: true, submittedAt: "2026-09-01T12:00:00Z", stageEnteredAt: "2026-09-02T12:00:00Z" });
     expect(board.deals[1].agile).toBe(false);
+    expect(board.deals.some((deal) => deal.dealId === "d3"), "cancelado não volta pela coluna antiga").toBe(false);
   });
 });
 

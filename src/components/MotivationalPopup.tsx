@@ -14,6 +14,7 @@ import { fireConfetti } from "@/components/engagement/Confetti";
 import { saudacao } from "@/components/leads/mensagensProntas";
 import { useMeuApelido } from "@/components/leads/mensagensProntasData";
 import { num } from "@/lib/format";
+import { useMyPendingReviewCount } from "@/integrations/supabase/reviews";
 
 const messages = [
   { icon: Rocket, title: "Hora de Decolar! 🚀", text: "Cada lead é uma oportunidade. Vamos transformar contatos em contratos hoje!" },
@@ -60,8 +61,10 @@ export function MotivationalPopup() {
   const apelido = useMeuApelido();
   const [open, setOpen] = useState(false);
   const [msg] = useState(() => messages[Math.floor(Math.random() * messages.length)]);
-  // Admin também: confere o que está sem gerente vinculado (0199).
-  const gerente = roles.includes("manager") || isAdmin;
+  // Admin/sócio também conferem o que está sem liderança vinculada. Desde a
+  // 0235 o diretor participante tem o mesmo poder do gerente e precisa receber
+  // o mesmo caminho visível para a fila.
+  const lideranca = roles.includes("manager") || roles.includes("director") || isAdmin;
 
   const aniversariantes = useQuery({
     queryKey: ["boas-vindas", "aniversariantes", hojeLocal()],
@@ -73,15 +76,7 @@ export function MotivationalPopup() {
     enabled: open,
     staleTime: 60 * 60_000,
   });
-  const conferencias = useQuery({
-    queryKey: ["boas-vindas", "conferencias", user?.id ?? null],
-    queryFn: async (): Promise<number> => {
-      const { data, error } = await untyped.rpc("minhas_conferencias_pendentes");
-      if (error) throw error;
-      return Number(data) || 0;
-    },
-    enabled: open && gerente,
-  });
+  const conferencias = useMyPendingReviewCount(user?.id ?? null, open && lideranca);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -174,7 +169,7 @@ export function MotivationalPopup() {
                 </section>
               )}
 
-              {gerente && pendentes > 0 && (
+              {lideranca && pendentes > 0 && (
                 <section className="w-full rounded-xl border border-success/40 bg-success/10 p-3 text-left" aria-label="Análises para conferir">
                   <p className="flex items-center gap-2 text-sm font-semibold">
                     <FileCheck2 className="h-4 w-4 text-success" aria-hidden /> 💰 Negócio à vista!

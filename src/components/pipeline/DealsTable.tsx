@@ -31,6 +31,8 @@ const AGE_STRIPE: Record<AgeTone, string> = {
 
 interface Props {
   deals: LegacyDealRecord[];
+  /** Posição global dos negócios deste corretor na análise do CCA. */
+  ccaQueuePositions?: ReadonlyMap<string, number>;
   /** Espelha `can_edit_deal`. O cabeçalho já anuncia "Somente leitura" ao sócio;
    *  sem isto cada linha continuava oferecendo três controles de escrita que o
    *  banco recusa — e ele só descobria depois de abrir o diálogo. */
@@ -61,7 +63,7 @@ interface Props {
  *    reabrir (achado F14). Agora é botão nomeado que abre confirmação com motivo.
  */
 export function DealsTable({
-  deals, canWrite, closedMonths, onOpen, onStatusChange, onScheduleVisit, onLose, onReopen,
+  deals, ccaQueuePositions, canWrite, closedMonths, onOpen, onStatusChange, onScheduleVisit, onLose, onReopen,
 }: Props) {
   const { isAdmin, roles, can } = useAuth();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
@@ -167,6 +169,7 @@ export function DealsTable({
               const construtora = deal.developer || "";
               const abreGrupo = agrupada && (index === 0 || (rows[index - 1].developer || "") !== construtora);
               const review = conferenciaDoNegocio(deal.document_review_status, deal.status);
+              const ccaQueuePosition = ccaQueuePositions?.get(deal.id);
               const status = deal.status || "PROPOSTA";
               const grupo = statusGroupLabel(catalog, deal.status_group_id);
               const bolinha = developerDot(deal.developer, deal.developer_color);
@@ -320,9 +323,16 @@ export function DealsTable({
                     </Select>
                   </td>
                   <td className="p-2">
-                    <Badge variant="outline" className={cn("whitespace-nowrap text-xs", review.className)}>
-                      {review.label}
-                    </Badge>
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge variant="outline" className={cn("whitespace-nowrap text-xs", review.className)}>
+                        {review.label}
+                      </Badge>
+                      {ccaQueuePosition ? (
+                        <Badge variant="secondary" className="whitespace-nowrap text-xs tabular-nums text-info">
+                          Esteira Ágil · {ccaQueuePosition}º na fila do CCA
+                        </Badge>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="max-w-[150px] p-2">
                     {/* O clique da linha não é alcançável por teclado nem

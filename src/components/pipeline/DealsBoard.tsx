@@ -101,6 +101,7 @@ export function DealsBoard({
   ) : (
     <DealsTable
       deals={deals}
+      ccaQueuePositions={ccaQueuePositions}
       canWrite={canWrite}
       closedMonths={closedMonths}
       onOpen={onOpen}
