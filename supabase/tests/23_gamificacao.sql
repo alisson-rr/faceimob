@@ -176,8 +176,15 @@ begin
   -- Distrato pelo caminho REAL: o diálogo de perda grava a etapa `lost` com o
   -- motivo. O gatilho antigo exigia outcome='cancelled', que nenhum estágio
   -- produz — a penalidade de -600 nunca entrava.
+  delete from public.closed_months
+   where period = public.month_start(
+     (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+   );
   update public.deals
      set stage_id = (select id from public.pipeline_stages where code = 'lost'),
+         month_base = public.month_start(
+           (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+         ),
          status_detail = '17. DISTRATO',
          lost_reason = '17. DISTRATO — cliente desistiu'
    where id = v_deal;

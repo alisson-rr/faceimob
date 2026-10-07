@@ -10,6 +10,9 @@ declare
   cca uuid := '00000000-0000-0000-0000-000002300002';
   v_deal  uuid;
   v_lost  uuid := (select id from public.pipeline_stages where code = 'lost' limit 1);
+  v_previous_month date := public.month_start(
+    (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+  );
   v_ok    boolean;
 begin
   if not exists (select 1 from public.cca_stages
@@ -41,15 +44,45 @@ begin
   end if;
   raise notice '  ok  CCA não marca OFF';
 
-  update public.deals set stage_id = v_lost, status_detail = '17. DISTRATO', lost_reason = '17. DISTRATO — teste'
+  -- Mesmo a CCA só pode registrar DISTRATO em mês anterior ao vigente.
+  perform set_config('faceimob.cca_move', 'on', true);
+  begin
+    update public.deals
+       set stage_id = v_lost,
+           status_detail = '17. DISTRATO',
+           lost_reason = '17. DISTRATO — teste'
+     where id = v_deal;
+    v_ok := true;
+  exception when raise_exception then
+    v_ok := false;
+  end;
+  if v_ok then
+    raise exception 'FALHOU: a CCA não devia marcar DISTRATO no mês vigente';
+  end if;
+  raise notice '  ok  CCA não marca DISTRATO no mês vigente';
+
+  execute 'reset role';
+  delete from public.closed_months where period = v_previous_month;
+  update public.deals set month_base = v_previous_month where id = v_deal;
+  insert into public.closed_months (period) values (v_previous_month)
+  on conflict (period) do nothing;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', cca, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  perform set_config('faceimob.cca_move', 'on', true);
+  update public.deals
+     set stage_id = v_lost,
+         status_detail = '17. DISTRATO',
+         lost_reason = '17. DISTRATO — teste'
    where id = v_deal;
   execute 'reset role';
   if (select public.deal_status_bare(status_detail) from public.deals where id = v_deal) <> 'DISTRATO' then
     raise exception 'FALHOU: a CCA devia encerrar por distrato';
   end if;
-  raise notice '  ok  CCA encerra por distrato';
+  raise notice '  ok  CCA encerra por distrato em mês anterior já fechado';
 
   -- Corretor segue sem distrato.
+  delete from public.closed_months where period = v_previous_month;
   update public.deals set stage_id = (select id from public.pipeline_stages where is_initial limit 1),
          status_detail = 'PROPOSTA', lost_reason = null where id = v_deal;
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);

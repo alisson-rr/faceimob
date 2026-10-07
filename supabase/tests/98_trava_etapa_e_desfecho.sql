@@ -200,9 +200,18 @@ begin
   -- passou a ser da CCA.)
   update public.deals set status_detail = '18. QUEDA' where id = v_deal;
 
+  delete from public.closed_months
+   where period = public.month_start(
+     (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+   );
   v_dist := false;
   begin
-    update public.deals set status_detail = '17. DISTRATO' where id = v_deal;
+    update public.deals
+       set month_base = public.month_start(
+             (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+           ),
+           status_detail = '17. DISTRATO'
+     where id = v_deal;
   exception when insufficient_privilege then
     v_dist := true;
   end;
@@ -237,7 +246,11 @@ begin
     json_build_object('sub', adm::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
   update public.deals
-     set status_detail = '17. DISTRATO', lost_reason = '17. DISTRATO — cliente desistiu'
+     set month_base = public.month_start(
+           (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+         ),
+         status_detail = '17. DISTRATO',
+         lost_reason = '17. DISTRATO — cliente desistiu'
    where id = v_deal;
   reset role;
 

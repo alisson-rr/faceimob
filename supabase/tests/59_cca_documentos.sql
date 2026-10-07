@@ -283,12 +283,21 @@ begin
     'rótulo de encerramento passa mesmo com o caso na esteira (diálogo de perda)');
 
   -- ── e o outro lado da mesma regra: distrato é de administrador ────────────
+  delete from public.closed_months
+   where period = public.month_start(
+     (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+   );
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
   v_recusou := false;
   begin
-    update public.deals set status_detail = '17. DISTRATO' where id = v_deal.id;
+    update public.deals
+       set month_base = public.month_start(
+             (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+           ),
+           status_detail = '17. DISTRATO'
+     where id = v_deal.id;
   exception when insufficient_privilege then
     v_recusou := true;
   end;
@@ -301,7 +310,12 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', adm::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
-  update public.deals set status_detail = '17. DISTRATO' where id = v_deal.id;
+  update public.deals
+     set month_base = public.month_start(
+           (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+         ),
+         status_detail = '17. DISTRATO'
+   where id = v_deal.id;
   reset role;
 
   select status_detail into v_label from public.deals where id = v_deal.id;
