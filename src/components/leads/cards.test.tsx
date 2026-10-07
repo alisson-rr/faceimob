@@ -24,6 +24,7 @@ import LeadDetailModal from "@/components/LeadDetailModal";
 /** Sessão que o modal enxerga. Mutável: cada teste ajusta antes de renderizar. */
 const sessao = {
   user: { id: "eu" } as { id: string } | null,
+  roles: [] as string[],
   isAdmin: false,
   can: (_code: string) => false,
 };
@@ -46,10 +47,13 @@ vi.mock("@/components/leads", () => ({
   useNowTicker: () => Date.now(),
   useDistributionGroups: () => ({ data: [], error: null }),
   useAutomationSettings: () => ({ data: undefined, error: null }),
+  useAssignableBrokers: () => ({ data: [], error: null }),
+  OPEN_LEAD_STATUSES: ["assigned", "attending", "in_progress"],
   // Os diálogos do modal (próxima ação e encerramento) só abrem por clique; o
   // que este arquivo cobra é quais ações o modal OFERECE.
   NextActionDialog: () => null,
   CloseLeadDialog: () => null,
+  ReassignLeadDialog: () => null,
   toDateTimeInput: () => "",
 }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -457,5 +461,19 @@ describe("LeadDetailModal · ações que o banco aceita", () => {
     expect(texto).toMatch(/Documentação/);
     expect(texto).not.toMatch(/Lead Morno|Lead Quente|Juntando Doc/);
     await cleanup();
+  });
+
+  it("o corretor pode repassar o próprio lead em atendimento", async () => {
+    sessao.user = { id: "eu" };
+    sessao.roles = ["broker"];
+    sessao.isAdmin = false;
+    sessao.can = () => false;
+    const { cleanup } = await abrir({ assigned_to: "eu", broker_name: "Eu", status: "attending" });
+    try {
+      expect(botao(/repassar lead/i)).toBeTruthy();
+    } finally {
+      sessao.roles = [];
+      await cleanup();
+    }
   });
 });

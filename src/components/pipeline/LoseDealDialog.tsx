@@ -76,7 +76,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
   const id = useId();
   const lostStage = stages.find((stage) => stage.code === LOST_STAGE_CODE);
   const podeOffDistrato = can("deals.mark_off_distrato");
-  const travado = (motivo: string) => offDistratoBlocked(can, motivo, deal.status) !== null;
+  const travado = (motivo: string) => offDistratoBlocked(can, motivo, deal.status_detail) !== null;
   const [status, setStatus] = useState(
     // Um preset de OFF/distrato vindo do Select da tabela não entra pela janela:
     // sem permissão o campo nasce vazio, como se ninguém tivesse escolhido.
@@ -165,7 +165,7 @@ export function LoseDealDialog({ deal, presetStatus, stages, onClose, onConfirme
                     <SelectItem key={option} value={option} disabled={bloqueado}>
                       <span>{statusLabel(catalog, option)}</span>
                       {bloqueado && (
-                        <span className="text-muted-foreground"> — {offDistratoBlocked(can, option, deal.status)}</span>
+                        <span className="text-muted-foreground"> — {offDistratoBlocked(can, option, deal.status_detail)}</span>
                       )}
                     </SelectItem>
                   );

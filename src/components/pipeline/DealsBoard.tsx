@@ -32,7 +32,7 @@ interface Props {
   onOpen: (deal: LegacyDealRecord) => void;
   onStatusChange: (deal: LegacyDealRecord, status: string) => void;
   onScheduleVisit: (deal: LegacyDealRecord) => void;
-  onLose: (deal: LegacyDealRecord) => void;
+  onLose: (deal: LegacyDealRecord, preset?: string) => void;
   onReopen: (deal: LegacyDealRecord) => void;
   onReactivate?: (deal: LegacyDealRecord) => void;
   currentMonth?: string | null;

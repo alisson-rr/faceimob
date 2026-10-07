@@ -82,7 +82,7 @@ export const FEATURE_PERMISSIONS: Record<string, PermissionEnforcement> = {
     enforcedBy: "banco",
   },
   "leads.reassign": {
-    where: "Leads: realocar lead para corretor da equipe que lidera (RPC reassign_lead); a tela ainda mostra o botão pelo papel",
+    where: "Leads: liderança realoca para corretor do próprio alcance. O corretor pode repassar somente o lead que está com ele para outro corretor ativo, independentemente deste switch",
     enforcedBy: "banco",
   },
   "leads.delete": {

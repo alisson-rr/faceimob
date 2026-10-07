@@ -54,12 +54,12 @@ interface Props {
   onBlockedMove: (reason: string) => void;
   /** Encerrar o negócio (abre o diálogo de perda com motivo). No kanban não
    *  havia como perder: era preciso voltar para a visão de tabela. */
-  onLose: (deal: LegacyDealRecord) => void;
+  onLose: (deal: LegacyDealRecord, preset?: string) => void;
   /** Abre a confirmação/seleção de corretor da reativação. */
   onReactivate?: (deal: LegacyDealRecord) => void;
   /** Competência aberta, MM/AAAA. OFF só reativa quando é anterior a ela. */
   currentMonth?: string | null;
-  /** Posição global deste negócio na fila de análise do CCA. */
+  /** Posição global deste negócio entre os envios vigentes da Esteira Ágil. */
   ccaQueuePosition?: number | null;
   previousStage?: PipelineStage;
   nextStage?: PipelineStage;
@@ -100,7 +100,8 @@ function DealCardBase({
   const comissao = comissaoPrevista(deal);
   // Só OFF de competência anterior pode voltar; DISTRATO permanece histórico.
   const statusBare = bareStatus(deal.status_detail);
-  const mesAtual = new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
+  const mesAtual = currentMonth
+    ?? new Date().toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
   const isOffMesAnterior = Boolean(
     onReactivate && statusBare === "OFF" && mes && compareMonth(mes, mesAtual) < 0,
   );
@@ -236,7 +237,7 @@ function DealCardBase({
         </Badge>
         {ccaQueuePosition ? (
           <Badge variant="secondary" className="mb-2 ml-1 h-5 px-1.5 text-xs tabular-nums">
-            Esteira Ágil · {ccaQueuePosition}º na fila do CCA
+            {ccaQueuePosition}º na Esteira Ágil
           </Badge>
         ) : null}
 
@@ -314,7 +315,18 @@ function DealCardBase({
           {/* Perder existia só na tabela: encerrar um negócio pelo kanban
               obrigava a trocar de visão. Mesma trava dos outros controles —
               linha travada não oferece o gesto. */}
-          {!lock.locked && (
+          {statusBare === "REPROVADO" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 border-destructive/60 px-2 text-xs text-destructive hover:bg-destructive/10"
+              aria-label={`Dar OFF no negócio de ${deal.client}`}
+              onClick={(event: MouseEvent) => { event.stopPropagation(); onLose(deal, "OFF"); }}
+            >
+              <XCircle className="h-3.5 w-3.5" /> Dar OFF
+            </Button>
+          ) : !lock.locked && (
             <button
               type="button"
               aria-label={`Perder o negócio de ${deal.client}`}

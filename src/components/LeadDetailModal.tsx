@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/shared";
 import {
-  CloseLeadDialog, NextActionDialog, useAutomationSettings, useDistributionGroups, useLeadDetail,
-  useNowTicker,
+  CloseLeadDialog, NextActionDialog, ReassignLeadDialog, useAssignableBrokers,
+  useAutomationSettings, useDistributionGroups, useLeadDetail, useNowTicker,
 } from "@/components/leads";
 import { useAuth } from "@/contexts/AuthContext";
 import TaskPanel from "@/components/TaskPanel";
@@ -19,6 +19,7 @@ import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Loader2, Mail,
   Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
+  UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
@@ -26,7 +27,7 @@ import { describeError } from "@/lib/supabaseError";
 import {
   addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
   updateLead, moveLeadStage,
-  ATTACHMENT_HINT, FUNNEL_STAGES, LEAD_ROADMAP, funnelStageLabel, funnelStageTone, leadSourceTone,
+  ATTACHMENT_HINT, FUNNEL_STAGES, LEAD_ROADMAP, OPEN_LEAD_STATUSES, funnelStageLabel, funnelStageTone, leadSourceTone,
   leadStatusLabel, leadStatusTone,
   attendSecondsLeft, canWriteLead, formatCountdown, canClaim, isLeadUnattended, trackingFields,
   type LeadRecord, type LeadAttachment,
@@ -64,7 +65,7 @@ export default function LeadDetailModal({
   onConvert: (l: LeadRecord) => void;
   onStageChanged?: () => void;
 }) {
-  const { user, isAdmin, can } = useAuth();
+  const { user, roles, isAdmin, can } = useAuth();
   const profileId = user?.id || null;
   // Espelha `can_write_lead()`: Salvar, Comentar, Anexar e as 8 etapas do funil
   // apareciam para qualquer papel que enxergasse o lead, e o banco recusava com
@@ -86,6 +87,7 @@ export default function LeadDetailModal({
   // Mensagem pronta antes de abrir o WhatsApp (03/10/2026).
   const [whatsappAberto, setWhatsappAberto] = useState(false);
   const [pegarAberto, setPegarAberto] = useState(false);
+  const [repassando, setRepassando] = useState(false);
   // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -102,6 +104,10 @@ export default function LeadDetailModal({
   // circulando 20 vezes, saber por qual fila ele passa deixou de ser cosmético.
   const groupsQuery = useDistributionGroups();
   const settingsQuery = useAutomationSettings();
+  const podeRepassar = Boolean(lead && (OPEN_LEAD_STATUSES ?? []).includes(lead.status)
+    && (can("leads.reassign")
+      || ((roles ?? []).includes("broker") && lead.assigned_to === profileId)));
+  const brokersQuery = useAssignableBrokers(open && podeRepassar);
   // Cronômetro da trava: tique de 1s só com o modal aberto num lead em trava.
   // Sem trava não há contagem, e o tique refazia o modal inteiro a cada segundo.
   const now = useNowTicker(open && !!lead && attendSecondsLeft(lead) !== null);
@@ -341,6 +347,11 @@ export default function LeadDetailModal({
 
         {/* Ações secundárias; contato e caminho de conversão ficam acima. */}
         <div className="flex flex-wrap gap-2">
+          {podeRepassar && (
+            <Button size="sm" variant="outline" onClick={() => setRepassando(true)}>
+              <UserPlus className="h-4 w-4" /> Repassar lead
+            </Button>
+          )}
           {lead.email && (
             <Button size="sm" variant="outline" asChild>
               <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4" /> E-mail</a>
@@ -606,6 +617,14 @@ export default function LeadDetailModal({
           lead={lead}
           onClose={() => setClosing(false)}
           onClosed={() => { onStageChanged?.(); onOpenChange(false); }}
+        />
+      )}
+
+      {repassando && (
+        <ReassignLeadDialog
+          lead={lead}
+          brokers={brokersQuery.data ?? []}
+          onClose={() => setRepassando(false)}
         />
       )}
 

@@ -14,7 +14,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
 import { DEAL_DOCUMENTS_BUCKET } from "./documents";
-import { listPeople, type PersonRecord } from "./newSchema";
+import type { PersonRecord } from "./newSchema";
 import type { Database } from "./types";
 import { dbError } from "@/lib/supabaseError";
 import { slugify } from "@/lib/utils";
@@ -297,10 +297,34 @@ export async function listWhatsappTemplates(): Promise<WhatsappTemplate[]> {
   return (data || []) as WhatsappTemplate[];
 }
 
-/** Corretores elegíveis para atribuição manual (realocação por gestor). */
+/** Corretores elegíveis para realocação/repasse, já recortados pelo banco. */
 export async function listAssignableBrokers(): Promise<PersonRecord[]> {
-  const people = await listPeople();
-  return people.filter((person) => person.active && person.roles.includes("broker"));
+  const { data, error } = await untyped.rpc("lead_reassignment_brokers");
+  asError("corretores para repasse", error);
+  return ((data ?? []) as {
+    profile_id: string;
+    full_name: string;
+    team_id: string | null;
+    team_name: string | null;
+    manager_id: string | null;
+    director_id: string | null;
+  }[]).map((row) => ({
+    id: row.profile_id,
+    user_id: row.profile_id,
+    name: row.full_name,
+    full_name: row.full_name,
+    email: null,
+    phone: null,
+    avatar_url: null,
+    active: true,
+    status: "active",
+    roles: ["broker" as const],
+    role: "broker" as const,
+    team_id: row.team_id,
+    team: row.team_name ?? "",
+    manager_id: row.manager_id,
+    director_id: row.director_id,
+  }));
 }
 
 export type AutomationSettings = {
