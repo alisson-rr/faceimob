@@ -15,14 +15,16 @@ do $$
 declare
   dir uuid := '00000000-0000-0000-0000-000001850001';
   cor uuid := '00000000-0000-0000-0000-000001850002';
+  ger uuid := '00000000-0000-0000-0000-000001850003';
   v_time uuid;
   v_n int;
 begin
   insert into auth.users(id,email,raw_user_meta_data) values
     (dir,'dir@l185.test','{"full_name":"Diretor 185"}'),
-    (cor,'cor@l185.test','{"full_name":"Corretor 185"}');
-  insert into public.user_roles(profile_id,role) values (dir,'director') on conflict do nothing;
-  insert into public.teams(name, director_id) values ('Equipe 185', dir) returning id into v_time;
+    (cor,'cor@l185.test','{"full_name":"Corretor 185"}'),
+    (ger,'ger@l185.test','{"full_name":"Gerente 185"}');
+  insert into public.user_roles(profile_id,role) values (dir,'director'), (ger,'manager') on conflict do nothing;
+  insert into public.teams(name, manager_id, director_id) values ('Equipe 185', ger, dir) returning id into v_time;
   insert into public.team_members(team_id, profile_id) values (v_time, cor);
 
   insert into public.leads(full_name, phone, campaign_name, assigned_to, created_at) values
@@ -43,6 +45,12 @@ begin
   select count(*) into v_n from public.lista_de_ligacao() l where l.cliente like '%185%' or l.cliente in ('Antigo Um', 'Deste Mes', 'Antigo Sem Fone');
   reset role;
   perform pg_temp.ok(v_n = 1, 'diretor recebe só o lead antigo com telefone da diretoria dele');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', ger, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into v_n from public.lista_de_ligacao() l where l.cliente = 'Antigo Um';
+  reset role;
+  perform pg_temp.ok(v_n = 1, 'gerente também extrai a lista antiga da própria equipe');
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   begin

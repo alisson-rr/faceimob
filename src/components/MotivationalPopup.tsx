@@ -14,7 +14,7 @@ import { fireConfetti } from "@/components/engagement/Confetti";
 import { saudacao } from "@/components/leads/mensagensProntas";
 import { useMeuApelido } from "@/components/leads/mensagensProntasData";
 import { num } from "@/lib/format";
-import { useMyPendingReviewCount } from "@/integrations/supabase/reviews";
+import { useMyPendingReviewDealIds } from "@/integrations/supabase/reviews";
 
 const messages = [
   { icon: Rocket, title: "Hora de Decolar! 🚀", text: "Cada lead é uma oportunidade. Vamos transformar contatos em contratos hoje!" },
@@ -76,7 +76,7 @@ export function MotivationalPopup() {
     enabled: open,
     staleTime: 60 * 60_000,
   });
-  const conferencias = useMyPendingReviewCount(user?.id ?? null, open && lideranca);
+  const conferencias = useMyPendingReviewDealIds(user?.id ?? null, open && lideranca);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -94,7 +94,7 @@ export function MotivationalPopup() {
   const lista = aniversariantes.data ?? [];
   const souAniversariante = lista.some((a) => a.profile_id === user?.id);
   const outros = lista.filter((a) => a.profile_id !== user?.id);
-  const pendentes = conferencias.data ?? 0;
+  const pendentes = conferencias.data?.length ?? 0;
 
   // Festa uma vez quando os dados chegam: aniversário com fogos e música,
   // análise à espera com uma chuva de confete ("negócio à vista").

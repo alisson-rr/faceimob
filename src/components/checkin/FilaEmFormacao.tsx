@@ -52,7 +52,7 @@ function porGrupo(linhas: LinhaDaFila[]) {
  * atrasados). Atualiza com o check-in e cada entrega.
  */
 export function FilaEmFormacao() {
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const fila = useQuery({
@@ -62,13 +62,13 @@ export function FilaEmFormacao() {
       if (error) throw error;
       return (data ?? []) as LinhaDaFila[];
     },
-    enabled: isAdmin,
+    enabled: Boolean(user?.id),
     // A distribuição abre no horário do turno sem mudar nenhuma tabela.
     refetchInterval: 60_000,
   });
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!user?.id) return;
     const recarregar = () => { void queryClient.invalidateQueries({ queryKey: ["checkin", "fila-em-formacao"] }); };
     const canal = supabase
       .channel("fila-em-formacao")
@@ -76,9 +76,9 @@ export function FilaEmFormacao() {
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, recarregar)
       .subscribe();
     return () => { void supabase.removeChannel(canal); };
-  }, [isAdmin, queryClient]);
+  }, [user?.id, queryClient]);
 
-  if (!isAdmin) return null;
+  if (!user?.id) return null;
 
   const grupos = porGrupo(fila.data ?? []);
   const presentes = (fila.data ?? []).filter((l) => l.situacao !== "bloqueado").length;
