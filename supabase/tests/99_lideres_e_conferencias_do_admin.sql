@@ -76,6 +76,18 @@ begin
   perform public.submit_deal_for_manager_review(v_deal.id, 'Dossiê para conferir');
   reset role;
 
+  perform pg_temp.como(ger);
+  set local role authenticated;
+  perform pg_temp.ok(public.minhas_conferencias_pendentes() >= 1,
+    'gerente vê a proposta vinculada aguardando aprovação');
+  reset role;
+
+  perform pg_temp.como(dir);
+  set local role authenticated;
+  perform pg_temp.ok(public.minhas_conferencias_pendentes() >= 1,
+    'diretor vê a proposta vinculada que também pode aprovar');
+  reset role;
+
   perform pg_temp.como(adm);
   set local role authenticated;
   perform pg_temp.ok(public.minhas_conferencias_pendentes() >= 1, 'o popup do admin conta a conferência pendente');

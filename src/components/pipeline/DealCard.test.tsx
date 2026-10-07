@@ -224,7 +224,8 @@ describe("DealCard · cor da coluna", () => {
 
 describe("DealCard · fila do CCA e reativação", () => {
   it("mostra a posição global do negócio na fila do CCA", async () => {
-    expect((await renderCard(undefined, { ccaQueuePosition: 7 })).texto).toContain("CCA: 7º na fila");
+    expect((await renderCard(undefined, { ccaQueuePosition: 7 })).texto)
+      .toContain("Esteira Ágil · 7º na fila do CCA");
   });
 
   it("oferece reativar apenas OFF de competência anterior", async () => {

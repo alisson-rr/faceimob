@@ -236,7 +236,7 @@ function DealCardBase({
         </Badge>
         {ccaQueuePosition ? (
           <Badge variant="secondary" className="mb-2 ml-1 h-5 px-1.5 text-xs tabular-nums">
-            CCA: {ccaQueuePosition}º na fila
+            Esteira Ágil · {ccaQueuePosition}º na fila do CCA
           </Badge>
         ) : null}
 
