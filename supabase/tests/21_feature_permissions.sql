@@ -253,12 +253,17 @@ begin
   -- permissão de gestão da equipe.
   perform pg_temp.become21(cor);
   perform public.reassign_lead(v_lead, cor2);
+
+  -- O corretor deixa de enxergar o lead assim que o repassa; a confirmação da
+  -- nova propriedade precisa ser feita por um administrador.
+  perform pg_temp.become21(adm);
   perform pg_temp.check21(
     (select assigned_to from public.leads where id = v_lead) = cor2,
     'corretor repassa o próprio lead ativo para outro corretor');
 
   -- Depois do repasse ele perde o controle: não pode movimentar novamente o
   -- lead que agora pertence ao colega.
+  perform pg_temp.become21(cor);
   begin
     perform public.reassign_lead(v_lead, cor);
     raise exception 'FALHOU: corretor realocou lead de outro corretor';
@@ -268,6 +273,9 @@ begin
   end;
 
   perform pg_temp.become21(adm);
+  perform pg_temp.check21(
+    (select assigned_to from public.leads where id = v_lead) = cor2,
+    'tentativa do antigo dono não altera o novo responsável');
   perform public.reassign_lead(v_lead, cor);
   perform pg_temp.check21(
     (select assigned_to from public.leads where id = v_lead) = cor,
