@@ -283,6 +283,10 @@ begin
     'rótulo de encerramento passa mesmo com o caso na esteira (diálogo de perda)');
 
   -- ── e o outro lado da mesma regra: distrato é de administrador ────────────
+  delete from public.closed_months
+   where period = public.month_start(
+     (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+   );
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
   set local role authenticated;

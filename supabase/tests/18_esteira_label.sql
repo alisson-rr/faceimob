@@ -73,6 +73,10 @@ begin
 
   -- Testes anteriores fecham meses; o guard de mês fechado não é o assunto aqui.
   delete from public.closed_months where period = v_deal.month_base;
+  delete from public.closed_months
+   where period = public.month_start(
+     (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+   );
 
   -- ---------------------------------------------------------------------------
   -- Escrita manual recusada: corretor, com e sem prefixo, e admin.

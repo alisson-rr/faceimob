@@ -200,6 +200,10 @@ begin
   -- passou a ser da CCA.)
   update public.deals set status_detail = '18. QUEDA' where id = v_deal;
 
+  delete from public.closed_months
+   where period = public.month_start(
+     (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+   );
   v_dist := false;
   begin
     update public.deals
