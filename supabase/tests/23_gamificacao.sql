@@ -178,6 +178,9 @@ begin
   -- produz — a penalidade de -600 nunca entrava.
   update public.deals
      set stage_id = (select id from public.pipeline_stages where code = 'lost'),
+         month_base = public.month_start(
+           (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+         ),
          status_detail = '17. DISTRATO',
          lost_reason = '17. DISTRATO — cliente desistiu'
    where id = v_deal;

@@ -41,7 +41,29 @@ begin
   end if;
   raise notice '  ok  CCA não marca OFF';
 
-  update public.deals set stage_id = v_lost, status_detail = '17. DISTRATO', lost_reason = '17. DISTRATO — teste'
+  -- Mesmo a CCA só pode registrar DISTRATO em mês anterior ao vigente.
+  begin
+    update public.deals
+       set stage_id = v_lost,
+           status_detail = '17. DISTRATO',
+           lost_reason = '17. DISTRATO — teste'
+     where id = v_deal;
+    v_ok := true;
+  exception when raise_exception then
+    v_ok := false;
+  end;
+  if v_ok then
+    raise exception 'FALHOU: a CCA não devia marcar DISTRATO no mês vigente';
+  end if;
+  raise notice '  ok  CCA não marca DISTRATO no mês vigente';
+
+  update public.deals
+     set month_base = public.month_start(
+           (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+         ),
+         stage_id = v_lost,
+         status_detail = '17. DISTRATO',
+         lost_reason = '17. DISTRATO — teste'
    where id = v_deal;
   execute 'reset role';
   if (select public.deal_status_bare(status_detail) from public.deals where id = v_deal) <> 'DISTRATO' then

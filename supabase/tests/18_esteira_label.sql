@@ -182,7 +182,12 @@ begin
   -- ---------------------------------------------------------------------------
   -- Rótulo de encerramento manda mais que a esteira.
   -- ---------------------------------------------------------------------------
-  update public.deals set status_detail = '17. DISTRATO' where id = v_deal.id;
+  update public.deals
+     set month_base = public.month_start(
+           (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+         ),
+         status_detail = '17. DISTRATO'
+   where id = v_deal.id;
 
   update public.cca_cases set status = 'pending_documents' where deal_id = v_deal.id;
 
