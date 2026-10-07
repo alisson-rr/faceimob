@@ -252,8 +252,8 @@ begin
   perform pg_temp.check150(
     exists (select 1 from public.deal_history
              where deal_id = v_a and kind = 'comment' and actor_id = ger
-               and to_value = 'APROVADO PELO GERENTE: Documentação conferida'),
-    'a mensagem da aprovação fica no negócio');
+               and to_value = 'APROVADO PELA LIDERANÇA: Documentação conferida'),
+    'a mensagem da aprovação da liderança fica no negócio');
   perform pg_temp.check150(
     (select count(*) from public.notifications
       where profile_id = ana and kind = 'cca_pending') = v_qtd + 1,
