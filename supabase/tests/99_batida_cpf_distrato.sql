@@ -16,6 +16,9 @@ declare
   cor_a uuid := '00000000-0000-0000-0000-000002050001';
   cor_b uuid := '00000000-0000-0000-0000-000002050002';
   v_ativo uuid; v_distrato uuid;
+  v_previous_month date := public.month_start(
+    (coalesce(public.current_season_month(), current_date) - interval '1 month')::date
+  );
   r record;
 begin
   insert into auth.users(id,email,raw_user_meta_data) values
@@ -31,8 +34,10 @@ begin
     (v_ativo,cor_a,'comment','Primeiro contato', now() - interval '2 days'),
     (v_ativo,cor_a,'comment','Cliente aprovado, aguardando assinatura', now() - interval '1 hour');
 
-  insert into public.deals(stage_id,created_by,status_detail,lost_reason,project_name)
-    values ((select id from public.pipeline_stages where code='lost'),cor_a,'20. DISTRATO','20. DISTRATO','Y') returning id into v_distrato;
+  delete from public.closed_months where period = v_previous_month;
+  insert into public.deals(stage_id,created_by,status_detail,lost_reason,project_name,month_base)
+    values ((select id from public.pipeline_stages where code='lost'),cor_a,'20. DISTRATO','20. DISTRATO','Y',v_previous_month)
+    returning id into v_distrato;
   insert into public.deal_participants(deal_id,profile_id,role,ordinal) values (v_distrato,cor_a,'broker',1) on conflict do nothing;
   insert into public.deal_clients(deal_id,full_name,cpf,ordinal) values (v_distrato,'MARIA 205','52998224725',1);
 
