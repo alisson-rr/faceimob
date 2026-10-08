@@ -256,7 +256,57 @@ $$;
 revoke all on function public.dashboard_imobiliaria_payload() from public, anon;
 grant execute on function public.dashboard_imobiliaria_payload() to authenticated;
 
+-- A RPC da 0244 declarava `email text`, mas `leads.email` é CITEXT. PL/pgSQL
+-- só descobre a incompatibilidade ao executar a consulta — exatamente quando o
+-- diretor abre o Dashboard da imobiliária. O cast explícito mantém o contrato
+-- consumido pelo frontend e elimina a falha em runtime.
+create or replace function public.dashboard_imobiliaria_leads(
+  p_de timestamptz default null,
+  p_ate timestamptz default null
+)
+returns table (
+  id uuid, name text, phone text, whatsapp text, email text, source text,
+  broker_id text, broker_name text, created_at timestamptz, status text, notes text
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then raise exception 'Sessão expirada.' using errcode = '28000'; end if;
+  if not (public.is_admin() or public.has_role('director')) then
+    raise exception 'Somente diretor ou administrador acessa os leads do Dashboard da imobiliária.' using errcode = '42501';
+  end if;
+
+  return query
+  select l.id, l.full_name, coalesce(l.phone, ''), coalesce(l.phone, ''),
+         coalesce(l.email::text, ''),
+         coalesce(src.label, l.utm_source, ''), coalesce(l.assigned_to::text, ''), prof.full_name,
+         l.created_at,
+         case when l.status = 'converted' then 'converted'
+              when l.status in ('lost', 'discarded') then 'lost'
+              when l.funnel_stage = 'qualified' then 'qualified'
+              when l.status in ('attending', 'in_progress') then 'contacted'
+              else 'new' end,
+         coalesce(l.notes, '')
+    from public.leads l
+    left join public.lead_sources src on src.id = l.source_id
+    left join public.profiles prof on prof.id = l.assigned_to
+   where (p_de is null or l.created_at >= p_de)
+     and (p_ate is null or l.created_at < p_ate)
+   order by l.created_at desc, l.id
+   limit case when p_de is null and p_ate is null then 1000 else null end;
+end;
+$$;
+revoke all on function public.dashboard_imobiliaria_leads(timestamptz, timestamptz)
+  from public, anon;
+grant execute on function public.dashboard_imobiliaria_leads(timestamptz, timestamptz)
+  to authenticated;
+
 comment on function public.dashboard_imobiliaria_deals() is
   'Negócios pagináveis do Dashboard da imobiliária; somente diretor/admin e sem ampliar a RLS do Pipeline.';
 comment on function public.dashboard_imobiliaria_payload() is
   'Metadados e pessoas do Dashboard da imobiliária; os negócios são paginados por dashboard_imobiliaria_deals.';
+comment on function public.dashboard_imobiliaria_leads(timestamptz, timestamptz) is
+  'Leads da imobiliária para diretor/admin, com e-mail CITEXT convertido ao contrato TEXT do frontend.';
