@@ -497,7 +497,10 @@ export const perdaIds = (deals: DealRow[]): Set<string> => {
 
 const statsOf = (rows: DealRow[], perdas: Set<string>): MonthStats => {
   const vendas = rows.filter((deal) => dealCategory(deal) === "venda");
-  const propostas = rows.filter((deal) => dealCategory(deal) === "producao").length;
+  // "Proposta" é o Status 1 PROPOSTA. Negócio aberto do LEGADO continua no
+  // funil histórico, mas não entra em produção nem nos rankings de propostas.
+  const propostas = rows.filter((deal) =>
+    dealCategory(deal) === "producao" && deal.status_group_code === "PROPOSTA").length;
   return {
     vendas: vendas.length,
     propostas,
@@ -660,7 +663,8 @@ export function monthView(deals: DealRow[], activeMonth: string) {
     const color = deals.find((deal) =>
       deal.developer.trim().toUpperCase() === dev && deal.developer_color)?.developer_color ?? null;
     const vendas = devRows.filter((deal) => dealCategory(deal) === "venda");
-    const propostas = devRows.filter((deal) => dealCategory(deal) === "producao");
+    const propostas = devRows.filter((deal) =>
+      dealCategory(deal) === "producao" && deal.status_group_code === "PROPOSTA");
     return {
       dev,
       vendas: vendas.length,
