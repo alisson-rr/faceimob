@@ -275,7 +275,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     };
     // Cache já preenchido e sem prazo de validade: o hook lê daqui e não vai à rede.
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-    client.setQueryData(["dashboard", "payload", "u1", "own"], payload);
+    client.setQueryData(["dashboard", "payload", "u1"], payload);
 
     let lido: ReturnType<typeof useDashboardPayload> | null = null;
     function Painel() {
@@ -309,7 +309,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
       closedMonths: [],
     };
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-    client.setQueryData(["dashboard", "payload", "u1", "own"], payload);
+    client.setQueryData(["dashboard", "payload", "u1"], payload);
 
     let lido: ReturnType<typeof useDashboardPayload> | null = null;
     function Painel() {
@@ -327,7 +327,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     vi.setSystemTime(new Date(2026, 9, 1, 0, 1));
     await act(async () => root.unmount());
     lido = null;
-    client.setQueryData(["dashboard", "payload", "u1", "own"], { ...payload, activeMonth: "10/2026" });
+    client.setQueryData(["dashboard", "payload", "u1"], { ...payload, activeMonth: "10/2026" });
     const nextRoot = createRoot(document.createElement("div"));
     await act(async () => {
       nextRoot.render(createElement(QueryClientProvider, { client }, createElement(Painel)));

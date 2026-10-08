@@ -98,7 +98,9 @@ export function useDashboardPayload(dataScope: DashboardDataScope = "own") {
   const { user } = useAuth();
   const profileId = user?.id ?? null;
   const queryClient = useQueryClient();
-  const queryKey = ["dashboard", "payload", profileId, dataScope];
+  const queryKey = dataScope === "company"
+    ? ["dashboard", "payload", profileId, "company"]
+    : ["dashboard", "payload", profileId];
 
   const query = useQuery({
     // O usuario entra na chave porque o payload sai recortado pela RLS: sem
@@ -337,7 +339,9 @@ export function useGoal(metric: GoalMetric, activeMonth: string, dataScope: Dash
   return useQuery({
     // O usuario entra na chave: dois papeis diferentes no mesmo navegador
     // (troca de sessao, previsualizacao de papel) leem metas diferentes.
-    queryKey: ["dashboard", "sales-goal", metric, activeMonth, profileId, roles.join(","), dataScope],
+    queryKey: dataScope === "company"
+      ? ["dashboard", "sales-goal", metric, activeMonth, profileId, roles.join(","), "company"]
+      : ["dashboard", "sales-goal", metric, activeMonth, profileId, roles.join(",")],
     enabled: activeMonth !== ALL_MONTHS && !!profileId,
     queryFn: async (): Promise<SalesGoal> => {
       const { rows, ledTeamIds } = await loadMonthlyGoals(
@@ -375,7 +379,9 @@ export function useDashboardLeads(dataScope: DashboardDataScope = "own") {
   const profileId = user?.id ?? null;
   return useQuery({
     // Mesmo motivo do payload: `leads_select` recorta por usuario.
-    queryKey: ["dashboard", "leads", profileId, dataScope],
+    queryKey: dataScope === "company"
+      ? ["dashboard", "leads", profileId, "company"]
+      : ["dashboard", "leads", profileId],
     queryFn: () => dataScope === "company" ? listCompanyDashboardLeads() : listLegacyLeads(),
     enabled: !!profileId,
   });
@@ -389,7 +395,9 @@ export function useDashboardLeadsNoIntervalo(
   const { user } = useAuth();
   const profileId = user?.id ?? null;
   return useQuery({
-    queryKey: ["dashboard", "leads", profileId, dataScope, "intervalo", intervalo?.de ?? null, intervalo?.ate ?? null],
+    queryKey: dataScope === "company"
+      ? ["dashboard", "leads", profileId, "company", "intervalo", intervalo?.de ?? null, intervalo?.ate ?? null]
+      : ["dashboard", "leads", profileId, "intervalo", intervalo?.de ?? null, intervalo?.ate ?? null],
     queryFn: () => dataScope === "company"
       ? listCompanyDashboardLeads(intervalo ?? undefined)
       : listLegacyLeads(intervalo ?? undefined),
