@@ -151,7 +151,8 @@ as $$
       'status_group_code', grp.code, 'lost_reason', d.lost_reason,
       'stage', coalesce(st.code, 'incomplete'), 'stage_id', d.stage_id,
       'stage_label', coalesce(st.label, 'Sem etapa'), 'stage_position', coalesce(st.position, 0),
-      'outcome', d.outcome, 'lead_origin', d.lead_origin,
+      'outcome', d.outcome, 'lead_origin', d.lead_origin
+    ) || jsonb_build_object(
       'month_base', to_char(d.month_base, 'MM/YYYY'),
       'broker1_id', pa.b1, 'broker2_id', pa.b2, 'broker3_id', pa.b3,
       'broker1_share', pa.bs1, 'broker2_share', pa.bs2, 'broker3_share', pa.bs3,
