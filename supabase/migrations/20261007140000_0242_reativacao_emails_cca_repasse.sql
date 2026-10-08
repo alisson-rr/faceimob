@@ -285,7 +285,7 @@ begin
     select distinct dp.profile_id, 'cca_status_changed',
            format('Crédito %s: %s', coalesce(v_code, 'negócio sem código'), v_stage.name),
            left(format('%s moveu para "%s": %s', coalesce(v_ator_nome, 'Alguém'), v_stage.name, v_message), 2000),
-           '/pipeline', 'in_app'
+           '/pipeline', 'in_app'::notification_channel
       from public.deal_participants dp
       join public.profiles p on p.id = dp.profile_id and p.status = 'active'
      where dp.deal_id = v_case.deal_id and dp.role in ('broker', 'manager', 'director')
