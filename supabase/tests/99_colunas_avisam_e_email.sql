@@ -263,7 +263,9 @@ begin
 
   select * into v_linha from public.cca_move_emails
    where deal_id = pg_temp.deal155() and source = 'cca' and not copia
-     and profile_id = '00000000-0000-0000-0000-000001550003';
+     and profile_id = '00000000-0000-0000-0000-000001550003'
+     and stage_name = 'Avisa 155'
+     and message = 'Aprovar <script>x</script>';
   perform pg_temp.check155(
     v_linha.to_email = 'cor@avisa155.test'
     and v_linha.profile_id = '00000000-0000-0000-0000-000001550003'
