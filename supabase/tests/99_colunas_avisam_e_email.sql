@@ -2,7 +2,7 @@
 -- 0155 · Coluna da CCA avisa ou não o comercial; e-mail do movimento pela Brevo
 --
 -- O que este arquivo cobra:
---   1. toda coluna nasce avisando; o interruptor do e-mail nasce desligado; a
+--   1. toda coluna nasce avisando; o interruptor do e-mail fica ligado; a
 --      fila tem RLS e nenhuma função nova é executável por quem não deve;
 --   2. coluna que avisa, interruptor desligado: aviso ao corretor e ao gerente,
 --      nenhum e-mail na fila;
@@ -71,8 +71,8 @@ begin
     not exists (select 1 from public.cca_stages where not notify_sales),
     'toda coluna existente continua avisando o comercial (padrão true)');
   perform pg_temp.check155(
-    (select cca_move_email = false from public.automation_settings where id),
-    'o e-mail das movimentações nasce desligado');
+    (select cca_move_email = true from public.automation_settings where id),
+    'o e-mail das movimentações fica ligado para avisar os responsáveis');
   perform pg_temp.check155(
     (select relrowsecurity from pg_class where oid = 'public.cca_move_emails'::regclass),
     'a fila tem RLS');
