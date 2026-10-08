@@ -47,9 +47,11 @@ interface Props {
   closeOnSave?: boolean;
   /** Negócio encerrado assumido na batida de CPF: quem abriu a ficha o mostra. */
   onAssumido?: (dealId: string) => void | Promise<void>;
+  /** Aba aberta ao entrar por um atalho, como a fila de conferência documental. */
+  initialTab?: TabKey;
 }
 
-type TabKey = "detalhes" | "comentarios" | "anexos" | "agenda" | "historico" | "cca";
+export type TabKey = "detalhes" | "comentarios" | "anexos" | "agenda" | "historico" | "cca";
 
 /**
  * Negócio em branco.
@@ -93,6 +95,7 @@ const emptyDeal = (stageCode: string, month?: string, selfBrokerId?: string): Sa
  */
 export default function DealDetailModal({
   deal, open, onClose, onSave, onReviewChanged, people, developers, stages, defaultMonth, closeOnSave, onAssumido,
+  initialTab = "detalhes",
 }: Props) {
   const { user } = useAuth();
   const id = useId();
@@ -103,11 +106,11 @@ export default function DealDetailModal({
     const self = people.find((person) => person.id === user?.id && primaryRole(person.roles) === "broker");
     return emptyDeal(stages[0]?.code ?? "incomplete", defaultMonth, self?.id);
   });
-  const [tab, setTab] = useState<TabKey>("detalhes");
+  const [tab, setTab] = useState<TabKey>(initialTab);
   // Aba visitada fica montada (escondida) até a ficha fechar: o texto que o
   // corretor e a CCA começam numa aba sobrevive à ida a outra para consultar
   // (pedido de 06/10/2026). Antes cada troca desmontava o painel e o rascunho ia junto.
-  const [visitadas, setVisitadas] = useState<ReadonlySet<TabKey>>(() => new Set(["detalhes"]));
+  const [visitadas, setVisitadas] = useState<ReadonlySet<TabKey>>(() => new Set(["detalhes", initialTab]));
   const montada = (key: TabKey) => tab === key || visitadas.has(key);
   const [cca, setCca] = useState<CcaAnalysis>({});
   const [saving, setSaving] = useState(false);

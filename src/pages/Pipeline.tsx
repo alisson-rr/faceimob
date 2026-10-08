@@ -1,7 +1,8 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Download, FileCheck2, Filter, GitBranch, Landmark, ListChecks, Plus, Target, Unlock, Users } from "lucide-react";
+import { Download, FileCheck2, Filter, GitBranch, Landmark, ListChecks, Loader2, Plus, Target, Unlock, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { brl } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
@@ -41,7 +42,7 @@ import { useMyCcaQueue } from "@/integrations/supabase/cca";
 import { useMyPendingReviewDealIds } from "@/integrations/supabase/reviews";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
-type EditorState = { deal: LegacyDealRecord | null } | null;
+type EditorState = { deal: LegacyDealRecord | null; initialTab?: "detalhes" | "anexos" } | null;
 
 /** Recorte padrão: a competência vigente do CRM, não uma janela móvel de 30 dias. */
 const activeMonthRange = (monthBase: string): DealPeriod => {
@@ -117,6 +118,8 @@ export default function Pipeline() {
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
   const [statusSettingsOpen, setStatusSettingsOpen] = useState(false);
   const [convertingLead, setConvertingLead] = useState<LeadRecord | null>(null);
+  const [openingPendingReviews, setOpeningPendingReviews] = useState(false);
+  const [pendingReviewList, setPendingReviewList] = useState<LegacyDealRecord[] | null>(null);
 
   // Abre sozinho para o corretor toda vez que ele carrega o Pipeline; qualquer
   // perfil reabre pelo card de game do topo ("Ver mais").
@@ -309,6 +312,42 @@ export default function Pipeline() {
   }, [visible, catalog]);
 
   const pendingReviews = pendingReviewQueue.data?.length ?? 0;
+
+  /**
+   * O contador vem da RPC que já aplica o vínculo exato de gerente/diretor e a
+   * exceção do admin. O clique busca estes mesmos ids sem depender do período,
+   * do Status 1 ou do recorte de equipe atualmente escolhidos na tela.
+   */
+  const openPendingReviews = useCallback(async () => {
+    const ids = pendingReviewQueue.data ?? [];
+    if (ids.length === 0) return;
+
+    setOpeningPendingReviews(true);
+    try {
+      const propostas = await listLegacyDeals(undefined, { ids });
+      if (propostas.length === 0) {
+        await pendingReviewQueue.refetch();
+        toast({
+          title: "A fila foi atualizada",
+          description: "Estas propostas já foram analisadas por outra pessoa.",
+        });
+        return;
+      }
+      if (propostas.length === 1) {
+        setEditor({ deal: propostas[0], initialTab: "anexos" });
+        return;
+      }
+      setPendingReviewList(propostas);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível abrir as propostas",
+        description: describeError(error, "Tente novamente em instantes."),
+      });
+    } finally {
+      setOpeningPendingReviews(false);
+    }
+  }, [pendingReviewQueue]);
   // `visible`, e não `deals`: a contagem ao lado, na mesma frase, é filtrada —
   // ler "3 negócio(s) ativo(s) · R$ 12 mi em VGV" com o VGV da base inteira
   // descrevia dois conjuntos diferentes na mesma linha.
@@ -372,19 +411,12 @@ export default function Pipeline() {
                     variant="tintWarning"
                     size="sm"
                     className="animate-pulse border-warning bg-warning/20 shadow-[0_0_18px_hsl(var(--warning)/0.35)]"
-                    onClick={() => {
-                      setPeriodoEscolhido(null);
-                      setTab("deals");
-                      setFiltrosEscolhidos({
-                        ...filtrosLimpos,
-                        status1: [],
-                        team: ALL,
-                        documentReview: "pending",
-                      });
-                      setShowFilters(false);
-                    }}
+                    disabled={openingPendingReviews}
+                    onClick={() => void openPendingReviews()}
                   >
-                    <FileCheck2 className="mr-1 h-4 w-4" aria-hidden />
+                    {openingPendingReviews
+                      ? <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />
+                      : <FileCheck2 className="mr-1 h-4 w-4" aria-hidden />}
                     {pendingReviews} {pendingReviews === 1
                       ? "aguardando sua aprovação"
                       : "aguardando suas aprovações"}
@@ -592,6 +624,7 @@ export default function Pipeline() {
         <DealDetailModal
           key={editor.deal?.id ?? "novo"}
           deal={editor.deal}
+          initialTab={editor.initialTab}
           open
           stages={stages}
           people={people}
@@ -599,7 +632,10 @@ export default function Pipeline() {
           defaultMonth={seasonMonth ?? undefined}
           onClose={() => setEditor(null)}
           closeOnSave
-          onReviewChanged={invalidateDeals}
+          onReviewChanged={async () => {
+            await invalidateDeals();
+            await pendingReviewQueue.refetch();
+          }}
           onAssumido={async (dealId) => {
             await invalidateDeals();
             const [assumido] = await listLegacyDeals(undefined, { ids: [dealId] });
@@ -647,6 +683,38 @@ export default function Pipeline() {
           }}
         />
       )}
+
+      <Dialog open={pendingReviewList !== null} onOpenChange={(open) => !open && setPendingReviewList(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Propostas aguardando sua análise</DialogTitle>
+            <DialogDescription>
+              Selecione um cliente para abrir diretamente os anexos e autorizar ou devolver a proposta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55dvh] space-y-2 overflow-y-auto pr-1">
+            {(pendingReviewList ?? []).map((deal) => (
+              <button
+                key={deal.id}
+                type="button"
+                className="flex w-full items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 px-4 py-3 text-left transition-colors hover:border-warning/60 hover:bg-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => {
+                  setPendingReviewList(null);
+                  setEditor({ deal, initialTab: "anexos" });
+                }}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-foreground">{deal.client || "Cliente sem nome"}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {[deal.developer, deal.project, deal.unit].filter(Boolean).join(" · ") || "Proposta sem identificação complementar"}
+                  </span>
+                </span>
+                <FileCheck2 className="h-5 w-5 shrink-0 text-warning" aria-hidden />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {visitDeal && (
         <ScheduleVisitDialog

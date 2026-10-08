@@ -590,7 +590,10 @@ export default function DealDocumentUpload({
     .filter((d) => !d.superseded_at && semArquivo?.has(d.storage_path) !== true));
   const status = review?.document_review_status ?? "draft";
   const canSubmit = isAdmin || myRoles.includes("broker");
-  const canReview = isAdmin || myRoles.includes("manager");
+  // O banco (0235) aceita gerente OU diretor vinculado, além do admin. A tela
+  // precisa espelhar os três; antes o diretor via a pendência no cabeçalho, mas
+  // ao abrir os Anexos não recebia os botões para decidir.
+  const canReview = isAdmin || myRoles.some((role) => role === "manager" || role === "director");
   // 0243: qualquer usuário que enxerga o negócio pode corrigir um documento
   // errado, em qualquer fase. A RLS repete o mesmo limite de visibilidade.
   const canDelete = true;
@@ -807,7 +810,7 @@ export default function DealDocumentUpload({
 
         {status === "pending" && !canReview && (
           <p className="text-xs text-muted-foreground">
-            Aguardando a decisão de um gerente vinculado ao negócio ou, na falta dele, de um administrador.
+            Aguardando a decisão de um gerente ou diretor vinculado ao negócio ou, na falta deles, de um administrador.
           </p>
         )}
         {status === "approved" && (

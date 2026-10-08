@@ -206,4 +206,18 @@ describe("DealDocumentUpload — grava a ficha antes de decidir", () => {
     expect(salvar).toHaveBeenCalledOnce();
     expect(h.revisar).toHaveBeenCalledOnce();
   });
+
+  it("diretor vinculado também recebe os comandos de aprovação", async () => {
+    h.status = "pending";
+    h.papeis = ["director"];
+    await montar();
+
+    const aprovar = [...container.querySelectorAll("button")]
+      .find((button) => /aprovar e enviar ao cca/i.test(button.textContent ?? ""));
+    const devolver = [...container.querySelectorAll("button")]
+      .find((button) => /^devolver$/i.test(button.textContent?.trim() ?? ""));
+
+    expect(aprovar, "o diretor vinculado não recebeu a ação de aprovar").toBeTruthy();
+    expect(devolver, "o diretor vinculado não recebeu a ação de devolver").toBeTruthy();
+  });
 });

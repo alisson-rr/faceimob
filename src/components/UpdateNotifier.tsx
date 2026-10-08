@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { RefreshCw } from "lucide-react";
 
 /**
@@ -27,7 +34,7 @@ function entrySignature(paths: string[]): string | null {
 
 /**
  * Periodically polls the current HTML and compares the bundled asset hash.
- * If it changes (new deploy), shows a floating button prompting the user to reload.
+ * If it changes (new deploy), shows a centered dialog prompting the user to reload.
  */
 export function useAppUpdateAvailable() {
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -84,15 +91,35 @@ export function UpdateNotifier() {
   if (!hasUpdate) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[9999]">
-      <Button
-        onClick={() => window.location.reload()}
-        className="shadow-lg gap-2 bg-gradient-to-r from-primary to-info hover:opacity-90"
+    <Dialog open>
+      <DialogContent
+        className="max-w-md overflow-hidden border-primary/30 p-0 text-center shadow-2xl [&>button]:hidden"
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
       >
-        <RefreshCw className="h-4 w-4" />
-        Nova versão disponível — Atualizar
-      </Button>
-    </div>
+        <div className="bg-gradient-to-br from-primary/20 via-card to-info/15 px-6 py-8 sm:px-8">
+          <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full border border-primary/30 bg-primary/15 shadow-inner">
+            <RefreshCw className="h-8 w-8 text-primary" aria-hidden />
+          </div>
+
+          <DialogHeader className="text-center sm:text-center">
+            <DialogTitle className="pr-0 text-2xl">Nova versão disponível</DialogTitle>
+            <DialogDescription className="mx-auto max-w-sm pt-2 text-sm leading-relaxed">
+              O CRM recebeu melhorias. Atualize agora para continuar usando a versão mais recente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Button
+            onClick={() => window.location.reload()}
+            size="lg"
+            className="mt-6 w-full gap-2 bg-gradient-to-r from-primary to-info font-semibold shadow-lg hover:opacity-90"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden />
+            Atualizar agora
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
