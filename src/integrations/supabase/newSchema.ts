@@ -661,6 +661,7 @@ export async function listLegacyDeals(
       document_review_status: deal.document_review_status as PipelineDeal["document_review_status"],
       document_review_requested_at: deal.document_review_requested_at || undefined,
       document_review_reason: deal.document_review_reason || undefined,
+      contract_has_pending_issue: deal.contract_has_pending_issue,
       history: [],
     } satisfies LegacyDealRecord;
   });

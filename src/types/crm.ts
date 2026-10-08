@@ -133,6 +133,8 @@ export interface PipelineDeal {
   document_review_status?: DocumentReviewStatus;
   document_review_requested_at?: string;
   document_review_reason?: string;
+  /** Veio de “Virou negócio com pendências” e mantém o alerta no contrato. */
+  contract_has_pending_issue?: boolean;
   history?: DealHistoryEntry[];
 }
 

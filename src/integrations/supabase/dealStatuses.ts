@@ -250,6 +250,11 @@ export function statusMoveBlock(
     && ["APROV. TOTAL", "APROV. COND."].includes(bareStatus(to))
     && who.roles.some((role) => role === "manager" || role === "director")
   ) return null;
+  if (
+    bareStatus(from ?? "") === "VIROU NEGÓCIO COM PENDÊNCIAS"
+    && bareStatus(to) === "EM CONTRATO"
+    && who.roles.some((role) => ["broker", "manager", "director", "cca"].includes(role))
+  ) return null;
   const destinoIndex = catalog.indexByKey.get(statusKey(to));
   const destino = destinoIndex === undefined ? null : catalog.statuses[destinoIndex];
   if (!destino) return "Este Status 2 não está no cadastro.";

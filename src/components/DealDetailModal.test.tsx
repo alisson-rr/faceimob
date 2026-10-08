@@ -205,7 +205,7 @@ describe("DealDetailModal · negócio sem construtora", () => {
  */
 describe("DealDetailModal · análise do CCA", () => {
   const negocioComCaso: SaveLegacyDealInput = {
-    id: "d9", client: "Cliente CCA", developer: "Construtora Um", developer_id: "d1", project: "", unit: "101",
+    id: "d9", client: "Cliente CCA", developer: "Construtora Um", developer_id: "d1", project: "Residencial Um", unit: "101",
     status: "PROPOSTA", stage: "incomplete", broker1: "Corretor E2E", broker1_id: "u1", manager1: "",
     deal_value: 0, active: true, created_at: "2026-09-01T12:00:00.000Z", month_base: "09/2026", notes: "",
   };

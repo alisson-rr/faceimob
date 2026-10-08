@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ccaColumnOf, ccaColumnStatusAllowed, foraDaEsteiraDoCca, loadCcaBoard, periodoValido, ultimos30Dias, type CcaStage,
+  ccaColumnOf, ccaColumnStatusAllowed, foraDaEsteiraDoCca, loadCcaBoard, periodoCcaPreset, periodoValido, ultimos30Dias, type CcaStage,
 } from "./ccaData";
 
 const h = vi.hoisted(() => ({
@@ -133,6 +133,15 @@ describe("período da esteira", () => {
     expect(periodoValido({ de: "2026-09-16", ate: "2026-09-15" }), "início depois do fim").toBe(false);
     expect(periodoValido({ de: "", ate: "2026-09-15" }), "campo apagado").toBe(false);
     expect(periodoValido({ de: "0202-08-16", ate: "2026-09-15" }), "ano pela metade").toBe(false);
+  });
+
+  it("oferece hoje, ontem, semana, mês e mês passado no calendário de São Paulo", () => {
+    const agora = new Date("2026-10-08T15:00:00Z");
+    expect(periodoCcaPreset("hoje", agora)).toEqual({ de: "2026-10-08", ate: "2026-10-08" });
+    expect(periodoCcaPreset("ontem", agora)).toEqual({ de: "2026-10-07", ate: "2026-10-07" });
+    expect(periodoCcaPreset("semana", agora)).toEqual({ de: "2026-10-05", ate: "2026-10-08" });
+    expect(periodoCcaPreset("mes", agora)).toEqual({ de: "2026-10-01", ate: "2026-10-08" });
+    expect(periodoCcaPreset("mes_passado", agora)).toEqual({ de: "2026-09-01", ate: "2026-09-30" });
   });
 });
 

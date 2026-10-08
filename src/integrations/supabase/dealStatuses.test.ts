@@ -52,3 +52,16 @@ describe("statusMoveBlock · análise externa", () => {
     )).not.toBeNull();
   });
 });
+
+describe("statusMoveBlock · contrato com pendência", () => {
+  it("libera VIROU NEGÓCIO COM PENDÊNCIAS para EM CONTRATO à operação", () => {
+    for (const role of ["broker", "manager", "director", "cca"]) {
+      expect(statusMoveBlock(
+        EMPTY_STATUS_CATALOG,
+        "VIROU NEGÓCIO COM PENDÊNCIAS",
+        "04. EM CONTRATO",
+        { isAdmin: false, roles: [role] },
+      )).toBeNull();
+    }
+  });
+});

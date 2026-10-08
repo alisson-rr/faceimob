@@ -22,7 +22,7 @@ import {
   CloseMonthDialog, DealFilters, DealStatusSettingsDialog, DealsBoard, DealsToolbar,
   EMPTY_FILTERS, LoseDealDialog, PipelineAnalytics, ReactivateDealDialog, ReopenDealDialog, ReopenMonthDialog,
   ScheduleVisitDialog,
-  applyDealFilters, canWriteDeals, dealMonth, dealRangeError, dealRequiredError,
+  applyDealFilters, canWriteDeals, dealDocumentNumberError, dealMonth, dealRangeError, dealRequiredError,
   baixarPlanilhaDeNegocios, findDuplicateDeal, hasActiveFilter, sortDeals,
   useClosedMonths, useDevelopers, useInvalidateDeals, usePipelineRealtime,
   useOpenSeason, usePeople, usePipelineStages, useStagePermissions,
@@ -617,11 +617,12 @@ export default function Pipeline() {
             // aceita `developer_id` nulo. O negócio salvava, o cartão passava a
             // mostrar "Sem construtora" e a conferência documental, que escolhe
             // os documentos pela construtora, ficava sem como pedir nada.
-            // Empreendimento fica de fora: sem digitação livre no Select e com
-            // construtora sem catálogo sendo caso real, cobrá-lo aqui recusava
-            // a criação por um campo que a tela não tem como preencher.
+            // Empreendimento também é obrigatório; aceita texto livre quando
+            // não houver item cadastrado para a construtora.
             const semObrigatorio = dealRequiredError(updated);
             if (semObrigatorio) throw dbError("deals", { code: "P0001", message: semObrigatorio });
+            const documentoInvalido = dealDocumentNumberError(updated);
+            if (documentoInvalido) throw dbError("deals", { code: "P0001", message: documentoInvalido.message });
 
             // Cadastro repetido do mesmo cliente na mesma unidade entrava sem
             // aviso: dois negócios, dois rateios e o VGV contado duas vezes.

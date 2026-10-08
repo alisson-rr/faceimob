@@ -46,7 +46,7 @@ export {
   useInvalidateDeals, useOpenSeason, usePeople, usePipelineStages, useStagePermissions,
 } from "./data";
 export {
-  blockedMoveReason, dealLock, dealRangeError, dealRequiredError, exitableStages,
+  blockedMoveReason, dealDocumentNumberError, dealLock, dealRangeError, dealRequiredError, exitableStages,
   findDuplicateDeal, type DealLock,
 } from "./guards";
 export { baixarPlanilhaDeNegocios, linhasDeNegocios, shareValue } from "./exportacao";

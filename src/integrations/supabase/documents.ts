@@ -492,7 +492,7 @@ export async function deleteDealDocument(
       code: "P0001",
       message: arquivoRemovido
         ? "O banco recusou a exclusão do registro, e o arquivo já havia saído do armazenamento: peça ao CCA para remover a linha deste documento."
-        : "O banco recusou a exclusão: o dossiê já saiu para a conferência do gerente, ou você não edita este negócio.",
+        : "O banco recusou a exclusão: você não tem acesso a este negócio.",
     });
   }
 

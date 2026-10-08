@@ -350,9 +350,7 @@ describe("recusa do banco chega em pt-BR na tela", () => {
     const erro = await deleteDealDocument({ id: "d1", deal_id: "deal-1", storage_path: "deal-1/x.pdf" })
       .then(() => null, (e: unknown) => e);
 
-    expect(describeError(erro, "O documento continua no dossiê.")).toContain(
-      "conferência do gerente",
-    );
+    expect(describeError(erro, "O documento continua no dossiê.")).toContain("acesso a este negócio");
     // Recusou a linha: mexer no bucket depois disso apagaria o arquivo de um
     // registro que continua existindo.
     expect(remove).not.toHaveBeenCalled();

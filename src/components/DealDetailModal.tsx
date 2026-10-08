@@ -10,7 +10,7 @@ import {
   dealStageCodeFor, primaryRole, type PersonRecord, type SaveLegacyDealInput,
 } from "@/integrations/supabase/newSchema";
 import {
-  DealCcaPanel, DealCommentsPanel, DealForm, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
+  DealCcaPanel, DealCommentsPanel, DealForm, dealDocumentNumberError, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
 import { addDealComment, countDealComments } from "@/components/pipeline/DealCommentsPanel";
@@ -127,7 +127,10 @@ export default function DealDetailModal({
 
   // Derivado na renderização, não guardado em state: escolher a construtora
   // apaga a frase no mesmo instante, sem efeito nem segundo clique em salvar.
-  const developerError = tentouSalvar ? dealRequiredError(form) : null;
+  const requiredError = tentouSalvar ? dealRequiredError(form) : null;
+  const developerError = requiredError?.toLowerCase().includes("construtora") ? requiredError : null;
+  const projectError = requiredError?.toLowerCase().includes("empreendimento") ? requiredError : null;
+  const documentNumberError = tentouSalvar ? dealDocumentNumberError(form) : null;
 
   /** Negócio criado pelo popup de conferência: a ficha fica aberta, agora como
    *  edição, para anexar os documentos e enviar ao gerente. */
@@ -185,14 +188,21 @@ export default function DealDetailModal({
     // A frase fica na aba "Detalhes", e é onde o operador está: `dealRequiredError`
     // só cobra na CRIAÇÃO, e no negócio novo as outras quatro abas estão
     // desabilitadas até existir um `id`.
-    if (dealRequiredError(form)) {
+    const obrigatorio = dealRequiredError(form);
+    if (obrigatorio) {
       // Sem levar o foco, o clique não muda nada VISÍVEL: o rodapé rola junto
       // com o conteúdo do diálogo, então quem clica em "Criar negócio" está no
       // fim, e a frase nasce ~13 campos acima, fora da área visível — a tela
       // pareceria travada. Focar o gatilho rola até ele, dá ao teclado o ponto
       // de partida certo e faz o leitor de tela reler o campo com a frase
       // ligada por `aria-describedby` a cada nova tentativa.
-      document.getElementById(field("developer"))?.focus();
+      document.getElementById(field(obrigatorio.toLowerCase().includes("empreendimento") ? "project" : "developer"))?.focus();
+      return null;
+    }
+    const documentoInvalido = dealDocumentNumberError(form);
+    if (documentoInvalido) {
+      const ids = { cpf: "cpf", numero_pis: "pis", cpf2: "cpf2", numero_pis2: "pis2" } as const;
+      document.getElementById(field(ids[documentoInvalido.field]))?.focus();
       return null;
     }
     // Batida de CPF (0179): um CPF, um negócio. Sem a resposta não cadastra — o
@@ -469,7 +479,8 @@ export default function DealDetailModal({
               <DealForm
                 form={form} onChange={patch} field={field}
                 people={people} developers={developers} stages={stages} isNew={isNew}
-                developerError={developerError}
+                developerError={developerError} projectError={projectError}
+                documentNumberError={documentNumberError}
                 onPedirConferencia={() => setConferencia({ enviando: false, erro: null })}
                 dealId={isNew ? null : dealId}
                 onCpfBlur={isNew ? (cpf) => void conferirCpf(cpf) : undefined}

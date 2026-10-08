@@ -27,18 +27,25 @@ export function Section({ title, className, children }: { title: string; classNa
   );
 }
 
-export function TextField({ id, label, value, onChange, type, onBlur }: {
+export function TextField({ id, label, value, onChange, type, onBlur, inputMode, maxLength, error }: {
   id: string; label: string; value?: string; type?: string; onChange: (value: string) => void;
   onBlur?: (value: string) => void;
+  inputMode?: "text" | "numeric" | "tel" | "email";
+  maxLength?: number;
+  error?: string | null;
 }) {
   return (
     <div>
       <Label htmlFor={id} className="text-eyebrow">{label}</Label>
       <Input
         id={id} type={type} value={value ?? ""} className="mt-1 text-xs"
+        inputMode={inputMode} maxLength={maxLength}
+        aria-invalid={Boolean(error) || undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur ? (event) => onBlur(event.target.value) : undefined}
       />
+      {error && <p id={`${id}-error`} className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 }

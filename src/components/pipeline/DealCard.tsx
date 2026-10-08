@@ -235,6 +235,11 @@ function DealCardBase({
         <Badge variant="outline" className={cn("mb-2 h-5 px-1.5 text-xs", review.className)}>
           {review.label}
         </Badge>
+        {deal.contract_has_pending_issue && (
+          <Badge variant="outline" className="mb-2 ml-1 h-5 border-warning/60 bg-warning/15 px-1.5 text-xs text-warning">
+            Pendência no contrato
+          </Badge>
+        )}
         {ccaQueuePosition ? (
           <Badge variant="secondary" className="mb-2 ml-1 h-5 px-1.5 text-xs tabular-nums">
             {ccaQueuePosition}º na Esteira Ágil

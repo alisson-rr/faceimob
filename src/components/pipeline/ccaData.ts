@@ -92,6 +92,27 @@ export function ultimos30Dias(agora: Date = new Date()): CcaPeriodo {
   return { de: from, ate: to };
 }
 
+export type CcaPeriodoPreset = "hoje" | "ontem" | "semana" | "mes" | "mes_passado" | "customizado";
+
+/** Atalhos do calendário operacional de São Paulo; semana começa na segunda. */
+export function periodoCcaPreset(preset: Exclude<CcaPeriodoPreset, "customizado">, agora: Date = new Date()): CcaPeriodo {
+  const hoje = new Date(agora.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
+  const data = new Date(`${hoje}T00:00:00Z`);
+  if (preset === "hoje") return { de: hoje, ate: hoje };
+  if (preset === "ontem") {
+    const ontem = somaDias(hoje, -1);
+    return { de: ontem, ate: ontem };
+  }
+  if (preset === "semana") {
+    return { de: somaDias(hoje, -((data.getUTCDay() + 6) % 7)), ate: hoje };
+  }
+  if (preset === "mes") return { de: `${hoje.slice(0, 8)}01`, ate: hoje };
+  const primeiroAtual = new Date(`${hoje.slice(0, 8)}01T00:00:00Z`);
+  primeiroAtual.setUTCDate(0);
+  const ultimo = primeiroAtual.toISOString().slice(0, 10);
+  return { de: `${ultimo.slice(0, 8)}01`, ate: ultimo };
+}
+
 const DATA = /^20\d{2}-\d{2}-\d{2}$/;
 
 /**

@@ -591,9 +591,9 @@ export default function DealDocumentUpload({
   const status = review?.document_review_status ?? "draft";
   const canSubmit = isAdmin || myRoles.includes("broker");
   const canReview = isAdmin || myRoles.includes("manager");
-  // Excluir só enquanto o dossiê é do corretor: a policy `deal_documents_delete`
-  // (0059) recusa depois do envio, e botão que o banco recusa não aparece.
-  const canDelete = (isAdmin || myRoles.includes("broker")) && (status === "draft" || status === "returned");
+  // 0243: qualquer usuário que enxerga o negócio pode corrigir um documento
+  // errado, em qualquer fase. A RLS repete o mesmo limite de visibilidade.
+  const canDelete = true;
   // Anexar segue a MESMA cláusula que `deal_documents_insert` cobra desde a
   // 0077: depois do envio ao gerente o dossiê é prova. Sem isto o corretor
   // trocava a versão que o gerente aprovou e que o analista ia baixar, e o
