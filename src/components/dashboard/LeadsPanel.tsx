@@ -12,7 +12,13 @@ import { chartAxis, chartGrid, chartStill, chartTooltip, seriesToken, tone } fro
 import { LEAD_STATUSES } from "@/types/crm";
 import { BarList } from "./BarList";
 import { ChartData } from "./ChartData";
-import { ALL_MONTHS, leadsInMonth, useDashboardLeads, useDashboardLeadsNoIntervalo } from "./data";
+import {
+  ALL_MONTHS,
+  leadsInMonth,
+  useDashboardLeads,
+  useDashboardLeadsNoIntervalo,
+  type DashboardDataScope,
+} from "./data";
 import {
   PERIODOS_DE_LEADS, diasDoIntervalo, intervaloDoPeriodo, rotuloDoIntervalo, type PeriodoLeads,
 } from "./periodoLeads";
@@ -85,6 +91,8 @@ export interface LeadsPanelProps {
    * 1.000 leads de uma base de 102.799 como se fossem todos.
    */
   amostra?: string | null;
+  /** Fonte da consulta: hierarquia do usuário ou imobiliária inteira. */
+  dataScope?: DashboardDataScope;
 }
 
 /**
@@ -104,8 +112,14 @@ export interface LeadsPanelProps {
  * data de cada lead para respeitar o filtro de periodo, entao o Dashboard ja a
  * dispara na abertura.
  */
-export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amostra = null }: LeadsPanelProps) {
-  const { data: leads, isPending, error, refetch } = useDashboardLeads();
+export function LeadsPanel({
+  month,
+  scopeLabel = "toda a base",
+  toda = true,
+  amostra = null,
+  dataScope = "own",
+}: LeadsPanelProps) {
+  const { data: leads, isPending, error, refetch } = useDashboardLeads(dataScope);
   // Seletor próprio da aba (03/10/2026): hoje, ontem, semana, mês, mês passado
   // ou um intervalo. "filtro" segue o mês do topo, como sempre foi.
   const campo = useId();
@@ -117,6 +131,7 @@ export function LeadsPanel({ month, scopeLabel = "toda a base", toda = true, amo
   );
   const doIntervalo = useDashboardLeadsNoIntervalo(
     intervalo ? { de: intervalo.de.toISOString(), ate: intervalo.ate.toISOString() } : null,
+    dataScope,
   );
   const usaIntervalo = periodoEscolhido !== "filtro";
 

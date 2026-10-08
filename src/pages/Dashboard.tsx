@@ -21,6 +21,7 @@ import {
   SalesFunnelCard,
   StaffCard,
   TopBrokers,
+  companyDashboardScope,
   dashboardScope,
   leadsInMonth,
   useDashboardLeads,
@@ -32,6 +33,7 @@ import {
   vazioTotal,
   rankBy,
   withZeroSellers,
+  type DashboardDataScope,
 } from "@/components/dashboard";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
@@ -57,6 +59,7 @@ import { esteiraDoMes } from "@/components/dashboard/esteiraDoMes";
 export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("geral");
+  const [dashboardView, setDashboardView] = useState<DashboardDataScope>("company");
   const { roles, can } = useAuth();
   const queryClient = useQueryClient();
   // Mesmo padrao do `can()`: o papel previsualizado vem na frente.
@@ -65,11 +68,19 @@ export default function Dashboard() {
   // racha calado. `leads.view_queue` entra porque a `leads_select` so libera
   // lead SEM DONO a quem tem a permissao — o socio enxerga todo perfil e ainda
   // assim ve uma base menor que a real.
-  const recorte = useMemo(
+  const baseRecorte = useMemo(
     () => dashboardScope(roles, can("leads.view_queue")),
     // `can` muda de identidade a cada matriz carregada; o que importa e o papel.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [roles.join(","), can],
+  );
+  // Admin/sócio já têm a imobiliária pela RLS comum. O seletor é necessário
+  // para o diretor, cujo acesso operacional continua limitado à hierarquia.
+  const diretorPodeAlternar = baseRecorte.isDirector && !baseRecorte.readsAllDeals;
+  const dataScope: DashboardDataScope = diretorPodeAlternar ? dashboardView : "own";
+  const recorte = useMemo(
+    () => dataScope === "company" ? companyDashboardScope(baseRecorte) : baseRecorte,
+    [baseRecorte, dataScope],
   );
   const { seesEveryone, leadsIsWholeBase, seesAllCca, isDirector, canManageGoal } = recorte;
   // O gerente ganha a MESMA aba, com a equipe dele: `auth_led_team_ids()` casa
@@ -80,7 +91,7 @@ export default function Dashboard() {
   const temAbaDeLideranca = isDirector || isManager;
 
   const { query, deals, months, monthsWithDeals, closedMonths, defaultMonth, payload } =
-    useDashboardPayload();
+    useDashboardPayload(dataScope);
   // Derivado, nao sincronizado: enquanto o usuario nao escolhe, vale o mes
   // operacional ainda aberto — e ele ja esta certo na primeira pintura.
   const activeMonth = month ?? defaultMonth;
@@ -112,9 +123,9 @@ export default function Dashboard() {
     [deals, activeMonth, payload?.ccaDealIds],
   );
   const monthly = useMonthlySeries(deals);
-  const goal = useSalesGoal(activeMonth);
-  const vgvGoal = useVgvGoal(activeMonth);
-  const leadsQuery = useDashboardLeads();
+  const goal = useSalesGoal(activeMonth, dataScope);
+  const vgvGoal = useVgvGoal(activeMonth, dataScope);
+  const leadsQuery = useDashboardLeads(dataScope);
   const leadsNoPeriodo = useMemo(
     () => (leadsQuery.data ? leadsInMonth(leadsQuery.data, activeMonth).length : null),
     [leadsQuery.data, activeMonth],
@@ -134,7 +145,11 @@ export default function Dashboard() {
 
   // Funil de Vendas (04/10/2026): da liderança — admin, sócio, diretor e
   // gerente. Em "todos os meses" o funil mostra o mês corrente.
-  const temFunil = seesEveryone || temAbaDeLideranca;
+  // O funil tem uma RPC operacional própria e continua recortado por
+  // diretoria. Na visão agregada do diretor ele fica oculto para não rotular
+  // números da própria equipe como se fossem da imobiliária inteira.
+  const temFunil = (seesEveryone || temAbaDeLideranca)
+    && !(diretorPodeAlternar && dataScope === "company");
   // O painel guarda o mês como "10/2026"; o banco quer a data do dia 1.
   const mesDoFunil = (activeMonth !== ALL_MONTHS && parseMonthStart(activeMonth))
     || `${new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 8)}01`;
@@ -172,7 +187,9 @@ export default function Dashboard() {
       title="Dashboard"
       eyebrow="Visão geral"
       icon={LayoutDashboard}
-      description={`Indicadores, esteira e ranking da operação — ${periodo}.`}
+      description={`Indicadores, esteira e ranking ${
+        dataScope === "company" ? "da imobiliária" : diretorPodeAlternar ? "da sua diretoria" : "da operação"
+      } — ${periodo}.`}
       actions={
         <>
           {/* Sem isto a unica forma de ver dado novo era esperar os 60 s de
@@ -193,6 +210,24 @@ export default function Dashboard() {
       }
       period={
         <>
+          {diretorPodeAlternar && (
+            <Select
+              value={dataScope}
+              onValueChange={(value) => {
+                const next = value as DashboardDataScope;
+                setDashboardView(next);
+                if (next === "company" && tab === "funil") setTab("geral");
+              }}
+            >
+              <SelectTrigger className="w-[190px]" aria-label="Escopo do dashboard">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="company">Imobiliária</SelectItem>
+                <SelectItem value="own">Minha diretoria</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           {activeMonth !== ALL_MONTHS && (
             <StatusBadge tone={isClosed ? "neutral" : "success"}>
               {isClosed ? "Mês fechado" : "Mês aberto"}
@@ -382,6 +417,7 @@ export default function Dashboard() {
               scopeLabel={recorte.leadsLabel}
               toda={leadsIsWholeBase}
               amostra={amostraDeLeads}
+              dataScope={dataScope}
             />
           </TabsContent>
 

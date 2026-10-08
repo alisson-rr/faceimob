@@ -18,6 +18,7 @@ export { DirectorPanel, type DirectorPanelProps } from "./DirectorPanel";
 export {
   ALL_MONTHS,
   GOAL_SCOPE_LABEL,
+  companyDashboardScope,
   dashboardScope,
   dealCategory,
   leadsInMonth,
@@ -40,6 +41,7 @@ export {
   withZeroSellers,
   vazioTotal,
   type DashboardScope,
+  type DashboardDataScope,
   type DealCategory,
   type DealRow,
   type DeveloperStats,

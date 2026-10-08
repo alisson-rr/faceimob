@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  companyDashboardScope,
   dashboardScope,
   dealCategory,
   leadsInMonth,
@@ -274,7 +275,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     };
     // Cache já preenchido e sem prazo de validade: o hook lê daqui e não vai à rede.
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-    client.setQueryData(["dashboard", "payload", "u1"], payload);
+    client.setQueryData(["dashboard", "payload", "u1", "own"], payload);
 
     let lido: ReturnType<typeof useDashboardPayload> | null = null;
     function Painel() {
@@ -308,7 +309,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
       closedMonths: [],
     };
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-    client.setQueryData(["dashboard", "payload", "u1"], payload);
+    client.setQueryData(["dashboard", "payload", "u1", "own"], payload);
 
     let lido: ReturnType<typeof useDashboardPayload> | null = null;
     function Painel() {
@@ -326,7 +327,7 @@ describe("monthOptions e o mês padrão — o filtro de período", () => {
     vi.setSystemTime(new Date(2026, 9, 1, 0, 1));
     await act(async () => root.unmount());
     lido = null;
-    client.setQueryData(["dashboard", "payload", "u1"], { ...payload, activeMonth: "10/2026" });
+    client.setQueryData(["dashboard", "payload", "u1", "own"], { ...payload, activeMonth: "10/2026" });
     const nextRoot = createRoot(document.createElement("div"));
     await act(async () => {
       nextRoot.render(createElement(QueryClientProvider, { client }, createElement(Painel)));
@@ -460,6 +461,23 @@ describe("dashboardScope — o recorte por papel, que espelha as policies", () =
     expect(dir.canManageGoal).toBe(true);
     expect(dir.dealsLabel).toContain("equipes que você lidera");
     expect(dir.leadsLabel).toContain("sua carteira");
+  });
+
+  it("a visão agregada do diretor descreve a imobiliária sem mudar o escopo operacional", () => {
+    const proprio = comFila(["director"]);
+    const imobiliaria = companyDashboardScope(proprio);
+    expect(imobiliaria).toMatchObject({
+      readsAllDeals: true,
+      seesEveryone: true,
+      leadsIsWholeBase: true,
+      seesAllCca: true,
+      isDirector: true,
+      dealsLabel: "toda a operação",
+      leadsLabel: "toda a base",
+    });
+    // A função não altera o objeto base usado pela visão "Minha diretoria".
+    expect(proprio.readsAllDeals).toBe(false);
+    expect(proprio.leadsIsWholeBase).toBe(false);
   });
 
   it("socio le tudo, cadastra meta e tem a base de leads MENOR que a real", () => {
