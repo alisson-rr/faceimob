@@ -13,7 +13,7 @@ const negocio = (month_base: string, status_group_id: string, status = "") =>
   ({ id: `${month_base}-${status_group_id}-${status}`, month_base, status_group_id, status }) as unknown as DealRow;
 
 describe("contarDoMes", () => {
-  it("produção é proposta + legado; negócios só o 'Virou Negócio'; perdas é o grupo OFF (queda inclusa)", () => {
+  it("produção é só proposta; legado fica separado; negócios só o 'Virou Negócio'", () => {
     const c = contarDoMes([
       negocio("09/2026", "g-prop", "08. VIROU NEGÓCIO"),
       negocio("09/2026", "g-prop", "13. ESTEIRA AGIL"),
@@ -23,7 +23,7 @@ describe("contarDoMes", () => {
       negocio("09/2026", "g-dist", "17. DISTRATO"),
       negocio("09/2026", "g-venda", "03. ASSINADO"),
     ], catalog);
-    expect(c).toEqual({ propostas: 2, legado: 1, producao: 3, negocios: 1, perdas: 2, distratos: 1 });
+    expect(c).toEqual({ propostas: 2, legado: 1, producao: 2, negocios: 1, perdas: 2, distratos: 1 });
   });
 });
 

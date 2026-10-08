@@ -55,6 +55,7 @@ export type DeveloperStats = {
   vgv: number;
   propostaVgv: number;
   token: ChartToken;
+  color?: string | null;
 };
 
 export type RankRow = { id: string; name: string; vendas: number; vgv: number };
@@ -656,6 +657,8 @@ export function monthView(deals: DealRow[], activeMonth: string) {
 
   const developers: DeveloperStats[] = devNames.map((dev) => {
     const devRows = rows.filter((deal) => deal.developer.trim().toUpperCase() === dev);
+    const color = deals.find((deal) =>
+      deal.developer.trim().toUpperCase() === dev && deal.developer_color)?.developer_color ?? null;
     const vendas = devRows.filter((deal) => dealCategory(deal) === "venda");
     const propostas = devRows.filter((deal) => dealCategory(deal) === "producao");
     return {
@@ -666,6 +669,7 @@ export function monthView(deals: DealRow[], activeMonth: string) {
       vgv: vendas.reduce((total, deal) => total + (deal.deal_value || 0), 0),
       propostaVgv: propostas.reduce((total, deal) => total + (deal.deal_value || 0), 0),
       token: developerColor(dev),
+      color,
     };
   });
 

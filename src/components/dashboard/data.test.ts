@@ -57,10 +57,11 @@ const deal = (fields: Partial<DealRow>): DealRow =>
     deal_value: 0,
     broker1: "",
     manager1: "",
+    status_group_code: "PROPOSTA",
     ...fields,
   }) as DealRow;
 
-const venda = (fields: Partial<DealRow> = {}) => deal({ outcome: "won", stage: "closed", ...fields });
+const venda = (fields: Partial<DealRow> = {}) => deal({ outcome: "won", stage: "closed", status_group_code: "VENDA", ...fields });
 
 const pessoa = (id: string, name: string, extra: Partial<PersonRecord> = {}) =>
   ({ id, name, roles: ["broker"], role: "broker", active: true, manager_id: null, director_id: null, ...extra }) as PersonRecord;
@@ -163,13 +164,10 @@ describe("monthView — o mês inteiro numa conta só", () => {
     expect(stats.vgv).toBe(700_000);
   });
 
-  it("o total do bloco por Status 2 é o mesmo do cartão 'Negócios', status fora do catálogo inclusive", () => {
-    // Era 22 no cartão e 25 no bloco, lado a lado, sem nada avisar. Desde
-    // 28/09/2026 o bloco é por Status 2: status fora do catálogo vira linha
-    // própria em vez de sumir do total.
-    const { stats, rows } = monthView(homologacao, "08/2026");
+  it("o bloco por Status 2 conta apenas propostas e deixa vendas/legado fora", () => {
+    const { rows } = monthView(homologacao, "08/2026");
     const linhas = linhasDoStatus2(rows, catalogoDeTeste);
-    expect(linhas.reduce((total, linha) => total + linha.value, 0)).toBe(stats.negocios);
+    expect(linhas.reduce((total, linha) => total + linha.value, 0)).toBe(18);
     expect(linhas.every((linha) => linha.value > 0)).toBe(true);
   });
 
