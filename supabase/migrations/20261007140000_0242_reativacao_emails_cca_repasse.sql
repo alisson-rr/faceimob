@@ -293,7 +293,8 @@ begin
        and not exists (
          select 1 from public.notifications n
           where n.profile_id = dp.profile_id and n.kind = 'document_review_returned'
-            and n.title = 'CCA devolveu o dossiê: ' || v_code and n.created_at >= now());
+            and n.title = public.texto_com_nome_do_cliente('CCA devolveu o dossiê: ' || v_code)
+            and n.created_at >= now());
 
     insert into public.cca_move_emails
       (deal_id, profile_id, to_email, deal_code, client_name, stage_name, actor_name, message, source, detalhes)
