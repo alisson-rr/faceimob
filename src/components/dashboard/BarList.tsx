@@ -4,6 +4,8 @@ import { labelToken, tone } from "@/lib/tone";
 export type BarListRow = {
   label: string;
   value: number;
+  /** Cor hexadecimal escolhida no cadastro, quando existir. */
+  color?: string | null;
   /**
    * Cor desta linha, quando a tela tem um catalogo FIXO para mandar nela (as
    * cinco situacoes do lead). Sem ela a cor sai do rotulo (`labelToken`), que
@@ -52,7 +54,7 @@ export function BarList({ rows, share = false, emptyLabel }: BarListProps) {
           <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted">
             <span
               className="ease-premium block h-full rounded-sm transition-[width] duration-500"
-              style={{ width: `${(row.value / maior) * 100}%`, background: tone(row.token ?? labelToken(row.label)) }}
+              style={{ width: `${(row.value / maior) * 100}%`, background: row.color || tone(row.token ?? labelToken(row.label)) }}
             />
           </span>
           <span className="w-8 shrink-0 text-right text-sm font-semibold tabular-nums text-foreground">

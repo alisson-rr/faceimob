@@ -50,7 +50,7 @@ export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
   // `view.developers` para quem precisa dela.
   const data = rows
     .filter((row) => row.vendas > 0 || row.propostas > 0)
-    .map((row) => ({ name: row.dev, Vendas: row.vendas, Propostas: row.propostas }));
+    .map((row) => ({ name: row.dev, Vendas: row.vendas, Propostas: row.propostas, color: row.color }));
 
   return (
     <SectionCard
@@ -76,8 +76,12 @@ export function DeveloperOverview({ rows }: { rows: DeveloperStats[] }) {
                 <Tooltip {...chartTooltip} />
                 {/* Legenda no topo: embaixo ela disputa espaco com o nome da construtora. */}
                 <Legend wrapperStyle={chartLegend} verticalAlign="top" align="right" height={28} />
-                <Bar dataKey="Vendas" fill={tone("chart-2")} radius={[6, 6, 0, 0]} {...chartStill} />
-                <Bar dataKey="Propostas" fill={tone("chart-5")} radius={[6, 6, 0, 0]} {...chartStill} />
+                <Bar dataKey="Vendas" fill={tone("chart-2")} radius={[6, 6, 0, 0]} {...chartStill}>
+                  {data.map((row) => <Cell key={`vendas-${row.name}`} fill={row.color || tone("chart-2")} />)}
+                </Bar>
+                <Bar dataKey="Propostas" fill={tone("chart-5")} radius={[6, 6, 0, 0]} {...chartStill}>
+                  {data.map((row) => <Cell key={`propostas-${row.name}`} fill={row.color || tone("chart-5")} fillOpacity={0.65} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -99,7 +103,7 @@ export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
     // Desempate final pelo nome: sem ele o empate herda a ordem de chegada de
     // `view.developers` e a barra troca de lugar entre carregamentos.
     .sort((a, b) => b.propostas - a.propostas || b.vendas - a.vendas || a.dev.localeCompare(b.dev, "pt-BR"))
-    .map((row) => ({ name: row.dev, Propostas: row.propostas, token: row.token }));
+    .map((row) => ({ name: row.dev, Propostas: row.propostas, token: row.token, color: row.color }));
 
   return (
     <SectionCard
@@ -124,7 +128,7 @@ export function DeveloperRanking({ rows }: { rows: DeveloperStats[] }) {
                 <YAxis type="category" dataKey="name" {...chartAxis} width={140} tickFormatter={(name: string) => shortTick(name, 18)} />
                 <Tooltip {...chartTooltip} />
                 <Bar dataKey="Propostas" radius={[0, 6, 6, 0]} label={{ position: "right", ...chartBarLabel }} {...chartStill}>
-                  {data.map((row) => <Cell key={row.name} fill={tone(row.token)} />)}
+                  {data.map((row) => <Cell key={row.name} fill={row.color || tone(row.token)} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

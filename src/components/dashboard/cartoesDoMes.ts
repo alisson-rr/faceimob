@@ -5,7 +5,7 @@ import { ALL_MONTHS, noFunil, previousMonth, type DealRow } from "./data";
  * O que os cartões do topo da Dashboard contam pelo Status 1/Status 2 (pedido
  * de 28/09/2026). Vendas e VGV continuam por `outcome` (`statsOf`), como nos
  * rankings; estes saem do catálogo:
- *   · produção  = Status 1 PROPOSTA + Status 1 LEGADO;
+ *   · produção  = Status 1 PROPOSTA (legado aparece só como apoio);
  *   · negócios  = só o Status 2 "Virou Negócio";
  *   · perdas    = Status 1 OFF — o grupo já traz "18. QUEDA" e "OFF", que
  *                 acontecem no mesmo mês;
@@ -34,7 +34,7 @@ export function contarDoMes(rows: DealRow[], catalog: Pick<DealStatusCatalog, "g
     if (code === "DISTRATO") contagem.distratos += 1;
     if (semAcento(statusKey(deal.status)) === "VIROU NEGOCIO") contagem.negocios += 1;
   }
-  contagem.producao = contagem.propostas + contagem.legado;
+  contagem.producao = contagem.propostas;
   return contagem;
 }
 
@@ -73,11 +73,15 @@ export function cartoesDoPeriodo(
  */
 export function linhasDoStatus2(
   rows: DealRow[],
-  catalog: Pick<DealStatusCatalog, "statuses" | "indexByKey">,
-): { label: string; value: number }[] {
-  const linhas = new Map<string, { label: string; value: number; ordem: number }>();
+  catalog: Pick<DealStatusCatalog, "statuses" | "indexByKey" | "groupById">,
+  grupo: "PROPOSTA" | "LEGADO" = "PROPOSTA",
+): { label: string; value: number; color?: string | null }[] {
+  const linhas = new Map<string, { label: string; value: number; ordem: number; color?: string | null }>();
   for (const deal of rows) {
     if (!noFunil(deal)) continue;
+    const groupCode = (deal.status_group_id ? catalog.groupById.get(deal.status_group_id)?.code : undefined)
+      ?? deal.status_group_code;
+    if (groupCode !== grupo) continue;
     const chave = statusKey(deal.status);
     const indice = catalog.indexByKey.get(chave);
     const entrada = indice === undefined ? null : catalog.statuses[indice];
@@ -86,11 +90,12 @@ export function linhasDoStatus2(
       label: entrada ? entrada.label || entrada.value : chave || "Sem Status 2",
       value: 0,
       ordem: indice ?? catalog.statuses.length,
+      color: entrada?.color,
     };
     linha.value += 1;
     linhas.set(id, linha);
   }
   return [...linhas.values()]
     .sort((a, b) => b.value - a.value || a.ordem - b.ordem || a.label.localeCompare(b.label, "pt-BR"))
-    .map(({ label, value }) => ({ label, value }));
+    .map(({ label, value, color }) => ({ label, value, color }));
 }

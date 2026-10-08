@@ -151,8 +151,8 @@ describe("KpiRow", () => {
     await cleanup();
   });
 
-  it("produção soma legado e propostas, e distrato é o do mês anterior com comparativo", async () => {
-    const atual = { propostas: 95, legado: 30, producao: 125, negocios: 5, perdas: 319, distratos: 2 };
+  it("produção mostra só propostas, legado discreto, e distrato é o do mês anterior", async () => {
+    const atual = { propostas: 95, legado: 30, producao: 95, negocios: 5, perdas: 319, distratos: 2 };
     const { text, cleanup } = await render(
       <KpiRow
         stats={stats()}
@@ -164,8 +164,8 @@ describe("KpiRow", () => {
         cartoes={{ atual, anterior: { ...atual, producao: 100 }, distratosAnterior: 4, distratosAntesDoAnterior: 1 }}
       />,
     );
-    expect(text).toContain("Legado 30 + Propostas 95");
-    expect(text).toContain("+25 vs. 08/2026");
+    expect(text).toContain("Total de propostas · legado 30 (fora da soma)");
+    expect(text).toContain("-5 vs. 08/2026");
     expect(text).toContain("do mês anterior (08/2026)");
     expect(text).toContain("+3 vs. 07/2026");
     expect(text).toContain("319");
@@ -543,22 +543,22 @@ describe("MonthlyTrend", () => {
 describe("SalesFunnelCard", () => {
   // Status 2 desde 28/09/2026: a ordem e o rótulo saem do catálogo de status.
   const semearCatalogo = (client: QueryClient) => client.setQueryData(dealStatusKeys.catalog, catalogoDeTeste);
-  const negocio = (id: string, status: string, outcome = "open") =>
-    ({ id, status, outcome, month_base: "09/2026" }) as unknown as DealRow;
+  const negocio = (id: string, status: string, outcome = "open", group = "PROPOSTA") =>
+    ({ id, status, outcome, status_group_code: group, month_base: "09/2026" }) as unknown as DealRow;
 
   it("lista só o Status 2 com negócio, do maior para o menor, empate na ordem do cadastro, sem zerados nem perdidos", async () => {
     const { text, container, cleanup } = await renderComCache(
       <SalesFunnelCard deals={[
         negocio("a", "16. PENDENTE"), negocio("b", "13. ESTEIRA AGIL"), negocio("c", "13. ESTEIRA AGIL"),
-        negocio("d", "02. ASS. BANCO", "won"), negocio("e", "18. QUEDA", "lost"),
+        negocio("d", "02. ASS. BANCO", "won", "VENDA"), negocio("e", "18. QUEDA", "lost", "OFF"),
       ]} />,
       semearCatalogo,
     );
     const rotulos = Array.from(container.querySelectorAll("li")).map((li) => li.querySelector("span")?.textContent);
-    expect(rotulos).toEqual(["ESTEIRA AGIL", "Assinado no banco", "PENDENTE"]);
+    expect(rotulos).toEqual(["ESTEIRA AGIL", "PENDENTE"]);
     expect(text).not.toContain("QUEDA");
     expect(text).not.toContain("VIROU NEGÓCIO");
-    expect(text).toContain("4 negócios no período · vendas + em aberto");
+    expect(text).toContain("3 propostas no período");
     await cleanup();
   });
 

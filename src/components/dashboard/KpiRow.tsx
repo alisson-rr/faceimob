@@ -80,7 +80,7 @@ function delta(
 /**
  * A régua de indicadores do mês — oito cartões, na ordem e nas cores pedidas
  * pelo cliente em 28/09/2026: leads do mês e base (azul), produção (cinza,
- * legado + propostas), negócios (preto, só o Status 2 "Virou Negócio"), perdas
+ * somente propostas, com legado discreto), negócios (preto, só o Status 2 "Virou Negócio"), perdas
  * (vermelho, Status 1 OFF — queda inclusa), distratos do mês ANTERIOR (o
  * distrato chega depois do mês fechado), vendas e VGV gerado (verde). A meta de
  * VENDAS é card próprio (`GoalCard`); a de VGV fica como alvo do cartão de VGV.
@@ -149,7 +149,7 @@ export function KpiRow({
         value={atual ? num(atual.producao) : "—"}
         icon={FileText}
         delta={atual ? delta(atual.producao, anterior?.producao, previousLabel) : undefined}
-        hint={atual ? `Legado ${num(atual.legado)} + Propostas ${num(atual.propostas)}` : "carregando o catálogo de status"}
+        hint={atual ? `Total de propostas · legado ${num(atual.legado)} (fora da soma)` : "carregando o catálogo de status"}
       />
       <KpiCard
         label="Negócios"

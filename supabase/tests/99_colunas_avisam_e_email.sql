@@ -6,8 +6,8 @@
 --      fila tem RLS e nenhuma função nova é executável por quem não deve;
 --   2. coluna que avisa, interruptor desligado: aviso ao corretor e ao gerente,
 --      nenhum e-mail na fila;
---   3. coluna de movimento interno: sem aviso e sem e-mail, com o histórico do
---      negócio; e coluna sem Status 2 não muda o Status 2 pelo "Mover", mesmo
+--   3. coluna de movimento interno: sem sino no aplicativo, mas com e-mail e
+--      histórico do negócio; e coluna sem Status 2 não muda o Status 2 pelo "Mover", mesmo
 --      quando o desfecho muda (antes caía no de-para por desfecho);
 --   4. interruptor ligado: um e-mail por destinatário com e-mail válido — o
 --      marcador `@sem-email.local` é pulado sem quebrar o movimento;
@@ -223,9 +223,13 @@ begin
         and n.profile_id in ('00000000-0000-0000-0000-000001550002', '00000000-0000-0000-0000-000001550003')) = v_avisos,
     'nem o aviso genérico de status sai no movimento interno');
   perform pg_temp.check155(
-    not exists (select 1 from public.cca_move_emails
-                 where deal_id = pg_temp.deal155() and source = 'cca'),
-    'nem com o e-mail ligado');
+    exists (select 1 from public.cca_move_emails
+             where deal_id = pg_temp.deal155() and source = 'cca' and not copia
+               and profile_id = '00000000-0000-0000-0000-000001550003')
+    and exists (select 1 from public.cca_move_emails
+                 where deal_id = pg_temp.deal155() and source = 'cca' and not copia
+                   and profile_id = '00000000-0000-0000-0000-000001550004'),
+    'movimento interno envia e-mail ao corretor relacionado, à autora e à equipe CCA');
   perform pg_temp.check155(
     (select status_detail from public.deals where id = pg_temp.deal155()) = '12. EM PROCESSAMENTO',
     format('coluna sem Status 2 não muda o Status 2, mesmo trocando o desfecho (veio %s)',
@@ -259,7 +263,9 @@ begin
 
   select * into v_linha from public.cca_move_emails
    where deal_id = pg_temp.deal155() and source = 'cca' and not copia
-     and profile_id = '00000000-0000-0000-0000-000001550003';
+     and profile_id = '00000000-0000-0000-0000-000001550003'
+     and stage_name = 'Avisa 155'
+     and message = 'Aprovar <script>x</script>';
   perform pg_temp.check155(
     v_linha.to_email = 'cor@avisa155.test'
     and v_linha.profile_id = '00000000-0000-0000-0000-000001550003'

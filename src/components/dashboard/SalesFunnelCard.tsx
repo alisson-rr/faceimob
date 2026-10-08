@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { AlertTriangle, GitBranch, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, LoadingState, SectionCard } from "@/components/shared";
 import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { num } from "@/lib/format";
@@ -24,10 +26,11 @@ export interface SalesFunnelCardProps {
  * diz isso.
  */
 export function SalesFunnelCard({ deals }: SalesFunnelCardProps) {
+  const [grupo, setGrupo] = useState<"PROPOSTA" | "LEGADO">("PROPOSTA");
   const catalog = useDealStatusCatalog();
   // Sem o catálogo não há ordem nem rótulo: a lista espera, e o rodapé não
   // conta antes disso.
-  const rows = catalog.data ? linhasDoStatus2(deals, catalog.data) : [];
+  const rows = catalog.data ? linhasDoStatus2(deals, catalog.data, grupo) : [];
   const total = rows.reduce((sum, row) => sum + row.value, 0);
 
   const body = () => {
@@ -57,7 +60,7 @@ export function SalesFunnelCard({ deals }: SalesFunnelCardProps) {
         <EmptyState
           icon={Inbox}
           title="Nenhum negócio no período"
-          description="Negócio perdido ou cancelado não entra nesta contagem. Troque o mês no filtro do topo para ver outro período."
+          description={`Nenhum ${grupo === "PROPOSTA" ? "negócio de proposta" : "legado"} neste período. Troque o seletor ou o mês.`}
         />
       );
     }
@@ -68,9 +71,20 @@ export function SalesFunnelCard({ deals }: SalesFunnelCardProps) {
   return (
     <SectionCard
       title="Negócios por etapa"
-      description="Negócios do período por Status 2, do maior para o menor"
+      description={`${grupo === "PROPOSTA" ? "Propostas" : "Legados"} do período por Status 2, do maior para o menor`}
       icon={GitBranch}
-      footer={total > 0 ? `${num(total)} negócios no período · vendas + em aberto` : undefined}
+      actions={
+        <Select value={grupo} onValueChange={(value) => setGrupo(value as "PROPOSTA" | "LEGADO")}>
+          <SelectTrigger className="w-[140px]" aria-label="Tipo de negócio do gráfico">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="PROPOSTA">Propostas</SelectItem>
+            <SelectItem value="LEGADO">Legados</SelectItem>
+          </SelectContent>
+        </Select>
+      }
+      footer={total > 0 ? `${num(total)} ${grupo === "PROPOSTA" ? "propostas" : "legados"} no período` : undefined}
     >
       {body()}
     </SectionCard>
