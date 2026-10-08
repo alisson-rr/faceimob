@@ -20,7 +20,7 @@ create policy deal_documents_delete on public.deal_documents
     public.is_admin()
     or public.has_role('cca')
     or (
-      public.can_see_deal(deal_id)
+      public.can_edit_deal(deal_id)
       and exists (
         select 1 from public.deals d
          where d.id = deal_documents.deal_id
@@ -45,7 +45,7 @@ begin
           or exists (
             select 1 from public.deals d
              where d.id = public.deal_id_of_object(storage.objects.name)
-               and public.can_see_deal(d.id)
+               and public.can_edit_deal(d.id)
                and coalesce(d.document_review_status, 'draft') in ('draft', 'returned')
           )
         )
