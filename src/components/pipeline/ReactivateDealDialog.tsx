@@ -41,13 +41,16 @@ export function ReactivateDealDialog({ deal, people, onClose, onReactivated }: P
     [people, isAdmin, user?.id],
   );
   const [brokerId, setBrokerId] = useState(escolheCorretor ? "" : (user?.id ?? ""));
+  const [destination, setDestination] = useState<"incomplete" | "external">("incomplete");
 
   const confirmar = async () => {
     if (!brokerId) return;
     try {
-      const result = await mutation.mutateAsync({ dealId: deal.id, brokerId });
+      const result = await mutation.mutateAsync({ dealId: deal.id, brokerId, destination });
       toast.success("Proposta reativada", {
-        description: `${deal.client} voltou como Incompleto em ${result.new_month}.`,
+        description: `${deal.client} voltou como ${
+          result.destination === "external" ? "Análise Externa" : "Incompleto"
+        } em ${result.new_month}.`,
       });
       await onReactivated();
       onClose();
@@ -67,11 +70,27 @@ export function ReactivateDealDialog({ deal, people, onClose, onReactivated }: P
             Reativar a proposta de {deal.client}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Ela volta para o mês vigente como <strong className="text-foreground">Incompleto</strong>.
+            Ela volta para o mês vigente no caminho escolhido abaixo.
             A equipe será refeita com o gerente e o diretor atuais do corretor escolhido. Somente os
             administradores serão avisados desta reativação.
           </AlertDialogDescription>
         </AlertDialogHeader>
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${id}-destination`}>Destino da proposta</Label>
+          <Select value={destination} onValueChange={(value) => setDestination(value as typeof destination)}>
+            <SelectTrigger id={`${id}-destination`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="incomplete">Incompleto · fluxo interno</SelectItem>
+              <SelectItem value="external">Análise Externa · construtora externa</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Em Análise Externa, gerente, diretor ou administrador registram depois a aprovação total ou condicionada.
+          </p>
+        </div>
 
         {escolheCorretor ? (
           <div className="space-y-1.5">

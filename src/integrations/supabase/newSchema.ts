@@ -739,6 +739,14 @@ type DashboardRpcResult<T> = PromiseLike<{
   error: { message?: string; code?: string; details?: string; hint?: string } | null;
 }>;
 
+type DashboardRpcRows<T> = PromiseLike<{
+  data: T[] | null;
+  error: { message?: string; code?: string; details?: string; hint?: string } | null;
+  count?: number | null;
+}> & {
+  range(from: number, to: number): DashboardRpcRows<T>;
+};
+
 // As RPCs 0244 entram no deploy junto desta versão. O arquivo gerado do
 // Supabase só passa a conhecê-las depois que a migration chega ao banco; este
 // cliente estreito mantém o restante do schema completamente tipado.
@@ -746,18 +754,36 @@ const dashboardRpc = supabase as unknown as {
   rpc<T>(name: string, args?: Record<string, unknown>): DashboardRpcResult<T>;
 };
 
+const dashboardRowsRpc = supabase as unknown as {
+  rpc<T>(
+    name: string,
+    args?: Record<string, unknown>,
+    options?: { count?: "exact" },
+  ): DashboardRpcRows<T>;
+};
+
 /** Carga agregada da imobiliária, liberada somente para diretor/admin pela RPC. */
 export async function loadCompanyDashboardPayload(): Promise<DashboardPayload> {
-  const { data, error } = await dashboardRpc.rpc<Omit<DashboardPayload, "staff">>(
-    "dashboard_imobiliaria_payload",
-  );
+  const [payloadResult, dealsResult] = await Promise.all([
+    dashboardRpc.rpc<Omit<DashboardPayload, "staff">>("dashboard_imobiliaria_payload"),
+    allRows<{ deal: LegacyDealRecord }>((from, to, count) =>
+      dashboardRowsRpc
+        .rpc<{ deal: LegacyDealRecord }>(
+          "dashboard_imobiliaria_deals",
+          {},
+          count ? { count } : undefined,
+        )
+        .range(from, to)),
+  ]);
+  const { data, error } = payloadResult;
   if (error) throw dbError("dashboard_imobiliaria_payload", error);
+  if (dealsResult.error) throw dbError("dashboard_imobiliaria_deals", dealsResult.error);
   if (!data) throw new Error("O Dashboard da imobiliária não retornou dados.");
 
   const people = (data.people ?? []) as PersonRecord[];
   return {
     ...data,
-    deals: (data.deals ?? []) as LegacyDealRecord[],
+    deals: dealsResult.data.map((row) => row.deal),
     people,
     ccaCounts: data.ccaCounts ?? {},
     ccaDealIds: data.ccaDealIds ?? [],
