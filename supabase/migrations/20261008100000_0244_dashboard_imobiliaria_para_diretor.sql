@@ -10,6 +10,49 @@ revoke execute on function public.deals_origin_from_lead() from public, anon;
 revoke execute on function public.deal_clients_validate_documents() from public, anon;
 revoke execute on function public.deals_mark_contract_pending() from public, anon;
 
+-- A exclusão da 0243 alcança todos os papéis que veem o negócio, mas não pode
+-- reabrir o dossiê pelas costas do gerente depois do envio. Durante rascunho
+-- ou devolução todos do escopo corrigem o anexo; CCA/admin mantêm sua alçada.
+drop policy if exists deal_documents_delete on public.deal_documents;
+create policy deal_documents_delete on public.deal_documents
+  for delete to authenticated
+  using (
+    public.is_admin()
+    or public.has_role('cca')
+    or (
+      public.can_see_deal(deal_id)
+      and exists (
+        select 1 from public.deals d
+         where d.id = deal_documents.deal_id
+           and coalesce(d.document_review_status, 'draft') in ('draft', 'returned')
+      )
+    )
+  );
+
+do $$
+begin
+  if to_regclass('storage.objects') is null then return; end if;
+  execute 'drop policy if exists deal_documents_storage_delete on storage.objects';
+  execute $policy$
+    create policy deal_documents_storage_delete on storage.objects
+      for delete to authenticated
+      using (
+        bucket_id = 'deal-documents'
+        and public.deal_id_of_object(storage.objects.name) is not null
+        and (
+          public.is_admin()
+          or public.has_role('cca')
+          or exists (
+            select 1 from public.deals d
+             where d.id = public.deal_id_of_object(storage.objects.name)
+               and public.can_see_deal(d.id)
+               and coalesce(d.document_review_status, 'draft') in ('draft', 'returned')
+          )
+        )
+      )
+  $policy$;
+end $$;
+
 create or replace function public.dashboard_imobiliaria_payload()
 returns jsonb
 language plpgsql
