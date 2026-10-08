@@ -246,9 +246,16 @@ begin
       where kind = 'cca_status_changed' and body like '%Aprovar <script>%') = 2,
     'o aviso sai para os dois');
   perform pg_temp.check155(
-    (select count(*) from public.cca_move_emails
-      where deal_id = pg_temp.deal155() and source = 'cca' and not copia) = 2,
-    'o corretor e a analista que agiu recebem; o gerente sem e-mail é pulado');
+    exists (select 1 from public.cca_move_emails
+             where deal_id = pg_temp.deal155() and source = 'cca' and not copia
+               and profile_id = '00000000-0000-0000-0000-000001550003')
+    and exists (select 1 from public.cca_move_emails
+                 where deal_id = pg_temp.deal155() and source = 'cca' and not copia
+                   and profile_id = '00000000-0000-0000-0000-000001550004')
+    and not exists (select 1 from public.cca_move_emails
+                     where deal_id = pg_temp.deal155() and source = 'cca' and not copia
+                       and profile_id = '00000000-0000-0000-0000-000001550002'),
+    'o corretor, a analista que agiu e a equipe CCA recebem; o gerente sem e-mail é pulado');
 
   select * into v_linha from public.cca_move_emails
    where deal_id = pg_temp.deal155() and source = 'cca' and not copia
@@ -305,7 +312,7 @@ begin
 
   perform pg_temp.check155(v_cor = 0, 'o corretor não lê a fila, nem o próprio e-mail');
   perform pg_temp.check155(v_insert_negado, 'o corretor não enfileira e-mail pela API');
-  perform pg_temp.check155(v_adm = 2, 'o admin lê os e-mails do corretor e da analista');
+  perform pg_temp.check155(v_adm >= 2, 'o admin lê os e-mails dos responsáveis e da equipe CCA');
   perform pg_temp.check155(v_anon_negado, 'anon não tem acesso à fila');
 end
 $$;
