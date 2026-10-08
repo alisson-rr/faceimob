@@ -3,9 +3,9 @@
 \pset format unaligned
 
 -- =============================================================================
--- 0151 — configuração da CCA só para admin e sócio; contador de envios por ids.
+-- 0242 — configuração dos estágios pela CCA; documentos só admin/sócio.
 --
---   · o CCA não escreve em `cca_stages` nem em `document_types`;
+--   · o CCA escreve em `cca_stages`, mas não em `document_types`;
 --   · admin e sócio escrevem nas duas;
 --   · anon não escreve nelas nem executa o contador;
 --   · `cca_send_counts(ids)` devolve só esses negócios, somando o CPF inteiro.
@@ -43,7 +43,7 @@ begin
 end;
 $$;
 
-\echo '== 0151: estágios e tipos de documento só admin e sócio escrevem =='
+\echo '== 0242: CCA gerencia estágios; tipos de documento seguem só admin/sócio =='
 
 do $$
 declare
@@ -73,17 +73,17 @@ begin
 
   update public.cca_stages set name = 'Coluna 151 CCA' where id = v_col;
   get diagnostics v_linhas = row_count;
-  if v_linhas > 0 then v_passou := v_passou || 'update estágio;'; end if;
-
-  delete from public.cca_stages where id = v_col;
-  get diagnostics v_linhas = row_count;
-  if v_linhas > 0 then v_passou := v_passou || 'delete estágio;'; end if;
+  if v_linhas <> 1 then v_passou := v_passou || 'não atualizou estágio;'; end if;
 
   begin
     insert into public.cca_stages (name, color, position, status, active)
-    values ('Coluna 151 nova CCA', '#000000', 152, 'under_review', false);
-    v_passou := v_passou || 'insert estágio;';
-  exception when insufficient_privilege then null;
+    values ('Coluna 151 nova CCA', '#000000', 152, 'under_review', false)
+    returning id into v_novo;
+    delete from public.cca_stages where id = v_novo;
+    get diagnostics v_linhas = row_count;
+    if v_linhas <> 1 then v_passou := v_passou || 'não apagou estágio;'; end if;
+  exception when insufficient_privilege then
+    v_passou := v_passou || 'não criou estágio;';
   end;
 
   update public.document_types set label = 'Tipo 151 CCA' where id = v_tipo;
@@ -106,9 +106,9 @@ begin
     exists (select 1 from public.role_permissions
              where role = 'cca' and permission = 'cca.review' and allowed)
     and v_passou = ''
-    and (select name from public.cca_stages where id = v_col) = 'Coluna 151'
+    and (select name from public.cca_stages where id = v_col) = 'Coluna 151 CCA'
     and (select label from public.document_types where id = v_tipo) = 'Tipo 151',
-    format('o CCA não cria, edita nem apaga estágio ou tipo de documento (%s)', nullif(v_passou, '')));
+    format('o CCA cria/edita/apaga estágio, mas não altera tipo de documento (%s)', nullif(v_passou, '')));
 
   -- ── anon ──────────────────────────────────────────────────────────────────
   perform set_config('request.jwt.claims', '', false);
@@ -124,7 +124,7 @@ begin
   reset role;
 
   perform pg_temp.check151(
-    (select name from public.cca_stages where id = v_col) = 'Coluna 151'
+    (select name from public.cca_stages where id = v_col) = 'Coluna 151 CCA'
     and (select label from public.document_types where id = v_tipo) = 'Tipo 151',
     'anon não escreve em estágio nem em tipo de documento');
 

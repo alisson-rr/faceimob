@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0198 — fila em formação para o admin: quem bateu ponto, em que ordem vai
+-- 0198/0241 — fila em formação para todos: quem bateu ponto, em que ordem vai
 -- receber e por que não está recebendo (aguardando a abertura ou bloqueado).
 -- =============================================================================
 \set ON_ERROR_STOP on
@@ -95,19 +95,16 @@ begin
 end
 $$;
 
-\echo '== só admin =='
+\echo '== todo usuário autenticado =='
 do $$
+declare
+  v_n int;
 begin
   perform pg_temp.como('00000000-0000-0000-0000-000001980002');
   set local role authenticated;
-  begin
-    perform * from public.fila_em_formacao();
-    reset role;
-    raise exception 'FALHOU: corretor viu a fila em formação';
-  exception when insufficient_privilege then
-    reset role;
-    raise notice '  ok  corretor leva 42501';
-  end;
+  select count(*) into v_n from public.fila_em_formacao() where group_name = 'Roleta 198';
+  reset role;
+  perform pg_temp.ok(v_n = 4, 'corretor autenticado vê a composição da fila');
 end
 $$;
 select pg_temp.ok(not has_function_privilege('anon', 'public.fila_em_formacao()', 'execute'), 'anon não executa');

@@ -46,10 +46,44 @@ export function embaralhar<T>(itens: T[], sorteio: () => number = Math.random): 
   return copia;
 }
 
+/**
+ * Distribui as campanhas em rodadas. Enquanto houver duas ou mais campanhas
+ * com contatos, uma campanha não ocupa um bloco contínuo do arquivo.
+ */
+export function intercalarCampanhas(
+  linhas: LinhaDeLigacao[], sorteio: () => number = Math.random,
+): LinhaDeLigacao[] {
+  const grupos = new Map<string, LinhaDeLigacao[]>();
+  for (const linha of linhas) {
+    const chave = linha.campanha.trim().toLocaleLowerCase("pt-BR");
+    grupos.set(chave, [...(grupos.get(chave) ?? []), linha]);
+  }
+  const filas = embaralhar(
+    [...grupos.values()].map((grupo) => embaralhar(grupo, sorteio)),
+    sorteio,
+  );
+  const resultado: LinhaDeLigacao[] = [];
+  while (filas.some((fila) => fila.length > 0)) {
+    const rodada = embaralhar(filas.filter((item) => item.length > 0), sorteio);
+    const anterior = resultado.at(-1)?.campanha.trim().toLocaleLowerCase("pt-BR");
+    if (anterior && rodada.length > 1
+      && rodada[0][0]?.campanha.trim().toLocaleLowerCase("pt-BR") === anterior) {
+      const diferente = rodada.findIndex((fila) =>
+        fila[0]?.campanha.trim().toLocaleLowerCase("pt-BR") !== anterior);
+      if (diferente > 0) [rodada[0], rodada[diferente]] = [rodada[diferente], rodada[0]];
+    }
+    for (const fila of rodada) {
+      const proxima = fila.shift();
+      if (proxima) resultado.push(proxima);
+    }
+  }
+  return resultado;
+}
+
 export async function buscarListaDeLigacao(): Promise<LinhaDeLigacao[]> {
   const { data, error } = await untyped.rpc("lista_de_ligacao");
   if (error) throw dbError("lista_de_ligacao", error);
-  return embaralhar(lerLinhas(data));
+  return intercalarCampanhas(lerLinhas(data));
 }
 
 const nomeDoArquivo = (extensao: string) =>

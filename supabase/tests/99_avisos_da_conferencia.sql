@@ -1,6 +1,6 @@
 -- =============================================================================
--- 0203 — avisos da conferência: push (sino) e e-mail a cada papel, sem repetir
--- o que a função de origem já avisa e sem avisar quem agiu. As contagens
+-- 0203 — avisos da conferência: push (sino) e e-mail a cada papel, sem repetir.
+-- O push evita avisar quem agiu; o e-mail inclui também quem fez a ação. As contagens
 -- olham só as pessoas deste arquivo: outros testes deixam administradores.
 -- =============================================================================
 \set ON_ERROR_STOP on
@@ -73,7 +73,7 @@ begin
     'enviada: quem enviou não recebe o próprio aviso');
   select count(*) into n from public.cca_move_emails where deal_id = v_deal.id and source = 'conferencia' and stage_name = 'Análise enviada para conferência'
      and profile_id in (ger, dir, adm, cor, cca);
-  perform pg_temp.ok(n = 3, 'enviada: e-mail ao gerente, diretor e admin (' || n || ')');
+  perform pg_temp.ok(n = 4, 'enviada: e-mail ao corretor que enviou, gerente, diretor e admin (' || n || ')');
   perform pg_temp.ok((select message from public.cca_move_emails where deal_id = v_deal.id and profile_id = ger and source = 'conferencia' limit 1)
     like '%Dossiê completo%', 'o e-mail leva a mensagem do envio');
 
@@ -95,7 +95,7 @@ begin
     'aprovada: o CCA recebe o push de dossiê novo');
   select count(*) into n from public.cca_move_emails where deal_id = v_deal.id and source = 'conferencia' and stage_name = 'Análise aprovada e enviada ao CCA'
      and profile_id in (ger, dir, adm, cor, cca);
-  perform pg_temp.ok(n = 4, 'aprovada: e-mail ao corretor, diretor, admin e CCA (' || n || ')');
+  perform pg_temp.ok(n = 5, 'aprovada: e-mail ao corretor, gerente que aprovou, diretor, admin e CCA (' || n || ')');
 
   -- 3. Devolvida: outro negócio do mesmo corretor.
   insert into public.leads (full_name, phone, status, assigned_to)

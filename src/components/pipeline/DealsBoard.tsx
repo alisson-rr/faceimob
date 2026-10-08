@@ -109,6 +109,8 @@ export function DealsBoard({
       onScheduleVisit={onScheduleVisit}
       onLose={onLose}
       onReopen={onReopen}
+      onReactivate={onReactivate}
+      currentMonth={currentMonth}
     />
   );
 }

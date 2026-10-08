@@ -9,22 +9,24 @@ import { dbError } from "@/lib/supabaseError";
 const reviewRpc = supabase as unknown as SupabaseClient;
 
 export const reviewKeys = {
-  pendingCounts: ["document-review", "pending-count"] as const,
-  pendingCount: (profileId: string | null) => ["document-review", "pending-count", profileId] as const,
+  pendingQueues: ["document-review", "pending-queue"] as const,
+  pendingQueue: (profileId: string | null) => ["document-review", "pending-queue", profileId] as const,
 };
 
-export async function getMyPendingReviewCount(): Promise<number> {
-  const { data, error } = await reviewRpc.rpc("minhas_conferencias_pendentes");
-  if (error) throw dbError("minhas_conferencias_pendentes", error);
-  return Number(data) || 0;
+export async function getMyPendingReviewDealIds(): Promise<string[]> {
+  const { data, error } = await reviewRpc.rpc("minhas_conferencias_pendentes_ids");
+  if (error) throw dbError("minhas_conferencias_pendentes_ids", error);
+  return (Array.isArray(data) ? data : [])
+    .map((row) => String((row as { deal_id?: unknown }).deal_id ?? ""))
+    .filter(Boolean);
 }
 
 /** Pendências que esta liderança pode aprovar, atualizadas quando um negócio muda. */
-export function useMyPendingReviewCount(profileId: string | null, enabled = true) {
+export function useMyPendingReviewDealIds(profileId: string | null, enabled = true) {
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: reviewKeys.pendingCount(profileId),
-    queryFn: getMyPendingReviewCount,
+    queryKey: reviewKeys.pendingQueue(profileId),
+    queryFn: getMyPendingReviewDealIds,
     enabled: enabled && Boolean(profileId),
     staleTime: 30_000,
     refetchInterval: 60_000,
@@ -35,7 +37,7 @@ export function useMyPendingReviewCount(profileId: string | null, enabled = true
     const channel = supabase
       .channel("my-pending-document-reviews")
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "deals" }, () => {
-        void queryClient.invalidateQueries({ queryKey: reviewKeys.pendingCounts });
+        void queryClient.invalidateQueries({ queryKey: reviewKeys.pendingQueues });
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };

@@ -38,7 +38,7 @@ import { periodoValido } from "@/components/pipeline/ccaData";
 import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
 import { useDealActions } from "@/components/pipeline/useDealActions";
 import { useMyCcaQueue } from "@/integrations/supabase/cca";
-import { useMyPendingReviewCount } from "@/integrations/supabase/reviews";
+import { useMyPendingReviewDealIds } from "@/integrations/supabase/reviews";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
 type EditorState = { deal: LegacyDealRecord | null } | null;
@@ -69,6 +69,7 @@ const activeMonthRange = (monthBase: string): DealPeriod => {
  */
 export default function Pipeline() {
   const { user, isAdmin, roles, can } = useAuth();
+  const podeReativarOff = isAdmin || roles.some((role) => ["partner", "director", "manager", "broker"].includes(role));
 
   // Espelha o `with check` de `deals_insert`. O sócio (e, desde a 0053, o SDR e
   // o marketing) tem `menu.pipeline` e enxerga os negócios, mas o banco recusa a
@@ -143,7 +144,7 @@ export default function Pipeline() {
   // rápido levava "Movimentação não permitida" por corrida, não por regra.
   const stagePerms = useStagePermissions();
   const ccaQueue = useMyCcaQueue();
-  const pendingReviewQueue = useMyPendingReviewCount(user?.id ?? null, canReviewDocuments);
+  const pendingReviewQueue = useMyPendingReviewDealIds(user?.id ?? null, canReviewDocuments);
   const invalidateDeals = useInvalidateDeals();
   usePipelineRealtime();
   // Nome, cor e ordem do Status 2 e o nome do Status 1 saem daqui. Entra na
@@ -214,7 +215,7 @@ export default function Pipeline() {
   const abreNaConferencia = searchParams.get("conferencia") === "pendente";
   const filters = useMemo(
     () => filtrosEscolhidos ?? (abreNaConferencia
-      ? { ...filtrosLimpos, status1: [], team: recorteInicial, documentReview: "pending" }
+      ? { ...filtrosLimpos, status1: [], team: ALL, documentReview: "pending" }
       : { ...filtrosLimpos, team: recorteInicial }),
     [filtrosEscolhidos, filtrosLimpos, recorteInicial, abreNaConferencia],
   );
@@ -259,7 +260,7 @@ export default function Pipeline() {
   const directorDeals = useMemo(() => buscando || filtrosAdiados.directorId === ALL ? dealsDaLista
     : dealsForLeader(dealsDaLista, people, filtrosAdiados.directorId),
   [buscando, dealsDaLista, people, filtrosAdiados.directorId]);
-  const visible = useMemo(
+  const visibleByFilters = useMemo(
     () => sortDeals(applyDealFilters(
       directorDeals,
       buscando ? { ...EMPTY_FILTERS, search: filtrosAdiados.search } : filtrosAdiados,
@@ -267,6 +268,19 @@ export default function Pipeline() {
       vendaId,
     ), catalog),
     [buscando, directorDeals, filtrosAdiados, myTeam, vendaId, catalog],
+  );
+  const pendingReviewIds = useMemo(
+    () => new Set(pendingReviewQueue.data ?? []),
+    [pendingReviewQueue.data],
+  );
+  // O botão de aprovação e o filtro apontam para o mesmo conjunto devolvido
+  // pelo banco. Assim o gerente não abre uma pendência de outro líder que a
+  // RLS permite enxergar por hierarquia, mas que ele próprio não pode aprovar.
+  const visible = useMemo(
+    () => canReviewDocuments && filtrosAdiados.documentReview === "pending"
+      ? visibleByFilters.filter((deal) => pendingReviewIds.has(deal.id))
+      : visibleByFilters,
+    [canReviewDocuments, filtrosAdiados.documentReview, pendingReviewIds, visibleByFilters],
   );
   const activeCount = useMemo(() => visible.filter((deal) => deal.active).length, [visible]);
 
@@ -294,10 +308,7 @@ export default function Pipeline() {
     }
   }, [visible, catalog]);
 
-  // A RPC conta a fila desta liderança inteira, sem depender do recorte de
-  // datas da tela. Enquanto ela chega, a contagem do período evita afirmar 0.
-  const pendingReviewsInPeriod = deals.filter((deal) => deal.document_review_status === "pending").length;
-  const pendingReviews = pendingReviewQueue.data ?? pendingReviewsInPeriod;
+  const pendingReviews = pendingReviewQueue.data?.length ?? 0;
   // `visible`, e não `deals`: a contagem ao lado, na mesma frase, é filtrada —
   // ler "3 negócio(s) ativo(s) · R$ 12 mi em VGV" com o VGV da base inteira
   // descrevia dois conjuntos diferentes na mesma linha.
@@ -356,23 +367,25 @@ export default function Pipeline() {
           <>
             {tab === "deals" ? (
               <>
-                {canReviewDocuments && (pendingReviewQueue.data ?? 0) > 0 && (
+                {canReviewDocuments && pendingReviews > 0 && (
                   <Button
                     variant="tintWarning"
                     size="sm"
                     className="animate-pulse border-warning bg-warning/20 shadow-[0_0_18px_hsl(var(--warning)/0.35)]"
                     onClick={() => {
+                      setPeriodoEscolhido(null);
                       setTab("deals");
                       setFiltrosEscolhidos({
                         ...filtrosLimpos,
-                        team: recorteInicial,
+                        status1: [],
+                        team: ALL,
                         documentReview: "pending",
                       });
                       setShowFilters(false);
                     }}
                   >
                     <FileCheck2 className="mr-1 h-4 w-4" aria-hidden />
-                    {pendingReviewQueue.data} {pendingReviewQueue.data === 1
+                    {pendingReviews} {pendingReviews === 1
                       ? "aguardando sua aprovação"
                       : "aguardando suas aprovações"}
                   </Button>
@@ -562,7 +575,7 @@ export default function Pipeline() {
               onScheduleVisit={setVisitDeal}
               onLose={abrirPerda}
               onReopen={setReopening}
-              onReactivate={setReactivating}
+              onReactivate={podeReativarOff ? setReactivating : undefined}
               currentMonth={seasonMonth ?? currentMonthBase()}
               ccaQueuePositions={ccaQueuePositions}
               closedMonths={closed}

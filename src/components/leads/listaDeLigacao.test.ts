@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
-import { embaralhar, lerLinhas, montarListaPdf, paraPdf } from "./listaDeLigacao";
+import { embaralhar, intercalarCampanhas, lerLinhas, montarListaPdf, paraPdf } from "./listaDeLigacao";
 
 describe("lista de ligação", () => {
   it("valida as linhas da RPC e descarta quem não tem telefone", () => {
@@ -31,5 +31,22 @@ describe("lista de ligação", () => {
     const misturado = embaralhar(itens, sorteio);
     expect(misturado).not.toEqual(itens);
     expect([...misturado].sort((a, b) => a - b)).toEqual(itens);
+  });
+
+  it("intercala campanhas em vez de gerar blocos contínuos", () => {
+    const linhas = [
+      ...Array.from({ length: 4 }, (_, i) => ({ campanha: "Bella Citta", cliente: `B${i}`, telefone: `51${i}` })),
+      ...Array.from({ length: 3 }, (_, i) => ({ campanha: "Park", cliente: `P${i}`, telefone: `52${i}` })),
+      ...Array.from({ length: 2 }, (_, i) => ({ campanha: "Solar", cliente: `S${i}`, telefone: `53${i}` })),
+    ];
+    const resultado = intercalarCampanhas(linhas, () => 0.4);
+    expect(resultado).toHaveLength(linhas.length);
+    expect(new Set(resultado.map((item) => item.cliente)).size).toBe(linhas.length);
+    expect(resultado.slice(0, 6).map((item) => item.campanha)).not.toEqual([
+      "Bella Citta", "Bella Citta", "Bella Citta", "Bella Citta", "Park", "Park",
+    ]);
+    for (let i = 1; i < 6; i += 1) {
+      expect(resultado[i].campanha).not.toBe(resultado[i - 1].campanha);
+    }
   });
 });

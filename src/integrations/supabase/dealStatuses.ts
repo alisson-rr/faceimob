@@ -242,6 +242,14 @@ export function statusMoveBlock(
   if (who.isAdmin) return null;
   // REPROVADO → OFF é de quem edita o negócio (0231), fora da matriz.
   if (bareStatus(from ?? "") === "REPROVADO" && bareStatus(to) === "OFF") return null;
+  // Em ANÁLISE EXTERNA, a liderança pode registrar o retorno da análise sem
+  // depender da CCA. É uma exceção de transição, não acesso geral aos status
+  // de aprovação: corretor segue bloqueado e os demais caminhos usam a matriz.
+  if (
+    bareStatus(from ?? "") === "ANÁLISE EXTERNA"
+    && ["APROV. TOTAL", "APROV. COND."].includes(bareStatus(to))
+    && who.roles.some((role) => role === "manager" || role === "director")
+  ) return null;
   const destinoIndex = catalog.indexByKey.get(statusKey(to));
   const destino = destinoIndex === undefined ? null : catalog.statuses[destinoIndex];
   if (!destino) return "Este Status 2 não está no cadastro.";

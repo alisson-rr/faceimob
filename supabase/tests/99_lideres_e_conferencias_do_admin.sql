@@ -22,6 +22,7 @@ do $$
 declare
   adm  uuid := '00000000-0000-0000-0000-000001990001';
   ger  uuid := '00000000-0000-0000-0000-000001990002';
+  ger2 uuid := '00000000-0000-0000-0000-000001990005';
   dir  uuid := '00000000-0000-0000-0000-000001990003';
   cor  uuid := '00000000-0000-0000-0000-000001990004';
   v_team uuid;
@@ -33,10 +34,11 @@ begin
   insert into auth.users (id, email, raw_user_meta_data) values
     (adm,  'adm@l199.test',  '{"full_name":"Admin 199"}'),
     (ger,  'ger@l199.test',  '{"full_name":"Gerente 199"}'),
+    (ger2, 'ger2@l199.test', '{"full_name":"Outro Gerente 199"}'),
     (dir,  'dir@l199.test',  '{"full_name":"Diretor 199"}'),
     (cor,  'cor@l199.test',  '{"full_name":"Corretor 199"}');
   insert into public.user_roles (profile_id, role) values
-    (adm, 'admin'), (ger, 'manager'), (dir, 'director'), (cor, 'broker')
+    (adm, 'admin'), (ger, 'manager'), (ger2, 'manager'), (dir, 'director'), (cor, 'broker')
   on conflict do nothing;
   insert into public.teams (name, manager_id, director_id) values ('Equipe 199', ger, dir) returning id into v_team;
   insert into public.team_members (team_id, profile_id) values (v_team, cor);
@@ -80,6 +82,14 @@ begin
   set local role authenticated;
   perform pg_temp.ok(public.minhas_conferencias_pendentes() >= 1,
     'gerente vê a proposta vinculada aguardando aprovação');
+  perform pg_temp.ok(exists (select 1 from public.minhas_conferencias_pendentes_ids() where deal_id = v_deal.id),
+    'botão do gerente aponta para o ID exato que ele pode aprovar');
+  reset role;
+
+  perform pg_temp.como(ger2);
+  set local role authenticated;
+  perform pg_temp.ok(not exists (select 1 from public.minhas_conferencias_pendentes_ids() where deal_id = v_deal.id),
+    'outro gerente não recebe alerta de proposta que não é dele');
   reset role;
 
   perform pg_temp.como(dir);

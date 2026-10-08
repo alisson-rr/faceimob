@@ -2,10 +2,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-/** Fila em formação: só o admin vê; ordem e situação vêm do banco (0198). */
-const m = vi.hoisted(() => ({ admin: true, linhas: [] as unknown[], rpc: vi.fn() }));
+/** Fila em formação: todo usuário autenticado vê; ordem e situação vêm do banco. */
+const m = vi.hoisted(() => ({ user: { id: "u1" } as { id: string } | null, linhas: [] as unknown[], rpc: vi.fn() }));
 
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ isAdmin: m.admin }) }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: m.user }) }));
 vi.mock("@/integrations/supabase/client", () => {
   const canal = { on: () => canal, subscribe: () => canal };
   return {
@@ -46,7 +46,7 @@ const linha = (nome: string, posicao: number | null, situacao: string, extra = {
 
 describe("FilaEmFormacao", () => {
   it("mostra ao admin a ordem, quem aguarda a abertura e quem está bloqueado", async () => {
-    m.admin = true;
+    m.user = { id: "admin" };
     m.linhas = [linha("Ana", 1, "aguardando"), linha("Bia", 2, "aguardando"), linha("Caio", null, "bloqueado", { atrasados: 3 })];
     const el = montar();
     await vi.waitFor(() => expect(el.textContent).toContain("Ana"));
@@ -58,11 +58,11 @@ describe("FilaEmFormacao", () => {
     expect(el.textContent).toContain("2 corretor(es) em check-in hoje");
   });
 
-  it("não aparece nem consulta para quem não é admin", async () => {
-    m.admin = false;
+  it("também aparece e consulta para usuário autenticado que não é admin", async () => {
+    m.user = { id: "corretor" };
+    m.linhas = [linha("Corretor", 1, "na_fila")];
     const el = montar();
-    await vi.waitFor(() => expect(el.querySelector("[data-pronto]")).not.toBeNull());
-    expect(el.textContent).toBe("");
-    expect(m.rpc).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(el.textContent).toContain("Corretor"));
+    expect(m.rpc).toHaveBeenCalledWith("fila_em_formacao");
   });
 });
