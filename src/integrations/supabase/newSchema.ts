@@ -661,6 +661,7 @@ export async function listLegacyDeals(
       document_review_status: deal.document_review_status as PipelineDeal["document_review_status"],
       document_review_requested_at: deal.document_review_requested_at || undefined,
       document_review_reason: deal.document_review_reason || undefined,
+      contract_has_pending_issue: deal.contract_has_pending_issue,
       history: [],
     } satisfies LegacyDealRecord;
   });
@@ -731,6 +732,50 @@ export async function listLegacyLeads(intervalo?: { de: string; ate: string }): 
     status: legacyLeadStatus(lead),
     notes: lead.notes || "",
   }));
+}
+
+type DashboardRpcResult<T> = PromiseLike<{
+  data: T | null;
+  error: { message?: string; code?: string; details?: string; hint?: string } | null;
+}>;
+
+// As RPCs 0244 entram no deploy junto desta versão. O arquivo gerado do
+// Supabase só passa a conhecê-las depois que a migration chega ao banco; este
+// cliente estreito mantém o restante do schema completamente tipado.
+const dashboardRpc = supabase as unknown as {
+  rpc<T>(name: string, args?: Record<string, unknown>): DashboardRpcResult<T>;
+};
+
+/** Carga agregada da imobiliária, liberada somente para diretor/admin pela RPC. */
+export async function loadCompanyDashboardPayload(): Promise<DashboardPayload> {
+  const { data, error } = await dashboardRpc.rpc<Omit<DashboardPayload, "staff">>(
+    "dashboard_imobiliaria_payload",
+  );
+  if (error) throw dbError("dashboard_imobiliaria_payload", error);
+  if (!data) throw new Error("O Dashboard da imobiliária não retornou dados.");
+
+  const people = (data.people ?? []) as PersonRecord[];
+  return {
+    ...data,
+    deals: (data.deals ?? []) as LegacyDealRecord[],
+    people,
+    ccaCounts: data.ccaCounts ?? {},
+    ccaDealIds: data.ccaDealIds ?? [],
+    closedMonths: data.closedMonths ?? [],
+    staff: contarTime(people),
+  };
+}
+
+/** Leads da imobiliária para os gráficos do Dashboard, sem ampliar a tela Leads. */
+export async function listCompanyDashboardLeads(
+  intervalo?: { de: string; ate: string },
+): Promise<Lead[]> {
+  const { data, error } = await dashboardRpc.rpc<Lead[]>("dashboard_imobiliaria_leads", {
+    p_de: intervalo?.de ?? null,
+    p_ate: intervalo?.ate ?? null,
+  });
+  if (error) throw dbError("dashboard_imobiliaria_leads", error);
+  return data ?? [];
 }
 
 export type DashboardPayload = {

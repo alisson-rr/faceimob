@@ -23,7 +23,9 @@ import { listPipelineStages } from "@/integrations/supabase/permissions";
 import type { Lead } from "@/types/crm";
 import {
   displayMonthToIso,
+  listCompanyDashboardLeads,
   listLegacyLeads,
+  loadCompanyDashboardPayload,
   loadDashboardPayload,
   loadMonthlyGoals,
   type DashboardPayload,
@@ -33,6 +35,7 @@ import {
 } from "@/integrations/supabase/newSchema";
 
 export const ALL_MONTHS = "all";
+export type DashboardDataScope = "own" | "company";
 
 export type DealRow = LegacyDealRecord & { month_base: string };
 
@@ -91,11 +94,13 @@ export const monthOptions = (deals: DealRow[], hoje: string = currentMonthBase()
  * Carga unica do painel: negocios, leads por canal, CCA, staff e meses
  * fechados. `loadDashboardPayload` ja resolve tudo em paralelo no Supabase.
  */
-export function useDashboardPayload() {
+export function useDashboardPayload(dataScope: DashboardDataScope = "own") {
   const { user } = useAuth();
   const profileId = user?.id ?? null;
   const queryClient = useQueryClient();
-  const queryKey = ["dashboard", "payload", profileId];
+  const queryKey = dataScope === "company"
+    ? ["dashboard", "payload", profileId, "company"]
+    : ["dashboard", "payload", profileId];
 
   const query = useQuery({
     // O usuario entra na chave porque o payload sai recortado pela RLS: sem
@@ -107,6 +112,7 @@ export function useDashboardPayload() {
     // "Recarregar o painel" invalida o prefixo "dashboard" — ai o cache dos
     // negocios nao serve e a lista e relida, como antes.
     queryFn: () => {
+      if (dataScope === "company") return loadCompanyDashboardPayload();
       const recarregando = queryClient.getQueryState(queryKey)?.isInvalidated;
       return loadDashboardPayload(() =>
         queryClient.fetchQuery({ ...dealsQuery(profileId), ...(recarregando ? { staleTime: 0 } : {}) }));
@@ -231,6 +237,17 @@ export const dashboardScope = (roles: string[], canViewQueue: boolean): Dashboar
   };
 };
 
+/** Recorte textual/visual correspondente à RPC agregada da imobiliária. */
+export const companyDashboardScope = (base: DashboardScope): DashboardScope => ({
+  ...base,
+  readsAllDeals: true,
+  seesEveryone: true,
+  leadsIsWholeBase: true,
+  seesAllCca: true,
+  dealsLabel: "toda a operação",
+  leadsLabel: "toda a base",
+});
+
 /**
  * O texto do painel vazio, por recorte de quem esta olhando.
  *
@@ -315,14 +332,16 @@ export function pickSalesGoal(
  * perceber. A metrica entra no elemento seguinte, que a invalidacao por prefixo
  * alcanca.
  */
-export function useGoal(metric: GoalMetric, activeMonth: string) {
+export function useGoal(metric: GoalMetric, activeMonth: string, dataScope: DashboardDataScope = "own") {
   const { user, roles } = useAuth();
   const profileId = user?.id ?? null;
 
   return useQuery({
     // O usuario entra na chave: dois papeis diferentes no mesmo navegador
     // (troca de sessao, previsualizacao de papel) leem metas diferentes.
-    queryKey: ["dashboard", "sales-goal", metric, activeMonth, profileId, roles.join(",")],
+    queryKey: dataScope === "company"
+      ? ["dashboard", "sales-goal", metric, activeMonth, profileId, roles.join(","), "company"]
+      : ["dashboard", "sales-goal", metric, activeMonth, profileId, roles.join(",")],
     enabled: activeMonth !== ALL_MONTHS && !!profileId,
     queryFn: async (): Promise<SalesGoal> => {
       const { rows, ledTeamIds } = await loadMonthlyGoals(
@@ -330,41 +349,58 @@ export function useGoal(metric: GoalMetric, activeMonth: string) {
         displayMonthToIso(activeMonth),
         profileId as string,
       );
-      return pickSalesGoal(rows, { profileId, ledTeamIds, roles: roles });
+      return pickSalesGoal(rows, {
+        profileId,
+        ledTeamIds,
+        // Na visão da imobiliária o numerador vem da empresa inteira; portanto
+        // o denominador correto é sempre a meta global.
+        roles: dataScope === "company" ? ["admin"] : roles,
+      });
     },
   });
 }
 
 /** Meta de vendas do mes (contagem) — o denominador do `GoalCard`. */
-export const useSalesGoal = (activeMonth: string) => useGoal("sales", activeMonth);
+export const useSalesGoal = (activeMonth: string, dataScope: DashboardDataScope = "own") =>
+  useGoal("sales", activeMonth, dataScope);
 
 /** Meta de VGV do mes (R$) — o alvo do cartao de VGV, gravado no mesmo cartao
  *  de /equipes que grava a de vendas e que ate agora nada lia. */
-export const useVgvGoal = (activeMonth: string) => useGoal("vgv", activeMonth);
+export const useVgvGoal = (activeMonth: string, dataScope: DashboardDataScope = "own") =>
+  useGoal("vgv", activeMonth, dataScope);
 
 /**
  * Lista completa de leads — o painel de Leads precisa das linhas, e o KPI de
  * leads precisa da DATA de cada um para respeitar o filtro de periodo (o
  * payload devolve so a contagem total da base).
  */
-export function useDashboardLeads() {
+export function useDashboardLeads(dataScope: DashboardDataScope = "own") {
   const { user } = useAuth();
   const profileId = user?.id ?? null;
   return useQuery({
     // Mesmo motivo do payload: `leads_select` recorta por usuario.
-    queryKey: ["dashboard", "leads", profileId],
-    queryFn: () => listLegacyLeads(),
+    queryKey: dataScope === "company"
+      ? ["dashboard", "leads", profileId, "company"]
+      : ["dashboard", "leads", profileId],
+    queryFn: () => dataScope === "company" ? listCompanyDashboardLeads() : listLegacyLeads(),
     enabled: !!profileId,
   });
 }
 
 /** Os leads de um intervalo (seletor de período da aba Leads), contados no banco. */
-export function useDashboardLeadsNoIntervalo(intervalo: { de: string; ate: string } | null) {
+export function useDashboardLeadsNoIntervalo(
+  intervalo: { de: string; ate: string } | null,
+  dataScope: DashboardDataScope = "own",
+) {
   const { user } = useAuth();
   const profileId = user?.id ?? null;
   return useQuery({
-    queryKey: ["dashboard", "leads", profileId, "intervalo", intervalo?.de ?? null, intervalo?.ate ?? null],
-    queryFn: () => listLegacyLeads(intervalo ?? undefined),
+    queryKey: dataScope === "company"
+      ? ["dashboard", "leads", profileId, "company", "intervalo", intervalo?.de ?? null, intervalo?.ate ?? null]
+      : ["dashboard", "leads", profileId, "intervalo", intervalo?.de ?? null, intervalo?.ate ?? null],
+    queryFn: () => dataScope === "company"
+      ? listCompanyDashboardLeads(intervalo ?? undefined)
+      : listLegacyLeads(intervalo ?? undefined),
     enabled: !!profileId && !!intervalo,
   });
 }

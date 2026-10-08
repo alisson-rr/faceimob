@@ -1454,6 +1454,7 @@ export type Database = {
         Row: {
           closed_at: string | null
           code: string
+            contract_has_pending_issue: boolean
           created_at: string
           created_by: string | null
           developer_id: string | null
@@ -1487,6 +1488,7 @@ export type Database = {
         Insert: {
           closed_at?: string | null
           code?: string
+            contract_has_pending_issue?: boolean
           created_at?: string
           created_by?: string | null
           developer_id?: string | null
@@ -1520,6 +1522,7 @@ export type Database = {
         Update: {
           closed_at?: string | null
           code?: string
+            contract_has_pending_issue?: boolean
           created_at?: string
           created_by?: string | null
           developer_id?: string | null

@@ -49,7 +49,7 @@ const SIM_NAO = ["NÃO", "SIM"];
  *  painel) num valor que define comissão. */
 const rateio = (share?: number | null) =>
   share == null ? undefined : `${pct(share)} do VGV`;
-const ORIGENS = ["Lead Próprio", "Indicação", "Facebook", "Google", "Stand"];
+const ORIGENS = ["Lead Faceimob", "Lead Próprio", "Indicação", "Facebook", "Google", "Stand"];
 
 /** Sufixos do item cinza. Curtos porque vivem DENTRO da opção do Select; a
  *  frase inteira fica no parágrafo abaixo do campo. */
@@ -119,6 +119,8 @@ interface Props {
    *  e a frase precisa nascer PRESA ao campo que a causou, não num toast que
    *  some sozinho por cima de ~40 campos. */
   developerError?: string | null;
+  projectError?: string | null;
+  documentNumberError?: { field: "cpf" | "numero_pis" | "cpf2" | "numero_pis2"; message: string } | null;
   /** "Em análise" ou "Esteira Ágil" escolhidos por quem não os grava direto:
    *  abre o envio ao gerente em vez de trocar o Status 2 (01/10/2026). */
   onPedirConferencia?: () => void;
@@ -230,7 +232,7 @@ export function lideresDoNegocio(people: PersonRecord[], daRpc: LiderancaSelecio
 }
 
 export function DealForm({
-  form, onChange, field, people, developers, stages, isNew, developerError, onPedirConferencia, dealId, onCpfBlur,
+  form, onChange, field, people, developers, stages, isNew, developerError, projectError, documentNumberError, onPedirConferencia, dealId, onCpfBlur,
 }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const vgvTravado = !isNew && !can("deals.edit_value");
@@ -497,9 +499,9 @@ export function DealForm({
 
       <Section title="Cliente" className="deal-tone-blue deal-field-light">
         <TextField id={field("client")} label="Cliente *" value={form.client} onChange={(v) => onChange({ client: v })} />
-        <TextField id={field("cpf")} label="CPF" value={form.cpf} onChange={(v) => onChange({ cpf: v })} onBlur={onCpfBlur} />
+        <TextField id={field("cpf")} label="CPF" value={form.cpf} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "cpf" ? documentNumberError.message : null} onChange={(v) => onChange({ cpf: v })} onBlur={onCpfBlur} />
         <TextField id={field("contato")} label="Contato" value={form.contato} onChange={(v) => onChange({ contato: v })} />
-        <TextField id={field("pis")} label="Número do PIS" value={form.numero_pis} onChange={(v) => onChange({ numero_pis: v })} />
+        <TextField id={field("pis")} label="Número do PIS" value={form.numero_pis} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "numero_pis" ? documentNumberError.message : null} onChange={(v) => onChange({ numero_pis: v })} />
         <TextField id={field("civil")} label="Estado civil" value={form.estado_civil} onChange={(v) => onChange({ estado_civil: v })} />
         <TextField id={field("email")} label="E-mail" type="email" value={form.email_client} onChange={(v) => onChange({ email_client: v })} />
         <TextField id={field("natural")} label="Naturalidade" value={form.naturalidade} onChange={(v) => onChange({ naturalidade: v })} />
@@ -513,9 +515,9 @@ export function DealForm({
       {form.has_second_client && (
         <Section title="2º cliente" className="deal-tone-gold deal-field-light">
           <TextField id={field("client2")} label="Cliente" value={form.client2} onChange={(v) => onChange({ client2: v })} />
-          <TextField id={field("cpf2")} label="CPF" value={form.cpf2} onChange={(v) => onChange({ cpf2: v })} onBlur={onCpfBlur} />
+          <TextField id={field("cpf2")} label="CPF" value={form.cpf2} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "cpf2" ? documentNumberError.message : null} onChange={(v) => onChange({ cpf2: v })} onBlur={onCpfBlur} />
           <TextField id={field("contato2")} label="Contato" value={form.contato2} onChange={(v) => onChange({ contato2: v })} />
-          <TextField id={field("pis2")} label="Número do PIS" value={form.numero_pis2} onChange={(v) => onChange({ numero_pis2: v })} />
+          <TextField id={field("pis2")} label="Número do PIS" value={form.numero_pis2} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "numero_pis2" ? documentNumberError.message : null} onChange={(v) => onChange({ numero_pis2: v })} />
           <TextField id={field("civil2")} label="Estado civil" value={form.estado_civil2} onChange={(v) => onChange({ estado_civil2: v })} />
           <TextField id={field("email2")} label="E-mail" type="email" value={form.email_client2} onChange={(v) => onChange({ email_client2: v })} />
           <TextField id={field("natural2")} label="Naturalidade" value={form.naturalidade2} onChange={(v) => onChange({ naturalidade2: v })} />
@@ -593,12 +595,14 @@ export function DealForm({
               cadastrados travava o negócio enquanto o admin não cadastrasse o
               empreendimento. Os cadastrados da construtora viram sugestão
               (`datalist`); escolher um deles liga o vínculo `project_id`,
-              digitar outro nome grava só o texto. Sem asterisco: nunca foi
-              cobrado (`dealRequiredError`). */}
-          <Label htmlFor={field("project")} className="text-eyebrow">Empreendimento</Label>
+              digitar outro nome grava só o texto. Desde 08/10 ele é obrigatório
+              em toda gravação (`dealRequiredError`). */}
+          <Label htmlFor={field("project")} className="text-eyebrow">Empreendimento *</Label>
           <Input
             id={field("project")} list={field("project-sugestoes")} maxLength={120}
             className="mt-1 text-xs" placeholder="Digite o empreendimento"
+            aria-invalid={Boolean(projectError) || undefined}
+            aria-describedby={projectError ? field("project-error") : undefined}
             value={form.project || ""}
             onChange={(event) => {
               const nome = event.target.value;
@@ -606,6 +610,7 @@ export function DealForm({
               onChange({ project: nome, project_id: cadastrado?.id ?? null });
             }}
           />
+          {projectError && <p id={field("project-error")} className="mt-1 text-xs text-destructive">{projectError}</p>}
           <datalist id={field("project-sugestoes")}>
             {projects.map((row) => <option key={row.id} value={row.name} />)}
           </datalist>

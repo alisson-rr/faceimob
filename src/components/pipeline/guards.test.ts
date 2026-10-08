@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
-  blockedMoveReason, dealLock, dealRangeError, dealRequiredError, exitableStages,
+  blockedMoveReason, dealDocumentNumberError, dealLock, dealRangeError, dealRequiredError, exitableStages,
   findDuplicateDeal, isBehindStage,
 } from "./guards";
 import type { PipelineStage } from "./stages";
@@ -287,33 +287,43 @@ describe("dealRangeError", () => {
  */
 describe("dealRequiredError", () => {
   it("recusa negócio sem construtora", () => {
-    expect(dealRequiredError({ developer: "", developer_id: null }))
+    expect(dealRequiredError({ developer: "", developer_id: null, project: "", project_id: null }))
       .toMatch(/construtora/i);
   });
 
   it("aceita quando a construtora está escolhida", () => {
-    expect(dealRequiredError({ developer: "MRV", developer_id: "d1" })).toBeNull();
+    expect(dealRequiredError({ developer: "MRV", developer_id: "d1", project: "Reserva", project_id: "p1" })).toBeNull();
   });
 
   // O beco sem saída: construtora sem nenhum empreendimento no catálogo. O
   // Select fica vazio e desabilitado, o placeholder anuncia "Esta construtora
   // não tem empreendimento cadastrado" e não há digitação livre — cobrar o
   // campo aqui recusava o "Criar negócio" por algo que a tela não oferece.
-  it("aceita criação sem empreendimento", () => {
-    expect(dealRequiredError({ developer: "MRV", developer_id: "d1" })).toBeNull();
+  it("recusa criação sem empreendimento", () => {
+    expect(dealRequiredError({ developer: "MRV", developer_id: "d1", project: "", project_id: null }))
+      .toMatch(/empreendimento/i);
   });
 
   it("negócio antigo com nome e sem id continua editável", () => {
     // Registro importado guarda o texto e não o id; cobrar o `_id` aqui
     // trancaria a edição de negócio que já está no banco.
-    expect(dealRequiredError({ developer: "MRV", developer_id: null })).toBeNull();
+    expect(dealRequiredError({ developer: "MRV", developer_id: null, project: "Reserva", project_id: null })).toBeNull();
   });
 
-  // A regra é do registro que NASCE: cobrada em toda gravação, ela trancava a
-  // edição de negócio importado ou semeado sem construtora — o corretor não
-  // conseguia nem corrigir o CPF.
-  it("negócio já gravado não é bloqueado por campo que ele nunca teve", () => {
-    expect(dealRequiredError({ id: "d1", developer: "", developer_id: null })).toBeNull();
+  it("negócio já gravado também precisa receber empreendimento ao ser salvo", () => {
+    expect(dealRequiredError({ id: "d1", developer: "", developer_id: null, project: "", project_id: null }))
+      .toMatch(/empreendimento/i);
+  });
+});
+
+describe("dealDocumentNumberError", () => {
+  it("aceita CPF e PIS vazios ou com onze dígitos", () => {
+    expect(dealDocumentNumberError({ cpf: "123.456.789-01", numero_pis: "12345678901" })).toBeNull();
+  });
+
+  it("indica o primeiro CPF ou PIS com quantidade inválida", () => {
+    expect(dealDocumentNumberError({ cpf: "123", numero_pis: "12345678901" }))
+      .toEqual({ field: "cpf", message: "CPF deve ter exatamente 11 números." });
   });
 });
 

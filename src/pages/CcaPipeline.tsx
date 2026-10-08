@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -21,12 +22,12 @@ import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/n
 import { useNegocioDoLink } from "@/components/pipeline/useNegocioDoLink";
 import {
   CcaBoard, CcaMoveDialog, CcaStageSettingsDialog,
-  dealRangeError, useCcaBoard, useDevelopers, useInvalidateCcaBoard,
+  dealDocumentNumberError, dealRangeError, dealRequiredError, useCcaBoard, useDevelopers, useInvalidateCcaBoard,
   useInvalidateDeals, usePeople, usePipelineStages,
   type CcaDeal, type CcaStage,
 } from "@/components/pipeline";
 import {
-  periodoValido, ultimos30Dias, useCcaSendCounts, type CcaPeriodo,
+  periodoCcaPreset, periodoValido, useCcaSendCounts, type CcaPeriodo, type CcaPeriodoPreset,
 } from "@/components/pipeline/ccaData";
 import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 
@@ -224,14 +225,17 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
  */
 export default function CcaPipeline() {
   const { can, isAdmin, roles } = useAuth();
+  const [busca, setBusca] = useState("");
   // 0228: a CCA organiza a ordem das colunas (só a ordem).
   const gerenciaEstagios = isAdmin || roles.includes("cca");
-  // `null` = ninguém mexeu no período: valem os últimos 30 dias, recalculados a
-  // cada render para a virada do dia não congelar o "até hoje" (como no Pipeline).
-  const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo | null>(null);
-  const periodo = periodoEscolhido ?? ultimos30Dias();
+  const [periodoPreset, setPeriodoPreset] = useState<CcaPeriodoPreset>("mes");
+  const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo>(() => periodoCcaPreset("mes"));
+  const periodo = periodoPreset === "customizado" ? periodoEscolhido : periodoCcaPreset(periodoPreset);
   const periodoOk = periodoValido(periodo);
-  const board = useCcaBoard(periodo, periodoOk);
+  // Buscar por nome ignora o recorte de datas, como já acontece no Pipeline.
+  const buscando = busca.trim().length > 0;
+  const periodoConsulta = buscando ? { de: "2000-01-01", ate: "2099-12-31" } : periodo;
+  const board = useCcaBoard(periodoConsulta, buscando || periodoOk);
   const refresh = useInvalidateCcaBoard();
   const pipelineStages = usePipelineStages();
   // Insumos do editor. São as MESMAS consultas do Pipeline (mesmas chaves do
@@ -248,7 +252,6 @@ export default function CcaPipeline() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [devolvendo, setDevolvendo] = useState<CcaDeal | null>(null);
   const [typesOpen, setTypesOpen] = useState(false);
-  const [busca, setBusca] = useState("");
   const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
   /** Negócio aberto no editor — o `id`, não a linha: assim o modal acompanha o
    *  refetch do quadro em vez de segurar uma cópia congelada. */
@@ -400,23 +403,40 @@ export default function CcaPipeline() {
               className="h-9 pl-9 text-xs"
             />
           </div>
-          <Label htmlFor={deId} className="text-xs">De</Label>
-          <Input
-            id={deId} type="date" className="h-9 w-auto text-xs"
-            min="2000-01-01" max={periodo.ate || undefined} value={periodo.de}
-            aria-describedby={periodoMsgId} aria-invalid={!periodoOk || undefined}
-            onChange={(event) => setPeriodoEscolhido({ ...periodo, de: event.target.value })}
-          />
-          <Label htmlFor={ateId} className="text-xs">Até</Label>
-          <Input
-            id={ateId} type="date" className="h-9 w-auto text-xs"
-            min={periodo.de || "2000-01-01"} value={periodo.ate}
-            aria-describedby={periodoMsgId} aria-invalid={!periodoOk || undefined}
-            onChange={(event) => setPeriodoEscolhido({ ...periodo, ate: event.target.value })}
-          />
-          <Button variant="outline" size="sm" className="h-9" onClick={() => setPeriodoEscolhido(null)}>
-            Últimos 30 dias
-          </Button>
+          <Select value={periodoPreset} onValueChange={(value: CcaPeriodoPreset) => {
+            setPeriodoPreset(value);
+            if (value !== "customizado") setPeriodoEscolhido(periodoCcaPreset(value));
+          }}>
+            <SelectTrigger className="h-9 w-[150px] text-xs" aria-label="Período da esteira CCA">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hoje">Hoje</SelectItem>
+              <SelectItem value="ontem">Ontem</SelectItem>
+              <SelectItem value="semana">Esta semana</SelectItem>
+              <SelectItem value="mes">Este mês</SelectItem>
+              <SelectItem value="mes_passado">Mês passado</SelectItem>
+              <SelectItem value="customizado">Customizado</SelectItem>
+            </SelectContent>
+          </Select>
+          {periodoPreset === "customizado" && (
+            <>
+              <Label htmlFor={deId} className="text-xs">De</Label>
+              <Input
+                id={deId} type="date" className="h-9 w-auto text-xs"
+                min="2000-01-01" max={periodo.ate || undefined} value={periodo.de}
+                aria-describedby={periodoMsgId} aria-invalid={!periodoOk || undefined}
+                onChange={(event) => setPeriodoEscolhido({ ...periodo, de: event.target.value })}
+              />
+              <Label htmlFor={ateId} className="text-xs">Até</Label>
+              <Input
+                id={ateId} type="date" className="h-9 w-auto text-xs"
+                min={periodo.de || "2000-01-01"} value={periodo.ate}
+                aria-describedby={periodoMsgId} aria-invalid={!periodoOk || undefined}
+                onChange={(event) => setPeriodoEscolhido({ ...periodo, ate: event.target.value })}
+              />
+            </>
+          )}
           {/* Sempre montado: `role="status"` só anuncia a mudança de um nó que já existia. */}
           <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
             {board.isFetching && <><Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Carregando…</>}
@@ -424,7 +444,9 @@ export default function CcaPipeline() {
         </div>
         <p id={periodoMsgId} aria-live="polite" className={cn("text-xs", periodoOk ? "text-muted-foreground" : "text-destructive")}>
           {periodoOk
-            ? "Período pela data de entrada na esteira. A busca procura só nos casos deste período."
+            ? buscando
+              ? "Busca ativa: o nome é procurado em toda a esteira, sem limitar pelas datas."
+              : "Período pela data de entrada na esteira. Buscar por nome ignora este período."
             : "Preencha as duas datas, com o início antes do fim."}
         </p>
       </div>
@@ -489,11 +511,12 @@ export default function CcaPipeline() {
           onClose={() => setOpenDealId(null)}
           onReviewChanged={async () => { await invalidateDeals(); await refresh(); }}
           onSave={async (updated) => {
-            // Só esta guarda: `dealRequiredError` e `findDuplicateDeal`, as
-            // outras duas que o Pipeline aplica, só valem na CRIAÇÃO (`form.id`
-            // vazio) e daqui nunca sai negócio novo — devolveriam `null` sempre.
             const foraDeFaixa = dealRangeError(updated);
             if (foraDeFaixa) throw dbError("deals", { code: "P0001", message: foraDeFaixa });
+            const semObrigatorio = dealRequiredError(updated);
+            if (semObrigatorio) throw dbError("deals", { code: "P0001", message: semObrigatorio });
+            const documentoInvalido = dealDocumentNumberError(updated);
+            if (documentoInvalido) throw dbError("deals", { code: "P0001", message: documentoInvalido.message });
             await saveLegacyDeal(updated);
             await invalidateDeals();
             await refresh();

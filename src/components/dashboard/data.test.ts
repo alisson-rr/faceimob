@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  companyDashboardScope,
   dashboardScope,
   dealCategory,
   leadsInMonth,
@@ -460,6 +461,23 @@ describe("dashboardScope — o recorte por papel, que espelha as policies", () =
     expect(dir.canManageGoal).toBe(true);
     expect(dir.dealsLabel).toContain("equipes que você lidera");
     expect(dir.leadsLabel).toContain("sua carteira");
+  });
+
+  it("a visão agregada do diretor descreve a imobiliária sem mudar o escopo operacional", () => {
+    const proprio = comFila(["director"]);
+    const imobiliaria = companyDashboardScope(proprio);
+    expect(imobiliaria).toMatchObject({
+      readsAllDeals: true,
+      seesEveryone: true,
+      leadsIsWholeBase: true,
+      seesAllCca: true,
+      isDirector: true,
+      dealsLabel: "toda a operação",
+      leadsLabel: "toda a base",
+    });
+    // A função não altera o objeto base usado pela visão "Minha diretoria".
+    expect(proprio.readsAllDeals).toBe(false);
+    expect(proprio.leadsIsWholeBase).toBe(false);
   });
 
   it("socio le tudo, cadastra meta e tem a base de leads MENOR que a real", () => {

@@ -339,6 +339,11 @@ export function DealsTable({
                       <Badge variant="outline" className={cn("whitespace-nowrap text-xs", review.className)}>
                         {review.label}
                       </Badge>
+                      {deal.contract_has_pending_issue && (
+                        <Badge variant="outline" className="whitespace-nowrap border-warning/60 bg-warning/15 text-xs text-warning">
+                          Pendência no contrato
+                        </Badge>
+                      )}
                       {ccaQueuePosition ? (
                         <Badge variant="secondary" className="whitespace-nowrap text-xs tabular-nums text-info">
                           {ccaQueuePosition}º na Esteira Ágil

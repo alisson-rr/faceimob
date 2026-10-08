@@ -590,10 +590,13 @@ export default function DealDocumentUpload({
     .filter((d) => !d.superseded_at && semArquivo?.has(d.storage_path) !== true));
   const status = review?.document_review_status ?? "draft";
   const canSubmit = isAdmin || myRoles.includes("broker");
-  const canReview = isAdmin || myRoles.includes("manager");
-  // Excluir só enquanto o dossiê é do corretor: a policy `deal_documents_delete`
-  // (0059) recusa depois do envio, e botão que o banco recusa não aparece.
-  const canDelete = (isAdmin || myRoles.includes("broker")) && (status === "draft" || status === "returned");
+  // O banco (0235) aceita gerente OU diretor vinculado, além do admin. A tela
+  // precisa espelhar os três; antes o diretor via a pendência no cabeçalho, mas
+  // ao abrir os Anexos não recebia os botões para decidir.
+  const canReview = isAdmin || myRoles.some((role) => role === "manager" || role === "director");
+  // 0243: qualquer usuário que enxerga o negócio pode corrigir um documento
+  // errado, em qualquer fase. A RLS repete o mesmo limite de visibilidade.
+  const canDelete = true;
   // Anexar segue a MESMA cláusula que `deal_documents_insert` cobra desde a
   // 0077: depois do envio ao gerente o dossiê é prova. Sem isto o corretor
   // trocava a versão que o gerente aprovou e que o analista ia baixar, e o
@@ -807,7 +810,7 @@ export default function DealDocumentUpload({
 
         {status === "pending" && !canReview && (
           <p className="text-xs text-muted-foreground">
-            Aguardando a decisão de um gerente vinculado ao negócio ou, na falta dele, de um administrador.
+            Aguardando a decisão de um gerente ou diretor vinculado ao negócio ou, na falta deles, de um administrador.
           </p>
         )}
         {status === "approved" && (

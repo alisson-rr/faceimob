@@ -141,7 +141,7 @@ export function dealRangeError(
 /**
  * Campo obrigatório que está vazio, ou `null`.
  *
- * **Só a construtora.** "Construtora *" tinha o asterisco e NADA a cobrava: o
+ * "Construtora *" tinha o asterisco e NADA a cobrava: o
  * salvamento só exigia cliente e um participante, e `deals.developer_id` aceita
  * nulo no banco. O negócio entrava, o cartão passava a mostrar "Sem
  * construtora" e — pior — a conferência documental depende de `developer_id`
@@ -152,30 +152,38 @@ export function dealRangeError(
  * digitado sem correspondência no catálogo salvava `developer_id: null` com o
  * texto preenchido na tela.
  *
- * **Empreendimento NÃO é cobrado** — nem aqui, nem na criação. Ele é opcional
- * na outra porta de entrada do mesmo registro (`ConvertLeadDialog` rotula o
- * campo sem asterisco e converte com `project_id: null`), é nulo em negócio
- * de construtora sem catálogo (`developers` sem nenhuma linha em
- * `developer_projects` é caso real) e o Select do formulário não tem digitação
- * livre: cobrá-lo aqui fechava o "Criar negócio" num beco — o operador escolhia
- * a construtora, lia "Esta construtora não tem empreendimento cadastrado" no
- * próprio placeholder e o salvamento recusava por um campo que a tela não tinha
- * como preencher. Duas portas para o mesmo registro passam a nascer com a mesma
- * regra.
- *
- * **Só na CRIAÇÃO** (`form.id` vazio) — a mesma fronteira de `findDuplicateDeal`
- * logo abaixo, e pelo mesmo motivo: a regra é sobre o registro que está sendo
- * AUTORADO, não sobre todo salvamento do registro que já existe. Cobrada em
- * toda gravação, ela trancava a edição de negócio que nasceu incompleto por
- * outro caminho (importação, semente), congelando o registro inteiro por um
- * campo que o editor nem estava tocando.
+ * Empreendimento é obrigatório em toda gravação (pedido CCA de 08/10/2026).
+ * O campo aceita texto livre, então negócio legado sem item no catálogo também
+ * consegue ser corrigido. A construtora segue obrigatória apenas na criação,
+ * para não impedir que um legado seja aberto e corrigido.
  */
 export function dealRequiredError(
-  form: Pick<SaveLegacyDealInput, "id" | "developer" | "developer_id">,
+  form: Pick<SaveLegacyDealInput, "id" | "developer" | "developer_id" | "project" | "project_id">,
 ): string | null {
-  if (form.id) return null;
-  if (!form.developer_id && !(form.developer ?? "").trim()) {
+  if (!form.id && !form.developer_id && !(form.developer ?? "").trim()) {
     return "Escolha a construtora: sem ela o negócio não entra na conferência documental.";
+  }
+  if (!form.project_id && !(form.project ?? "").trim()) {
+    return "Preencha o empreendimento: ele é obrigatório para criar o negócio.";
+  }
+  return null;
+}
+
+export type DealDocumentNumberField = "cpf" | "numero_pis" | "cpf2" | "numero_pis2";
+
+/** CPF e PIS são opcionais, mas, quando informados, precisam ter exatamente 11 dígitos. */
+export function dealDocumentNumberError(
+  form: Pick<SaveLegacyDealInput, DealDocumentNumberField>,
+): { field: DealDocumentNumberField; message: string } | null {
+  const fields: Array<[DealDocumentNumberField, string]> = [
+    ["cpf", "CPF"], ["numero_pis", "PIS"], ["cpf2", "CPF do 2º cliente"],
+    ["numero_pis2", "PIS do 2º cliente"],
+  ];
+  for (const [field, label] of fields) {
+    const value = String(form[field] ?? "");
+    if (value && value.replace(/\D/g, "").length !== 11) {
+      return { field, message: `${label} deve ter exatamente 11 números.` };
+    }
   }
   return null;
 }
