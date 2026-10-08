@@ -26,7 +26,7 @@ export type CcaQueueEntry = {
 // `types.ts`. O cast fica isolado nesta fronteira e os retornos são tipados.
 const ccaRpc = supabase as unknown as {
   rpc: (
-    name: "my_cca_queue_position" | "reactivate_deal",
+    name: "my_cca_queue_position" | "reactivate_deal" | "reactivate_deal_with_destination",
     params?: Record<string, unknown>,
   ) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>;
 };
@@ -64,6 +64,7 @@ export const useMyCcaQueue = () => {
 export type ReactivateDealParams = {
   dealId: string;
   brokerId?: string | null;
+  destination?: "incomplete" | "external";
 };
 
 export type ReactivateDealResult = {
@@ -71,14 +72,17 @@ export type ReactivateDealResult = {
   reactivated: boolean;
   new_month: string;
   broker_id: string;
+  destination: "incomplete" | "external";
+  status: string;
 };
 
 export async function reactivateDeal(params: ReactivateDealParams): Promise<ReactivateDealResult> {
-  const { data, error } = await ccaRpc.rpc("reactivate_deal", {
+  const { data, error } = await ccaRpc.rpc("reactivate_deal_with_destination", {
     p_deal_id: params.dealId,
     p_broker_id: params.brokerId ?? null,
+    p_destination: params.destination ?? "incomplete",
   });
-  if (error) throw dbError("reactivate_deal", error);
+  if (error) throw dbError("reactivate_deal_with_destination", error);
   return data as ReactivateDealResult;
 }
 
