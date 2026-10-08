@@ -4,6 +4,12 @@
 -- valendo em Pipeline, Leads e exportações. Estas duas RPCs são somente leitura
 -- e entregam o necessário para o Dashboard da imobiliária sem alargar as RLS.
 
+-- A 0243 criou três funções de trigger sem retirar o EXECUTE implícito de
+-- PUBLIC. Elas nunca são RPCs e não devem aparecer na superfície anônima.
+revoke execute on function public.deals_origin_from_lead() from public, anon;
+revoke execute on function public.deal_clients_validate_documents() from public, anon;
+revoke execute on function public.deals_mark_contract_pending() from public, anon;
+
 create or replace function public.dashboard_imobiliaria_payload()
 returns jsonb
 language plpgsql
