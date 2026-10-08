@@ -206,6 +206,21 @@ describe("monthView — o mês inteiro numa conta só", () => {
     ]);
   });
 
+  it("o ranking de propostas por construtora não soma o legado", () => {
+    const rows = [
+      deal({ id: "p1", developer: "Tenda", status_group_code: "PROPOSTA" }),
+      deal({ id: "p2", developer: "Tenda", status_group_code: "PROPOSTA" }),
+      deal({ id: "l1", developer: "Tenda", status_group_code: "LEGADO" }),
+      deal({ id: "l2", developer: "MRV", status_group_code: "LEGADO" }),
+    ];
+    const view = monthView(rows, "08/2026");
+    expect(view.stats.propostas).toBe(2);
+    expect(view.developers.map((row) => [row.dev, row.propostas])).toEqual([
+      ["MRV", 0],
+      ["TENDA", 2],
+    ]);
+  });
+
   it("construtora acentuada ordena pela letra base, nao depois do Z", () => {
     // `sort()` sem comparador compara code unit: "Á" e U+00C1, maior que "Z"
     // (U+005A), entao toda construtora acentuada ia para o fim da grade, do

@@ -708,6 +708,13 @@ export default function Pipeline() {
                   <span className="block truncate text-xs text-muted-foreground">
                     {[deal.developer, deal.project, deal.unit].filter(Boolean).join(" · ") || "Proposta sem identificação complementar"}
                   </span>
+                  <span className="mt-1 block truncate text-xs text-foreground/80">
+                    <span className="font-medium">Corretor:</span>{" "}
+                    {deal.broker1_name || deal.broker1 || "Não informado"}
+                    <span aria-hidden> · </span>
+                    <span className="font-medium">Gerente:</span>{" "}
+                    {deal.manager1_name || deal.manager1 || "Não informado"}
+                  </span>
                 </span>
                 <FileCheck2 className="h-5 w-5 shrink-0 text-warning" aria-hidden />
               </button>
