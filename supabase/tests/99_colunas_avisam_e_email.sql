@@ -168,6 +168,7 @@ $$;
 
 do $$
 begin
+  update public.automation_settings set cca_move_email = false where id;
   perform pg_temp.move155('00000000-0000-0000-0000-000001550010', 'Avisa sem e-mail 155');
 
   perform pg_temp.check155(
