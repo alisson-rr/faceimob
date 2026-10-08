@@ -177,7 +177,8 @@ begin
         and profile_id in ('00000000-0000-0000-0000-000001550002', '00000000-0000-0000-0000-000001550003')) = 2,
     'corretor e gerente recebem o aviso, como antes');
   perform pg_temp.check155(
-    not exists (select 1 from public.cca_move_emails where deal_id = pg_temp.deal155()),
+    not exists (select 1 from public.cca_move_emails
+                 where deal_id = pg_temp.deal155() and source = 'cca'),
     'desligado, nenhum e-mail entra na fila');
   perform pg_temp.check155(
     (select status_detail from public.deals where id = pg_temp.deal155()) = '12. EM PROCESSAMENTO',
@@ -222,7 +223,8 @@ begin
         and n.profile_id in ('00000000-0000-0000-0000-000001550002', '00000000-0000-0000-0000-000001550003')) = v_avisos,
     'nem o aviso genérico de status sai no movimento interno');
   perform pg_temp.check155(
-    not exists (select 1 from public.cca_move_emails where deal_id = pg_temp.deal155()),
+    not exists (select 1 from public.cca_move_emails
+                 where deal_id = pg_temp.deal155() and source = 'cca'),
     'nem com o e-mail ligado');
   perform pg_temp.check155(
     (select status_detail from public.deals where id = pg_temp.deal155()) = '12. EM PROCESSAMENTO',
@@ -244,10 +246,13 @@ begin
       where kind = 'cca_status_changed' and body like '%Aprovar <script>%') = 2,
     'o aviso sai para os dois');
   perform pg_temp.check155(
-    (select count(*) from public.cca_move_emails where deal_id = pg_temp.deal155() and not copia) = 1,
-    'um e-mail só: o gerente sem e-mail é pulado e o movimento não quebra');
+    (select count(*) from public.cca_move_emails
+      where deal_id = pg_temp.deal155() and source = 'cca' and not copia) = 2,
+    'o corretor e a analista que agiu recebem; o gerente sem e-mail é pulado');
 
-  select * into v_linha from public.cca_move_emails where deal_id = pg_temp.deal155() and not copia;
+  select * into v_linha from public.cca_move_emails
+   where deal_id = pg_temp.deal155() and source = 'cca' and not copia
+     and profile_id = '00000000-0000-0000-0000-000001550003';
   perform pg_temp.check155(
     v_linha.to_email = 'cor@avisa155.test'
     and v_linha.profile_id = '00000000-0000-0000-0000-000001550003'
@@ -285,7 +290,8 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', '00000000-0000-0000-0000-000001550001', 'role', 'authenticated')::text, false);
   set local role authenticated;
-  select count(*) into v_adm from public.cca_move_emails where deal_id = pg_temp.deal155() and not copia;
+  select count(*) into v_adm from public.cca_move_emails
+   where deal_id = pg_temp.deal155() and source = 'cca' and not copia;
   reset role;
 
   perform set_config('request.jwt.claims', json_build_object('role', 'anon')::text, false);
@@ -299,7 +305,7 @@ begin
 
   perform pg_temp.check155(v_cor = 0, 'o corretor não lê a fila, nem o próprio e-mail');
   perform pg_temp.check155(v_insert_negado, 'o corretor não enfileira e-mail pela API');
-  perform pg_temp.check155(v_adm = 1, 'o admin lê a fila');
+  perform pg_temp.check155(v_adm = 2, 'o admin lê os e-mails do corretor e da analista');
   perform pg_temp.check155(v_anon_negado, 'anon não tem acesso à fila');
 end
 $$;
