@@ -53,6 +53,17 @@ export const ccaKeys = {
   queue: ["cca", "queue"] as const,
 };
 
+/**
+ * "2º na Esteira Ágil" do negócio, ou `null` fora das filas. Lê o mesmo cache
+ * de `useMyCcaQueue` sem abrir outro canal realtime (a ficha e o Pipeline
+ * abertos juntos não podem assinar o mesmo canal duas vezes).
+ */
+export const usePosicaoNaFilaCca = (dealId: string | null): string | null => {
+  const fila = useQuery({ queryKey: ccaKeys.queue, queryFn: getMyCcaQueuePosition, staleTime: 30_000 });
+  const minha = dealId ? fila.data?.find((entry) => entry.deal_id === dealId) : undefined;
+  return minha ? `${minha.queue_position}º ${CCA_FILA_ROTULO[minha.fila]}` : null;
+};
+
 export const useMyCcaQueue = () => {
   const queryClient = useQueryClient();
   const query = useQuery({

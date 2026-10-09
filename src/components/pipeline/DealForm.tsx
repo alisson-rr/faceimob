@@ -852,7 +852,9 @@ export function DealForm({
                   todo — trancar o resto tirava do corretor rótulos que sempre
                   foram dele. Os dois saem desabilitados com o motivo, a mesma
                   forma da lista de etapas acima e do Select da tabela. */}
-              {esteiraAgil && onPedirConferencia && !conferenciaPendente && statusKey(form.status) !== ESTEIRA_AGIL && (
+              {/* Só no negócio novo: depois de criado, o envio é pelo "Próximo
+                  passo" do topo da ficha (09/10/2026), um caminho só. */}
+              {isNew && esteiraAgil && onPedirConferencia && !conferenciaPendente && statusKey(form.status) !== ESTEIRA_AGIL && (
                 <SelectItem value={esteiraAgil.value}>
                   <span>{esteiraAgil.label}</span>
                   <span className="text-muted-foreground"> (enviar ao gerente)</span>
@@ -891,6 +893,11 @@ export function DealForm({
             </SelectContent>
           </Select>
           {!can("deals.edit_status_detail") && <p className="mt-1 text-xs text-muted-foreground">Seu perfil pode consultar o Status 2. A edição depende da permissão “Alterar Status 2”.</p>}
+          {!isNew && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Enviar para a Esteira Ágil ou para a análise p/ virar negócio é pelo <strong>Próximo passo</strong>, no topo da ficha.
+            </p>
+          )}
           {vendaBloqueada && (
             <p id={field("status-hint")} className="mt-1 text-xs text-muted-foreground">
               {vendaBloqueada}

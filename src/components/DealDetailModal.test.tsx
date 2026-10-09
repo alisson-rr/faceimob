@@ -51,6 +51,9 @@ vi.mock("@/components/pipeline/data", () => ({
 }));
 
 vi.mock("@/integrations/supabase/leads", () => ({ listDeveloperProjects: async () => [] }));
+vi.mock("@/integrations/supabase/cca", () => ({ usePosicaoNaFilaCca: () => null }));
+// A faixa "Próximo passo" tem teste próprio (DealDocumentUpload); aqui o assunto é o salvar da ficha.
+vi.mock("@/components/DealDocumentUpload", () => ({ default: () => null }));
 
 // O formulário lê o catálogo de status por `useQuery`, e este teste monta sem
 // `QueryClientProvider`: sem catálogo, o formulário mostra só o valor gravado.

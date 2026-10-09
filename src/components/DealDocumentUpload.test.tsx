@@ -243,3 +243,45 @@ describe("DealDocumentUpload — análise p/ virar negócio", () => {
     expect(container.textContent).toContain("Análise p/ virar negócio");
   });
 });
+
+describe("DealDocumentUpload — faixa Próximo passo (09/10/2026)", () => {
+  async function montarParte(parte: "acoes" | "arquivos", extra: { statusDetail?: string } = {}) {
+    container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <DealDocumentUpload dealId="deal-1" clientName="Cliente" dealCode="N-1" hasDeveloper parte={parte} {...extra} />,
+      );
+    });
+    return container.textContent ?? "";
+  }
+
+  it("ações no topo, arquivos na aba: cada parte mostra só o seu", async () => {
+    h.status = "draft";
+    h.papeis = ["broker"];
+    h.caseStatus = null;
+    const acoes = await montarParte("acoes");
+    expect(acoes).toContain("Próximo passo");
+    expect(acoes).toContain("Enviar para a Esteira Ágil");
+    expect(acoes).not.toContain("Anexar Documentos");
+    await act(async () => { root.unmount(); });
+    container.remove();
+    const arquivos = await montarParte("arquivos");
+    expect(arquivos).toContain("Anexar Documentos");
+    expect(arquivos).not.toContain("Próximo passo");
+  });
+
+  it("o gerente do negócio também envia a análise p/ virar negócio", async () => {
+    h.status = "approved";
+    h.papeis = ["manager"];
+    h.caseStatus = "approved";
+    expect(await montarParte("acoes")).toContain("Enviar a análise p/ virar negócio");
+  });
+
+  it("em INCOMPLETO com caso aberto, o caminho é reenviar pela Esteira Ágil", async () => {
+    h.status = "approved";
+    h.papeis = ["broker"];
+    h.caseStatus = "under_review";
+    expect(await montarParte("acoes", { statusDetail: "INCOMPLETO" })).toContain("Reenviar pela Esteira Ágil");
+  });
+});

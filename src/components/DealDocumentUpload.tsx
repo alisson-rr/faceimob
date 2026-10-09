@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { cn, slugify } from "@/lib/utils";
+import { bareStatus } from "@/lib/dealStatus";
 import { EmptyState, LoadingState } from "@/components/shared";
 import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import { loadCcaCase } from "@/components/pipeline/ccaData";
@@ -84,6 +85,16 @@ type Props = {
    * `false` = não gravou (o aviso já saiu), e o envio não acontece.
    */
   salvarFicha?: () => Promise<boolean>;
+  /**
+   * Qual parte mostrar (09/10/2026: "temos que ter um caminho a seguir"). A
+   * ficha do negócio põe as AÇÕES (enviar, conferir, devolver) na faixa
+   * "Próximo passo" do topo e os ARQUIVOS na aba Anexos. Padrão: as duas.
+   */
+  parte?: "tudo" | "acoes" | "arquivos";
+  /** Status 2 atual: em INCOMPLETO o reenvio pela Esteira Ágil encerra o caso antigo (0253). */
+  statusDetail?: string | null;
+  /** Posição na fila do CCA, já em texto ("2º na Esteira Ágil"), quando houver. */
+  filaCca?: string | null;
   /** Mensagem já escrita no popup de conferência da ficha (01/10/2026). */
   mensagemInicial?: string;
 };
@@ -126,7 +137,7 @@ const assinatura = (
  */
 export default function DealDocumentUpload({
   dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged, mensagemInicial,
-  salvarFicha,
+  salvarFicha, parte = "tudo", statusDetail, filaCca,
 }: Props) {
   const { toast } = useToast();
   const { user, isAdmin, can, roles } = useAuth();
@@ -589,7 +600,9 @@ export default function DealDocumentUpload({
   const vigentes = types.flatMap((type) => (byType.get(type.id) ?? [])
     .filter((d) => !d.superseded_at && semArquivo?.has(d.storage_path) !== true));
   const status = review?.document_review_status ?? "draft";
-  const canSubmit = isAdmin || myRoles.includes("broker");
+  // Corretor, gerente e diretor do negócio enviam (o banco aceita os três desde
+  // a 0164); pedido de 09/10/2026 para a análise p/ virar negócio.
+  const canSubmit = isAdmin || myRoles.some((role) => role === "broker" || role === "manager" || role === "director");
   // O banco (0235) aceita gerente OU diretor vinculado, além do admin. A tela
   // precisa espelhar os três; antes o diretor via a pendência no cabeçalho, mas
   // ao abrir os Anexos não recebia os botões para decidir.
@@ -641,10 +654,16 @@ export default function DealDocumentUpload({
   // também recupera propostas cuja conferência foi marcada como `returned`
   // pelo gatilho antigo: Aprovado Total/Condicionado deve oferecer somente o
   // caminho para virar negócio, nunca mandar o corretor de volta à Ágil.
-  const agilBloqueio = status === "approved" || caseStatus === "approved"
-    ? "A documentação já foi aprovada: o próximo envio é a análise p/ virar negócio."
-    : null;
-  const virarBloqueio = virarBlockReason(caseStatus, review?.review_esteira);
+  // INCOMPLETO com caso aberto: o envio foi pela via errada e o reenvio pela
+  // Esteira Ágil encerra o caso antigo no banco (0253).
+  const reenvioIncompleto = bareStatus(statusDetail ?? "") === "INCOMPLETO" && casoAberto;
+  const agilBloqueio = reenvioIncompleto ? null
+    : status === "approved" || caseStatus === "approved"
+      ? "A documentação já foi aprovada: o próximo envio é a análise p/ virar negócio."
+      : null;
+  const virarBloqueio = reenvioIncompleto
+    ? "Em INCOMPLETO o reenvio vai pela Esteira Ágil."
+    : virarBlockReason(caseStatus, review?.review_esteira);
   // Padrão Ágil, exceto no reenvio de um 2º envio devolvido: ali as duas valem, e
   // cair em Ágil contaria o reenvio como 1º envio no contador da CCA.
   const esteiraEnvio: ReviewEsteira = agilBloqueio ? "virar"
@@ -652,14 +671,34 @@ export default function DealDocumentUpload({
     : esteira ?? (review?.review_esteira === "virar" ? "virar" : "agil");
   const esteiraMotivo = agilBloqueio ?? virarBloqueio;
   const podeEnviar = canSubmit
-    && (status === "draft" || status === "returned" || (status === "approved" && !virarBloqueio));
+    && (reenvioIncompleto || status === "draft" || status === "returned" || (status === "approved" && !virarBloqueio));
+  // A esteira só vira escolha quando as duas valem (reenvio de um 2º envio
+  // devolvido); no resto o caminho é um só e a tela só diz qual é.
+  const duasEsteiras = agilBloqueio === null && virarBloqueio === null;
+  // O próximo passo, em uma frase, para quem está olhando.
+  const proximoPasso = podeEnviar
+    ? (reenvioIncompleto ? "Reenviar pela Esteira Ágil (encerra o envio anterior)"
+      : status === "returned" ? "Corrigir o que foi pedido e reenviar"
+      : esteiraEnvio === "virar" ? "Enviar a análise p/ virar negócio"
+      : "Enviar para a Esteira Ágil")
+    : status === "pending"
+      ? (canReview ? "Conferir os documentos: aprovar ou devolver" : "Aguardando a conferência do gerente ou diretor")
+      : casoAberto
+        ? `Em análise na CCA${filaCca ? ` — ${filaCca}` : ""}`
+        : status === "approved"
+          ? "Conferência concluída"
+          : "Acompanhar o andamento";
+  const mostraAcoes = parte !== "arquivos";
+  const mostraArquivos = parte !== "acoes";
 
   return (
     <div className="space-y-3">
+      {mostraAcoes && (
       <div className="rounded-lg border border-border/60 bg-muted/10 p-3 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div>
-            <p className="text-sm font-bold">Conferência documental</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">Próximo passo</p>
+            <p className="text-sm font-bold">{proximoPasso}</p>
             <p className="text-xs text-muted-foreground">Corretor → gerente → CCA</p>
           </div>
           <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
@@ -700,6 +739,7 @@ export default function DealDocumentUpload({
 
         {podeEnviar && (
           <div className="space-y-2">
+            {duasEsteiras ? (
             <div className="space-y-1">
               <Label htmlFor={`${fieldId}-esteira`} className="text-xs">Esteira do envio</Label>
               <Select value={esteiraEnvio} onValueChange={(valor) => setEsteira(valor as ReviewEsteira)}>
@@ -719,6 +759,11 @@ export default function DealDocumentUpload({
                 <p id={`${fieldId}-esteira-motivo`} className="text-xs text-muted-foreground">{esteiraMotivo}</p>
               )}
             </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Este envio vai para: <strong className="text-foreground">{REVIEW_ESTEIRA_LABEL[esteiraEnvio]}</strong>
+              </p>
+            )}
 
             <div className="space-y-1">
               <Label htmlFor={`${fieldId}-envio`} className="text-xs">Mensagem do envio</Label>
@@ -855,7 +900,25 @@ export default function DealDocumentUpload({
           </div>
         )}
       </div>
+      )}
 
+      {mostraAcoes && podeDevolverAoComercial && (
+        <Button type="button" variant="devolver" size="sm" className="w-full" onClick={() => setDevolvendo(true)}>
+          <Undo2 className="mr-1 h-4 w-4" aria-hidden /> Devolver ao comercial
+        </Button>
+      )}
+      {devolvendo && (
+        <CcaDevolverDialog
+          deal={{ dealId, client: clientName }}
+          onClose={() => setDevolvendo(false)}
+          onDone={async () => {
+            await load();
+            await onReviewChanged?.();
+          }}
+        />
+      )}
+
+      {mostraArquivos && (<>
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-sm font-bold text-success">Anexar Documentos</p>
         {semCatalogo ? (
@@ -932,21 +995,6 @@ export default function DealDocumentUpload({
         </p>
       )}
 
-      {podeDevolverAoComercial && (
-        <Button type="button" variant="devolver" size="sm" className="w-full" onClick={() => setDevolvendo(true)}>
-          <Undo2 className="mr-1 h-4 w-4" aria-hidden /> Devolver ao comercial
-        </Button>
-      )}
-      {devolvendo && (
-        <CcaDevolverDialog
-          deal={{ dealId, client: clientName }}
-          onClose={() => setDevolvendo(false)}
-          onDone={async () => {
-            await load();
-            await onReviewChanged?.();
-          }}
-        />
-      )}
 
       {semCatalogo && (
         <EmptyState
@@ -1236,6 +1284,8 @@ export default function DealDocumentUpload({
           );
         })}
       </div>
+
+      </>)}
 
       {envioAberto && developer && (
         <DeveloperSubmissionDialog
