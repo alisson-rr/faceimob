@@ -229,9 +229,10 @@ begin
   end;
   reset role;
 
-  -- ── 1. o CCA devolve: a conferência do gerente reabre ─────────────────────
-  -- Pela coluna PENDENTE, que grava "16. PENDENTE" (0150). "RET. ESTEIRA AGIL"
-  -- segue sendo o rótulo da devolução sem coluna ligada, coberto no 18.
+  -- ── 1. mover no CCA não devolve a conferência aprovada ────────────────────
+  -- A coluna PENDENTE grava "16. PENDENTE", mas devolver documentos ao
+  -- comercial exige uma ação explícita; a simples troca de etapa não pode
+  -- disparar e-mail, histórico ou reabrir a aprovação do gerente.
   perform set_config('request.jwt.claims',
     json_build_object('sub', ana::text, 'role', 'authenticated')::text, false);
   set local role authenticated;
@@ -242,28 +243,19 @@ begin
 
   select status_detail, document_review_status into v_label, v_status
     from public.deals where id = v_deal.id;
-  perform pg_temp.check59(v_label = '16. PENDENTE' and v_status = 'returned',
-    'devolução do CCA reabre a conferência do gerente em vez de travar o corretor');
+  perform pg_temp.check59(v_label = '16. PENDENTE' and v_status = 'approved',
+    'movimento interno do CCA preserva a conferência aprovada');
 
   select count(*) into v_qtd from public.notifications
    where profile_id = cor and kind = 'document_review_returned'
      and body like '%comprovante legível%';
-  perform pg_temp.check59(v_qtd = 1, 'o corretor é notificado da devolução do CCA');
+  perform pg_temp.check59(v_qtd = 0,
+    'movimento interno do CCA não cria notificação de devolução');
 
   select count(*) into v_qtd from public.deal_history
    where deal_id = v_deal.id and kind = 'document_review_returned' and to_value = 'returned';
-  perform pg_temp.check59(v_qtd >= 1, 'a devolução do CCA fica no histórico do negócio');
-
-  -- ── e o reenvio, que era o beco sem saída, volta a funcionar ─────────────
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
-  set local role authenticated;
-  perform public.submit_deal_for_manager_review(v_deal.id, 'Comprovante legível anexado');
-  reset role;
-
-  select document_review_status into v_status from public.deals where id = v_deal.id;
-  perform pg_temp.check59(v_status = 'pending',
-    'depois da devolução do CCA o corretor consegue reenviar ao gerente');
+  perform pg_temp.check59(v_qtd = 0,
+    'movimento interno do CCA não grava devolução no histórico');
 
   -- ── exceção deliberada: encerrar o negócio continua permitido ─────────────
   -- O motivo era "17. DISTRATO" e passou a ser "18. QUEDA": desde a 0101 os
