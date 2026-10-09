@@ -339,6 +339,15 @@ begin
                and to_value = 'STATUS: ASSINADO BANCO — Contrato assinado no banco'),
     'o movimento fica no negócio como comentário com a coluna e a mensagem');
   perform pg_temp.check150(
+    exists (
+      select 1
+        from public.cca_monthly_synthesis(
+          date_trunc('month', timezone('America/Sao_Paulo', current_timestamp))::date
+        ) s
+       where s.deal_id = v_a and s.stage_name = 'ASSINADO BANCO'
+    ),
+    'a síntese usa a data de entrada no status e não o mês-base da venda');
+  perform pg_temp.check150(
     (select count(distinct profile_id) from public.notifications
       where kind = 'cca_status_changed' and profile_id in (cor, ger)
         and body like '%Contrato assinado no banco%') = 2,

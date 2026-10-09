@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   construtora: null as DealDeveloper | null,
   tipos: [] as DocumentTypeRecord[],
   docs: [] as DealDocumentRecord[],
+  caseStatus: null as string | null,
   podeEditar: false,
   upload: vi.fn(async () => ({ stored_name: "novo.pdf" })),
   revisar: vi.fn(async () => undefined),
@@ -32,7 +33,9 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "eu" }, isAdmin: false, can: () => false, roles: [] }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }), toast: vi.fn() }));
-vi.mock("@/components/pipeline/ccaData", () => ({ loadCcaCase: async () => null }));
+vi.mock("@/components/pipeline/ccaData", () => ({
+  loadCcaCase: async () => h.caseStatus ? ({ id: "case-1", status: h.caseStatus, analysis: {} }) : null,
+}));
 // O diálogo tem teste de fluxo próprio no banco; aqui importa só que ele abre
 // para o negócio e a construtora certos.
 vi.mock("@/components/DeveloperSubmissionDialog", () => ({
@@ -84,6 +87,7 @@ beforeEach(() => {
   h.upload.mockClear();
   h.papeis = ["manager"];
   h.status = "approved";
+  h.caseStatus = null;
   h.construtora = { name: "Externa X", flow: "external", hasEmail: true };
 });
 
@@ -219,5 +223,23 @@ describe("DealDocumentUpload — grava a ficha antes de decidir", () => {
 
     expect(aprovar, "o diretor vinculado não recebeu a ação de aprovar").toBeTruthy();
     expect(devolver, "o diretor vinculado não recebeu a ação de devolver").toBeTruthy();
+  });
+});
+
+describe("DealDocumentUpload — análise p/ virar negócio", () => {
+  it("oferece ao corretor o segundo envio após aprovação da CCA, inclusive se a conferência antiga ficou devolvida", async () => {
+    h.status = "returned";
+    h.caseStatus = "approved";
+    h.papeis = ["broker"];
+    h.tipos = [{
+      id: "opcional", code: "opcional", label: "Opcional", category: "cliente",
+      required_for_conversion: false, allows_multiple: true, naming_pattern: null, sort_order: 1,
+    }];
+    await montar();
+
+    const botao = [...container.querySelectorAll("button")]
+      .find((item) => /enviar análise p\/ virar negócio/i.test(item.textContent ?? ""));
+    expect(botao, "o corretor não recebeu o CTA do segundo envio").toBeTruthy();
+    expect(container.textContent).toContain("Análise p/ virar negócio");
   });
 });

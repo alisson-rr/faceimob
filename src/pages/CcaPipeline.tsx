@@ -228,8 +228,10 @@ export default function CcaPipeline() {
   const [busca, setBusca] = useState("");
   // 0228: a CCA organiza a ordem das colunas (só a ordem).
   const gerenciaEstagios = isAdmin || roles.includes("cca");
-  const [periodoPreset, setPeriodoPreset] = useState<CcaPeriodoPreset>("mes");
-  const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo>(() => periodoCcaPreset("mes"));
+  // A esteira volta a abrir como antes, nos últimos 30 dias. O mês escolhido
+  // nas sínteses abaixo é independente e nunca muda este período nem month_base.
+  const [periodoPreset, setPeriodoPreset] = useState<CcaPeriodoPreset>("ultimos_30");
+  const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo>(() => periodoCcaPreset("ultimos_30"));
   const periodo = periodoPreset === "customizado" ? periodoEscolhido : periodoCcaPreset(periodoPreset);
   const periodoOk = periodoValido(periodo);
   // Buscar por nome ignora o recorte de datas, como já acontece no Pipeline.
@@ -433,6 +435,7 @@ export default function CcaPipeline() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="ultimos_30">Últimos 30 dias</SelectItem>
               <SelectItem value="hoje">Hoje</SelectItem>
               <SelectItem value="ontem">Ontem</SelectItem>
               <SelectItem value="semana">Esta semana</SelectItem>
