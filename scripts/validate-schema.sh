@@ -14,7 +14,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONTAINER="faceimob-schema-check"
 PGPASS="postgres"
-IMAGE="postgres:15-alpine"
+# Mesma imagem oficial, servida pelo espelho público da AWS: o Docker Hub
+# limita pull anônimo por IP e os runners do GitHub compartilham IP, então o
+# CI falhava com "toomanyrequests" sem relação com o código.
+IMAGE="${SCHEMA_CHECK_IMAGE:-public.ecr.aws/docker/library/postgres:15-alpine}"
 
 WITH_SEED=0
 WITH_TESTS=0
