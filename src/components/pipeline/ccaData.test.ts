@@ -135,8 +135,9 @@ describe("período da esteira", () => {
     expect(periodoValido({ de: "0202-08-16", ate: "2026-09-15" }), "ano pela metade").toBe(false);
   });
 
-  it("oferece hoje, ontem, semana, mês e mês passado no calendário de São Paulo", () => {
+  it("oferece últimos 30 dias, hoje, ontem, semana, mês e mês passado no calendário de São Paulo", () => {
     const agora = new Date("2026-10-08T15:00:00Z");
+    expect(periodoCcaPreset("ultimos_30", agora)).toEqual({ de: "2026-09-08", ate: "2026-10-08" });
     expect(periodoCcaPreset("hoje", agora)).toEqual({ de: "2026-10-08", ate: "2026-10-08" });
     expect(periodoCcaPreset("ontem", agora)).toEqual({ de: "2026-10-07", ate: "2026-10-07" });
     expect(periodoCcaPreset("semana", agora)).toEqual({ de: "2026-10-05", ate: "2026-10-08" });

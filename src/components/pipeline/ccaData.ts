@@ -136,10 +136,11 @@ export function ultimos30Dias(agora: Date = new Date()): CcaPeriodo {
   return { de: from, ate: to };
 }
 
-export type CcaPeriodoPreset = "hoje" | "ontem" | "semana" | "mes" | "mes_passado" | "customizado";
+export type CcaPeriodoPreset = "ultimos_30" | "hoje" | "ontem" | "semana" | "mes" | "mes_passado" | "customizado";
 
 /** Atalhos do calendário operacional de São Paulo; semana começa na segunda. */
 export function periodoCcaPreset(preset: Exclude<CcaPeriodoPreset, "customizado">, agora: Date = new Date()): CcaPeriodo {
+  if (preset === "ultimos_30") return ultimos30Dias(agora);
   const hoje = new Date(agora.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
   const data = new Date(`${hoje}T00:00:00Z`);
   if (preset === "hoje") return { de: hoje, ate: hoje };

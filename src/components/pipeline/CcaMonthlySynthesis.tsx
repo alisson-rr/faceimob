@@ -2,6 +2,7 @@ import { ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { bareStatus } from "@/lib/dealStatus";
+import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 import { useCcaMonthlySynthesis, type CcaSynthesisEntry } from "./ccaData";
 
@@ -25,8 +26,10 @@ export function CcaMonthlySynthesis({ month, onMonthChange, onOpenDeal }: {
     <section className="rounded-xl border border-border bg-card/50 p-3" aria-labelledby="cca-synthesis-title">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 id="cca-synthesis-title" className="text-sm font-semibold">Sínteses por entrada no status</h2>
-          <p className="text-xs text-muted-foreground">Conta o mês da movimentação no CCA, não o mês da venda.</p>
+          <h2 id="cca-synthesis-title" className="text-sm font-semibold">Filtro exclusivo das sínteses do CCA</h2>
+          <p className="text-xs text-muted-foreground">
+            Conta a entrada nos quatro status abaixo. Não altera nem filtra o mês da venda ou a esteira comercial.
+          </p>
         </div>
         <label className="text-xs font-medium">
           Mês das movimentações
@@ -40,7 +43,7 @@ export function CcaMonthlySynthesis({ month, onMonthChange, onOpenDeal }: {
 
       {query.isError ? (
         <div role="alert" className="mt-3 flex items-center gap-2 text-xs text-destructive">
-          Não foi possível carregar as sínteses.
+          {describeError(query.error, "Não foi possível carregar as sínteses.")}
           <Button size="sm" variant="outline" className="h-7" onClick={() => void query.refetch()}>Tentar de novo</Button>
         </div>
       ) : (

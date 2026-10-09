@@ -637,7 +637,11 @@ export default function DealDocumentUpload({
   // Esteira do envio (0150). Com a conferência aprovada o banco só aceita o 2º
   // envio, e o 2º envio só com crédito aprovado na CCA (`virarBlockReason`). A
   // opção que não vale fica apagada, com a frase ao lado dizendo por quê.
-  const agilBloqueio = status === "approved"
+  // O caso aprovado pela CCA é a fonte operacional deste segundo envio. Isso
+  // também recupera propostas cuja conferência foi marcada como `returned`
+  // pelo gatilho antigo: Aprovado Total/Condicionado deve oferecer somente o
+  // caminho para virar negócio, nunca mandar o corretor de volta à Ágil.
+  const agilBloqueio = status === "approved" || caseStatus === "approved"
     ? "A documentação já foi aprovada: o próximo envio é a análise p/ virar negócio."
     : null;
   const virarBloqueio = virarBlockReason(caseStatus, review?.review_esteira);
@@ -751,7 +755,7 @@ export default function DealDocumentUpload({
                 onClick={() => void submitForReview(esteiraEnvio)}
               >
                 {reviewBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                Enviar ao gerente
+                {esteiraEnvio === "virar" ? "Enviar análise p/ virar negócio" : "Enviar ao gerente"}
               </Button>
             </div>
           </div>
