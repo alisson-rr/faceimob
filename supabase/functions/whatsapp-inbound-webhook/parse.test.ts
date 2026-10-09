@@ -57,6 +57,33 @@ describe("parseMessages", () => {
   });
 });
 
+describe("anúncio clique-para-WhatsApp (09/10/2026)", () => {
+  it("lê o anúncio do referral e o nome do perfil do contato", () => {
+    const body = {
+      entry: [{ changes: [{ field: "messages", value: {
+        contacts: [{ wa_id: "5551999990000", profile: { name: "Maria Souza" } }],
+        messages: [{
+          from: "5551999990000", id: "w1", type: "text", text: { body: "Quero saber do apê" },
+          referral: { source_type: "ad", source_id: "1202", headline: "Apê no centro", source_url: "https://fb.me/x", ctwa_clid: "abc" },
+        }],
+      } }] }],
+    };
+    const [m] = parseMessages(body);
+    expect(m.nome).toBe("Maria Souza");
+    expect(m.anuncio).toEqual({
+      adId: "1202", tipoOrigem: "ad", titulo: "Apê no centro", texto: null, url: "https://fb.me/x", ctwaClid: "abc",
+    });
+  });
+
+  it("número desconhecido vindo de anúncio vira lead; sem anúncio continua sem destino", () => {
+    expect(decidirRota(null, false, true)).toBe("anuncio");
+    expect(decidirRota(null, false, false)).toBe("sem_destino");
+    // Quem já tem conversa segue nela, mesmo voltando por outro anúncio.
+    expect(decidirRota({ status: "human" }, false, true)).toBe("humano");
+    expect(decidirRota({ status: "active" }, false, true)).toBe("robo");
+  });
+});
+
 describe("decidirRota", () => {
   it("conversa ativa vai para o robô, mesmo com remarketing pendente", () => {
     expect(decidirRota({ status: "active" }, true)).toBe("robo");
