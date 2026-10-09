@@ -1,7 +1,7 @@
 -- =============================================================================
 -- 0150 — CCA pelo Status 2 e envio com mensagem nas duas esteiras.
 --
---   · as 19 colunas do cliente, na ordem, cada uma com seu Status 2;
+--   · as colunas operacionais do cliente, cada uma com seu Status 2;
 --   · mensagem obrigatória no envio e no movimento (a aprovação aceita, sem exigir);
 --   · status, coluna, entrada e decisão só mudam pela RPC; a tela não cria nem
 --     apaga caso; gravar `analysis` segue livre;
@@ -92,15 +92,17 @@ begin
    where s.active and s.deal_status_id is not null;
 
   -- 0225: "PENDENTE C/ RESTRIÇÃO" entrou logo depois de PENDENTE (pedido da CCA).
-  perform pg_temp.check150(v_nomes = array[
+  perform pg_temp.check150(v_nomes @> array[
       'EM ANÁLISE', 'PENDENTE', 'PENDENTE C/ RESTRIÇÃO', 'RETORNO À ESTEIRA ÁGIL', 'EM PROCESSAMENTO',
       'AGUARDANDO RETORNO AGÊNCIA',
       'APROVADO TOTAL', 'APROVADO POTENCIAL', 'APROVADO CONDICIONADO',
       'APROVADO TOTAL COM RESTRIÇÃO', 'APROVADO CONDICIONADO COM RESTRIÇÃO',
       'REPROVADO', 'BACEN', 'VIROU NEGÓCIO', 'VIROU NEGÓCIO COM PENDÊNCIAS',
       'ANÁLISE CEOPF', 'INCONFORME CEOPF', 'APROVADO/AGUARDANDO AGENDA',
-      'ENTREVISTA AGENDADA', 'ASSINADO BANCO'],
-    'as 19 colunas do cliente estão ativas, na ordem, cada uma com seu Status 2');
+      'ENTREVISTA AGENDADA', 'ASSINADO BANCO',
+      'PENDENTE P/ VIRAR NEGÓCIO', 'RESOLVER P/ ASSINAR BANCO',
+      'AGUARDANDO DEMANDA MÍNIMA', 'EM CONTRATO', 'ASSINADO'],
+    'as colunas operacionais do cliente e do fluxo novo estão ativas com Status 2');
 
   perform pg_temp.check150(
     (select s.status = 'pending_documents' and ds.value = 'RET. ESTEIRA AGIL'
