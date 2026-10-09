@@ -38,7 +38,7 @@ import { BUSCA_MINIMA, listActiveDealsWithUnit, useDealSearch, useDealsRange } f
 import { periodoValido } from "@/components/pipeline/ccaData";
 import type { DealPeriod } from "@/components/pipeline/DealsToolbar";
 import { useDealActions } from "@/components/pipeline/useDealActions";
-import { useMyCcaQueue } from "@/integrations/supabase/cca";
+import { CCA_FILA_ROTULO, useMyCcaQueue } from "@/integrations/supabase/cca";
 import { useMyPendingReviewDealIds } from "@/integrations/supabase/reviews";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
@@ -359,7 +359,7 @@ export default function Pipeline() {
     ? `${openSeason.data.period_start.slice(5, 7)}/${openSeason.data.period_start.slice(0, 4)}`
     : null;
   const ccaQueuePositions = useMemo(
-    () => new Map((ccaQueue.data ?? []).map((entry) => [entry.deal_id, entry.queue_position])),
+    () => new Map((ccaQueue.data ?? []).map((entry) => [entry.deal_id, { posicao: entry.queue_position, fila: entry.fila }])),
     [ccaQueue.data],
   );
   // O cabeçalho e a régua de contadores afirmavam sobre o banco ANTES de ler o
@@ -489,11 +489,11 @@ export default function Pipeline() {
 
       {(ccaQueue.data?.length ?? 0) > 0 && (
         <section
-          aria-label="Ordem da Esteira Ágil no CCA"
+          aria-label="Sua posição nas filas do CCA"
           className="flex flex-wrap items-center gap-2 rounded-xl border border-info/40 bg-info/10 px-3 py-2"
         >
           <Landmark className="h-4 w-4 shrink-0 text-info" aria-hidden />
-          <p className="mr-1 text-sm font-semibold">Ordem da Esteira Ágil</p>
+          <p className="mr-1 text-sm font-semibold">Fila do CCA</p>
           {ccaQueue.data?.map((entry) => (
             <span
               key={entry.deal_id}
@@ -501,7 +501,7 @@ export default function Pipeline() {
             >
               <strong>{entry.client_name}</strong>
               <span className="ml-1 font-bold tabular-nums text-info">
-                {entry.queue_position}º na Esteira Ágil
+                {entry.queue_position}º {CCA_FILA_ROTULO[entry.fila]}
               </span>
             </span>
           ))}

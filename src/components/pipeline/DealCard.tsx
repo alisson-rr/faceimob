@@ -16,6 +16,7 @@ import type { DealLock } from "./guards";
 import { conferenciaDoNegocio } from "./review";
 import { comissaoPrevista } from "./comissao";
 import type { PipelineStage } from "./stages";
+import { CCA_FILA_ROTULO, type CcaQueueSpot } from "@/integrations/supabase/cca";
 
 interface Props {
   deal: LegacyDealRecord;
@@ -60,7 +61,7 @@ interface Props {
   /** Competência aberta, MM/AAAA. OFF só reativa quando é anterior a ela. */
   currentMonth?: string | null;
   /** Posição global deste negócio entre os envios vigentes da Esteira Ágil. */
-  ccaQueuePosition?: number | null;
+  ccaQueuePosition?: CcaQueueSpot | null;
   previousStage?: PipelineStage;
   nextStage?: PipelineStage;
   dragging: boolean;
@@ -242,7 +243,7 @@ function DealCardBase({
         )}
         {ccaQueuePosition ? (
           <Badge variant="secondary" className="mb-2 ml-1 h-5 px-1.5 text-xs tabular-nums">
-            {ccaQueuePosition}º na Esteira Ágil
+            {ccaQueuePosition.posicao}º {CCA_FILA_ROTULO[ccaQueuePosition.fila]}
           </Badge>
         ) : null}
 

@@ -6,6 +6,7 @@ import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { DealsTable } from "./DealsTable";
 import { StatusKanban } from "./StatusKanban";
+import type { CcaQueueSpot } from "@/integrations/supabase/cca";
 
 interface Props {
   view: "table" | "kanban";
@@ -36,7 +37,7 @@ interface Props {
   onReopen: (deal: LegacyDealRecord) => void;
   onReactivate?: (deal: LegacyDealRecord) => void;
   currentMonth?: string | null;
-  ccaQueuePositions?: ReadonlyMap<string, number>;
+  ccaQueuePositions?: ReadonlyMap<string, CcaQueueSpot>;
 }
 
 /**

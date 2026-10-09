@@ -45,7 +45,7 @@ async function render(queuePosition?: number) {
     root.render(
       <DealsTable
         deals={[NEGOCIO]}
-        ccaQueuePositions={queuePosition ? new Map([[NEGOCIO.id, queuePosition]]) : undefined}
+        ccaQueuePositions={queuePosition ? new Map([[NEGOCIO.id, { posicao: queuePosition, fila: "agil" as const }]]) : undefined}
         canWrite={false}
         closedMonths={[]}
         onOpen={() => undefined}
