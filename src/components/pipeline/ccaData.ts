@@ -76,6 +76,7 @@ export type CcaAnalysis = Record<string, string>;
 /** Período do quadro pela entrada do caso na esteira (`submitted_at`): datas
  *  `AAAA-MM-DD` do calendário de São Paulo, as duas inclusivas. */
 export type CcaPeriodo = { de: string; ate: string };
+export type CcaPeriodoBase = "submitted_at" | "month_base";
 
 export interface CcaBoardData {
   stages: CcaStage[];
@@ -89,7 +90,7 @@ export interface CcaBoardData {
 export const ccaKeys = {
   /** PREFIXO do quadro: `useInvalidateCcaBoard` recarrega o período aberto e os envios juntos. */
   board: ["cca", "board"] as const,
-  period: (de: string, ate: string) => ["cca", "board", "period", de, ate] as const,
+  period: (de: string, ate: string, base: CcaPeriodoBase) => ["cca", "board", "period", base, de, ate] as const,
   sendCounts: (dealIds: string[]) => ["cca", "board", "send-counts", dealIds] as const,
   statusOptions: ["cca", "status-options"] as const,
   case: (dealId: string) => ["cca", "case", dealId] as const,
@@ -329,17 +330,25 @@ export const foraDaEsteiraDoCca = (
 export async function loadCcaBoard(
   periodo: CcaPeriodo,
   signal: AbortSignal = new AbortController().signal,
+  base: CcaPeriodoBase = "submitted_at",
 ): Promise<CcaBoardData> {
   const { desde, antesDe } = limitesDoPeriodo(periodo);
-  const readCases = (withClock: boolean) => allRows((from, to, count) => supabase.from("cca_cases")
-    .select(`id,deal_id,status,stage_id,decision_notes,submitted_at${withClock ? ",stage_entered_at" : ""}`, { count })
-    // Aprovados e reprovados permanecem nas colunas de desfecho. Só o caso
-    // devolvido ao comercial (`cancelled`) precisa sair do quadro; a coluna
-    // histórica continua gravada apenas para auditoria.
-    .neq("status", "cancelled")
-    .gte("submitted_at", desde).lt("submitted_at", antesDe)
-    .order("submitted_at", { ascending: true }).order("id").range(from, to).abortSignal(signal)
-    .returns<CcaCaseWithClock[]>());
+  const readCases = (withClock: boolean) => allRows((from, to, count) => {
+    const dealJoin = base === "month_base" ? ",deal:deals!inner(month_base)" : "";
+    let query = supabase.from("cca_cases")
+      .select(`id,deal_id,status,stage_id,decision_notes,submitted_at${withClock ? ",stage_entered_at" : ""}${dealJoin}`, { count })
+      // Aprovados e reprovados permanecem nas colunas de desfecho. Só o caso
+      // devolvido ao comercial (`cancelled`) precisa sair do quadro; a coluna
+      // histórica continua gravada apenas para auditoria.
+      .neq("status", "cancelled");
+    query = base === "month_base"
+      // O quadro mensal segue a competência do negócio. Não altera a data:
+      // apenas filtra pelo primeiro dia do mês já gravado em `deals.month_base`.
+      ? query.eq("deal.month_base", `${periodo.de.slice(0, 7)}-01`)
+      : query.gte("submitted_at", desde).lt("submitted_at", antesDe);
+    return query.order("submitted_at", { ascending: true }).order("id")
+      .range(from, to).abortSignal(signal).returns<CcaCaseWithClock[]>();
+  });
   const casesWithCompatibility = async () => {
     const response = await readCases(true);
     // A 0156 pode ainda não ter sido publicada. Só a falta desta coluna permite
@@ -405,10 +414,10 @@ export async function loadCcaBoard(
   return { stages, deals, outside, negocios };
 }
 
-export function useCcaBoard(periodo: CcaPeriodo, enabled = true) {
+export function useCcaBoard(periodo: CcaPeriodo, enabled = true, base: CcaPeriodoBase = "submitted_at") {
   return useQuery({
-    queryKey: ccaKeys.period(periodo.de, periodo.ate),
-    queryFn: ({ signal }) => loadCcaBoard(periodo, signal),
+    queryKey: ccaKeys.period(periodo.de, periodo.ate, base),
+    queryFn: ({ signal }) => loadCcaBoard(periodo, signal, base),
     enabled,
     // Trocar a data mantém o quadro anterior até o novo chegar: cair no
     // esqueleto desmontaria os campos de data no meio da digitação.

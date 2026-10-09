@@ -1,6 +1,6 @@
 import { ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { bareStatus } from "@/lib/dealStatus";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,14 @@ const GROUPS = [
   { key: "ASSINADO BANCO", tone: "border-success/50 bg-success/5" },
 ] as const;
 
+const MONTHS = [
+  ["01", "Janeiro"], ["02", "Fevereiro"], ["03", "Março"], ["04", "Abril"],
+  ["05", "Maio"], ["06", "Junho"], ["07", "Julho"], ["08", "Agosto"],
+  ["09", "Setembro"], ["10", "Outubro"], ["11", "Novembro"], ["12", "Dezembro"],
+] as const;
+
+const currentSaoPauloYear = () => new Date(Date.now() - 3 * 3_600_000).getUTCFullYear();
+
 export function CcaMonthlySynthesis({ month, onMonthChange, onOpenDeal }: {
   month: string;
   onMonthChange: (month: string) => void;
@@ -21,6 +29,8 @@ export function CcaMonthlySynthesis({ month, onMonthChange, onOpenDeal }: {
   const query = useCcaMonthlySynthesis(month);
   const rows = query.data ?? [];
   const grouped = (key: string) => rows.filter((row) => bareStatus(row.stage_name) === key);
+  const [selectedYear, selectedMonth] = month.split("-");
+  const years = Array.from({ length: 4 }, (_, index) => String(currentSaoPauloYear() - index));
 
   return (
     <section className="rounded-xl border border-border bg-card/50 p-3" aria-labelledby="cca-synthesis-title">
@@ -31,14 +41,27 @@ export function CcaMonthlySynthesis({ month, onMonthChange, onOpenDeal }: {
             Conta a entrada nos quatro status abaixo. Não altera nem filtra o mês da venda ou a esteira comercial.
           </p>
         </div>
-        <label className="text-xs font-medium">
-          Mês das movimentações
-          <Input
-            type="month" min="2020-01" value={month}
-            onChange={(event) => onMonthChange(event.target.value)}
-            className="mt-1 h-8 w-40 text-xs"
-          />
-        </label>
+        <div className="text-xs font-medium">
+          <span>Mês das movimentações</span>
+          <div className="mt-1 flex gap-2">
+            <Select value={selectedMonth} onValueChange={(value) => onMonthChange(`${selectedYear}-${value}`)}>
+              <SelectTrigger className="h-8 w-32 text-xs" aria-label="Mês das movimentações do CCA">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={selectedYear} onValueChange={(value) => onMonthChange(`${value}-${selectedMonth}`)}>
+              <SelectTrigger className="h-8 w-24 text-xs" aria-label="Ano das movimentações do CCA">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
 
       {query.isError ? (

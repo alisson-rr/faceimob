@@ -205,9 +205,9 @@ function DocumentTypesDialog({ onClose }: { onClose: () => void }) {
 /**
  * Esteira de crédito (CCA).
  *
- * - **Período no banco** (15/09/2026): abre nos últimos 30 dias pela entrada na
- *   esteira (`submitted_at`) e só baixa esses casos e os negócios deles. A busca
- *   procura dentro do que o período trouxe.
+ * - **Período no banco**: abre no mês-base vigente do negócio. Os atalhos de
+ *   mês seguem `deals.month_base`; hoje, ontem, semana e customizado seguem a
+ *   entrada na esteira (`submitted_at`). A busca ignora o período.
  * - **Uma rolagem só**: a página tem a altura da janela e o `CcaBoard` é o único
  *   contêiner que rola.
  * - **Permissão espelhada** (achado P09): mover segue `can('cca.review')`, como
@@ -228,16 +228,17 @@ export default function CcaPipeline() {
   const [busca, setBusca] = useState("");
   // 0228: a CCA organiza a ordem das colunas (só a ordem).
   const gerenciaEstagios = isAdmin || roles.includes("cca");
-  // A esteira volta a abrir como antes, nos últimos 30 dias. O mês escolhido
-  // nas sínteses abaixo é independente e nunca muda este período nem month_base.
-  const [periodoPreset, setPeriodoPreset] = useState<CcaPeriodoPreset>("ultimos_30");
-  const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo>(() => periodoCcaPreset("ultimos_30"));
+  // O quadro mensal segue a competência já gravada no negócio; não modifica
+  // month_base. O mês das sínteses abaixo continua totalmente independente.
+  const [periodoPreset, setPeriodoPreset] = useState<CcaPeriodoPreset>("mes");
+  const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo>(() => periodoCcaPreset("mes"));
   const periodo = periodoPreset === "customizado" ? periodoEscolhido : periodoCcaPreset(periodoPreset);
+  const periodoBase = periodoPreset === "mes" || periodoPreset === "mes_passado" ? "month_base" : "submitted_at";
   const periodoOk = periodoValido(periodo);
   // Buscar por nome ignora o recorte de datas, como já acontece no Pipeline.
   const buscando = busca.trim().length > 0;
   const periodoConsulta = buscando ? { de: "2000-01-01", ate: "2099-12-31" } : periodo;
-  const board = useCcaBoard(periodoConsulta, buscando || periodoOk);
+  const board = useCcaBoard(periodoConsulta, buscando || periodoOk, buscando ? "submitted_at" : periodoBase);
   const refresh = useInvalidateCcaBoard();
   const pipelineStages = usePipelineStages();
   // Insumos do editor. São as MESMAS consultas do Pipeline (mesmas chaves do
@@ -471,7 +472,9 @@ export default function CcaPipeline() {
           {periodoOk
             ? buscando
               ? "Busca ativa: o nome é procurado em toda a esteira, sem limitar pelas datas."
-              : "Período pela data de entrada na esteira. Buscar por nome ignora este período."
+              : periodoBase === "month_base"
+                ? "Mês pela competência (mês-base) do negócio. Buscar por nome ignora este período."
+                : "Período pela data de entrada na esteira. Buscar por nome ignora este período."
             : "Preencha as duas datas, com o início antes do fim."}
         </p>
       </div>
