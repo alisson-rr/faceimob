@@ -14,10 +14,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONTAINER="faceimob-schema-check"
 PGPASS="postgres"
-# Mesma imagem oficial, servida pelo espelho público da AWS: o Docker Hub
-# limita pull anônimo por IP e os runners do GitHub compartilham IP, então o
-# CI falhava com "toomanyrequests" sem relação com o código.
-IMAGE="${SCHEMA_CHECK_IMAGE:-public.ecr.aws/docker/library/postgres:15-alpine}"
+# A mesma imagem oficial em três registros. Pull anônimo tem limite por IP e
+# os runners do GitHub compartilham IP: em 09/10/2026 o Docker Hub e o espelho
+# da AWS responderam "toomanyrequests" seguidos, e o CI caía sem relação com o
+# código. `pull_image` tenta cada um, com espera, e usa o primeiro que vier.
+IMAGES=(
+  "${SCHEMA_CHECK_IMAGE:-mirror.gcr.io/library/postgres:15-alpine}"
+  "public.ecr.aws/docker/library/postgres:15-alpine"
+  "postgres:15-alpine"
+)
 
 WITH_SEED=0
 WITH_TESTS=0
@@ -45,6 +50,22 @@ cleanup() {
 trap cleanup EXIT
 
 docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
+
+pull_image() {
+  local tentativa candidata
+  for tentativa in 1 2 3; do
+    for candidata in "${IMAGES[@]}"; do
+      if docker image inspect "$candidata" >/dev/null 2>&1 || docker pull -q "$candidata" >/dev/null; then
+        IMAGE="$candidata"
+        return 0
+      fi
+    done
+    sleep $((tentativa * 15))
+  done
+  echo "não consegui baixar o postgres:15-alpine de nenhum registro" >&2
+  return 1
+}
+pull_image
 
 echo "==> subindo $IMAGE"
 docker run -d --name "$CONTAINER" \
