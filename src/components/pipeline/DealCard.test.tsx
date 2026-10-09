@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { DealCard } from "./DealCard";
 import type { PipelineStage } from "./stages";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import type { CcaQueueSpot } from "@/integrations/supabase/cca";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,7 +50,7 @@ async function renderCard(
     recusa?: string | null;
     extra?: Partial<LegacyDealRecord>;
     currentMonth?: string;
-    ccaQueuePosition?: number;
+    ccaQueuePosition?: CcaQueueSpot;
   } = {},
 ) {
   const container = document.body.appendChild(document.createElement("div"));
@@ -236,8 +237,13 @@ describe("DealCard · cor da coluna", () => {
 
 describe("DealCard · fila do CCA e reativação", () => {
   it("mostra a posição global do negócio na fila do CCA", async () => {
-    expect((await renderCard(undefined, { ccaQueuePosition: 7 })).texto)
+    expect((await renderCard(undefined, { ccaQueuePosition: { posicao: 7, fila: "agil" } })).texto)
       .toContain("7º na Esteira Ágil");
+  });
+
+  it("mostra a fila da análise p/ virar negócio com o nome dela (0252)", async () => {
+    expect((await renderCard(undefined, { ccaQueuePosition: { posicao: 2, fila: "virar" } })).texto)
+      .toContain("2º na Análise p/ virar negócio");
   });
 
   it("oferece reativar apenas OFF de competência anterior", async () => {

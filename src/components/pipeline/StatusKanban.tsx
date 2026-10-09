@@ -11,6 +11,7 @@ import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import { dealLock } from "./guards";
 import type { PipelineStage } from "./stages";
 import { faceimobStatusColor, ordemDeEvolucao } from "./statuses";
+import type { CcaQueueSpot } from "@/integrations/supabase/cca";
 
 /** Coluna do quadro: um Status 2 do cadastro, ou a de quem está fora dele. */
 type Coluna = { stage: PipelineStage; status: DealStatus | null; deals: LegacyDealRecord[] };
@@ -32,7 +33,7 @@ interface Props {
   onLose: (deal: LegacyDealRecord, preset?: string) => void;
   onReactivate?: (deal: LegacyDealRecord) => void;
   currentMonth?: string | null;
-  ccaQueuePositions?: ReadonlyMap<string, number>;
+  ccaQueuePositions?: ReadonlyMap<string, CcaQueueSpot>;
   canWrite: boolean;
   closedMonths: string[];
 }

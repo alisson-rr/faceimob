@@ -14,13 +14,25 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "./client";
 import { dbError } from "@/lib/supabaseError";
 
+/** As duas filas do CCA, independentes (0252). */
+export type CcaFila = "agil" | "virar";
+
+export const CCA_FILA_ROTULO: Record<CcaFila, string> = {
+  agil: "na Esteira Ágil",
+  virar: "na Análise p/ virar negócio",
+};
+
 export type CcaQueueEntry = {
   deal_id: string;
   deal_code: string;
   client_name: string;
   queue_position: number;
   submitted_at: string;
+  fila: CcaFila;
 };
+
+/** Posição de um negócio na fila dele, para o cartão do Pipeline. */
+export type CcaQueueSpot = { posicao: number; fila: CcaFila };
 
 // RPCs entram no banco por esta migration, antes da próxima regeneração de
 // `types.ts`. O cast fica isolado nesta fronteira e os retornos são tipados.

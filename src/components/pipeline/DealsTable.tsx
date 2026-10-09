@@ -19,6 +19,7 @@ import { faceimobStatusStyle, statusChoices, statusGroupLabel, STATUS_TONE_CLASS
 import { dealLock } from "./guards";
 import { offDistratoBlocked } from "./useDealActions";
 import { dealBrokers, dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
+import { CCA_FILA_ROTULO, type CcaQueueSpot } from "@/integrations/supabase/cca";
 
 const PER_PAGE = 15;
 
@@ -32,8 +33,8 @@ const AGE_STRIPE: Record<AgeTone, string> = {
 
 interface Props {
   deals: LegacyDealRecord[];
-  /** Posição global dos negócios visíveis na Esteira Ágil vigente. */
-  ccaQueuePositions?: ReadonlyMap<string, number>;
+  /** Posição de cada negócio visível na fila do CCA dele (Ágil ou virar, 0252). */
+  ccaQueuePositions?: ReadonlyMap<string, CcaQueueSpot>;
   /** Espelha `can_edit_deal`. O cabeçalho já anuncia "Somente leitura" ao sócio;
    *  sem isto cada linha continuava oferecendo três controles de escrita que o
    *  banco recusa — e ele só descobria depois de abrir o diálogo. */
@@ -346,7 +347,7 @@ export function DealsTable({
                       )}
                       {ccaQueuePosition ? (
                         <Badge variant="secondary" className="whitespace-nowrap text-xs tabular-nums text-info">
-                          {ccaQueuePosition}º na Esteira Ágil
+                          {ccaQueuePosition.posicao}º {CCA_FILA_ROTULO[ccaQueuePosition.fila]}
                         </Badge>
                       ) : null}
                     </div>
