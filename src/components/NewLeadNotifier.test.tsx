@@ -114,6 +114,7 @@ describe("NewLeadNotifier · lead atribuído", () => {
     expect(avisos).toHaveLength(1);
     expect(avisos[0].title).toBe("Lead atribuído a você!");
     expect(avisos[0].description).toContain("Bruno");
+    expect(avisos[0].action?.label).toBe("Pegar lead");
     await desmontar();
   });
 
