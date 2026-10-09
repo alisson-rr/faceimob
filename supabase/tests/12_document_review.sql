@@ -176,7 +176,8 @@ begin
   perform pg_temp.check12(
     exists (select 1 from public.notifications
             where profile_id = cor and kind = 'document_review_returned'
-              and body = 'Comprovante de renda ilegível.'),
+              -- 0255: o corpo abre com "Corretor … · Status …"; o motivo vem depois.
+              and body like '%Comprovante de renda ilegível.'),
     'devolução notifica o corretor com o motivo');
 
   perform set_config('request.jwt.claims',
