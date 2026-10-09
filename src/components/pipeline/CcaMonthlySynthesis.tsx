@@ -70,7 +70,7 @@ export function CcaMonthlySynthesis({ month, onMonthChange, onOpenDeal }: {
                       <span className="block truncate text-muted-foreground">
                         {[entry.developer_name, entry.project_name, entry.broker_name].filter(Boolean).join(" · ") || "Sem detalhes"}
                       </span>
-                      <time className="text-[11px] text-muted-foreground" dateTime={entry.entered_at}>
+                      <time className="text-xs text-muted-foreground" dateTime={entry.entered_at}>
                         {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(entry.entered_at))}
                       </time>
                     </button>
