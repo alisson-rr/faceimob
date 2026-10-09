@@ -22,7 +22,7 @@
 --   5. Atividade de lead feita por OUTRA pessoa avisa o dono; quem fez não é
 --      avisado; sem sessão (importação) não avisa; lead que o autor não enxerga
 --      não avisa o dono e o nome do cliente só vai para o dono; WhatsApp no
---      máximo 1 por lead a cada 10 min; a devolução do CCA não sai em dobro.
+--      máximo 1 por lead a cada 10 min; pendência interna do CCA não vira devolução.
 --   6. 0144: execução do agendador em andamento não é falha.
 --   7. O job de nova tentativa está agendado.
 --

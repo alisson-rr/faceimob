@@ -6,7 +6,7 @@
 --   · negócio com conferência APROVADA tentando gravar o rótulo à mão (era a
 --     maioria da base: 25 de 32 negócios passavam);
 --   · remoção do rótulo com o caso ainda na esteira;
---   · devolução do CCA reabrindo a conferência do gerente (com notificação);
+--   · movimento interno do CCA sem reabrir a conferência do gerente;
 --   · desfecho 'approved' escrevendo Status 2;
 --   · exclusão de documento pelo corretor só enquanto o dossiê é dele.
 -- =============================================================================
