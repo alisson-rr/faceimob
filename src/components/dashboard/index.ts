@@ -31,6 +31,7 @@ export {
   rankBy,
   readsAllDeals,
   useDashboardLeads,
+  useDashboardLeadsNoIntervalo,
   useDashboardPayload,
   useFunnelStages,
   useGoal,

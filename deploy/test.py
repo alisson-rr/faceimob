@@ -16,9 +16,27 @@ def run(*args, check=True, **kwargs):
     return subprocess.run(args, check=check, capture_output=True, text=True, **kwargs)
 
 
+# A mesma imagem oficial em três registros: pull anônimo tem limite por IP e
+# os runners do GitHub compartilham IP (09/10/2026: "toomanyrequests" seguidos).
+IMAGES = (
+    'mirror.gcr.io/library/postgres:17-alpine',
+    'public.ecr.aws/docker/library/postgres:17-alpine',
+    'postgres:17-alpine',
+)
+
+
+def pull_image():
+    for tentativa in range(3):
+        for image in IMAGES:
+            if run('docker', 'pull', '-q', image, check=False).returncode == 0:
+                return image
+        time.sleep((tentativa + 1) * 15)
+    raise RuntimeError('não consegui baixar o postgres:17-alpine de nenhum registro')
+
+
 try:
     run('docker', 'run', '-d', '--name', name, '-e', f'POSTGRES_PASSWORD={password}',
-        '-p', '127.0.0.1::5432', 'postgres:17-alpine')
+        '-p', '127.0.0.1::5432', pull_image())
     for _ in range(60):
         if run('docker', 'exec', name, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', check=False).returncode == 0:
             break

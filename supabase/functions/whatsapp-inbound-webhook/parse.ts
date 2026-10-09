@@ -9,6 +9,20 @@
 
 export type TipoMensagem = "texto" | "audio" | "imagem" | "video" | "documento" | "outro";
 
+/**
+ * Anúncio "clique para o WhatsApp" de onde a conversa veio (`referral` da Cloud
+ * API). Só vem na PRIMEIRA mensagem que o anúncio abre.
+ */
+export type AnuncioWhatsapp = {
+  /** Id do anúncio na Meta (`source_id` quando `source_type` é "ad"). */
+  adId: string | null;
+  tipoOrigem: string;
+  titulo: string | null;
+  texto: string | null;
+  url: string | null;
+  ctwaClid: string | null;
+};
+
 export type InboundMessage = {
   from: string;
   id: string;
@@ -16,6 +30,24 @@ export type InboundMessage = {
   tipo: TipoMensagem;
   mediaId: string | null;
   mimeType: string | null;
+  /** Nome do perfil do WhatsApp (`contacts[].profile.name`), quando a Meta manda. */
+  nome?: string | null;
+  anuncio?: AnuncioWhatsapp | null;
+};
+
+const lerAnuncio = (m: Registro): AnuncioWhatsapp | null => {
+  const r = registro(m.referral);
+  const tipoOrigem = texto(r.source_type);
+  const sourceId = texto(r.source_id);
+  if (!tipoOrigem && !sourceId && !texto(r.ctwa_clid)) return null;
+  return {
+    adId: tipoOrigem === "ad" && sourceId ? sourceId : null,
+    tipoOrigem: tipoOrigem || "ad",
+    titulo: texto(r.headline) || null,
+    texto: texto(r.body) || null,
+    url: texto(r.source_url) || null,
+    ctwaClid: texto(r.ctwa_clid) || null,
+  };
 };
 
 type Registro = Record<string, unknown>;
@@ -49,11 +81,21 @@ export function parseMessages(body: unknown): InboundMessage[] {
     for (const changeValue of lista(registro(entry).changes)) {
       const change = registro(changeValue);
       if (change.field !== "messages") continue;
+      const nomes = new Map<string, string>();
+      for (const contato of lista(registro(change.value).contacts)) {
+        const c = registro(contato);
+        const nome = texto(registro(c.profile).name);
+        if (texto(c.wa_id) && nome) nomes.set(texto(c.wa_id), nome);
+      }
       for (const messageValue of lista(registro(change.value).messages)) {
         const m = registro(messageValue);
         const from = texto(m.from);
         const id = texto(m.id);
         if (!from || !id) continue;
+        // Só entram quando existem: a mensagem comum continua com a forma de sempre.
+        const nome = nomes.get(from);
+        const anuncio = lerAnuncio(m);
+        const extra = { ...(nome ? { nome } : {}), ...(anuncio ? { anuncio } : {}) };
 
         const text =
           texto(registro(m.text).body) ||
@@ -61,7 +103,7 @@ export function parseMessages(body: unknown): InboundMessage[] {
           texto(registro(registro(m.interactive).button_reply).title) ||
           texto(registro(registro(m.interactive).list_reply).title);
         if (text) {
-          out.push({ from, id, text, tipo: "texto", mediaId: null, mimeType: null });
+          out.push({ from, id, text, tipo: "texto", mediaId: null, mimeType: null, ...extra });
           continue;
         }
 
@@ -76,6 +118,7 @@ export function parseMessages(body: unknown): InboundMessage[] {
           tipo,
           mediaId: texto(midia.id) || null,
           mimeType: texto(midia.mime_type) || null,
+          ...extra,
         });
       }
     }
@@ -102,7 +145,7 @@ const CORPO_DA_MIDIA: Record<Exclude<TipoMensagem, "texto">, string> = {
 export const corpoDaMensagem = (m: Pick<InboundMessage, "tipo" | "text">): string =>
   m.tipo === "texto" ? m.text : CORPO_DA_MIDIA[m.tipo];
 
-export type Rota = "robo" | "remarketing" | "humano" | "reabrir" | "sem_destino";
+export type Rota = "robo" | "remarketing" | "humano" | "reabrir" | "anuncio" | "sem_destino";
 
 /**
  * Para onde vai a mensagem, na ordem da caixa de conversas (F2.5):
@@ -110,13 +153,22 @@ export type Rota = "robo" | "remarketing" | "humano" | "reabrir" | "sem_destino"
  *  2. contato de remarketing esperando resposta → vira lead e conversa;
  *  3. conversa mais recente em qualquer outro status → entra nela, sem IA; a
  *     `resolved` reabre como `human`;
- *  4. ninguém → `unmatched`.
+ *  4. ninguém, mas veio de anúncio "clique para o WhatsApp" → vira lead na
+ *     roleta, com a conversa aberta para o corretor (`anuncio`);
+ *  5. ninguém → `unmatched`.
  * `conversa` é a ativa, se houver; senão, a mais recente do telefone.
  */
-export function decidirRota(conversa: { status: string } | null, remarketing: boolean): Rota {
+export function decidirRota(
+  conversa: { status: string } | null,
+  remarketing: boolean,
+  /** A mensagem veio de um anúncio "clique para o WhatsApp" (09/10/2026). */
+  anuncio = false,
+): Rota {
   if (conversa?.status === "active") return "robo";
   if (remarketing) return "remarketing";
-  if (!conversa) return "sem_destino";
+  // Ninguém conhecia o telefone, mas ele chegou por anúncio: vira lead na
+  // roleta, com a conversa aberta para o corretor (sem robô).
+  if (!conversa) return anuncio ? "anuncio" : "sem_destino";
   return conversa.status === "resolved" ? "reabrir" : "humano";
 }
 

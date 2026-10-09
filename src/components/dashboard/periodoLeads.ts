@@ -54,6 +54,19 @@ export function intervaloDoPeriodo(
   }
 }
 
+/**
+ * O mês do filtro do topo ("MM/AAAA") como intervalo; "todos os meses" → null.
+ * Com ele o mês vem inteiro do banco, em páginas: a lista sem recorte para nos
+ * 1.000 leads mais recentes, e numa semana de 700 leads/dia o começo do mês
+ * sumia do gráfico (09/10/2026: 01/10 aparecia zerado).
+ */
+export function intervaloDoMes(month: string): Intervalo | null {
+  const m = /^(\d{2})\/(\d{4})$/.exec(month);
+  if (!m) return null;
+  const [ano, mes] = [Number(m[2]), Number(m[1]) - 1];
+  return { de: dia(ano, mes, 1), ate: dia(ano, mes + 1, 1) };
+}
+
 /** Os dias do intervalo em "AAAA-MM-DD" (até 92, os mais recentes), para a série diária. */
 export function diasDoIntervalo({ de, ate }: Intervalo, limite = 92): string[] {
   const dias: string[] = [];

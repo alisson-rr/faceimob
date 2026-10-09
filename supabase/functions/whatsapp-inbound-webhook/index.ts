@@ -305,6 +305,55 @@ Deno.serve(async (req) => {
       return { id: newConv.id as string, lead_id: leadId };
     };
 
+    /**
+     * Anúncio "clique para o WhatsApp" de número desconhecido (09/10/2026): vira
+     * lead `queued` — quem acha dono é o cron da roleta (`assign_queued_leads`,
+     * com a afinidade por telefone da 0251), não o webhook — e abre a conversa
+     * já em `human`, sem robô: o corretor que pegar o lead vê a primeira
+     * mensagem, e as próximas do mesmo telefone caem nessa conversa.
+     */
+    const abrirAnuncio = async (msg: InboundMessage, phone: string): Promise<Alvo | null> => {
+      const anuncio = msg.anuncio;
+      const { data: origem } = await supabase
+        .from("lead_sources").select("id").eq("code", "whatsapp_ads").maybeSingle();
+      const { data: lead, error: leadErr } = await supabase
+        .from("leads")
+        .insert({
+          full_name: msg.nome?.trim() || "Lead do WhatsApp",
+          phone,
+          phone_raw: phone,
+          status: "queued",
+          funnel_stage: "new",
+          source_id: (origem as { id: string } | null)?.id ?? null,
+          ad_id: anuncio?.adId ?? null,
+          ad_name: anuncio?.titulo ?? null,
+          utm_source: "whatsapp_ads",
+          utm_medium: "click_to_whatsapp",
+          landing_page: anuncio?.url ?? null,
+          raw_payload: { whatsapp_anuncio: anuncio ?? null, primeira_mensagem: corpoDaMensagem(msg) },
+        })
+        .select("id")
+        .single();
+      if (leadErr) {
+        console.error("whatsapp-inbound: falha ao criar lead do anúncio —", leadErr.message);
+        await registrar(msg, phone, "agent_error", { detail: `falha ao criar lead do anúncio: ${leadErr.message}` });
+        return null;
+      }
+      const leadId = lead.id as string;
+      const { data: conv, error: convErr } = await supabase
+        .from("sdr_conversations")
+        .insert({ lead_id: leadId, status: "human" })
+        .select("id")
+        .single();
+      if (convErr) {
+        // O lead já está na roleta; só a conversa ficou de fora.
+        console.error("whatsapp-inbound: falha ao abrir conversa do anúncio —", convErr.message);
+        await registrar(msg, phone, "agent_error", { leadId, detail: `lead criado, conversa não: ${convErr.message}` });
+        return null;
+      }
+      return { id: conv.id as string, lead_id: leadId };
+    };
+
     /** A mensagem já entrou na conversa (réplica): nada a baixar. */
     const jaNaConversa = async (providerMessageId: string) => {
       const { data } = await supabase
@@ -509,7 +558,7 @@ Deno.serve(async (req) => {
       let conversa = await conversaDoTelefone(phone, true);
       const contato = conversa ? null : await contatoDeRemarketing(phone);
       if (!conversa && !contato) conversa = await conversaDoTelefone(phone, false);
-      const rota = decidirRota(conversa, contato !== null);
+      const rota = decidirRota(conversa, contato !== null, Boolean(msg.anuncio));
 
       if (rota === "sem_destino") {
         // Nada é baixado nem transcrito para quem não tem conversa: fica o
@@ -518,7 +567,9 @@ Deno.serve(async (req) => {
         return;
       }
 
-      const alvo = rota === "remarketing" && contato ? await abrirRemarketing(msg, phone, contato) : conversa;
+      const alvo = rota === "remarketing" && contato ? await abrirRemarketing(msg, phone, contato)
+        : rota === "anuncio" ? await abrirAnuncio(msg, phone)
+        : conversa;
       if (!alvo) return; // a falha ao abrir o atendimento já ficou registrada
       const extra: Registro = { leadId: alvo.lead_id, conversationId: alvo.id };
 

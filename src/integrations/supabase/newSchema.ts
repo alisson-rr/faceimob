@@ -796,9 +796,19 @@ export async function loadCompanyDashboardPayload(): Promise<DashboardPayload> {
 export async function listCompanyDashboardLeads(
   intervalo?: { de: string; ate: string },
 ): Promise<Lead[]> {
+  if (intervalo) {
+    // Com período a RPC não corta, mas o `max-rows` do PostgREST sim: um mês
+    // com mais de 1.000 leads vinha sem os primeiros dias. Em páginas, inteiro.
+    const { data, error } = await allRows<Lead>((from, to, count) =>
+      dashboardRowsRpc
+        .rpc<Lead>("dashboard_imobiliaria_leads", { p_de: intervalo.de, p_ate: intervalo.ate }, count ? { count } : undefined)
+        .range(from, to));
+    if (error) throw dbError("dashboard_imobiliaria_leads", error);
+    return data;
+  }
   const { data, error } = await dashboardRpc.rpc<Lead[]>("dashboard_imobiliaria_leads", {
-    p_de: intervalo?.de ?? null,
-    p_ate: intervalo?.ate ?? null,
+    p_de: null,
+    p_ate: null,
   });
   if (error) throw dbError("dashboard_imobiliaria_leads", error);
   return data ?? [];

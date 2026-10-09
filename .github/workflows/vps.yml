@@ -30,7 +30,12 @@ jobs:
       - run: bash scripts/validate-schema.sh --all
       - run: python3 deploy/test.py
       - run: python3 deploy/accept-release.test.py
-      - run: docker run --rm -v "$PWD:/work" -w /work denoland/deno:2.5.3 test --no-check --no-lock --allow-env deploy/functions-main.test.ts
+      # Deno direto do release, sem imagem do Docker Hub: o pull anônimo tem
+      # limite por IP compartilhado entre runners e derrubava o CI (09/10/2026).
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.5.3
+      - run: deno test --no-check --no-lock --allow-env deploy/functions-main.test.ts
 
   deploy:
     needs: validate
