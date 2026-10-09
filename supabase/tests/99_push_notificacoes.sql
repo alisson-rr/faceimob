@@ -858,24 +858,24 @@ begin
     not exists (select 1 from public.notifications where profile_id = cca and kind = 'cca_status_changed'),
     'quem mudou o status não é avisado');
 
-  -- Devolução com a conferência aprovada: quem avisa é o gatilho da esteira.
+  -- Uma mudança interna para pendência não devolve a conferência aprovada.
   update public.deals set document_review_status = 'approved' where id = v_deal;
   perform pg_temp.become143(cca);
   update public.cca_cases set status = 'pending_documents' where id = v_case;
   perform pg_temp.become143(null);
 
   perform pg_temp.check143(
-    exists (select 1 from public.notifications
-             where profile_id = cor_a and kind = 'document_review_returned'
-               and title = 'CCA devolveu o dossiê: ' || v_code),
-    'a devolução do CCA avisa pelo gatilho da esteira');
+    not exists (select 1 from public.notifications
+                 where profile_id = cor_a and kind = 'document_review_returned'
+                   and title = 'CCA devolveu o dossiê: ' || v_code),
+    'a pendência interna do CCA não simula devolução do dossiê');
   perform pg_temp.assert_eq143(
-    (select count(*) from public.notifications where profile_id = cor_a and kind = 'cca_status_changed'), 1::bigint,
-    'e o mesmo fato não sai num segundo aviso de mudança de status');
+    (select count(*) from public.notifications where profile_id = cor_a and kind = 'cca_status_changed'), 2::bigint,
+    'o corretor recebe o aviso normal da mudança para pendência');
 
   update public.cca_cases set status = 'under_review' where id = v_case;
   perform pg_temp.assert_eq143(
-    (select count(*) from public.notifications where profile_id = cor_a and kind = 'cca_status_changed'), 1::bigint,
+    (select count(*) from public.notifications where profile_id = cor_a and kind = 'cca_status_changed'), 2::bigint,
     'mudança feita sem sessão (sistema, importação) não avisa');
 
   delete from public.notifications
