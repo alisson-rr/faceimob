@@ -25,6 +25,7 @@ import {
   dashboardScope,
   leadsInMonth,
   useDashboardLeads,
+  useDashboardLeadsNoIntervalo,
   useDashboardPayload,
   useMonthView,
   useMonthlySeries,
@@ -35,6 +36,7 @@ import {
   withZeroSellers,
   type DashboardDataScope,
 } from "@/components/dashboard";
+import { intervaloDoMes } from "@/components/dashboard/periodoLeads";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { num, parseMonthStart } from "@/lib/format";
@@ -126,10 +128,17 @@ export default function Dashboard() {
   const goal = useSalesGoal(activeMonth, dataScope);
   const vgvGoal = useVgvGoal(activeMonth, dataScope);
   const leadsQuery = useDashboardLeads(dataScope);
-  const leadsNoPeriodo = useMemo(
-    () => (leadsQuery.data ? leadsInMonth(leadsQuery.data, activeMonth).length : null),
-    [leadsQuery.data, activeMonth],
-  );
+  // O mês vem inteiro do banco (mesma consulta e cache da aba Leads): contado
+  // na lista sem recorte, parava nos 1.000 mais recentes.
+  const mesDosLeads = useMemo(() => {
+    const intervalo = intervaloDoMes(activeMonth);
+    return intervalo ? { de: intervalo.de.toISOString(), ate: intervalo.ate.toISOString() } : null;
+  }, [activeMonth]);
+  const leadsDoMes = useDashboardLeadsNoIntervalo(mesDosLeads, dataScope);
+  const leadsNoPeriodo = useMemo(() => {
+    if (mesDosLeads) return leadsDoMes.data ? leadsDoMes.data.length : null;
+    return leadsQuery.data ? leadsInMonth(leadsQuery.data, activeMonth).length : null;
+  }, [mesDosLeads, leadsDoMes.data, leadsQuery.data, activeMonth]);
   // A lista de leads para no `max-rows` do PostgREST (1.000 linhas), e a base
   // passa de 100 mil; `payload.leadsCount` e contagem exata. Lista menor que a
   // contagem = lista cortada, e o numero que sai dela diz sobre o que foi
@@ -141,7 +150,7 @@ export default function Dashboard() {
 
   const isClosed = activeMonth !== ALL_MONTHS && closedMonths.includes(activeMonth);
   const periodo = activeMonth === ALL_MONTHS ? "todos os meses" : activeMonth;
-  const atualizando = query.isFetching || leadsQuery.isFetching;
+  const atualizando = query.isFetching || leadsQuery.isFetching || leadsDoMes.isFetching;
 
   // Funil de Vendas (04/10/2026): da liderança — admin, sócio, diretor e
   // gerente. Em "todos os meses" o funil mostra o mês corrente.
@@ -313,8 +322,8 @@ export default function Dashboard() {
         <KpiRow
           stats={view.stats}
           leadsNoPeriodo={leadsNoPeriodo}
-          leadsError={!!leadsQuery.error}
-          onLeadsRetry={() => void leadsQuery.refetch()}
+          leadsError={!!(mesDosLeads ? leadsDoMes.error : leadsQuery.error)}
+          onLeadsRetry={() => void (mesDosLeads ? leadsDoMes.refetch() : leadsQuery.refetch())}
           // A contagem exata, nao o tamanho da lista: a lista para em 1.000 e o
           // cartao dizia "1.000" para uma base de 102.799. A aba Leads nao repete
           // mais este cartao, entao nao ha outro numero de mesmo nome a divergir.

@@ -20,7 +20,7 @@ import {
   type DashboardDataScope,
 } from "./data";
 import {
-  PERIODOS_DE_LEADS, diasDoIntervalo, intervaloDoPeriodo, rotuloDoIntervalo, type PeriodoLeads,
+  PERIODOS_DE_LEADS, diasDoIntervalo, intervaloDoMes, intervaloDoPeriodo, rotuloDoIntervalo, type PeriodoLeads,
 } from "./periodoLeads";
 
 const statusLabel = (value: string) =>
@@ -129,15 +129,17 @@ export function LeadsPanel({
     () => intervaloDoPeriodo(periodoEscolhido, new Date(), custom),
     [periodoEscolhido, custom],
   );
+  const usaIntervalo = periodoEscolhido !== "filtro";
+  // O que vai ao banco: o período escolhido ou, no "filtro", o mês do topo.
+  const consulta = usaIntervalo ? intervalo : intervaloDoMes(month);
   const doIntervalo = useDashboardLeadsNoIntervalo(
-    intervalo ? { de: intervalo.de.toISOString(), ate: intervalo.ate.toISOString() } : null,
+    consulta ? { de: consulta.de.toISOString(), ate: consulta.ate.toISOString() } : null,
     dataScope,
   );
-  const usaIntervalo = periodoEscolhido !== "filtro";
 
   const view = useMemo(() => {
     const base = leads ?? [];
-    const rows = usaIntervalo ? doIntervalo.data ?? [] : leadsInMonth(base, month);
+    const rows = consulta ? doIntervalo.data ?? [] : leadsInMonth(base, month);
     const dias = usaIntervalo && intervalo ? diasDoIntervalo(intervalo) : diasDaSerie(month);
 
     const porDia = new Map<string, number>(dias.map((dia) => [dia, 0]));
@@ -192,7 +194,7 @@ export function LeadsPanel({
       porSituacao: ordenar(porSituacao).map((row) => ({ ...row, token: situacaoToken(row.label) })),
       porCorretor: ordenar(porCorretor).slice(0, 10),
     };
-  }, [leads, month, usaIntervalo, doIntervalo.data, intervalo]);
+  }, [leads, month, usaIntervalo, consulta, doIntervalo.data, intervalo]);
 
   const seletor = (
     <div className="flex flex-wrap items-end gap-2">
@@ -220,7 +222,7 @@ export function LeadsPanel({
     </div>
   );
 
-  const erro = error ?? (usaIntervalo ? doIntervalo.error : null);
+  const erro = error ?? (consulta ? doIntervalo.error : null);
   if (erro) {
     return (
       <EmptyState
@@ -229,7 +231,7 @@ export function LeadsPanel({
         title="Não consegui carregar os leads"
         description={describeError(erro, "A consulta de leads falhou. Verifique a conexão e tente de novo.")}
         action={
-          <Button variant="outline" onClick={() => { void refetch(); if (usaIntervalo) void doIntervalo.refetch(); }}>
+          <Button variant="outline" onClick={() => { void refetch(); if (consulta) void doIntervalo.refetch(); }}>
             Tentar de novo
           </Button>
         }
@@ -237,7 +239,7 @@ export function LeadsPanel({
     );
   }
 
-  if (isPending || (usaIntervalo && intervalo && doIntervalo.isPending)) {
+  if (isPending || (consulta && doIntervalo.isPending)) {
     return (
       <div className="flex flex-col gap-5">
         {usaIntervalo && seletor}
@@ -300,11 +302,13 @@ export function LeadsPanel({
       {seletor}
       <EmptyState
         icon={Inbox}
-        title={amostra ? `Nenhum lead de ${periodo} nos ${amostra}` : `Nenhum lead em ${periodo}`}
+        title={amostra && !consulta ? `Nenhum lead de ${periodo} nos ${amostra}` : `Nenhum lead em ${periodo}`}
         description={
-          amostra
+          amostra && !consulta
             ? `Esta aba só lê os ${amostra}, então um período mais antigo aparece vazio aqui. O total exato está em “Base de leads”, no topo.`
-            : `${toda ? "A base tem" : "Você enxerga"} ${num(view.base)} ${view.base === 1 ? "lead" : "leads"}, mas nenhum foi criado neste período. Troque o mês no filtro do topo.`
+            : amostra
+              ? "Nenhum lead foi criado neste mês. Troque o mês no filtro do topo."
+              : `${toda ? "A base tem" : "Você enxerga"} ${num(view.base)} ${view.base === 1 ? "lead" : "leads"}, mas nenhum foi criado neste período. Troque o mês no filtro do topo.`
         }
       />
       </div>
@@ -318,7 +322,7 @@ export function LeadsPanel({
   return (
     <div className="flex flex-col gap-5">
       {seletor}
-      {amostra && !usaIntervalo && (
+      {amostra && !consulta && (
         <p className="text-xs text-muted-foreground">
           Calculado sobre os {amostra} — os mais antigos não entram nesta aba.
         </p>

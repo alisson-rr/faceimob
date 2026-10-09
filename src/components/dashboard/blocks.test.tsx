@@ -7,6 +7,7 @@ import type { Lead } from "@/types/crm";
 import { CcaStatusCard, StaffCard } from "./Breakdown";
 import { DirectorPanel } from "./DirectorPanel";
 import { LeadsPanel } from "./LeadsPanel";
+import { intervaloDoMes } from "./periodoLeads";
 import { SalesFunnelCard } from "./SalesFunnelCard";
 import { dealStatusKeys } from "@/integrations/supabase/dealStatuses";
 import { catalogoDeTeste } from "@/components/pipeline/statusCatalog.fixture";
@@ -587,8 +588,20 @@ describe("LeadsPanel", () => {
 
   // Sem AuthProvider o `useAuth` devolve o contexto padrão (usuário nulo), e a
   // chave da consulta termina em `null` — é essa que o teste semeia.
-  const semearLeads = (rows: Lead[]) => (client: QueryClient) =>
+  // O mês do filtro vem do banco em consulta própria (o intervalo do mês); o
+  // teste semeia as duas, com o recorte que o banco faria.
+  const semearLeads = (rows: Lead[], month: string) => (client: QueryClient) => {
     client.setQueryData(["dashboard", "leads", null], rows);
+    const intervalo = intervaloDoMes(month);
+    if (!intervalo) return;
+    client.setQueryData(
+      ["dashboard", "leads", null, "intervalo", intervalo.de.toISOString(), intervalo.ate.toISOString()],
+      rows.filter((row) => {
+        const criado = new Date(row.created_at);
+        return criado >= intervalo.de && criado < intervalo.ate;
+      }),
+    );
+  };
 
   const rows = [
     lead("a", "2026-08-10T12:00:00-03:00", "converted"),
@@ -599,7 +612,7 @@ describe("LeadsPanel", () => {
   it("a aba inteira segue o filtro de período do topo", async () => {
     // Era sempre "hoje / últimos 7 / últimos 14 dias": trocar o mês no
     // cabeçalho não mudava um número sequer dentro da aba.
-    const { text, cleanup } = await renderComCache(<LeadsPanel month="08/2026" />, semearLeads(rows));
+    const { text, cleanup } = await renderComCache(<LeadsPanel month="08/2026" />, semearLeads(rows, "08/2026"));
     expect(text).toContain("Leads no período");
     expect(text).toContain("Entrada diária em 08/2026");
     // 2 dos 3 leads são de agosto, e 1 deles converteu: 50%.
@@ -623,7 +636,7 @@ describe("LeadsPanel", () => {
     }));
     const { text, cleanup } = await renderComCache(
       <LeadsPanel month="08/2026" />,
-      semearLeads(empatados),
+      semearLeads(empatados, "08/2026"),
     );
     const posicao = (nome: string) => text.indexOf(nome);
     expect(posicao("Ávila")).toBeGreaterThan(-1);
@@ -633,22 +646,27 @@ describe("LeadsPanel", () => {
   });
 
   it("período vazio com base cheia diz que é o filtro, não que a base está vazia", async () => {
-    const { text, cleanup } = await renderComCache(<LeadsPanel month="07/2026" />, semearLeads(rows));
+    const { text, cleanup } = await renderComCache(<LeadsPanel month="07/2026" />, semearLeads(rows, "07/2026"));
     expect(text).toContain("Nenhum lead em 07/2026");
     expect(text).toContain("A base tem 3 leads");
     await cleanup();
   });
 
-  it("lista cortada: a aba diz que calcula sobre os últimos N, e o vazio não afirma o tamanho da base", async () => {
+  it("lista cortada: só 'todos os meses' calcula sobre os últimos N; o mês vem inteiro do banco", async () => {
+    // 09/10/2026: o gráfico do mês contava só os 1.000 leads mais recentes e
+    // 01/10 aparecia zerado. O mês agora tem consulta própria, sem corte.
     const amostra = "últimos 1.000 leads";
-    const cheio = await renderComCache(<LeadsPanel month="08/2026" amostra={amostra} />, semearLeads(rows));
-    expect(cheio.text).toContain("Calculado sobre os últimos 1.000 leads");
-    await cheio.cleanup();
+    const todos = await renderComCache(<LeadsPanel month="all" amostra={amostra} />, semearLeads(rows, "all"));
+    expect(todos.text).toContain("Calculado sobre os últimos 1.000 leads");
+    await todos.cleanup();
 
-    // Mês mais antigo que o corte: "A base tem 3 leads, mas nenhum neste
-    // período" seria falso duas vezes.
-    const vazio = await renderComCache(<LeadsPanel month="07/2026" amostra={amostra} />, semearLeads(rows));
-    expect(vazio.text).toContain("Nenhum lead de 07/2026 nos últimos 1.000 leads");
+    const mes = await renderComCache(<LeadsPanel month="08/2026" amostra={amostra} />, semearLeads(rows, "08/2026"));
+    expect(mes.text).not.toContain("Calculado sobre");
+    await mes.cleanup();
+
+    // Mês vazio com a lista cortada: não afirma o tamanho da base, que é maior.
+    const vazio = await renderComCache(<LeadsPanel month="07/2026" amostra={amostra} />, semearLeads(rows, "07/2026"));
+    expect(vazio.text).toContain("Nenhum lead em 07/2026");
     expect(vazio.text).not.toContain("A base tem");
     await vazio.cleanup();
   });
@@ -660,7 +678,7 @@ describe("LeadsPanel", () => {
     // base — e o rótulo ao lado dizia justamente o contrário.
     const { text, cleanup } = await renderComCache(
       <LeadsPanel month="07/2026" toda={false} scopeLabel="leads já atribuídos" />,
-      semearLeads(rows),
+      semearLeads(rows, "07/2026"),
     );
     expect(text).toContain("Você enxerga 3 leads");
     expect(text).not.toContain("A base tem 3 leads");
@@ -668,7 +686,7 @@ describe("LeadsPanel", () => {
   });
 
   it("base vazia continua dizendo que a base está vazia", async () => {
-    const { text, cleanup } = await renderComCache(<LeadsPanel month="08/2026" />, semearLeads([]));
+    const { text, cleanup } = await renderComCache(<LeadsPanel month="08/2026" />, semearLeads([], "08/2026"));
     expect(text).toContain("Nenhum lead na base");
     await cleanup();
   });
@@ -679,7 +697,7 @@ describe("LeadsPanel", () => {
     // onde há recorte de perfil. Mesma distinção que o `CcaStatusCard` já faz.
     const { text, cleanup } = await renderComCache(
       <LeadsPanel month="08/2026" toda={false} scopeLabel="os leads da sua carteira" />,
-      semearLeads([]),
+      semearLeads([], "08/2026"),
     );
     expect(text).toContain("Nenhum lead no seu recorte");
     expect(text).not.toContain("Nenhum lead na base");
@@ -698,7 +716,7 @@ describe("LeadsPanel", () => {
 
     const { container, cleanup } = await renderComCache(
       <LeadsPanel month={mesCorrente} />,
-      semearLeads([lead("hoje", doDia(hoje.getDate()))]),
+      semearLeads([lead("hoje", doDia(hoje.getDate()))], mesCorrente),
     );
     // A tabela `sr-only` é a série: uma linha por dia coberto, e o mês corrente
     // para HOJE — não segue até o dia 30 com zeros.
@@ -713,7 +731,7 @@ describe("LeadsPanel", () => {
     const mesmoDiaAnoPassado = `${hoje.getFullYear() - 1}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}T12:00:00-03:00`;
     const todos = await renderComCache(
       <LeadsPanel month="all" />,
-      semearLeads([lead("hoje", doDia(hoje.getDate())), lead("ano-passado", mesmoDiaAnoPassado)]),
+      semearLeads([lead("hoje", doDia(hoje.getDate())), lead("ano-passado", mesmoDiaAnoPassado)], "all"),
     );
     const ultima = Array.from(todos.container.querySelectorAll(".sr-only table tbody tr")).at(-1);
     expect(ultima?.querySelector("td")?.textContent).toBe("1");

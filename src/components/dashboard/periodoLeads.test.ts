@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diasDoIntervalo, intervaloDoPeriodo, rotuloDoIntervalo } from "./periodoLeads";
+import { diasDoIntervalo, intervaloDoMes, intervaloDoPeriodo, rotuloDoIntervalo } from "./periodoLeads";
 
 // Sexta-feira, 03/10/2026, 15h no horário local do teste.
 const AGORA = new Date(2026, 9, 3, 15, 0, 0);
@@ -26,5 +26,15 @@ describe("períodos dos leads", () => {
     expect(rotuloDoIntervalo("custom", custom)).toBe("10/09 a 12/09");
     expect(intervaloDoPeriodo("custom", AGORA, { de: "2026-09-12", ate: "2026-09-10" })).toBeNull();
     expect(intervaloDoPeriodo("filtro", AGORA)).toBeNull();
+  });
+});
+
+describe("intervaloDoMes", () => {
+  it("cobre o mês inteiro do filtro, fim exclusivo; 'todos' não vira intervalo", () => {
+    const outubro = intervaloDoMes("10/2026");
+    expect(outubro?.de).toEqual(new Date(2026, 9, 1));
+    expect(outubro?.ate).toEqual(new Date(2026, 10, 1));
+    expect(intervaloDoMes("12/2026")?.ate).toEqual(new Date(2027, 0, 1));
+    expect(intervaloDoMes("all")).toBeNull();
   });
 });
