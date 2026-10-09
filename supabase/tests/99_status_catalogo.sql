@@ -88,16 +88,18 @@ begin
     not exists (select 1 from public.deal_status_groups where not active),
     'nenhum Status 1 nasce desativado (LEGADO é desativado pelo cliente depois)');
 
-  -- Os 6 Status 2 que só as colunas da CCA usam entram pela 0150 (ativos, sem
-  -- trava); ficam fora da conta para esta checagem seguir medindo a semente.
+  -- Status 2 acrescentados pelas colunas e sínteses do CCA entram depois da
+  -- semente; ficam fora da conta para esta checagem seguir medindo a 0149.
   perform pg_temp.check149(
     (select count(*) from public.deal_statuses
       where value not in ('EM ANÁLISE', 'VIROU NEGÓCIO COM PENDÊNCIAS', 'ANÁLISE CEOPF',
-                          'INCONFORME CEOPF', 'APROVADO/AGUARDANDO AGENDA', 'ENTREVISTA AGENDADA')) = 34
+                          'INCONFORME CEOPF', 'APROVADO/AGUARDANDO AGENDA', 'ENTREVISTA AGENDADA',
+                          'RESOLVER P/ ASSINAR BANCO', 'AGUARDANDO DEMANDA MÍNIMA')) = 34
     and (select count(*) from public.deal_statuses
           where active
             and value not in ('EM ANÁLISE', 'VIROU NEGÓCIO COM PENDÊNCIAS', 'ANÁLISE CEOPF',
-                              'INCONFORME CEOPF', 'APROVADO/AGUARDANDO AGENDA', 'ENTREVISTA AGENDADA')) = 33
+                              'INCONFORME CEOPF', 'APROVADO/AGUARDANDO AGENDA', 'ENTREVISTA AGENDADA',
+                              'RESOLVER P/ ASSINAR BANCO', 'AGUARDANDO DEMANDA MÍNIMA')) = 33
     and (select count(*) from public.deal_statuses where locked) = 10,
     '34 Status 2 (32 do cliente + OFF + PROPOSTA), 33 ativos, 10 travados');
 
