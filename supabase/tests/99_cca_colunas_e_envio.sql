@@ -896,19 +896,19 @@ begin
       where d.id = v_r),
     'a coluna grava "RET. ESTEIRA AGIL" e o Status 1 fica PROPOSTA');
   perform pg_temp.check150(
-    (select document_review_status from public.deals where id = v_r) = 'returned'
-    and exists (select 1 from public.notifications
-                 where profile_id = cor and kind = 'document_review_returned'
-                   and body like '%ajustar a renda%'),
-    'devolve ao comercial: a conferência do gerente reabre e o corretor é avisado com a mensagem');
+    (select document_review_status from public.deals where id = v_r) = 'approved'
+    and not exists (select 1 from public.notifications
+                     where profile_id = cor and kind = 'document_review_returned'
+                       and body like '%ajustar a renda%'),
+    'mover na esteira preserva a conferência e não simula uma devolução explícita');
   perform pg_temp.check150(
-    not exists (select 1 from public.notifications
-                 where profile_id = cor and kind = 'cca_status_changed'
-                   and body like '%ajustar a renda%')
+    exists (select 1 from public.notifications
+             where profile_id = cor and kind = 'cca_status_changed'
+               and body like '%ajustar a renda%')
     and exists (select 1 from public.notifications
                  where profile_id = ger and kind = 'cca_status_changed'
                    and body like '%ajustar a renda%'),
-    'o corretor recebe só a devolução, sem o aviso do movimento junto; o gerente recebe o movimento');
+    'corretor e gerente recebem o aviso normal do movimento, sem falsa devolução');
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
