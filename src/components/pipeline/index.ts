@@ -28,11 +28,14 @@ export { ChoiceField, PersonField, Section, TextField } from "./fields";
 
 // ── CCA ─────────────────────────────────────────────────────────────────────
 export { CcaBoard } from "./CcaBoard";
+export { CcaCloseContractDialog } from "./CcaCloseContractDialog";
+export { CcaMonthlySynthesis } from "./CcaMonthlySynthesis";
 export { CcaMoveDialog } from "./CcaMoveDialog";
 export { CcaStageSettingsDialog } from "./CcaStageSettingsDialog";
 export {
-  ccaKeys, loadCcaBoard, saveCcaAnalysis, useCcaBoard, useInvalidateCcaBoard,
-  type CcaAnalysis, type CcaDeal, type CcaStage,
+  ccaKeys, closeCcaContract, loadCcaBoard, loadCcaMonthlySynthesis, saveCcaAnalysis,
+  useCcaBoard, useCcaMonthlySynthesis, useInvalidateCcaBoard,
+  type CcaAnalysis, type CcaDeal, type CcaStage, type CcaSynthesisEntry,
 } from "./ccaData";
 export {
   CCA_STATUS_OPTIONS, CCA_TONE_OPTIONS, ccaStageColor, ccaStageTone,

@@ -55,6 +55,20 @@ export interface CcaDeal {
   submittedAt?: string | null;
   stageEnteredAt?: string | null;
   agile?: boolean;
+  /** Contrato originado de "Virou negócio com pendências" (0243). */
+  contractHasPendingIssue?: boolean;
+}
+
+export interface CcaSynthesisEntry {
+  event_id: string;
+  deal_id: string;
+  stage_name: string;
+  entered_at: string;
+  deal_code: string | null;
+  client_name: string | null;
+  developer_name: string | null;
+  project_name: string | null;
+  broker_name: string | null;
 }
 
 export type CcaAnalysis = Record<string, string>;
@@ -79,7 +93,37 @@ export const ccaKeys = {
   sendCounts: (dealIds: string[]) => ["cca", "board", "send-counts", dealIds] as const,
   statusOptions: ["cca", "status-options"] as const,
   case: (dealId: string) => ["cca", "case", dealId] as const,
+  synthesis: (month: string) => ["cca", "synthesis", month] as const,
 };
+
+const ccaExtraRpc = supabase as unknown as {
+  rpc: (name: "cca_monthly_synthesis" | "cca_close_contract", params: Record<string, unknown>) =>
+    PromiseLike<{ data: unknown; error: { code?: string; message: string; details?: string; hint?: string } | null }>;
+};
+
+/** Sínteses pelo mês da MOVIMENTAÇÃO no CCA, nunca pelo mês-base da venda. */
+export async function loadCcaMonthlySynthesis(month: string): Promise<CcaSynthesisEntry[]> {
+  const { data, error } = await ccaExtraRpc.rpc("cca_monthly_synthesis", { p_month: `${month}-01` });
+  if (error) throw dbError("cca_monthly_synthesis", error);
+  return (data ?? []) as CcaSynthesisEntry[];
+}
+
+export const useCcaMonthlySynthesis = (month: string, enabled = true) => useQuery({
+  queryKey: ccaKeys.synthesis(month),
+  queryFn: () => loadCcaMonthlySynthesis(month),
+  enabled: enabled && /^20\d{2}-\d{2}$/.test(month),
+});
+
+export async function closeCcaContract(
+  dealId: string,
+  outcome: "QUEDA" | "DISTRATO",
+  reason: string,
+): Promise<void> {
+  const { error } = await ccaExtraRpc.rpc("cca_close_contract", {
+    p_deal_id: dealId, p_outcome: outcome, p_reason: reason,
+  });
+  if (error) throw dbError("cca_close_contract", error);
+}
 
 const DIA_MS = 86_400_000;
 const somaDias = (dia: string, dias: number) =>
@@ -353,6 +397,7 @@ export async function loadCcaBoard(
       submittedAt: row.submitted_at,
       stageEnteredAt: row.stage_entered_at ?? null,
       agile: bareStatus(deal?.status ?? "").normalize("NFD").replace(/\p{M}/gu, "") === "ESTEIRA AGIL",
+      contractHasPendingIssue: deal?.contract_has_pending_issue ?? false,
     });
   }
 
