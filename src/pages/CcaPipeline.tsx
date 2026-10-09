@@ -18,10 +18,10 @@ import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import {
   listDocumentTypesForAdmin, updateDocumentType, type DocumentTypeAdminRecord,
 } from "@/integrations/supabase/documents";
-import { saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
+import { listLegacyDeals, saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { useNegocioDoLink } from "@/components/pipeline/useNegocioDoLink";
 import {
-  CcaBoard, CcaMoveDialog, CcaStageSettingsDialog,
+  CcaBoard, CcaCloseContractDialog, CcaMonthlySynthesis, CcaMoveDialog, CcaStageSettingsDialog,
   dealDocumentNumberError, dealRangeError, dealRequiredError, useCcaBoard, useDevelopers, useInvalidateCcaBoard,
   useInvalidateDeals, usePeople, usePipelineStages,
   type CcaDeal, type CcaStage,
@@ -253,6 +253,11 @@ export default function CcaPipeline() {
   const [devolvendo, setDevolvendo] = useState<CcaDeal | null>(null);
   const [typesOpen, setTypesOpen] = useState(false);
   const [moving, setMoving] = useState<{ deal: CcaDeal; stage: CcaStage } | null>(null);
+  const [closingContract, setClosingContract] = useState<CcaDeal | null>(null);
+  const [synthesisMonth, setSynthesisMonth] = useState(() => {
+    const saoPaulo = new Date(Date.now() - 3 * 3_600_000);
+    return saoPaulo.toISOString().slice(0, 7);
+  });
   /** Negócio aberto no editor — o `id`, não a linha: assim o modal acompanha o
    *  refetch do quadro em vez de segurar uma cópia congelada. */
   const [openDealId, setOpenDealId] = useState<string | null>(null);
@@ -302,6 +307,23 @@ export default function CcaPipeline() {
     setOpenDealId(registro.id);
   }, [negocios]);
   const moverCaso = useCallback((deal: CcaDeal, stage: CcaStage) => setMoving({ deal, stage }), []);
+  const abrirNegocioDaSintese = useCallback(async (dealId: string) => {
+    const carregado = negocios?.find((row) => row.id === dealId);
+    if (carregado) {
+      setOpenDealId(dealId);
+      return;
+    }
+    try {
+      const [registro] = await listLegacyDeals(undefined, { ids: [dealId] });
+      if (!registro) throw new Error("Negócio fora da sua visibilidade.");
+      setDoLink(registro);
+      setOpenDealId(registro.id);
+    } catch (error) {
+      toast.error("Não foi possível abrir o negócio", {
+        description: describeError(error, "Recarregue a página e tente novamente."),
+      });
+    }
+  }, [negocios]);
 
   // O catálogo de etapas entra no gate porque `CcaMoveDialog` depende dele para
   // levar o negócio junto ao aprovar: abrir a esteira antes de ele chegar
@@ -451,6 +473,14 @@ export default function CcaPipeline() {
         </p>
       </div>
 
+      {canAct && (
+        <CcaMonthlySynthesis
+          month={synthesisMonth}
+          onMonthChange={setSynthesisMonth}
+          onOpenDeal={(dealId) => void abrirNegocioDaSintese(dealId)}
+        />
+      )}
+
       {envios.isError && (
         <p role="alert" className="flex flex-wrap items-center gap-2 text-xs text-warning">
           Os envios por esteira (Ágil e Virar) não carregaram:{" "}
@@ -492,6 +522,7 @@ export default function CcaPipeline() {
           onOpen={abrirNegocio}
           onMove={moverCaso}
           onDevolver={setDevolvendo}
+          onCloseContract={setClosingContract}
         />
       )}
 
@@ -531,6 +562,14 @@ export default function CcaPipeline() {
 
       {devolvendo && (
         <CcaDevolverDialog deal={devolvendo} onClose={() => setDevolvendo(null)} onDone={refresh} />
+      )}
+
+      {closingContract && (
+        <CcaCloseContractDialog
+          deal={closingContract}
+          onClose={() => setClosingContract(null)}
+          onDone={async () => { await invalidateDeals(); await refresh(); }}
+        />
       )}
 
       {settingsOpen && gerenciaEstagios && (

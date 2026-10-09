@@ -473,3 +473,51 @@ describe("CcaBoard · devolver ao comercial", () => {
     expect((await botoes("cancelled")).temBotao).toBe(false);
   });
 });
+
+describe("CcaBoard · contrato no CCA", () => {
+  it("mostra o selo de pendência e libera queda/distrato somente no contrato", async () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    const encerrados: string[] = [];
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[STAGE]}
+          deals={[{ ...DEAL, dealStatus: "04. EM CONTRATO", contractHasPendingIssue: true }]}
+          canAct
+          onOpen={() => undefined}
+          onMove={() => undefined}
+          onCloseContract={(deal) => encerrados.push(deal.dealId)}
+        /> as ReactNode,
+      );
+    });
+    expect(container.textContent).toContain("Pendência");
+    const botao = [...container.querySelectorAll("button")]
+      .find((item) => item.textContent?.includes("Queda ou distrato"));
+    expect(botao).toBeTruthy();
+    await act(async () => { botao?.click(); });
+    expect(encerrados).toEqual(["d1"]);
+    await act(async () => { root.unmount(); });
+    container.remove();
+  });
+
+  it("não oferece queda/distrato antes do contrato", async () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <CcaBoard
+          stages={[STAGE]}
+          deals={[{ ...DEAL, dealStatus: "08. VIROU NEGÓCIO" }]}
+          canAct
+          onOpen={() => undefined}
+          onMove={() => undefined}
+          onCloseContract={() => undefined}
+        /> as ReactNode,
+      );
+    });
+    expect(container.textContent).not.toContain("Queda ou distrato");
+    await act(async () => { root.unmount(); });
+    container.remove();
+  });
+});

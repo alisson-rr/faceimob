@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useState, type DragEvent } from "react";
-import { Building2, ChevronDown, ChevronUp, DollarSign, Undo2, User } from "lucide-react";
+import { AlertTriangle, Building2, ChevronDown, ChevronUp, DollarSign, Gavel, Undo2, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,7 @@ import { ccaCaseIsOpen } from "@/integrations/supabase/documents";
 import { elapsedDays, elapsedLabel } from "./ccaTime";
 import { cn } from "@/lib/utils";
 import { developerDot, isHexColor } from "@/lib/tone";
+import { bareStatus } from "@/lib/dealStatus";
 
 function SeloDaConstrutora({ nome, cor }: { nome: string; cor?: string | null }) {
   const bolinha = developerDot(nome, cor);
@@ -60,7 +61,11 @@ interface Props {
   onMove: (deal: CcaDeal, stage: CcaStage) => void;
   /** Cancela o caso na CCA e devolve o dossiê ao comercial com comentário. */
   onDevolver?: (deal: CcaDeal) => void;
+  /** QUEDA/DISTRATO de contrato ou assinado, com justificativa obrigatória. */
+  onCloseContract?: (deal: CcaDeal) => void;
 }
+
+const CONTRACT_STATUSES = new Set(["EM CONTRATO", "ASSINADO", "ASS. BANCO", "RC EMITIDA"]);
 
 /**
  * Quadro da esteira CCA.
@@ -83,7 +88,7 @@ interface Props {
  * `memo`: abrir um diálogo da tela não redesenha os cartões.
  */
 export const CcaBoard = memo(function CcaBoard({
-  stages, deals, canAct, sendCounts, onOpen, onMove, onDevolver,
+  stages, deals, canAct, sendCounts, onOpen, onMove, onDevolver, onCloseContract,
 }: Props) {
   const faixaId = useId();
   const [now, setNow] = useState(Date.now);
@@ -320,6 +325,11 @@ export const CcaBoard = memo(function CcaBoard({
                                 Virar {envio.virar}
                               </Badge>
                             ) : null}
+                            {deal.contractHasPendingIssue && (
+                              <Badge variant="outline" className="gap-1 border-warning/60 bg-warning/10 px-1.5 text-xs text-warning">
+                                <AlertTriangle className="h-3 w-3" aria-hidden /> Pendência
+                              </Badge>
+                            )}
                           </div>
                           {deal.developer && <SeloDaConstrutora nome={deal.developer} cor={deal.developerColor} />}
                         </div>
@@ -355,6 +365,14 @@ export const CcaBoard = memo(function CcaBoard({
                           onClick={() => onDevolver(deal)}
                         >
                           <Undo2 className="mr-1 h-3 w-3" aria-hidden /> Devolver ao comercial
+                        </Button>
+                      )}
+                      {canAct && onCloseContract && CONTRACT_STATUSES.has(bareStatus(deal.dealStatus)) && (
+                        <Button
+                          type="button" variant="destructive" size="sm" className="h-7 w-full text-xs"
+                          onClick={() => onCloseContract(deal)}
+                        >
+                          <Gavel className="mr-1 h-3 w-3" aria-hidden /> Queda ou distrato
                         </Button>
                       )}
                     </article>

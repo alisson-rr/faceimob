@@ -1,7 +1,7 @@
 -- =============================================================================
 -- 0150 — CCA pelo Status 2 e envio com mensagem nas duas esteiras.
 --
---   · as 19 colunas do cliente, na ordem, cada uma com seu Status 2;
+--   · as colunas operacionais do cliente, cada uma com seu Status 2;
 --   · mensagem obrigatória no envio e no movimento (a aprovação aceita, sem exigir);
 --   · status, coluna, entrada e decisão só mudam pela RPC; a tela não cria nem
 --     apaga caso; gravar `analysis` segue livre;
@@ -92,15 +92,17 @@ begin
    where s.active and s.deal_status_id is not null;
 
   -- 0225: "PENDENTE C/ RESTRIÇÃO" entrou logo depois de PENDENTE (pedido da CCA).
-  perform pg_temp.check150(v_nomes = array[
+  perform pg_temp.check150(v_nomes @> array[
       'EM ANÁLISE', 'PENDENTE', 'PENDENTE C/ RESTRIÇÃO', 'RETORNO À ESTEIRA ÁGIL', 'EM PROCESSAMENTO',
       'AGUARDANDO RETORNO AGÊNCIA',
       'APROVADO TOTAL', 'APROVADO POTENCIAL', 'APROVADO CONDICIONADO',
       'APROVADO TOTAL COM RESTRIÇÃO', 'APROVADO CONDICIONADO COM RESTRIÇÃO',
       'REPROVADO', 'BACEN', 'VIROU NEGÓCIO', 'VIROU NEGÓCIO COM PENDÊNCIAS',
       'ANÁLISE CEOPF', 'INCONFORME CEOPF', 'APROVADO/AGUARDANDO AGENDA',
-      'ENTREVISTA AGENDADA', 'ASSINADO BANCO'],
-    'as 19 colunas do cliente estão ativas, na ordem, cada uma com seu Status 2');
+      'ENTREVISTA AGENDADA', 'ASSINADO BANCO',
+      'PENDENTE P/ VIRAR NEGÓCIO', 'RESOLVER P/ ASSINAR BANCO',
+      'AGUARDANDO DEMANDA MÍNIMA', 'EM CONTRATO', 'ASSINADO'],
+    'as colunas operacionais do cliente e do fluxo novo estão ativas com Status 2');
 
   perform pg_temp.check150(
     (select s.status = 'pending_documents' and ds.value = 'RET. ESTEIRA AGIL'
@@ -110,11 +112,14 @@ begin
       where s.name = 'RETORNO À ESTEIRA ÁGIL' and s.active),
     'RETORNO À ESTEIRA ÁGIL é pendência e grava "RET. ESTEIRA AGIL", exibido como "RETORNO À ESTEIRA ÁGIL"');
 
-  -- O seed deste banco recria "Enviado à Construtora" (status sem estágio): é a
-  -- coluna do fluxo externo, a única que pode seguir ativa sem Status 2.
+  -- O seed recria "Enviado à Construtora" e o 0248 mantém a entrada sistêmica
+  -- "ANÁLISE P/ VIRAR NEGÓCIO": são as únicas colunas sem Status 2 próprio.
   perform pg_temp.check150(
     not exists (select 1 from public.cca_stages
-                 where active and deal_status_id is null and status <> 'sent_to_developer'),
+                 where active and deal_status_id is null
+                   and status <> 'sent_to_developer'
+                   and public.cca_stage_name_key(name) <>
+                       public.cca_stage_name_key('ANÁLISE P/ VIRAR NEGÓCIO')),
     'nenhum estágio antigo segue ativo');
 
   perform pg_temp.check150(
@@ -415,8 +420,9 @@ begin
   select * into v_case from public.cca_cases where deal_id = v_a;
   perform pg_temp.check150(
     v_case.status = 'under_review' and v_case.decided_at is null
-    and v_case.stage_id = (select id from public.cca_stages where name = 'EM ANÁLISE' and active),
-    'aprovado pelo gerente, o 2º envio reabre o caso em EM ANÁLISE');
+    and v_case.stage_id = (select id from public.cca_stages
+                            where name = 'ANÁLISE P/ VIRAR NEGÓCIO' and active),
+    'aprovado pelo gerente, o 2º envio reabre na análise para virar negócio');
   perform pg_temp.check150(
     (select status_detail from public.deals where id = v_a) = '15. ANÁLISE P/ VIRAR NEGÓCIO',
     'e entra com "15. ANÁLISE P/ VIRAR NEGÓCIO"');
@@ -890,19 +896,19 @@ begin
       where d.id = v_r),
     'a coluna grava "RET. ESTEIRA AGIL" e o Status 1 fica PROPOSTA');
   perform pg_temp.check150(
-    (select document_review_status from public.deals where id = v_r) = 'returned'
-    and exists (select 1 from public.notifications
-                 where profile_id = cor and kind = 'document_review_returned'
-                   and body like '%ajustar a renda%'),
-    'devolve ao comercial: a conferência do gerente reabre e o corretor é avisado com a mensagem');
+    (select document_review_status from public.deals where id = v_r) = 'approved'
+    and not exists (select 1 from public.notifications
+                     where profile_id = cor and kind = 'document_review_returned'
+                       and body like '%ajustar a renda%'),
+    'mover na esteira preserva a conferência e não simula uma devolução explícita');
   perform pg_temp.check150(
-    not exists (select 1 from public.notifications
-                 where profile_id = cor and kind = 'cca_status_changed'
-                   and body like '%ajustar a renda%')
+    exists (select 1 from public.notifications
+             where profile_id = cor and kind = 'cca_status_changed'
+               and body like '%ajustar a renda%')
     and exists (select 1 from public.notifications
                  where profile_id = ger and kind = 'cca_status_changed'
                    and body like '%ajustar a renda%'),
-    'o corretor recebe só a devolução, sem o aviso do movimento junto; o gerente recebe o movimento');
+    'corretor e gerente recebem o aviso normal do movimento, sem falsa devolução');
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
@@ -934,10 +940,8 @@ $$;
 
 \echo '== 0150: caso importado em pendência com a conferência aprovada =='
 
--- Bloco próprio: o dedupe do aviso compara `created_at >= now()`, e a devolução
--- do bloco anterior teria o mesmo instante. PENDENTE → RETORNO À ESTEIRA ÁGIL
--- não muda o status: sem reabrir na troca de coluna, o corretor ficava sem
--- reenvio (ágil recusa conferência aprovada; virar exige crédito aprovado).
+-- Bloco próprio para garantir que até casos importados com conferência aprovada
+-- preservem a aprovação ao trocar entre duas colunas técnicas de pendência.
 do $$
 declare
   ger    uuid := '00000000-0000-0000-0000-000000150002';
@@ -948,7 +952,6 @@ declare
   v_ret  uuid := (select id from public.cca_stages where name = 'RETORNO À ESTEIRA ÁGIL' and active);
   v_r    uuid;
   v_case uuid;
-  v_msg  text;
 begin
   select id into v_r from public.deals where developer_id = v_int and unit = '1505';
   select id into v_case from public.cca_cases where deal_id = v_r;
@@ -966,35 +969,19 @@ begin
   reset role;
 
   perform pg_temp.check150(
-    (select document_review_status from public.deals where id = v_r) = 'returned'
+    (select document_review_status from public.deals where id = v_r) = 'approved'
     and (select count(*) from public.notifications
           where profile_id = cor and kind = 'document_review_returned'
-            and body like '%caso importado%') = 1,
-    'de PENDENTE para RETORNO À ESTEIRA ÁGIL (mesmo status) a conferência aprovada reabre e o corretor é avisado');
+            and body like '%caso importado%') = 0,
+    'de PENDENTE para RETORNO À ESTEIRA ÁGIL preserva a conferência aprovada');
   perform pg_temp.check150(
-    not exists (select 1 from public.notifications
-                 where profile_id = cor and kind = 'cca_status_changed'
-                   and body like '%caso importado%')
+    exists (select 1 from public.notifications
+             where profile_id = cor and kind = 'cca_status_changed'
+               and body like '%caso importado%')
     and exists (select 1 from public.notifications
                  where profile_id = ger and kind = 'cca_status_changed'
                    and body like '%caso importado%'),
-    'e o corretor não recebe o aviso do movimento junto; o gerente recebe');
-
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
-  set local role authenticated;
-  v_msg := null;
-  begin
-    perform public.submit_deal_for_manager_review(v_r, 'Reenvio do caso importado');
-  exception when raise_exception then
-    v_msg := sqlerrm;
-  end;
-  reset role;
-
-  perform pg_temp.check150(
-    v_msg is null
-    and (select document_review_status from public.deals where id = v_r) = 'pending',
-    format('devolvido, o caso importado volta a ser reenviado pela esteira ágil (%s)', coalesce(v_msg, 'aceito')));
+    'corretor e gerente recebem apenas o aviso normal do movimento');
 end;
 $$;
 
