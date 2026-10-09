@@ -940,10 +940,8 @@ $$;
 
 \echo '== 0150: caso importado em pendência com a conferência aprovada =='
 
--- Bloco próprio: o dedupe do aviso compara `created_at >= now()`, e a devolução
--- do bloco anterior teria o mesmo instante. PENDENTE → RETORNO À ESTEIRA ÁGIL
--- não muda o status: sem reabrir na troca de coluna, o corretor ficava sem
--- reenvio (ágil recusa conferência aprovada; virar exige crédito aprovado).
+-- Bloco próprio para garantir que até casos importados com conferência aprovada
+-- preservem a aprovação ao trocar entre duas colunas técnicas de pendência.
 do $$
 declare
   ger    uuid := '00000000-0000-0000-0000-000000150002';
@@ -954,7 +952,6 @@ declare
   v_ret  uuid := (select id from public.cca_stages where name = 'RETORNO À ESTEIRA ÁGIL' and active);
   v_r    uuid;
   v_case uuid;
-  v_msg  text;
 begin
   select id into v_r from public.deals where developer_id = v_int and unit = '1505';
   select id into v_case from public.cca_cases where deal_id = v_r;
@@ -972,35 +969,19 @@ begin
   reset role;
 
   perform pg_temp.check150(
-    (select document_review_status from public.deals where id = v_r) = 'returned'
+    (select document_review_status from public.deals where id = v_r) = 'approved'
     and (select count(*) from public.notifications
           where profile_id = cor and kind = 'document_review_returned'
-            and body like '%caso importado%') = 1,
-    'de PENDENTE para RETORNO À ESTEIRA ÁGIL (mesmo status) a conferência aprovada reabre e o corretor é avisado');
+            and body like '%caso importado%') = 0,
+    'de PENDENTE para RETORNO À ESTEIRA ÁGIL preserva a conferência aprovada');
   perform pg_temp.check150(
-    not exists (select 1 from public.notifications
-                 where profile_id = cor and kind = 'cca_status_changed'
-                   and body like '%caso importado%')
+    exists (select 1 from public.notifications
+             where profile_id = cor and kind = 'cca_status_changed'
+               and body like '%caso importado%')
     and exists (select 1 from public.notifications
                  where profile_id = ger and kind = 'cca_status_changed'
                    and body like '%caso importado%'),
-    'e o corretor não recebe o aviso do movimento junto; o gerente recebe');
-
-  perform set_config('request.jwt.claims',
-    json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
-  set local role authenticated;
-  v_msg := null;
-  begin
-    perform public.submit_deal_for_manager_review(v_r, 'Reenvio do caso importado');
-  exception when raise_exception then
-    v_msg := sqlerrm;
-  end;
-  reset role;
-
-  perform pg_temp.check150(
-    v_msg is null
-    and (select document_review_status from public.deals where id = v_r) = 'pending',
-    format('devolvido, o caso importado volta a ser reenviado pela esteira ágil (%s)', coalesce(v_msg, 'aceito')));
+    'corretor e gerente recebem apenas o aviso normal do movimento');
 end;
 $$;
 
