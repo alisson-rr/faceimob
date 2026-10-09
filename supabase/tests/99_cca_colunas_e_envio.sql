@@ -112,11 +112,14 @@ begin
       where s.name = 'RETORNO À ESTEIRA ÁGIL' and s.active),
     'RETORNO À ESTEIRA ÁGIL é pendência e grava "RET. ESTEIRA AGIL", exibido como "RETORNO À ESTEIRA ÁGIL"');
 
-  -- O seed deste banco recria "Enviado à Construtora" (status sem estágio): é a
-  -- coluna do fluxo externo, a única que pode seguir ativa sem Status 2.
+  -- O seed recria "Enviado à Construtora" e o 0248 mantém a entrada sistêmica
+  -- "ANÁLISE P/ VIRAR NEGÓCIO": são as únicas colunas sem Status 2 próprio.
   perform pg_temp.check150(
     not exists (select 1 from public.cca_stages
-                 where active and deal_status_id is null and status <> 'sent_to_developer'),
+                 where active and deal_status_id is null
+                   and status <> 'sent_to_developer'
+                   and public.cca_stage_name_key(name) <>
+                       public.cca_stage_name_key('ANÁLISE P/ VIRAR NEGÓCIO')),
     'nenhum estágio antigo segue ativo');
 
   perform pg_temp.check150(
