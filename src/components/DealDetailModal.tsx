@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { usePosicaoNaFilaCca } from "@/integrations/supabase/cca";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -112,6 +113,8 @@ export default function DealDetailModal({
   // (pedido de 06/10/2026). Antes cada troca desmontava o painel e o rascunho ia junto.
   const [visitadas, setVisitadas] = useState<ReadonlySet<TabKey>>(() => new Set(["detalhes", initialTab]));
   const montada = (key: TabKey) => tab === key || visitadas.has(key);
+  /** Renova a faixa "Próximo passo" e a aba Anexos juntas depois de uma decisão. */
+  const [versaoDossie, setVersaoDossie] = useState(0);
   const [cca, setCca] = useState<CcaAnalysis>({});
   const [saving, setSaving] = useState(false);
   /** Negócio novo: comentário que vai para a aba Comentários depois de criado. */
@@ -140,6 +143,11 @@ export default function DealDetailModal({
   const [criadoId, setCriadoId] = useState<string | null>(null);
   const dealId = deal?.id ?? criadoId;
   const isNew = !dealId;
+  const dossieMudou = async () => {
+    setVersaoDossie((v) => v + 1);
+    await onReviewChanged?.();
+  };
+  const posicaoNaFila = usePosicaoNaFilaCca(dealId ?? null);
   /** Popup "Conferência do gerente" (Status 2 Em análise / Esteira Ágil). */
   const [conferencia, setConferencia] = useState<{ enviando: boolean; erro: string | null } | null>(null);
   const [mensagemEnvio, setMensagemEnvio] = useState("");
@@ -478,6 +486,28 @@ export default function DealDetailModal({
             </p>
           )}
 
+          {/* "Próximo passo" (09/10/2026): enviar, conferir, devolver e reenviar
+              num lugar só, visível em qualquer aba. A aba Anexos fica só com os
+              arquivos. As duas partes saem do mesmo `DealDocumentUpload`, e
+              qualquer decisão renova as duas (`versaoDossie`). */}
+          {dealId && (
+            <DealDocumentUpload
+              key={`acoes-${versaoDossie}`}
+              parte="acoes"
+              dealId={dealId}
+              clientName={form.client}
+              dealCode={form.code || dealId}
+              hasDeveloper={Boolean(deal?.developer_id || (criadoId && (form.developer_id || form.developer)))}
+              closedMonth={lock.reason === "month" ? lock.month : null}
+              unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
+              onReviewChanged={dossieMudou}
+              mensagemInicial={mensagemEnvio}
+              salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
+              statusDetail={form.status}
+              filaCca={posicaoNaFila}
+            />
+          )}
+
           <div hidden={tab !== "detalhes"}>
               <DealForm
                 form={form} onChange={patch} field={field}
@@ -525,9 +555,11 @@ export default function DealDetailModal({
               // gerente", "Devolver" e "Aprovar e enviar ao CCA" ficavam vivos
               // enquanto o resto do modal já estava travado pelo mesmo `lock`.
               unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
-              onReviewChanged={onReviewChanged}
+              onReviewChanged={dossieMudou}
               mensagemInicial={mensagemEnvio}
               salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
+              parte="arquivos"
+              key={`arquivos-${versaoDossie}`}
             />
             </div>
           )}
