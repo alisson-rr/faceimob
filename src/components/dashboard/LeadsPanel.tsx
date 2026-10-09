@@ -160,7 +160,12 @@ export function LeadsPanel({
       const situacao = statusLabel(lead.status);
       porSituacao.set(situacao, (porSituacao.get(situacao) ?? 0) + 1);
 
-      const corretor = lead.broker_name || "Não atribuído";
+      // Perdido/descartado sai da base do corretor por regra (0234). Chamar
+      // essas linhas históricas de "Não atribuído" fazia a gestão concluir
+      // que centenas de leads estavam presos na roleta. Só lead operacional
+      // sem dono está na fila; encerrado pertence à base de ligação.
+      const corretor = lead.broker_name
+        || (lead.status === "lost" ? "Base (encerrados)" : "Na fila da roleta");
       porCorretor.set(corretor, (porCorretor.get(corretor) ?? 0) + 1);
     }
 

@@ -29,15 +29,6 @@ type IncomingLead = {
   distribution_group_id: string | null;
 };
 
-const GESTOR_ROLES = ["admin", "director", "manager", "marketing"];
-
-/**
- * Quem ouve a fila inteira; os demais gestores, só os grupos deles. O diretor
- * saiu na 0141: a `leads_select` passou a entregar a ele só a fila geral e a
- * dos grupos da hierarquia, e o aviso não pode anunciar lead que ele não abre.
- */
-const FILA_INTEIRA_ROLES = ["admin"];
-
 /** Janela em que a mudança ainda é "acabou de acontecer". */
 const FRESH_MS = 20_000;
 const REALTIME_RETRY_MS = 4_000;
@@ -66,7 +57,7 @@ const isFresh = (iso: string | null | undefined, commitTimestamp?: string) => {
  *   · gestor — chegou lead novo na fila dos grupos dele.
  */
 export default function NewLeadNotifier() {
-  const { user, role, can } = useAuth();
+  const { user, can } = useAuth();
   const profileId = user?.id || null;
   /**
    * Marketing está em `GESTOR_ROLES` (quem paga a campanha quer saber que ela
@@ -76,8 +67,6 @@ export default function NewLeadNotifier() {
    * então aqui o aviso chega sem a promessa que não se cumpre.
    */
   const podeAbrirLeads = can("menu.leads");
-  const isGestor = GESTOR_ROLES.includes(role);
-  const veFilaInteira = FILA_INTEIRA_ROLES.includes(role);
   const celebrate = useCelebration();
 
   const [lead, setLead] = useState<IncomingLead | null>(null);
@@ -92,8 +81,6 @@ export default function NewLeadNotifier() {
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
   // Evita repetir o mesmo aviso quando o lead sofre outros UPDATEs na sequência.
   const notified = useRef<Set<string>>(new Set());
-  // Grupos de distribuição em que a equipe visível do gestor está inscrita.
-  const meusGrupos = useRef<Set<string> | null>(null);
   // Espelho síncrono de `lead`: dois eventos do realtime podem chegar antes de
   // o React aplicar o primeiro `setLead`.
   const leadNoDialogo = useRef<IncomingLead | null>(null);
@@ -148,33 +135,23 @@ export default function NewLeadNotifier() {
       // O destino que o diálogo oferecia, sem o diálogo. Só quando a pessoa
       // pode mesmo abrir a tela: `menu.leads` não é dado ao marketing, e o
       // botão levava direto ao "Acesso não liberado" do guard de rota.
-      acao: podeAbrirLeads
-        ? { label: "Abrir leads", onClick: () => navigateRef.current("/leads") }
+      acao: nextKind === "assigned"
+        ? {
+            label: "Pegar lead",
+            onClick: () => {
+              void claimLead(row.id).then(
+                () => navigateRef.current(podeAbrirLeads ? `/leads?lead=${row.id}` : "/"),
+                (err) => toast({
+                  variant: "destructive",
+                  title: "Não foi possível pegar o lead",
+                  description: describeError(err, "o prazo pode ter vencido ou o lead já foi atendido"),
+                }),
+              );
+            },
+          }
         : undefined,
     });
   }, [celebrate, podeAbrirLeads]);
-
-  /**
-   * Carrega os grupos do gestor uma vez. `profiles` já é filtrada pelo RLS
-   * (`auth_visible_profiles`), então a lista que volta é exatamente a equipe
-   * dele — sem ela, o gerente recebia popup de todo lead da casa.
-   */
-  useEffect(() => {
-    if (!isGestor || veFilaInteira) return;
-    let cancelado = false;
-    void (async () => {
-      const { data: visiveis } = await supabase.from("profiles").select("id");
-      const ids = (visiveis ?? []).map((row) => row.id);
-      if (!ids.length) { if (!cancelado) meusGrupos.current = new Set(); return; }
-      const { data: membros } = await supabase
-        .from("distribution_group_members")
-        .select("group_id")
-        .in("profile_id", ids)
-        .eq("active", true);
-      if (!cancelado) meusGrupos.current = new Set((membros ?? []).map((row) => row.group_id));
-    })();
-    return () => { cancelado = true; };
-  }, [isGestor, veFilaInteira]);
 
   useEffect(() => {
     if (!profileId) return;
@@ -229,25 +206,6 @@ export default function NewLeadNotifier() {
         },
       );
 
-      if (isGestor) {
-        nextChannel.on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "leads" },
-          (payload) => {
-            const row = payload.new as IncomingLead;
-            if (row?.assigned_to) return; // já tem dono: o aviso é dele
-            if (!isFresh(row.created_at, payload.commit_timestamp)) return;
-            // Fila geral (sem grupo) é de todo mundo; fila específica é só de
-            // quem tem gente no grupo. Enquanto os grupos não carregaram, o
-            // gestor só recebe o que é da fila geral.
-            if (!veFilaInteira && row.distribution_group_id) {
-              if (!meusGrupos.current?.has(row.distribution_group_id)) return;
-            }
-            announce(row, "queued");
-          },
-        );
-      }
-
       nextChannel.subscribe((status) => {
         if (disposed || channel !== nextChannel) return;
         if (status === "SUBSCRIBED") {
@@ -268,7 +226,7 @@ export default function NewLeadNotifier() {
       if (retryTimer) clearTimeout(retryTimer);
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [profileId, isGestor, veFilaInteira, announce]);
+  }, [profileId, announce]);
 
   // Todo fechamento passa por `setLead(null)`; o ref acompanha depois do commit.
   useEffect(() => { if (!lead) leadNoDialogo.current = null; }, [lead]);
@@ -372,7 +330,7 @@ export default function NewLeadNotifier() {
           <Button variant="outline" onClick={() => setLead(null)}>Depois</Button>
           {assigned ? (
             <Button variant="highlight" onClick={attend} disabled={claiming || secondsLeft === 0}>
-              <HandMetal className="h-4 w-4 mr-1" /> {claiming ? "Atendendo..." : "Atender e falar agora"}
+              <HandMetal className="h-4 w-4 mr-1" /> {claiming ? "Pegando..." : "Pegar lead"}
             </Button>
           ) : podeAbrirLeads ? (
             <Button onClick={() => { setLead(null); navigate("/leads"); }}>

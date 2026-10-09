@@ -188,6 +188,20 @@ describe("loadCcaBoard · só o período, filtrado no banco", () => {
     expect(board.deals[1].agile).toBe(false);
     expect(board.deals.some((deal) => deal.dealId === "d3"), "cancelado não volta pela coluna antiga").toBe(false);
   });
+
+  it("filtra o quadro mensal pelo mês-base do negócio, sem alterar datas", async () => {
+    await loadCcaBoard(
+      { de: "2026-10-01", ate: "2026-10-08" },
+      new AbortController().signal,
+      "month_base",
+    );
+
+    const casos = h.urls.find((url) => url.pathname.endsWith("/cca_cases"));
+    expect(casos?.searchParams.get("select")).toContain("deal:deals!inner(month_base)");
+    expect(casos?.searchParams.get("deal.month_base")).toBe("eq.2026-10-01");
+    expect(casos?.searchParams.has("submitted_at")).toBe(false);
+    expect(casos?.searchParams.get("order")).toBe("submitted_at.asc,id.asc");
+  });
 });
 
 describe("foraDaEsteiraDoCca", () => {
