@@ -420,8 +420,9 @@ begin
   select * into v_case from public.cca_cases where deal_id = v_a;
   perform pg_temp.check150(
     v_case.status = 'under_review' and v_case.decided_at is null
-    and v_case.stage_id = (select id from public.cca_stages where name = 'EM ANÁLISE' and active),
-    'aprovado pelo gerente, o 2º envio reabre o caso em EM ANÁLISE');
+    and v_case.stage_id = (select id from public.cca_stages
+                            where name = 'ANÁLISE P/ VIRAR NEGÓCIO' and active),
+    'aprovado pelo gerente, o 2º envio reabre na análise para virar negócio');
   perform pg_temp.check150(
     (select status_detail from public.deals where id = v_a) = '15. ANÁLISE P/ VIRAR NEGÓCIO',
     'e entra com "15. ANÁLISE P/ VIRAR NEGÓCIO"');
