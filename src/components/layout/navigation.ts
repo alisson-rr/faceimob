@@ -1,6 +1,6 @@
 import {
   Bot, Building2, LayoutGrid, CalendarClock, CreditCard, Database, GitBranch, Globe, KeyRound, LayoutDashboard,
-  LogIn, Megaphone, Settings, Shield, Target, TrendingUp, Trophy, UserSearch, Users, Zap,
+  LogIn, Megaphone, Settings, Shield, Target, TrendingUp, Trophy, UserPlus, UserSearch, Users, Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -38,6 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Checkpoint", url: "/checkpoint", icon: Target, group: "principal" },
   { title: "Check-in", url: "/checkin", icon: LogIn, group: "principal" },
   { title: "SDR IA", url: "/sdr", icon: Bot, group: "principal" },
+  { title: "Candidatos", url: "/candidatos", icon: UserPlus, group: "principal" },
   { title: "Central do Corretor", url: "/central", icon: LayoutGrid, group: "principal" },
   { title: "Suporte para Análise", url: "/central/suporte", icon: LayoutGrid, group: "principal", hidden: true },
   { title: "Drive de Construtoras", url: "/central/drive", icon: LayoutGrid, group: "principal", hidden: true },

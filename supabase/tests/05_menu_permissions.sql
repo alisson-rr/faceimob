@@ -80,7 +80,8 @@ begin
   -- de Permissões oferecia e que não mudava nada. `/settings` mexe só no
   -- próprio perfil e na própria sessão, e quem autoriza é a RLS.
   -- 21 com a Central do Corretor (0209), concedida a todos os papéis.
-  perform pg_temp.check5(n = 21, format('catálogo tem os 21 códigos menu.* (tem %s)', n));
+  -- 22 com Candidatos (0264): gerente, diretor e sócio.
+  perform pg_temp.check5(n = 22, format('catálogo tem os 22 códigos menu.* (tem %s)', n));
 
   perform pg_temp.check5(
     exists (select 1 from public.permissions where code = 'menu.dashboard'),
