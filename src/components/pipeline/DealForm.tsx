@@ -474,15 +474,18 @@ export function DealForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start">
-          <Label htmlFor={field("second-client")} className="text-eyebrow">2º cliente?</Label>
+        {/* Nome e toggle no mesmo cartão (10/10/2026): separados, o rótulo
+            ficava longe do interruptor e não dava para saber qual era qual.
+            `sm:mt-5` alinha o cartão aos campos ao lado, que têm rótulo em cima. */}
+        <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 sm:mt-5">
+          <Label htmlFor={field("second-client")} className="cursor-pointer text-sm font-semibold">2º cliente?</Label>
           <Switch
             id={field("second-client")} checked={form.has_second_client || false}
             onCheckedChange={(v) => onChange({ has_second_client: v })}
           />
         </div>
-        <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start">
-          <Label htmlFor={field("informal")} className="text-eyebrow">Renda informal?</Label>
+        <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 sm:mt-5">
+          <Label htmlFor={field("informal")} className="cursor-pointer text-sm font-semibold">Renda informal?</Label>
           <Switch
             id={field("informal")} checked={form.has_informal_income || false}
             onCheckedChange={(v) => onChange({ has_informal_income: v })}
@@ -824,7 +827,7 @@ export function DealForm({
           </p>
         </div>
         <div className="deal-tone-green">
-          <Label htmlFor={field("status")} className="text-eyebrow">Status da venda (Status 2)</Label>
+          <Label htmlFor={field("status")} className="text-eyebrow">Status do negócio</Label>
           {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
               banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
               antigo junto seria uma troca manual que ninguém pediu. */}
@@ -893,11 +896,6 @@ export function DealForm({
             </SelectContent>
           </Select>
           {!can("deals.edit_status_detail") && <p className="mt-1 text-xs text-muted-foreground">Seu perfil pode consultar o Status 2. A edição depende da permissão “Alterar Status 2”.</p>}
-          {!isNew && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Enviar para a Esteira Ágil ou para a análise p/ virar negócio é pela etapa <strong>Negócio</strong>, no topo da ficha.
-            </p>
-          )}
           {vendaBloqueada && (
             <p id={field("status-hint")} className="mt-1 text-xs text-muted-foreground">
               {vendaBloqueada}
