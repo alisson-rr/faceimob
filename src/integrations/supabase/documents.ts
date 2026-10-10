@@ -588,14 +588,16 @@ export function submitBlockReason(input: {
     return "Nenhum tipo de documento está ativo: peça ao CCA para religar o catálogo antes de enviar.";
   }
   if (!input.hasDeveloper) {
-    return "Escolha a construtora na aba Detalhes e confirme as alterações antes de enviar.";
+    return "Escolha a construtora no Cadastro e confirme as alterações antes de enviar.";
   }
   if (input.managerCount === 0) {
-    return "Vincule ao menos um gerente ao negócio na aba Detalhes: é quem confere o dossiê.";
+    return "Vincule ao menos um gerente ao negócio no Cadastro: é quem confere o dossiê.";
   }
   const faltam = missingRequiredTypes(input.types, input.documents);
+  // Diz QUAL falta (10/10/2026): "Anexe os 1 tipo(s)" fazia o gerente achar
+  // que o botão estava quebrado, sem saber o que anexar.
   return faltam.length > 0
-    ? `Anexe os ${faltam.length} tipo(s) obrigatório(s) antes de enviar.`
+    ? `Falta anexar ${faltam.map((tipo) => tipo.label).join(", ")} (aba Anexos) antes de enviar.`
     : null;
 }
 

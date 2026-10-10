@@ -37,7 +37,8 @@ export function CampanhasWhatsapp({ agents, canWrite, onChange }: {
 
   const carregar = useCallback(async () => {
     try {
-      setCampanhas(await listCampanhasWhatsapp());
+      // Só as ativas (10/10/2026): pausada não traz lead e só enchia a lista.
+      setCampanhas((await listCampanhasWhatsapp()).filter((c) => c.status === "ACTIVE"));
       setErro(null);
     } catch (e) {
       setErro(describeError(e, "Não consegui carregar as campanhas."));
@@ -99,7 +100,7 @@ export function CampanhasWhatsapp({ agents, canWrite, onChange }: {
       {campanhas === null && !erro && <p className="text-xs text-muted-foreground">Carregando campanhas…</p>}
       {campanhas?.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          Nenhuma campanha de WhatsApp sincronizada ainda.{podeSincronizar ? " Clique em “Atualizar campanhas”." : ""}
+          Nenhuma campanha de WhatsApp ativa.{podeSincronizar ? " Clique em “Atualizar campanhas”." : ""}
         </p>
       )}
 
