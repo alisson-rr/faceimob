@@ -91,8 +91,12 @@ begin
   end loop;
 
   -- ── 6. o corretor apaga o documento errado enquanto o dossiê é dele ───────
-  select id into v_doc from public.deal_documents
-   where deal_id = v_deal.id order by created_at limit 1;
+  -- Um tipo de arquivo ÚNICO: é nele que a versão vigente e o histórico valem
+  -- (desde a 0258 o RG / CNH aceita vários e deixou de servir aqui).
+  select dd.id into v_doc from public.deal_documents dd
+    join public.document_types dt on dt.id = dd.document_type_id
+   where dd.deal_id = v_deal.id and not dt.allows_multiple
+   order by dt.sort_order limit 1;
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', cor::text, 'role', 'authenticated')::text, false);
