@@ -1,6 +1,7 @@
 import type { AppRole } from "@/contexts/AuthContext";
 import type { StatusTone } from "@/components/shared";
 import type { Database } from "@/integrations/supabase/types";
+import type { CanalDoGrupo } from "@/integrations/supabase/grupoCanal";
 
 /**
  * Radix recusa `<SelectItem value="">` — string vazia é o valor que limpa a
@@ -9,7 +10,11 @@ import type { Database } from "@/integrations/supabase/types";
  */
 export const SEM_SELECAO = "__nenhum__";
 
-export type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"];
+/** `brief` e `collect_fields` (0261) ainda não estão no `types.ts` gerado. */
+export type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"] & {
+  brief?: string | null;
+  collect_fields?: string[] | null;
+};
 /**
  * Dono e resolução da conversa (0120) ainda não estão no `types.ts` gerado. A
  * interseção cai no próximo `supabase gen types`, quando a linha já trouxer as
@@ -25,7 +30,10 @@ export type Conversation = Database["public"]["Tables"]["sdr_conversations"]["Ro
 export type Group = Pick<
   Database["public"]["Tables"]["distribution_groups"]["Row"],
   "id" | "name" | "kind" | "active"
->;
+> & {
+  /** De onde o grupo recebe (0260): o agente entrega só em grupo de WhatsApp. */
+  channels: CanalDoGrupo[];
+};
 /**
  * `sdr_messages.agent_id` (0082) é o único lugar onde a CADEIA de agentes
  * sobrevive — `sdr_conversations.agent_id` guarda só o último. A interseção que
