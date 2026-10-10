@@ -22,6 +22,7 @@ import { listPeople } from "@/integrations/supabase/newSchema";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { slugify } from "@/lib/utils";
+import { CANAIS_DO_GRUPO, listOpcoesDosGrupos, salvarOpcoesDoGrupo, type CanalDoGrupo } from "@/integrations/supabase/grupoCanal";
 import { bloqueioFiliacao, RECUSA_FILIACAO, roletasNaTela } from "@/lib/roletaAlcance";
 
 type Settings = {
@@ -82,6 +83,10 @@ type Group = {
   forms: FormRef[];
   /** Prazo para clicar em "Atender" nesta roleta (0211: 10 min por padrão). */
   attend_timeout_seconds: number | null;
+  /** De onde o grupo recebe (0260); filtra os seletores de grupo. */
+  channels: CanalDoGrupo[];
+  /** Roleta entrega a todos os membros ativos, sem check-in (0260). */
+  deliver_without_checkin: boolean;
 };
 
 const NO_PERMISSION = "Sem permissão: só o administrador altera a automação.";
@@ -238,7 +243,7 @@ export default function AdminLeadAutomation() {
 
   const load = async () => {
     try {
-      const [s, w, people, g, gb, gf, lf, alc] = await Promise.all([
+      const [s, w, people, g, gb, gf, lf, alc, opcoes] = await Promise.all([
         supabase.from("automation_settings").select("*").eq("id", true).maybeSingle(),
         supabase.from("work_shifts").select("*").order("position"),
         listPeople(),
@@ -249,6 +254,7 @@ export default function AdminLeadAutomation() {
         // Grupos e membros são `using (true)` na leitura: sem este recorte o
         // diretor via e clicava em roleta que a policy de gravação recusa.
         supabase.rpc("auth_distribution_group_ids"),
+        listOpcoesDosGrupos(),
       ]);
       const failed = [s, w, g, gb, gf, lf].find((r) => r.error);
       if (failed?.error) throw failed.error;
@@ -281,6 +287,8 @@ export default function AdminLeadAutomation() {
       setGroups((g.data ?? []).map((row) => ({
         id: row.id, name: row.name, active: row.active, kind: row.kind,
         attend_timeout_seconds: row.attend_timeout_seconds,
+        channels: opcoes.get(row.id)?.channels ?? ["formulario", "whatsapp"],
+        deliver_without_checkin: opcoes.get(row.id)?.deliver_without_checkin ?? false,
         brokers: (gb.data ?? []).filter((x) => x.group_id === row.id && x.active).map((x) => x.profile_id),
         forms: links.filter((x) => x.group_id === row.id).map((x) => ({ form_id: x.form_id, form_name: x.form_name })),
       })));
@@ -468,6 +476,23 @@ export default function AdminLeadAutomation() {
       toast.success(`Prazo de ${g.name}: ${minutos} min para clicar em "Atender"`, { duration: 2500 });
       load();
     }
+  };
+  const salvarOpcoes = async (g: Group, opcoes: Partial<Pick<Group, "channels" | "deliver_without_checkin">>) => {
+    try {
+      await salvarOpcoesDoGrupo(g.id, opcoes);
+      toast.success(`${g.name} atualizado`, { duration: 2500 });
+      load();
+    } catch (error) {
+      toast.error("Não foi possível salvar o grupo", { description: describeError(error, "Tente de novo em instantes.") });
+    }
+  };
+  const alternarCanal = (g: Group, canal: CanalDoGrupo, ligado: boolean) => {
+    const channels = ligado ? [...g.channels, canal] : g.channels.filter((c) => c !== canal);
+    if (channels.length === 0) {
+      toast.error("O grupo precisa receber de ao menos um canal: formulário ou WhatsApp.");
+      return;
+    }
+    void salvarOpcoes(g, { channels });
   };
   const toggleGroup = async (id: string, active: boolean) => {
     if (await wrote(supabase.from("distribution_groups").update({ active }).eq("id", id).select("id"), "Não foi possível alterar o grupo")) {
@@ -732,6 +757,35 @@ export default function AdminLeadAutomation() {
                     disabled={readOnly}
                     onBlur={(e) => void salvarPrazoDoGrupo(g, Number(e.target.value))}
                   />
+                </div>
+                <div className="mt-3 space-y-2 rounded-md bg-muted/40 p-2">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-xs text-muted-foreground">Recebe de</span>
+                    {CANAIS_DO_GRUPO.map((canal) => (
+                      <label key={canal.valor} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <Checkbox
+                          checked={g.channels.includes(canal.valor)}
+                          disabled={readOnly}
+                          onCheckedChange={(v) => alternarCanal(g, canal.valor, v === true)}
+                        />
+                        {canal.rotulo}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor={`sem-checkin-${g.id}`} className="text-xs text-muted-foreground">
+                      Entregar sem check-in
+                    </Label>
+                    <Switch
+                      id={`sem-checkin-${g.id}`}
+                      checked={g.deliver_without_checkin}
+                      disabled={readOnly}
+                      onCheckedChange={(v) => void salvarOpcoes(g, { deliver_without_checkin: v })}
+                    />
+                  </div>
+                  {g.deliver_without_checkin && (
+                    <p className="text-xs text-muted-foreground">Todos os membros ativos recebem, mesmo sem check-in e fora do turno.</p>
+                  )}
                 </div>
                 <Button size="sm" variant="outline" className="w-full mt-3 h-8 text-xs" onClick={() => setEditingGroupId(g.id)} aria-label={`Configurar ${g.name}`}>
                   <Settings2 className="h-3.5 w-3.5 mr-1" /> Configurar

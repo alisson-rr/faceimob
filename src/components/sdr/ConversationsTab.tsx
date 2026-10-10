@@ -49,6 +49,13 @@ const RECARGA_MS = 30_000;
  *  esperado, não falha. */
 const VE_TUDO = ["admin", "partner", "director", "marketing", "sdr"];
 
+/** Nota da IA: alta (70+) verde, média (40–69) amarela, baixa vermelha. */
+const corDaNota = (score: number | null) =>
+  score === null ? undefined
+    : score >= 70 ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-500"
+    : score >= 40 ? "border-amber-500/50 bg-amber-500/15 text-amber-500"
+    : "border-red-500/50 bg-red-500/15 text-red-500";
+
 export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWrite: boolean }) {
   const { roles, user } = useAuth();
   const eu = user?.id ?? null;
@@ -311,7 +318,7 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
               <button key={r.id} onClick={() => setSel(r.id)} aria-pressed={sel === r.id} className={`w-full text-left p-2 rounded text-xs hover:bg-muted ${sel === r.id ? "bg-muted" : ""}`}>
                 <div className="flex items-center justify-between gap-2">
                   <b className="truncate">{nomeDoLead(r)}</b>
-                  <Badge variant="outline" size="sm">{r.score ?? "—"}</Badge>
+                  <Badge variant="outline" size="sm" className={corDaNota(r.score)}>{r.score ?? "—"}</Badge>
                 </div>
                 <div className="text-muted-foreground truncate">
                   {STATUS_CONVERSA[r.status] ?? r.status}

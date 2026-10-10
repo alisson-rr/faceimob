@@ -17,6 +17,7 @@ import { PlaygroundTab } from "@/components/sdr/PlaygroundTab";
 import { ConversationsTab } from "@/components/sdr/ConversationsTab";
 import { RemarketingTab } from "@/components/sdr/RemarketingTab";
 import { WhatsAppTab } from "@/components/sdr/WhatsAppTab";
+import { listOpcoesDosGrupos } from "@/integrations/supabase/grupoCanal";
 import {
   canEditTemplates, canManageSdr, IA_SEM_CREDENCIAL, ondeCadastrarIa,
   type Agent, type Group, type ListStats, type Rlist, type Source, type WhatsAppTemplate,
@@ -45,12 +46,13 @@ type DadosSdr = {
 const SDR_VAZIO: DadosSdr = { agents: [], sources: [], lists: [], templates: [], groups: [], iaConfigurada: null };
 
 async function buscarDados(): Promise<DadosSdr> {
-  const [a, s, l, w, g] = await Promise.all([
+  const [a, s, l, w, g, opcoes] = await Promise.all([
     supabase.from("sdr_agents").select("*").order("created_at"),
     supabase.from("lead_sources").select("*").order("created_at"),
     supabase.from("remarketing_lists").select("*").order("created_at", { ascending: false }),
     supabase.from("whatsapp_templates").select("*").order("created_at"),
     supabase.from("distribution_groups").select("id,name,kind,active").order("name"),
+    listOpcoesDosGrupos(),
   ]);
   // Sem checar error, falha de RLS/rede virava empty state falso
   // ("Nenhum agente..."). Erro aparece e a tela oferece retry.
@@ -92,7 +94,7 @@ async function buscarDados(): Promise<DadosSdr> {
     sources: s.data || [],
     lists: withStats,
     templates,
-    groups: g.data || [],
+    groups: (g.data || []).map(grupo => ({ ...grupo, channels: opcoes.get(grupo.id)?.channels ?? ["formulario", "whatsapp"] })),
     iaConfigurada: credErr || typeof cred?.configured !== "boolean" ? null : cred.configured,
   };
 }

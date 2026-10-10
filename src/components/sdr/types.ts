@@ -1,6 +1,7 @@
 import type { AppRole } from "@/contexts/AuthContext";
 import type { StatusTone } from "@/components/shared";
 import type { Database } from "@/integrations/supabase/types";
+import type { CanalDoGrupo } from "@/integrations/supabase/grupoCanal";
 
 /**
  * Radix recusa `<SelectItem value="">` — string vazia é o valor que limpa a
@@ -25,7 +26,10 @@ export type Conversation = Database["public"]["Tables"]["sdr_conversations"]["Ro
 export type Group = Pick<
   Database["public"]["Tables"]["distribution_groups"]["Row"],
   "id" | "name" | "kind" | "active"
->;
+> & {
+  /** De onde o grupo recebe (0260): o agente entrega só em grupo de WhatsApp. */
+  channels: CanalDoGrupo[];
+};
 /**
  * `sdr_messages.agent_id` (0082) é o único lugar onde a CADEIA de agentes
  * sobrevive — `sdr_conversations.agent_id` guarda só o último. A interseção que

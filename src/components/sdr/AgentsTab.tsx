@@ -265,7 +265,8 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
                   <SelectItem value={SEM_SELECAO}>
                     Fila geral{grupoGeral ? ` (${grupoGeral.name})` : ""}
                   </SelectItem>
-                  {grupoAtivos.filter(g => g.kind !== "general").map(g => (
+                  {/* Só grupo que recebe de WhatsApp (0260); o já escolhido fica, para não sumir da tela. */}
+                  {grupoAtivos.filter(g => g.kind !== "general" && (g.channels.includes("whatsapp") || g.id === editing.handoff_group_id)).map(g => (
                     <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
                   ))}
                 </SelectContent>
