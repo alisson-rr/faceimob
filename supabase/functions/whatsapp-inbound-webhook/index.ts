@@ -5,6 +5,7 @@ import { transcreverAudio } from "../_shared/openai.ts";
 import { DuplicateMessageError, runSdrAgentTurn } from "../_shared/sdrAgent.ts";
 import {
   AUDIO_NAO_TRANSCRITO,
+  baloesDaResposta,
   AUDIOS_POR_TELEFONE_DIA,
   corpoDaMensagem,
   decidirReentrega,
@@ -85,7 +86,8 @@ type InboundOutcome =
   | "human_turn"
   | "audio_falhou";
 /** A conversa em que a mensagem entra. */
-type Alvo = { id: string; lead_id: string | null };
+/** `robo`: conversa aberta agora já com agente de IA (anúncio com origem ligada a agente). */
+type Alvo = { id: string; lead_id: string | null; robo?: boolean };
 type Registro = {
   leadId?: string | null;
   conversationId?: string | null;
@@ -314,8 +316,20 @@ Deno.serve(async (req) => {
      */
     const abrirAnuncio = async (msg: InboundMessage, phone: string): Promise<Alvo | null> => {
       const anuncio = msg.anuncio;
-      const { data: origem } = await supabase
-        .from("lead_sources").select("id").eq("code", "whatsapp_ads").maybeSingle();
+      // Origem do ANÚNCIO (o id dele no campo form_id, aba SDR IA → Origens)
+      // decide se a IA atende e qual agente; sem ela, a origem geral do
+      // WhatsApp. Falha de leitura cai na origem geral: melhor a roleta do que
+      // perder o lead.
+      type OrigemAnuncio = { id: string; sdr_agent_id: string | null };
+      const { data: doAnuncio } = anuncio?.adId
+        ? await supabase.from("lead_sources").select("id, sdr_agent_id")
+          .eq("form_id", anuncio.adId).eq("active", true).maybeSingle()
+        : { data: null };
+      const { data: geral } = doAnuncio
+        ? { data: null }
+        : await supabase.from("lead_sources").select("id, sdr_agent_id").eq("code", "whatsapp_ads").maybeSingle();
+      const origem = (doAnuncio ?? geral) as OrigemAnuncio | null;
+      const agente = origem?.sdr_agent_id ?? null;
       const { data: lead, error: leadErr } = await supabase
         .from("leads")
         .insert({
@@ -324,7 +338,7 @@ Deno.serve(async (req) => {
           phone_raw: phone,
           status: "queued",
           funnel_stage: "new",
-          source_id: (origem as { id: string } | null)?.id ?? null,
+          source_id: origem?.id ?? null,
           ad_id: anuncio?.adId ?? null,
           ad_name: anuncio?.titulo ?? null,
           utm_source: "whatsapp_ads",
@@ -342,7 +356,9 @@ Deno.serve(async (req) => {
       const leadId = lead.id as string;
       const { data: conv, error: convErr } = await supabase
         .from("sdr_conversations")
-        .insert({ lead_id: leadId, status: "human" })
+        // Com agente, a IA atende e a roleta espera (o dreno pula conversa
+        // `active`); sem agente, a conversa fica com o corretor.
+        .insert(agente ? { lead_id: leadId, agent_id: agente, status: "active" } : { lead_id: leadId, status: "human" })
         .select("id")
         .single();
       if (convErr) {
@@ -351,7 +367,7 @@ Deno.serve(async (req) => {
         await registrar(msg, phone, "agent_error", { leadId, detail: `lead criado, conversa não: ${convErr.message}` });
         return null;
       }
-      return { id: conv.id as string, lead_id: leadId };
+      return { id: conv.id as string, lead_id: leadId, robo: agente !== null };
     };
 
     /** A mensagem já entrou na conversa (réplica): nada a baixar. */
@@ -586,7 +602,7 @@ Deno.serve(async (req) => {
         extra.reservada = true;
       }
 
-      const plano = await planejar(msg, rota, () => lerAudio(msg, phone, chegada));
+      const plano = await planejar(msg, alvo.robo ? "robo" : rota, () => lerAudio(msg, phone, chegada));
 
       if (plano.acao === "anexar") {
         if (!(await gravarNaConversa(msg, phone, extra, [linhaDoLead(msg, alvo.id, plano.corpo)]))) return;
@@ -621,11 +637,27 @@ Deno.serve(async (req) => {
           leadMessageExtra: msg.tipo === "audio" ? { media_type: "audio", media_id: msg.mediaId } : undefined,
         });
 
+        // Um balão por parágrafo, em ordem: o seguinte só sai depois do anterior.
         try {
-          const sent = await sendWhatsAppText(phone, turn.reply);
-          if (!sent.ok) console.error("whatsapp-inbound: falha ao responder conversa", alvo.id);
+          for (const balao of baloesDaResposta(turn.reply)) {
+            const sent = await sendWhatsAppText(phone, balao);
+            if (!sent.ok) {
+              console.error("whatsapp-inbound: falha ao responder conversa", alvo.id);
+              break;
+            }
+          }
         } catch (e) {
           console.error("whatsapp-inbound: WhatsApp indisponível —", e instanceof Error ? e.message : String(e));
+        }
+
+        // Fora do perfil: o lead vai para a base, não para o corretor. Continua
+        // contando nos relatórios (nasceu na chegada). Lead já com corretor
+        // não é mexido.
+        if (turn.disqualified && alvo.lead_id) {
+          const { error: baseErr } = await supabase.from("leads")
+            .update({ status: "lost", lost_reason: "SDR IA: fora do perfil", lost_at: new Date().toISOString() })
+            .eq("id", alvo.lead_id).is("assigned_to", null);
+          if (baseErr) console.error("whatsapp-inbound: falha ao mandar lead fora do perfil para a base —", baseErr.message);
         }
 
         if (turn.qualified) {

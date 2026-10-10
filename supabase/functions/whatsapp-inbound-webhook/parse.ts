@@ -290,3 +290,17 @@ export function nomeDoAudio(mimeType: string | null): string {
     : "ogg";
   return `audio.${ext}`;
 }
+
+/** Teto de balões por resposta do robô: a Ana e a Luna mandam até 3 (10/10/2026). */
+export const BALOES_POR_RESPOSTA = 3;
+
+/**
+ * A resposta do robô em balões do WhatsApp: cada parágrafo (linha em branco
+ * entre eles) vira uma mensagem, como uma pessoa digitando. Passou do teto, o
+ * resto vai junto no último balão — nada se perde.
+ */
+export function baloesDaResposta(resposta: string, teto = BALOES_POR_RESPOSTA): string[] {
+  const partes = resposta.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (partes.length <= teto) return partes;
+  return [...partes.slice(0, teto - 1), partes.slice(teto - 1).join("\n\n")];
+}
