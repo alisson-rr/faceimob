@@ -464,10 +464,14 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   if (filtro) query = query.or(filtro);
   query = query.limit(options.limit ?? LEADS_PAGE_SIZE);
 
-  const [leadsRes, sourcesRes, profilesRes] = await Promise.all([
+  const [leadsRes, sourcesRes, profilesRes, comRoboRes] = await Promise.all([
     query,
     db.from("lead_sources").select("id,label"),
     db.from("profiles").select("id,full_name"),
+    // Lead com o robô atendendo só entra na lista depois da entrega
+    // (10/10/2026). Quem não lê `sdr_conversations` recebe erro aqui e a
+    // regra do banco (0259) já o esconde; o erro não derruba a lista.
+    db.from("sdr_conversations").select("lead_id").eq("status", "active"),
   ]);
   asError("leads", leadsRes.error);
   asError("lead_sources", sourcesRes.error);
@@ -480,9 +484,11 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
     (profilesRes.data || []).map((row) => [row.id, row.full_name]),
   );
 
-  return (leadsRes.data || []).map((row) =>
-    decorateLead(row, sourceLabels, brokerNames),
-  );
+  const comRobo = new Set((comRoboRes.error ? [] : comRoboRes.data ?? []).map((row) => row.lead_id));
+
+  return (leadsRes.data || [])
+    .filter((row) => row.assigned_to || !comRobo.has(row.id))
+    .map((row) => decorateLead(row, sourceLabels, brokerNames));
 }
 
 export type NewLeadInput = {
