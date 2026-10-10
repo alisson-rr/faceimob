@@ -2,7 +2,7 @@
 -- 0162 — check-in externo feito pelo diretor, com motivo.
 --
 -- Cenário: Equipe 0162 (diretora Dirce, gerente Gil) com Caio; Beto está fora
--- da equipe. Turno 00:00–23:59 para `current_shift()` não depender do relógio.
+-- da equipe. Turno 00:00–23:59:59.999999 para `current_shift()` não depender do relógio.
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -49,7 +49,7 @@ insert into public.teams (id, name, slug, director_id, manager_id) values
 insert into public.team_members (team_id, profile_id) values
   ('00000000-0000-0000-0000-0000000162a1', '00000000-0000-0000-0000-000000016203');
 insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-values ('teste-0162', 'Integral 0162', '00:00', '00:00', '23:59', -162);
+values ('teste-0162', 'Integral 0162', '00:00', '00:00', '23:59:59.999999', -162);
 
 set role authenticated;
 

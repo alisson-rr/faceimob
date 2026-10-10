@@ -87,7 +87,7 @@ begin
 
   -- Turno que cobre o dia inteiro: o teste não pode depender da hora do relógio.
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('teste-74', 'Integral 74', '00:00', '00:00', '23:59', -74)
+  values ('teste-74', 'Integral 74', '00:00', '00:00', '23:59:59.999999', -74)
   returning id into v_shift;
 
   insert into public.checkins (profile_id, shift_id, work_date) values

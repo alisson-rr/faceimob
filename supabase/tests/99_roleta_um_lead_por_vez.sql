@@ -32,7 +32,7 @@ begin
   insert into public.distribution_group_members (group_id, profile_id, active)
     values (v_group, cora, true), (v_group, corb, true);
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-    values ('teste-220', 'Integral 220', '00:00', '00:00', '23:59', -220) returning id into v_shift;
+    values ('teste-220', 'Integral 220', '00:00', '00:00', '23:59:59.999999', -220) returning id into v_shift;
   -- A chegou primeiro: é a primeira da fila.
   insert into public.checkins (profile_id, shift_id, work_date, checked_in_at) values
     (cora, v_shift, public.current_work_date(), now() - interval '2 hours'),

@@ -48,7 +48,7 @@ begin
   insert into public.developers (name, flow) values ('Construtora Aud', 'internal');
 
   insert into public.work_shifts (code,label,checkin_start,distribution_start,checkout_time,position)
-  values ('aud24','Aud 24h','00:00','00:00','23:59',-1);
+  values ('aud24','Aud 24h','00:00','00:00','23:59:59.999999',-1);
 
   -- A 0020 passou a exigir IP identificado no check-in.
   insert into public.allowed_ips (label, ip_range)
