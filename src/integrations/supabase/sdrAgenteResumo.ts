@@ -5,13 +5,14 @@ import { functionErrorMessage } from "@/lib/functionError";
 type Resultado<T> = PromiseLike<{ data: T | null; error: { message?: string; code?: string } | null }>;
 
 /*
- * `sdr_agents.brief`, `.collect_fields` (0261) e `.required_fields` (0262) nasceram
+ * `sdr_agents.brief`, `.collect_fields` (0261), `.required_fields` (0262) e
+ * `.lead_de_compra` (0263) nasceram
  * depois do último `supabase gen types`: a forma vem declarada aqui até a próxima
  * geração do `types.ts`, que não se edita à mão.
  */
 const db = supabase as unknown as {
   from(tabela: "sdr_agents"): {
-    update(linha: { brief: string | null; collect_fields: string[]; required_fields: string[] }): {
+    update(linha: { brief: string | null; collect_fields: string[]; required_fields: string[]; lead_de_compra: boolean }): {
       eq(coluna: "id", valor: string): { select(colunas: "id"): Resultado<Array<{ id: string }>> };
     };
   };
@@ -35,10 +36,12 @@ export function camposDoTexto(texto: string): string[] {
  * `obrigatorios` (0262): sem elas o lead não é entregue. O banco exige que
  * sejam parte das coletadas; o que saiu da lista sai da trava também.
  */
-export async function salvarResumoDoAgente(id: string, brief: string | null, campos: string[], obrigatorios: string[]): Promise<void> {
+export async function salvarResumoDoAgente(
+  id: string, brief: string | null, campos: string[], obrigatorios: string[], leadDeCompra: boolean,
+): Promise<void> {
   const required_fields = campos.filter((campo) => obrigatorios.some((o) => o.toLowerCase() === campo.toLowerCase()));
   const { data, error } = await db.from("sdr_agents")
-    .update({ brief: brief?.trim() || null, collect_fields: campos, required_fields }).eq("id", id).select("id");
+    .update({ brief: brief?.trim() || null, collect_fields: campos, required_fields, lead_de_compra: leadDeCompra }).eq("id", id).select("id");
   if (error) throw dbError("sdr_agents", error);
   if (!data?.length) throw new Error("Sem permissão para alterar o agente.");
 }

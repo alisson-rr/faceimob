@@ -16,6 +16,8 @@ export type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"] & {
   collect_fields?: string[] | null;
   /** Respostas sem as quais o lead não é entregue (0262). */
   required_fields?: string[] | null;
+  /** Falso = candidato (RH): fora do perfil ou arquivado vai para descartado (0263). */
+  lead_de_compra?: boolean | null;
 };
 /**
  * Dono e resolução da conversa (0120) ainda não estão no `types.ts` gerado. A
@@ -131,16 +133,16 @@ export const STATUS_CONVERSA: Record<string, string> = {
   qualified: "Qualificada",
   disqualified: "Desqualificada",
   handed_off: "Entregue ao grupo",
-  abandoned: "Abandonada",
+  abandoned: "Arquivada (sem resposta)",
   resolved: "Resolvida",
 };
 
-/** Filtro padrão da caixa: tudo menos as resolvidas. */
+/** Filtro padrão da caixa: tudo menos as resolvidas e as arquivadas (0263). */
 export const FILTRO_ABERTAS = "__abertas__";
 export const FILTRO_TODAS = "__todas__";
 
 export const OPCOES_DE_SITUACAO: { valor: string; rotulo: string }[] = [
-  { valor: FILTRO_ABERTAS, rotulo: "Em aberto (sem as resolvidas)" },
+  { valor: FILTRO_ABERTAS, rotulo: "Em aberto (sem resolvidas e arquivadas)" },
   { valor: FILTRO_TODAS, rotulo: "Todas as situações" },
   ...Object.entries(STATUS_CONVERSA).map(([valor, rotulo]) => ({ valor, rotulo })),
 ];
@@ -150,9 +152,10 @@ export const OPCOES_DE_SITUACAO: { valor: string; rotulo: string }[] = [
  * navegador só o que já veio diria "nenhuma resolvida" com resolvidas além da
  * primeira página.
  */
-export function recorteDaSituacao(valor: string): { op: "eq" | "neq"; status: string } | null {
+export function recorteDaSituacao(valor: string): { op: "eq"; status: string } | { op: "fora"; status: string[] } | null {
   if (valor === FILTRO_TODAS) return null;
-  if (valor === FILTRO_ABERTAS) return { op: "neq", status: "resolved" };
+  // Arquivada por falta de resposta (0263) sai da caixa junto com a resolvida.
+  if (valor === FILTRO_ABERTAS) return { op: "fora", status: ["resolved", "abandoned"] };
   return { op: "eq", status: valor };
 }
 

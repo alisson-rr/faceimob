@@ -24,8 +24,6 @@ import { efeitosDaExclusao, IA_SEM_CREDENCIAL, ondeCadastrarIa, PAPEL_AGENTE, SE
 
 /** Mesmo default da function (`DEFAULT_OPENAI_MODEL`) e da coluna (0040). */
 const MODELO_PADRAO = "gpt-4o-mini";
-/** Mesmo default da coluna `sdr_agents.max_turns` (0008). */
-const TURNOS_PADRAO = 12;
 
 export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigurada, reload }: {
   agents: Agent[]; groups: Group[]; sources: Source[]; lists: Rlist[]; canWrite: boolean;
@@ -70,10 +68,6 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
 
   async function save() {
     if (!editing?.name) return toast.error("Nome obrigatório");
-    const turnos = Number(editing.max_turns ?? TURNOS_PADRAO);
-    if (!Number.isFinite(turnos) || turnos < 1) {
-      return toast.error("O teto de turnos precisa ser pelo menos 1");
-    }
     // O `min`/`max` do input só vale para as setas: digitar 5 passa direto, e o
     // CHECK da coluna devolve 23514 traduzido para "Um dos campos está fora do
     // valor permitido" — sem dizer QUAL campo. Validar aqui nomeia o campo.
@@ -87,7 +81,6 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
       system_prompt: editing.system_prompt || null,
       model: editing.model || MODELO_PADRAO,
       temperature: temperatura,
-      max_turns: Math.trunc(turnos),
       active: editing.active ?? true,
       handoff_to_agent_id: editing.handoff_to_agent_id || null,
       handoff_group_id: editing.handoff_group_id || null,
@@ -102,6 +95,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
       await salvarResumoDoAgente(
         data[0].id, editing.brief ?? null, camposAtuais,
         camposAtuais.filter((c) => obrigatorias.has(c.toLowerCase())),
+        editing.lead_de_compra ?? true,
       );
     } catch (e) {
       // O agente já foi salvo; só o resumo e as respostas ficaram para trás.
@@ -138,7 +132,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold">Agentes ({agents.length})</h3>
           {canWrite && (
-            <Button size="sm" onClick={() => abrir({ name: "", role: "qualifier", model: MODELO_PADRAO, temperature: 0.7, max_turns: TURNOS_PADRAO, active: true })}>
+            <Button size="sm" onClick={() => abrir({ name: "", role: "qualifier", model: MODELO_PADRAO, temperature: 0.7, active: true, lead_de_compra: true })}>
               <Plus className="h-4 w-4 mr-1" />Novo
             </Button>
           )}
@@ -167,7 +161,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
                 <div className="min-w-0">
                   <div className="text-sm font-medium">{a.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {PAPEL_AGENTE[a.role] ?? a.role} · {a.model} · até {a.max_turns} respostas
+                    {PAPEL_AGENTE[a.role] ?? a.role} · {a.model}{a.lead_de_compra === false && " · RH (fora da base)"}
                     {a.handoff_group_id && ` · entrega em ${groups.find(g => g.id === a.handoff_group_id)?.name ?? "grupo removido"}`}
                   </div>
                 </div>
@@ -231,15 +225,9 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               O papel é apenas um rótulo para organizar a lista. Quem define o comportamento é o system prompt, e quem
               recebe a conversa primeiro é o agente marcado como <b>orquestrador</b>.
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label htmlFor="ag-temp">Temperatura ({editing.temperature ?? 0.7})</Label>
-                <Input id="ag-temp" type="number" step="0.1" min="0" max="2" value={editing.temperature ?? 0.7} onChange={e => setEditing({ ...editing, temperature: Number(e.target.value) })} />
-              </div>
-              <div>
-                <Label htmlFor="ag-turns">Máximo de respostas</Label>
-                <Input id="ag-turns" type="number" step="1" min="1" max="60" value={editing.max_turns ?? TURNOS_PADRAO} onChange={e => setEditing({ ...editing, max_turns: Number(e.target.value) })} />
-              </div>
+            <div>
+              <Label htmlFor="ag-temp">Temperatura ({editing.temperature ?? 0.7})</Label>
+              <Input id="ag-temp" type="number" step="0.1" min="0" max="2" value={editing.temperature ?? 0.7} onChange={e => setEditing({ ...editing, temperature: Number(e.target.value) })} />
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
@@ -249,6 +237,10 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               <div className="flex items-center gap-2">
                 <Switch id="ag-active" checked={editing.active ?? true} onCheckedChange={v => setEditing({ ...editing, active: v })} />
                 <Label htmlFor="ag-active">Ativo</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="ag-compra" checked={editing.lead_de_compra ?? true} onCheckedChange={v => setEditing({ ...editing, lead_de_compra: v })} />
+                <Label htmlFor="ag-compra">Lead de compra</Label>
               </div>
             </div>
             {/* "Ativo" é o controle que mais parece dizer "está trabalhando":
@@ -262,8 +254,9 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Atingido o máximo de respostas, o agente para de escrever e o lead volta para a roleta — sem ser marcado
-              como qualificado. É o que impede uma conversa que nunca conclui de rodar sem fim.
+              O agente conversa até o fim do roteiro, sem limite de respostas. Quem para de responder recebe um lembrete
+              em 1 h e outro em 23 h; sem resposta em 24 h, a conversa é arquivada. Fora do perfil ou arquivado, o lead
+              de compra vai para a base; o que não é de compra (candidato) vai para descartados.
             </p>
             <div className="space-y-2 rounded-lg border border-border/60 p-3">
               <Label htmlFor="ag-brief">Resumo: o que o agente faz e pergunta</Label>

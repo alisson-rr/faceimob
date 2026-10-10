@@ -278,7 +278,7 @@ describe("filtro de situação da caixa", () => {
 
   it("o padrão é 'em aberto' — a resolvida sai da caixa — e 'Todas' não recorta", () => {
     expect(OPCOES_DE_SITUACAO[0].valor).toBe(FILTRO_ABERTAS);
-    expect(recorteDaSituacao(FILTRO_ABERTAS)).toEqual({ op: "neq", status: "resolved" });
+    expect(recorteDaSituacao(FILTRO_ABERTAS)).toEqual({ op: "fora", status: ["resolved", "abandoned"] });
     expect(recorteDaSituacao(FILTRO_TODAS)).toBeNull();
   });
 });

@@ -611,6 +611,13 @@ Deno.serve(async (req) => {
       let conversa = await conversaDoTelefone(phone, true);
       const contato = conversa ? null : await contatoDeRemarketing(phone);
       if (!conversa && !contato) conversa = await conversaDoTelefone(phone, false);
+      // Conversa arquivada por falta de resposta (0263): o lead voltou, o robô
+      // retoma de onde parou.
+      if (conversa?.status === "abandoned") {
+        const { data: retomou, error: retErr } = await supabase.rpc("sdr_retomar_conversa", { p_conversation_id: conversa.id });
+        if (retErr) console.error("whatsapp-inbound: falha ao retomar conversa arquivada —", retErr.message);
+        if (retomou === true) conversa = { ...conversa, status: "active" };
+      }
       const rota = decidirRota(conversa, contato !== null, Boolean(msg.anuncio));
 
       if (rota === "sem_destino") {
@@ -687,14 +694,15 @@ Deno.serve(async (req) => {
           console.error("whatsapp-inbound: WhatsApp indisponível —", e instanceof Error ? e.message : String(e));
         }
 
-        // Fora do perfil: o lead vai para a base, não para o corretor. Continua
-        // contando nos relatórios (nasceu na chegada). Lead já com corretor
-        // não é mexido.
+        // Fora do perfil: o lead vai para a base (ou descartado, se for
+        // candidato), não para o corretor. Continua contando nos relatórios
+        // (nasceu na chegada). Lead já com corretor não é mexido.
         if (turn.disqualified && alvo.lead_id) {
-          const { error: baseErr } = await supabase.from("leads")
-            .update({ status: "lost", lost_reason: "SDR IA: fora do perfil", lost_at: new Date().toISOString() })
-            .eq("id", alvo.lead_id).is("assigned_to", null);
-          if (baseErr) console.error("whatsapp-inbound: falha ao mandar lead fora do perfil para a base —", baseErr.message);
+          // Candidato (agente que não é de compra) vai para descartado (0263).
+          const { error: baseErr } = await supabase.rpc("sdr_tirar_lead_da_fila", {
+            p_conversation_id: alvo.id, p_motivo: "SDR IA: fora do perfil",
+          });
+          if (baseErr) console.error("whatsapp-inbound: falha ao tirar lead fora do perfil da fila —", baseErr.message);
         }
 
         if (turn.qualified) {

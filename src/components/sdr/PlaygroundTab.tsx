@@ -64,7 +64,6 @@ export function PlaygroundTab({ agents, canWrite, iaConfigurada, onCredencialAce
       onCredencialAceita();
       setMessages(m => [...m, { role: "assistant", content: data.reply, agent: data.agent?.name }]);
       if (data.handoff_to) toast.info(`Conversa transferida para: ${data.handoff_to.name}`);
-      if (data.exhausted) toast.warning("Teto de respostas do agente atingido — numa conversa real o lead voltaria para a roleta.");
     } catch (e: unknown) {
       // O erro fica no painel, e SÓ no painel: um canal por mensagem. A bolha
       // já entra num container `aria-live` e o toast do sonner tem região viva
