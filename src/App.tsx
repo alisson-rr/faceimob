@@ -51,6 +51,7 @@ const AdminAllowedIps = tela(() => import("@/pages/AdminAllowedIps"));
 const MetaAdsSetup = tela(() => import("@/pages/MetaAdsSetup"));
 const AdminLeadAutomation = tela(() => import("@/pages/AdminLeadAutomation"));
 const SdrModule = tela(() => import("@/pages/SdrModule"));
+const Candidatos = tela(() => import("@/pages/Candidatos"));
 
 /**
  * Baixa as telas logadas depois do login, uma por vez e só com o navegador
@@ -309,6 +310,7 @@ const App = () => (
               <Route path="/admin/daily-bi" element={<Navigate to="/checkpoint" replace />} />
               <Route path="/gamification" element={<Gamification />} />
               <Route path="/sdr" element={<SdrModule />} />
+              <Route path="/candidatos" element={<Candidatos />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
