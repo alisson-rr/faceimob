@@ -42,7 +42,7 @@ import { CCA_FILA_ROTULO, useMyCcaQueue } from "@/integrations/supabase/cca";
 import { useMyPendingReviewDealIds } from "@/integrations/supabase/reviews";
 
 /** `null` = fechado · `{ deal: null }` = criando um negócio novo. */
-type EditorState = { deal: LegacyDealRecord | null; initialTab?: "detalhes" | "anexos" } | null;
+type EditorState = { deal: LegacyDealRecord | null; initialTab?: "detalhes" | "anexos" | "negocio" } | null;
 
 /** Recorte padrão: a competência vigente do CRM, não uma janela móvel de 30 dias. */
 const activeMonthRange = (monthBase: string): DealPeriod => {
@@ -179,7 +179,10 @@ export default function Pipeline() {
   /** Estável para o `memo` do cartão do kanban: um fecho novo a cada render do
    *  Pipeline refazia os 2.288 cartões ativos (ver `DealsKanban`). */
   const abrirNegocio = useCallback((deal: LegacyDealRecord) => setEditor({ deal }), []);
-  useNegocioDoLink(abrirNegocio);
+  // Aviso do sino abre direto na etapa Negócio (10/10/2026): é lá que se envia,
+  // confere e acompanha o que o aviso conta.
+  const abrirDoAviso = useCallback((deal: LegacyDealRecord) => setEditor({ deal, initialTab: "negocio" }), []);
+  useNegocioDoLink(abrirDoAviso);
   const closed = useMemo(() => closedMonths.data ?? [], [closedMonths.data]);
   const pedirTexto = useCallback(
     (deal: LegacyDealRecord, status: DealStatus, envio: boolean) => setComTexto({ movimento: { deal, status }, envio }),
