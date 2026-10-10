@@ -52,6 +52,7 @@ const MetaAdsSetup = tela(() => import("@/pages/MetaAdsSetup"));
 const AdminLeadAutomation = tela(() => import("@/pages/AdminLeadAutomation"));
 const SdrModule = tela(() => import("@/pages/SdrModule"));
 const Candidatos = tela(() => import("@/pages/Candidatos"));
+const CampanhasFacebook = tela(() => import("@/pages/CampanhasFacebook"));
 
 /**
  * Baixa as telas logadas depois do login, uma por vez e só com o navegador
@@ -311,6 +312,7 @@ const App = () => (
               <Route path="/gamification" element={<Gamification />} />
               <Route path="/sdr" element={<SdrModule />} />
               <Route path="/candidatos" element={<Candidatos />} />
+              <Route path="/campanhas" element={<CampanhasFacebook />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />

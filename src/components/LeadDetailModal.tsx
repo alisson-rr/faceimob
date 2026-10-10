@@ -36,6 +36,7 @@ import {
 import { toDateTimeInput } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
 import { RespostasDoSdrIa } from "@/components/leads/RespostasDoSdrIa";
+import { AnuncioDialog } from "@/components/anuncios/AnuncioDialog";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 
 type EditableField = "full_name" | "phone" | "email" | "document";
@@ -87,6 +88,7 @@ export default function LeadDetailModal({
   const [askNextAction, setAskNextAction] = useState(false);
   // Mensagem pronta antes de abrir o WhatsApp (03/10/2026).
   const [whatsappAberto, setWhatsappAberto] = useState(false);
+  const [anuncioAberto, setAnuncioAberto] = useState(false);
   const [pegarAberto, setPegarAberto] = useState(false);
   const [repassando, setRepassando] = useState(false);
   // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
@@ -280,7 +282,12 @@ export default function LeadDetailModal({
               <User className="h-3.5 w-3.5" aria-hidden /> {lead.broker_name || "Sem corretor"}
             </span>
             <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
-            {lead.campaign_name && <StatusBadge tone="neutral">📣 {lead.campaign_name}</StatusBadge>}
+            {/* Anúncio de Meta: o clique mostra a arte e a copy que o lead viu (0265). */}
+            {lead.campaign_name && lead.ad_id ? (
+              <button type="button" onClick={() => setAnuncioAberto(true)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title="Ver a arte e a copy do anúncio">
+                <StatusBadge tone="info">📣 {lead.campaign_name} · ver anúncio</StatusBadge>
+              </button>
+            ) : lead.campaign_name && <StatusBadge tone="neutral">📣 {lead.campaign_name}</StatusBadge>}
             {lead.form_name && <StatusBadge tone="neutral">📋 {lead.form_name}</StatusBadge>}
             {grupo && <StatusBadge tone="neutral">Fila: {grupo.name}</StatusBadge>}
             {lead.roulette_misses > 0 && (
@@ -641,6 +648,9 @@ export default function LeadDetailModal({
 
       {whatsappAberto && (
         <WhatsAppDialog lead={lead} onClose={() => setWhatsappAberto(false)} onSent={() => void contactClick()} />
+      )}
+      {anuncioAberto && lead.ad_id && (
+        <AnuncioDialog adId={lead.ad_id} titulo={lead.campaign_name} onClose={() => setAnuncioAberto(false)} />
       )}
     </Dialog>
   );

@@ -5,6 +5,7 @@ import { actId, MetaApiError, metaGet, metaGetAll, metaToken } from "../_shared/
 import { getSecret } from "../_shared/secrets.ts";
 import { getMetaPageCredentials } from "../_shared/metaPageTokensStore.ts";
 import { recuperarLeadsMeta } from "./leads.ts";
+import { CAMPOS_ANUNCIO, CAMPOS_ANUNCIO_SIMPLES, type GraphAnuncio, type LinhaAnuncio, montarAnuncio } from "./anuncios.ts";
 import {
   type GraphAccount, type GraphAdset, type GraphCampaign, type GraphInsight,
   fatiasDaJanela, hojeNoFuso, janelaPedida, montarConta, montarPayload,
@@ -25,6 +26,9 @@ import {
  *    saldo — sem insights, sem IA — e a avaliação só do estado da conta.
  *  - leads (só service role): recupera contatos novos desde a ativação,
  *    usando tokens de página e o mesmo webhook de ingestão.
+ *  - anuncios (cron de hora em hora, 0265): arte e copy dos anúncios ativos e
+ *    dos anúncios de leads recentes em `meta_anuncios`; a arte vai para o
+ *    bucket público `anuncios`, porque o link da Meta expira.
  *
  * 200 {ok, contas:[{account_id, run_id, status, erro?, dias?, campanhas?, conflitos?}]}
  * 409 sem token: no modo completo cada conta ganha a execução 'falhou' com a
@@ -69,7 +73,7 @@ const NAO_REPETE = new Set([4, 17, 190, 613, 80004]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type Pedido = { account_id: string | null; dias: number; modo: "completo" | "estado" | "leads" };
+type Pedido = { account_id: string | null; dias: number; modo: "completo" | "estado" | "leads" | "anuncios" };
 type Conta = { id: string; act_id: string; timezone_name: string | null; last_sync_ok_at: string | null };
 type Resultado = {
   account_id: string;
@@ -95,7 +99,7 @@ function lerPedido(texto: string): Pedido | null {
   const { account_id = null, dias = 7, modo = "completo" } = b as Record<string, unknown>;
   if (account_id !== null && !(typeof account_id === "string" && UUID.test(account_id))) return null;
   if (typeof dias !== "number" || !Number.isInteger(dias) || dias < 1 || dias > 90) return null;
-  if (modo !== "completo" && modo !== "estado" && modo !== "leads") return null;
+  if (modo !== "completo" && modo !== "estado" && modo !== "leads" && modo !== "anuncios") return null;
   return { account_id, dias, modo };
 }
 
@@ -179,6 +183,110 @@ async function buscarNaMeta(svc: SupabaseClient, conta: Conta, dias: number, tok
     insights,
     construtoras: (construtoras ?? []) as { id: string; name: string }[],
   });
+}
+
+/** Teto da arte baixada: anúncio de feed não chega perto disso. */
+const ARTE_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Link sem a assinatura: a Meta troca os parâmetros a cada leitura, a arte não. */
+const semAssinatura = (url: string) => url.split("?")[0];
+
+async function hash8(texto: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(texto));
+  return [...new Uint8Array(d)].slice(0, 4).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Copia a arte para o bucket; `null` se não deu (fica o link da Meta). */
+async function copiarArte(svc: SupabaseClient, adId: string, indice: number, url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    const tipo = res.headers.get("content-type") ?? "";
+    if (!res.ok || !tipo.startsWith("image/")) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > ARTE_MAX_BYTES) return null;
+    const ext = tipo.includes("png") ? "png" : tipo.includes("webp") ? "webp" : "jpg";
+    const path = `${adId}/${indice}-${await hash8(semAssinatura(url))}.${ext}`;
+    const { error } = await svc.storage.from("anuncios").upload(path, bytes, { contentType: tipo, upsert: true });
+    return error ? null : path;
+  } catch {
+    return null;
+  }
+}
+
+type Imagem = { meta_url: string; path: string | null };
+type Existente = { ad_id: string; imagem_meta_url: string | null; imagem_path: string | null; imagens: Imagem[] | null };
+
+/**
+ * Grava as linhas e copia só a arte nova ou trocada (comparada sem a
+ * assinatura do link): de hora em hora, a mesma arte não é baixada de novo.
+ */
+async function gravarAnuncios(svc: SupabaseClient, linhas: LinhaAnuncio[], contaId: string | null, ativo: boolean) {
+  if (linhas.length === 0) return 0;
+  const { data: antes } = await svc.from("meta_anuncios")
+    .select("ad_id,imagem_meta_url,imagem_path,imagens").in("ad_id", linhas.map((l) => l.ad_id));
+  const porId = new Map(((antes ?? []) as Existente[]).map((e) => [e.ad_id, e]));
+
+  const registros = [];
+  for (const l of linhas) {
+    const velho = porId.get(l.ad_id);
+    let imagemPath = velho?.imagem_path ?? null;
+    if (l.imagem_meta_url && (!imagemPath || !velho?.imagem_meta_url
+        || semAssinatura(velho.imagem_meta_url) !== semAssinatura(l.imagem_meta_url))) {
+      imagemPath = await copiarArte(svc, l.ad_id, 0, l.imagem_meta_url) ?? imagemPath;
+    }
+    const imagens: Imagem[] = [];
+    for (const [i, url] of l.imagens_meta.entries()) {
+      const anterior = (velho?.imagens ?? []).find((x) => semAssinatura(x.meta_url) === semAssinatura(url));
+      imagens.push({ meta_url: url, path: anterior?.path ?? (i === 0 ? imagemPath : await copiarArte(svc, l.ad_id, i, url)) });
+    }
+    registros.push({
+      ad_id: l.ad_id, nome: l.nome, campanha_id: l.campanha_id, campanha_nome: l.campanha_nome,
+      status: l.status, ativo, formato: l.formato, copy: l.copy, titulo: l.titulo,
+      imagem_meta_url: l.imagem_meta_url, imagem_path: imagemPath, imagens, preview_url: l.preview_url,
+      synced_at: new Date().toISOString(),
+      ...(contaId ? { account_id: contaId } : {}),
+    });
+  }
+  const { error } = await svc.from("meta_anuncios").upsert(registros, { onConflict: "ad_id" });
+  if (error) throw new Error(`Não consegui gravar os anúncios: ${error.message}`);
+  return registros.length;
+}
+
+/** Os ativos de cada conta, e os anúncios de leads recentes que ainda faltam. */
+async function sincronizarAnuncios(svc: SupabaseClient, contas: Conta[], token: string) {
+  let ativos = 0;
+  let avulsos = 0;
+  let falhas = 0;
+  for (const conta of contas) {
+    const act = actId(conta.act_id);
+    const params = (fields: string) => ({ fields, effective_status: JSON.stringify(["ACTIVE"]), limit: "100" });
+    let ads: GraphAnuncio[];
+    try {
+      ads = await metaGetAll<GraphAnuncio>(`${act}/ads`, params(CAMPOS_ANUNCIO), token);
+    } catch (e) {
+      // O modificador da miniatura grande pode ser recusado: repete sem ele.
+      if (!(e instanceof MetaApiError) || e.status === 0 || NAO_REPETE.has(e.code ?? 0)) throw e;
+      ads = await metaGetAll<GraphAnuncio>(`${act}/ads`, params(CAMPOS_ANUNCIO_SIMPLES), token);
+    }
+    const linhas = ads.map(montarAnuncio).filter((l): l is LinhaAnuncio => l !== null);
+    // Quem saiu da lista de ativos fica guardado, só deixa de aparecer na tela.
+    await svc.from("meta_anuncios").update({ ativo: false }).eq("account_id", conta.id).eq("ativo", true);
+    ativos += await gravarAnuncios(svc, linhas, conta.id, true);
+  }
+
+  const { data: faltando } = await svc.rpc("meta_anuncios_faltando", { p_limite: 50 });
+  for (const adId of (faltando ?? []) as string[]) {
+    try {
+      const linha = montarAnuncio(await metaGet<GraphAnuncio>(adId, { fields: CAMPOS_ANUNCIO_SIMPLES }, token));
+      if (linha) avulsos += await gravarAnuncios(svc, [linha], null, false);
+    } catch (e) {
+      if (e instanceof MetaApiError && NAO_REPETE.has(e.code ?? 0)) throw e;
+      // Apagado ou sem acesso: grava o id para não pedir de novo a cada hora.
+      falhas++;
+      await svc.from("meta_anuncios").upsert({ ad_id: adId, ativo: false }, { onConflict: "ad_id", ignoreDuplicates: true });
+    }
+  }
+  return { ok: true, ativos, avulsos, falhas };
 }
 
 /** Depois de apply ou finish. Falhar aqui só vai para o log: a sincronização vale. */
@@ -321,6 +429,16 @@ Deno.serve(async (req) => {
 
   const token = await metaToken();
   const resultados: Resultado[] = [];
+
+  if (pedido.modo === "anuncios") {
+    if (!token) return json({ error: SEM_TOKEN }, 409);
+    try {
+      return json(await sincronizarAnuncios(svc, contas, token));
+    } catch (e) {
+      logFalha("anúncios", "todas", e);
+      return json({ ok: false, error: descreverFalhaMeta(e) }, 502);
+    }
+  }
 
   if (pedido.modo === "estado") {
     // Sem token o estado só fica como estava (com a data da última leitura); a

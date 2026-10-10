@@ -39,6 +39,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Check-in", url: "/checkin", icon: LogIn, group: "principal" },
   { title: "SDR IA", url: "/sdr", icon: Bot, group: "principal" },
   { title: "Candidatos", url: "/candidatos", icon: UserPlus, group: "principal" },
+  { title: "Campanhas Facebook", url: "/campanhas", icon: Megaphone, group: "principal" },
   { title: "Central do Corretor", url: "/central", icon: LayoutGrid, group: "principal" },
   { title: "Suporte para Análise", url: "/central/suporte", icon: LayoutGrid, group: "principal", hidden: true },
   { title: "Drive de Construtoras", url: "/central/drive", icon: LayoutGrid, group: "principal", hidden: true },
