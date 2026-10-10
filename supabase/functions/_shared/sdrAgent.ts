@@ -153,7 +153,12 @@ export async function runSdrAgentTurn(
     conversationId?: string | null;
     leadId?: string | null;
     agentId?: string | null;
-    message: string;
+    /**
+     * A fala nova do lead. `null` = responder ao histórico que já está gravado
+     * ("Passar para o agente", 10/10/2026): a última mensagem do lead já está
+     * na conversa e não pode entrar duas vezes.
+     */
+    message: string | null;
     providerMessageId?: string | null;
     /**
      * Ao atingir o teto de turnos, devolve o lead à roleta (`sdr_handoff`).
@@ -262,14 +267,14 @@ export async function runSdrAgentTurn(
     // ("All object keys must match"). `insertMessages` cuida do banco que ainda
     // não tem a coluna `agent_id` (0082).
     const teto = await insertMessages(supabase, [
-      {
+      ...(input.message === null ? [] : [{
         conversation_id: convId,
         author: "lead",
         body: input.message,
         provider_message_id: input.providerMessageId ?? null,
         agent_id: null,
         ...midiaDoLead,
-      },
+      }]),
       {
         conversation_id: convId,
         author: "system",
@@ -329,7 +334,7 @@ export async function runSdrAgentTurn(
     })),
     // A mensagem do turno entra só no payload; a gravação vem depois da
     // resposta, para que uma falha do modelo não deixe rastro sem retentativa.
-    { role: "user", content: input.message },
+    ...(input.message === null ? [] : [{ role: "user", content: input.message }]),
   ];
 
   const { text, usage } = await callOpenAI(
@@ -346,7 +351,7 @@ export async function runSdrAgentTurn(
   // nenhuma e o replay reprocessa. As chaves têm de ser IDÊNTICAS nos dois
   // objetos: o PostgREST recusa lote heterogêneo ("All object keys must match").
   const inErr = await insertMessages(supabase, [
-    {
+    ...(input.message === null ? [] : [{
       conversation_id: convId,
       author: "lead",
       body: input.message,
@@ -355,7 +360,7 @@ export async function runSdrAgentTurn(
       tokens_out: null,
       agent_id: null,
       ...midiaDoLead,
-    },
+    }]),
     {
       conversation_id: convId,
       author: "agent",

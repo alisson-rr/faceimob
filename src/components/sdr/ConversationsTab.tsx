@@ -194,10 +194,34 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
     { sucesso: "Conversa assumida", detalhe: "O robô não responde mais nela.", falha: "Não foi possível assumir a conversa" },
     true,
   );
-  const devolver = () => gravar(
-    { status: "active" }, ["human"],
-    { sucesso: "Conversa devolvida ao robô", falha: "Não foi possível devolver a conversa ao robô" },
-  );
+  /**
+   * "Passar para o agente" (10/10/2026): no lugar do "Devolver ao robô", que
+   * deixava a conversa sem agente (caía no orquestrador) e calado até o lead
+   * escrever de novo. Aqui o operador escolhe o agente e ele responde na hora à
+   * última mensagem do lead — pela function, que gasta a OpenAI e manda o WhatsApp.
+   */
+  const [agenteEscolhido, setAgenteEscolhido] = useState("");
+  const agentesAtivos = useMemo(() => agents.filter((a) => a.active), [agents]);
+  const agenteAlvo = agenteEscolhido || atual?.agent_id || agentesAtivos[0]?.id || "";
+  async function passar() {
+    if (!atual || !agenteAlvo) return;
+    setSalvando(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ reply?: string; enviado?: boolean }>("sdr-agent-chat", {
+        body: { action: "passar", conversation_id: atual.id, agent_id: agenteAlvo },
+      });
+      if (error) throw new Error(await functionErrorMessage(error, "O agente não assumiu a conversa."));
+      toast.success(`${nomeDoAgente(agenteAlvo)} assumiu a conversa`, {
+        description: data?.enviado === false ? "A resposta ficou na conversa, mas o WhatsApp não confirmou o envio." : "E já respondeu ao lead.",
+      });
+      setAgenteEscolhido("");
+      await Promise.all([qc.invalidateQueries({ queryKey: ["sdr", "mensagens", atual.id] }), recarregar()]);
+    } catch (e) {
+      toast.error("Não foi possível passar para o agente", { description: describeError(e, "Tente de novo.") });
+    } finally {
+      setSalvando(false);
+    }
+  }
   async function resolver() {
     const ok = await gravar(
       { status: "resolved" }, ["active", "human"],
@@ -370,10 +394,20 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
                     <Hand className="h-3.5 w-3.5 mr-1" aria-hidden="true" />Assumir conversa
                   </Button>
                 )}
-                {acoes?.devolver && (
-                  <Button size="sm" variant="outline" disabled={salvando} onClick={devolver}>
-                    <BotIcon className="h-3.5 w-3.5 mr-1" aria-hidden="true" />Devolver ao robô
-                  </Button>
+                {acoes?.devolver && agentesAtivos.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select value={agenteAlvo} onValueChange={setAgenteEscolhido} disabled={salvando}>
+                      <SelectTrigger className="h-8 w-40 text-xs" aria-label="Agente que assume a conversa">
+                        <SelectValue placeholder="Agente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {agentesAtivos.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" variant="outline" disabled={salvando || !agenteAlvo} onClick={() => void passar()}>
+                      <BotIcon className="h-3.5 w-3.5 mr-1" aria-hidden="true" />Passar para o agente
+                    </Button>
+                  </div>
                 )}
                 {acoes?.resolver && (
                   <Button size="sm" variant="outline" disabled={salvando} onClick={resolver}>

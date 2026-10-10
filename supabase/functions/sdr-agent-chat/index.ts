@@ -5,6 +5,8 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import { ConversationClosedError, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
 import { hasAnyRole, requireUserPermission, serviceClient } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
+import { normalizePhone, sendWhatsAppText } from '../_shared/meta.ts';
+import { baloesDaResposta } from '../whatsapp-inbound-webhook/parse.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -136,6 +138,80 @@ async function probeOpenAI(apiKey: string) {
   }, 502);
 }
 
+/**
+ * "Passar para o agente" (10/10/2026): a conversa sem agente (anúncio que
+ * chegou antes de a campanha ter agente, ou assumida por engano) vai para o
+ * agente escolhido, que responde NA HORA à última mensagem do lead — sem
+ * esperar a pessoa escrever de novo. Qualificou: segue a entrega do agente;
+ * fora do perfil: base. As mesmas saídas do webhook.
+ */
+async function passarParaAgente(
+  req: Request,
+  supabase: SupabaseClient,
+  userId: string,
+  conversationRaw: unknown,
+  agentRaw: unknown,
+) {
+  const conversationId = typeof conversationRaw === 'string' ? conversationRaw.trim() : '';
+  const agentId = typeof agentRaw === 'string' ? agentRaw.trim() : '';
+  if (!UUID.test(conversationId) || !UUID.test(agentId)) {
+    return json({ error: 'conversation_id e agent_id precisam ser uuid' }, 400);
+  }
+
+  const { data: conv, error: convErr } = await supabase
+    .from('sdr_conversations').select('id, lead_id, status').eq('id', conversationId).maybeSingle();
+  if (convErr) throw new Error(`sdr_conversations: ${convErr.message}`);
+  if (!conv || !(await podeUsarLead(req, supabase, conv.lead_id, userId))) return naoEncontrada();
+  if (!['human', 'active', 'resolved'].includes(conv.status)) {
+    return json({ code: 'conversation_closed', error: 'Esta conversa já foi encerrada pelo robô e não volta a ele.' }, 409);
+  }
+
+  const { data: agente, error: agErr } = await supabase
+    .from('sdr_agents').select('id, name, active').eq('id', agentId).maybeSingle();
+  if (agErr) throw new Error(`sdr_agents: ${agErr.message}`);
+  if (!agente?.active) return json({ code: 'agent_inactive', error: 'Escolha um agente ativo.' }, 409);
+
+  const { data: ultima, error: ultErr } = await supabase
+    .from('sdr_messages').select('author').eq('conversation_id', conversationId)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (ultErr) throw new Error(`sdr_messages: ${ultErr.message}`);
+  if (ultima?.author !== 'lead') {
+    return json({ code: 'nothing_to_answer', error: 'A última mensagem não é do lead: o agente assume e responde quando ele escrever.' }, 409);
+  }
+
+  const { error: upErr } = await supabase
+    .from('sdr_conversations')
+    .update({ agent_id: agentId, status: 'active', assumed_by: null })
+    .eq('id', conversationId);
+  if (upErr) throw new Error(`sdr_conversations: ${upErr.message}`);
+
+  const turn = await runSdrAgentTurn(supabase, { conversationId, agentId, message: null });
+
+  const { data: lead } = await supabase
+    .from('leads').select('phone, phone_raw, assigned_to').eq('id', conv.lead_id).maybeSingle();
+  const fone = normalizePhone(lead?.phone_raw || lead?.phone);
+  let enviado = false;
+  if (fone) {
+    enviado = true;
+    for (const balao of baloesDaResposta(turn.reply)) {
+      const res = await sendWhatsAppText(fone, balao).catch(() => ({ ok: false }));
+      if (!res.ok) { enviado = false; break; }
+    }
+  }
+
+  if (turn.qualified) {
+    const { error } = await supabase.rpc('sdr_handoff', { p_conversation_id: conversationId, p_reason: 'qualified' });
+    if (error) console.error('sdr-agent-chat: sdr_handoff falhou —', error.message);
+  } else if (turn.disqualified && lead && !lead.assigned_to) {
+    const { error } = await supabase.from('leads')
+      .update({ status: 'lost', lost_reason: 'SDR IA: fora do perfil', lost_at: new Date().toISOString() })
+      .eq('id', conv.lead_id).is('assigned_to', null);
+    if (error) console.error('sdr-agent-chat: lead fora do perfil não foi para a base —', error.message);
+  }
+
+  return json({ conversation_id: conversationId, agent: turn.agent, reply: turn.reply, enviado });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
@@ -198,6 +274,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'probe') return await probeOpenAI(apiKey);
+
+    if (action === 'passar') return await passarParaAgente(req, supabase, userId, conversation_id, agent_id);
 
     if (typeof message !== 'string' || !message.trim()) {
       return json({ error: 'message obrigatório' }, 400);
