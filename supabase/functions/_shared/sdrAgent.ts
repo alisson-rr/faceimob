@@ -301,9 +301,24 @@ export async function runSdrAgentTurn(
     };
   }
 
+  // O nome do perfil do WhatsApp (ou do formulário) para o agente chamar a
+  // pessoa pelo nome. O nome genérico de quem chegou sem perfil não vai.
+  let contexto = "";
+  if (conv.lead_id) {
+    const { data: lead } = await supabase
+      .from("leads").select("full_name").eq("id", conv.lead_id).maybeSingle();
+    // O nome vem de fora (perfil do WhatsApp): sem quebra de linha nem colchete,
+    // não vira instrução nem tag de controle dentro do prompt.
+    const nome = (lead?.full_name ?? "").replace(/[\r\n[\]]/g, " ").trim();
+    if (nome && nome !== "Lead do WhatsApp") {
+      contexto = `\n\nNome do contato (como aparece no WhatsApp ou no formulário; pode ser apelido): ${nome.slice(0, 80)}`;
+    }
+  }
+
   const systemPrompt =
     (agent.system_prompt ||
       "Você é um SDR especializado em qualificação de leads imobiliários. Faça perguntas objetivas sobre renda, urgência, tipo de imóvel desejado e localização. Seja cordial e breve.") +
+    contexto +
     QUALIFY_INSTRUCTION;
 
   const messages = [

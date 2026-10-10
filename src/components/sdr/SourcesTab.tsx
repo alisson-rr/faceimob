@@ -104,7 +104,7 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
   return (
     <Card className="p-4 space-y-3">
       <p className="text-xs text-muted-foreground">
-        Origem com agente entra no atendimento IA em vez de cair na roleta. O lead é reconhecido pelo <b>form_id</b> (Meta Lead Ads) ou, sem form_id, pelo <b>código</b> igual ao <code>utm_source</code> que o Zapier/POST manual envia.
+        Origem com agente entra no atendimento IA em vez de cair na roleta. O lead é reconhecido pelo <b>form_id</b> (Meta Lead Ads, ou o ID do anúncio de WhatsApp) ou, sem form_id, pelo <b>código</b> igual ao <code>utm_source</code> que o Zapier/POST manual envia.
         Lead <b>sem telefone</b> não entra na IA — sem número o robô não tem como falar com ele — e segue direto para a roleta.
         {" "}Lead vindo de <b>POST direto sem prova de origem</b> (sem assinatura da Meta e sem a chave de serviço no <code>Authorization</code>) também fica de fora da IA: ele é gravado, ligado a esta origem e vai para a roleta com o aviso nas observações. A URL do webhook é pública — sem essa trava, quem a descobrisse faria o WhatsApp da empresa mandar mensagem para o número que ele mesmo escolhesse.
         {canWrite && " Clique numa origem para editar."}
@@ -113,7 +113,7 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
         <div className="space-y-2">
           <div className="grid md:grid-cols-5 gap-2">
             <Input placeholder="Rótulo" aria-label="Rótulo" value={row.label || ""} onChange={e => setRow({ ...row, label: e.target.value })} />
-            <Input placeholder="form_id (Meta Ads)" aria-label="form_id" value={row.form_id || ""} onChange={e => setRow({ ...row, form_id: e.target.value })} />
+            <Input placeholder="form_id (Meta Ads) ou ID do anúncio de WhatsApp" aria-label="form_id" value={row.form_id || ""} onChange={e => setRow({ ...row, form_id: e.target.value })} />
             <Input placeholder="código (= utm_source)" aria-label="Código da origem" value={row.code || ""} onChange={e => setRow({ ...row, code: e.target.value })} />
             <Select value={row.channel || "meta"} onValueChange={v => setRow({ ...row, channel: v })}>
               <SelectTrigger aria-label="Canal"><SelectValue placeholder="Canal" /></SelectTrigger>

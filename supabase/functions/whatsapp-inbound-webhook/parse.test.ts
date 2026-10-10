@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AUDIO_NAO_TRANSCRITO, AUDIOS_POR_TELEFONE_DIA, corpoDaMensagem, decidirReentrega, decidirRota, inicioDoDiaEmSaoPaulo,
+  AUDIO_NAO_TRANSCRITO, AUDIOS_POR_TELEFONE_DIA, baloesDaResposta, corpoDaMensagem, decidirReentrega, decidirRota, inicioDoDiaEmSaoPaulo,
   nomeDoAudio, parseMessages, passouDoTetoDeAudios, planejar, RESERVA_DO_AUDIO, RESERVA_RETOMADA,
 } from "./parse.ts";
 
@@ -193,5 +193,14 @@ describe("teto diário e arquivo do áudio", () => {
     expect(nomeDoAudio("audio/mpeg")).toBe("audio.mp3");
     expect(nomeDoAudio("audio/mp4")).toBe("audio.m4a");
     expect(nomeDoAudio(null)).toBe("audio.ogg");
+  });
+});
+
+describe("baloesDaResposta", () => {
+  it("cada parágrafo vira um balão; acima de 3, o resto vai no último", () => {
+    expect(baloesDaResposta("Oi, Maria! 😊\n\nCasa ou apartamento?")).toEqual(["Oi, Maria! 😊", "Casa ou apartamento?"]);
+    expect(baloesDaResposta("a\n\nb\n \nc\n\nd")).toEqual(["a", "b", "c\n\nd"]);
+    expect(baloesDaResposta("linha 1\nlinha 2")).toEqual(["linha 1\nlinha 2"]);
+    expect(baloesDaResposta("  ")).toEqual([]);
   });
 });
