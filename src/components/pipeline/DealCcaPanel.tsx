@@ -91,7 +91,7 @@ export function DealCcaPanel({ dealId, value, onChange, onCommentAdded }: {
       await addDealComment(dealId, `CCA — ${body}`);
       setComment("");
       onCommentAdded?.();
-      toast({ variant: "success", title: "Comentário do CCA adicionado", description: "Ele já está na aba Comentários." });
+      toast({ variant: "success", title: "Comentário do CCA adicionado", description: "Ele já está nos comentários do Cadastro." });
     } catch (error) {
       toast({
         variant: "destructive",
@@ -159,7 +159,7 @@ export function DealCcaPanel({ dealId, value, onChange, onCommentAdded }: {
       <div className="rounded-xl border border-blue-800/40 bg-blue-950/35 p-3">
         <Label htmlFor={`${id}-comentario`} className="text-eyebrow">Comentário do CCA</Label>
         <p className="mb-2 mt-1 text-xs text-muted-foreground">
-          O texto entra no histórico auditado e aparece para todos na aba Comentários.
+          O texto entra no histórico auditado e aparece para todos nos comentários do Cadastro.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Textarea

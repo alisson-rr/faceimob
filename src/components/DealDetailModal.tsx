@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { usePosicaoNaFilaCca } from "@/integrations/supabase/cca";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,8 @@ import {
   DealCcaPanel, DealCommentsPanel, DealForm, dealDocumentNumberError, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
-import { addDealComment, countDealComments } from "@/components/pipeline/DealCommentsPanel";
+import { addDealComment } from "@/components/pipeline/DealCommentsPanel";
+import { DealOffToggle } from "@/components/pipeline/DealOffToggle";
 import { ConferenciaGerenteDialog } from "@/components/pipeline/ConferenciaGerenteDialog";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
 import { BatidaCpfDialog } from "@/components/pipeline/BatidaCpfDialog";
@@ -52,7 +54,7 @@ interface Props {
   initialTab?: TabKey;
 }
 
-export type TabKey = "detalhes" | "comentarios" | "anexos" | "agenda" | "historico" | "cca";
+export type TabKey = "detalhes" | "anexos" | "agenda" | "historico" | "cca" | "negocio";
 
 /**
  * Negócio em branco.
@@ -113,11 +115,11 @@ export default function DealDetailModal({
   // (pedido de 06/10/2026). Antes cada troca desmontava o painel e o rascunho ia junto.
   const [visitadas, setVisitadas] = useState<ReadonlySet<TabKey>>(() => new Set(["detalhes", initialTab]));
   const montada = (key: TabKey) => tab === key || visitadas.has(key);
-  /** Renova a faixa "Próximo passo" e a aba Anexos juntas depois de uma decisão. */
+  /** Renova as etapas Negócio e Anexos juntas depois de uma decisão. */
   const [versaoDossie, setVersaoDossie] = useState(0);
   const [cca, setCca] = useState<CcaAnalysis>({});
   const [saving, setSaving] = useState(false);
-  /** Negócio novo: comentário que vai para a aba Comentários depois de criado. */
+  /** Negócio novo: comentário que entra nos comentários do Cadastro depois de criado. */
   const [comentarioInicial, setComentarioInicial] = useState("");
   /** Já houve uma tentativa de salvar. Só depois dela o campo obrigatório vazio
    *  vira erro: cobrar antes pintaria de vermelho um formulário recém-aberto. */
@@ -154,15 +156,8 @@ export default function DealDetailModal({
   /** Batida de CPF que achou negócio (0179). */
   const [batida, setBatida] = useState<{ negocio: NegocioDoCpf; enviando: boolean; erro: string | null } | null>(null);
 
-  // Contador no rótulo da aba: sem ele o comentário sai da aba "Detalhes" e vira
-  // conteúdo escondido — ninguém clica numa aba que não avisa que tem algo. Em
-  // falha de rede `countDealComments` devolve 0 de propósito: número decorativo
-  // não pode derrubar a barra de abas.
-  const [comentarios, setComentarios] = useState(0);
-  useEffect(() => {
-    if (!dealId) return;
-    void countDealComments(dealId).then(setComentarios);
-  }, [dealId]);
+  /** Renova a lista de comentários do Cadastro quando outra aba comenta (CCA, OFF). */
+  const [versaoComentarios, setVersaoComentarios] = useState(0);
 
   const patch = (next: Partial<SaveLegacyDealInput>) =>
     setForm((previous) => ({ ...previous, ...next }));
@@ -170,21 +165,26 @@ export default function DealDetailModal({
   /** Grava o negócio. Devolve o id gravado, ou `null` quando nada foi gravado
    *  (a recusa já foi mostrada). `fechar: false` mantém a ficha aberta. */
   const handleSave = async (
-    { fechar = Boolean(closeOnSave), avisar = true }: { fechar?: boolean; avisar?: boolean } = {},
+    { fechar = Boolean(closeOnSave), avisar = true, alterar }: {
+      fechar?: boolean; avisar?: boolean;
+      /** Campos trocados junto com o salvamento (o OFF do Cadastro), sem esperar o `setForm`. */
+      alterar?: Partial<SaveLegacyDealInput>;
+    } = {},
   ): Promise<string | null> => {
+    const ficha = alterar ? { ...form, ...alterar } : form;
     // Liga antes da primeira recusa, e não depois delas: o formulário nasce sem
     // corretor E sem construtora, então cobrar um campo por clique fazia o
     // operador descobrir a segunda pendência só na tentativa seguinte. Ligado
     // aqui, as duas aparecem juntas — e um formulário recém-aberto continua sem
     // nada pintado de vermelho, porque ninguém clicou em salvar ainda.
     setTentouSalvar(true);
-    if (!form.client.trim()) {
+    if (!ficha.client.trim()) {
       toast({ variant: "destructive", title: "O nome do cliente é obrigatório" });
       return null;
     }
     // Sem participante o negócio nasce fora do alcance de `can_edit_deal()`:
     // ninguém além de admin e CCA conseguiria abri-lo de novo.
-    if (!form.broker1_id && !form.manager1_id) {
+    if (!ficha.broker1_id && !ficha.manager1_id) {
       toast({
         variant: "destructive",
         title: "Escolha ao menos um corretor ou gerente",
@@ -199,7 +199,7 @@ export default function DealDetailModal({
     // A frase fica na aba "Detalhes", e é onde o operador está: `dealRequiredError`
     // só cobra na CRIAÇÃO, e no negócio novo as outras quatro abas estão
     // desabilitadas até existir um `id`.
-    const obrigatorio = dealRequiredError(form);
+    const obrigatorio = dealRequiredError(ficha);
     if (obrigatorio) {
       // Sem levar o foco, o clique não muda nada VISÍVEL: o rodapé rola junto
       // com o conteúdo do diálogo, então quem clica em "Criar negócio" está no
@@ -210,7 +210,7 @@ export default function DealDetailModal({
       document.getElementById(field(obrigatorio.toLowerCase().includes("empreendimento") ? "project" : "developer"))?.focus();
       return null;
     }
-    const documentoInvalido = dealDocumentNumberError(form);
+    const documentoInvalido = dealDocumentNumberError(ficha);
     if (documentoInvalido) {
       const ids = { cpf: "cpf", numero_pis: "pis", cpf2: "cpf2", numero_pis2: "pis2" } as const;
       document.getElementById(field(ids[documentoInvalido.field]))?.focus();
@@ -219,7 +219,7 @@ export default function DealDetailModal({
     // Batida de CPF (0179): um CPF, um negócio. Sem a resposta não cadastra — o
     // banco recusaria o CPF repetido de qualquer forma, com frase pior.
     if (isNew) {
-      const cpfs = cpfsParaBatida(form);
+      const cpfs = cpfsParaBatida(ficha);
       if (cpfs.length > 0) {
         try {
           const achado = await negocioDoCpf(cpfs);
@@ -243,10 +243,10 @@ export default function DealDetailModal({
     let negocioGravado = false;
     // Negócio que passa a "Fechado" com corretor no rateio vira venda com card
     // próprio do `EngagementLayer`: o sucesso daqui sairia em cima dele.
-    const virouVenda = dealStageCodeFor(form) === "closed" && (!deal || dealStageCodeFor(deal) !== "closed")
-      && vendaTemCard(form);
+    const virouVenda = dealStageCodeFor(ficha) === "closed" && (!deal || dealStageCodeFor(deal) !== "closed")
+      && vendaTemCard(ficha);
     try {
-      const novoId = await onSave(form);
+      const novoId = await onSave(ficha);
       negocioGravado = true;
       const gravado = typeof novoId === "string" ? novoId : dealId;
       // Comentário escrito na criação: a aba Comentários só existe depois do id.
@@ -259,7 +259,7 @@ export default function DealDetailModal({
           toast({
             variant: "destructive",
             title: "Negócio criado, mas o comentário não foi salvo",
-            description: `${describeError(err, "O comentário não foi gravado.")} Abra o negócio e escreva de novo na aba Comentários.`,
+            description: `${describeError(err, "O comentário não foi gravado.")} Abra o negócio e escreva de novo nos comentários do Cadastro.`,
           });
         }
       }
@@ -366,8 +366,29 @@ export default function DealDetailModal({
     setConferencia(null);
     // Direto, sem `abrirAba`: a ficha nova já foi gravada acima, e nesta
     // renderização `isNew` ainda é verdadeiro — `abrirAba` gravaria de novo.
+    // Anexa primeiro; a mensagem fica guardada e abre a Esteira Ágil na etapa Negócio.
     setTab("anexos");
     setVisitadas((atual) => new Set([...atual, "anexos"]));
+  };
+
+  /** OFF do Cadastro: grava o Status 2 e o motivo como comentário. */
+  const aplicarOff = async (motivo: string, valorOff: string): Promise<boolean> => {
+    if (!dealId) return false;
+    const gravado = await handleSave({ fechar: false, avisar: false, alterar: { status: valorOff, status_group_id: undefined } });
+    if (!gravado) return false;
+    patch({ status: valorOff, status_group_id: undefined });
+    try {
+      await addDealComment(dealId, `OFF: ${motivo}`);
+      setVersaoComentarios((v) => v + 1);
+      toast({ variant: "success", title: "Negócio em OFF", description: "O motivo ficou nos comentários." });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "OFF gravado, mas o motivo não foi salvo",
+        description: `${describeError(err, "O comentário não foi gravado.")} Escreva o motivo nos comentários do Cadastro.`,
+      });
+    }
+    return true;
   };
 
   // Negócio novo: as outras abas precisam do id. Clicar nelas grava a ficha
@@ -384,13 +405,15 @@ export default function DealDetailModal({
     setVisitadas((atual) => (atual.has(key) ? atual : new Set([...atual, key])));
   };
 
+  // Roadmap do negócio (10/10/2026): uma linha, na ordem do caminho, com o
+  // Negócio em verde no fim — é lá que o dossiê segue para o gerente e o CCA.
   const tabs: { key: TabKey; label: string }[] = [
-    { key: "detalhes", label: "Detalhes" },
-    { key: "comentarios", label: comentarios > 0 ? `Comentários (${comentarios})` : "Comentários" },
+    { key: "detalhes", label: "Cadastro" },
     { key: "anexos", label: "Anexos" },
     { key: "agenda", label: "Agenda" },
     { key: "historico", label: "Histórico" },
     { key: "cca", label: "CCA" },
+    { key: "negocio", label: "Negócio" },
   ];
 
   return (
@@ -404,8 +427,8 @@ export default function DealDetailModal({
             outras abas nascem cinzas — o que só o `title` do botão explicava. */}
         <DialogDescription className="sr-only">
           {isNew
-            ? "Cadastro do negócio em seis abas; abrir comentários, anexos, agenda, histórico ou CCA salva o negócio antes."
-            : "Negócio em seis abas: detalhes, comentários, anexos, agenda, histórico e CCA."}
+            ? "Cadastro do negócio em seis etapas; abrir anexos, agenda, histórico, CCA ou negócio salva o negócio antes."
+            : "Negócio em seis etapas: cadastro, anexos, agenda, histórico, CCA e negócio."}
         </DialogDescription>
 
         {/* `pr-12` reserva o canto para o X do próprio `DialogContent` (fixo em
@@ -417,34 +440,40 @@ export default function DealDetailModal({
             `TabsList` e ao Pipeline: `justify-center` no próprio elemento que
             rola deixaria a primeira aba inalcançável quando as seis não cabem.
             A borda fica no embrulho para continuar atravessando o diálogo. */}
-        <div className="overflow-x-auto border-b border-border pl-4 pr-12 pt-4">
-          <div
-            className="mx-auto flex w-fit gap-4"
-            role="tablist"
-            aria-label="Seções do negócio"
-          >
-            {tabs.map((item) => {
+        {/* `pr-12` reserva o canto para o X do `DialogContent`. Uma linha só:
+            quem rola é o embrulho e quem centra é a lista (`mx-auto w-fit`). */}
+        <div className="overflow-x-auto border-b border-border py-3 pl-4 pr-12">
+          <div className="mx-auto flex w-fit items-center gap-1" role="tablist" aria-label="Etapas do negócio">
+            {tabs.map((item, indice) => {
               const salvaAntes = isNew && item.key !== "detalhes";
+              const ativa = tab === item.key;
+              const negocio = item.key === "negocio";
               return (
-                <button
-                  key={item.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === item.key}
-                  disabled={salvaAntes && (saving || lock.readOnly)}
-                  title={salvaAntes ? "Salva o negócio e abre esta aba" : undefined}
-                  onClick={() => void abrirAba(item.key)}
-                  className={cn(
-                    "whitespace-nowrap border-b-2 pb-3 text-sm font-medium transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    "disabled:cursor-not-allowed disabled:opacity-40",
-                    tab === item.key
-                      ? "border-primary text-foreground"
-                      : "border-transparent text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {item.label}
-                </button>
+                <Fragment key={item.key}>
+                  {indice > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={ativa}
+                    disabled={salvaAntes && (saving || lock.readOnly)}
+                    title={salvaAntes ? "Salva o negócio e abre esta etapa" : undefined}
+                    onClick={() => void abrirAba(item.key)}
+                    className={cn(
+                      "whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "disabled:cursor-not-allowed disabled:opacity-40",
+                      negocio
+                        ? ativa
+                          ? "border-success bg-success text-success-foreground"
+                          : "border-success/60 bg-success/10 text-success hover:bg-success/20"
+                        : ativa
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                </Fragment>
               );
             })}
           </div>
@@ -486,28 +515,6 @@ export default function DealDetailModal({
             </p>
           )}
 
-          {/* "Próximo passo" (09/10/2026): enviar, conferir, devolver e reenviar
-              num lugar só, visível em qualquer aba. A aba Anexos fica só com os
-              arquivos. As duas partes saem do mesmo `DealDocumentUpload`, e
-              qualquer decisão renova as duas (`versaoDossie`). */}
-          {dealId && (
-            <DealDocumentUpload
-              key={`acoes-${versaoDossie}`}
-              parte="acoes"
-              dealId={dealId}
-              clientName={form.client}
-              dealCode={form.code || dealId}
-              hasDeveloper={Boolean(deal?.developer_id || (criadoId && (form.developer_id || form.developer)))}
-              closedMonth={lock.reason === "month" ? lock.month : null}
-              unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
-              onReviewChanged={dossieMudou}
-              mensagemInicial={mensagemEnvio}
-              salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
-              statusDetail={form.status}
-              filaCca={posicaoNaFila}
-            />
-          )}
-
           <div hidden={tab !== "detalhes"}>
               <DealForm
                 form={form} onChange={patch} field={field}
@@ -529,14 +536,17 @@ export default function DealDetailModal({
                     rows={3}
                     placeholder="Ex.: cliente aprovado na Caixa, assinatura marcada para sexta."
                   />
-                  <p className="text-xs text-muted-foreground">Entra na aba Comentários quando o negócio for criado.</p>
+                  <p className="text-xs text-muted-foreground">Entra nos comentários quando o negócio for criado.</p>
+                </div>
+              )}
+              {/* Comentários e OFF no Cadastro, como no sistema anterior (10/10/2026). */}
+              {dealId && (
+                <div className="mt-4 space-y-4">
+                  <DealCommentsPanel key={versaoComentarios} dealId={dealId} people={people} />
+                  <DealOffToggle status={form.status} isNew={isNew} readOnly={lock.readOnly} onAplicar={aplicarOff} />
                 </div>
               )}
           </div>
-
-          {montada("comentarios") && dealId && (
-            <div hidden={tab !== "comentarios"}><DealCommentsPanel dealId={dealId} people={people} /></div>
-          )}
 
           {montada("anexos") && dealId && (
             <div hidden={tab !== "anexos"}>
@@ -581,8 +591,31 @@ export default function DealDetailModal({
               dealId={dealId}
               value={cca}
               onChange={setCca}
-              onCommentAdded={() => setComentarios((total) => total + 1)}
+              onCommentAdded={() => setVersaoComentarios((v) => v + 1)}
             />
+            </div>
+          )}
+
+          {/* Negócio: envio à Esteira Ágil, conferência do gerente e a análise
+              p/ virar negócio. Anexos e Negócio saem do mesmo componente, e
+              qualquer decisão renova os dois (`versaoDossie`). */}
+          {montada("negocio") && dealId && (
+            <div hidden={tab !== "negocio"}>
+              <DealDocumentUpload
+                key={`acoes-${versaoDossie}`}
+                parte="acoes"
+                dealId={dealId}
+                clientName={form.client}
+                dealCode={form.code || dealId}
+                hasDeveloper={Boolean(deal?.developer_id || (criadoId && (form.developer_id || form.developer)))}
+                closedMonth={lock.reason === "month" ? lock.month : null}
+                unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
+                onReviewChanged={dossieMudou}
+                mensagemInicial={mensagemEnvio}
+                salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
+                statusDetail={form.status}
+                filaCca={posicaoNaFila}
+              />
             </div>
           )}
         </div>

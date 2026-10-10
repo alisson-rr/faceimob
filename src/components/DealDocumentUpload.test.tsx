@@ -237,14 +237,13 @@ describe("DealDocumentUpload — análise p/ virar negócio", () => {
     }];
     await montar();
 
-    const botao = [...container.querySelectorAll("button")]
-      .find((item) => /enviar análise p\/ virar negócio/i.test(item.textContent ?? ""));
-    expect(botao, "o corretor não recebeu o CTA do segundo envio").toBeTruthy();
+    // Aba Negócio (10/10/2026): o 2º envio é um toggle numerado.
+    expect(container.textContent, "o corretor não recebeu o segundo envio").toContain("Enviar análise p/ virar negócio · 1º envio");
     expect(container.textContent).toContain("Análise p/ virar negócio");
   });
 });
 
-describe("DealDocumentUpload — faixa Próximo passo (09/10/2026)", () => {
+describe("DealDocumentUpload — aba Negócio (10/10/2026)", () => {
   async function montarParte(parte: "acoes" | "arquivos", extra: { statusDetail?: string } = {}) {
     container = document.body.appendChild(document.createElement("div"));
     root = createRoot(container);
@@ -256,32 +255,46 @@ describe("DealDocumentUpload — faixa Próximo passo (09/10/2026)", () => {
     return container.textContent ?? "";
   }
 
-  it("ações no topo, arquivos na aba: cada parte mostra só o seu", async () => {
+  it("ações na aba Negócio, arquivos na aba Anexos; virar negócio só depois da aprovação", async () => {
     h.status = "draft";
     h.papeis = ["broker"];
     h.caseStatus = null;
     const acoes = await montarParte("acoes");
-    expect(acoes).toContain("Próximo passo");
-    expect(acoes).toContain("Enviar para a Esteira Ágil");
+    expect(acoes).toContain("Enviar à Esteira Ágil · 1º envio");
+    expect(acoes).not.toContain("Próximo passo");
     expect(acoes).not.toContain("Anexar Documentos");
+    expect(acoes, "virar negócio aparece antes da aprovação").not.toContain("Análise p/ virar negócio");
     await act(async () => { root.unmount(); });
     container.remove();
     const arquivos = await montarParte("arquivos");
     expect(arquivos).toContain("Anexar Documentos");
-    expect(arquivos).not.toContain("Próximo passo");
+    expect(arquivos).not.toContain("Enviar à Esteira Ágil");
+  });
+
+  it("o toggle da Esteira Ágil abre o comentário e o Enviar ao gerente", async () => {
+    h.status = "draft";
+    h.papeis = ["broker"];
+    h.caseStatus = null;
+    await montarParte("acoes");
+    expect(container.textContent).not.toContain("Enviar ao gerente");
+    const toggle = container.querySelector<HTMLButtonElement>('button[role="switch"]');
+    expect(toggle).toBeTruthy();
+    await act(async () => { toggle?.click(); });
+    expect(container.textContent).toContain("Comentário do envio");
+    expect(container.textContent).toContain("Enviar ao gerente");
   });
 
   it("o gerente do negócio também envia a análise p/ virar negócio", async () => {
     h.status = "approved";
     h.papeis = ["manager"];
     h.caseStatus = "approved";
-    expect(await montarParte("acoes")).toContain("Enviar a análise p/ virar negócio");
+    expect(await montarParte("acoes")).toContain("Enviar análise p/ virar negócio");
   });
 
   it("em INCOMPLETO com caso aberto, o caminho é reenviar pela Esteira Ágil", async () => {
     h.status = "approved";
     h.papeis = ["broker"];
     h.caseStatus = "under_review";
-    expect(await montarParte("acoes", { statusDetail: "INCOMPLETO" })).toContain("Reenviar pela Esteira Ágil");
+    expect(await montarParte("acoes", { statusDetail: "INCOMPLETO" })).toContain("Reenviar (encerra o envio anterior)");
   });
 });

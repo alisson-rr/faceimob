@@ -895,7 +895,7 @@ export function DealForm({
           {!can("deals.edit_status_detail") && <p className="mt-1 text-xs text-muted-foreground">Seu perfil pode consultar o Status 2. A edição depende da permissão “Alterar Status 2”.</p>}
           {!isNew && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Enviar para a Esteira Ágil ou para a análise p/ virar negócio é pelo <strong>Próximo passo</strong>, no topo da ficha.
+              Enviar para a Esteira Ágil ou para a análise p/ virar negócio é pela etapa <strong>Negócio</strong>, no topo da ficha.
             </p>
           )}
           {vendaBloqueada && (

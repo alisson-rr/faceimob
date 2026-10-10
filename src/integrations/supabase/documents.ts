@@ -710,3 +710,35 @@ export async function updateDocumentType(id: string, patch: DocumentTypePatch): 
     });
   }
 }
+
+/** Um envio ao gerente já feito (evento `esteira_sent`, 0150). */
+export type EnvioDaEsteira = { esteira: ReviewEsteira; em: string; por: string | null };
+
+/**
+ * Os envios do negócio, do mais antigo ao mais novo. A aba Negócio mostra
+ * quantas vezes o dossiê já foi para a Esteira Ágil (10/10/2026: "assim ele vê
+ * quantas vezes está enviando").
+ */
+export async function listEnviosDaEsteira(dealId: string): Promise<EnvioDaEsteira[]> {
+  const { data, error } = await supabase
+    .from("deal_history")
+    .select("detail, created_at, actor_id")
+    .eq("deal_id", dealId)
+    .eq("kind", "esteira_sent")
+    .order("created_at", { ascending: true });
+  if (error) throw dbError("deal_history", error);
+  return enviosDoHistorico(data ?? []);
+}
+
+/** Puro: linha do histórico → envio; esteira desconhecida fica de fora. */
+export function enviosDoHistorico(
+  linhas: { detail: unknown; created_at: string; actor_id: string | null }[],
+): EnvioDaEsteira[] {
+  return linhas.flatMap((linha) => {
+    const detalhe = linha.detail;
+    const esteira = detalhe && typeof detalhe === "object" && "esteira" in detalhe ? detalhe.esteira : null;
+    return esteira === "agil" || esteira === "virar"
+      ? [{ esteira, em: linha.created_at, por: linha.actor_id }]
+      : [];
+  });
+}
