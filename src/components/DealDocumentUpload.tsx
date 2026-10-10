@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -37,6 +37,7 @@ import {
   getDealDocumentReview,
   listDealDocuments,
   listDocumentTypes,
+  listEnviosDaEsteira,
   listMyDealRoles,
   missingRequiredTypes,
   missingStoragePaths,
@@ -54,6 +55,7 @@ import {
   type DealDocumentReview,
   type DealDocumentRecord,
   type DocumentTypeRecord,
+  type EnvioDaEsteira,
   type ReviewEsteira,
 } from "@/integrations/supabase/documents";
 
@@ -128,6 +130,58 @@ const assinatura = (
 };
 
 /**
+ * Uma esteira na aba Negócio (10/10/2026): os envios já feitos, numerados, e o
+ * toggle que abre o próximo. Ligado, mostra o comentário e o "Enviar ao
+ * gerente"; o toggle só existe quando o envio vale agora.
+ */
+function EsteiraDoNegocio({
+  titulo, envios, nomes, aberta, disponivel, rotuloEnvio, onAlternar, aviso, children,
+}: {
+  titulo: string;
+  envios: EnvioDaEsteira[];
+  nomes: Record<string, string>;
+  aberta: boolean;
+  disponivel: boolean;
+  rotuloEnvio: string;
+  onAlternar: (ligado: boolean) => void;
+  aviso: string | null;
+  children: React.ReactNode;
+}) {
+  const id = useId();
+  const proximo = envios.length + 1;
+  return (
+    <section className="space-y-2 rounded-lg border border-border/60 bg-muted/10 p-3" aria-label={titulo}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-bold">{titulo}</p>
+        <span className="text-xs text-muted-foreground">
+          {envios.length === 0 ? "nenhum envio" : `${envios.length} envio${envios.length > 1 ? "s" : ""}`}
+        </span>
+      </div>
+      {envios.length > 0 && (
+        <ol className="space-y-0.5 text-xs text-muted-foreground">
+          {envios.map((envio, indice) => (
+            <li key={`${envio.em}-${indice}`}>
+              <span className="font-semibold text-foreground">{indice + 1}º envio</span>
+              {" · "}{assinatura(envio.por, envio.em, nomes)}
+            </li>
+          ))}
+        </ol>
+      )}
+      {disponivel && (
+        <div className="flex items-center gap-3">
+          <Switch id={id} checked={aberta} onCheckedChange={onAlternar} />
+          <Label htmlFor={id} className="cursor-pointer text-xs font-semibold">
+            {rotuloEnvio} · {proximo}º envio
+          </Label>
+        </div>
+      )}
+      {disponivel && aberta && children}
+      {aviso && <p className="text-xs text-muted-foreground">{aviso}</p>}
+    </section>
+  );
+}
+
+/**
  * Um slot por tipo de documento, com renomeação automática no envio.
  *
  * Antes desta tela os arquivos escolhidos ficavam em `useState` e nunca subiam:
@@ -168,8 +222,11 @@ export default function DealDocumentUpload({
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewReason, setReviewReason] = useState("");
   const [envioMensagem, setEnvioMensagem] = useState(mensagemInicial ?? "");
-  /** Escolha explícita da esteira; `null` enquanto ninguém escolheu. */
-  const [esteira, setEsteira] = useState<ReviewEsteira | null>(null);
+  /** Qual envio está aberto (toggle ligado) na aba Negócio; `null` = nenhum.
+   *  A mensagem do popup de conferência já chega com a Esteira Ágil aberta. */
+  const [aberta, setAberta] = useState<ReviewEsteira | null>(mensagemInicial ? "agil" : null);
+  /** Envios já feitos, para a contagem "2º envio" (10/10/2026). */
+  const [envios, setEnvios] = useState<EnvioDaEsteira[]>([]);
   /** Status do caso na CCA: decide se a análise p/ virar negócio já vale. */
   const [caseStatus, setCaseStatus] = useState<string | null>(null);
   /** Construtora do negócio: decide o "Enviar à construtora" do gerente. */
@@ -199,6 +256,8 @@ export default function DealDocumentUpload({
         loadCcaCase(dealId),
         getDealDeveloper(dealId),
       ]);
+      // Contagem é informação, não trava: a falha dela não derruba a aba.
+      setEnvios(await listEnviosDaEsteira(dealId).catch(() => []));
       setTypes(t);
       setDeveloper(construtora);
       setCaseStatus(caso?.status ?? null);
@@ -517,7 +576,7 @@ export default function DealDocumentUpload({
       if (salvarFicha && !(await salvarFicha())) return;
       await submitDealForManagerReview(dealId, envioMensagem, esteiraEnvio);
       setEnvioMensagem("");
-      setEsteira(null);
+      setAberta(null);
       await load();
       await onReviewChanged?.();
       toast({
@@ -664,61 +723,75 @@ export default function DealDocumentUpload({
   const virarBloqueio = reenvioIncompleto
     ? "Em INCOMPLETO o reenvio vai pela Esteira Ágil."
     : virarBlockReason(caseStatus, review?.review_esteira);
-  // Padrão Ágil, exceto no reenvio de um 2º envio devolvido: ali as duas valem, e
-  // cair em Ágil contaria o reenvio como 1º envio no contador da CCA.
-  const esteiraEnvio: ReviewEsteira = agilBloqueio ? "virar"
-    : virarBloqueio ? "agil"
-    : esteira ?? (review?.review_esteira === "virar" ? "virar" : "agil");
-  const esteiraMotivo = agilBloqueio ?? virarBloqueio;
-  const podeEnviar = canSubmit
-    && (reenvioIncompleto || status === "draft" || status === "returned" || (status === "approved" && !virarBloqueio));
-  // A esteira só vira escolha quando as duas valem (reenvio de um 2º envio
-  // devolvido); no resto o caminho é um só e a tela só diz qual é.
-  const duasEsteiras = agilBloqueio === null && virarBloqueio === null;
-  // O próximo passo, em uma frase, para quem está olhando.
-  const proximoPasso = podeEnviar
-    ? (reenvioIncompleto ? "Reenviar pela Esteira Ágil (encerra o envio anterior)"
-      : status === "returned" ? "Corrigir o que foi pedido e reenviar"
-      : esteiraEnvio === "virar" ? "Enviar a análise p/ virar negócio"
-      : "Enviar para a Esteira Ágil")
-    : status === "pending"
-      ? (canReview ? "Conferir os documentos: aprovar ou devolver" : "Aguardando a conferência do gerente ou diretor")
-      : casoAberto
-        ? `Em análise na CCA${filaCca ? ` — ${filaCca}` : ""}`
-        : status === "approved"
-          ? "Conferência concluída"
-          : "Acompanhar o andamento";
+  // Aba Negócio (10/10/2026): cada esteira tem o seu toggle. A Ágil vale até a
+  // aprovação; a análise p/ virar negócio só aparece depois dela.
+  const livreParaEnviar = reenvioIncompleto || status === "draft" || status === "returned";
+  const podeAgil = canSubmit && agilBloqueio === null && livreParaEnviar;
+  const podeVirar = canSubmit && virarBloqueio === null && (livreParaEnviar || status === "approved");
+  const enviosAgil = envios.filter((envio) => envio.esteira === "agil");
+  const enviosVirar = envios.filter((envio) => envio.esteira === "virar");
+  const mostraVirar = virarBloqueio === null || enviosVirar.length > 0;
+  /** Mensagem e botão do envio, abertos pelo toggle da esteira. */
+  const formularioDeEnvio = (alvo: ReviewEsteira) => (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label htmlFor={`${fieldId}-envio-${alvo}`} className="text-xs">Comentário do envio</Label>
+        {/* Obrigatório no banco (0150): vira comentário no negócio e vai no
+            aviso ao gerente. O botão só acende com ele escrito. */}
+        <Textarea
+          id={`${fieldId}-envio-${alvo}`}
+          value={envioMensagem}
+          onChange={(event) => setEnvioMensagem(event.target.value)}
+          rows={2}
+          required
+          maxLength={MAX_REVIEW_MESSAGE}
+          aria-describedby={`${fieldId}-envio-conta-${alvo}`}
+          placeholder="O que o gerente precisa saber sobre este dossiê"
+          className="text-xs"
+        />
+        <p id={`${fieldId}-envio-conta-${alvo}`} className="text-right text-xs tabular-nums text-muted-foreground">
+          Obrigatório · {envioMensagem.length}/{MAX_REVIEW_MESSAGE}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {submitHint ?? (envioMensagem.trim() ? "Pronto para o gerente conferir." : "Escreva o comentário: ele fica no negócio e avisa o gerente.")}
+        </p>
+        <Button
+          size="sm"
+          variant="success"
+          className="h-8 shrink-0 gap-1 text-xs"
+          disabled={reviewBusy || !canSend || !envioMensagem.trim()}
+          onClick={() => void submitForReview(alvo)}
+        >
+          {reviewBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+          Enviar ao gerente
+        </Button>
+      </div>
+    </div>
+  );
+
   const mostraAcoes = parte !== "arquivos";
   const mostraArquivos = parte !== "acoes";
 
   return (
     <div className="space-y-3">
       {mostraAcoes && (
-      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 space-y-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-primary">Próximo passo</p>
-            <p className="text-sm font-bold">{proximoPasso}</p>
-            <p className="text-xs text-muted-foreground">Corretor → gerente → CCA</p>
-          </div>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
+          {casoAberto && filaCca && <p className="text-xs text-muted-foreground">Na fila da CCA: {filaCca}</p>}
         </div>
 
-        {/* A auditoria estava no banco e invisível na tela: `document_reviewed_by`
-            e `document_reviewed_at` eram lidos e nunca renderizados. Quem devolveu
-            o dossiê é a primeira pergunta do corretor que recebe a devolução. */}
+        {/* Quem enviou e quem decidiu: a primeira pergunta de quem recebe a devolução. */}
         {(enviadoPor || decididoPor) && (
           <dl className="space-y-0.5 text-xs text-muted-foreground">
             {enviadoPor && (
               <div className="flex flex-wrap gap-x-1">
-                <dt>Enviado por</dt>
-                <dd className="text-foreground">{enviadoPor}</dd>
-              </div>
-            )}
-            {enviadoPor && review?.review_esteira && (
-              <div className="flex flex-wrap gap-x-1">
-                <dt>Esteira</dt>
-                <dd className="text-foreground">{REVIEW_ESTEIRA_LABEL[review.review_esteira]}</dd>
+                <dt>Último envio</dt>
+                <dd className="text-foreground">
+                  {enviadoPor}{review?.review_esteira ? ` · ${REVIEW_ESTEIRA_LABEL[review.review_esteira]}` : ""}
+                </dd>
               </div>
             )}
             {decididoPor && (
@@ -733,89 +806,28 @@ export default function DealDocumentUpload({
         {status === "returned" && review?.document_review_reason && (
           <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2">
             <p className="text-xs font-semibold text-destructive">Motivo da devolução</p>
-            <p className="text-xs text-foreground mt-0.5">{review.document_review_reason}</p>
+            <p className="mt-0.5 text-xs text-foreground">{review.document_review_reason}</p>
           </div>
         )}
 
-        {podeEnviar && (
-          <div className="space-y-2">
-            {duasEsteiras ? (
-            <div className="space-y-1">
-              <Label htmlFor={`${fieldId}-esteira`} className="text-xs">Esteira do envio</Label>
-              <Select value={esteiraEnvio} onValueChange={(valor) => setEsteira(valor as ReviewEsteira)}>
-                <SelectTrigger
-                  id={`${fieldId}-esteira`}
-                  className="h-8 text-xs"
-                  aria-describedby={esteiraMotivo ? `${fieldId}-esteira-motivo` : undefined}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="agil" disabled={agilBloqueio !== null}>{REVIEW_ESTEIRA_LABEL.agil}</SelectItem>
-                  <SelectItem value="virar" disabled={virarBloqueio !== null}>{REVIEW_ESTEIRA_LABEL.virar}</SelectItem>
-                </SelectContent>
-              </Select>
-              {esteiraMotivo && (
-                <p id={`${fieldId}-esteira-motivo`} className="text-xs text-muted-foreground">{esteiraMotivo}</p>
-              )}
-            </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Este envio vai para: <strong className="text-foreground">{REVIEW_ESTEIRA_LABEL[esteiraEnvio]}</strong>
-              </p>
-            )}
-
-            <div className="space-y-1">
-              <Label htmlFor={`${fieldId}-envio`} className="text-xs">Mensagem do envio</Label>
-              {/* Obrigatória no banco (0150): vira comentário no negócio e vai
-                  no aviso ao gerente. O botão só acende com ela escrita. */}
-              <Textarea
-                id={`${fieldId}-envio`}
-                value={envioMensagem}
-                onChange={(event) => setEnvioMensagem(event.target.value)}
-                rows={2}
-                required
-                maxLength={MAX_REVIEW_MESSAGE}
-                aria-describedby={`${fieldId}-envio-conta`}
-                placeholder="O que o gerente precisa saber sobre este dossiê"
-                className="text-xs"
-              />
-              <p id={`${fieldId}-envio-conta`} className="text-right text-xs tabular-nums text-muted-foreground">
-                Obrigatória · {envioMensagem.length}/{MAX_REVIEW_MESSAGE}
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <p className="text-xs text-muted-foreground">
-                {submitHint
-                  ?? (envioMensagem.trim()
-                    ? "Dossiê pronto para o gerente conferir."
-                    : "Escreva a mensagem do envio: ela fica registrada no negócio e avisa o gerente.")}
-              </p>
-              <Button
-                size="sm"
-                variant="success"
-                className="h-8 text-xs gap-1 shrink-0"
-                disabled={reviewBusy || !canSend || !envioMensagem.trim()}
-                onClick={() => void submitForReview(esteiraEnvio)}
-              >
-                {reviewBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                {esteiraEnvio === "virar" ? "Enviar análise p/ virar negócio" : "Enviar ao gerente"}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Quem não é corretor nem gerente do negócio (um diretor fora do rateio,
-            por exemplo) via a caixa com o selo e mais nada. */}
-        {!canSubmit && !canReview && (status === "draft" || status === "returned") && (
-          <p className="text-xs text-muted-foreground">
-            Só um corretor do rateio envia o dossiê à conferência; aqui você acompanha o andamento.
-          </p>
-        )}
+        <EsteiraDoNegocio
+          titulo={REVIEW_ESTEIRA_LABEL.agil}
+          envios={enviosAgil}
+          nomes={nomes}
+          aberta={aberta === "agil"}
+          disponivel={podeAgil}
+          rotuloEnvio={reenvioIncompleto ? "Reenviar (encerra o envio anterior)" : "Enviar à Esteira Ágil"}
+          onAlternar={(ligado) => setAberta(ligado ? "agil" : null)}
+          aviso={!canSubmit && (status === "draft" || status === "returned")
+            ? "Só corretor, gerente ou diretor do negócio envia o dossiê; aqui você acompanha o andamento."
+            : null}
+        >
+          {formularioDeEnvio("agil")}
+        </EsteiraDoNegocio>
 
         {canReview && status === "pending" && (
-          <div className="space-y-2">
+          <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
+            <p className="text-sm font-bold">Conferência do gerente</p>
             {submitHint && <p className="text-xs text-warning">{submitHint}</p>}
             <Label htmlFor={`${fieldId}-conferencia`} className="text-xs">Mensagem da conferência</Label>
             {/* Um campo para as duas decisões: motivo obrigatório na devolução;
@@ -833,7 +845,7 @@ export default function DealDocumentUpload({
               <Button
                 size="sm"
                 variant="devolver"
-                className="h-8 text-xs gap-1"
+                className="h-8 gap-1 text-xs"
                 disabled={reviewBusy || !reviewReason.trim() || monthBlocked}
                 onClick={() => decideReview(false)}
               >
@@ -841,12 +853,9 @@ export default function DealDocumentUpload({
               </Button>
               <Button
                 size="sm"
-                className="h-8 text-xs gap-1 bg-success hover:bg-success/90 text-success-foreground"
-                // O mês fechado entra aqui pelo mesmo motivo da construtora: a
-                // aprovação move o negócio para "Em análise" na mesma transação,
-                // e o gatilho recusa a gravação inteira. O motivo já aparece
-                // acima, em `submitHint` — a mesma frase que trava o envio do
-                // corretor e, agora, o "Devolver" ao lado.
+                className="h-8 gap-1 bg-success text-xs text-success-foreground hover:bg-success/90"
+                // A aprovação move o negócio para "Em análise" na mesma
+                // transação: construtora e mês aberto são exigência do banco.
                 disabled={reviewBusy || !hasDeveloper || monthBlocked}
                 onClick={() => decideReview(true)}
               >
@@ -859,27 +868,34 @@ export default function DealDocumentUpload({
 
         {status === "pending" && !canReview && (
           <p className="text-xs text-muted-foreground">
-            Aguardando a decisão de um gerente ou diretor vinculado ao negócio ou, na falta deles, de um administrador.
+            Aguardando a conferência de um gerente ou diretor do negócio.
           </p>
         )}
         {status === "approved" && (
-          // "Esteira Ágil" é como a operação chama esta fronteira (CONTEXT.md), e
-          // o nome não aparecia em tela nenhuma: existia só como texto do
-          // Status 2, que o corretor não relaciona com o que acabou de acontecer.
           <p className="text-xs text-success">
             Conferência concluída: o negócio entrou na{" "}
             <strong>{REVIEW_ESTEIRA_LABEL[review?.review_esteira ?? "agil"]}</strong>, a análise de
-            crédito. O andamento aparece no Status 2 e no histórico do negócio.
+            crédito. O andamento aparece no Status 2 e no histórico.
           </p>
         )}
 
-        {/* Envio do dossiê à construtora (17/09/2026): saiu do cartão da CCA e é
-            do gerente, depois de conferir. Só no fluxo externo — na interna a
-            análise é da casa. Com e-mail a aprovação já enfileirou o dossiê, e
-            o botão reenvia e mostra o status; sem e-mail nada sai pelo sistema
-            (0154), e o botão diz por quê em vez de sumir. Só depois da
-            aprovação: antes dela, enviar à mão e depois aprovar mandaria o
-            dossiê duas vezes. */}
+        {mostraVirar && (
+          <EsteiraDoNegocio
+            titulo={REVIEW_ESTEIRA_LABEL.virar}
+            envios={enviosVirar}
+            nomes={nomes}
+            aberta={aberta === "virar"}
+            disponivel={podeVirar}
+            rotuloEnvio="Enviar análise p/ virar negócio"
+            onAlternar={(ligado) => setAberta(ligado ? "virar" : null)}
+            aviso={null}
+          >
+            {formularioDeEnvio("virar")}
+          </EsteiraDoNegocio>
+        )}
+
+        {/* Envio do dossiê à construtora: do gerente, depois de conferir, só no
+            fluxo externo. Sem e-mail o botão diz por quê em vez de sumir. */}
         {status === "approved" && canReview && developer?.flow === "external" && (
           <div className="flex flex-wrap items-center justify-between gap-2">
             {!developer.hasEmail && (

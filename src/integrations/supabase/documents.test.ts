@@ -13,6 +13,7 @@ import {
   canAttachNow,
   deleteDealDocument,
   documentDisplayName,
+  enviosDoHistorico,
   missingRequiredTypes,
   missingStoragePaths,
   resolveStoredName,
@@ -490,5 +491,19 @@ describe("virarBlockReason", () => {
     ] as const) {
       expect(virarBlockReason(status, esteira), `${status}/${esteira}`).toMatch(/2º envio/);
     }
+  });
+});
+
+describe("enviosDoHistorico", () => {
+  it("lê a esteira do detalhe e ignora o que não é Ágil nem Virar", () => {
+    expect(enviosDoHistorico([
+      { detail: { esteira: "agil" }, created_at: "2026-10-01T10:00:00Z", actor_id: "u1" },
+      { detail: { esteira: "outra" }, created_at: "2026-10-02T10:00:00Z", actor_id: "u1" },
+      { detail: null, created_at: "2026-10-03T10:00:00Z", actor_id: null },
+      { detail: { esteira: "virar" }, created_at: "2026-10-04T10:00:00Z", actor_id: null },
+    ])).toEqual([
+      { esteira: "agil", em: "2026-10-01T10:00:00Z", por: "u1" },
+      { esteira: "virar", em: "2026-10-04T10:00:00Z", por: null },
+    ]);
   });
 });
