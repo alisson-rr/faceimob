@@ -208,10 +208,10 @@ describe("submitBlockReason", () => {
     expect(submitBlockReason({ ...completo, managerCount: 0 })).toContain("gerente");
   });
 
-  it("conta quantos obrigatórios faltam", () => {
-    const outro = type({ id: "t2", code: "residencia" });
+  it("lista os obrigatórios que faltam pelo nome", () => {
+    const outro = type({ id: "t2", code: "residencia", label: "Comprovante de Residência" });
     expect(submitBlockReason({ ...completo, types: [obrigatorio, outro], documents: [] }))
-      .toContain("2 tipo(s)");
+      .toContain(`Falta anexar ${obrigatorio.label}, Comprovante de Residência`);
   });
 
   it("a construtora vem antes do obrigatório: é a ordem em que o banco recusa", () => {
@@ -505,5 +505,14 @@ describe("enviosDoHistorico", () => {
       { esteira: "agil", em: "2026-10-01T10:00:00Z", por: "u1" },
       { esteira: "virar", em: "2026-10-04T10:00:00Z", por: null },
     ]);
+  });
+});
+
+describe("submitBlockReason — o que falta anexar", () => {
+  it("nomeia o tipo obrigatório que falta, em vez de só contar", () => {
+    const tipo = { id: "t1", code: "rg_cpf", label: "RG / CNH", category: "identificacao", required_for_conversion: true,
+      allows_multiple: true, naming_pattern: null, sort_order: 1 } as DocumentTypeRecord;
+    expect(submitBlockReason({ types: [tipo], documents: [], hasDeveloper: true, managerCount: 1 }))
+      .toBe("Falta anexar RG / CNH (aba Anexos) antes de enviar.");
   });
 });
