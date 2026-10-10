@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,8 +24,6 @@ import { efeitosDaExclusao, IA_SEM_CREDENCIAL, ondeCadastrarIa, PAPEL_AGENTE, SE
 
 /** Mesmo default da function (`DEFAULT_OPENAI_MODEL`) e da coluna (0040). */
 const MODELO_PADRAO = "gpt-4o-mini";
-/** Mesmo default da coluna `sdr_agents.max_turns` (0008). */
-const TURNOS_PADRAO = 12;
 
 export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigurada, reload }: {
   agents: Agent[]; groups: Group[]; sources: Source[]; lists: Rlist[]; canWrite: boolean;
@@ -41,10 +40,14 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
   // "Respostas que tem de trazer", uma por linha, como a pessoa digitou.
   const [camposTexto, setCamposTexto] = useState("");
   const [gerando, setGerando] = useState(false);
+  // Respostas sem as quais o lead não é entregue (0262), em minúsculas.
+  const [obrigatorias, setObrigatorias] = useState<Set<string>>(new Set());
+  const camposAtuais = camposDoTexto(camposTexto);
 
   function abrir(agente: Partial<Agent>) {
     setEditing(agente);
     setCamposTexto((agente.collect_fields ?? []).join("\n"));
+    setObrigatorias(new Set((agente.required_fields ?? []).map((c) => c.toLowerCase())));
   }
 
   async function gerarPrompt() {
@@ -53,7 +56,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
     if (resumo.length < 20) return toast.error("Escreva no resumo o que o agente faz e pergunta (pelo menos 20 caracteres).");
     setGerando(true);
     try {
-      const prompt = await gerarPromptDoAgente(editing.name ?? "", resumo, camposDoTexto(camposTexto));
+      const prompt = await gerarPromptDoAgente(editing.name ?? "", resumo, camposAtuais);
       setEditing((atual) => (atual ? { ...atual, system_prompt: prompt } : atual));
       toast.success("Prompt gerado", { description: "Revise o texto e clique em Salvar." });
     } catch (e) {
@@ -65,10 +68,6 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
 
   async function save() {
     if (!editing?.name) return toast.error("Nome obrigatório");
-    const turnos = Number(editing.max_turns ?? TURNOS_PADRAO);
-    if (!Number.isFinite(turnos) || turnos < 1) {
-      return toast.error("O teto de turnos precisa ser pelo menos 1");
-    }
     // O `min`/`max` do input só vale para as setas: digitar 5 passa direto, e o
     // CHECK da coluna devolve 23514 traduzido para "Um dos campos está fora do
     // valor permitido" — sem dizer QUAL campo. Validar aqui nomeia o campo.
@@ -82,7 +81,6 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
       system_prompt: editing.system_prompt || null,
       model: editing.model || MODELO_PADRAO,
       temperature: temperatura,
-      max_turns: Math.trunc(turnos),
       active: editing.active ?? true,
       handoff_to_agent_id: editing.handoff_to_agent_id || null,
       handoff_group_id: editing.handoff_group_id || null,
@@ -94,7 +92,11 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
     if (error) return toast.error("Não foi possível salvar o agente", { description: describeError(error, "Tente de novo.") });
     if (!data?.length) return toast.error("Não foi possível salvar o agente", { description: SEM_PERMISSAO });
     try {
-      await salvarResumoDoAgente(data[0].id, editing.brief ?? null, camposDoTexto(camposTexto));
+      await salvarResumoDoAgente(
+        data[0].id, editing.brief ?? null, camposAtuais,
+        camposAtuais.filter((c) => obrigatorias.has(c.toLowerCase())),
+        editing.lead_de_compra ?? true,
+      );
     } catch (e) {
       // O agente já foi salvo; só o resumo e as respostas ficaram para trás.
       reload();
@@ -130,7 +132,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold">Agentes ({agents.length})</h3>
           {canWrite && (
-            <Button size="sm" onClick={() => abrir({ name: "", role: "qualifier", model: MODELO_PADRAO, temperature: 0.7, max_turns: TURNOS_PADRAO, active: true })}>
+            <Button size="sm" onClick={() => abrir({ name: "", role: "qualifier", model: MODELO_PADRAO, temperature: 0.7, active: true, lead_de_compra: true })}>
               <Plus className="h-4 w-4 mr-1" />Novo
             </Button>
           )}
@@ -159,7 +161,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
                 <div className="min-w-0">
                   <div className="text-sm font-medium">{a.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {PAPEL_AGENTE[a.role] ?? a.role} · {a.model} · até {a.max_turns} respostas
+                    {PAPEL_AGENTE[a.role] ?? a.role} · {a.model}{a.lead_de_compra === false && " · RH (fora da base)"}
                     {a.handoff_group_id && ` · entrega em ${groups.find(g => g.id === a.handoff_group_id)?.name ?? "grupo removido"}`}
                   </div>
                 </div>
@@ -223,15 +225,9 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               O papel é apenas um rótulo para organizar a lista. Quem define o comportamento é o system prompt, e quem
               recebe a conversa primeiro é o agente marcado como <b>orquestrador</b>.
             </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label htmlFor="ag-temp">Temperatura ({editing.temperature ?? 0.7})</Label>
-                <Input id="ag-temp" type="number" step="0.1" min="0" max="2" value={editing.temperature ?? 0.7} onChange={e => setEditing({ ...editing, temperature: Number(e.target.value) })} />
-              </div>
-              <div>
-                <Label htmlFor="ag-turns">Máximo de respostas</Label>
-                <Input id="ag-turns" type="number" step="1" min="1" max="60" value={editing.max_turns ?? TURNOS_PADRAO} onChange={e => setEditing({ ...editing, max_turns: Number(e.target.value) })} />
-              </div>
+            <div>
+              <Label htmlFor="ag-temp">Temperatura ({editing.temperature ?? 0.7})</Label>
+              <Input id="ag-temp" type="number" step="0.1" min="0" max="2" value={editing.temperature ?? 0.7} onChange={e => setEditing({ ...editing, temperature: Number(e.target.value) })} />
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
@@ -241,6 +237,10 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               <div className="flex items-center gap-2">
                 <Switch id="ag-active" checked={editing.active ?? true} onCheckedChange={v => setEditing({ ...editing, active: v })} />
                 <Label htmlFor="ag-active">Ativo</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="ag-compra" checked={editing.lead_de_compra ?? true} onCheckedChange={v => setEditing({ ...editing, lead_de_compra: v })} />
+                <Label htmlFor="ag-compra">Lead de compra</Label>
               </div>
             </div>
             {/* "Ativo" é o controle que mais parece dizer "está trabalhando":
@@ -254,8 +254,9 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Atingido o máximo de respostas, o agente para de escrever e o lead volta para a roleta — sem ser marcado
-              como qualificado. É o que impede uma conversa que nunca conclui de rodar sem fim.
+              O agente conversa até o fim do roteiro, sem limite de respostas. Quem para de responder recebe um lembrete
+              em 1 h e outro em 23 h; sem resposta em 24 h, a conversa é arquivada. Fora do perfil ou arquivado, o lead
+              de compra vai para a base; o que não é de compra (candidato) vai para descartados.
             </p>
             <div className="space-y-2 rounded-lg border border-border/60 p-3">
               <Label htmlFor="ag-brief">Resumo: o que o agente faz e pergunta</Label>
@@ -268,6 +269,30 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               <p className="text-xs text-muted-foreground">
                 Essas respostas aparecem no card do lead, na aba Formulário, conforme o agente conversa.
               </p>
+              {camposAtuais.length > 0 && (
+                <fieldset className="space-y-1">
+                  <legend className="text-xs font-semibold">Obrigatórias para entregar o lead</legend>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {camposAtuais.map((campo) => (
+                      <label key={campo} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <Checkbox
+                          checked={obrigatorias.has(campo.toLowerCase())}
+                          disabled={!canWrite}
+                          onCheckedChange={(v) => setObrigatorias((atual) => {
+                            const novo = new Set(atual);
+                            if (v === true) novo.add(campo.toLowerCase()); else novo.delete(campo.toLowerCase());
+                            return novo;
+                          })}
+                        />
+                        {campo}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O lead só vai para o grupo quando o agente encerrar como qualificado e souber todas as marcadas.
+                  </p>
+                </fieldset>
+              )}
               {canWrite && (
                 <Button type="button" size="sm" variant="outline" className="gap-1" disabled={gerando} onClick={() => void gerarPrompt()}>
                   {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

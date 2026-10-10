@@ -45,6 +45,19 @@ const linha = (nome: string, posicao: number | null, situacao: string, extra = {
 });
 
 describe("FilaEmFormacao", () => {
+  it("mostra a hora em que a pessoa voltou à fila, não só o check-in (0263)", async () => {
+    m.user = { id: "admin" };
+    m.linhas = [
+      linha("Angela", 1, "na_fila", { checked_in_at: "2026-10-10T12:28:00Z" }),
+      linha("Julia", 2, "na_fila", { checked_in_at: "2026-10-10T12:04:00Z", last_turn_at: "2026-10-10T12:40:00Z" }),
+    ];
+    const el = montar();
+    await vi.waitFor(() => expect(el.textContent).toContain("Julia"));
+    const itens = [...el.querySelectorAll("li")].map((li) => li.textContent);
+    expect(itens[0]).toContain("09:28");
+    expect(itens[1]).toContain("voltou 09:40");
+  });
+
   it("mostra ao admin a ordem, quem aguarda a abertura e quem está bloqueado", async () => {
     m.user = { id: "admin" };
     m.linhas = [linha("Ana", 1, "aguardando"), linha("Bia", 2, "aguardando"), linha("Caio", null, "bloqueado", { atrasados: 3 })];

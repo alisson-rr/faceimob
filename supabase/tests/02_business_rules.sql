@@ -221,12 +221,15 @@ begin
   update public.checkins set checked_in_at = now() - interval '1 hour'
    where profile_id in (c1, c2) and work_date = public.current_work_date();
 
-  -- c1 recebeu há 10 min e perdeu o lead no prazo há 1 min.
+  -- c1 recebeu há 10 min e perdeu o lead no prazo há 1 min. Desde a 0263 a
+  -- vez de quem atendeu termina no `responded_at`: os leads anteriores de c1,
+  -- atendidos, ficam atendidos na mesma hora do recebimento.
   update public.lead_assignments
-     set assigned_at = now() - interval '10 minutes'
+     set assigned_at = now() - interval '10 minutes',
+         responded_at = case when responded_at is not null then now() - interval '10 minutes' end
    where profile_id = c1;
   update public.lead_assignments
-     set released_at = now() - interval '1 minute', release_reason = 'timeout'
+     set released_at = now() - interval '1 minute', release_reason = 'timeout', responded_at = null
    where profile_id = c1
      and assigned_at = (select max(assigned_at) from public.lead_assignments where profile_id = c1);
 
@@ -235,7 +238,7 @@ begin
   update public.lead_assignments
      set assigned_at = now() - interval '5 minutes',
          released_at = null, release_reason = null,
-         responded_at = coalesce(responded_at, now() - interval '4 minutes')
+         responded_at = now() - interval '4 minutes'
    where profile_id = c2;
 
   select queue_position into v_pos1 from public.distribution_queue(grupo) where profile_id = c1;

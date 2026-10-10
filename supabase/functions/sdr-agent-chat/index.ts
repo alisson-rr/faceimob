@@ -203,10 +203,11 @@ async function passarParaAgente(
     const { error } = await supabase.rpc('sdr_handoff', { p_conversation_id: conversationId, p_reason: 'qualified' });
     if (error) console.error('sdr-agent-chat: sdr_handoff falhou —', error.message);
   } else if (turn.disqualified && lead && !lead.assigned_to) {
-    const { error } = await supabase.from('leads')
-      .update({ status: 'lost', lost_reason: 'SDR IA: fora do perfil', lost_at: new Date().toISOString() })
-      .eq('id', conv.lead_id).is('assigned_to', null);
-    if (error) console.error('sdr-agent-chat: lead fora do perfil não foi para a base —', error.message);
+    // Base para lead de compra; descartado para candidato (0263).
+    const { error } = await supabase.rpc('sdr_tirar_lead_da_fila', {
+      p_conversation_id: conversationId, p_motivo: 'SDR IA: fora do perfil',
+    });
+    if (error) console.error('sdr-agent-chat: lead fora do perfil não saiu da fila —', error.message);
   }
 
   return json({ conversation_id: conversationId, agent: turn.agent, reply: turn.reply, enviado });
@@ -330,10 +331,6 @@ Deno.serve(async (req) => {
       leadId,
       agentId: asId(agent_id),
       message: message.trim(),
-      // Simulação não devolve lead à roleta: o lead de teste é 'discarded' e
-      // mandá-lo para a fila colocaria uma conversa de mentira na mão de um
-      // corretor de verdade.
-      handoffOnExhaust: false,
     });
 
     return json({
@@ -341,7 +338,6 @@ Deno.serve(async (req) => {
       agent: turn.agent,
       handoff_to: turn.handoffAgent,
       qualified: turn.qualified,
-      exhausted: turn.exhausted,
       score: turn.score,
       reply: turn.reply,
     });

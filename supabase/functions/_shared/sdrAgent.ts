@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireSecret } from "./secrets.ts";
-import { camposValidos, instrucaoDeColeta, lerColeta, pedidoDePrompt, TAG_DADOS } from "./sdrColeta.ts";
+import { camposValidos, faltamParaEntregar, instrucaoDeColeta, lerColeta, pedidoDePrompt, TAG_DADOS } from "./sdrColeta.ts";
 
 /**
  * Um turno do agente de SDR: consulta o modelo com o histórico e grava a
@@ -20,10 +20,9 @@ import { camposValidos, instrucaoDeColeta, lerColeta, pedidoDePrompt, TAG_DADOS 
  *     INSERT único, para que uma falha na segunda linha não deixe a primeira
  *     commitada e recrie o mesmo beco sem saída.
  *
- *  2. **Teto de turnos.** `sdr_agents.max_turns` existia e ninguém lia: uma
- *     conversa que nunca emitisse a tag rodava sem limite. Ao atingir o teto o
- *     agente para de responder e o lead volta para a roleta com motivo
- *     `exhausted` — que NÃO carimba o funil como qualificado (migration 0064).
+ *  2. **Sem teto de respostas** (10/10/2026, a pedido): o agente conversa até
+ *     o fim do roteiro. Quem para de responder recebe follow-up e, sem
+ *     resposta em 24 h, é arquivado (0263, `sdr-followup`).
  *
  *  3. **Delegação por regra, não por texto.** A delegação por `@NomeDoAgente`
  *     saiu: dependia de o modelo escrever um nome exato, casava por substring
@@ -45,22 +44,17 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
  */
 export const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
-/** Teto de segurança quando o agente não tem `max_turns` (coluna tem default 12). */
-const FALLBACK_MAX_TURNS = 12;
-
 const QUALIFY_INSTRUCTION =
   "\n\nQuando você concluir a qualificação do lead (interesse, renda aproximada e urgência coletados), " +
   "termine a sua resposta com a tag [QUALIFICADO] numa linha própria. " +
   "Se o lead demonstrar claramente que não tem interesse, termine com a tag [DESQUALIFICADO]." +
+  // Pedido de 10/10/2026: nunca encerrar antes do fim; no fim, avisar do contato.
+  "\n\nNunca se despeça nem encerre a conversa antes de concluir o roteiro. " +
+  "Ao concluir com [QUALIFICADO], avise que um de nossos colaboradores vai entrar em contato em instantes." +
   "\n\nEm TODA resposta, acrescente também, em linhas próprias e ao final:" +
   "\n[SCORE:n] — n de 0 a 100, o quanto este lead está pronto para comprar." +
   "\n[RESUMO: uma frase com o que você já apurou (renda, região, prazo, tipo de imóvel).]" +
   "\nEssas tags são removidas antes de a mensagem chegar ao lead — não as comente.";
-
-/** Mensagem que o lead recebe quando o agente atinge o teto de turnos. */
-const EXHAUSTED_REPLY =
-  "Obrigado pelas informações! Vou passar seu atendimento para um consultor da equipe, " +
-  "que continua a conversa com você por aqui.";
 
 /**
  * Grava em `sdr_messages` mesmo se o banco AINDA não tiver a coluna `agent_id`.
@@ -141,8 +135,6 @@ export type AgentTurnResult = {
   reply: string;
   qualified: boolean;
   disqualified: boolean;
-  /** Teto de `max_turns` atingido: o lead já foi devolvido à roleta por aqui. */
-  exhausted: boolean;
   score: number | null;
   agent: { id: string; name: string; is_orchestrator: boolean };
   handoffAgent: { id: string; name: string } | null;
@@ -162,11 +154,10 @@ export async function runSdrAgentTurn(
     message: string | null;
     providerMessageId?: string | null;
     /**
-     * Ao atingir o teto de turnos, devolve o lead à roleta (`sdr_handoff`).
-     * O playground passa `false`: o lead de teste é `discarded` e mandá-lo para
-     * a fila colocaria uma simulação na mão de um corretor de verdade.
+     * Instrução só deste turno, no fim do prompt do sistema (0263): o
+     * follow-up de quem parou de responder.
      */
-    handoffOnExhaust?: boolean;
+    instrucaoDoTurno?: string;
     /**
      * Mídia da mensagem do lead (0120), gravada só na linha `lead`. O webhook
      * manda o áudio transcrito: o texto vai em `message` e a origem aqui — é o
@@ -251,7 +242,6 @@ export async function runSdrAgentTurn(
   if (histErr) throw new Error(`sdr_messages: ${histErr.message}`);
 
   const past = history || [];
-  const turnsUsed = past.filter((m) => m.author === "agent").length;
 
   // A mídia é da linha do lead; a outra linha do lote leva as mesmas chaves
   // nulas, porque o PostgREST recusa lote heterogêneo (PGRST102).
@@ -259,54 +249,6 @@ export async function runSdrAgentTurn(
     ? { media_type: input.leadMessageExtra.media_type, media_id: input.leadMessageExtra.media_id }
     : {};
   const semMidia = input.leadMessageExtra ? { media_type: null, media_id: null } : {};
-  const maxTurns = Number(agent.max_turns ?? FALLBACK_MAX_TURNS) || FALLBACK_MAX_TURNS;
-
-  // Teto atingido: guarda a mensagem do lead (é conteúdo real dele), avisa que
-  // a conversa vai para um humano e devolve o lead à roleta.
-  if (turnsUsed >= maxTurns) {
-    // As duas linhas com as MESMAS chaves: o PostgREST recusa lote heterogêneo
-    // ("All object keys must match"). `insertMessages` cuida do banco que ainda
-    // não tem a coluna `agent_id` (0082).
-    const teto = await insertMessages(supabase, [
-      ...(input.message === null ? [] : [{
-        conversation_id: convId,
-        author: "lead",
-        body: input.message,
-        provider_message_id: input.providerMessageId ?? null,
-        agent_id: null,
-        ...midiaDoLead,
-      }]),
-      {
-        conversation_id: convId,
-        author: "system",
-        body: `[teto de ${maxTurns} respostas atingido] ${EXHAUSTED_REPLY}`,
-        provider_message_id: null,
-        agent_id: agent.id,
-        ...semMidia,
-      },
-    ]);
-    if (teto) {
-      if (teto.code === "23505") throw new DuplicateMessageError();
-      throw new Error(`sdr_messages(teto): ${teto.message}`);
-    }
-    if (input.handoffOnExhaust !== false) {
-      const { error } = await supabase.rpc("sdr_handoff", {
-        p_conversation_id: convId, p_reason: "exhausted",
-      });
-      if (error) console.error(`sdrAgent: handoff por esgotamento falhou — ${error.message}`);
-    }
-    return {
-      conversationId: convId,
-      reply: EXHAUSTED_REPLY,
-      qualified: false,
-      disqualified: false,
-      exhausted: true,
-      score: conv.score ?? null,
-      agent: { id: agent.id, name: agent.name, is_orchestrator: agent.is_orchestrator },
-      handoffAgent: null,
-    };
-  }
-
   // O nome do perfil do WhatsApp (ou do formulário) para o agente chamar a
   // pessoa pelo nome. O nome genérico de quem chegou sem perfil não vai.
   let contexto = "";
@@ -323,12 +265,16 @@ export async function runSdrAgentTurn(
 
   // Respostas que o agente tem de trazer (0261): vão para o card do lead.
   const campos = camposValidos(agent.collect_fields);
+  // Sem estas o lead não é entregue (0262): só os que também são coletados.
+  const obrigatorios = camposValidos(agent.required_fields)
+    .filter((c) => campos.some((x) => x.toLowerCase() === c.toLowerCase()));
   const systemPrompt =
     (agent.system_prompt ||
       "Você é um SDR especializado em qualificação de leads imobiliários. Faça perguntas objetivas sobre renda, urgência, tipo de imóvel desejado e localização. Seja cordial e breve.") +
     contexto +
     QUALIFY_INSTRUCTION +
-    instrucaoDeColeta(campos);
+    instrucaoDeColeta(campos, obrigatorios) +
+    (input.instrucaoDoTurno ? `\n\n${input.instrucaoDoTurno}` : "");
 
   const messages = [
     { role: "system", content: systemPrompt },
@@ -345,8 +291,19 @@ export async function runSdrAgentTurn(
     apiKey, agent.model || DEFAULT_OPENAI_MODEL, messages, Number(agent.temperature ?? 0.7),
   );
 
-  const { qualified: qualifiedTag, disqualified, score, summary, reply } = parseTags(text);
+  const { qualified: marcouQualificado, disqualified, score, summary, reply } = parseTags(text);
   const coleta = lerColeta(text, campos);
+  // Soma ao que turnos anteriores trouxeram: o modelo às vezes repete "?" num
+  // campo que já sabia, e isso não pode apagar a resposta.
+  const anterior = conv.collected && typeof conv.collected === "object" && !Array.isArray(conv.collected)
+    ? conv.collected as Record<string, unknown>
+    : {};
+  const coletado = { ...anterior, ...coleta };
+  // Lead só é entregue aquecido (0262): [QUALIFICADO] sem as respostas
+  // obrigatórias não vale — a conversa segue com o robô.
+  const faltam = marcouQualificado ? faltamParaEntregar(obrigatorios, coletado) : [];
+  if (faltam.length) console.warn(`sdrAgent: [QUALIFICADO] ignorado em ${convId}; faltam: ${faltam.join(", ")}`);
+  const qualifiedTag = marcouQualificado && faltam.length === 0;
 
   // Agora sim: a mensagem do lead e a resposta, NUM INSERT SÓ. Em duas
   // gravações separadas, uma falha na segunda deixava a linha do lead commitada
@@ -402,14 +359,7 @@ export async function runSdrAgentTurn(
   const patch: Record<string, unknown> = {};
   if (score !== null) patch.score = score;
   if (summary) patch.summary = summary;
-  // Soma ao que turnos anteriores trouxeram: o modelo às vezes repete "?" num
-  // campo que já sabia, e isso não pode apagar a resposta.
-  if (Object.keys(coleta).length > 0) {
-    const anterior = conv.collected && typeof conv.collected === "object" && !Array.isArray(conv.collected)
-      ? conv.collected as Record<string, unknown>
-      : {};
-    patch.collected = { ...anterior, ...coleta };
-  }
+  if (Object.keys(coleta).length > 0) patch.collected = coletado;
   if (handoffAgent) patch.agent_id = handoffAgent.id;
   if (disqualified) patch.status = "disqualified";
   if (Object.keys(patch).length > 0) {
@@ -423,7 +373,6 @@ export async function runSdrAgentTurn(
     reply,
     qualified: qualifiedTag && !handoffAgent,
     disqualified,
-    exhausted: false,
     score,
     agent: { id: agent.id, name: agent.name, is_orchestrator: agent.is_orchestrator },
     handoffAgent,

@@ -84,7 +84,9 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
       let consulta = untyped.from("sdr_conversations").select("*, leads(full_name, phone, phone_raw, utm_source)");
       const recorte = recorteDaSituacao(situacao);
       if (recorte) {
-        consulta = recorte.op === "eq" ? consulta.eq("status", recorte.status) : consulta.neq("status", recorte.status);
+        consulta = recorte.op === "eq"
+          ? consulta.eq("status", recorte.status)
+          : consulta.not("status", "in", `(${recorte.status.join(",")})`);
       }
       const { data, error } = await consulta
         .order("last_message_at", { ascending: false, nullsFirst: false })

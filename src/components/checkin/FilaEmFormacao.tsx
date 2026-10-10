@@ -34,6 +34,10 @@ const SITUACAO = {
 const hora = (iso: string) =>
   new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 
+/** Hora em que a pessoa voltou à fila hoje, depois do check-in; `null` se ainda não recebeu. */
+const voltou = (l: Pick<LinhaDaFila, "checked_in_at" | "last_turn_at">) =>
+  l.last_turn_at && new Date(l.last_turn_at) > new Date(l.checked_in_at) ? l.last_turn_at : null;
+
 /** Agrupa as linhas por grupo, mantendo a ordem que o banco já devolve. */
 function porGrupo(linhas: LinhaDaFila[]) {
   const grupos = new Map<string, { nome: string; linhas: LinhaDaFila[] }>();
@@ -109,6 +113,7 @@ export function FilaEmFormacao() {
             <ol className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
               {g.linhas.map((l) => {
                 const s = SITUACAO[l.situacao];
+                const volta = voltou(l);
                 return (
                   <li key={l.profile_id} className="flex items-center gap-2 rounded bg-secondary/40 px-2 py-1 text-xs">
                     <span className="w-7 text-center font-bold tabular-nums">{l.posicao ? `${l.posicao}º` : "—"}</span>
@@ -116,7 +121,13 @@ export function FilaEmFormacao() {
                     <StatusBadge tone={s.tone} className="px-1.5 py-0 text-xs">
                       {l.situacao === "aguardando" ? `abre ${l.abre_as}` : l.situacao === "bloqueado" ? `${l.atrasados} atrasado(s)` : s.texto}
                     </StatusBadge>
-                    <span className="text-muted-foreground tabular-nums" title="Hora do check-in">{hora(l.checked_in_at)}</span>
+                    {/* A fila anda pela hora em que cada um ENTROU nela por último:
+                        o check-in, ou a volta depois de atender/perder o prazo
+                        (0263). Mostrar só o check-in fazia parecer que alguém
+                        de 09:28 passou na frente de quem entrou 09:04. */}
+                    {volta
+                      ? <span className="text-muted-foreground tabular-nums" title={`Check-in ${hora(l.checked_in_at)}; voltou à fila depois de receber`}>voltou {hora(volta)}</span>
+                      : <span className="text-muted-foreground tabular-nums" title="Hora do check-in">{hora(l.checked_in_at)}</span>}
                   </li>
                 );
               })}

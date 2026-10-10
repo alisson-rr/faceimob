@@ -29,10 +29,16 @@ export function camposValidos(campos: unknown): string[] {
   return saida;
 }
 
-/** Instrução que vai no fim do prompt do sistema quando o agente tem campos. */
-export function instrucaoDeColeta(campos: string[]): string {
+/**
+ * Instrução que vai no fim do prompt do sistema quando o agente tem campos.
+ * `obrigatorios` (0262): sem eles o [QUALIFICADO] não vale, e o modelo é avisado.
+ */
+export function instrucaoDeColeta(campos: string[], obrigatorios: string[] = []): string {
   if (campos.length === 0) return "";
-  return "\n\nEm TODA resposta, acrescente também numa linha própria, ao final, o que você já sabe destas respostas:" +
+  const trava = obrigatorios.length
+    ? `\nSó use [QUALIFICADO] depois de saber: ${obrigatorios.join(", ")}. Se faltar algum, pergunte antes de encerrar.`
+    : "";
+  return trava + "\n\nEm TODA resposta, acrescente também numa linha própria, ao final, o que você já sabe destas respostas:" +
     `\n[DADOS: ${campos.map((c) => `${c}: valor`).join(" | ")}]` +
     "\nUse \"?\" no que ainda não souber. Valor curto, com as palavras do lead. Não comente esta tag.";
 }
@@ -79,4 +85,14 @@ export function pedidoDePrompt(nome: string, resumo: string, campos: string[]) {
     { role: "system", content: sistema },
     { role: "user", content: usuario },
   ];
+}
+
+/** Respostas obrigatórias que ainda faltam no coletado (0262); vazio = pode entregar. */
+export function faltamParaEntregar(obrigatorios: string[], coletado: Record<string, unknown>): string[] {
+  const temValor = new Set(
+    Object.entries(coletado)
+      .filter(([, valor]) => typeof valor === "string" ? limpar(valor) !== "" && limpar(valor) !== "?" : valor !== null && valor !== undefined)
+      .map(([campo]) => campo.toLowerCase()),
+  );
+  return obrigatorios.filter((campo) => !temValor.has(campo.toLowerCase()));
 }
