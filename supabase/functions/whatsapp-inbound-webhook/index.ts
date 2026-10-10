@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "../_shared/secrets.ts";
 import { checkMetaSignature, downloadWhatsAppMedia, normalizePhone, sendWhatsAppText } from "../_shared/meta.ts";
+import { META_GRAPH } from "../_shared/metaGraph.ts";
 import { transcreverAudio } from "../_shared/openai.ts";
 import { DuplicateMessageError, runSdrAgentTurn } from "../_shared/sdrAgent.ts";
 import {
@@ -314,21 +315,55 @@ Deno.serve(async (req) => {
      * já em `human`, sem robô: o corretor que pegar o lead vê a primeira
      * mensagem, e as próximas do mesmo telefone caem nessa conversa.
      */
+    /**
+     * A campanha do anúncio, na Meta. Curto de propósito (5 s): falhou ou
+     * demorou, o lead segue pela origem do anúncio ou pela geral, sem se perder.
+     */
+    const campanhaDoAnuncio = async (adId: string): Promise<{ id: string; nome: string | null } | null> => {
+      if (!/^\d{5,25}$/.test(adId)) return null;
+      try {
+        const token = await getSecret("META_MARKETING_ACCESS_TOKEN");
+        if (!token) return null;
+        const res = await fetch(`${META_GRAPH}/${adId}?fields=campaign_id,campaign%7Bname%7D`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) {
+          console.warn("whatsapp-inbound: Meta não devolveu a campanha do anúncio —", res.status);
+          return null;
+        }
+        const corpo = await res.json() as { campaign_id?: unknown; campaign?: { name?: unknown } };
+        const id = typeof corpo.campaign_id === "string" ? corpo.campaign_id : null;
+        const nome = typeof corpo.campaign?.name === "string" ? corpo.campaign.name : null;
+        return id ? { id, nome } : null;
+      } catch (e) {
+        console.warn("whatsapp-inbound: campanha do anúncio indisponível —", e instanceof Error ? e.message : String(e));
+        return null;
+      }
+    };
+
     const abrirAnuncio = async (msg: InboundMessage, phone: string): Promise<Alvo | null> => {
       const anuncio = msg.anuncio;
       // Origem do ANÚNCIO (o id dele no campo form_id, aba SDR IA → Origens)
       // decide se a IA atende e qual agente; sem ela, a origem geral do
       // WhatsApp. Falha de leitura cai na origem geral: melhor a roleta do que
       // perder o lead.
+      // 0257: antes do anúncio, a CAMPANHA dele (descoberta na Meta), escolhida
+      // pelo nome na mesma aba. Ordem: campanha → anúncio → origem geral.
       type OrigemAnuncio = { id: string; sdr_agent_id: string | null };
-      const { data: doAnuncio } = anuncio?.adId
+      const campanha = anuncio?.adId ? await campanhaDoAnuncio(anuncio.adId) : null;
+      const { data: daCampanha } = campanha
+        ? await supabase.from("lead_sources").select("id, sdr_agent_id")
+          .eq("campaign_external_id", campanha.id).eq("active", true).maybeSingle()
+        : { data: null };
+      const { data: doAnuncio } = !daCampanha && anuncio?.adId
         ? await supabase.from("lead_sources").select("id, sdr_agent_id")
           .eq("form_id", anuncio.adId).eq("active", true).maybeSingle()
         : { data: null };
-      const { data: geral } = doAnuncio
+      const { data: geral } = daCampanha || doAnuncio
         ? { data: null }
         : await supabase.from("lead_sources").select("id, sdr_agent_id").eq("code", "whatsapp_ads").maybeSingle();
-      const origem = (doAnuncio ?? geral) as OrigemAnuncio | null;
+      const origem = (daCampanha ?? doAnuncio ?? geral) as OrigemAnuncio | null;
       const agente = origem?.sdr_agent_id ?? null;
       const { data: lead, error: leadErr } = await supabase
         .from("leads")
@@ -341,6 +376,8 @@ Deno.serve(async (req) => {
           source_id: origem?.id ?? null,
           ad_id: anuncio?.adId ?? null,
           ad_name: anuncio?.titulo ?? null,
+          campaign_id: campanha?.id ?? null,
+          campaign_name: campanha?.nome ?? null,
           utm_source: "whatsapp_ads",
           utm_medium: "click_to_whatsapp",
           landing_page: anuncio?.url ?? null,
