@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireSecret } from "./secrets.ts";
-import { camposValidos, instrucaoDeColeta, lerColeta, pedidoDePrompt, TAG_DADOS } from "./sdrColeta.ts";
+import { camposValidos, faltamParaEntregar, instrucaoDeColeta, lerColeta, pedidoDePrompt, TAG_DADOS } from "./sdrColeta.ts";
 
 /**
  * Um turno do agente de SDR: consulta o modelo com o histórico e grava a
@@ -323,12 +323,15 @@ export async function runSdrAgentTurn(
 
   // Respostas que o agente tem de trazer (0261): vão para o card do lead.
   const campos = camposValidos(agent.collect_fields);
+  // Sem estas o lead não é entregue (0262): só os que também são coletados.
+  const obrigatorios = camposValidos(agent.required_fields)
+    .filter((c) => campos.some((x) => x.toLowerCase() === c.toLowerCase()));
   const systemPrompt =
     (agent.system_prompt ||
       "Você é um SDR especializado em qualificação de leads imobiliários. Faça perguntas objetivas sobre renda, urgência, tipo de imóvel desejado e localização. Seja cordial e breve.") +
     contexto +
     QUALIFY_INSTRUCTION +
-    instrucaoDeColeta(campos);
+    instrucaoDeColeta(campos, obrigatorios);
 
   const messages = [
     { role: "system", content: systemPrompt },
@@ -345,8 +348,19 @@ export async function runSdrAgentTurn(
     apiKey, agent.model || DEFAULT_OPENAI_MODEL, messages, Number(agent.temperature ?? 0.7),
   );
 
-  const { qualified: qualifiedTag, disqualified, score, summary, reply } = parseTags(text);
+  const { qualified: marcouQualificado, disqualified, score, summary, reply } = parseTags(text);
   const coleta = lerColeta(text, campos);
+  // Soma ao que turnos anteriores trouxeram: o modelo às vezes repete "?" num
+  // campo que já sabia, e isso não pode apagar a resposta.
+  const anterior = conv.collected && typeof conv.collected === "object" && !Array.isArray(conv.collected)
+    ? conv.collected as Record<string, unknown>
+    : {};
+  const coletado = { ...anterior, ...coleta };
+  // Lead só é entregue aquecido (0262): [QUALIFICADO] sem as respostas
+  // obrigatórias não vale — a conversa segue com o robô.
+  const faltam = marcouQualificado ? faltamParaEntregar(obrigatorios, coletado) : [];
+  if (faltam.length) console.warn(`sdrAgent: [QUALIFICADO] ignorado em ${convId}; faltam: ${faltam.join(", ")}`);
+  const qualifiedTag = marcouQualificado && faltam.length === 0;
 
   // Agora sim: a mensagem do lead e a resposta, NUM INSERT SÓ. Em duas
   // gravações separadas, uma falha na segunda deixava a linha do lead commitada
@@ -402,14 +416,7 @@ export async function runSdrAgentTurn(
   const patch: Record<string, unknown> = {};
   if (score !== null) patch.score = score;
   if (summary) patch.summary = summary;
-  // Soma ao que turnos anteriores trouxeram: o modelo às vezes repete "?" num
-  // campo que já sabia, e isso não pode apagar a resposta.
-  if (Object.keys(coleta).length > 0) {
-    const anterior = conv.collected && typeof conv.collected === "object" && !Array.isArray(conv.collected)
-      ? conv.collected as Record<string, unknown>
-      : {};
-    patch.collected = { ...anterior, ...coleta };
-  }
+  if (Object.keys(coleta).length > 0) patch.collected = coletado;
   if (handoffAgent) patch.agent_id = handoffAgent.id;
   if (disqualified) patch.status = "disqualified";
   if (Object.keys(patch).length > 0) {

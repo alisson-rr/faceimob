@@ -1,6 +1,6 @@
 -- =============================================================================
--- 0260 — grupo que dispensa check-in entrega a quem não fez check-in; conversa
--- com robô parada há 30 min vai para o grupo do agente; canal do grupo validado.
+-- 0260 — grupo que dispensa check-in entrega a quem não fez check-in; canal do
+-- grupo validado. 0262 — a entrega por silêncio saiu.
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -20,9 +20,7 @@ declare
   v_group uuid;
   v_agent uuid;
   v_lead uuid;
-  v_lead_nova uuid;
   v_conv uuid;
-  v_conv_nova uuid;
 begin
   insert into auth.users (id, email, raw_user_meta_data) values
     (rh, 'rh@g260.test', '{"full_name":"Gerente RH 260"}');
@@ -42,21 +40,16 @@ begin
   insert into public.sdr_agents (name, system_prompt, handoff_group_id, active)
     values ('Agente 260', 'teste', v_group, true) returning id into v_agent;
   insert into public.leads (full_name, phone, status) values ('Lead 260', '51999990260', 'queued') returning id into v_lead;
-  insert into public.leads (full_name, phone, status) values ('Lead 260 b', '51999990261', 'queued') returning id into v_lead_nova;
   insert into public.sdr_conversations (lead_id, agent_id, status, started_at, last_message_at)
     values (v_lead, v_agent, 'active', now() - interval '2 hours', now() - interval '40 minutes') returning id into v_conv;
-  insert into public.sdr_conversations (lead_id, agent_id, status, started_at, last_message_at)
-    values (v_lead_nova, v_agent, 'active', now() - interval '10 minutes', now() - interval '5 minutes') returning id into v_conv_nova;
 
-  perform pg_temp.ok(public.sdr_entregar_sem_resposta() = 1, 'só a conversa parada há mais de 30 min é entregue');
-  perform pg_temp.ok((select status from public.sdr_conversations where id = v_conv) = 'handed_off',
-    'conversa parada vira "Entregue ao grupo"');
+  -- 0262: conversa parada não é mais entregue sozinha.
+  perform pg_temp.ok(to_regprocedure('public.sdr_entregar_sem_resposta()') is null,
+    'entrega por silêncio não existe mais (0262)');
+
+  perform public.sdr_handoff(v_conv, 'qualified');
   perform pg_temp.ok((select assigned_to from public.leads where id = v_lead) = rh,
-    'lead parado vai para o membro do grupo do agente, sem check-in');
-  perform pg_temp.ok((select funnel_stage from public.leads where id = v_lead) is distinct from 'qualified',
-    'silêncio não conta como qualificado no funil');
-  perform pg_temp.ok((select status from public.sdr_conversations where id = v_conv_nova) = 'active',
-    'conversa em andamento segue com o robô');
+    'lead qualificado vai para o membro do grupo do agente, sem check-in');
 
   begin
     update public.distribution_groups set channels = array['email'] where id = v_group;

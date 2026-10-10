@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -41,10 +42,14 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
   // "Respostas que tem de trazer", uma por linha, como a pessoa digitou.
   const [camposTexto, setCamposTexto] = useState("");
   const [gerando, setGerando] = useState(false);
+  // Respostas sem as quais o lead não é entregue (0262), em minúsculas.
+  const [obrigatorias, setObrigatorias] = useState<Set<string>>(new Set());
+  const camposAtuais = camposDoTexto(camposTexto);
 
   function abrir(agente: Partial<Agent>) {
     setEditing(agente);
     setCamposTexto((agente.collect_fields ?? []).join("\n"));
+    setObrigatorias(new Set((agente.required_fields ?? []).map((c) => c.toLowerCase())));
   }
 
   async function gerarPrompt() {
@@ -53,7 +58,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
     if (resumo.length < 20) return toast.error("Escreva no resumo o que o agente faz e pergunta (pelo menos 20 caracteres).");
     setGerando(true);
     try {
-      const prompt = await gerarPromptDoAgente(editing.name ?? "", resumo, camposDoTexto(camposTexto));
+      const prompt = await gerarPromptDoAgente(editing.name ?? "", resumo, camposAtuais);
       setEditing((atual) => (atual ? { ...atual, system_prompt: prompt } : atual));
       toast.success("Prompt gerado", { description: "Revise o texto e clique em Salvar." });
     } catch (e) {
@@ -94,7 +99,10 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
     if (error) return toast.error("Não foi possível salvar o agente", { description: describeError(error, "Tente de novo.") });
     if (!data?.length) return toast.error("Não foi possível salvar o agente", { description: SEM_PERMISSAO });
     try {
-      await salvarResumoDoAgente(data[0].id, editing.brief ?? null, camposDoTexto(camposTexto));
+      await salvarResumoDoAgente(
+        data[0].id, editing.brief ?? null, camposAtuais,
+        camposAtuais.filter((c) => obrigatorias.has(c.toLowerCase())),
+      );
     } catch (e) {
       // O agente já foi salvo; só o resumo e as respostas ficaram para trás.
       reload();
@@ -268,6 +276,30 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               <p className="text-xs text-muted-foreground">
                 Essas respostas aparecem no card do lead, na aba Formulário, conforme o agente conversa.
               </p>
+              {camposAtuais.length > 0 && (
+                <fieldset className="space-y-1">
+                  <legend className="text-xs font-semibold">Obrigatórias para entregar o lead</legend>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {camposAtuais.map((campo) => (
+                      <label key={campo} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <Checkbox
+                          checked={obrigatorias.has(campo.toLowerCase())}
+                          disabled={!canWrite}
+                          onCheckedChange={(v) => setObrigatorias((atual) => {
+                            const novo = new Set(atual);
+                            if (v === true) novo.add(campo.toLowerCase()); else novo.delete(campo.toLowerCase());
+                            return novo;
+                          })}
+                        />
+                        {campo}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O lead só vai para o grupo quando o agente encerrar como qualificado e souber todas as marcadas.
+                  </p>
+                </fieldset>
+              )}
               {canWrite && (
                 <Button type="button" size="sm" variant="outline" className="gap-1" disabled={gerando} onClick={() => void gerarPrompt()}>
                   {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

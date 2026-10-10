@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { camposValidos, instrucaoDeColeta, lerColeta, TAG_DADOS } from "./sdrColeta.ts";
+import { camposValidos, faltamParaEntregar, instrucaoDeColeta, lerColeta, TAG_DADOS } from "./sdrColeta.ts";
 
 const CAMPOS = ["Nome", "Unidade", "CRECI"];
 
@@ -26,5 +26,12 @@ describe("coleta do agente", () => {
   it("instrução lista os campos e some quando não há campos", () => {
     expect(instrucaoDeColeta(CAMPOS)).toContain("[DADOS: Nome: valor | Unidade: valor | CRECI: valor]");
     expect(instrucaoDeColeta([])).toBe("");
+  });
+
+  it("só entrega com as respostas obrigatórias apuradas", () => {
+    const obrigatorios = ["Renda", "FGTS", "Região de interesse"];
+    expect(faltamParaEntregar(obrigatorios, { renda: "5 mil", FGTS: "?", Nome: "Ana" })).toEqual(["FGTS", "Região de interesse"]);
+    expect(faltamParaEntregar(obrigatorios, { Renda: "5 mil", FGTS: "sim", "Região de interesse": "Zona Sul" })).toEqual([]);
+    expect(instrucaoDeColeta(["Renda"], ["Renda"])).toContain("Só use [QUALIFICADO] depois de saber: Renda");
   });
 });

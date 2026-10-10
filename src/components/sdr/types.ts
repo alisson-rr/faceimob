@@ -10,10 +10,12 @@ import type { CanalDoGrupo } from "@/integrations/supabase/grupoCanal";
  */
 export const SEM_SELECAO = "__nenhum__";
 
-/** `brief` e `collect_fields` (0261) ainda não estão no `types.ts` gerado. */
+/** `brief`, `collect_fields` (0261) e `required_fields` (0262) ainda não estão no `types.ts` gerado. */
 export type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"] & {
   brief?: string | null;
   collect_fields?: string[] | null;
+  /** Respostas sem as quais o lead não é entregue (0262). */
+  required_fields?: string[] | null;
 };
 /**
  * Dono e resolução da conversa (0120) ainda não estão no `types.ts` gerado. A
