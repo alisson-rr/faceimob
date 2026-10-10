@@ -99,7 +99,8 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
   }
 
   /** Como o webhook encontra a origem: por form_id (Meta) ou por código = utm_source. */
-  const filtro = (s: Source) => s.form_id ? `form_id ${s.form_id}` : `utm_source = ${s.code}`;
+  const filtro = (s: Source) => s.code.startsWith("wa_campanha_") ? "campanha de WhatsApp (acima)"
+    : s.form_id ? `form_id ${s.form_id}` : `utm_source = ${s.code}`;
 
   return (
     <Card className="p-4 space-y-3">

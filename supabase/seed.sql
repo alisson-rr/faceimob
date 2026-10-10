@@ -87,7 +87,7 @@ on conflict do nothing;
 insert into public.document_types
   (code, label, category, required_for_conversion, allows_multiple, naming_pattern, sort_order)
 values
-  ('rg_cpf',            'RG / CPF',                  'identificacao', true,  false, '{tipo}-{cliente}', 1),
+  ('rg_cpf',            'RG / CNH',                  'identificacao', true,  true,  '{tipo}-{cliente}', 1),
   ('comprovante_renda', 'Comprovante de Renda',      'renda',         true,  true,  '{tipo}-{cliente}-{data}', 2),
   ('ctps',              'CTPS',                      'renda',         false, false, '{tipo}-{cliente}', 3),
   ('extrato_fgts',      'Extrato FGTS',              'renda',         false, false, '{tipo}-{cliente}-{data}', 4),

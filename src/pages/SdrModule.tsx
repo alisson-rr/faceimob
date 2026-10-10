@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { AlertTriangle, Bot, MessageSquare, Send, Sparkles } from "lucide-react";
 import { describeError } from "@/lib/supabaseError";
 import { AgentsTab } from "@/components/sdr/AgentsTab";
+import { CampanhasWhatsapp } from "@/components/sdr/CampanhasWhatsapp";
 import { SourcesTab } from "@/components/sdr/SourcesTab";
 import { PlaygroundTab } from "@/components/sdr/PlaygroundTab";
 import { ConversationsTab } from "@/components/sdr/ConversationsTab";
@@ -182,7 +183,10 @@ export default function SdrModule() {
             {/* `sources` e `lists` entram só para o aviso de exclusão dizer o
                 que se solta (FKs ON DELETE SET NULL) — a aba não os edita. */}
             <TabsContent value="agents"><AgentsTab agents={agents} groups={groups} sources={sources} lists={lists} canWrite={canWrite} iaConfigurada={iaConfigurada} reload={loadAll} /></TabsContent>
-            <TabsContent value="sources"><SourcesTab sources={sources} agents={agents} templates={templates} canWrite={canWrite} reload={loadAll} /></TabsContent>
+            <TabsContent value="sources" className="space-y-3">
+              <CampanhasWhatsapp agents={agents} canWrite={canWrite} onChange={loadAll} />
+              <SourcesTab sources={sources} agents={agents} templates={templates} canWrite={canWrite} reload={loadAll} />
+            </TabsContent>
             {/* Um turno que deu certo prova a chave melhor que a consulta de status:
                 sem avisar aqui, o Playground respondia e a tela seguia dizendo
                 que a IA não responde, até alguém dar F5. */}
