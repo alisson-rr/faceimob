@@ -119,7 +119,7 @@ begin
 
   -- Turno que cobre o dia inteiro: a fila da roleta não pode depender do relógio.
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('teste-0141', 'Integral 0141', '00:00', '00:00', '23:59', -141)
+  values ('teste-0141', 'Integral 0141', '00:00', '00:00', '23:59:59.999999', -141)
   returning id into v_shift;
   insert into public.checkins (profile_id, shift_id, work_date) values
     (caio, v_shift, public.current_work_date()),

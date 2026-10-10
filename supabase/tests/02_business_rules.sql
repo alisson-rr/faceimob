@@ -73,7 +73,7 @@ begin
 
   -- Turno que cobre o dia inteiro, para o teste não depender da hora do relógio.
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('teste', 'Integral Teste', '00:00', '00:00', '23:59', 0)
+  values ('teste', 'Integral Teste', '00:00', '00:00', '23:59:59.999999', 0)
   returning id into v_shift;
 
   -- c1 e c2 batem ponto; c3 não.

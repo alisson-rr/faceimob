@@ -89,7 +89,7 @@ begin
   -- então a regra de sobreposição não se aplica — é o mesmo caminho que os
   -- outros arquivos do harness usam para ter um turno sempre aberto.
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('teste-75', 'Integral 75', '00:00', '00:00', '23:59', -75)
+  values ('teste-75', 'Integral 75', '00:00', '00:00', '23:59:59.999999', -75)
   on conflict (code) do nothing;
   select id into v_shift from public.work_shifts where code = 'teste-75';
 

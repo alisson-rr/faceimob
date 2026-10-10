@@ -37,7 +37,7 @@ begin
   insert into public.distribution_group_members (group_id, profile_id, active)
   values (g, ana, true), (g, bia, true), (g, caio, true), (g, duda, true);
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('integral-200', 'Integral 200', '00:00', '00:00', '23:59', -200) returning id into t;
+  values ('integral-200', 'Integral 200', '00:00', '00:00', '23:59:59.999999', -200) returning id into t;
 
   -- Ana 60 min atrás, Bia 50, Caio 40, Duda 10.
   insert into public.checkins (profile_id, shift_id, work_date, checked_in_at) values

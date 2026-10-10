@@ -186,7 +186,7 @@ begin
   insert into public.distribution_group_members (group_id, profile_id)
   values (v_grupo, cor2);
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('core24', 'Core 24h', '00:00', '00:00', '23:59', -2)
+  values ('core24', 'Core 24h', '00:00', '00:00', '23:59:59.999999', -2)
   returning id into v_shift;
   -- Dia operacional de Sao Paulo, nao `current_date` (UTC): ver o comentario
   -- no 02_business_rules.sql e o teste 13.

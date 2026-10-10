@@ -64,7 +64,7 @@ begin
   on conflict do nothing;
 
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('cron65', 'Turno 0065', '00:00', '00:00', '23:59', -5)
+  values ('cron65', 'Turno 0065', '00:00', '00:00', '23:59:59.999999', -5)
   on conflict (code) do nothing;
 
   insert into public.allowed_ips (label, ip_range)
@@ -419,7 +419,7 @@ declare
 begin
   -- Segundo turno aberto no mesmo dia, como quem bate ponto de manhã e à tarde.
   insert into public.work_shifts (code, label, checkin_start, distribution_start, checkout_time, position)
-  values ('cron65b', 'Turno 0065 B', '00:00', '00:00', '23:59', 90)
+  values ('cron65b', 'Turno 0065 B', '00:00', '00:00', '23:59:59.999999', 90)
   on conflict (code) do nothing;
   select id into v_outro from public.work_shifts where code = 'cron65b';
 
