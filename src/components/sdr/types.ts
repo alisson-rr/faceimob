@@ -10,7 +10,11 @@ import type { CanalDoGrupo } from "@/integrations/supabase/grupoCanal";
  */
 export const SEM_SELECAO = "__nenhum__";
 
-export type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"];
+/** `brief` e `collect_fields` (0261) ainda não estão no `types.ts` gerado. */
+export type Agent = Database["public"]["Tables"]["sdr_agents"]["Row"] & {
+  brief?: string | null;
+  collect_fields?: string[] | null;
+};
 /**
  * Dono e resolução da conversa (0120) ainda não estão no `types.ts` gerado. A
  * interseção cai no próximo `supabase gen types`, quando a linha já trouxer as

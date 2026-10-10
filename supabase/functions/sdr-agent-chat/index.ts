@@ -2,7 +2,7 @@
 // A lógica do turno (histórico, OpenAI, persistência, tag de qualificação) é a
 // mesma do webhook de WhatsApp: vive em ../_shared/sdrAgent.ts.
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { ConversationClosedError, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
+import { ConversationClosedError, gerarPromptDoAgente, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
 import { hasAnyRole, requireUserPermission, serviceClient } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
 import { normalizePhone, sendWhatsAppText } from '../_shared/meta.ts';
@@ -276,6 +276,23 @@ Deno.serve(async (req) => {
     if (action === 'probe') return await probeOpenAI(apiKey);
 
     if (action === 'passar') return await passarParaAgente(req, supabase, userId, conversation_id, agent_id);
+
+    // "Gerar prompt" da aba Agentes (0261): o resumo vira prompt para revisão.
+    // Não grava nada; quem salva é a tela, pela RLS de sdr_agents.
+    if (action === 'gerar_prompt') {
+      const { nome, resumo, campos } = body ?? {};
+      if (typeof resumo !== 'string' || resumo.trim().length < 20) {
+        return json({ error: 'Escreva um resumo de pelo menos 20 caracteres do que o agente faz e pergunta.' }, 400);
+      }
+      if (resumo.length > 6000) return json({ error: 'Resumo longo demais (máx. 6000 caracteres).' }, 400);
+      try {
+        const prompt = await gerarPromptDoAgente(typeof nome === 'string' ? nome : '', resumo, campos);
+        return json({ prompt });
+      } catch (e) {
+        console.error('sdr-agent-chat: gerar prompt falhou —', e instanceof Error ? e.message : String(e));
+        return json({ error: 'A IA não conseguiu gerar o prompt agora. Tente de novo em instantes.' }, 502);
+      }
+    }
 
     if (typeof message !== 'string' || !message.trim()) {
       return json({ error: 'message obrigatório' }, 400);

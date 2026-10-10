@@ -13,10 +13,11 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Bot, Plus, Trash2 } from "lucide-react";
+import { Bot, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
+import { camposDoTexto, gerarPromptDoAgente, salvarResumoDoAgente } from "@/integrations/supabase/sdrAgenteResumo";
 import { handoffOptions } from "./handoffChain";
 import { efeitosDaExclusao, IA_SEM_CREDENCIAL, ondeCadastrarIa, PAPEL_AGENTE, SEM_PERMISSAO, SEM_SELECAO, type Agent, type Group, type Rlist, type Source } from "./types";
 
@@ -37,6 +38,30 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
   // navegador: o nativo não é estilizado, não respeita o tema e — o que pesa
   // aqui — corta o texto longo que enumera o que perde o vínculo.
   const [excluindo, setExcluindo] = useState<Agent | null>(null);
+  // "Respostas que tem de trazer", uma por linha, como a pessoa digitou.
+  const [camposTexto, setCamposTexto] = useState("");
+  const [gerando, setGerando] = useState(false);
+
+  function abrir(agente: Partial<Agent>) {
+    setEditing(agente);
+    setCamposTexto((agente.collect_fields ?? []).join("\n"));
+  }
+
+  async function gerarPrompt() {
+    if (!editing) return;
+    const resumo = (editing.brief ?? "").trim();
+    if (resumo.length < 20) return toast.error("Escreva no resumo o que o agente faz e pergunta (pelo menos 20 caracteres).");
+    setGerando(true);
+    try {
+      const prompt = await gerarPromptDoAgente(editing.name ?? "", resumo, camposDoTexto(camposTexto));
+      setEditing((atual) => (atual ? { ...atual, system_prompt: prompt } : atual));
+      toast.success("Prompt gerado", { description: "Revise o texto e clique em Salvar." });
+    } catch (e) {
+      toast.error("Não foi possível gerar o prompt", { description: describeError(e, "Tente de novo.") });
+    } finally {
+      setGerando(false);
+    }
+  }
 
   async function save() {
     if (!editing?.name) return toast.error("Nome obrigatório");
@@ -68,6 +93,13 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
     const { data, error } = await q.select("id");
     if (error) return toast.error("Não foi possível salvar o agente", { description: describeError(error, "Tente de novo.") });
     if (!data?.length) return toast.error("Não foi possível salvar o agente", { description: SEM_PERMISSAO });
+    try {
+      await salvarResumoDoAgente(data[0].id, editing.brief ?? null, camposDoTexto(camposTexto));
+    } catch (e) {
+      // O agente já foi salvo; só o resumo e as respostas ficaram para trás.
+      reload();
+      return toast.error("Agente salvo, mas o resumo e as respostas não", { description: describeError(e, "Tente salvar de novo.") });
+    }
     toast.success("Agente salvo");
     setEditing(null); reload();
   }
@@ -98,7 +130,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold">Agentes ({agents.length})</h3>
           {canWrite && (
-            <Button size="sm" onClick={() => setEditing({ name: "", role: "qualifier", model: MODELO_PADRAO, temperature: 0.7, max_turns: TURNOS_PADRAO, active: true })}>
+            <Button size="sm" onClick={() => abrir({ name: "", role: "qualifier", model: MODELO_PADRAO, temperature: 0.7, max_turns: TURNOS_PADRAO, active: true })}>
               <Plus className="h-4 w-4 mr-1" />Novo
             </Button>
           )}
@@ -119,7 +151,7 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
             >
               <button
                 type="button"
-                onClick={() => setEditing(a)}
+                onClick={() => abrir(a)}
                 aria-pressed={editing?.id === a.id}
                 className="flex flex-1 min-w-0 items-center gap-2 text-left"
               >
@@ -225,6 +257,24 @@ export function AgentsTab({ agents, groups, sources, lists, canWrite, iaConfigur
               Atingido o máximo de respostas, o agente para de escrever e o lead volta para a roleta — sem ser marcado
               como qualificado. É o que impede uma conversa que nunca conclui de rodar sem fim.
             </p>
+            <div className="space-y-2 rounded-lg border border-border/60 p-3">
+              <Label htmlFor="ag-brief">Resumo: o que o agente faz e pergunta</Label>
+              <Textarea id="ag-brief" rows={4} maxLength={6000} value={editing.brief || ""}
+                onChange={e => setEditing({ ...editing, brief: e.target.value })}
+                placeholder="Ex.: Entrevista candidatos a corretor. Pergunta a unidade (Zona Norte ou Sul), onde mora, se tem horário integral, experiência e CRECI. Apresenta a vaga (autônomo, comissão, ajuda de custo de R$ 500). Qualificado: aceita o modelo de trabalho." />
+              <Label htmlFor="ag-campos">Respostas que tem de trazer (uma por linha)</Label>
+              <Textarea id="ag-campos" rows={4} value={camposTexto} onChange={e => setCamposTexto(e.target.value)}
+                placeholder={"Nome\nUnidade\nBairro\nCRECI"} />
+              <p className="text-xs text-muted-foreground">
+                Essas respostas aparecem no card do lead, na aba Formulário, conforme o agente conversa.
+              </p>
+              {canWrite && (
+                <Button type="button" size="sm" variant="outline" className="gap-1" disabled={gerando} onClick={() => void gerarPrompt()}>
+                  {gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  Gerar prompt com IA
+                </Button>
+              )}
+            </div>
             <div>
               <Label htmlFor="ag-prompt">System prompt (instruções do agente)</Label>
               <Textarea id="ag-prompt" rows={8} value={editing.system_prompt || ""} onChange={e => setEditing({ ...editing, system_prompt: e.target.value })}

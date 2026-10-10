@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireSecret } from "./secrets.ts";
+import { camposValidos, instrucaoDeColeta, lerColeta, pedidoDePrompt, TAG_DADOS } from "./sdrColeta.ts";
 
 /**
  * Um turno do agente de SDR: consulta o modelo com o histórico e grava a
@@ -131,7 +132,7 @@ function parseTags(text: string) {
     // O CHECK da coluna recusa fora de 0-100 e derrubaria o turno inteiro.
     score: score ? Math.min(100, Math.max(0, Number(score[1]))) : null,
     summary: summary ? summary[1].trim() : null,
-    reply: text.replace(TAGS, "").replace(/\n{3,}/g, "\n\n").trim(),
+    reply: text.replace(TAGS, "").replace(TAG_DADOS, "").replace(/\n{3,}/g, "\n\n").trim(),
   };
 }
 
@@ -320,11 +321,14 @@ export async function runSdrAgentTurn(
     }
   }
 
+  // Respostas que o agente tem de trazer (0261): vão para o card do lead.
+  const campos = camposValidos(agent.collect_fields);
   const systemPrompt =
     (agent.system_prompt ||
       "Você é um SDR especializado em qualificação de leads imobiliários. Faça perguntas objetivas sobre renda, urgência, tipo de imóvel desejado e localização. Seja cordial e breve.") +
     contexto +
-    QUALIFY_INSTRUCTION;
+    QUALIFY_INSTRUCTION +
+    instrucaoDeColeta(campos);
 
   const messages = [
     { role: "system", content: systemPrompt },
@@ -342,6 +346,7 @@ export async function runSdrAgentTurn(
   );
 
   const { qualified: qualifiedTag, disqualified, score, summary, reply } = parseTags(text);
+  const coleta = lerColeta(text, campos);
 
   // Agora sim: a mensagem do lead e a resposta, NUM INSERT SÓ. Em duas
   // gravações separadas, uma falha na segunda deixava a linha do lead commitada
@@ -397,6 +402,14 @@ export async function runSdrAgentTurn(
   const patch: Record<string, unknown> = {};
   if (score !== null) patch.score = score;
   if (summary) patch.summary = summary;
+  // Soma ao que turnos anteriores trouxeram: o modelo às vezes repete "?" num
+  // campo que já sabia, e isso não pode apagar a resposta.
+  if (Object.keys(coleta).length > 0) {
+    const anterior = conv.collected && typeof conv.collected === "object" && !Array.isArray(conv.collected)
+      ? conv.collected as Record<string, unknown>
+      : {};
+    patch.collected = { ...anterior, ...coleta };
+  }
   if (handoffAgent) patch.agent_id = handoffAgent.id;
   if (disqualified) patch.status = "disqualified";
   if (Object.keys(patch).length > 0) {
@@ -415,6 +428,18 @@ export async function runSdrAgentTurn(
     agent: { id: agent.id, name: agent.name, is_orchestrator: agent.is_orchestrator },
     handoffAgent,
   };
+}
+
+/**
+ * Prompt do agente escrito pela IA a partir do resumo da aba Agentes (0261).
+ * Não grava nada: o texto volta para a pessoa revisar e salvar.
+ */
+export async function gerarPromptDoAgente(nome: string, resumo: string, campos: unknown): Promise<string> {
+  const apiKey = await requireSecret("OPENAI_API_KEY");
+  const { text } = await callOpenAI(apiKey, DEFAULT_OPENAI_MODEL, pedidoDePrompt(nome, resumo, camposValidos(campos)), 0.4);
+  const prompt = text.trim();
+  if (!prompt) throw new Error("A IA não devolveu o prompt. Tente de novo.");
+  return prompt;
 }
 
 /** Replay de webhook: a mensagem já foi processada antes. */

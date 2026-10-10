@@ -35,6 +35,7 @@ import {
 } from "@/integrations/supabase/leads";
 import { toDateTimeInput } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
+import { RespostasDoSdrIa } from "@/components/leads/RespostasDoSdrIa";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 
 type EditableField = "full_name" | "phone" | "email" | "document";
@@ -442,7 +443,8 @@ export default function LeadDetailModal({
             ))}
           </TabsContent>
 
-          <TabsContent value="form">
+          <TabsContent value="form" className="space-y-3">
+            <RespostasDoSdrIa leadId={lead.id} />
             {Object.keys(answers).length === 0 ? (
               <p className="text-sm text-muted-foreground">Sem respostas de formulário.</p>
             ) : (
