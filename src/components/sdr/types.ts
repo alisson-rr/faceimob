@@ -120,7 +120,7 @@ export const STATUS_CONVERSA: Record<string, string> = {
   human: "Operador assumiu",
   qualified: "Qualificada",
   disqualified: "Desqualificada",
-  handed_off: "Entregue à roleta",
+  handed_off: "Entregue ao grupo",
   abandoned: "Abandonada",
   resolved: "Resolvida",
 };

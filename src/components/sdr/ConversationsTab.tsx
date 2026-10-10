@@ -316,6 +316,7 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
                 <div className="text-muted-foreground truncate">
                   {STATUS_CONVERSA[r.status] ?? r.status}
                   {r.status === "human" && r.assumed_by && ` · ${quem(r.assumed_by)}`}
+                  {r.status === "handed_off" && r.handed_off_at && ` em ${dateTime(r.handed_off_at)}`}
                   {telefone(r) && ` · ${telefone(r)}`}
                 </div>
                 {/* A data é a da última MENSAGEM, a mesma grandeza do selo
