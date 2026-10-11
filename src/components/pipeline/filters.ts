@@ -6,6 +6,7 @@
  * "João Silva" na base colidiam num filtro só, e renomear o perfil fazia o
  * negócio sumir do filtro do próprio dono.
  */
+import { dirigidoPor } from "@/lib/diretoria";
 import { newestFirst, type LegacyDealRecord, type PersonRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { faceimobStatusRank } from "./statuses";
@@ -147,14 +148,14 @@ export function dealsForLeader(deals: LegacyDealRecord[], people: PersonRecord[]
  * o gerente pediu ("ver só o time dele").
  */
 export const teamProfileIds = (
-  people: Pick<PersonRecord, "id" | "manager_id" | "director_id">[],
+  people: Pick<PersonRecord, "id" | "manager_id" | "director_id" | "co_director_id">[],
   profileId: string | null | undefined,
 ): Set<string> => {
   const ids = new Set<string>();
   if (!profileId) return ids;
   ids.add(profileId);
   for (const person of people) {
-    if (person.manager_id === profileId || person.director_id === profileId) ids.add(person.id);
+    if (person.manager_id === profileId || dirigidoPor(person, profileId)) ids.add(person.id);
   }
   return ids;
 };

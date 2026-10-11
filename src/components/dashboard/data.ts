@@ -1,3 +1,4 @@
+import { diretoresDe } from "@/lib/diretoria";
 /**
  * Dados do Dashboard: uma consulta por assunto, com chave estavel, e as
  * derivacoes puras que as telas consomem.
@@ -555,7 +556,9 @@ export const participantsOf = (
  *     VGV divide por quantos corretores o negócio tem — o `100/n` de
  *     `recalc_deal_shares`;
  *   · gerente: a soma dos corretores das equipes em que ele é `teams.manager_id`;
- *   · diretor: a soma dos corretores das equipes em que ele é `teams.director_id`.
+ *   · diretor: a soma dos corretores das equipes em que ele é `teams.director_id`
+ *     ou Diretor 2 (`co_director_id`, 0266) — com dois diretores, meia venda e
+ *     meio VGV para cada.
  *
  * Gestor NÃO sai mais do slot de gerente/diretor do negócio, nem ganha o valor
  * cheio de todo negócio em que aparece: era isso que punha o diretor no ranking
@@ -580,21 +583,27 @@ export const rankBy = (rows: DealRow[], role: RankRole, people: PersonRecord[] =
     const brokers = participantsOf(deal, "broker");
     const share = (deal.deal_value || 0) / (brokers.length || 1);
     for (const broker of brokers) {
-      let id: string | null = broker.id;
-      let name = broker.name;
-      if (role !== "broker") {
-        const team = personById.get(broker.id);
-        id = (role === "manager" ? team?.manager_id : team?.director_id) ?? null;
-        name = id ? personById.get(id)?.name ?? null : null;
+      // Quem leva a fatia deste corretor, e com que peso: o próprio corretor, o
+      // gerente da equipe, ou o(s) diretor(es) — com Diretor 2, meio a meio (0266).
+      const team = personById.get(broker.id);
+      const credores: { id: string | null; name: string | null; peso: number }[] =
+        role === "broker"
+          ? [{ id: broker.id, name: broker.name, peso: 1 }]
+          : role === "manager"
+            ? [{ id: team?.manager_id ?? null, name: null, peso: 1 }]
+            : diretoresDe(team).map((d) => ({ id: d.id, name: null, peso: d.peso }));
+      for (const credor of credores) {
+        const id = credor.id;
+        const name = role === "broker" ? credor.name : id ? personById.get(id)?.name ?? null : null;
+        if (!id || !name) continue;
+        const entry = map.get(id) ?? { id, name, vendas: 0, vgv: 0, deals: new Set<string>() };
+        if (!entry.deals?.has(deal.id)) {
+          entry.deals?.add(deal.id);
+          entry.vendas += credor.peso;
+        }
+        entry.vgv += share * credor.peso;
+        map.set(id, entry);
       }
-      if (!id || !name) continue;
-      const entry = map.get(id) ?? { id, name, vendas: 0, vgv: 0, deals: new Set<string>() };
-      if (!entry.deals?.has(deal.id)) {
-        entry.deals?.add(deal.id);
-        entry.vendas += 1;
-      }
-      entry.vgv += share;
-      map.set(id, entry);
     }
   }
   // Desempate final pelo NOME, como o banco faz ao congelar a temporada

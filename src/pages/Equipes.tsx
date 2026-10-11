@@ -33,6 +33,7 @@ import { MetaVgv } from "@/components/equipes/MetaVgv";
 import { PessoaCard, ListaPessoas, ContagemPessoas, iniciais } from "@/components/equipes/PessoaCard";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
 import { CofreCredenciais } from "@/components/equipes/CofreCredenciais";
+import { DiretorDuploCard } from "@/components/equipes/DiretorDuploCard";
 import { goalPeriods, goalsByProfile, otherMetricsByProfile } from "@/components/equipes/metas";
 
 interface BrokerRow {
@@ -734,6 +735,13 @@ export default function Equipes() {
             />
           ) : (
             <>
+            {/* Diretor 2 por equipe (0266): só admin e sócio definem. */}
+            {isAdmin && (
+              <DiretorDuploCard
+                diretores={directors.filter(d => d.active !== false).map(d => ({ id: d.id, name: d.name }))}
+                nomeDe={nomeDe}
+              />
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Diretores */}
               <Card className="border-info/30" role="region" aria-label="Diretores">

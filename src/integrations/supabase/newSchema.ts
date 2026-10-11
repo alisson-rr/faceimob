@@ -1,4 +1,5 @@
 import { differenceInDays, format, parseISO } from "date-fns";
+import { listCoDiretores } from "./coDiretores";
 import { supabase } from "./client";
 import { getCurrentWorkDate, SAO_PAULO_UTC_OFFSET } from "./checkin";
 import { bareStatus, isLossStatus, normalizeStatus } from "@/lib/dealStatus";
@@ -37,6 +38,8 @@ export type PersonRecord = {
   team: string;
   manager_id: string | null;
   director_id: string | null;
+  /** Diretor 2 da equipe (0266): divide 50/50 com o diretor. */
+  co_director_id?: string | null;
 };
 
 export type LegacyDealRecord = PipelineDeal & {
@@ -122,11 +125,12 @@ export const displayMonthToIso = (value: string) => {
 };
 
 export async function listPeople(): Promise<PersonRecord[]> {
-  const [profilesRes, rolesRes, membersRes, teamsRes] = await Promise.all([
+  const [profilesRes, rolesRes, membersRes, teamsRes, coDiretores] = await Promise.all([
     db.from("profiles").select("id,full_name,email,phone,avatar_url,status"),
     db.from("user_roles").select("profile_id,role"),
     db.from("team_members").select("profile_id,team_id,left_at").is("left_at", null),
     db.from("teams").select("id,name,manager_id,director_id,active"),
+    listCoDiretores(),
   ]);
 
   throwIfError("profiles", profilesRes);
@@ -167,6 +171,7 @@ export async function listPeople(): Promise<PersonRecord[]> {
         team: team?.name || "",
         manager_id: team?.manager_id || null,
         director_id: team?.director_id || null,
+        co_director_id: (team && coDiretores.get(team.id)) || null,
       } satisfies PersonRecord;
     })
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));

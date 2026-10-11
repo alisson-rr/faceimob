@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { diretoresDe } from "@/lib/diretoria";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,8 @@ import {
 export type TeamRow = {
   id: string; name: string; display_name: string | null;
   manager_id: string | null; director_id: string | null;
+  /** Diretor 2 (0266): a equipe aparece nas duas diretorias, com meia venda em cada. */
+  co_director_id?: string | null;
   /** Equipe desativada no meio da semana continua no quadro, marcada. */
   active: boolean;
 };
@@ -135,13 +138,17 @@ export function DirectorFunnelSection({
   // nenhuma jogava a equipe em "Sem diretor": para o diretor, a tela ficava em
   // branco, sem nem o estado vazio.
   const directorGroups = useMemo(() => {
-    const groups = new Map<string, { director: BrokerRow | null; teams: TeamRow[] }>();
+    const groups = new Map<string, { director: BrokerRow | null; teams: TeamRow[]; peso: Map<string, number> }>();
     teams.forEach(t => {
-      const dirId = t.director_id || "__none__";
-      if (!groups.has(dirId)) {
-        groups.set(dirId, { director: brokers.find(b => b.id === dirId) || null, teams: [] });
+      const diretores = diretoresDe(t);
+      for (const { id: dirId, peso } of diretores.length ? diretores : [{ id: "__none__", peso: 1 }]) {
+        if (!groups.has(dirId)) {
+          groups.set(dirId, { director: brokers.find(b => b.id === dirId) || null, teams: [], peso: new Map() });
+        }
+        const g = groups.get(dirId)!;
+        g.teams.push(t);
+        g.peso.set(t.id, peso);
       }
-      groups.get(dirId)!.teams.push(t);
     });
     return Array.from(groups.entries())
       .map(([id, g]) => ({ id, ...g }))
@@ -157,7 +164,8 @@ export function DirectorFunnelSection({
         g.teams.forEach(t => {
           const a = aggregate(t.id);
           acc.lancamentos += a.lancamentos;
-          acc.leads += a.leads; acc.enviadas += a.enviadas; acc.aprovadas += a.aprovadas; acc.vendas += a.vendas;
+          acc.leads += a.leads; acc.enviadas += a.enviadas; acc.aprovadas += a.aprovadas;
+          acc.vendas += a.vendas * (g.peso.get(t.id) ?? 1);
         });
         // A meta da diretoria, não a da primeira equipe do grupo: é o que a RPC
         // pública (`public_director_checkpoint`) já mostra para o mesmo diretor.

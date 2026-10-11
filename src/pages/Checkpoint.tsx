@@ -1,4 +1,6 @@
 import { useCallback, useMemo } from "react";
+import { listCoDiretores } from "@/integrations/supabase/coDiretores";
+import { diretoresDe } from "@/lib/diretoria";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -62,7 +64,7 @@ function weekFromParam(raw: string | null): Date {
 
 /** Catálogo que não depende da semana — equipes, pessoas e metas. */
 async function loadCatalogo() {
-  const [t, b, tg] = await Promise.all([
+  const [t, b, tg, coDiretores] = await Promise.all([
     // Sem `active=true`: equipe desativada no meio da semana sumia do quadro
     // junto com os lançamentos dela, sem nenhum aviso. Quem entra no quadro é
     // decidido abaixo, com o que o banco de fato entrega para cada papel.
@@ -71,11 +73,12 @@ async function loadCatalogo() {
     supabase.from("funnel_targets")
       .select("scope,team_id,director_id,lead_to_analysis_pct,analysis_to_approval_pct,approval_to_sale_pct")
       .order("effective_from", { ascending: false }),
+    listCoDiretores(),
   ]);
   if (t.error) throw t.error;
   if (tg.error) throw tg.error;
   return {
-    teams: (t.data ?? []).map((team) => ({ ...team, display_name: team.name })) as TeamRow[],
+    teams: (t.data ?? []).map((team) => ({ ...team, display_name: team.name, co_director_id: coDiretores.get(team.id) ?? null })) as TeamRow[],
     brokers: b.filter((person) => person.active) as BrokerRow[],
     targetsMap: buildTargetsMap(tg.data ?? []),
   };
@@ -302,7 +305,7 @@ export default function Checkpoint() {
    * diretor é "a" meta, e a global é a única honesta: sem isto o mesmo número
    * sairia vermelho no card do mês e verde no da semana, logo acima.
    */
-  const diretorias = new Set(filteredTeams.map((t) => t.director_id).filter((id): id is string => !!id));
+  const diretorias = new Set(filteredTeams.flatMap((t) => diretoresDe(t).map((d) => d.id)));
   const metaDoMes = targetsFor(
     diretorias.size === 1 ? directorTargetKey([...diretorias][0]) : GLOBAL_TARGET_KEY,
   );

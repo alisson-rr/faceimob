@@ -114,7 +114,7 @@ export function useFunnelTargets() {
 /**
  * Equipes que a pessoa LIDERA e quem esta nelas.
  *
- * Lidera = `teams.director_id` OU `teams.manager_id` — o mesmo criterio de
+ * Lidera = `teams.director_id`, `co_director_id` (Diretor 2, 0266) OU `teams.manager_id` — o mesmo criterio de
  * `auth_led_team_ids()`, que e o que a RLS de `daily_reports` e `daily_entries`
  * usa para liberar a leitura. Sem o `manager_id` aqui, o gerente tinha permissao
  * no banco para ler o diario da propria equipe e nenhuma tela que o mostrasse
@@ -137,7 +137,7 @@ export function useLedTeamsScope(leaderId: string | null) {
         supabase
           .from("teams")
           .select("id,name,manager_id,director_id")
-          .or(`director_id.eq.${leaderId},manager_id.eq.${leaderId}`)
+          .or(`director_id.eq.${leaderId},co_director_id.eq.${leaderId},manager_id.eq.${leaderId}`)
           .eq("active", true)
           .order("name"),
       ]);

@@ -68,3 +68,16 @@ describe("corretor que não enxerga a equipe (0199)", () => {
     expect(sugestaoDeLideres({}, "eu", 1, lideranca, managers, [])).toEqual({});
   });
 });
+
+describe("equipe com Diretor 2 (0266)", () => {
+  const comCo = [{ id: "ana", manager_id: "g1", director_id: "d1", co_director_id: "d2" }, { id: "caio", manager_id: null, director_id: null }];
+  it("o Corretor 1 traz os dois diretores", () => {
+    expect(sugestaoDeLideres({}, "ana", 1, comCo, managers, directors))
+      .toEqual({ manager1_id: "g1", director1_id: "d1", director2_id: "d2" });
+  });
+  it("trocar o corretor tira o Diretor 2 que o anterior trouxe", () => {
+    const form = { broker1_id: "ana", manager1_id: "g1", director1_id: "d1", director2_id: "d2" };
+    expect(sugestaoDeLideres(form, "caio", 1, comCo, managers, directors))
+      .toEqual({ manager1_id: null, director1_id: null, director2_id: null });
+  });
+});

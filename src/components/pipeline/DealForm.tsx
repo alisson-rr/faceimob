@@ -159,7 +159,7 @@ const mesesDoSeletor = (atual?: string): string[] => {
   return meses;
 };
 
-type Lideranca = Pick<PersonRecord, "id" | "manager_id" | "director_id">;
+type Lideranca = Pick<PersonRecord, "id" | "manager_id" | "director_id" | "co_director_id">;
 
 /**
  * Gerente N e Diretor N sugeridos ao trocar o Corretor N. Trocar o corretor
@@ -195,6 +195,13 @@ export function sugestaoDeLideres(
     if (diretor) patch[campoDiretor] = diretor;
     else if (anterior?.director_id && form[campoDiretor] === anterior.director_id) patch[campoDiretor] = null;
   }
+  // Equipe com Diretor 2 (0266): o Corretor 1 traz os dois diretores, meio a meio.
+  if (slot === 1) {
+    const co = corretor?.co_director_id && directors.some((p) => p.id === corretor.co_director_id)
+      && (patch.director1_id ?? form.director1_id) !== corretor.co_director_id ? corretor.co_director_id : null;
+    if (co && (!form.director2_id || form.director2_id === anterior?.co_director_id)) patch.director2_id = co;
+    else if (!co && anterior?.co_director_id && form.director2_id === anterior.co_director_id) patch.director2_id = null;
+  }
   return patch;
 }
 
@@ -217,7 +224,10 @@ export function lideresDoNegocio(people: PersonRecord[], daRpc: LiderancaSelecio
     // nenhum dos dois, quando a RLS esconde a equipe do corretor).
     ...people.map((p) => {
       const e = equipes.get(p.id);
-      return { ...p, manager_id: p.manager_id ?? e?.manager_id ?? null, director_id: p.director_id ?? e?.director_id ?? null };
+      return {
+        ...p, manager_id: p.manager_id ?? e?.manager_id ?? null, director_id: p.director_id ?? e?.director_id ?? null,
+        co_director_id: p.co_director_id ?? e?.co_director_id ?? null,
+      };
     }),
     ...[...equipes.values()].filter((e) => !people.some((p) => p.id === e.id)),
   ];
@@ -373,6 +383,7 @@ export function DealForm({
     const vazio: Partial<SaveLegacyDealInput> = {};
     if (patch.manager1_id && !form.manager1_id) vazio.manager1_id = patch.manager1_id;
     if (patch.director1_id && !form.director1_id) vazio.director1_id = patch.director1_id;
+    if (patch.director2_id && !form.director2_id) vazio.director2_id = patch.director2_id;
     if (Object.keys(vazio).length) onChange(vazio);
   }, [form, lideranca, managers, directors, onChange, selectableLeaders.isPending]);
 

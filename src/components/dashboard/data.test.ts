@@ -108,6 +108,19 @@ describe("rankBy — cada ranking com os números do papel (29/09/2026)", () => 
   it("corretor fora do alcance de quem olha não credita gestor nenhum", () => {
     expect(rankBy(vendas, "manager", [])).toEqual([]);
   });
+
+  it("equipe com Diretor 2: meia venda e meio VGV para cada diretor (0266)", () => {
+    const dividida = [
+      pessoa("b9", "Vitor", { manager_id: "m1", director_id: "fabio", co_director_id: "archi" }),
+      pessoa("fabio", "Fabio", { roles: ["director"], role: "director" }),
+      pessoa("archi", "Archimedes", { roles: ["director"], role: "director" }),
+    ];
+    const venda9 = [venda({ id: "v9", deal_value: 200_000, broker1_id: "b9", broker1: "Vitor" })];
+    expect(rankBy(venda9, "director", dividida)).toEqual(expect.arrayContaining([
+      { id: "fabio", name: "Fabio", vendas: 0.5, vgv: 100_000 },
+      { id: "archi", name: "Archimedes", vendas: 0.5, vgv: 100_000 },
+    ]));
+  });
 });
 
 describe("dealCategory — o outcome manda, o Status 2 é detalhe", () => {
