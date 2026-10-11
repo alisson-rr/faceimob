@@ -29,8 +29,9 @@ type Linha = {
 function porDiretoria(linhas: Linha[]) {
   const mapa = new Map<string, { nome: string; vendas: number; vgv: number; equipes: Linha[] }>();
   for (const l of linhas) {
-    const d = mapa.get(l.director_id) ?? { nome: l.director_name, vendas: l.total_vendas, vgv: Number(l.total_vgv), equipes: [] };
-    d.equipes.push(l);
+    // `numeric` desde a 0266 (meia venda com Diretor 2): o Number garante o tipo.
+    const d = mapa.get(l.director_id) ?? { nome: l.director_name, vendas: Number(l.total_vendas), vgv: Number(l.total_vgv), equipes: [] };
+    d.equipes.push({ ...l, vendas: Number(l.vendas) });
     mapa.set(l.director_id, d);
   }
   return [...mapa.entries()].map(([id, d]) => ({ id, ...d }));

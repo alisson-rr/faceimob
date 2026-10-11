@@ -27,10 +27,11 @@
  * sentidos — diretor que também gerencia perdia a equipe que gerencia; sócio
  * que também gerencia perdia a visão total que a policy lhe dá.
  */
+import { dirigidoPor } from "@/lib/diretoria";
 import type { AppRole } from "@/contexts/AuthContext";
 
 /** O mínimo de `TeamRow` que o recorte usa. */
-export type LedTeam = { id: string; manager_id: string | null; director_id: string | null };
+export type LedTeam = { id: string; manager_id: string | null; director_id: string | null; co_director_id?: string | null };
 
 export type CheckpointTeams<T extends LedTeam> = {
   /** Equipes que a pessoa dirige — ou todas, para quem lê tudo. Bloco de diretoria. */
@@ -79,9 +80,10 @@ export function checkpointTeams<T extends LedTeam>(
   }
   if (!profileId) return { directed: [], managed: [], visible: [] };
 
-  const directed = teams.filter((t) => t.director_id === profileId);
+  // Diretor 2 (0266) dirige a equipe como o diretor.
+  const directed = teams.filter((t) => dirigidoPor(t, profileId));
   // Quem dirige E gerencia a mesma equipe a vê uma vez só, no bloco de diretoria.
-  const managed = teams.filter((t) => t.manager_id === profileId && t.director_id !== profileId);
+  const managed = teams.filter((t) => t.manager_id === profileId && !dirigidoPor(t, profileId));
   return { directed, managed, visible: [...directed, ...managed] };
 }
 

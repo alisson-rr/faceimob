@@ -272,7 +272,7 @@ export type LiderSelecionavel = { id: string; name: string; isManager: boolean; 
 export type LiderancaSelecionavel = {
   lideres: LiderSelecionavel[];
   /** Gerente e diretor da equipe de cada corretor ativo. */
-  equipes: { id: string; manager_id: string | null; director_id: string | null }[];
+  equipes: { id: string; manager_id: string | null; director_id: string | null; co_director_id?: string | null }[];
 };
 
 // RPCs da 0199, ainda fora do `types.ts` gerado.
@@ -302,8 +302,8 @@ export const useSelectableLeaders = () =>
       return {
         lideres: ((lideres.data ?? []) as { id: string; full_name: string; is_manager: boolean; is_director: boolean }[])
           .map((l) => ({ id: l.id, name: l.full_name, isManager: l.is_manager, isDirector: l.is_director })),
-        equipes: ((equipes.data ?? []) as { broker_id: string; manager_id: string | null; director_id: string | null }[])
-          .map((e) => ({ id: e.broker_id, manager_id: e.manager_id, director_id: e.director_id })),
+        equipes: ((equipes.data ?? []) as { broker_id: string; manager_id: string | null; director_id: string | null; co_director_id?: string | null }[])
+          .map((e) => ({ id: e.broker_id, manager_id: e.manager_id, director_id: e.director_id, co_director_id: e.co_director_id ?? null })),
       };
     },
     staleTime: 5 * 60_000,

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { dirigidoPor } from "@/lib/diretoria";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,7 @@ export function ResultadosDoPipeline({ deals, people, loading, error, onOpen }: 
     const share = brokers.find((p) => p.id === ownId)?.share ?? 100 / Math.max(1, brokers.length);
     return sum + d.deal_value * share / 100;
   }, 0);
-  const managers = people.filter((p) => p.id !== ownId && p.director_id === ownId && p.roles.includes("manager"));
+  const managers = people.filter((p) => p.id !== ownId && dirigidoPor(p, ownId) && p.roles.includes("manager"));
   const scopeName = isAdmin ? "Empresa" : director ? "Sua diretoria" : manager ? "Sua equipe" : "Seus resultados";
   return <section className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3" aria-label="Resultados e propostas">
     <div className="flex flex-wrap items-center justify-between gap-2">
