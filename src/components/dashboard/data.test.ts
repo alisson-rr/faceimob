@@ -115,11 +115,15 @@ describe("rankBy — cada ranking com os números do papel (29/09/2026)", () => 
       pessoa("fabio", "Fabio", { roles: ["director"], role: "director" }),
       pessoa("archi", "Archimedes", { roles: ["director"], role: "director" }),
     ];
-    const venda9 = [venda({ id: "v9", deal_value: 200_000, broker1_id: "b9", broker1: "Vitor" })];
+    const venda9 = [venda({ id: "v9", deal_value: 200_000, broker1_id: "b9", broker1: "Vitor",
+      director1_id: "fabio", director2_id: "archi" })];
     expect(rankBy(venda9, "director", dividida)).toEqual(expect.arrayContaining([
       { id: "fabio", name: "Fabio", vendas: 0.5, vgv: 100_000 },
       { id: "archi", name: "Archimedes", vendas: 0.5, vgv: 100_000 },
     ]));
+    // Venda de antes da realocação: o negócio não tem o Diretor 2 e não divide.
+    const antiga = [venda({ id: "v8", deal_value: 200_000, broker1_id: "b9", broker1: "Vitor", director1_id: "fabio" })];
+    expect(rankBy(antiga, "director", dividida)).toEqual([{ id: "fabio", name: "Fabio", vendas: 1, vgv: 200_000 }]);
   });
 });
 

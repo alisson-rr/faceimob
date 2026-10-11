@@ -16,8 +16,11 @@
 --    o mesmo campo pela pessoa (`co_director_id`).
 --  * Negócio: o autopreenchimento põe os dois diretores; a sugestão do
 --    formulário (`lideranca_dos_corretores`) devolve o Diretor 2.
---  * Resumo da diretoria: vendas e VGV com o peso (meia venda); o funil abre
---    para o Diretor 2 com a equipe inteira (é fluxo, não placar).
+--  * Resumo da diretoria: meia venda e meio VGV — só na venda que nasceu com o
+--    Diretor 2 no negócio, ou seja, depois de o corretor entrar na equipe
+--    dividida (11/10/2026: "dividir a venda de cada corretor realocado"). O
+--    histórico de antes fica inteiro. O funil abre para o Diretor 2 com a
+--    equipe inteira (é fluxo, não placar).
 -- =============================================================================
 
 alter table public.teams
@@ -182,14 +185,20 @@ as $$
        and (public.is_admin() or auth.uid() in (t.manager_id, t.director_id, t.co_director_id))
   ),
   equipes as (
-    select t.id, t.name, ed.director_id, ed.peso, t.manager_id
+    select t.id, t.name, ed.director_id, t.director_id as diretor_1, t.co_director_id, t.manager_id
       from public.teams t
       join public.equipe_diretores ed on ed.team_id = t.id
       join diretorias d on d.director_id = ed.director_id
      where t.active
   ),
-  vendas as (
-    select distinct e.director_id, e.id as team_id, e.peso, dl.id as deal_id, dl.vgv_net
+  -- Só divide a venda que nasceu com o Diretor 2 no negócio (o autopreenchimento
+  -- o põe quando o corretor já está na equipe dividida). Venda de antes da
+  -- realocação não tem o Diretor 2: fica inteira com o diretor da equipe.
+  candidatas as (
+    select distinct e.director_id, e.diretor_1, e.co_director_id, e.id as team_id, dl.id as deal_id, dl.vgv_net,
+           e.co_director_id is not null and exists (
+             select 1 from public.deal_participants dd
+              where dd.deal_id = dl.id and dd.role = 'director' and dd.profile_id = e.co_director_id) as dividida
       from public.deals dl
       left join public.deal_status_groups g on g.id = dl.status_group_id
       join public.deal_participants dp on dp.deal_id = dl.id and dp.role = 'broker'
@@ -198,10 +207,15 @@ as $$
      where dl.month_base = date_trunc('month', p_mes)::date
        and (dl.outcome = 'won' or (dl.outcome = 'open' and g.code = 'VENDA'))
   ),
+  vendas as (
+    select c.director_id, c.team_id, c.deal_id, c.vgv_net,
+           case when c.dividida then 0.5 when c.director_id = c.diretor_1 then 1.0 else 0 end::numeric as peso
+      from candidatas c
+  ),
   -- Um negócio conta uma vez por diretor, com o maior peso entre as equipes dele.
   por_diretor as (
     select v.director_id, v.deal_id, max(v.peso) as peso, max(coalesce(v.vgv_net, 0)) as vgv_net
-      from vendas v group by v.director_id, v.deal_id
+      from vendas v where v.peso > 0 group by v.director_id, v.deal_id
   ),
   totais as (
     select x.director_id, sum(x.peso) as n, sum(x.vgv_net * x.peso) as v

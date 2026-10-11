@@ -67,8 +67,11 @@ export function buildLeadershipReport(deals: DealRow[], context: LeadershipConte
   return context.scopes.map(leader => {
     const rows = period.filter(d => participantsOf(d, leader.role).some(p => p.id === leader.id));
     const sales = rows.filter(d => dealCategory(d) === "venda");
-    // Meia venda quando o negócio só chega a ele por uma equipe com Diretor 2 (0266).
+    // Meia venda quando o negócio chega a ele por uma equipe com Diretor 2 (0266).
+    // Só divide a venda que nasceu com os dois diretores no negócio: a de antes
+    // da realocação do corretor fica inteira.
     const peso = (d: DealRow) => {
+      if (leader.role !== "director" || participantsOf(d, "director").length < 2) return 1;
       const pesos = participantsOf(d, "broker").map(b => leader.pesoDoCorretor?.[b.id]).filter((n): n is number => n !== undefined);
       return pesos.length ? Math.max(...pesos) : 1;
     };

@@ -557,8 +557,8 @@ export const participantsOf = (
  *     `recalc_deal_shares`;
  *   · gerente: a soma dos corretores das equipes em que ele é `teams.manager_id`;
  *   · diretor: a soma dos corretores das equipes em que ele é `teams.director_id`
- *     ou Diretor 2 (`co_director_id`, 0266) — com dois diretores, meia venda e
- *     meio VGV para cada.
+ *     ou Diretor 2 (`co_director_id`, 0266) — meia venda e meio VGV para cada,
+ *     só na venda que nasceu com os dois no negócio (`diretoresDaVenda`).
  *
  * Gestor NÃO sai mais do slot de gerente/diretor do negócio, nem ganha o valor
  * cheio de todo negócio em que aparece: era isso que punha o diretor no ranking
@@ -575,6 +575,21 @@ export const participantsOf = (
  * O `continue` do nome é guarda contra perfil sem `full_name`, não caminho de
  * rotina: `deal_participant_names()` é SECURITY DEFINER e sempre devolve o nome.
  */
+/**
+ * Diretores que levam a venda de um corretor (0266). Equipe com Diretor 2 só
+ * divide a venda que nasceu com os dois no negócio — o autopreenchimento põe o
+ * Diretor 2 quando o corretor já está na equipe dividida. Negócio anterior à
+ * realocação não tem o Diretor 2 e fica inteiro com o diretor da equipe.
+ */
+export const diretoresDaVenda = (
+  team: Pick<PersonRecord, "director_id" | "co_director_id"> | undefined,
+  deal: Pick<DealRow, "director1_id" | "director2_id">,
+): Array<{ id: string; peso: number }> => {
+  const noNegocio = [deal.director1_id, deal.director2_id];
+  if (team?.co_director_id && noNegocio.includes(team.co_director_id)) return diretoresDe(team);
+  return team?.director_id ? [{ id: team.director_id, peso: 1 }] : [];
+};
+
 export const rankBy = (rows: DealRow[], role: RankRole, people: PersonRecord[] = []): RankRow[] => {
   const map = new Map<string, RankRow & { deals?: Set<string> }>();
   const personById = new Map(people.map((person) => [person.id, person]));
@@ -591,7 +606,7 @@ export const rankBy = (rows: DealRow[], role: RankRole, people: PersonRecord[] =
           ? [{ id: broker.id, name: broker.name, peso: 1 }]
           : role === "manager"
             ? [{ id: team?.manager_id ?? null, name: null, peso: 1 }]
-            : diretoresDe(team).map((d) => ({ id: d.id, name: null, peso: d.peso }));
+            : diretoresDaVenda(team, deal).map((d) => ({ id: d.id, name: null, peso: d.peso }));
       for (const credor of credores) {
         const id = credor.id;
         const name = role === "broker" ? credor.name : id ? personById.get(id)?.name ?? null : null;

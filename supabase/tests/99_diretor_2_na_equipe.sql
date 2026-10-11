@@ -66,6 +66,17 @@ begin
   select count(*) into v_n from public.resumo_da_diretoria(current_date) where team_id = v_team;
   perform pg_temp.ok(v_n = 2, 'a equipe aparece para os dois diretores no resumo');
   perform set_config('request.jwt.claims', '', true);
+
+  -- Venda de antes da realocação (negócio sem o Diretor 2) fica inteira com o Fabio.
+  delete from public.deal_participants where deal_id = v_deal and profile_id = archi and role = 'director';
+  perform set_config('request.jwt.claims', json_build_object('sub', fabio, 'role', 'authenticated')::text, true);
+  perform pg_temp.ok((select total_vendas from public.resumo_da_diretoria(current_date)
+                       where team_id = v_team and director_id = fabio) = 1,
+    'venda sem o Diretor 2 no negócio fica inteira com o diretor da equipe');
+  perform pg_temp.ok((select vendas from public.resumo_da_diretoria(current_date)
+                       where team_id = v_team and director_id = archi) = 0,
+    'e o Diretor 2 não leva nada dela');
+  perform set_config('request.jwt.claims', '', true);
 end;
 $$;
 
