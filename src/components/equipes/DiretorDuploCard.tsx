@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Crown } from "lucide-react";
+import { Crown, Loader2, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { listCoDiretores, salvarCoDiretor } from "@/integrations/supabase/coDiretores";
+import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
+import { moveTeamMember } from "@/integrations/supabase/people";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState } from "@/components/shared";
@@ -21,6 +26,7 @@ export function DiretorDuploCard({ diretores, nomeDe }: {
 }) {
   const qc = useQueryClient();
   const [salvando, setSalvando] = useState<string | null>(null);
+  const [corretoresDe, setCorretoresDe] = useState<{ id: string; name: string } | null>(null);
   const equipes = useQuery({
     queryKey: ["equipes", "diretor-2"],
     queryFn: async () => {
@@ -65,6 +71,9 @@ export function DiretorDuploCard({ diretores, nomeDe }: {
                 Gerente {nomeDe(t.manager_id) ?? "—"} · Diretor {nomeDe(t.director_id) ?? "—"}
               </p>
             </div>
+            <Button size="sm" variant="outline" className="h-8 gap-1" onClick={() => setCorretoresDe({ id: t.id, name: t.name })}>
+              <Users className="h-3.5 w-3.5" /> Corretores
+            </Button>
             <Select
               value={t.co_director_id ?? SEM}
               disabled={salvando === t.id || !t.director_id}
@@ -83,6 +92,87 @@ export function DiretorDuploCard({ diretores, nomeDe }: {
           </div>
         ))}
       </CardContent>
+      {corretoresDe && (
+        <CorretoresDaEquipe equipe={corretoresDe} onClose={() => setCorretoresDe(null)} onSalvo={() => void qc.invalidateQueries()} />
+      )}
     </Card>
+  );
+}
+
+/**
+ * Quem entra NESTA equipe. A ficha e o vínculo em massa escolhem a equipe pelo
+ * gerente, e gerente com duas equipes (Victor) não tem como dizer qual — aqui a
+ * equipe é explícita. Só inclui: quem sai vai para outra equipe pela mesma via.
+ */
+function CorretoresDaEquipe({ equipe, onClose, onSalvo }: {
+  equipe: { id: string; name: string };
+  onClose: () => void;
+  onSalvo: () => void;
+}) {
+  const pessoas = useQuery({ queryKey: ["equipes", "corretores-ativos"], queryFn: listPeople });
+  const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  const [gravando, setGravando] = useState(false);
+  const corretores = (pessoas.data ?? []).filter((p: PersonRecord) => p.active && p.roles.includes("broker"));
+  const membros = new Set(corretores.filter((p) => p.team_id === equipe.id).map((p) => p.id));
+
+  async function aplicar() {
+    setGravando(true);
+    let feitos = 0;
+    try {
+      for (const id of marcados) {
+        if (membros.has(id)) continue;
+        await moveTeamMember(id, equipe.id);
+        feitos++;
+      }
+      toast.success(`${feitos} corretor(es) agora em ${equipe.name}`, {
+        description: "As vendas novas deles já saem com os diretores desta equipe.",
+      });
+      onSalvo();
+      onClose();
+    } catch (e) {
+      toast.error(`Parou depois de ${feitos} corretor(es)`, { description: describeError(e, "Tente de novo.") });
+      onSalvo();
+    } finally {
+      setGravando(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Corretores da equipe {equipe.name}</DialogTitle>
+          <DialogDescription>
+            Marque quem passa para esta equipe. Quem já está nela aparece marcado; para tirar alguém, mova para a outra equipe.
+          </DialogDescription>
+        </DialogHeader>
+        {pessoas.isPending && <LoadingState variant="list" rows={4} label="Carregando corretores…" />}
+        {pessoas.isError && <p className="text-xs text-destructive">{describeError(pessoas.error, "Não foi possível carregar os corretores.")}</p>}
+        <div className="space-y-1">
+          {corretores.map((p) => (
+            <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50">
+              <Checkbox
+                checked={membros.has(p.id) || marcados.has(p.id)}
+                disabled={membros.has(p.id) || gravando}
+                onCheckedChange={(v) => setMarcados((atual) => {
+                  const novo = new Set(atual);
+                  if (v === true) novo.add(p.id); else novo.delete(p.id);
+                  return novo;
+                })}
+              />
+              <span className="flex-1 truncate">{p.name}</span>
+              <span className="truncate text-xs text-muted-foreground">{membros.has(p.id) ? "nesta equipe" : p.team || "sem equipe"}</span>
+            </label>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button disabled={gravando || marcados.size === 0} onClick={() => void aplicar()} className="gap-1">
+            {gravando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Passar {marcados.size} para a equipe
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
