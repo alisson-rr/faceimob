@@ -60,6 +60,9 @@ export function StatusKanban({
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const { isAdmin, roles } = useAuth();
+  // Mesma regra da lista do Pipeline (12/10/2026): o Status 2 pelo quadro é de
+  // diretor, administrador e sócio; os demais movem pela aba Negócio do card.
+  const podeMoverStatus2 = isAdmin || roles.includes("director");
 
   const colunas = useMemo<Coluna[]>(() => {
     const doCadastro = ordemDeEvolucao(catalog.statuses.filter((status) =>
@@ -115,6 +118,7 @@ export function StatusKanban({
   /** A recusa da matriz para este destino, ou `null`. Voltar à análise (envio
    *  ao gerente) só confere a saída: quem pode enviar, o banco diz no envio. */
   const blockedMove = useCallback((deal: LegacyDealRecord, destino: PipelineStage) => {
+    if (!podeMoverStatus2) return "Só diretor, administrador e sócio movem o Status 2 pelo quadro. Use a aba Negócio do card.";
     const status = statusPorColuna.get(destino.id);
     if (!status) return "Esta coluna não é um Status 2 do cadastro.";
     if (statusKey(deal.status) === statusKey(status.value)) return "O negócio já está neste status.";
@@ -122,7 +126,7 @@ export function StatusKanban({
       return podeSair(deal) ? null : `Seu perfil não tira o negócio de "${statusAtual(deal)?.label ?? deal.status}".`;
     }
     return statusMoveBlock(catalog, deal.status, status.value, { isAdmin, roles });
-  }, [catalog, statusPorColuna, isAdmin, roles, podeSair, statusAtual]);
+  }, [catalog, statusPorColuna, isAdmin, roles, podeSair, statusAtual, podeMoverStatus2]);
 
   const mover = useCallback((deal: LegacyDealRecord, destino: PipelineStage) => {
     const status = statusPorColuna.get(destino.id);
@@ -208,7 +212,7 @@ export function StatusKanban({
                     onOpen={onOpen}
                     onMove={mover}
                     lock={dealLock(deal, { canWrite, isAdmin, closedMonths })}
-                    canExit={podeSair(deal)}
+                    canExit={podeMoverStatus2 && podeSair(deal)}
                     blockedMove={blockedMove}
                     onBlockedMove={setAnnouncement}
                     previousStage={colunas[index - 1]?.status ? colunas[index - 1].stage : undefined}
