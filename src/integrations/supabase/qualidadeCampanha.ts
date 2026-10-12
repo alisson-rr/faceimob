@@ -46,9 +46,11 @@ export async function listQualidadePorCampanha(dias: number): Promise<QualidadeC
 export const percentual = (parte: number, total: number): number | null =>
   total > 0 ? Math.round((parte / total) * 100) : null;
 
-/** Campanha cujos leads vêm com mais de um nome ou formulário: atribuição a conferir. */
-export const atribuicaoSuspeita = (c: Pick<QualidadeCampanha, "nomes_distintos" | "formularios">): boolean =>
-  c.nomes_distintos > 1 || c.formularios > 1;
+/**
+ * Campanha cujos leads vêm de mais de um formulário: atribuição a conferir.
+ * Nome diferente com o mesmo formulário é só campanha renomeada na Meta, não erro.
+ */
+export const atribuicaoSuspeita = (c: Pick<QualidadeCampanha, "formularios">): boolean => c.formularios > 1;
 
 /** O CRM recebeu menos da metade do que a Meta contou: o CPL do CRM sai inflado. */
 export const crmRecebeuPouco = (c: Pick<QualidadeCampanha, "leads" | "resultados_meta">): boolean =>

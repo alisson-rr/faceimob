@@ -7,10 +7,9 @@ describe("qualidade por campanha", () => {
     expect(percentual(0, 0)).toBeNull();
   });
 
-  it("marca atribuição suspeita só com mais de um nome ou formulário", () => {
-    expect(atribuicaoSuspeita({ nomes_distintos: 1, formularios: 1 })).toBe(false);
-    expect(atribuicaoSuspeita({ nomes_distintos: 2, formularios: 1 })).toBe(true);
-    expect(atribuicaoSuspeita({ nomes_distintos: 1, formularios: 3 })).toBe(true);
+  it("marca atribuição suspeita só com mais de um formulário; nome diferente é renomeação", () => {
+    expect(atribuicaoSuspeita({ formularios: 1 })).toBe(false);
+    expect(atribuicaoSuspeita({ formularios: 3 })).toBe(true);
   });
 
   it("avisa quando o CRM recebeu menos da metade dos resultados da Meta", () => {
