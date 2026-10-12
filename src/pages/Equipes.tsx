@@ -739,6 +739,8 @@ export default function Equipes() {
             {isAdmin && (
               <DiretorDuploCard
                 diretores={directors.filter(d => d.active !== false).map(d => ({ id: d.id, name: d.name }))}
+                gerentes={[...managers, ...directors].filter(d => d.active !== false).map(d => ({ id: d.id, name: d.name }))
+                  .sort((x, y) => x.name.localeCompare(y.name, "pt-BR"))}
                 nomeDe={nomeDe}
               />
             )}
