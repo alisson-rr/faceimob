@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EmptyState, LoadingState } from "@/components/shared";
 import { brl, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
-import { atribuicaoSuspeita, listQualidadePorCampanha, percentual } from "@/integrations/supabase/qualidadeCampanha";
+import { atribuicaoSuspeita, crmRecebeuPouco, listQualidadePorCampanha, percentual } from "@/integrations/supabase/qualidadeCampanha";
 
 const JANELAS = [7, 30, 90] as const;
 
@@ -36,6 +36,7 @@ export function QualidadePorCampanha() {
         <p className="max-w-2xl text-xs text-muted-foreground">
           Leads criados na janela e o que aconteceu com eles depois. Qualificado = o robô entregou ao grupo.
           Análise = entrou na esteira de crédito. Candidatos a corretor ficam de fora.
+          O CPL do CRM divide o gasto só pelos leads que chegaram ao CRM; se a Meta contou bem mais, o custo real é o da coluna "Meta contou".
         </p>
         <Select value={String(dias)} onValueChange={(v) => setDias(Number(v))}>
           <SelectTrigger className="h-8 w-40" aria-label="Janela"><SelectValue /></SelectTrigger>
@@ -60,8 +61,9 @@ export function QualidadePorCampanha() {
               <TableRow>
                 <TableHead>Campanha</TableHead>
                 <TableHead className="text-right">Gasto</TableHead>
-                <TableHead className="text-right">Leads</TableHead>
-                <TableHead className="text-right">CPL</TableHead>
+                <TableHead className="text-right">Leads no CRM</TableHead>
+                <TableHead className="text-right">CPL do CRM</TableHead>
+                <TableHead className="text-right">Meta contou</TableHead>
                 <TableHead className="text-right">Atendidos</TableHead>
                 <TableHead className="text-right">Qualificados</TableHead>
                 <TableHead className="text-right">Em análise</TableHead>
@@ -83,6 +85,11 @@ export function QualidadePorCampanha() {
                   <TableCell className="text-right tabular-nums">{brl(c.gasto)}</TableCell>
                   <TableCell className="text-right tabular-nums">{num(c.leads)}</TableCell>
                   <TableCell className="text-right tabular-nums">{brl(c.cpl)}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {num(c.resultados_meta)}
+                    {c.custo_resultado_meta !== null && <p className="text-xs text-muted-foreground">{brl(c.custo_resultado_meta)} cada</p>}
+                    {crmRecebeuPouco(c) && <p className="text-xs text-warning">o CRM recebeu só {num(c.leads)}</p>}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{num(c.atendidos)} <span className="text-xs text-muted-foreground">{pct(c.atendidos, c.leads)}</span></TableCell>
                   <TableCell className="text-right tabular-nums">
                     {num(c.qualificados)} <span className="text-xs text-muted-foreground">{pct(c.qualificados, c.leads)}</span>

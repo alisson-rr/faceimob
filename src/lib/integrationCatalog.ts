@@ -183,6 +183,15 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     ondePegar: { passos: "Configurações do negócio › Usuários do sistema › dar ao usuário acesso às contas de anúncios e gerar token com ads_read e ads_management.", link: { url: "https://business.facebook.com/settings/system-users", rotulo: "Abrir usuários do sistema da Meta" } },
   },
   {
+    provider: "relatorio",
+    label: "api_token",
+    title: "Relatório do Telegram — token da ponte",
+    envName: "RELATORIO_API_TOKEN",
+    usedBy: "relatorio-qualidade-campanhas",
+    help: "Deixa o Assistente DG ler a qualidade por campanha (só contagens, sem dados de lead).",
+    ondePegar: { passos: "Não vem de um site: crie uma senha longa, cole aqui e use a MESMA como Bearer na chamada da ponte, documentada em docs/integracoes/relatorio-qualidade-campanhas.md." },
+  },
+  {
     provider: "voice_ai",
     label: "webhook_secret",
     title: "IA de voz — segredo do webhook",

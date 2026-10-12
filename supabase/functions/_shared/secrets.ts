@@ -43,6 +43,9 @@ export const SECRET_SLOTS = {
   // Lead Ads; este lê gasto e resultados das contas e pausa ou muda verba.
   META_MARKETING_ACCESS_TOKEN: { provider: "meta", label: "marketing_access_token" },
   VOICE_AI_WEBHOOK_SECRET: { provider: "voice_ai", label: "webhook_secret" },
+  // Token só da ponte do relatório do Telegram (`relatorio-qualidade-campanhas`):
+  // dá acesso de LEITURA às contagens por campanha, nunca à service role.
+  RELATORIO_API_TOKEN: { provider: "relatorio", label: "api_token" },
   BREVO_API_KEY: { provider: "brevo", label: "api_key" },
   BREVO_SENDER_EMAIL: { provider: "brevo", label: "sender_email" },
   // Não é credencial de terceiro: é a chave que o pg_cron manda no header ao

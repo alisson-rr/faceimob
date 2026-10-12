@@ -53,3 +53,8 @@ verify_jwt = false
 # Autentica pela assinatura X-Hub-Signature-256 da Meta, não por JWT.
 [functions.whatsapp-inbound-webhook]
 verify_jwt = false
+
+# Ponte do relatório do Telegram: autentica com o token do cofre
+# (relatorio/api_token) no header, não com JWT do Supabase.
+[functions.relatorio-qualidade-campanhas]
+verify_jwt = false
