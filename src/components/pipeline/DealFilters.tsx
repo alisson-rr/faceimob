@@ -113,7 +113,7 @@ export function DealFilters({
           <Status2Multi
             id={field("status2")}
             valores={filters.status2}
-            opcoes={catalog.statuses.map((option) => ({ value: option.value, label: option.label, active: option.active }))}
+            opcoes={catalog.statuses.filter((option) => option.active).map((option) => ({ value: option.value, label: option.label, active: option.active }))}
             onChange={(status2) => onChange({ status2 })}
           />
         </div>

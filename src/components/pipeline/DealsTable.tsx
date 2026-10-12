@@ -20,6 +20,7 @@ import { dealLock } from "./guards";
 import { offDistratoBlocked } from "./useDealActions";
 import { dealBrokers, dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
 import { CCA_FILA_ROTULO, type CcaQueueSpot } from "@/integrations/supabase/cca";
+import { diasNoStatus } from "./dias";
 
 const PER_PAGE = 15;
 
@@ -116,12 +117,13 @@ export function DealsTable({
   /** Cabeçalho que ordena. Função, e não componente local: `<Comp/>` declarado
    *  dentro do render tem identidade nova a cada estado e o React remonta a
    *  célula — o botão perderia o foco no clique que acabou de ordenar. */
-  const colunaOrdenavel = (label: string, key: Exclude<DealSortKey, "padrao">, align = "text-left") => {
+  const colunaOrdenavel = (label: string, key: Exclude<DealSortKey, "padrao">, align = "text-left", dica?: string) => {
     const ativa = sort.key === key;
     const Icone = ativa ? (sort.asc ? ArrowUp : ArrowDown) : ArrowUpDown;
     return (
       <th
         scope="col"
+        title={dica}
         className={`p-2 font-medium ${align}`}
         aria-sort={ativa ? (sort.asc ? "ascending" : "descending") : "none"}
       >
@@ -163,7 +165,7 @@ export function DealsTable({
               {colunaOrdenavel("Construtora", "developer")}
               <th scope="col" className="p-2 text-left font-medium">Empreendimento</th>
               <th scope="col" className="p-2 font-medium">Unidade</th>
-              {colunaOrdenavel("Dias", "days", "text-center")}
+              {colunaOrdenavel("Dias", "days", "text-center", "Dias desde a última mudança do Status 2")}
               <th scope="col" className="p-2 text-left font-medium">Status 1</th>
               <th scope="col" className="p-2 text-left font-medium">Status 2</th>
               <th scope="col" className="p-2 text-left font-medium">Conferência</th>
@@ -228,7 +230,7 @@ export function DealsTable({
                 >
                   <td className="relative w-3 p-0">
                     <span
-                      className={cn("absolute bottom-0 left-0 top-0 w-1.5", AGE_STRIPE[dealAgeTone(deal.days_in_pipeline)])}
+                      className={cn("absolute bottom-0 left-0 top-0 w-1.5", AGE_STRIPE[dealAgeTone(diasNoStatus(deal))])}
                       aria-hidden
                     />
                   </td>
@@ -261,10 +263,10 @@ export function DealsTable({
                     <span
                       className={cn(
                         "rounded px-1.5 py-0.5 font-bold tabular-nums",
-                        STATUS_TONE_CLASS[dealAgeTone(deal.days_in_pipeline)],
+                        STATUS_TONE_CLASS[dealAgeTone(diasNoStatus(deal))],
                       )}
                     >
-                      {deal.days_in_pipeline}
+                      {diasNoStatus(deal)}
                     </span>
                   </td>
                   {/* Status 1 é leitura aqui: ele acompanha o Status 2 ao lado, e

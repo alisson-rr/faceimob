@@ -127,6 +127,8 @@ export interface PipelineDeal {
   vgv_liquido?: number;
   deal_value: number;
   days_in_pipeline: number;
+  /** Dias desde a última troca do Status 2 (12/10/2026); sem ela, vale a idade do negócio. */
+  days_in_status?: number;
   active: boolean;
   created_at: string;
   notes?: string;

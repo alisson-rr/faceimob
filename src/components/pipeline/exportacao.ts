@@ -2,6 +2,7 @@ import { date as formatDate } from "@/lib/format";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import type { SheetData } from "write-excel-file/browser";
+import { diasNoStatus } from "./dias";
 import { dealMonth } from "./filters";
 import { statusGroupLabel, statusLabel } from "./statuses";
 
@@ -29,7 +30,7 @@ const COLUNAS = [
   { titulo: "Status 1", largura: 14 },
   { titulo: "Status 2", largura: 18 },
   { titulo: "VGV", largura: 14 },
-  { titulo: "Dias", largura: 8 },
+  { titulo: "Dias no status", largura: 14 },
   { titulo: "Corretor 1", largura: 22 },
   { titulo: "% Corretor 1", largura: 12 },
   { titulo: "VGV Corretor 1", largura: 16 },
@@ -88,7 +89,7 @@ export function linhasDeNegocios(deals: LegacyDealRecord[], catalog: DealStatusC
     // são o mesmo status. O valor gravado em `status_detail` não muda.
     texto(statusLabel(catalog, deal.status)),
     dinheiro(deal.deal_value),
-    numero(deal.days_in_pipeline),
+    numero(diasNoStatus(deal)),
     texto(deal.broker1),
     numero(deal.broker1_share),
     dinheiro(shareValue(deal.deal_value, deal.broker1_share)),
