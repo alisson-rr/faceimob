@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Crown, Loader2, Users } from "lucide-react";
+import { Crown, Loader2, Plus, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { listCoDiretores, salvarCoDiretor } from "@/integrations/supabase/coDiretores";
 import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
@@ -13,6 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState } from "@/components/shared";
 import { dbError, describeError } from "@/lib/supabaseError";
+import { slugify } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const SEM = "__sem__";
 
@@ -20,13 +23,15 @@ const SEM = "__sem__";
  * Diretor 2 por equipe (0266), só para admin e sócio. A equipe com Diretor 2
  * aparece na hierarquia dos dois diretores, e venda, VGV e meta dividem 50/50.
  */
-export function DiretorDuploCard({ diretores, nomeDe }: {
+export function DiretorDuploCard({ diretores, gerentes, nomeDe }: {
   diretores: { id: string; name: string }[];
+  gerentes: { id: string; name: string }[];
   nomeDe: (id: string | null | undefined) => string | null;
 }) {
   const qc = useQueryClient();
   const [salvando, setSalvando] = useState<string | null>(null);
   const [corretoresDe, setCorretoresDe] = useState<{ id: string; name: string } | null>(null);
+  const [criando, setCriando] = useState(false);
   const equipes = useQuery({
     queryKey: ["equipes", "diretor-2"],
     queryFn: async () => {
@@ -55,9 +60,14 @@ export function DiretorDuploCard({ diretores, nomeDe }: {
   return (
     <Card className="border-info/30">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm"><Crown className="h-4 w-4" /> Equipes com dois diretores</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm"><Crown className="h-4 w-4" /> Equipes e diretores</CardTitle>
+          <Button size="sm" className="h-8 gap-1" onClick={() => setCriando(true)}><Plus className="h-3.5 w-3.5" /> Nova equipe</Button>
+        </div>
         <p className="text-xs text-muted-foreground">
-          Com Diretor 2, a equipe aparece na hierarquia dos dois e cada um leva meia venda, metade do VGV e metade da meta.
+          Crie equipes, escolha os corretores de cada uma e, se for o caso, o Diretor 2: com ele, a equipe aparece na
+          hierarquia dos dois e cada um leva meia venda, metade do VGV e metade da meta das vendas feitas depois que o
+          corretor entrou na equipe.
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -92,6 +102,14 @@ export function DiretorDuploCard({ diretores, nomeDe }: {
           </div>
         ))}
       </CardContent>
+      {criando && (
+        <NovaEquipe
+          diretores={diretores}
+          gerentes={gerentes}
+          onClose={() => setCriando(false)}
+          onCriada={(equipe) => { setCriando(false); void qc.invalidateQueries(); setCorretoresDe(equipe); }}
+        />
+      )}
       {corretoresDe && (
         <CorretoresDaEquipe equipe={corretoresDe} onClose={() => setCorretoresDe(null)} onSalvo={() => void qc.invalidateQueries()} />
       )}
@@ -170,6 +188,96 @@ function CorretoresDaEquipe({ equipe, onClose, onSalvo }: {
           <Button disabled={gravando || marcados.size === 0} onClick={() => void aplicar()} className="gap-1">
             {gravando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Passar {marcados.size} para a equipe
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Nova equipe direto em Equipes (12/10/2026): nome, diretor, Diretor 2 e
+ * gerente. Ao criar, abre a escolha dos corretores dela. Diretor obrigatório,
+ * como em "Diário — Links": sem ele a equipe não entra em nenhuma diretoria.
+ */
+function NovaEquipe({ diretores, gerentes, onClose, onCriada }: {
+  diretores: { id: string; name: string }[];
+  gerentes: { id: string; name: string }[];
+  onClose: () => void;
+  onCriada: (equipe: { id: string; name: string }) => void;
+}) {
+  const [nome, setNome] = useState("");
+  const [diretor, setDiretor] = useState("");
+  const [diretor2, setDiretor2] = useState(SEM);
+  const [gerente, setGerente] = useState(SEM);
+  const [gravando, setGravando] = useState(false);
+
+  async function criar() {
+    const limpo = nome.trim();
+    if (!limpo) return toast.error("Informe o nome da equipe.");
+    if (!diretor) return toast.error("Escolha o diretor: sem ele a equipe não entra em nenhuma diretoria.");
+    setGravando(true);
+    try {
+      const { data, error } = await supabase.from("teams")
+        .insert({ name: limpo, slug: slugify(limpo), director_id: diretor, manager_id: gerente === SEM ? null : gerente })
+        .select("id").single();
+      if (error) throw dbError("teams", error);
+      if (diretor2 !== SEM) await salvarCoDiretor(data.id, diretor2);
+      toast.success(`Equipe ${limpo} criada`, { description: "Agora marque os corretores dela." });
+      onCriada({ id: data.id, name: limpo });
+    } catch (e) {
+      toast.error("Não foi possível criar a equipe", { description: describeError(e, "Tente de novo.") });
+    } finally {
+      setGravando(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Nova equipe</DialogTitle>
+          <DialogDescription>Depois de criar, você escolhe os corretores que passam para ela.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="nova-equipe-nome">Nome da equipe</Label>
+            <Input id="nova-equipe-nome" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Equipe Victor Sul" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="nova-equipe-gerente">Gerente</Label>
+            <Select value={gerente} onValueChange={setGerente}>
+              <SelectTrigger id="nova-equipe-gerente"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SEM}>Sem gerente</SelectItem>
+                {gerentes.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="nova-equipe-diretor">Diretor</Label>
+            <Select value={diretor} onValueChange={(v) => { setDiretor(v); if (v === diretor2) setDiretor2(SEM); }}>
+              <SelectTrigger id="nova-equipe-diretor"><SelectValue placeholder="Escolha o diretor" /></SelectTrigger>
+              <SelectContent>
+                {diretores.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="nova-equipe-diretor2">Diretor 2 (divide 50/50)</Label>
+            <Select value={diretor2} onValueChange={setDiretor2}>
+              <SelectTrigger id="nova-equipe-diretor2"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SEM}>Sem Diretor 2</SelectItem>
+                {diretores.filter((d) => d.id !== diretor).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button disabled={gravando} onClick={() => void criar()} className="gap-1">
+            {gravando && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Criar equipe
           </Button>
         </DialogFooter>
       </DialogContent>
