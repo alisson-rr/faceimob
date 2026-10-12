@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "../_shared/secrets.ts";
 import { checkMetaSignature, downloadWhatsAppMedia, normalizePhone, sendWhatsAppText } from "../_shared/meta.ts";
 import { META_GRAPH } from "../_shared/metaGraph.ts";
-import { transcreverAudio } from "../_shared/openai.ts";
+import { descreverMidia, transcreverAudio } from "../_shared/openai.ts";
 import { DuplicateMessageError, runSdrAgentTurn } from "../_shared/sdrAgent.ts";
 import {
   AUDIO_NAO_TRANSCRITO,
@@ -13,13 +13,17 @@ import {
   decidirRota,
   type InboundMessage,
   inicioDoDiaEmSaoPaulo,
+  type LeituraDeMidia,
   nomeDoAudio,
   parseMessages,
   passouDoTetoDeAudios,
+  passouDoTetoDeMidias,
   planejar,
   RESERVA,
   RESERVA_RETOMADA,
   RESERVA_VENCE_MIN,
+  TETO_IMAGEM_BYTES,
+  TETO_PDF_BYTES,
 } from "./parse.ts";
 
 /**
@@ -489,6 +493,28 @@ Deno.serve(async (req) => {
     };
 
     /**
+     * Lê a foto ou o PDF do lead (12/10/2026) para o robô. Sem reserva, ao
+     * contrário do áudio: se a function morrer no meio, a Meta reenvia e a
+     * leitura recomeça (a réplica já gravada é barrada antes, por `jaNaConversa`).
+     * O teto diário conta as mídias do telefone já registradas hoje. Todo erro
+     * daqui vira marcador na conversa e aviso ao SDR, nunca fala inventada.
+     */
+    const lerMidia = async (msg: InboundMessage, phone: string, leitura: LeituraDeMidia): Promise<string> => {
+      if (!msg.mediaId) throw new Error("a Meta não mandou o id da mídia");
+      const { count, error } = await supabase
+        .from("whatsapp_inbound_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("from_phone", phone)
+        .in("media_type", ["imagem", "documento"])
+        .not("conversation_id", "is", null)
+        .gte("created_at", inicioDoDiaEmSaoPaulo(new Date()));
+      if (error) throw new Error(`não consegui conferir o limite diário de fotos e PDFs: ${error.message}`);
+      if (passouDoTetoDeMidias(count ?? 0)) throw new Error("limite diário de fotos e PDFs lidos por telefone atingido");
+      const { blob } = await downloadWhatsAppMedia(msg.mediaId, leitura === "pdf" ? TETO_PDF_BYTES : TETO_IMAGEM_BYTES);
+      return await descreverMidia(blob, leitura, leitura === "pdf" ? "documento.pdf" : "imagem");
+    };
+
+    /**
      * Condicional no status de origem: se alguém mexeu na conversa no meio,
      * nada muda. Sem sessão, o gatilho da 0120 deixa a conversa humana SEM dono
      * — é o que manda o aviso ao SDR inteiro e não prende o lead na roleta.
@@ -646,7 +672,14 @@ Deno.serve(async (req) => {
         extra.reservada = true;
       }
 
-      const plano = await planejar(msg, alvo.robo ? "robo" : rota, () => lerAudio(msg, phone, chegada));
+      // Foto e PDF: a réplica da Meta não paga a leitura duas vezes.
+      const midiaLida = msg.tipo === "imagem" || msg.tipo === "documento";
+      if (midiaLida && await jaNaConversa(msg.id)) return;
+
+      const plano = await planejar(
+        msg, alvo.robo ? "robo" : rota, () => lerAudio(msg, phone, chegada),
+        (leitura) => lerMidia(msg, phone, leitura),
+      );
 
       if (plano.acao === "anexar") {
         if (!(await gravarNaConversa(msg, phone, extra, [linhaDoLead(msg, alvo.id, plano.corpo)]))) return;
@@ -678,7 +711,7 @@ Deno.serve(async (req) => {
           conversationId: alvo.id,
           message: plano.texto,
           providerMessageId: msg.id,
-          leadMessageExtra: msg.tipo === "audio" ? { media_type: "audio", media_id: msg.mediaId } : undefined,
+          leadMessageExtra: msg.tipo === "audio" || midiaLida ? { media_type: msg.tipo, media_id: msg.mediaId } : undefined,
         });
 
         // Um balão por parágrafo, em ordem: o seguinte só sai depois do anterior.
@@ -728,7 +761,7 @@ Deno.serve(async (req) => {
         // O áudio não é reprocessado (a reserva barra a reentrega): a
         // transcrição, já paga, fica na conversa para o SDR ler o que o lead
         // disse. O texto segue como sempre — só no registro, com o motivo.
-        if (msg.tipo === "audio" && !(await gravarNaConversa(msg, phone, extra, [linhaDoLead(msg, alvo.id, plano.texto)]))) {
+        if ((msg.tipo === "audio" || midiaLida) && !(await gravarNaConversa(msg, phone, extra, [linhaDoLead(msg, alvo.id, plano.texto)]))) {
           return;
         }
         await registrar(msg, phone, "agent_error", { ...extra, body: plano.texto, detail: motivo });

@@ -30,6 +30,8 @@ export type InboundMessage = {
   tipo: TipoMensagem;
   mediaId: string | null;
   mimeType: string | null;
+  /** Legenda que o lead escreveu junto da imagem ou do documento. */
+  legenda?: string;
   /** Nome do perfil do WhatsApp (`contacts[].profile.name`), quando a Meta manda. */
   nome?: string | null;
   anuncio?: AnuncioWhatsapp | null;
@@ -111,6 +113,7 @@ export function parseMessages(body: unknown): InboundMessage[] {
         const tipo = MIDIA.get(tipoMeta);
         if (!tipo) continue;
         const midia = registro(m[tipoMeta]);
+        const legenda = texto(midia.caption).trim();
         out.push({
           from,
           id,
@@ -118,6 +121,7 @@ export function parseMessages(body: unknown): InboundMessage[] {
           tipo,
           mediaId: texto(midia.id) || null,
           mimeType: texto(midia.mime_type) || null,
+          ...(legenda ? { legenda } : {}),
           ...extra,
         });
       }
@@ -144,6 +148,41 @@ const CORPO_DA_MIDIA: Record<Exclude<TipoMensagem, "texto">, string> = {
 
 export const corpoDaMensagem = (m: Pick<InboundMessage, "tipo" | "text">): string =>
   m.tipo === "texto" ? m.text : CORPO_DA_MIDIA[m.tipo];
+
+/** Imagem que o robô lê (a Cloud API entrega jpeg e png; webp e gif também passam). */
+const IMAGENS_LEGIVEIS = /^image\/(jpeg|jpg|png|webp|gif)$/i;
+
+export type LeituraDeMidia = "imagem" | "pdf";
+
+/**
+ * O que o robô sabe ler: foto e PDF. Vídeo, planilha, Word, figurinha e
+ * localização ficam como marcador (e o sino chama o SDR). Sem o mime type a
+ * imagem passa, porque `image` da Meta já diz o tipo; documento só com PDF.
+ */
+export function leituraDaMidia(tipo: TipoMensagem, mimeType: string | null): LeituraDeMidia | null {
+  if (tipo === "imagem") return !mimeType || IMAGENS_LEGIVEIS.test(mimeType) ? "imagem" : null;
+  if (tipo === "documento") return /^application\/pdf$/i.test(mimeType ?? "") ? "pdf" : null;
+  return null;
+}
+
+/** Tetos por arquivo: o custo é por token de imagem/página, e o base64 cresce 1/3. */
+export const TETO_IMAGEM_BYTES = 5 * 1_048_576;
+export const TETO_PDF_BYTES = 8 * 1_048_576;
+/** Teto de fotos e PDFs lidos por telefone por dia: custo de IA previsível. */
+export const MIDIAS_POR_TELEFONE_DIA = 10;
+export const passouDoTetoDeMidias = (jaLidas: number): boolean => jaLidas >= MIDIAS_POR_TELEFONE_DIA;
+
+/**
+ * O que o robô recebe no lugar do arquivo: a leitura automática, entre
+ * colchetes e dita como leitura — o conteúdo é do cliente e nunca é instrução.
+ */
+export function textoDaMidia(leitura: LeituraDeMidia, descricao: string, legenda?: string): string {
+  const rotulo = leitura === "pdf" ? "PDF" : "foto";
+  // Colchete dentro da leitura viraria tag de controle (`[QUALIFICADO]`) escrita pelo cliente.
+  const lida = descricao.trim().slice(0, 1_500).replace(/\[/g, "(").replace(/\]/g, ")");
+  return `[O lead enviou ${leitura === "pdf" ? "um" : "uma"} ${rotulo}. Leitura automática: ${lida}]` +
+    (legenda ? `\nLegenda do lead: ${legenda}` : "");
+}
 
 export type Rota = "robo" | "remarketing" | "humano" | "reabrir" | "anuncio" | "sem_destino";
 
@@ -192,12 +231,20 @@ export type Plano =
  * humano" — nunca um turno com texto vazio ou inventado.
  */
 export async function planejar(
-  msg: Pick<InboundMessage, "tipo" | "text">,
+  msg: Pick<InboundMessage, "tipo" | "text"> & Partial<Pick<InboundMessage, "mimeType" | "legenda">>,
   rota: Exclude<Rota, "sem_destino">,
   lerAudio: () => Promise<string>,
+  /** Lê foto ou PDF e devolve a descrição; só é chamada quando o robô fala. */
+  lerMidia?: (leitura: LeituraDeMidia) => Promise<string>,
 ): Promise<Plano> {
   const robo = rota === "robo" || rota === "remarketing";
   const reabre = rota === "reabrir" ? "resolved" as const : null;
+
+  // Mídia que o robô não lê (ou não pôde ler): fica o marcador na conversa, e o
+  // `agent_error` faz o sino chamar o SDR.
+  const semLeitura = (detalhe: string): Plano => robo
+    ? { acao: "anexar", corpo: corpoDaMensagem(msg), desfecho: "agent_error", detalhe, humanoDe: null }
+    : { acao: "anexar", corpo: corpoDaMensagem(msg), desfecho: "human_turn", detalhe: null, humanoDe: reabre };
 
   let fala = msg.text;
   if (msg.tipo === "audio") {
@@ -211,11 +258,13 @@ export async function planejar(
       };
     }
   } else if (msg.tipo !== "texto") {
-    // O robô não lê imagem, vídeo nem documento: fica o marcador na conversa,
-    // e o `agent_error` faz o sino chamar o SDR.
-    return robo
-      ? { acao: "anexar", corpo: corpoDaMensagem(msg), desfecho: "agent_error", detalhe: `mídia não suportada: ${msg.tipo}`, humanoDe: null }
-      : { acao: "anexar", corpo: corpoDaMensagem(msg), desfecho: "human_turn", detalhe: null, humanoDe: reabre };
+    const leitura = leituraDaMidia(msg.tipo, msg.mimeType ?? null);
+    if (!robo || !leitura || !lerMidia) return semLeitura(`mídia não suportada: ${msg.tipo}`);
+    try {
+      fala = textoDaMidia(leitura, await lerMidia(leitura), msg.legenda);
+    } catch (e) {
+      return semLeitura(`mídia não lida: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   return robo
