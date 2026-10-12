@@ -16,6 +16,7 @@ import {
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
 import { addDealComment } from "@/components/pipeline/DealCommentsPanel";
+import { marcarOff } from "@/integrations/supabase/dealStatuses";
 import { MovimentoDoNegocio } from "@/components/pipeline/MovimentoDoNegocio";
 import { ConferenciaGerenteDialog } from "@/components/pipeline/ConferenciaGerenteDialog";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
@@ -371,23 +372,19 @@ export default function DealDetailModal({
     setVisitadas((atual) => new Set([...atual, "anexos"]));
   };
 
-  /** OFF do Cadastro: grava o Status 2 e o motivo como comentário. */
+  /** OFF: o banco grava o Status 2 e o motivo como comentário, juntos (`marcar_off`). */
   const aplicarOff = async (motivo: string, valorOff: string): Promise<boolean> => {
     if (!dealId) return false;
-    const gravado = await handleSave({ fechar: false, avisar: false, alterar: { status: valorOff, status_group_id: undefined } });
-    if (!gravado) return false;
-    patch({ status: valorOff, status_group_id: undefined });
     try {
-      await addDealComment(dealId, `OFF: ${motivo}`);
-      setVersaoComentarios((v) => v + 1);
-      toast({ variant: "success", title: "Negócio em OFF", description: "O motivo ficou nos comentários." });
+      await marcarOff(dealId, motivo);
     } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "OFF gravado, mas o motivo não foi salvo",
-        description: `${describeError(err, "O comentário não foi gravado.")} Escreva o motivo nos comentários do Cadastro.`,
-      });
+      toast({ variant: "destructive", title: "Não foi possível marcar OFF", description: describeError(err, "Tente de novo.") });
+      return false;
     }
+    patch({ status: valorOff, status_group_id: undefined });
+    setVersaoComentarios((v) => v + 1);
+    toast({ variant: "success", title: "Negócio em OFF", description: "O motivo ficou nos comentários." });
+    await dossieMudou();
     return true;
   };
 
