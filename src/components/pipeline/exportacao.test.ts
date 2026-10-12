@@ -62,7 +62,7 @@ describe("planilha do pipeline · rateio", () => {
       valor: 300_000,
       tipo: "dinheiro",
     });
-    expect(linha[coluna("Dias")]).toEqual({ valor: 4, tipo: "numero" });
+    expect(linha[coluna("Dias no status")]).toEqual({ valor: 4, tipo: "numero" });
     // O código do negócio continua TEXTO: "N-1" e códigos com zero à esquerda
     // viram outra coisa se o Excel resolver interpretá-los.
     expect(linha[coluna("Código")].tipo).toBe("texto");

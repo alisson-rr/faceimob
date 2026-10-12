@@ -660,6 +660,9 @@ export async function listLegacyDeals(
       vgv_liquido: Number(deal.vgv_net || 0),
       deal_value: Number(deal.vgv_net || 0),
       days_in_pipeline: differenceInDays(new Date(), parseISO(createdAt)),
+      days_in_status: differenceInDays(new Date(), parseISO(
+        (deal as DealRow & { status_detail_changed_at?: string | null }).status_detail_changed_at || createdAt,
+      )),
       active: !["lost", "cancelled"].includes(deal.outcome),
       created_at: createdAt,
       notes: deal.notes || undefined,

@@ -9,6 +9,7 @@
 import { dirigidoPor } from "@/lib/diretoria";
 import { newestFirst, type LegacyDealRecord, type PersonRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
+import { diasNoStatus } from "./dias";
 import { faceimobStatusRank } from "./statuses";
 import { contaComoVenda } from "@/lib/dealStatus";
 
@@ -272,7 +273,7 @@ const SORT_VALUE: Record<Exclude<DealSortKey, "padrao">, (deal: LegacyDealRecord
   client: (deal) => deal.client || "",
   developer: (deal) => deal.developer || "",
   vgv: (deal) => deal.deal_value || 0,
-  days: (deal) => deal.days_in_pipeline || 0,
+  days: (deal) => diasNoStatus(deal) || 0,
   // "12/2025" ordena antes de "01/2026" só se virar AAAAMM — comparar o texto
   // "MM/AAAA" colocaria dezembro do ano passado depois de janeiro deste.
   month: (deal) => {

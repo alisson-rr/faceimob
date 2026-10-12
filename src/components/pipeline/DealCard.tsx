@@ -17,6 +17,7 @@ import { conferenciaDoNegocio } from "./review";
 import { comissaoPrevista } from "./comissao";
 import type { PipelineStage } from "./stages";
 import { CCA_FILA_ROTULO, type CcaQueueSpot } from "@/integrations/supabase/cca";
+import { diasNoStatus } from "./dias";
 
 interface Props {
   deal: LegacyDealRecord;
@@ -93,7 +94,7 @@ function DealCardBase({
 }: Props) {
   const review = conferenciaDoNegocio(deal.document_review_status, deal.status);
   const probability = calcDealProbability(deal);
-  const idade = dealAgeTone(deal.days_in_pipeline);
+  const idade = dealAgeTone(diasNoStatus(deal));
   const movable = !lock.locked && canExit;
   const mes = dealMonth(deal);
   const corretores = dealBrokers(deal);
@@ -274,7 +275,7 @@ function DealCardBase({
               {probability}%
             </span>
             <span className={cn("text-xs font-semibold tabular-nums", DEAL_AGE_CLASS[idade].text)}>
-              {deal.days_in_pipeline}d
+              {diasNoStatus(deal)}d
             </span>
           </div>
         </div>
