@@ -79,11 +79,11 @@ describe("StatusKanban", () => {
   });
 
   it("a matriz recusa o destino ANTES de gravar: o solte não vira escrita", async () => {
-    h.auth = { isAdmin: false, roles: ["broker"] };
+    h.auth = { isAdmin: false, roles: ["director"] };
     const pendente = catalogoDeTeste.statuses.find((status) => status.value === "16. PENDENTE")!;
-    // Corretor tira de PENDENTE, mas não coloca em VIROU NEGÓCIO (só a CCA).
+    // Diretor tira de PENDENTE, mas não coloca em VIROU NEGÓCIO (só a CCA).
     const catalog = buildDealStatusCatalog(catalogoDeTeste.groups, catalogoDeTeste.statuses, [
-      { status_id: pendente.id, role: "broker", can_enter: false, can_exit: true },
+      { status_id: pendente.id, role: "director", can_enter: false, can_exit: true },
     ]);
     const mover = vi.fn();
     const tela = await montar([deal("a", "16. PENDENTE", 1)], mover, catalog);
@@ -91,6 +91,22 @@ describe("StatusKanban", () => {
     expect(mover).not.toHaveBeenCalled();
     expect(tela.container.querySelector('[role="status"]')?.textContent)
       .toBe('Seu perfil não coloca o negócio em "VIROU NEGÓCIO".');
+    tela.sair();
+  });
+
+  it("corretor e gerente não movem o Status 2 pelo quadro, mesmo que a matriz deixe", async () => {
+    h.auth = { isAdmin: false, roles: ["broker", "manager"] };
+    const pendente = catalogoDeTeste.statuses.find((status) => status.value === "16. PENDENTE")!;
+    const virou = catalogoDeTeste.statuses.find((status) => status.value === "08. VIROU NEGÓCIO")!;
+    const catalog = buildDealStatusCatalog(catalogoDeTeste.groups, catalogoDeTeste.statuses, [
+      { status_id: pendente.id, role: "broker", can_enter: true, can_exit: true },
+      { status_id: virou.id, role: "broker", can_enter: true, can_exit: true },
+    ]);
+    const mover = vi.fn();
+    const tela = await montar([deal("a", "16. PENDENTE", 1)], mover, catalog);
+    // O cartão nem sai do lugar: sem permissão de mover, ele não é arrastável.
+    expect(tela.container.querySelector('[draggable="true"]')).toBeNull();
+    expect(mover).not.toHaveBeenCalled();
     tela.sair();
   });
 });

@@ -73,6 +73,9 @@ export function DealsTable({
   onReactivate, currentMonth,
 }: Props) {
   const { isAdmin, roles, can } = useAuth();
+  // Status 2 direto na lista: só diretor, administrador e sócio (12/10/2026).
+  // Os demais movem o negócio pela aba Negócio do card.
+  const podeMoverStatus2 = isAdmin || roles.includes("director");
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const [page, setPage] = useState(1);
   // A ordem era fixa (construtora, depois catálogo de Status 2): não dava para
@@ -281,11 +284,12 @@ export function DealsTable({
                         nunca teve esse caminho. */}
                     <Select
                       value={status}
-                      disabled={travado || !can("deals.edit_status_detail")}
+                      disabled={travado || !can("deals.edit_status_detail") || !podeMoverStatus2}
                       onValueChange={(value) => onStatusChange(deal, value)}
                     >
                       <SelectTrigger
                         aria-label={`Status 2 de ${deal.client}${motivo}`}
+                        title={podeMoverStatus2 ? undefined : "Só diretor, administrador e sócio mudam o Status 2 pela lista. Use a aba Negócio do card."}
                         className="h-7 min-w-[150px] gap-1 whitespace-nowrap rounded border-0 px-2 py-0 text-xs font-bold"
                         style={faceimobStatusStyle(catalog, status)}
                       >
