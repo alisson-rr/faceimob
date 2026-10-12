@@ -6,18 +6,16 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { bareStatus } from "@/lib/dealStatus";
-import { EMPTY_STATUS_CATALOG, statusMoveBlock, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
-import { offDistratoBlocked } from "./useDealActions";
+import { EMPTY_STATUS_CATALOG, useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 
 /** Menor motivo aceito: "ok" não explica por que o negócio saiu da esteira. */
 export const MIN_MOTIVO_OFF = 5;
 
 /**
- * OFF no Cadastro (10/10/2026), como no sistema anterior: o toggle abre o
- * motivo, obrigatório, e "Aplicar OFF" grava o Status 2 e o comentário juntos.
- * Quem pode é a mesma regra do Select de Status 2 (admin e sócio, ou de
- * REPROVADO quem edita o negócio, 0231). Sair do OFF é o "Reativar Proposta"
- * do card, que leva o negócio ao mês vigente.
+ * OFF, como no sistema anterior: o toggle abre o motivo, obrigatório, e
+ * "Aplicar OFF" grava o Status 2 e o comentário juntos (`marcar_off`, 0271).
+ * Quem pode: corretor, gerente, diretor, admin e sócio. Sair do OFF é o
+ * "Reativar Proposta" do card, que leva o negócio ao mês vigente.
  */
 export function DealOffToggle({
   status, isNew, readOnly, onAplicar,
@@ -37,10 +35,15 @@ export function DealOffToggle({
 
   const emOff = bareStatus(status) === "OFF";
   const opcaoOff = catalog.statuses.find((item) => bareStatus(item.value) === "OFF");
+  // OFF com motivo é de corretor, gerente, diretor, admin e sócio (12/10/2026,
+  // `marcar_off` da 0271); CCA e quem não tem papel de equipe não marcam.
+  const podeMarcar = isAdmin || can("deals.mark_off_distrato")
+    || roles.some((role) => role === "broker" || role === "manager" || role === "director");
   const bloqueio = !opcaoOff
     ? "OFF não está no cadastro de Status 2."
-    : offDistratoBlocked(can, opcaoOff.value, isNew ? null : status)
-      ?? (isNew ? null : statusMoveBlock(catalog, status, opcaoOff.value, { isAdmin, roles }));
+    : !can("deals.edit_status_detail")
+      ? "Seu perfil não pode alterar o Status 2."
+      : !podeMarcar ? "Seu perfil não marca OFF." : null;
 
   const aplicar = async () => {
     if (!opcaoOff) return;

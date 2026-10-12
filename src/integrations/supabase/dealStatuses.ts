@@ -283,3 +283,17 @@ export async function moveDealStatus(dealId: string, status: string, note?: stri
   });
   if (error) throw dbError("mover Status 2", error);
 }
+
+/*
+ * `marcar_off` nasceu na 0271, depois do último `supabase gen types`: a forma
+ * vem declarada aqui até a próxima geração do `types.ts`, que não se edita à mão.
+ */
+const rpcDeOff = supabase as unknown as {
+  rpc(nome: "marcar_off", args: { p_deal_id: string; p_motivo: string }): PromiseLike<{ error: { message?: string; code?: string } | null }>;
+};
+
+/** Marca OFF com o motivo (corretor, gerente, diretor, admin, sócio): Status 2 e comentário juntos. */
+export async function marcarOff(dealId: string, motivo: string) {
+  const { error } = await rpcDeOff.rpc("marcar_off", { p_deal_id: dealId, p_motivo: motivo.trim() });
+  if (error) throw dbError("marcar OFF", error);
+}
