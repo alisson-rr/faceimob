@@ -148,8 +148,9 @@ begin
       and (
         has_table_privilege('authenticated', c.oid, 'INSERT')
         -- `deal_status_history` (0216): só o gatilho de `deals` grava a troca do Status 2.
+        -- `deal_lead_links` (0269): só o gatilho de `deal_clients` liga o negócio ao lead.
         or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions', 'cca_cases', 'cca_move_emails',
-                         'deal_status_history',
+                         'deal_status_history', 'deal_lead_links',
                          'meta_ad_accounts', 'meta_sync_runs', 'meta_campaign_insights_daily',
                          'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts')
       )

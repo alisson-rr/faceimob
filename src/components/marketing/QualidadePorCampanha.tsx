@@ -78,7 +78,7 @@ export function QualidadePorCampanha() {
                     <p className="truncate font-medium">{c.campanha}</p>
                     {atribuicaoSuspeita(c) && (
                       <Badge variant="outline" className="mt-1 gap-1 border-warning/40 text-warning">
-                        <AlertTriangle className="h-3 w-3" /> conferir atribuição ({c.nomes_distintos} nomes · {c.formularios} formulários)
+                        <AlertTriangle className="h-3 w-3" /> conferir atribuição ({c.formularios} formulários)
                       </Badge>
                     )}
                   </TableCell>
