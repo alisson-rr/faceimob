@@ -201,6 +201,10 @@ describe("cadastro: a ficha inteira de uma vez", () => {
     const gravado = salvar.fn.mock.calls[0][0];
     expect(gravado.id, "a ficha vai para o id que a função devolveu").toBe("novo-1");
     expect(gravado.profile.cpf, "a coluna guarda só os 11 dígitos").toBe("12345678901");
+    // A ficha fica aberta com o envio do acesso; a lista só recarrega ao concluir.
+    expect(salvo).not.toHaveBeenCalled();
+    expect(botao("Enviar acesso por WhatsApp")).toBeTruthy();
+    await clicar(botao("Concluir"));
     expect(salvo).toHaveBeenCalledTimes(1);
   });
 
