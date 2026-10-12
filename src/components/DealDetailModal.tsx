@@ -17,6 +17,7 @@ import {
 } from "@/components/pipeline";
 import { addDealComment } from "@/components/pipeline/DealCommentsPanel";
 import { DealOffToggle } from "@/components/pipeline/DealOffToggle";
+import { MovimentoDoNegocio } from "@/components/pipeline/MovimentoDoNegocio";
 import { ConferenciaGerenteDialog } from "@/components/pipeline/ConferenciaGerenteDialog";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
 import { BatidaCpfDialog } from "@/components/pipeline/BatidaCpfDialog";
@@ -616,6 +617,23 @@ export default function DealDetailModal({
                 statusDetail={form.status}
                 filaCca={posicaoNaFila}
               />
+              <div className="mt-4 border-t border-border pt-4">
+                <MovimentoDoNegocio
+                  dealId={dealId}
+                  form={form}
+                  readOnly={lock.readOnly}
+                  onPatch={patch}
+                  onAplicarOff={aplicarOff}
+                  onGravar={(status) => handleSave({
+                    fechar: false,
+                    alterar: status ? { status, status_group_id: undefined } : undefined,
+                  }).then(Boolean)}
+                  onMovido={async (status) => {
+                    patch({ status, status_group_id: undefined });
+                    await dossieMudou();
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
