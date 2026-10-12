@@ -18,6 +18,7 @@ import { MetaAdScores } from "@/components/marketing/MetaAdScores";
 import { MetaAlertsPanel } from "@/components/marketing/MetaAlertsPanel";
 import { MetaCampaignPlanner } from "@/components/marketing/MetaCampaignPlanner";
 import { MetaTrafficManager } from "@/components/marketing/MetaTrafficManager";
+import { QualidadePorCampanha } from "@/components/marketing/QualidadePorCampanha";
 import { GestaoDeAnuncios } from "@/components/marketing/GestaoDeAnunciosPanel";
 import {
   AD_PLATFORM_LABEL,
@@ -294,6 +295,7 @@ export default function Marketing() {
           <TabsList className="bg-transparent rounded-none gap-4 h-auto p-0">
             {[
               ["campanhas", "Campanhas"],
+              ...(can("reports.view_finance") ? [["qualidade", "Qualidade"]] : []),
               ["construtoras", "Por construtora"],
               ["meta-ia", "Meta · IA"],
               ["planejador", "Planejador"],
@@ -525,6 +527,10 @@ export default function Marketing() {
           <MetaActionsLog />
             </div>
           </details>
+        </TabsContent>
+
+        <TabsContent value="qualidade" className="mt-5">
+          <QualidadePorCampanha />
         </TabsContent>
 
         <TabsContent value="construtoras" className="mt-5">
