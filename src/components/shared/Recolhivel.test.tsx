@@ -1,17 +1,29 @@
-import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { Recolhivel } from "./Recolhivel";
 
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+async function montar(aberta?: boolean) {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(<Recolhivel titulo="Equipe Alfa" aberta={aberta}>conteúdo</Recolhivel>);
+  });
+  return host;
+}
+
 describe("Recolhivel", () => {
-  it("nasce recolhido: a lista só aparece depois do clique na linha", () => {
-    const { container } = render(<Recolhivel titulo="Equipe Alfa">conteúdo</Recolhivel>);
-    const detalhes = container.querySelector("details");
-    expect(detalhes?.hasAttribute("open")).toBe(false);
-    expect(screen.getByText("Equipe Alfa")).toBeTruthy();
+  it("nasce recolhido, com a linha à vista", async () => {
+    const host = await montar();
+    expect(host.querySelector("details")?.hasAttribute("open")).toBe(false);
+    expect(host.querySelector("summary")?.textContent).toContain("Equipe Alfa");
   });
 
-  it("abre ao montar quando pedido", () => {
-    const { container } = render(<Recolhivel titulo="Equipe Alfa" aberta>conteúdo</Recolhivel>);
-    expect(container.querySelector("details")?.hasAttribute("open")).toBe(true);
+  it("abre ao montar quando pedido", async () => {
+    const host = await montar(true);
+    expect(host.querySelector("details")?.hasAttribute("open")).toBe(true);
   });
 });
