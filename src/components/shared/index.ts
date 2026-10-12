@@ -9,6 +9,7 @@ export { SectionCard, type SectionCardProps } from "./SectionCard";
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from "./StatusBadge";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { LoadingState, type LoadingStateProps } from "./LoadingState";
+export { Recolhivel, type RecolhivelProps } from "./Recolhivel";
 export { BrandMotif } from "./BrandMotif";
 export { ColorField } from "./ColorField";
 export { Logo, type LogoProps } from "./Logo";

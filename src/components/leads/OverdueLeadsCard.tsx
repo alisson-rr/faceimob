@@ -1,6 +1,6 @@
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SectionCard, StatusBadge } from "@/components/shared";
+import { Recolhivel, SectionCard, StatusBadge } from "@/components/shared";
 import { dateTime, num } from "@/lib/format";
 import { funnelStageLabel, type LeadRecord } from "@/integrations/supabase/leads";
 import { overdueByBroker } from "./model";
@@ -108,25 +108,32 @@ export function OverdueLeadsCard({
       )}
 
       {gruposDaEquipe.map((grupo) => (
-        <div key={grupo.brokerId ?? "sem-corretor"} className="space-y-2">
-          <p className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {grupo.brokerName} ({num(grupo.leads.length)})
-            <StatusBadge tone={grupo.blocked ? "danger" : "neutral"}>
-              {grupo.blocked ? "check-in bloqueado" : `limite ${num(threshold)}`}
-            </StatusBadge>
-          </p>
-          {grupo.leads.slice(0, VISIBLE).map((lead) => (
-            <OverdueRow
-              key={lead.id} lead={lead}
-              onOpen={onOpen} onReschedule={onReschedule} onCloseLead={onCloseLead}
-            />
-          ))}
-          {grupo.leads.length > VISIBLE && (
-            <p className="text-xs text-muted-foreground">
-              + {num(grupo.leads.length - VISIBLE)} outros de {grupo.brokerName}.
+        <Recolhivel
+          key={grupo.brokerId ?? "sem-corretor"}
+          className="rounded-xl border border-border p-2"
+          titulo={(
+            <p className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {grupo.brokerName} ({num(grupo.leads.length)})
+              <StatusBadge tone={grupo.blocked ? "danger" : "neutral"}>
+                {grupo.blocked ? "check-in bloqueado" : `limite ${num(threshold)}`}
+              </StatusBadge>
             </p>
           )}
-        </div>
+        >
+          <div className="space-y-2">
+            {grupo.leads.slice(0, VISIBLE).map((lead) => (
+              <OverdueRow
+                key={lead.id} lead={lead}
+                onOpen={onOpen} onReschedule={onReschedule} onCloseLead={onCloseLead}
+              />
+            ))}
+            {grupo.leads.length > VISIBLE && (
+              <p className="text-xs text-muted-foreground">
+                + {num(grupo.leads.length - VISIBLE)} outros de {grupo.brokerName}.
+              </p>
+            )}
+          </div>
+        </Recolhivel>
       ))}
     </SectionCard>
   );

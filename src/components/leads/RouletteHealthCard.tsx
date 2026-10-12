@@ -2,7 +2,7 @@ import {
   AlertTriangle, ListOrdered, Loader2, PauseCircle, RadioTower, RefreshCcw, Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SectionCard, StatusBadge } from "@/components/shared";
+import { Recolhivel, SectionCard, StatusBadge } from "@/components/shared";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { isLeadUnattended, type GroupQueue, type LeadRecord } from "@/integrations/supabase/leads";
@@ -107,14 +107,19 @@ export function RouletteHealthCard({
           )}
 
           {queues.map((queue) => (
-            <div key={queue.groupId} className="rounded-xl border border-border bg-muted/30 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <ListOrdered className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-                <span className="text-sm font-semibold">{queue.groupName}</span>
-                <StatusBadge tone={queue.entries.length ? "info" : "neutral"}>
-                  {queue.entries.length ? `${num(queue.entries.length)} na fila` : "fila vazia"}
-                </StatusBadge>
-              </div>
+            <Recolhivel
+              key={queue.groupId}
+              className="rounded-xl border border-border bg-muted/30 p-3"
+              titulo={(
+                <>
+                  <ListOrdered className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  <span className="text-sm font-semibold">{queue.groupName}</span>
+                  <StatusBadge tone={queue.entries.length ? "info" : "neutral"}>
+                    {queue.entries.length ? `${num(queue.entries.length)} na fila` : "fila vazia"}
+                  </StatusBadge>
+                </>
+              )}
+            >
               {queue.error ? (
                 <p className="mt-1.5 text-xs text-destructive">
                   {describeError(queue.error, "sem permissão para ver esta fila")}
@@ -137,7 +142,7 @@ export function RouletteHealthCard({
                   ))}
                 </ol>
               )}
-            </div>
+            </Recolhivel>
           ))}
 
           {/* Bandeja "sem atendimento": o lead rodou o teto de voltas e saiu da
