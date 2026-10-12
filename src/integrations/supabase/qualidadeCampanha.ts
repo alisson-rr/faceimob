@@ -17,6 +17,9 @@ export type QualidadeCampanha = {
   cpl: number | null;
   custo_qualificado: number | null;
   custo_analise: number | null;
+  /** Resultados que a Meta contou na janela (formulário ou conversa), para comparar com `leads`. */
+  resultados_meta: number;
+  custo_resultado_meta: number | null;
 };
 
 type Resultado<T> = PromiseLike<{ data: T | null; error: { message?: string; code?: string } | null }>;
@@ -35,6 +38,7 @@ export async function listQualidadePorCampanha(dias: number): Promise<QualidadeC
     cpl: c.cpl === null ? null : Number(c.cpl),
     custo_qualificado: c.custo_qualificado === null ? null : Number(c.custo_qualificado),
     custo_analise: c.custo_analise === null ? null : Number(c.custo_analise),
+    custo_resultado_meta: c.custo_resultado_meta === null ? null : Number(c.custo_resultado_meta),
   }));
 }
 
@@ -45,3 +49,7 @@ export const percentual = (parte: number, total: number): number | null =>
 /** Campanha cujos leads vêm com mais de um nome ou formulário: atribuição a conferir. */
 export const atribuicaoSuspeita = (c: Pick<QualidadeCampanha, "nomes_distintos" | "formularios">): boolean =>
   c.nomes_distintos > 1 || c.formularios > 1;
+
+/** O CRM recebeu menos da metade do que a Meta contou: o CPL do CRM sai inflado. */
+export const crmRecebeuPouco = (c: Pick<QualidadeCampanha, "leads" | "resultados_meta">): boolean =>
+  c.resultados_meta >= 5 && c.leads * 2 < c.resultados_meta;

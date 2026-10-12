@@ -16,7 +16,7 @@ begin
 
   select id into conta from public.meta_ad_accounts limit 1;
   insert into public.ad_campaigns (external_id, name) values ('267000', 'Campanha 267') returning id into camp;
-  insert into public.meta_campaign_insights_daily (campaign_id, day, spend) values (camp, current_date, 300);
+  insert into public.meta_campaign_insights_daily (campaign_id, day, spend, resultados) values (camp, current_date, 300, 6);
 
   insert into public.leads (full_name, phone, status, campaign_id, campaign_name, form_id, first_contact_at) values
     ('L267 a', '51900267001', 'queued', '267000', 'Campanha 267', 'f1', now()) returning id into l1;
@@ -38,7 +38,8 @@ begin
   if r.atendidos <> 1 or r.qualificados <> 1 then raise exception 'FALHOU: atendidos/qualificados errados (% / %)', r.atendidos, r.qualificados; end if;
   if r.gasto <> 300 or r.cpl <> 150 or r.custo_qualificado <> 300 then raise exception 'FALHOU: gasto/CPL errados (% / % / %)', r.gasto, r.cpl, r.custo_qualificado; end if;
   if r.nomes_distintos <> 2 or r.formularios <> 2 then raise exception 'FALHOU: atribuição suspeita não apareceu'; end if;
-  raise notice '  ok  gasto, CPL, funil e atribuição suspeita por campanha';
+  if r.resultados_meta <> 6 or r.custo_resultado_meta <> 50 then raise exception 'FALHOU: resultados da Meta errados (% / %)', r.resultados_meta, r.custo_resultado_meta; end if;
+  raise notice '  ok  gasto, CPL, funil, atribuição suspeita e resultados da Meta por campanha';
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   set local role authenticated;
