@@ -16,7 +16,6 @@ import {
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
 import { addDealComment } from "@/components/pipeline/DealCommentsPanel";
-import { DealOffToggle } from "@/components/pipeline/DealOffToggle";
 import { MovimentoDoNegocio } from "@/components/pipeline/MovimentoDoNegocio";
 import { ConferenciaGerenteDialog } from "@/components/pipeline/ConferenciaGerenteDialog";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
@@ -540,11 +539,10 @@ export default function DealDetailModal({
                   <p className="text-xs text-muted-foreground">Entra nos comentários quando o negócio for criado.</p>
                 </div>
               )}
-              {/* Comentários e OFF no Cadastro, como no sistema anterior (10/10/2026). */}
+              {/* Comentários no Cadastro; o OFF e o resto do movimento ficam na aba Negócio (12/10/2026). */}
               {dealId && (
                 <div className="mt-4 space-y-4">
                   <DealCommentsPanel key={versaoComentarios} dealId={dealId} people={people} />
-                  <DealOffToggle status={form.status} isNew={isNew} readOnly={lock.readOnly} onAplicar={aplicarOff} />
                 </div>
               )}
           </div>

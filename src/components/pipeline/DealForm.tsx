@@ -246,6 +246,9 @@ export function DealForm({
 }: Props) {
   const { isAdmin, roles, canEnterStage, can } = useAuth();
   const vgvTravado = !isNew && !can("deals.edit_value");
+  // Negócio já criado: o Status 2 do Cadastro é de quem move por ele (admin, sócio e
+  // CCA). Corretor, gerente e diretor movem pela aba Negócio (12/10/2026).
+  const status2Escondido = !isNew && !isAdmin && !roles.includes("cca");
   const canExitStage = useCanExitStage();
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   /** Falha de carga do catálogo de empreendimentos — separada do "não tem
@@ -837,87 +840,97 @@ export function DealForm({
               : "Segue o Status 2. Trocar à mão é do administrador e do sócio."}
           </p>
         </div>
-        <div className="deal-tone-green">
-          <Label htmlFor={field("status")} className="text-eyebrow">Status do negócio</Label>
-          {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
-              banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
-              antigo junto seria uma troca manual que ninguém pediu. */}
-          <Select value={form.status} disabled={!can("deals.edit_status_detail")} onValueChange={(v) => {
-            if (pedeConferencia(v)) {
-              onPedirConferencia?.();
-              return;
-            }
-            // O admin, que escolhe a etapa à mão, vê a etapa do Status 2 já
-            // selecionada e continua podendo trocar. A matriz dele é inteira.
-            const etapa = isAdmin ? etapaDoStatus(v) : null;
-            onChange({ status: v, status_group_id: undefined, ...(etapa ? { stage: etapa } : {}) });
-          }}>
-            <SelectTrigger
-              id={field("status")}
-              className="mt-1 text-xs"
-              aria-describedby={vendaBloqueada ? field("status-hint") : undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-h-80">
-              {/* `value` é o valor gravado; o texto vai sem o prefixo numerado.
-                  O campo inteiro NÃO fica cinza: o cliente reservou ao
-                  administrador dois desfechos (OFF e distrato), não o catálogo
-                  todo — trancar o resto tirava do corretor rótulos que sempre
-                  foram dele. Os dois saem desabilitados com o motivo, a mesma
-                  forma da lista de etapas acima e do Select da tabela. */}
-              {/* Só no negócio novo: depois de criado, o envio é pelo "Próximo
-                  passo" do topo da ficha (09/10/2026), um caminho só. */}
-              {isNew && esteiraAgil && onPedirConferencia && !conferenciaPendente && statusKey(form.status) !== ESTEIRA_AGIL && (
-                <SelectItem value={esteiraAgil.value}>
-                  <span>{esteiraAgil.label}</span>
-                  <span className="text-muted-foreground"> (enviar ao gerente)</span>
-                </SelectItem>
-              )}
-              {statusChoices(catalog, form.status).map((option) => {
-                // O rótulo ATUAL fica de fora: escolher o que já está escolhido
-                // não é escrita, e `<SelectValue/>` espelha os filhos do item —
-                // o sufixo iria parar dentro do próprio gatilho do Select.
-                // E a matriz por função do cadastro (0164): quem coloca e quem
-                // tira cada Status 2. Status com observação obrigatória vai pelo
-                // Pipeline, que pede o texto.
-                const bloqueio = option.value === form.status || pedeConferencia(option.value)
-                  ? null
-                  : offDistratoBlocked(can, option.value, isNew ? null : form.status)
-                    ?? (isNew ? null : statusMoveBlock(catalog, form.status, option.value, { isAdmin, roles }))
-                    ?? (!isAdmin && statusRequiresNote(catalog, option.value) ? "com observação, pelo Pipeline" : null);
-                const semPermissao = bloqueio;
-                return (
-                  <SelectItem key={option.value} value={option.value} disabled={Boolean(semPermissao)}>
-                    {/* O nome no próprio `<span>` e o motivo em outro: o texto
-                        exibido continua sendo só `option.label`, que é o que o
-                        `statusLabels.test.ts` lê daqui. */}
-                    <span>{option.label}</span>
-                    {!semPermissao && option.value !== form.status && pedeConferencia(option.value) && (
-                      <span className="text-muted-foreground"> (enviar ao gerente)</span>
-                    )}
-                    {semPermissao && (
-                      <span className="text-muted-foreground">
-                        {" "}({semPermissao.startsWith("Só administrador") ? "só administrador e sócio" : semPermissao.startsWith("Seu perfil") ? "fora da sua função" : semPermissao})
-                      </span>
-                    )}
+        {status2Escondido ? (
+          <div className="deal-tone-green">
+            <p className="text-eyebrow">Status do negócio</p>
+            <p className="deal-readout mt-1 rounded-xl border px-3.5 py-2.5 text-xs font-semibold">
+              {catalog.statuses.find((item) => item.value === form.status)?.label ?? (form.status || "—")}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">O movimento do negócio é feito na aba Negócio.</p>
+          </div>
+        ) : (
+          <div className="deal-tone-green">
+            <Label htmlFor={field("status")} className="text-eyebrow">Status do negócio</Label>
+            {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
+                banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
+                antigo junto seria uma troca manual que ninguém pediu. */}
+            <Select value={form.status} disabled={!can("deals.edit_status_detail")} onValueChange={(v) => {
+              if (pedeConferencia(v)) {
+                onPedirConferencia?.();
+                return;
+              }
+              // O admin, que escolhe a etapa à mão, vê a etapa do Status 2 já
+              // selecionada e continua podendo trocar. A matriz dele é inteira.
+              const etapa = isAdmin ? etapaDoStatus(v) : null;
+              onChange({ status: v, status_group_id: undefined, ...(etapa ? { stage: etapa } : {}) });
+            }}>
+              <SelectTrigger
+                id={field("status")}
+                className="mt-1 text-xs"
+                aria-describedby={vendaBloqueada ? field("status-hint") : undefined}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                {/* `value` é o valor gravado; o texto vai sem o prefixo numerado.
+                    O campo inteiro NÃO fica cinza: o cliente reservou ao
+                    administrador dois desfechos (OFF e distrato), não o catálogo
+                    todo — trancar o resto tirava do corretor rótulos que sempre
+                    foram dele. Os dois saem desabilitados com o motivo, a mesma
+                    forma da lista de etapas acima e do Select da tabela. */}
+                {/* Só no negócio novo: depois de criado, o envio é pelo "Próximo
+                    passo" do topo da ficha (09/10/2026), um caminho só. */}
+                {isNew && esteiraAgil && onPedirConferencia && !conferenciaPendente && statusKey(form.status) !== ESTEIRA_AGIL && (
+                  <SelectItem value={esteiraAgil.value}>
+                    <span>{esteiraAgil.label}</span>
+                    <span className="text-muted-foreground"> (enviar ao gerente)</span>
                   </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-          {!can("deals.edit_status_detail") && <p className="mt-1 text-xs text-muted-foreground">Seu perfil pode consultar o Status 2. A edição depende da permissão “Alterar Status 2”.</p>}
-          {vendaBloqueada && (
-            <p id={field("status-hint")} className="mt-1 text-xs text-muted-foreground">
-              {vendaBloqueada}
-            </p>
-          )}
-          {conferenciaPendente && (
-            <p className="mt-1 text-xs font-medium text-warning">
-              {DOCUMENT_REVIEW_META.pending.label}: aguardando o gerente.
-            </p>
-          )}
-        </div>
+                )}
+                {statusChoices(catalog, form.status).map((option) => {
+                  // O rótulo ATUAL fica de fora: escolher o que já está escolhido
+                  // não é escrita, e `<SelectValue/>` espelha os filhos do item —
+                  // o sufixo iria parar dentro do próprio gatilho do Select.
+                  // E a matriz por função do cadastro (0164): quem coloca e quem
+                  // tira cada Status 2. Status com observação obrigatória vai pelo
+                  // Pipeline, que pede o texto.
+                  const bloqueio = option.value === form.status || pedeConferencia(option.value)
+                    ? null
+                    : offDistratoBlocked(can, option.value, isNew ? null : form.status)
+                      ?? (isNew ? null : statusMoveBlock(catalog, form.status, option.value, { isAdmin, roles }))
+                      ?? (!isAdmin && statusRequiresNote(catalog, option.value) ? "com observação, pelo Pipeline" : null);
+                  const semPermissao = bloqueio;
+                  return (
+                    <SelectItem key={option.value} value={option.value} disabled={Boolean(semPermissao)}>
+                      {/* O nome no próprio `<span>` e o motivo em outro: o texto
+                          exibido continua sendo só `option.label`, que é o que o
+                          `statusLabels.test.ts` lê daqui. */}
+                      <span>{option.label}</span>
+                      {!semPermissao && option.value !== form.status && pedeConferencia(option.value) && (
+                        <span className="text-muted-foreground"> (enviar ao gerente)</span>
+                      )}
+                      {semPermissao && (
+                        <span className="text-muted-foreground">
+                          {" "}({semPermissao.startsWith("Só administrador") ? "só administrador e sócio" : semPermissao.startsWith("Seu perfil") ? "fora da sua função" : semPermissao})
+                        </span>
+                      )}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            {!can("deals.edit_status_detail") && <p className="mt-1 text-xs text-muted-foreground">Seu perfil pode consultar o Status 2. A edição depende da permissão “Alterar Status 2”.</p>}
+            {vendaBloqueada && (
+              <p id={field("status-hint")} className="mt-1 text-xs text-muted-foreground">
+                {vendaBloqueada}
+              </p>
+            )}
+            {conferenciaPendente && (
+              <p className="mt-1 text-xs font-medium text-warning">
+                {DOCUMENT_REVIEW_META.pending.label}: aguardando o gerente.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {willLose && (
