@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LoadingState } from "@/components/shared";
+import { LoadingState, Recolhivel } from "@/components/shared";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { slugify } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -74,13 +74,19 @@ export function DiretorDuploCard({ diretores, gerentes, nomeDe }: {
         {equipes.isPending && <LoadingState variant="list" rows={3} label="Carregando equipes…" />}
         {equipes.isError && <p className="text-xs text-destructive">{describeError(equipes.error, "Não foi possível carregar as equipes.")}</p>}
         {(equipes.data ?? []).map((t) => (
-          <div key={t.id} className="flex flex-col gap-2 rounded-md bg-muted/40 p-2 text-xs sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold">{t.name}</p>
-              <p className="truncate text-muted-foreground">
-                Gerente {nomeDe(t.manager_id) ?? "—"} · Diretor {nomeDe(t.director_id) ?? "—"}
-              </p>
-            </div>
+          <Recolhivel
+            key={t.id}
+            className="rounded-md bg-muted/40 p-2 text-xs"
+            titulo={(
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold">{t.name}</p>
+                <p className="truncate text-muted-foreground">
+                  Gerente {nomeDe(t.manager_id) ?? "—"} · Diretor {nomeDe(t.director_id) ?? "—"}
+                </p>
+              </div>
+            )}
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Button size="sm" variant="outline" className="h-8 gap-1" onClick={() => setCorretoresDe({ id: t.id, name: t.name })}>
               <Users className="h-3.5 w-3.5" /> Corretores
             </Button>
@@ -99,7 +105,8 @@ export function DiretorDuploCard({ diretores, gerentes, nomeDe }: {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+            </div>
+          </Recolhivel>
         ))}
       </CardContent>
       {criando && (
