@@ -20,11 +20,11 @@ export function nomeDoContato(lead: LeadDoContato): string {
   return [lead.name.trim() || "Lead", campanha, IMOBILIARIA].filter(Boolean).join(" | ");
 }
 
-/** O .vcf do lead, ou `null` sem telefone. */
-export function vcardDoLead(lead: LeadDoContato): string | null {
-  const numero = waNumber(lead.phone);
+/** O .vcf de um contato qualquer, ou `null` sem telefone. */
+export function vcardDe(nomeCompleto: string, telefone: string | null | undefined): string | null {
+  const numero = waNumber(telefone);
   if (!numero) return null;
-  const nome = escapar(nomeDoContato(lead));
+  const nome = escapar(nomeCompleto);
   return [
     "BEGIN:VCARD",
     "VERSION:3.0",
@@ -37,17 +37,21 @@ export function vcardDoLead(lead: LeadDoContato): string | null {
   ].join("\r\n");
 }
 
+/** O .vcf do lead, ou `null` sem telefone. */
+export const vcardDoLead = (lead: LeadDoContato) => vcardDe(nomeDoContato(lead), lead.phone);
+
 /** Baixa o .vcf; o celular oferece "Adicionar contato". Sem telefone, não faz nada. */
-export function baixarContato(lead: LeadDoContato): boolean {
-  const vcard = vcardDoLead(lead);
+export function baixarVcard(vcard: string | null, nomeDoArquivo: string): boolean {
   if (!vcard) return false;
   const url = URL.createObjectURL(new Blob([vcard], { type: "text/vcard;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${lead.name.trim().replace(/[^\p{L}\p{N} ._-]+/gu, "").slice(0, 60) || "contato"}.vcf`;
+  link.download = `${nomeDoArquivo.trim().replace(/[^\p{L}\p{N} ._-]+/gu, "").slice(0, 60) || "contato"}.vcf`;
   document.body.appendChild(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
   return true;
 }
+
+export const baixarContato = (lead: LeadDoContato) => baixarVcard(vcardDoLead(lead), lead.name);

@@ -47,6 +47,7 @@ interface BrokerRow {
   status: string;
   user_id: string | null;
   email?: string | null;
+  phone?: string | null;
   avatar_url?: string | null;
   monthly_goal?: number | null;
   yearly_goal?: number | null;
@@ -182,6 +183,7 @@ export default function Equipes() {
       roles: person.roles,
       user_id: person.user_id,
       email: person.email,
+      phone: person.phone,
       avatar_url: person.avatar_url,
       monthly_goal: goalByProfile.get(person.id)?.monthly ?? 0,
       yearly_goal: goalByProfile.get(person.id)?.yearly ?? 0,
@@ -319,7 +321,7 @@ export default function Equipes() {
   // continua na lista para não sumir do Select. As vendas antigas seguem com o
   // nome de quem saiu: elas leem o participante do negócio, não esta lista.
   const lideresParaVincular = (lista: BrokerRow[], atual?: string | null) =>
-    lista.filter(p => p.active || p.id === atual).map(p => ({ id: p.id, name: p.name }));
+    lista.filter(p => p.active || p.id === atual).map(p => ({ id: p.id, name: p.name, phone: p.phone }));
   const fichaAberta = profileEdit ? rows.find(r => r.id === profileEdit.id) : undefined;
 
   const [extraindo, setExtraindo] = useState(false);

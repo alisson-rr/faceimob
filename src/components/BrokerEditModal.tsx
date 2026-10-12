@@ -17,10 +17,11 @@ import type { NewAppRole } from "@/integrations/supabase/newSchema";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
 import { date } from "@/lib/format";
-import { Camera, KeyRound, Loader2, Copy, Check, IdCard, Sparkles } from "lucide-react";
+import { Camera, KeyRound, Loader2, Copy, Check, IdCard, Sparkles, MessageCircle, ExternalLink } from "lucide-react";
+import { KINGHOST_CRIAR_EMAIL_URL, WEBMAIL_URL, linkAvisoAoGerente, linkBoasVindas, salvarColaboradorNaAgenda } from "@/components/boasVindas";
 import { Logo } from "@/components/shared/Logo";
 
-type Manager = { id: string; name: string };
+type Manager = { id: string; name: string; phone?: string | null };
 type Director = { id: string; name: string };
 
 /** O que Equipes já tem em mãos ao abrir o modal. A ficha (CPF, CRECI…) e os
@@ -210,6 +211,8 @@ export function BrokerEditModal({
   const [acessoPendente, setAcessoPendente] = useState<string | null>(null);
   /** No cadastro o e-mail segue o nome até alguém digitar o endereço. */
   const [emailTocado, setEmailTocado] = useState(false);
+  // Cadastro concluído: o modal fica aberto para mandar o acesso por WhatsApp.
+  const [criado, setCriado] = useState<{ nome: string; email: string; telefone: string | null; gerenteId: string | null } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -526,29 +529,29 @@ export function BrokerEditModal({
     setSaving(true);
     let idCriado: string | null = null;
     try {
-      const criado = await chamarProvisionamento({
+      const conta = await chamarProvisionamento({
         email: input.profile.email,
         full_name: input.profile.full_name,
       });
-      if (!criado.user_id) throw new Error("A função não devolveu o colaborador criado.");
-      idCriado = criado.user_id;
+      if (!conta.user_id) throw new Error("A função não devolveu o colaborador criado.");
+      idCriado = conta.user_id;
       const avatar = await enviarFoto(idCriado);
       await savePerson({
         ...input,
         id: idCriado,
-        profile: { ...input.profile, email: criado.email ?? input.profile.email, avatar_url: avatar },
+        profile: { ...input.profile, email: conta.email ?? input.profile.email, avatar_url: avatar },
       });
       descartarFoto();
       toast({
         title: "Colaborador cadastrado",
-        variant: criado.login_ready === true ? "success" : "default",
+        variant: conta.login_ready === true ? "success" : "default",
         // Só `true` explícito promete o código: campo ausente (função antiga no
         // ar) tem de cair no aviso, nunca no silêncio otimista.
-        description: criado.login_ready === true
+        description: conta.login_ready === true
           ? "Ele entra em /login com esse e-mail e recebe um código de 6 dígitos."
           : "Atenção: o código de 6 dígitos ainda NÃO é enviado — falta configurar o SMTP (Brevo). Até lá ele não consegue entrar.",
       });
-      onSaved();
+      setCriado({ nome: input.profile.full_name, email: conta.email ?? input.profile.email, telefone: form.celular || null, gerenteId: form.manager_id || null });
     } catch (error: unknown) {
       const corpo = error instanceof ErroDeAcesso ? error.corpo : undefined;
       if (corpo?.existing_profile_id && onDuplicado) {
@@ -655,12 +658,52 @@ export function BrokerEditModal({
   const semFuncao = isAdmin && form.roles.length === 0;
   const canSave = details === "ready" && !saving && !semFuncao;
 
+  const concluirCadastro = () => { setCriado(null); onSaved(); };
+  const gerenteDe = (c: { gerenteId: string | null }) => managers.find(m => m.id === c.gerenteId);
+  // Salva o contato antes de abrir o WhatsApp: a conversa já nasce com o nome certo.
+  const enviarAcesso = (c: NonNullable<typeof criado>) => {
+    salvarColaboradorNaAgenda(c.nome, c.telefone);
+    const url = linkBoasVindas({ nome: c.nome, email: c.email, telefone: c.telefone, crmUrl: window.location.origin });
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
+  const avisarGerente = (c: NonNullable<typeof criado>) => {
+    const g = gerenteDe(c);
+    const url = g && linkAvisoAoGerente({ gerente: g.name, nome: c.nome, email: c.email, telefoneGerente: g.phone });
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   return (
     // O diálogo de confirmação é IRMÃO do modal, não filho: é o mesmo desenho
     // que já funciona em Equipes (Dialog + AlertDialog lado a lado) e evita
     // aninhar duas camadas modais do Radix uma dentro da outra.
     <>
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => { if (v) return; if (criado) concluirCadastro(); else onClose(); }}>
+      {criado ? (
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{criado.nome} cadastrado(a)</DialogTitle>
+          <DialogDescription>
+            Salve o contato e mande o acesso. O envio é manual: o WhatsApp abre com a mensagem pronta e você só confirma.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <Button disabled={!criado.telefone} onClick={() => enviarAcesso(criado)} className="gap-2">
+            <MessageCircle className="h-4 w-4" /> Enviar acesso por WhatsApp
+          </Button>
+          {!criado.telefone && <p className="text-xs text-muted-foreground">Sem celular na ficha — preencha na edição para enviar.</p>}
+          {gerenteDe(criado) && (
+            <Button variant="outline" disabled={!gerenteDe(criado)?.phone} onClick={() => avisarGerente(criado)} className="gap-2">
+              <MessageCircle className="h-4 w-4" /> Avisar {gerenteDe(criado)?.name}
+            </Button>
+          )}
+          <div className="flex flex-wrap gap-3 text-xs">
+            <a className="inline-flex items-center gap-1 underline" href={KINGHOST_CRIAR_EMAIL_URL} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" /> Criar e-mail no KingHost</a>
+            <a className="inline-flex items-center gap-1 underline" href={WEBMAIL_URL} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" /> Webmail</a>
+          </div>
+        </div>
+        <DialogFooter><Button onClick={concluirCadastro}>Concluir</Button></DialogFooter>
+      </DialogContent>
+      ) : (
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{criando ? "Novo colaborador" : "Editar Colaborador"}</DialogTitle>
@@ -773,6 +816,12 @@ export function BrokerEditModal({
               disabled={!isAdmin}
               onChange={e => { setEmailTocado(true); upd("email", e.target.value); }}
             />
+            {criando && (
+              <div className="mt-1 flex flex-wrap gap-3 text-xs">
+                <a className="inline-flex items-center gap-1 underline" href={KINGHOST_CRIAR_EMAIL_URL} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" /> Criar e-mail no KingHost</a>
+                <a className="inline-flex items-center gap-1 underline" href={WEBMAIL_URL} target="_blank" rel="noreferrer"><ExternalLink className="h-3 w-3" /> Webmail</a>
+              </div>
+            )}
           </Field>
 
           <Field
@@ -1102,6 +1151,7 @@ export function BrokerEditModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+      )}
     </Dialog>
 
     {/* Desligamento definitivo: `status = 'terminated'` + `terminated_at`
