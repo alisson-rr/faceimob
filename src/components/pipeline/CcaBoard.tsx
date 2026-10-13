@@ -156,7 +156,7 @@ export const CcaBoard = memo(function CcaBoard({
   return (
     // `contain: paint` fecha o transbordo aqui dentro: sem ele a faixa das
     // colunas chegou a rolar a PÁGINA na horizontal (735 px a 375 px).
-    <div className="min-h-0 flex-1 overflow-auto [contain:paint]">
+    <div className="min-h-[26rem] flex-1 overflow-auto [contain:paint] lg:min-h-0">
       <p role="status" aria-live="polite" className="sr-only">{anuncio}</p>
       {/* Mesma altura e largura para todos: a grade de indicadores do app
           (última linha centralizada) e o nome em duas linhas de altura fixa,
