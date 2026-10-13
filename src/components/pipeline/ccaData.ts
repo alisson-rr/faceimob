@@ -229,6 +229,9 @@ export const ccaColumnOf = (
 const foldStatus = (value?: string | null): string => bareStatus(value ?? "")
   .normalize("NFD").replace(/\p{M}/gu, "");
 
+/** Status 2 vazio: o negócio ainda está em preparação e não entra na esteira. */
+export const semStatus2 = (status?: string | null): boolean => !foldStatus(status);
+
 /** Rótulos que a coluna não pode gravar — a mesma lista do gatilho
  *  `cca_stages_guard_deal_status` (0150): rótulo de envio ou desfecho.
  *  "RET. ESTEIRA AGIL" pode desde 15/09: é o da coluna RETORNO À ESTEIRA ÁGIL. */
@@ -389,6 +392,8 @@ export async function loadCcaBoard(
   for (const row of boardCases) {
     const deal = dealById.get(row.deal_id);
     if (foraDaEsteiraDoCca(deal?.status, deal?.developer, ccaProprio)) continue;
+    // Negócio sem Status 2 é "Em preparação" no Pipeline: não entra na esteira.
+    if (deal && semStatus2(deal.status)) continue;
     const stage = ccaColumnOf(stages, row, deal?.status);
     if (!stage) {
       outside += 1;
