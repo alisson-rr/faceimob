@@ -481,6 +481,8 @@ describe("submitDealForManagerReview", () => {
 describe("virarBlockReason", () => {
   it("libera com crédito aprovado, ou devolvido pela CCA depois de um 2º envio", () => {
     expect(virarBlockReason("approved", null)).toBeNull();
+    expect(virarBlockReason("pending_documents", "agil", true)).toBeNull();
+    expect(virarBlockReason("pending_documents", "agil")).not.toBeNull();
     expect(virarBlockReason("approved", "agil")).toBeNull();
     expect(virarBlockReason("pending_documents", "virar")).toBeNull();
   });
