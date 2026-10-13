@@ -726,21 +726,26 @@ export default function DealDocumentUpload({
   // dizia "já foi aprovada" e a análise p/ virar negócio só vale com crédito
   // aprovado. Caso ainda em análise na CCA não reenvia (o banco também recusa), e
   // o 2º envio (virar) segue pelo caminho dele.
+  //
+  // PENDENTE P/ VIRAR NEGÓCIO (13/10/2026) é a pendência do 2º envio: o caminho é
+  // "Reenviar análise p/ virar negócio", não a Esteira Ágil.
+  const pendenteParaVirar = /^PENDENTE P\/ VIRAR/.test(bareStatus(statusDetail ?? ""));
   const emPendencia = caseStatus === "pending_documents" || /^PENDENTE/.test(bareStatus(statusDetail ?? ""));
   const casoEmAnalise = caseStatus === "under_review" || caseStatus === "sent_to_agency" || caseStatus === "sent_to_developer";
-  const reenvioPendente = emPendencia && !casoEmAnalise && review?.review_esteira !== "virar";
+  const pendenciaDeVirar = pendenteParaVirar || (caseStatus === "pending_documents" && review?.review_esteira === "virar");
+  const reenvioPendente = emPendencia && !casoEmAnalise && !pendenciaDeVirar;
   const agilBloqueio = reenvioIncompleto || reenvioPendente ? null
     : status === "approved" || caseStatus === "approved"
       ? "A documentação já foi aprovada: o próximo envio é a análise p/ virar negócio."
       : null;
   const virarBloqueio = reenvioIncompleto
     ? "Em INCOMPLETO o reenvio vai pela Esteira Ágil."
-    : virarBlockReason(caseStatus, review?.review_esteira);
+    : virarBlockReason(caseStatus, review?.review_esteira, pendenteParaVirar);
   // Aba Negócio (10/10/2026): cada esteira tem o seu toggle. A Ágil vale até a
   // aprovação; a análise p/ virar negócio só aparece depois dela.
   const livreParaEnviar = reenvioIncompleto || reenvioPendente || status === "draft" || status === "returned";
   const podeAgil = canSubmit && agilBloqueio === null && livreParaEnviar;
-  const podeVirar = canSubmit && virarBloqueio === null && (livreParaEnviar || status === "approved");
+  const podeVirar = canSubmit && virarBloqueio === null && (livreParaEnviar || status === "approved" || pendenteParaVirar);
   const enviosAgil = envios.filter((envio) => envio.esteira === "agil");
   const enviosVirar = envios.filter((envio) => envio.esteira === "virar");
   const mostraVirar = virarBloqueio === null || enviosVirar.length > 0;
@@ -899,7 +904,7 @@ export default function DealDocumentUpload({
             nomes={nomes}
             aberta={aberta === "virar"}
             disponivel={podeVirar}
-            rotuloEnvio="Enviar análise p/ virar negócio"
+            rotuloEnvio={pendenciaDeVirar ? "Reenviar análise p/ virar negócio" : "Enviar análise p/ virar negócio"}
             onAlternar={(ligado) => setAberta(ligado ? "virar" : null)}
             aviso={null}
           >

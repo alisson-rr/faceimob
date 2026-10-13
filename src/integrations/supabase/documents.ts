@@ -609,8 +609,14 @@ export function submitBlockReason(input: {
 export function virarBlockReason(
   caseStatus: string | null | undefined,
   reviewEsteira: ReviewEsteira | null | undefined,
+  /** Status 2 em PENDENTE P/ VIRAR NEGÓCIO: a CCA devolveu o 2º envio pedindo documento. */
+  pendenteParaVirar = false,
 ): string | null {
-  if (caseStatus === "approved" || (caseStatus === "pending_documents" && reviewEsteira === "virar")) {
+  if (
+    caseStatus === "approved"
+    || (caseStatus === "pending_documents" && reviewEsteira === "virar")
+    || pendenteParaVirar
+  ) {
     return null;
   }
   return "A análise p/ virar negócio é o 2º envio: libera quando o crédito estiver aprovado na CCA.";
