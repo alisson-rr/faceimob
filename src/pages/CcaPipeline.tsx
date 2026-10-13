@@ -386,7 +386,12 @@ export default function CcaPipeline() {
     // a largura da página — o `main` do shell é item de flex.
     // ponytail: altura amarrada ao cabeçalho e ao padding do AppLayout; evoluir
     // para flex no próprio layout quando outra tela precisar de altura cheia.
-    <div className="flex h-[calc(100dvh-6.5rem)] min-w-0 flex-col gap-3 sm:h-[calc(100dvh-7rem)] lg:h-[calc(100dvh-8rem)]">
+    //
+    // 13/10/2026: a altura amarrada à janela só vale de `lg` para cima. No
+    // celular o cabeçalho, os filtros e a síntese do mês enchiam a tela e o
+    // quadro ficava com altura zero, sem como rolar até ele: abaixo de `lg` a
+    // página tem a altura do conteúdo, rola, e o quadro tem altura mínima.
+    <div className="flex min-w-0 flex-col gap-3 lg:h-[calc(100dvh-8rem)]">
       <PageHeader
         className="mb-0 sm:mb-0"
         title="Esteira CCA"

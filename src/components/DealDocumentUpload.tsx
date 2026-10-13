@@ -661,7 +661,11 @@ export default function DealDocumentUpload({
   const status = review?.document_review_status ?? "draft";
   // Corretor, gerente e diretor do negócio enviam (o banco aceita os três desde
   // a 0164); pedido de 09/10/2026 para a análise p/ virar negócio.
-  const canSubmit = isAdmin || myRoles.some((role) => role === "broker" || role === "manager" || role === "director");
+  // 13/10/2026: gerente e diretor que enxergam e editam o negócio pela hierarquia
+  // também enviam, na falta do corretor ou de vínculo deles como participantes.
+  const canSubmit = isAdmin
+    || myRoles.some((role) => role === "broker" || role === "manager" || role === "director")
+    || (canUpload && roles.some((role) => role === "manager" || role === "director"));
   // O banco (0235) aceita gerente OU diretor vinculado, além do admin. A tela
   // precisa espelhar os três; antes o diretor via a pendência no cabeçalho, mas
   // ao abrir os Anexos não recebia os botões para decidir.
@@ -716,7 +720,16 @@ export default function DealDocumentUpload({
   // INCOMPLETO com caso aberto: o envio foi pela via errada e o reenvio pela
   // Esteira Ágil encerra o caso antigo no banco (0253).
   const reenvioIncompleto = bareStatus(statusDetail ?? "") === "INCOMPLETO" && casoAberto;
-  const agilBloqueio = reenvioIncompleto ? null
+  // PENDENTE (13/10/2026): a CCA devolveu o caso pedindo documento. O corretor, ou
+  // o gerente e o diretor na falta dele, reenvia pela Esteira Ágil. O dossiê segue
+  // "aprovado" pela conferência anterior, e isso fechava os DOIS envios: a Ágil
+  // dizia "já foi aprovada" e a análise p/ virar negócio só vale com crédito
+  // aprovado. Caso ainda em análise na CCA não reenvia (o banco também recusa), e
+  // o 2º envio (virar) segue pelo caminho dele.
+  const emPendencia = caseStatus === "pending_documents" || /^PENDENTE/.test(bareStatus(statusDetail ?? ""));
+  const casoEmAnalise = caseStatus === "under_review" || caseStatus === "sent_to_agency" || caseStatus === "sent_to_developer";
+  const reenvioPendente = emPendencia && !casoEmAnalise && review?.review_esteira !== "virar";
+  const agilBloqueio = reenvioIncompleto || reenvioPendente ? null
     : status === "approved" || caseStatus === "approved"
       ? "A documentação já foi aprovada: o próximo envio é a análise p/ virar negócio."
       : null;
@@ -725,7 +738,7 @@ export default function DealDocumentUpload({
     : virarBlockReason(caseStatus, review?.review_esteira);
   // Aba Negócio (10/10/2026): cada esteira tem o seu toggle. A Ágil vale até a
   // aprovação; a análise p/ virar negócio só aparece depois dela.
-  const livreParaEnviar = reenvioIncompleto || status === "draft" || status === "returned";
+  const livreParaEnviar = reenvioIncompleto || reenvioPendente || status === "draft" || status === "returned";
   const podeAgil = canSubmit && agilBloqueio === null && livreParaEnviar;
   const podeVirar = canSubmit && virarBloqueio === null && (livreParaEnviar || status === "approved");
   const enviosAgil = envios.filter((envio) => envio.esteira === "agil");
@@ -816,7 +829,7 @@ export default function DealDocumentUpload({
           nomes={nomes}
           aberta={aberta === "agil"}
           disponivel={podeAgil}
-          rotuloEnvio={reenvioIncompleto ? "Reenviar (encerra o envio anterior)" : "Enviar à Esteira Ágil"}
+          rotuloEnvio={reenvioIncompleto ? "Reenviar (encerra o envio anterior)" : reenvioPendente ? "Reenviar à Esteira Ágil (pendência)" : "Enviar à Esteira Ágil"}
           onAlternar={(ligado) => setAberta(ligado ? "agil" : null)}
           aviso={!canSubmit && (status === "draft" || status === "returned")
             ? "Só corretor, gerente ou diretor do negócio envia o dossiê; aqui você acompanha o andamento."

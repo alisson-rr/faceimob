@@ -10,10 +10,13 @@ import {
   AUDIOS_POR_TELEFONE_DIA,
   corpoDaMensagem,
   decidirReentrega,
+  caminhoDoAnexo,
   decidirRota,
+  extensaoDaMidia,
   type InboundMessage,
   inicioDoDiaEmSaoPaulo,
   type LeituraDeMidia,
+  nomeDoAnexo,
   nomeDoAudio,
   parseMessages,
   passouDoTetoDeAudios,
@@ -499,7 +502,7 @@ Deno.serve(async (req) => {
      * O teto diário conta as mídias do telefone já registradas hoje. Todo erro
      * daqui vira marcador na conversa e aviso ao SDR, nunca fala inventada.
      */
-    const lerMidia = async (msg: InboundMessage, phone: string, leitura: LeituraDeMidia): Promise<string> => {
+    const lerMidia = async (msg: InboundMessage, phone: string, leitura: LeituraDeMidia, alvo: Alvo): Promise<string> => {
       if (!msg.mediaId) throw new Error("a Meta não mandou o id da mídia");
       const { count, error } = await supabase
         .from("whatsapp_inbound_messages")
@@ -510,8 +513,44 @@ Deno.serve(async (req) => {
         .gte("created_at", inicioDoDiaEmSaoPaulo(new Date()));
       if (error) throw new Error(`não consegui conferir o limite diário de fotos e PDFs: ${error.message}`);
       if (passouDoTetoDeMidias(count ?? 0)) throw new Error("limite diário de fotos e PDFs lidos por telefone atingido");
-      const { blob } = await downloadWhatsAppMedia(msg.mediaId, leitura === "pdf" ? TETO_PDF_BYTES : TETO_IMAGEM_BYTES);
+      const { blob, mimeType } = await downloadWhatsAppMedia(msg.mediaId, leitura === "pdf" ? TETO_PDF_BYTES : TETO_IMAGEM_BYTES);
+      // O arquivo vai para Anexos do lead antes da leitura: se a OpenAI falhar, o
+      // corretor ainda tem o que o lead mandou.
+      await guardarNosAnexos(msg, alvo, blob, mimeType);
       return await descreverMidia(blob, leitura, leitura === "pdf" ? "documento.pdf" : "imagem");
+    };
+
+    /**
+     * Guarda a foto ou o PDF do lead em Anexos (bucket `lead-attachments`, a mesma
+     * tabela do botão "Anexar arquivo"), sem dono (`uploaded_by` nulo). Uma chave
+     * por mensagem: a réplica da Meta não duplica. Tentativa única e sem barrar o
+     * atendimento: o bucket só aceita certos formatos (um gif, por exemplo, não),
+     * e a falha vira aviso no log — o robô segue lendo.
+     */
+    const guardarNosAnexos = async (msg: InboundMessage, alvo: Alvo, blob: Blob, mimeType: string) => {
+      if (!alvo.lead_id) return;
+      const extensao = extensaoDaMidia(blob.type || mimeType);
+      const caminho = caminhoDoAnexo(alvo.lead_id, msg.id, extensao);
+      const nome = nomeDoAnexo({ tipo: msg.tipo, arquivo: msg.arquivo, extensao, quando: new Date() });
+      const { error: envio } = await supabase.storage
+        .from("lead-attachments").upload(caminho, blob, { contentType: blob.type || mimeType, upsert: false });
+      if (envio) {
+        console.warn("whatsapp-inbound: arquivo do lead não guardado —", envio.message);
+        return;
+      }
+      const { error } = await supabase.from("lead_attachments").insert({
+        lead_id: alvo.lead_id,
+        storage_path: caminho,
+        original_name: nome,
+        stored_name: `${Date.now()}-${nome}`,
+        mime_type: blob.type || mimeType,
+        size_bytes: blob.size,
+        uploaded_by: null,
+      });
+      if (error) {
+        console.warn("whatsapp-inbound: anexo do lead não registrado —", error.message);
+        await supabase.storage.from("lead-attachments").remove([caminho]);
+      }
     };
 
     /**
@@ -678,7 +717,7 @@ Deno.serve(async (req) => {
 
       const plano = await planejar(
         msg, alvo.robo ? "robo" : rota, () => lerAudio(msg, phone, chegada),
-        (leitura) => lerMidia(msg, phone, leitura),
+        (leitura) => lerMidia(msg, phone, leitura, alvo),
       );
 
       if (plano.acao === "anexar") {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AUDIO_NAO_TRANSCRITO, AUDIOS_POR_TELEFONE_DIA, baloesDaResposta, corpoDaMensagem, decidirReentrega, decidirRota, inicioDoDiaEmSaoPaulo,
-  leituraDaMidia, MIDIAS_POR_TELEFONE_DIA, nomeDoAudio, parseMessages, passouDoTetoDeAudios, passouDoTetoDeMidias, planejar,
+  caminhoDoAnexo, extensaoDaMidia, leituraDaMidia, MIDIAS_POR_TELEFONE_DIA, nomeDoAnexo, nomeDoAudio, parseMessages, passouDoTetoDeAudios, passouDoTetoDeMidias, planejar,
   RESERVA_DO_AUDIO, RESERVA_RETOMADA,
 } from "./parse.ts";
 
@@ -206,6 +206,31 @@ describe("leitura de foto e PDF", () => {
       { from: "5551999990001", id: "wamid.1", type: "image", image: { id: "m1", mime_type: "image/jpeg", caption: " meu RG " } },
     ] } }] }] };
     expect(parseMessages(corpo)[0]).toMatchObject({ tipo: "imagem", legenda: "meu RG", mediaId: "m1" });
+  });
+});
+
+describe("anexo do lead guardado pelo WhatsApp", () => {
+  it("extensão pelo mime e chave única por mensagem", () => {
+    expect(extensaoDaMidia("image/jpeg")).toBe("jpg");
+    expect(extensaoDaMidia("application/pdf")).toBe("pdf");
+    expect(extensaoDaMidia("application/octet-stream")).toBe("bin");
+    expect(caminhoDoAnexo("lead-1", "wamid.HBgL/ab==", "jpg")).toBe("lead-1/wa-wamid-HBgL-ab-.jpg");
+  });
+
+  it("o nome é o do documento; foto leva hora de São Paulo", () => {
+    expect(nomeDoAnexo({ tipo: "documento", arquivo: "Holerite setembro.pdf", extensao: "pdf", quando: new Date() }))
+      .toBe("Holerite setembro.pdf");
+    expect(nomeDoAnexo({ tipo: "documento", arquivo: "../../x.pdf", extensao: "pdf", quando: new Date() }))
+      .not.toContain("/");
+    expect(nomeDoAnexo({ tipo: "imagem", extensao: "jpg", quando: new Date("2026-10-12T17:30:00Z") }))
+      .toBe("WhatsApp - foto 12-10 14h30.jpg");
+  });
+
+  it("o parse traz o nome do documento", () => {
+    const corpo = { entry: [{ changes: [{ field: "messages", value: { messages: [
+      { from: "5551999990001", id: "wamid.2", type: "document", document: { id: "m2", mime_type: "application/pdf", filename: "RG.pdf" } },
+    ] } }] }] };
+    expect(parseMessages(corpo)[0]).toMatchObject({ tipo: "documento", arquivo: "RG.pdf" });
   });
 });
 

@@ -32,6 +32,8 @@ export type InboundMessage = {
   mimeType: string | null;
   /** Legenda que o lead escreveu junto da imagem ou do documento. */
   legenda?: string;
+  /** Nome do arquivo de um documento, como o lead o mandou. */
+  arquivo?: string;
   /** Nome do perfil do WhatsApp (`contacts[].profile.name`), quando a Meta manda. */
   nome?: string | null;
   anuncio?: AnuncioWhatsapp | null;
@@ -114,6 +116,7 @@ export function parseMessages(body: unknown): InboundMessage[] {
         if (!tipo) continue;
         const midia = registro(m[tipoMeta]);
         const legenda = texto(midia.caption).trim();
+        const arquivo = texto(midia.filename).trim();
         out.push({
           from,
           id,
@@ -122,6 +125,7 @@ export function parseMessages(body: unknown): InboundMessage[] {
           mediaId: texto(midia.id) || null,
           mimeType: texto(midia.mime_type) || null,
           ...(legenda ? { legenda } : {}),
+          ...(arquivo ? { arquivo } : {}),
           ...extra,
         });
       }
@@ -182,6 +186,36 @@ export function textoDaMidia(leitura: LeituraDeMidia, descricao: string, legenda
   const lida = descricao.trim().slice(0, 1_500).replace(/\[/g, "(").replace(/\]/g, ")");
   return `[O lead enviou ${leitura === "pdf" ? "um" : "uma"} ${rotulo}. Leitura automática: ${lida}]` +
     (legenda ? `\nLegenda do lead: ${legenda}` : "");
+}
+
+/** Extensão do arquivo guardado, pelo mime type que a Meta devolve. */
+export function extensaoDaMidia(mimeType: string | null | undefined): string {
+  const mime = (mimeType ?? "").toLowerCase();
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("gif")) return "gif";
+  if (mime.includes("pdf")) return "pdf";
+  return "bin";
+}
+
+/** Chave no Storage: uma por mensagem, então a réplica da Meta não guarda duas vezes. */
+export const caminhoDoAnexo = (leadId: string, mensagemId: string, extensao: string): string =>
+  `${leadId}/wa-${mensagemId.replace(/[^A-Za-z0-9_-]+/g, "-").slice(0, 80)}.${extensao}`;
+
+/**
+ * Nome que o corretor vê em Anexos: o do arquivo, quando o lead mandou um
+ * documento; senão "WhatsApp - foto 12-10 14h30.jpg" (hora de São Paulo).
+ */
+export function nomeDoAnexo(
+  p: { tipo: TipoMensagem; arquivo?: string; extensao: string; quando: Date },
+): string {
+  const nome = (p.arquivo ?? "").replace(/[\\/]+/g, "-").trim().slice(0, 120);
+  if (nome) return nome;
+  const local = new Date(p.quando.getTime() - 3 * 3_600_000);
+  const dois = (n: number) => String(n).padStart(2, "0");
+  const data = `${dois(local.getUTCDate())}-${dois(local.getUTCMonth() + 1)} ${dois(local.getUTCHours())}h${dois(local.getUTCMinutes())}`;
+  return `WhatsApp - ${p.tipo === "documento" ? "documento" : "foto"} ${data}.${p.extensao}`;
 }
 
 export type Rota = "robo" | "remarketing" | "humano" | "reabrir" | "anuncio" | "sem_destino";
