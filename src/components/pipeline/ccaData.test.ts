@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ccaColumnOf, ccaColumnStatusAllowed, foraDaEsteiraDoCca, loadCcaBoard, periodoCcaPreset, periodoValido, ultimos30Dias, type CcaStage,
+  ccaColumnOf, ccaColumnStatusAllowed, foraDaEsteiraDoCca, loadCcaBoard, periodoCcaPreset, semStatus2, periodoValido, ultimos30Dias, type CcaStage,
 } from "./ccaData";
 
 const h = vi.hoisted(() => ({
@@ -93,6 +93,17 @@ describe("ccaColumnOf · onde o caso aparece no quadro", () => {
   it("estágio desativado ou nulo cai na primeira coluna de mesmo desfecho", () => {
     expect(ccaColumnOf(ativas, { stage_id: "aprovado-antigo", status: "approved" })?.id).toBe("aprovado-total");
     expect(ccaColumnOf(ativas, { stage_id: null, status: "pending_documents" })?.id).toBe("pendente");
+  });
+
+  it("coluna ligada a um Status 2 não recebe negócio de outro Status 2", () => {
+    const colunas = [
+      { ...coluna("pendente", "pending_documents", 1), deal_status_id: "s16", deal_status: { label: "14. PENDENTE P/ VIRAR NEGÓCIO" } },
+    ];
+    // Mesmo com o estágio antigo apontando para ela e o mesmo desfecho.
+    expect(ccaColumnOf(colunas, { stage_id: "pendente", status: "pending_documents" }, "OFF")).toBeUndefined();
+    expect(ccaColumnOf(colunas, { stage_id: null, status: "pending_documents" }, "PROPOSTA")).toBeUndefined();
+    expect(ccaColumnOf(colunas, { stage_id: null, status: "pending_documents" }, "14. PENDENTE P/ VIRAR NEGÓCIO")?.id)
+      .toBe("pendente");
   });
 
   // Antes caía em `stages[0]`: os casos cancelados apareciam em "EM ANÁLISE".
@@ -201,6 +212,17 @@ describe("loadCcaBoard · só o período, filtrado no banco", () => {
     expect(casos?.searchParams.get("deal.month_base")).toBe("eq.2026-10-01");
     expect(casos?.searchParams.has("submitted_at")).toBe(false);
     expect(casos?.searchParams.get("order")).toBe("submitted_at.asc,id.asc");
+  });
+});
+
+describe("semStatus2 · negócio em preparação fica fora da esteira", () => {
+  it("vazio, só espaços ou só prefixo numérico não têm Status 2", () => {
+    for (const valor of [null, undefined, "", "   ", "14."]) expect(semStatus2(valor)).toBe(true);
+  });
+
+  it("qualquer Status 2 real conta", () => {
+    expect(semStatus2("14. PENDENTE P/ VIRAR NEGÓCIO")).toBe(false);
+    expect(semStatus2("PROPOSTA")).toBe(false);
   });
 });
 
