@@ -209,7 +209,11 @@ export const ccaColumnOf = (
   // caso de um negócio ainda marcado "13. ESTEIRA AGIL" aparecer em "EM
   // PROCESSAMENTO". Primeiro casa o Status 2 com o vínculo da coluna e, para os
   // rótulos de sistema que não podem ter vínculo, com o próprio nome da coluna.
-  // Só depois cai no `stage_id` histórico e no desfecho.
+  // Só depois cai no `stage_id` histórico e no desfecho — e só em colunas SEM
+  // vínculo com Status 2. Coluna ligada a um Status 2 recebe apenas quem o tem:
+  // o estágio antigo e o desfecho jogavam nela negócios de outro Status 2 (OFF,
+  // cancelado...), e "Pendente p/ virar negócio" mostrava 63 enquanto o Pipeline,
+  // pelo Status 2, mostrava 3.
   stages.find((item) => {
     const status = foldStatus(dealStatus);
     return Boolean(status) && (
@@ -217,8 +221,8 @@ export const ccaColumnOf = (
       || foldStatus(item.name) === status
     );
   })
-  ?? stages.find((item) => item.id === row.stage_id)
-  ?? stages.find((item) => item.status === row.status);
+  ?? stages.find((item) => !item.deal_status_id && item.id === row.stage_id)
+  ?? stages.find((item) => !item.deal_status_id && item.status === row.status);
 
 /** Chave sem número nem acento, para "13. ESTEIRA AGIL" casar com a coluna
  *  editável "ESTEIRA ÁGIL". */

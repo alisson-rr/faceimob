@@ -95,6 +95,17 @@ describe("ccaColumnOf · onde o caso aparece no quadro", () => {
     expect(ccaColumnOf(ativas, { stage_id: null, status: "pending_documents" })?.id).toBe("pendente");
   });
 
+  it("coluna ligada a um Status 2 não recebe negócio de outro Status 2", () => {
+    const colunas = [
+      { ...coluna("pendente", "pending_documents", 1), deal_status_id: "s16", deal_status: { label: "14. PENDENTE P/ VIRAR NEGÓCIO" } },
+    ];
+    // Mesmo com o estágio antigo apontando para ela e o mesmo desfecho.
+    expect(ccaColumnOf(colunas, { stage_id: "pendente", status: "pending_documents" }, "OFF")).toBeUndefined();
+    expect(ccaColumnOf(colunas, { stage_id: null, status: "pending_documents" }, "PROPOSTA")).toBeUndefined();
+    expect(ccaColumnOf(colunas, { stage_id: null, status: "pending_documents" }, "14. PENDENTE P/ VIRAR NEGÓCIO")?.id)
+      .toBe("pendente");
+  });
+
   // Antes caía em `stages[0]`: os casos cancelados apareciam em "EM ANÁLISE".
   it("sem coluna do desfecho o caso sai do quadro", () => {
     expect(ccaColumnOf(ativas, { stage_id: "distrato-queda", status: "cancelled" })).toBeUndefined();
