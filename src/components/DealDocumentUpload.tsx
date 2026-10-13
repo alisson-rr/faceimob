@@ -1335,7 +1335,7 @@ export default function DealDocumentUpload({
       )}
 
       <Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }}>
-        <DialogContent className="flex h-[88vh] max-w-5xl flex-col overflow-hidden p-0">
+        <DialogContent className="flex h-[88dvh] max-w-5xl flex-col overflow-hidden p-0">
           <DialogHeader className="border-b border-border px-5 py-4">
             <DialogTitle className="truncate pr-8">
               {preview ? documentDisplayName(preview.doc) : "Visualizar documento"}
@@ -1345,12 +1345,15 @@ export default function DealDocumentUpload({
             </DialogDescription>
           </DialogHeader>
           {preview && (
-            <div className="min-h-0 flex-1 bg-slate-950/60 p-2">
+            // Rolável: no celular a imagem maior que a tela ficava cortada, sem como
+            // ver o resto. O PDF no iframe do iOS só mostra a 1ª página e não rola,
+            // por isso o link abaixo abre o arquivo inteiro numa aba.
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-950/60 p-2 [-webkit-overflow-scrolling:touch]">
               {preview.doc.mime_type?.startsWith("image/") ? (
                 <img
                   src={preview.url}
                   alt={documentDisplayName(preview.doc)}
-                  className="h-full w-full object-contain"
+                  className="mx-auto h-auto max-w-full"
                 />
               ) : (
                 <iframe
@@ -1360,6 +1363,16 @@ export default function DealDocumentUpload({
                 />
               )}
             </div>
+          )}
+          {preview && (
+            <a
+              href={preview.url}
+              target="_blank"
+              rel="noreferrer"
+              className="border-t border-border px-5 py-2 text-center text-xs font-medium text-primary underline"
+            >
+              Abrir em tela cheia
+            </a>
           )}
         </DialogContent>
       </Dialog>
