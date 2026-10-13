@@ -904,9 +904,12 @@ export const describeLeadEvent = (
     from_value?: string | null;
     to_value?: string | null;
     detail?: Record<string, unknown> | null;
+    actor_id?: string | null;
   },
   names: Map<string, string> = new Map(),
 ): string => {
+  const nome = (id?: string | null, gravado?: unknown) =>
+    (id && names.get(id)) || (typeof gravado === "string" && gravado) || null;
   const base = EVENT_LABELS[row.kind] || row.kind;
   const detailReason = typeof row.detail?.reason === "string" ? row.detail.reason : null;
   const reason = detailReason ? RELEASE_REASONS[detailReason] || detailReason : null;
@@ -917,8 +920,19 @@ export const describeLeadEvent = (
     case "status_changed":
       return `${base}: ${leadStatusLabel(row.from_value)} → ${leadStatusLabel(row.to_value)}`;
     case "assigned":
-    case "reassigned":
-      return `${base}: ${(row.to_value && names.get(row.to_value)) || "corretor"}`;
+      return `${base}: ${nome(row.to_value) || "corretor"}`;
+    case "reassigned": {
+      // "Fulano repassou de Beltrano para Sicrano": o texto antigo só dizia
+      // para quem foi, e o corretor que recebia não sabia de quem veio.
+      const quem = nome(row.actor_id, row.detail?.actor_name) || "Um gestor";
+      const de = nome(row.from_value, row.detail?.from_name);
+      const para = nome(row.to_value, row.detail?.to_name) || "outro corretor";
+      return `${quem} repassou o lead${de && de !== quem ? ` de ${de}` : ""} para ${para}`;
+    }
+    case "claimed": {
+      const quem = nome(row.actor_id, row.detail?.actor_name);
+      return quem ? `${quem} pegou o lead` : base;
+    }
     case "released":
       return reason ? `${base} (${reason})` : base;
     case "closed":
@@ -937,19 +951,24 @@ export const describeLeadEvent = (
 };
 
 export async function listLeadEvents(leadId: string): Promise<LeadEvent[]> {
-  const [eventsRes, profilesRes] = await Promise.all([
+  const [eventsRes, namesRes] = await Promise.all([
     db
       .from("lead_events")
       .select("*")
       .eq("lead_id", leadId)
       .order("created_at", { ascending: false }),
-    db.from("profiles").select("id,full_name"),
+    // `profiles` só entrega quem o chamador enxerga: o corretor que recebeu o
+    // lead não via o nome de quem repassou. Esta RPC (0275) devolve só os nomes
+    // que aparecem no histórico deste lead.
+    untyped.rpc("lead_history_names", { p_lead_id: leadId }),
   ]);
   asError("lead_events", eventsRes.error);
-  asError("profiles", profilesRes.error);
+  asError("nomes do histórico", namesRes.error);
 
   const names = new Map<string, string>(
-    (profilesRes.data || []).map((row) => [row.id, row.full_name]),
+    ((namesRes.data ?? []) as { id: string; full_name: string | null }[])
+      .filter((row) => row.full_name)
+      .map((row) => [row.id, row.full_name as string]),
   );
 
   return (eventsRes.data || []).map((row) => {
