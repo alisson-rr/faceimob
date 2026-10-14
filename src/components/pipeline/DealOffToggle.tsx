@@ -58,14 +58,18 @@ export function DealOffToggle({
 
   return (
     <div className="space-y-2 rounded-lg border border-border/60 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <Label htmlFor={id} className="text-sm font-bold">OFF</Label>
+      <div className="flex items-start gap-3">
         <Switch
           id={id}
+          className="mt-0.5 shrink-0"
           checked={emOff || abrindo}
           disabled={emOff || readOnly || isNew || Boolean(bloqueio) || gravando}
           onCheckedChange={(ligado) => { setAbrindo(ligado); if (!ligado) setMotivo(""); }}
         />
+        <div className="min-w-0 space-y-1">
+          <Label htmlFor={id} className="text-sm font-bold">OFF</Label>
+          <p className="text-xs text-muted-foreground">Tira o negócio da esteira, com o motivo registrado no histórico.</p>
+        </div>
       </div>
       {emOff && (
         <p className="text-xs text-muted-foreground">Negócio em OFF. Para voltar, use “Reativar Proposta” no card.</p>

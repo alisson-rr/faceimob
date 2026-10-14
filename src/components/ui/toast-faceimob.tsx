@@ -46,6 +46,7 @@ const EXCECOES_SUCESSO: RegExp[] = [
   /^Devolvido ao comercial$/i,
   /^Proposta reativada$/i,
   /^Construtora trocada$/i,
+  /^Negócio assinado$/i,
   /^Documentos enviados ao gerente$/i,
   /^Documentos aprovados$/i,
   /^Documentos devolvidos ao corretor$/i,
