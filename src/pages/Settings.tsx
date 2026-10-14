@@ -7,7 +7,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Eye, EyeOff, KeyRound, LogOut, Settings as SettingsIcon, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { BellRing, Eye, EyeOff, KeyRound, LogOut, Settings as SettingsIcon, ShieldCheck, UserRound, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader, SectionCard } from '@/components/shared';
 import { useToast } from '@/hooks/use-toast';
@@ -18,6 +18,8 @@ import { dbError, describeError } from '@/lib/supabaseError';
 import { useAuth, type AppRole } from '@/contexts/AuthContext';
 import PushSettings from '@/components/notifications/PushSettings';
 import { clearPushOnAllDevices, signOutWithPush } from '@/lib/push';
+import { setPreferenciaAvisosSucesso } from '@/components/ui/toast-faceimob';
+import { Switch } from '@/components/ui/switch';
 
 const MIN_PASSWORD = 8;
 
@@ -170,6 +172,13 @@ export default function Settings() {
   // ── sessões ───────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [avisosSucessoLigados, setAvisosSucessoLigados] = useState(() => {
+    try {
+      return localStorage.getItem("faceimob:avisos-sucesso") !== "desligado";
+    } catch {
+      return true;
+    }
+  });
 
   // ── meu acesso ────────────────────────────────────────────────────────────
   /**
@@ -553,6 +562,29 @@ export default function Settings() {
 
         {/* Logo depois do perfil: é o que o corretor mais precisa ligar. */}
         <PushSettings />
+
+        <SectionCard
+          title="Avisos de sucesso"
+          description="Os avisos verdes que confirmam salvamentos e movimentos. Erros continuam aparecendo sempre."
+          icon={BellRing}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1 text-sm">
+              <p className="font-medium text-foreground">Mostrar avisos de sucesso</p>
+              <p className="text-muted-foreground">
+                Desligue para reduzir o ruído visual. Movimentações do negócio e envios ao gerente/CCA continuam sendo confirmados.
+              </p>
+            </div>
+            <Switch
+              checked={avisosSucessoLigados}
+              onCheckedChange={(ligado) => {
+                setAvisosSucessoLigados(ligado);
+                setPreferenciaAvisosSucesso(ligado);
+              }}
+              aria-label="Avisos de sucesso"
+            />
+          </div>
+        </SectionCard>
 
         {/* Antes, para saber quem é o seu gerente, era preciso abrir Equipes —
             tela de administração que nem todo papel enxerga. */}
