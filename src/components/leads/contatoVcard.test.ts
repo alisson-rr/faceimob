@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { nomeDoContato, vcardDoLead } from "./contatoVcard";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { compartilharVcard, nomeDoContato, vcardDoLead } from "./contatoVcard";
 
 const lead = (extra: Partial<Parameters<typeof vcardDoLead>[0]> = {}) => ({
   name: "Maria Souza", phone: "(51) 99999-0000", campaign_name: "Solar do Bosque", utm_campaign: null, source: "Meta",
@@ -23,5 +23,38 @@ describe("contato do lead para o celular", () => {
 
   it("sem telefone não há cartão", () => {
     expect(vcardDoLead(lead({ phone: "" }))).toBeNull();
+  });
+});
+
+describe("compartilharVcard (iPhone)", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  afterEach(() => { if (original) Object.defineProperty(globalThis, "navigator", original); });
+  const comNavigator = (parcial: object) => Object.defineProperty(globalThis, "navigator", { value: parcial, configurable: true });
+
+  it("compartilha o arquivo .vcf pela folha de compartilhar", async () => {
+    const share = vi.fn(async () => undefined);
+    comNavigator({ canShare: () => true, share });
+    expect(await compartilharVcard("BEGIN:VCARD\r\nEND:VCARD\r\n", "Maria")).toBe("compartilhado");
+    const arquivo = (share.mock.calls[0] as unknown as [{ files: File[] }])[0].files[0];
+    expect(arquivo.name).toBe("Maria.vcf");
+    expect(arquivo.type).toBe("text/vcard");
+  });
+
+  it("fechar a folha não é erro", async () => {
+    comNavigator({ canShare: () => true, share: async () => { throw new DOMException("x", "AbortError"); } });
+    expect(await compartilharVcard("BEGIN:VCARD\r\nEND:VCARD\r\n", "Maria")).toBe("cancelado");
+  });
+
+  it("sem suporte a compartilhar arquivo, baixa o .vcf", async () => {
+    comNavigator({});
+    const criar = vi.fn(() => "blob:x");
+    vi.stubGlobal("URL", { createObjectURL: criar, revokeObjectURL: vi.fn() });
+    expect(await compartilharVcard("BEGIN:VCARD\r\nEND:VCARD\r\n", "Maria")).toBe("baixado");
+    expect(criar).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("sem telefone, não faz nada", async () => {
+    expect(await compartilharVcard(null, "Maria")).toBe("sem-telefone");
   });
 });

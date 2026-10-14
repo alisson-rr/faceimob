@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { JANELA_WHATSAPP, abrirWhatsapp, ehCelular, linkWhatsapp } from "./whatsapp";
+import { JANELA_WHATSAPP, abrirWhatsapp, ehCelular, ehIphone, linkWhatsapp } from "./whatsapp";
 
 describe("linkWhatsapp", () => {
   it("no Android abre o app escolhido pelo pacote", () => {
@@ -45,3 +45,13 @@ describe("abrirWhatsapp", () => {
 });
 
 const chamada0 = (abrir: { mock: { calls: unknown[][] } }) => abrir.mock.calls[0][1];
+
+describe("ehIphone", () => {
+  it("iPhone e iPad sim; iPadOS que se diz Mac só com toque; Android e computador não", () => {
+    expect(ehIphone("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", 5)).toBe(true);
+    expect(ehIphone("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", 5)).toBe(true);
+    expect(ehIphone("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", 0)).toBe(false);
+    expect(ehIphone("Mozilla/5.0 (Linux; Android 14)", 5)).toBe(false);
+    expect(ehIphone("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 0)).toBe(false);
+  });
+});

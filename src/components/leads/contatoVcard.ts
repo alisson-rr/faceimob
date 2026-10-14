@@ -40,18 +40,46 @@ export function vcardDe(nomeCompleto: string, telefone: string | null | undefine
 /** O .vcf do lead, ou `null` sem telefone. */
 export const vcardDoLead = (lead: LeadDoContato) => vcardDe(nomeDoContato(lead), lead.phone);
 
+const nomeDoVcf = (nomeDoArquivo: string) =>
+  `${nomeDoArquivo.trim().replace(/[^\p{L}\p{N} ._-]+/gu, "").slice(0, 60) || "contato"}.vcf`;
+
 /** Baixa o .vcf; o celular oferece "Adicionar contato". Sem telefone, não faz nada. */
 export function baixarVcard(vcard: string | null, nomeDoArquivo: string): boolean {
   if (!vcard) return false;
   const url = URL.createObjectURL(new Blob([vcard], { type: "text/vcard;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${nomeDoArquivo.trim().replace(/[^\p{L}\p{N} ._-]+/gu, "").slice(0, 60) || "contato"}.vcf`;
+  link.download = nomeDoVcf(nomeDoArquivo);
   document.body.appendChild(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
   return true;
 }
+
+/**
+ * iPhone: o Safari não abre "Adicionar contato" para um .vcf baixado por link
+ * temporário, mas a folha de compartilhar abre o cartão com a ação de salvar.
+ * Precisa de um toque do usuário; sem suporte a compartilhar arquivo, volta ao
+ * download. Devolve o que aconteceu para a tela avisar.
+ */
+export async function compartilharVcard(
+  vcard: string | null, nomeDoArquivo: string,
+): Promise<"compartilhado" | "cancelado" | "baixado" | "sem-telefone"> {
+  if (!vcard) return "sem-telefone";
+  const arquivo = new File([vcard], nomeDoVcf(nomeDoArquivo), { type: "text/vcard" });
+  if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [arquivo] })) {
+    try {
+      await navigator.share({ files: [arquivo] });
+      return "compartilhado";
+    } catch (erro) {
+      if (erro instanceof DOMException && erro.name === "AbortError") return "cancelado";
+    }
+  }
+  baixarVcard(vcard, nomeDoArquivo);
+  return "baixado";
+}
+
+export const compartilharContato = (lead: LeadDoContato) => compartilharVcard(vcardDoLead(lead), lead.name);
 
 export const baixarContato = (lead: LeadDoContato) => baixarVcard(vcardDoLead(lead), lead.name);
