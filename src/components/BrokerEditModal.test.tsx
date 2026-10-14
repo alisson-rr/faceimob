@@ -322,6 +322,35 @@ describe("BrokerEditModal: o que a ficha mostra é o que o banco aceita", () => 
     await fechar();
   });
 
+  it("o admin que reativa um SUSPENSO devolve também a entrada: inativar bloqueia o login", async () => {
+    const { fechar } = await abrir({ identity: { active: false, status: "suspended" } });
+
+    await clicar(porId("profile-active"));
+    await clicar(botao("Salvar"));
+
+    expect(salvar.fn.mock.calls[0][0].profile.status).toBe("active");
+    expect(chamada.fn).toHaveBeenCalledTimes(1);
+    expect(corpoEnviado()).toMatchObject({ profile_id: "p1", access: "restore" });
+
+    await fechar();
+  });
+
+  it("o gestor que religa um suspenso só muda o status: devolver a entrada é do admin", async () => {
+    const { fechar } = await abrir({
+      isAdmin: false,
+      podeMudarSituacao: true,
+      identity: { active: false, status: "suspended" },
+    });
+
+    await clicar(porId("profile-active"));
+    await clicar(botao("Salvar"));
+
+    expect(salvar.fn.mock.calls[0][0].profile.status).toBe("active");
+    expect(chamada.fn, "a função de acesso recusaria quem não é admin").not.toHaveBeenCalled();
+
+    await fechar();
+  });
+
   it("reativar sem SMTP não promete o código de 6 dígitos", async () => {
     // O ramo `access` da função devolve `login_ready` junto: sem o SMTP do
     // Brevo o e-mail com o código NÃO sai, e "ele volta a receber o código" era
