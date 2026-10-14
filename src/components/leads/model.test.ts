@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { padraoSemAcento } from "@/lib/busca";
 import {
   canWriteLead, isLeadUnattended, leadSearchFilter, rejectAttachment,
   type LeadRecord, type LeadSource,
@@ -382,8 +383,16 @@ describe("leadSearchFilter", () => {
     // Campanha entra porque o placeholder do campo a promete. Sem ela o lead
     // que só casava por campanha aparecia com 2 letras (filtro do cliente) e
     // sumia na 3ª, quando o termo passa a ir ao banco.
+    // Nome e campanha vão por `imatch` (com ou sem acento); e-mail segue `ilike`.
     expect(leadSearchFilter("ana"))
-      .toBe("full_name.ilike.*ana*,email.ilike.*ana*,campaign_name.ilike.*ana*");
+      .toBe(`full_name.imatch.${padraoSemAcento("ana")},email.ilike.*ana*,campaign_name.imatch.${padraoSemAcento("ana")}`);
+  });
+
+  it("a busca por nome acha com ou sem acento, nos dois sentidos", () => {
+    const filtros = (search: string) => ({ ...emptyLeadFilters, search });
+    expect(matchesFilters(lead({ full_name: "José da Conceição" }), filtros("jose"))).toBe(true);
+    expect(matchesFilters(lead({ full_name: "Jose da Conceicao" }), filtros("JOSÉ"))).toBe(true);
+    expect(matchesFilters(lead({ full_name: "Maria" }), filtros("jose"))).toBe(false);
   });
 
   it("telefone com máscara vira só dígitos", () => {
@@ -403,10 +412,9 @@ describe("leadSearchFilter", () => {
     // A vírgula viraria uma condição a mais e o `*` um curinga solto — os dois
     // derrubam a consulta com 400 ("failed to parse logic tree"), não com "nada
     // encontrado".
-    expect(leadSearchFilter("ana, paula*"))
-      .toBe("full_name.ilike.*ana paula*,email.ilike.*ana paula*,campaign_name.ilike.*ana paula*");
-    expect(leadSearchFilter("ana (paula)"))
-      .toBe("full_name.ilike.*ana paula*,email.ilike.*ana paula*,campaign_name.ilike.*ana paula*");
+    const esperado = `full_name.imatch.${padraoSemAcento("ana paula")},email.ilike.*ana paula*,campaign_name.imatch.${padraoSemAcento("ana paula")}`;
+    expect(leadSearchFilter("ana, paula*")).toBe(esperado);
+    expect(leadSearchFilter("ana (paula)")).toBe(esperado);
   });
 });
 
@@ -463,7 +471,7 @@ describe("busca por telefone e e-mail, nas duas camadas", () => {
     // A tela comparava o texto CRU e a consulta o texto limpo: o banco devolvia
     // "Lead manual e2e" para "manual (e2e)" e a tela escondia a linha.
     for (const termo of ["manual, e2e", "manual (e2e)", "manual  e2e"]) {
-      expect(leadSearchFilter(termo), termo).toContain("full_name.ilike.*manual e2e*");
+      expect(leadSearchFilter(termo), termo).toContain(`full_name.imatch.${padraoSemAcento("manual e2e")}`);
       expect(busca(termo), termo).toBe(true);
     }
   });

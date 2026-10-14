@@ -12,6 +12,7 @@
 // escrita passa por este arquivo.
 // =============================================================================
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { padraoSemAcento } from "@/lib/busca";
 import { supabase } from "./client";
 import { DEAL_DOCUMENTS_BUCKET } from "./documents";
 import type { PersonRecord } from "./newSchema";
@@ -436,9 +437,10 @@ export const leadSearchFilter = (term: string): string | null => {
   const clean = searchTerm(term);
   if (clean.length < 3) return null;
   const parts = [
-    `full_name.ilike.*${clean}*`,
+    // `imatch` casa com ou sem acento, nos dois sentidos (lib/busca).
+    `full_name.imatch.${padraoSemAcento(clean)}`,
     `email.ilike.*${clean}*`,
-    `campaign_name.ilike.*${clean}*`,
+    `campaign_name.imatch.${padraoSemAcento(clean)}`,
   ];
   const digits = searchPhoneDigits(term);
   if (digits) parts.push(`phone.ilike.*${digits}*`);
@@ -802,6 +804,17 @@ export async function convertLeadToDeal(input: ConvertLeadInput): Promise<void> 
     p_vgv_gross: Number.isFinite(input.vgvGross) ? (input.vgvGross as number) : null,
   });
   asError("converter lead", error);
+}
+
+/**
+ * Liga o lead a um negócio que já existe (0279), sem criar negócio novo: o corretor
+ * esqueceu de converter, criou o negócio à mão e agora fecha o lead apontando para
+ * ele. O CPF precisa ser de um cliente do negócio. Como na conversão, o arquivo dos
+ * anexos fica no bucket do lead até `promoteLeadAttachments`.
+ */
+export async function vincularLeadAoNegocio(leadId: string, dealId: string, cpf: string): Promise<void> {
+  const { error } = await untyped.rpc("vincular_lead_a_negocio", { p_lead_id: leadId, p_deal_id: dealId, p_cpf: cpf });
+  asError("vincular lead a negócio", error);
 }
 
 /**

@@ -7,6 +7,7 @@
  * negócio sumir do filtro do próprio dono.
  */
 import { dirigidoPor } from "@/lib/diretoria";
+import { contemTexto } from "@/lib/busca";
 import { newestFirst, type LegacyDealRecord, type PersonRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, type DealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { diasNoStatus } from "./dias";
@@ -97,8 +98,7 @@ export const hasActiveFilter = (filters: DealFilterState): boolean =>
     return Array.isArray(valor) ? valor.length > 0 : valor !== EMPTY_FILTERS[key];
   });
 
-const includes = (value: string | null | undefined, needle: string) =>
-  (value || "").toLowerCase().includes(needle.toLowerCase());
+const includes = contemTexto;
 
 /** Só dígitos: o CPF é digitado com e sem pontuação. */
 const digits = (value: string | null | undefined) => (value || "").replace(/\D/g, "");

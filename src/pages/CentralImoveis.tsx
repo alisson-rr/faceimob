@@ -21,6 +21,7 @@ import { gerarPlanilha, lerPlanilha } from "@/lib/planilhaPrecos";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 
+import { contemTexto } from "@/lib/busca";
 const CHAVE = ["central", "imoveis-cadastro"];
 const TODAS = "__todas__";
 
@@ -59,7 +60,7 @@ export default function CentralImoveis() {
     const termo = busca.trim().toLowerCase();
     return lista.filter((i) =>
       (construtora === TODAS || (i.developer ?? "").trim() === construtora)
-      && (!termo || `${i.code} ${i.title} ${i.city} ${i.developer ?? ""}`.toLowerCase().includes(termo)));
+      && (!termo || contemTexto(`${i.code} ${i.title} ${i.city} ${i.developer ?? ""}`, termo)));
   }, [lista, busca, construtora]);
 
   const pendentes = Object.keys(precos).length;

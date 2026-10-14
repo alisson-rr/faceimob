@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { keepPreviousData, queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
+import { padraoSemAcento } from "@/lib/busca";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
 import { listDevelopers } from "@/integrations/supabase/leads";
@@ -163,7 +164,7 @@ const literalIlike = (term: string) => term.replace(/[\\%_]/g, (c) => `\\${c}`);
 export async function searchDeals(term: string, signal?: AbortSignal) {
   const padrao = `%${literalIlike(term.trim())}%`;
   const [clientes, codigos] = await Promise.all([
-    supabase.from("deal_clients").select("deal_id").ilike("full_name", padrao).limit(200).abortSignal(signal ?? new AbortController().signal),
+    supabase.from("deal_clients").select("deal_id").filter("full_name", "imatch", padraoSemAcento(term.trim())).limit(200).abortSignal(signal ?? new AbortController().signal),
     supabase.from("deals").select("id").ilike("code", padrao).limit(200).abortSignal(signal ?? new AbortController().signal),
   ]);
   if (clientes.error) throw dbError("deal_clients", clientes.error);

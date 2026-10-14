@@ -6,6 +6,7 @@
  * quebra o fast refresh do Vite.
  */
 import { parseBrl } from "@/lib/format";
+import { contemTexto } from "@/lib/busca";
 import { isLeadOverdue, searchPhoneDigits, searchTerm, type LeadRecord } from "@/integrations/supabase/leads";
 import type { AppRole } from "@/contexts/AuthContext";
 
@@ -47,13 +48,13 @@ export const hasActiveFilter = (filters: LeadFilterState) =>
  * "Ana (Paula)" trazia "Ana Paula" do banco e a tela descartava a linha.
  */
 export const matchesFilters = (lead: LeadRecord, filters: LeadFilterState): boolean => {
-  const term = searchTerm(filters.search).toLowerCase();
+  const term = searchTerm(filters.search);
   const digits = searchPhoneDigits(filters.search);
   const matchSearch = !term
-    || lead.name.toLowerCase().includes(term)
-    || (lead.email || "").toLowerCase().includes(term)
+    || contemTexto(lead.name, term)
+    || contemTexto(lead.email, term)
     || (digits !== null && (lead.phone || "").includes(digits))
-    || (lead.campaign_name || "").toLowerCase().includes(term);
+    || contemTexto(lead.campaign_name, term);
   const matchStatus = filters.status === "all" || lead.status === filters.status;
   const matchSource = filters.source === "all"
     || lead.source_id === filters.source

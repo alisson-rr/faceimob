@@ -24,6 +24,7 @@ import {
   ROTULO_DO_RESULTADO, linhasDoPainel, resumoDoPainel, type CampanhaDaConta, type LinhaDoPainel,
 } from "./gestaoDeAnuncios";
 
+import { contemTexto } from "@/lib/busca";
 /** Sem limite cadastrado na conta (Marketing → Alertas), o mesmo da DG. */
 const CPL_LIMITE_PADRAO = 12;
 
@@ -102,7 +103,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
   const todas = useMemo(() => consulta.data?.linhas ?? [], [consulta.data]);
   const visiveis = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return todas.filter((l) => (mostrarInativas || l.ativa) && (!termo || l.name.toLowerCase().includes(termo)));
+    return todas.filter((l) => (mostrarInativas || l.ativa) && (!termo || contemTexto(l.name, termo)));
   }, [todas, busca, mostrarInativas]);
   const resumo = useMemo(() => resumoDoPainel(todas), [todas]);
 

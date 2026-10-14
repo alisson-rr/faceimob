@@ -9,6 +9,7 @@ import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/
 import { listarPastasDoDrive, type PastaDoDrive } from "@/integrations/supabase/central";
 import { describeError } from "@/lib/supabaseError";
 
+import { contemTexto } from "@/lib/busca";
 /**
  * Drive de Construtoras dentro do CRM (pedido de 04/10/2026: "sem direcionar
  * para outro local"). A lista mora aqui; a pasta em si é o Google Drive da
@@ -21,7 +22,7 @@ export default function CentralDrive() {
   const pastas = useQuery({ queryKey: ["central", "drive"], queryFn: listarPastasDoDrive });
 
   const termo = busca.trim().toLowerCase();
-  const visiveis = (pastas.data ?? []).filter((p) => p.developer.toLowerCase().includes(termo));
+  const visiveis = (pastas.data ?? []).filter((p) => contemTexto(p.developer, termo));
 
   return (
     <div className="space-y-6">

@@ -14,19 +14,30 @@ const linkWa = (telefone: string | null | undefined, texto: string) => {
 };
 
 /**
- * Boas-vindas ao colaborador. Sem senha: o login é por código de 6 dígitos
- * enviado ao e-mail, então a mensagem pode ir por WhatsApp sem segredo nenhum.
+ * Senha inicial da caixa de e-mail criada no KingHost (14/10/2026). É a do
+ * e-mail, não a do CRM: o CRM não tem senha, o login é por código de 6 dígitos
+ * que chega nessa caixa. Só vai na mensagem quando o e-mail é do domínio da
+ * empresa; um e-mail de fora tem senha própria.
+ */
+export const SENHA_INICIAL_EMAIL = "Face@2026";
+const DOMINIO_EMAIL_EMPRESA = "@faceimob.com.br";
+
+/**
+ * Boas-vindas ao colaborador: endereço de acesso e, se a caixa é da empresa, a
+ * senha inicial dela, para ele abrir o webmail e ler o código de 6 dígitos.
  */
 export function linkBoasVindas(p: { nome: string; email: string; telefone: string | null | undefined; crmUrl: string }) {
+  const caixaDaEmpresa = p.email.trim().toLowerCase().endsWith(DOMINIO_EMAIL_EMPRESA);
   return linkWa(p.telefone, [
     `Olá ${primeiroNome(p.nome)}, seja bem-vindo(a) à ${IMOBILIARIA}! 🎉`,
     "",
     "Seu acesso ao CRM está pronto:",
     `🔗 ${p.crmUrl}`,
     `📧 Seu e-mail de acesso: ${p.email}`,
+    ...(caixaDaEmpresa ? [`🔑 Senha inicial do e-mail: ${SENHA_INICIAL_EMAIL} (troque no primeiro acesso ao webmail)`] : []),
     "",
-    "Não existe senha: digite o e-mail, clique em entrar e use o código de 6 dígitos que chega na sua caixa de e-mail.",
-    `Para ler seus e-mails: ${WEBMAIL_URL}`,
+    "O CRM não tem senha: digite o e-mail, clique em entrar e use o código de 6 dígitos que chega na sua caixa de e-mail.",
+    `Para ler o código, entre no webmail: ${WEBMAIL_URL}`,
   ].join("\n"));
 }
 
@@ -43,4 +54,14 @@ export function linkAvisoAoGerente(p: { gerente: string; nome: string; email: st
 export function salvarColaboradorNaAgenda(nome: string, telefone: string | null | undefined): boolean {
   const nomeDoContato = `${nome.trim()} | ${IMOBILIARIA}`;
   return baixarVcard(vcardDe(nomeDoContato, telefone), nome);
+}
+
+/** Salva o contato e abre o WhatsApp com o acesso pronto: o envio continua manual. Sem telefone, não faz nada. */
+export function enviarAcessoPorWhatsapp(p: { nome: string; email: string; telefone: string | null | undefined }): boolean {
+  const url = linkBoasVindas({ ...p, crmUrl: window.location.origin });
+  if (!url) return false;
+  // Salva o contato antes: a conversa já nasce com o nome certo.
+  salvarColaboradorNaAgenda(p.nome, p.telefone);
+  window.open(url, "_blank", "noopener,noreferrer");
+  return true;
 }
