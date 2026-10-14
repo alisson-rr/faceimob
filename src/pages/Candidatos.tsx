@@ -1,10 +1,14 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, MessageCircle, Undo2, UserPlus, Users } from "lucide-react";
+import { Copy, Loader2, MessageCircle, Phone, Undo2, UserPlus, UserX, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState, PageHeader } from "@/components/shared";
@@ -12,8 +16,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { waNumber } from "@/components/leads/model";
+import { abrirWhatsapp } from "@/lib/whatsapp";
 import {
-  devolverCandidato, listCandidatos, mudarStatusCandidato, painelCandidatos, pegarCandidato,
+  descartarCandidato, devolverCandidato, listCandidatos, mudarStatusCandidato, painelCandidatos, pegarCandidato,
   respostasDoCandidato, ROTULO_STATUS, ROTULO_ZONA, type Candidato, type StatusCandidato, type ZonaCandidato,
 } from "@/integrations/supabase/candidatos";
 
@@ -34,13 +39,17 @@ export default function Candidatos() {
   const qc = useQueryClient();
   const [zona, setZona] = useState<string>(TODAS);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [descartando, setDescartando] = useState<Candidato | null>(null);
 
   const lista = useQuery({ queryKey: CHAVE, queryFn: listCandidatos, refetchInterval: 60_000 });
   const painel = useQuery({ queryKey: [...CHAVE, "painel"], queryFn: painelCandidatos, enabled: isAdmin });
 
   const candidatos = useMemo(() => lista.data ?? [], [lista.data]);
   const disponiveis = candidatos.filter((c) => c.status === "disponivel" && (zona === TODAS || c.zona === zona));
-  const meus = candidatos.filter((c) => c.status !== "disponivel" && (isAdmin || c.responsavel_id === user?.id));
+  // Descartado some da tela dos usuários (0276); só o admin ainda o vê, em "Pegos",
+  // para poder devolver um descarte errado. O painel dele já conta todos.
+  const meus = candidatos.filter((c) => c.status !== "disponivel"
+    && (isAdmin || (c.responsavel_id === user?.id && c.status !== "descartado")));
 
   async function agir(id: string, acao: () => Promise<void>, sucesso: string, falha: string) {
     setOcupado(id);
@@ -120,7 +129,7 @@ export default function Candidatos() {
             {disponiveis.length === 0 && <p className="text-sm text-muted-foreground">Nenhum candidato disponível nesta zona.</p>}
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {disponiveis.map((c) => (
-                <CartaoCandidato key={c.id} c={c}>
+                <CartaoCandidato key={c.id} c={c} ocupado={ocupado === c.id} onDescartar={() => setDescartando(c)}>
                   <Button
                     size="sm" className="gap-1" disabled={ocupado === c.id}
                     onClick={() => void agir(c.id, () => pegarCandidato(c.id), `${c.nome} agora é seu`, "Não foi possível pegar o candidato")}
@@ -137,7 +146,7 @@ export default function Candidatos() {
             {meus.length === 0 && <p className="text-sm text-muted-foreground">Você ainda não pegou nenhum candidato.</p>}
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {meus.map((c) => (
-                <CartaoCandidato key={c.id} c={c} mostrarDono={isAdmin}>
+                <CartaoCandidato key={c.id} c={c} mostrarDono={isAdmin} ocupado={ocupado === c.id} onDescartar={() => setDescartando(c)}>
                   <Select
                     value={c.status}
                     disabled={ocupado === c.id}
@@ -153,13 +162,6 @@ export default function Candidatos() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {waNumber(c.telefone) && (
-                    <Button size="sm" variant="outline" className="gap-1" asChild>
-                      <a href={`https://wa.me/${waNumber(c.telefone)}?text=${encodeURIComponent(`Olá ${c.nome}, tudo bem? Aqui é da Faceimob, sobre a vaga de corretor(a).`)}`} target="_blank" rel="noreferrer">
-                        <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
-                      </a>
-                    </Button>
-                  )}
                   {isAdmin && (
                     <Button
                       size="sm" variant="ghost" className="gap-1" disabled={ocupado === c.id}
@@ -174,6 +176,29 @@ export default function Candidatos() {
           </TabsContent>
         </Tabs>
       )}
+
+      <AlertDialog open={descartando !== null} onOpenChange={(aberto) => { if (!aberto) setDescartando(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Descartar {descartando?.nome}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O candidato sai da lista de todos os usuários. Só o administrador ainda o vê, e pode devolvê-lo aos disponíveis.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Manter</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const alvo = descartando;
+                setDescartando(null);
+                if (alvo) void agir(alvo.id, () => descartarCandidato(alvo.id), `${alvo.nome} descartado`, "Não foi possível descartar");
+              }}
+            >
+              Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -187,13 +212,47 @@ function Numero({ rotulo, valor }: { rotulo: string; valor: number }) {
   );
 }
 
-function CartaoCandidato({ c, mostrarDono = false, children }: { c: Candidato; mostrarDono?: boolean; children: React.ReactNode }) {
+async function copiarNumero(c: Candidato) {
+  try {
+    await navigator.clipboard.writeText(c.telefone ?? "");
+    toast.success("Número copiado", { description: c.telefone ?? undefined });
+  } catch {
+    toast.error("Não foi possível copiar", { description: "Selecione o número e copie à mão." });
+  }
+}
+
+function CartaoCandidato({
+  c, mostrarDono = false, ocupado = false, onDescartar, children,
+}: {
+  c: Candidato; mostrarDono?: boolean; ocupado?: boolean; onDescartar?: () => void; children: React.ReactNode;
+}) {
   const respostas = respostasDoCandidato(c.respostas);
+  const numero = waNumber(c.telefone);
+  const linkWhatsapp = numero
+    ? `https://wa.me/${numero}?text=${encodeURIComponent(`Olá ${c.nome}, tudo bem? Aqui é da Faceimob, sobre a vaga de corretor(a).`)}`
+    : null;
   return (
     <Card className="flex flex-col gap-2 p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate font-semibold">{c.nome}</p>
+          {/* O contato fica à vista: antes só existia o botão de WhatsApp, e quem
+              ligava ou usava outro app não tinha de onde tirar o número. */}
+          {c.telefone ? (
+            <p className="flex items-center gap-1 text-sm">
+              <Phone className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+              <span className="tabular-nums">{c.telefone}</span>
+              <Button
+                type="button" size="icon" variant="ghost" className="h-6 w-6"
+                aria-label={`Copiar o número de ${c.nome}`}
+                onClick={() => void copiarNumero(c)}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Sem telefone cadastrado</p>
+          )}
           <p className="text-xs text-muted-foreground">Aprovado pela Luna em {dateTime(c.created_at)}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -218,7 +277,27 @@ function CartaoCandidato({ c, mostrarDono = false, children }: { c: Candidato; m
         </dl>
       )}
       {c.resumo && <p className="text-xs text-muted-foreground">{c.resumo}</p>}
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">{children}</div>
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+        {children}
+        {linkWhatsapp && (
+          <Button size="sm" variant="outline" className="gap-1" asChild>
+            <a
+              href={linkWhatsapp} target="faceimob-whatsapp" rel="noreferrer"
+              onClick={(e) => { e.preventDefault(); abrirWhatsapp(linkWhatsapp); }}
+            >
+              <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+            </a>
+          </Button>
+        )}
+        {onDescartar && c.status !== "descartado" && (
+          <Button
+            size="sm" variant="ghost" className="gap-1 text-destructive hover:text-destructive" disabled={ocupado}
+            onClick={onDescartar}
+          >
+            <UserX className="h-3.5 w-3.5" /> Descartar
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

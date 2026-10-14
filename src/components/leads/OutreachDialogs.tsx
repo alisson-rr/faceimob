@@ -15,12 +15,17 @@ import { useMensagensProntas, useMeuApelido } from "./mensagensProntasData";
 import { MensagensProntasEditor } from "./MensagensProntasEditor";
 import { baixarContato, nomeDoContato } from "./contatoVcard";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
-import { APP_WHATSAPP_ROTULO, ehAndroid, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
+import { APP_WHATSAPP_ROTULO, abrirWhatsapp, ehAndroid, ehCelular, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
-/** Preferência do aparelho: salvar o contato junto com o WhatsApp (padrão: sim). */
+/**
+ * Preferência do aparelho: salvar o contato junto com o WhatsApp (padrão: sim no
+ * celular). No computador o .vcf só vira download inútil — nem o nome salva —,
+ * então lá a opção nem existe.
+ */
 const CHAVE_SALVAR_CONTATO = "faceimob:salvar-contato-no-whatsapp";
 const lerSalvarContato = () => {
+  if (!ehCelular()) return false;
   try {
     return localStorage.getItem(CHAVE_SALVAR_CONTATO) !== "nao";
   } catch {
@@ -86,11 +91,11 @@ export function WhatsAppDialog({
       return;
     }
     // Contato no celular num toque (04/10/2026): o .vcf abre "Adicionar contato".
-    if (salvarContato) baixarContato(lead);
+    if (salvarContato && ehCelular()) baixarContato(lead);
     const link = linkWhatsapp(number, message, app);
-    // `intent://` só abre o app pela própria aba; o `wa.me` vai em aba nova.
+    // `intent://` só abre o app pela própria aba; o `wa.me` reaproveita a aba do WhatsApp.
     if (ehAndroid()) window.location.href = link;
-    else window.open(link, "_blank", "noopener");
+    else abrirWhatsapp(link);
     toast({ title: "WhatsApp aberto", description: `Mensagem preparada para ${lead.name}.` });
     onSent?.();
     onClose();
@@ -154,6 +159,7 @@ export function WhatsAppDialog({
           />
         </div>
 
+        {ehCelular() && (
         <div className="flex items-start gap-2 rounded-lg border border-border p-3">
           <Checkbox
             id={`${fieldId}-contato`}
@@ -173,6 +179,7 @@ export function WhatsAppDialog({
             <span className="block text-xs text-muted-foreground">{nomeDoContato(lead)}</span>
           </Label>
         </div>
+        )}
 
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium">Abrir no celular pelo</legend>
