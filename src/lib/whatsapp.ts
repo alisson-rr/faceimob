@@ -46,6 +46,16 @@ export const ehAndroid = (userAgent: string = typeof navigator === "undefined" ?
 export const ehCelular = (userAgent: string = typeof navigator === "undefined" ? "" : navigator.userAgent) =>
   /android|iphone|ipad|ipod/i.test(userAgent);
 
+/**
+ * iPhone e iPad (o iPadOS novo se apresenta como Mac, mas tem toque). No Safari
+ * deles o .vcf baixado por link temporário cai em "Arquivos" em vez de abrir
+ * "Adicionar contato": lá o contato sai pela folha de compartilhar.
+ */
+export const ehIphone = (
+  userAgent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+  toques: number = typeof navigator === "undefined" ? 0 : navigator.maxTouchPoints,
+) => /iphone|ipad|ipod/i.test(userAgent) || (/macintosh/i.test(userAgent) && toques > 1);
+
 /** Nome da aba do WhatsApp: todo clique reaproveita ela em vez de abrir uma nova. */
 export const JANELA_WHATSAPP = "faceimob-whatsapp";
 

@@ -13,9 +13,9 @@ import { fillWhatsappTemplate, waNumber } from "./model";
 import { preencherMensagem } from "./mensagensProntas";
 import { useMensagensProntas, useMeuApelido } from "./mensagensProntasData";
 import { MensagensProntasEditor } from "./MensagensProntasEditor";
-import { baixarContato, nomeDoContato } from "./contatoVcard";
+import { baixarContato, compartilharContato, nomeDoContato } from "./contatoVcard";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
-import { APP_WHATSAPP_ROTULO, abrirWhatsapp, ehAndroid, ehCelular, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
+import { APP_WHATSAPP_ROTULO, abrirWhatsapp, ehAndroid, ehCelular, ehIphone, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
 /**
@@ -84,6 +84,15 @@ export function WhatsAppDialog({
     }));
   };
 
+  const salvarNoIphone = async () => {
+    const resultado = await compartilharContato(lead);
+    if (resultado === "baixado") {
+      toast({ title: "Contato baixado", description: "Abra o arquivo em Arquivos para salvar na agenda." });
+    } else if (resultado === "sem-telefone") {
+      toast({ variant: "destructive", title: "Lead sem telefone", description: "Cadastre o telefone antes de salvar o contato." });
+    }
+  };
+
   const send = () => {
     const number = waNumber(lead.phone);
     if (!number) {
@@ -91,7 +100,8 @@ export function WhatsAppDialog({
       return;
     }
     // Contato no celular num toque (04/10/2026): o .vcf abre "Adicionar contato".
-    if (salvarContato && ehCelular()) baixarContato(lead);
+    // iPhone não abre o .vcf baixado: lá o contato sai pelo botão "Salvar contato".
+    if (salvarContato && ehCelular() && !ehIphone()) baixarContato(lead);
     const link = linkWhatsapp(number, message, app);
     // `intent://` só abre o app pela própria aba; o `wa.me` reaproveita a aba do WhatsApp.
     if (ehAndroid()) window.location.href = link;
@@ -159,7 +169,19 @@ export function WhatsAppDialog({
           />
         </div>
 
-        {ehCelular() && (
+        {ehIphone() && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+          <div className="min-w-0 text-sm leading-snug">
+            Contato no iPhone
+            <span className="block truncate text-xs text-muted-foreground">{nomeDoContato(lead)}</span>
+          </div>
+          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => void salvarNoIphone()}>
+            Salvar contato
+          </Button>
+        </div>
+        )}
+
+        {ehCelular() && !ehIphone() && (
         <div className="flex items-start gap-2 rounded-lg border border-border p-3">
           <Checkbox
             id={`${fieldId}-contato`}
