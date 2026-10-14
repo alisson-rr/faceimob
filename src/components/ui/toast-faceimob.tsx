@@ -45,6 +45,10 @@ const EXCECOES_SUCESSO: RegExp[] = [
   /^Caso movido para /i,
   /^Devolvido ao comercial$/i,
   /^Proposta reativada$/i,
+  /^Construtora trocada$/i,
+  /^Documentos enviados ao gerente$/i,
+  /^Documentos aprovados$/i,
+  /^Documentos devolvidos ao corretor$/i,
   / registrada$/i, // Queda/Distrato/OFF registrada
 ];
 const ehExcecaoSucesso = (mensagem: string): boolean =>

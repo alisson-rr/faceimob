@@ -51,6 +51,7 @@ const opcoesDe = (chamada: unknown[] | undefined) => (chamada?.[1] ?? {}) as Rec
 
 beforeEach(() => {
   vi.clearAllMocks();
+  storageStore.clear();
 });
 
 describe("posição e tamanho", () => {
@@ -148,9 +149,13 @@ describe("preferência de avisos de sucesso (14/10/2026)", () => {
     toast.success("Negócio movido para Análise");
     toast.success("Enviado para análise");
     toast.success("Queda registrada");
-    expect(nativo.success).toHaveBeenCalledTimes(3);
-    expect(tocar).toHaveBeenCalledTimes(3);
-    expect(confete).toHaveBeenCalledTimes(3);
+    toast.success("Construtora trocada");
+    toast.success("Documentos enviados ao gerente");
+    toast.success("Documentos aprovados");
+    toast.success("Documentos devolvidos ao corretor");
+    expect(nativo.success).toHaveBeenCalledTimes(7);
+    expect(tocar).toHaveBeenCalledTimes(7);
+    expect(confete).toHaveBeenCalledTimes(7);
   });
 
   it("erro nunca é silenciado, mesmo com preferência desligada", () => {
