@@ -179,6 +179,26 @@ describe("activeTeamIdOfManager", () => {
   });
 });
 
+describe("equipe escolhida na ficha", () => {
+  it("com duas equipes, a escolhida entra — e só ela", async () => {
+    prepararTabelas({ teams: [ok([{ id: "t1", name: "Alfa" }, { id: "t2", name: "Beta" }])] });
+    rpc.mockResolvedValue({ data: null, error: null });
+
+    await setTeamByManager("p1", "ger1", false, "t2");
+
+    expect(rpc).toHaveBeenCalledWith("move_team_member", { p_profile_id: "p1", p_team_id: "t2" });
+  });
+
+  it("equipe de outro gerente (id forjado ou desativada) é recusada, nada é movido", async () => {
+    rpc.mockClear();
+    prepararTabelas({ teams: [ok([{ id: "t1", name: "Alfa" }, { id: "t2", name: "Beta" }])] });
+
+    await expect(setTeamByManager("p1", "ger1", false, "t-de-outro"))
+      .rejects.toThrow(/não é uma equipe ativa deste gerente/);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
 describe("setTeamByManager", () => {
   it("troca de equipe é uma operação só no banco — nada fecha pela tabela (0167)", async () => {
     // Fechar e abrir pela tabela recusava o diretor movendo gente entre as
