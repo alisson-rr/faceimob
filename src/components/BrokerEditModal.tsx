@@ -348,9 +348,18 @@ export function BrokerEditModal({
    * crachá; o banco recusa o resto (0167) e `buildPersonSave` nem os envia.
    */
   const dadosTravados = !isAdmin && !criando;
-  const desligado = (baseline?.status ?? form.status) === "terminated";
-  /** Ligar o Switch de quem está DESLIGADO devolve também a entrada no login. */
-  const reativando = desligado && form.active === true;
+  const situacaoNoBanco = baseline?.status ?? form.status;
+  const desligado = situacaoNoBanco === "terminated";
+  /**
+   * Ligar o Switch de quem está DESLIGADO devolve também a entrada no login. O
+   * mesmo vale para o administrador que reativa um SUSPENSO: "Inativar — saiu da
+   * empresa" suspende E bloqueia a entrada, e sem isto a pessoa voltava "ativa"
+   * e trancada do lado de fora (caso do Moisés, 14/10/2026). A etapa é
+   * idempotente: num suspenso que nunca foi bloqueado, `restore` não muda nada.
+   * O gestor que religa o Switch de um suspenso continua só mexendo no status:
+   * a função que desfaz o bloqueio é do administrador.
+   */
+  const reativando = form.active === true && (desligado || (isAdmin && situacaoNoBanco === "suspended"));
 
   /**
    * Monta o que vai para o banco; devolve a mensagem de validação quando não dá
