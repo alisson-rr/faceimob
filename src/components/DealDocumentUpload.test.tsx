@@ -297,4 +297,17 @@ describe("DealDocumentUpload — aba Negócio (10/10/2026)", () => {
     h.caseStatus = "under_review";
     expect(await montarParte("acoes", { statusDetail: "INCOMPLETO" })).toContain("Reenviar (encerra o envio anterior)");
   });
+
+  it.each(["approved", "rejected"])(
+    "em INCOMPLETO com caso %s da volta anterior, a Esteira Ágil é o caminho e virar negócio fica fechado",
+    async (caso) => {
+      h.status = "approved";
+      h.papeis = ["broker"];
+      h.caseStatus = caso;
+      const acoes = await montarParte("acoes", { statusDetail: "INCOMPLETO" });
+      expect(acoes).toContain("Reenviar (encerra o envio anterior)");
+      expect(acoes).not.toContain("já foi aprovada");
+      expect(acoes).not.toContain("Enviar análise p/ virar negócio");
+    },
+  );
 });

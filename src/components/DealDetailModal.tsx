@@ -623,8 +623,9 @@ export default function DealDetailModal({
                   readOnly={lock.readOnly}
                   onPatch={patch}
                   onAplicarOff={aplicarOff}
-                  onGravar={(status) => handleSave({
+                  onGravar={(status, silencioso) => handleSave({
                     fechar: false,
+                    avisar: !silencioso,
                     alterar: status ? { status, status_group_id: undefined } : undefined,
                   }).then(Boolean)}
                   onMovido={async (status) => {
