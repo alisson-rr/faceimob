@@ -24,6 +24,7 @@ declare
   v_lead uuid;
   v_lead2 uuid;
   v_stage uuid := (select id from public.pipeline_stages where is_initial limit 1);
+  v_antes int;
 begin
   insert into auth.users (id, email, raw_user_meta_data) values
     (cor, 'cor@c2790.test', '{"full_name":"Corretor 2790"}'),
@@ -41,6 +42,7 @@ begin
   insert into public.leads (full_name, phone, assigned_to, status) values ('Maria Lead', '5551999990001', cor, 'assigned') returning id into v_lead;
   insert into public.leads (full_name, phone, assigned_to, status) values ('Outro Lead', '5551999990002', out, 'assigned') returning id into v_lead2;
 
+  v_antes := (select count(*) from public.deals);
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
 
   perform pg_temp.falha(format('select public.vincular_lead_a_negocio(%L,%L,%L)', v_lead, v_deal, '123'), 'CPF curto não passa');
@@ -63,7 +65,7 @@ begin
   raise notice '  ok  o histórico do lead e do negócio registra o vínculo';
 
   perform pg_temp.falha(format('select public.vincular_lead_a_negocio(%L,%L,%L)', v_lead, v_deal, '12345678909'), 'lead já convertido não vincula de novo');
-  if (select count(*) from public.deals) <> 2 then
+  if (select count(*) from public.deals) <> v_antes then
     raise exception 'FALHOU: vincular não pode criar negócio';
   end if;
   raise notice '  ok  nenhum negócio novo foi criado';
