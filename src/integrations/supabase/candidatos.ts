@@ -58,7 +58,7 @@ const db = supabase as unknown as {
       };
     };
   };
-  rpc(nome: "candidato_pegar" | "candidato_devolver", args: { p_id: string }): Resultado<unknown>;
+  rpc(nome: "candidato_pegar" | "candidato_devolver" | "candidato_descartar", args: { p_id: string }): Resultado<unknown>;
   rpc(nome: "candidato_mudar_status", args: { p_id: string; p_status: StatusCandidato }): Resultado<unknown>;
   rpc(nome: "candidatos_painel"): Resultado<PainelCandidatos>;
 };
@@ -81,6 +81,12 @@ export async function pegarCandidato(id: string): Promise<void> {
 export async function mudarStatusCandidato(id: string, status: StatusCandidato): Promise<void> {
   const { error } = await db.rpc("candidato_mudar_status", { p_id: id, p_status: status });
   if (error) throw dbError("candidato_mudar_status", error);
+}
+
+/** Descarta de verdade (0276): some da lista dos usuários; o painel do admin segue contando. */
+export async function descartarCandidato(id: string): Promise<void> {
+  const { error } = await db.rpc("candidato_descartar", { p_id: id });
+  if (error) throw dbError("candidato_descartar", error);
 }
 
 export async function devolverCandidato(id: string): Promise<void> {

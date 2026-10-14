@@ -42,6 +42,28 @@ export function gravarAppWhatsapp(app: AppWhatsapp): void {
 export const ehAndroid = (userAgent: string = typeof navigator === "undefined" ? "" : navigator.userAgent) =>
   /android/i.test(userAgent);
 
+/** Celular ou tablet: só aí o .vcf abre "Adicionar contato"; no computador vira download à toa. */
+export const ehCelular = (userAgent: string = typeof navigator === "undefined" ? "" : navigator.userAgent) =>
+  /android|iphone|ipad|ipod/i.test(userAgent);
+
+/** Nome da aba do WhatsApp: todo clique reaproveita ela em vez de abrir uma nova. */
+export const JANELA_WHATSAPP = "faceimob-whatsapp";
+
+/**
+ * Abre a conversa sempre na MESMA aba (nomeada). Com `_blank` cada clique criava
+ * uma aba. `noopener` não serve aqui — ele ignora o nome e abre outra —, então
+ * o vínculo com esta página é cortado depois de aberta.
+ */
+export function abrirWhatsapp(link: string): void {
+  const janela = window.open(link, JANELA_WHATSAPP);
+  if (!janela) return;
+  try {
+    janela.opener = null;
+  } catch {
+    // Navegador que não deixa soltar o vínculo: a aba abre igual.
+  }
+}
+
 /** Link que abre a conversa com o texto pronto. `numero` só com dígitos e DDI. */
 export function linkWhatsapp(numero: string, texto: string, app: AppWhatsapp, android = ehAndroid()): string {
   const msg = encodeURIComponent(texto);
