@@ -2,6 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StatusBadge } from "@/components/shared";
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
+import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 
 export function ContagemPessoas({ pessoas }: { pessoas: PessoaResumo[] }) {
   const ativos = pessoas.filter((p) => p.status === "active").length;
@@ -67,11 +68,13 @@ const TONS: Record<Tom, { caixa: string; foto: string }> = {
  * vezes a mesma pessoa sem nunca ver o resultado. Para o cartão comum — pessoa
  * ativa — o que aparece continua sendo só nome e foto.
  */
-export function PessoaCard({ pessoa, tom = "neutral", onAbrir }: {
+export function PessoaCard({ pessoa, tom = "neutral", onAbrir, onEnviarAcesso }: {
   pessoa: PessoaResumo;
   tom?: Tom;
   /** Ausente = a pessoa não é editável por quem está olhando; o cartão não vira botão. */
   onAbrir?: () => void;
+  /** Ícone do WhatsApp ao lado do nome (14/10/2026): manda o acesso. Só para quem está ativo. */
+  onEnviarAcesso?: () => void;
 }) {
   const estilo = TONS[tom];
   const rotulo = ROTULO_STATUS[pessoa.status];
@@ -94,9 +97,7 @@ export function PessoaCard({ pessoa, tom = "neutral", onAbrir }: {
 
   const caixa = cn("flex w-full items-center gap-2 rounded-lg border border-border/30 p-2 text-left", estilo.caixa);
 
-  if (!onAbrir) return <div className={caixa}>{conteudo}</div>;
-
-  return (
+  const cartao = !onAbrir ? <div className={caixa}>{conteudo}</div> : (
     // `<button>` de verdade: teclado, foco e papel vêm de graça. O nome
     // acessível repete o texto visível ("Abrir perfil de Ana"), como exige o
     // critério de rótulo no nome.
@@ -108,5 +109,23 @@ export function PessoaCard({ pessoa, tom = "neutral", onAbrir }: {
     >
       {conteudo}
     </button>
+  );
+
+  if (!onEnviarAcesso || pessoa.status !== "active") return cartao;
+
+  // O ícone é IRMÃO do cartão, não filho: botão dentro de botão não é HTML válido.
+  return (
+    <div className="flex items-center gap-1">
+      <div className="min-w-0 flex-1">{cartao}</div>
+      <button
+        type="button"
+        onClick={onEnviarAcesso}
+        aria-label={`Enviar acesso por WhatsApp para ${pessoa.name}`}
+        title="Enviar acesso por WhatsApp"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/30 text-[#25D366] transition-colors hover:bg-[#25D366]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <WhatsAppIcon className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

@@ -18,7 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
 import { date } from "@/lib/format";
 import { Camera, KeyRound, Loader2, Copy, Check, IdCard, Sparkles, MessageCircle, ExternalLink } from "lucide-react";
-import { KINGHOST_CRIAR_EMAIL_URL, WEBMAIL_URL, linkAvisoAoGerente, linkBoasVindas, salvarColaboradorNaAgenda } from "@/components/boasVindas";
+import { KINGHOST_CRIAR_EMAIL_URL, WEBMAIL_URL, enviarAcessoPorWhatsapp, linkAvisoAoGerente } from "@/components/boasVindas";
 import { Logo } from "@/components/shared/Logo";
 
 type Manager = { id: string; name: string; phone?: string | null };
@@ -681,9 +681,7 @@ export function BrokerEditModal({
   const gerenteDe = (c: { gerenteId: string | null }) => managers.find(m => m.id === c.gerenteId);
   // Salva o contato antes de abrir o WhatsApp: a conversa já nasce com o nome certo.
   const enviarAcesso = (c: NonNullable<typeof criado>) => {
-    salvarColaboradorNaAgenda(c.nome, c.telefone);
-    const url = linkBoasVindas({ nome: c.nome, email: c.email, telefone: c.telefone, crmUrl: window.location.origin });
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    enviarAcessoPorWhatsapp({ nome: c.nome, email: c.email, telefone: c.telefone });
   };
   const avisarGerente = (c: NonNullable<typeof criado>) => {
     const g = gerenteDe(c);

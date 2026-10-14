@@ -12,6 +12,13 @@ describe("boas-vindas por WhatsApp", () => {
     expect(texto(url)).toContain("webmail.faceimob.com.br");
   });
 
+  it("caixa da empresa leva a senha inicial do e-mail; e-mail de fora não", () => {
+    const daEmpresa = linkBoasVindas({ nome: "Ana Souza", email: "Ana.Souza@Faceimob.com.br", telefone: "51999991234", crmUrl: "x" });
+    expect(texto(daEmpresa)).toContain("Face@2026");
+    const defora = linkBoasVindas({ nome: "Ana Souza", email: "ana@gmail.com", telefone: "51999991234", crmUrl: "x" });
+    expect(texto(defora)).not.toContain("Face@2026");
+  });
+
   it("sem telefone não gera link", () => {
     expect(linkBoasVindas({ nome: "Ana", email: "a@b.c", telefone: "", crmUrl: "x" })).toBeNull();
     expect(linkAvisoAoGerente({ gerente: "Victor", nome: "Ana", email: "a@b.c", telefoneGerente: null })).toBeNull();

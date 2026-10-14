@@ -17,7 +17,7 @@ import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Loader2, Mail,
+  AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Link2, Loader2, Mail,
   Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
   UserPlus,
 } from "lucide-react";
@@ -35,6 +35,7 @@ import {
 } from "@/integrations/supabase/leads";
 import { toDateTimeInput } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
+import { VincularNegocioDialog } from "@/components/leads/VincularNegocioDialog";
 import { RespostasDoSdrIa } from "@/components/leads/RespostasDoSdrIa";
 import { AnuncioDialog } from "@/components/anuncios/AnuncioDialog";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
@@ -91,6 +92,7 @@ export default function LeadDetailModal({
   const [anuncioAberto, setAnuncioAberto] = useState(false);
   const [pegarAberto, setPegarAberto] = useState(false);
   const [repassando, setRepassando] = useState(false);
+  const [vinculando, setVinculando] = useState(false);
   // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -373,9 +375,15 @@ export default function LeadDetailModal({
               o mesmo `writable` da lista. Sem ele o sócio via o botão aceso,
               preenchia construtora e VGV e só então tomava 42501. */}
           {writable && lead.status !== "converted" && !lead.converted_deal_id && (
-            <Button size="sm" variant="success" className="sm:ml-auto" onClick={() => onConvert(lead)}>
-              <ArrowRightCircle className="h-4 w-4" /> Converter
-            </Button>
+            <>
+              {/* Esqueceu de converter e criou o negócio à mão: liga pelo CPF, sem cadastro duplo. */}
+              <Button size="sm" variant="outline" className="sm:ml-auto" onClick={() => setVinculando(true)}>
+                <Link2 className="h-4 w-4" /> Vincular a negócio existente
+              </Button>
+              <Button size="sm" variant="success" onClick={() => onConvert(lead)}>
+                <ArrowRightCircle className="h-4 w-4" /> Converter
+              </Button>
+            </>
           )}
           {/* Encerrar com motivo: a saída que faltava. Sem ela o único jeito de
               tirar o lead da conta dos atrasados era reagendar para sempre. */}
@@ -632,6 +640,14 @@ export default function LeadDetailModal({
           lead={lead}
           onClose={() => setClosing(false)}
           onClosed={() => { onStageChanged?.(); onOpenChange(false); }}
+        />
+      )}
+
+      {vinculando && (
+        <VincularNegocioDialog
+          lead={lead}
+          onClose={() => setVinculando(false)}
+          onVinculado={() => { onStageChanged?.(); onOpenChange(false); }}
         />
       )}
 

@@ -31,11 +31,13 @@ import { GlobalGoalCard } from "@/components/equipes/GlobalGoalCard";
 import { LeaderGoalsCard } from "@/components/equipes/LeaderGoalsCard";
 import { MetaVgv } from "@/components/equipes/MetaVgv";
 import { PessoaCard, ListaPessoas, ContagemPessoas, iniciais } from "@/components/equipes/PessoaCard";
+import { enviarAcessoPorWhatsapp } from "@/components/boasVindas";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
 import { CofreCredenciais } from "@/components/equipes/CofreCredenciais";
 import { DiretorDuploCard } from "@/components/equipes/DiretorDuploCard";
 import { goalPeriods, goalsByProfile, otherMetricsByProfile } from "@/components/equipes/metas";
 
+import { contemTexto } from "@/lib/busca";
 interface BrokerRow {
   id: string;
   name: string;
@@ -381,6 +383,12 @@ export default function Equipes() {
   const podeEditarFicha = (person: BrokerRow) =>
     canEdit || gestorDoAlvo(person);
 
+  /** Ícone do WhatsApp na linha: só para quem o usuário edita e que tem celular e e-mail de acesso. */
+  const enviarAcessoDe = (person: BrokerRow) =>
+    podeEditarFicha(person) && person.phone && person.email
+      ? () => { enviarAcessoPorWhatsapp({ nome: person.name, email: person.email as string, telefone: person.phone }); }
+      : undefined;
+
   /** Diretor que cria equipe entra como diretor dela — `teams_admin_write` (0061) exige. */
   const meuPerfilId = roles.includes("director") && !isAdmin ? myBroker?.id ?? null : null;
 
@@ -410,7 +418,7 @@ export default function Equipes() {
   }, [myScopeDirectorId]);
 
   const filter = (list: BrokerRow[]) =>
-    list.filter(b => (search ? b.name.toLowerCase().includes(search.toLowerCase()) : true));
+    list.filter(b => (search ? contemTexto(b.name, search) : true));
 
   const visibleDirectors = filter(directors).filter(inScope);
   const visibleManagers = filter(managers).filter(inScope);
@@ -603,7 +611,7 @@ export default function Equipes() {
     ? (canEdit ? managers : managers.filter(m => m.id === myBroker?.id))
     : directors;
   const bulkList = filter(bulk?.column === "broker" ? brokers : managers).filter(b => inScope(b));
-  const bulkFiltered = bulkList.filter(b => b.name.toLowerCase().includes(bulkFilter.toLowerCase()));
+  const bulkFiltered = bulkList.filter(b => contemTexto(b.name, bulkFilter));
 
   /**
    * Quem SAI da equipe se o diálogo for aplicado assim.
@@ -764,6 +772,7 @@ export default function Equipes() {
                       pessoa={d}
                       tom="info"
                       onAbrir={podeEditarFicha(d) ? () => openEdit("manager", d) : undefined}
+                      onEnviarAcesso={enviarAcessoDe(d)}
                     />
                   )}</ListaPessoas>
                 </CardContent>
@@ -794,6 +803,7 @@ export default function Equipes() {
                       pessoa={m}
                       tom="info"
                       onAbrir={podeEditarFicha(m) ? () => openEdit("manager", m) : undefined}
+                      onEnviarAcesso={enviarAcessoDe(m)}
                     />
                   )}</ListaPessoas>
                 </CardContent>
@@ -821,6 +831,7 @@ export default function Equipes() {
                       pessoa={b}
                       tom="success"
                       onAbrir={podeEditarFicha(b) ? () => openEdit("broker", b) : undefined}
+                      onEnviarAcesso={enviarAcessoDe(b)}
                     />
                   )}</ListaPessoas>
                 </CardContent>
@@ -841,6 +852,7 @@ export default function Equipes() {
                   pessoa={c}
                   tom="warning"
                   onAbrir={podeEditarFicha(c) ? () => openEdit("broker", c) : undefined}
+                  onEnviarAcesso={enviarAcessoDe(c)}
                 />
               )}</ListaPessoas>
               {visibleCcas.length === 0 && (
@@ -868,6 +880,7 @@ export default function Equipes() {
                   key={o.id}
                   pessoa={o}
                   onAbrir={podeEditarFicha(o) ? () => openEdit("broker", o) : undefined}
+                  onEnviarAcesso={enviarAcessoDe(o)}
                 />
               )}</ListaPessoas>
               {filter(outros).length === 0 && (
