@@ -8,15 +8,20 @@
 --    negócio em OFF, DISTRATO ou QUEDA. Ele volta para INCOMPLETO no mês atual,
 --    na etapa inicial, e o motivo da reativação é obrigatório. A `reactivate_deal`
 --    (0236) segue como está para a lista do Pipeline: ela só cobre OFF de mês
---    anterior e exige escolher o corretor. Aqui o negócio fica com os corretores
---    que já tinha (precisa haver ao menos um ativo).
+--    anterior. As duas pedem o corretor: quem reativa escolhe a quem o negócio vai,
+--    porque o corretor antigo pode não ser o mesmo que está pegando de volta.
 --
 -- 2. `mudar_construtora_do_negocio`: com o Status 2 em VIROU NEGÓCIO, troca a
 --    construtora e o empreendimento (ambos obrigatórios, mais o comentário) e
---    devolve o negócio à CCA em ANÁLISE P/ VIRAR NEGÓCIO para uma nova virada.
+--    devolve o negócio à CCA em ANÁLISE P/ VIRAR NEGÓCIO para uma nova virada,
+--    marcado com `construtora_trocada_em` (a CCA mostra o selo "Troca construtora").
 -- =============================================================================
 
-create or replace function public.reativar_negocio(p_deal_id uuid, p_motivo text)
+alter table public.deals add column if not exists construtora_trocada_em timestamptz;
+comment on column public.deals.construtora_trocada_em is
+  'Quando a construtora foi trocada depois de virar negócio (0277). Dá o selo "Troca construtora" enquanto o caso não vira negócio de novo.';
+
+create or replace function public.reativar_negocio(p_deal_id uuid, p_motivo text, p_broker_id uuid default null)
 returns jsonb
 language plpgsql
 security definer
@@ -32,6 +37,7 @@ declare
   v_incomplete    text;
   v_client        text;
   v_actor_name    text;
+  v_broker_name   text;
 begin
   if v_actor is null then raise exception 'Não autenticado.' using errcode = '28000'; end if;
 
@@ -57,13 +63,24 @@ begin
     raise exception 'Motivo longo demais (máx. 2000 caracteres).' using errcode = 'P0001';
   end if;
 
+  -- Quem reativa escolhe o corretor: o antigo pode já não ser quem pega o negócio de volta.
+  if p_broker_id is null then
+    raise exception 'Escolha o corretor que receberá o negócio.' using errcode = 'P0001';
+  end if;
   if not exists (
-    select 1 from public.deal_participants dp
-      join public.profiles p on p.id = dp.profile_id and p.status = 'active'
-     where dp.deal_id = p_deal_id and dp.role = 'broker'
+    select 1 from public.profiles p
+     where p.id = p_broker_id and p.status = 'active'
+       and exists (select 1 from public.user_roles ur where ur.profile_id = p.id and ur.role = 'broker')
   ) then
-    raise exception 'O negócio não tem corretor ativo. Use a reativação da lista do Pipeline para escolher o corretor.'
-      using errcode = 'P0001';
+    raise exception 'O corretor escolhido não existe ou está inativo.' using errcode = 'P0002';
+  end if;
+  if not public.is_admin() and not public.has_any_role('admin', 'partner') and not exists (
+    select 1 from public.team_members tm
+      join public.teams t on t.id = tm.team_id and t.active
+     where tm.profile_id = p_broker_id and tm.left_at is null
+       and (t.manager_id = v_actor or t.director_id = v_actor)
+  ) then
+    raise exception 'Escolha um corretor da sua equipe.' using errcode = '42501';
   end if;
 
   v_current_month := public.month_start(coalesce(public.current_season_month(), current_date));
@@ -100,13 +117,21 @@ begin
          document_reviewed_at = null,
          document_reviewed_by = null,
          document_review_reason = null,
-         review_esteira = null
+         review_esteira = null,
+         construtora_trocada_em = null
    where id = p_deal_id;
+
+  -- A equipe é refeita a partir do corretor escolhido: `deal_participants_autofill`
+  -- traz o gerente e o diretor da equipe ativa dele.
+  delete from public.deal_participants where deal_id = p_deal_id;
+  insert into public.deal_participants (deal_id, profile_id, role, share_pct, auto_added)
+  values (p_deal_id, p_broker_id, 'broker', 100, false);
 
   insert into public.deal_history (deal_id, actor_id, kind, from_value, to_value, detail)
   values (p_deal_id, v_actor, 'reactivated', v_deal.status_detail, v_incomplete,
           jsonb_build_object('old_month', to_char(v_deal.month_base, 'MM/YYYY'),
                              'new_month', to_char(v_current_month, 'MM/YYYY'),
+                             'broker_id', p_broker_id,
                              'motivo', v_motivo));
   insert into public.deal_history (deal_id, actor_id, kind, to_value)
   values (p_deal_id, v_actor, 'comment', 'REATIVAÇÃO (' || v_atual || '): ' || v_motivo);
@@ -114,13 +139,15 @@ begin
   perform set_config('faceimob.cca_move', '', true);
 
   select full_name into v_actor_name from public.profiles where id = v_actor;
+  select full_name into v_broker_name from public.profiles where id = p_broker_id;
   select full_name into v_client from public.deal_clients where deal_id = p_deal_id and ordinal = 1;
 
   insert into public.notifications (profile_id, kind, title, body, link, channel)
   select distinct ur.profile_id, 'deal_status_changed',
          'Negócio reativado: ' || coalesce(v_client, v_deal.code),
-         left(format('%s reativou o %s de %s para INCOMPLETO em %s. Motivo: %s',
+         left(format('%s reativou o %s de %s para %s como INCOMPLETO em %s. Motivo: %s',
            coalesce(v_actor_name, 'Alguém'), v_atual, to_char(v_deal.month_base, 'MM/YYYY'),
+           coalesce(v_broker_name, 'corretor não identificado'),
            to_char(v_current_month, 'MM/YYYY'), v_motivo), 2000),
          '/pipeline?negocio=' || p_deal_id, 'in_app'::public.notification_channel
     from public.user_roles ur
@@ -128,14 +155,14 @@ begin
    where ur.role = 'admin' and ur.profile_id <> v_actor;
 
   return jsonb_build_object('deal_id', p_deal_id, 'reactivated', true,
-                            'new_month', to_char(v_current_month, 'MM/YYYY'), 'status', v_incomplete);
+                            'new_month', to_char(v_current_month, 'MM/YYYY'), 'broker_id', p_broker_id, 'status', v_incomplete);
 end;
 $$;
 
-revoke all on function public.reativar_negocio(uuid, text) from public, anon;
-grant execute on function public.reativar_negocio(uuid, text) to authenticated, service_role;
-comment on function public.reativar_negocio(uuid, text) is
-  'Reativa OFF, DISTRATO ou QUEDA como INCOMPLETO no mês atual, com motivo obrigatório. Gerente, diretor, sócio e administrador (0277).';
+revoke all on function public.reativar_negocio(uuid, text, uuid) from public, anon;
+grant execute on function public.reativar_negocio(uuid, text, uuid) to authenticated, service_role;
+comment on function public.reativar_negocio(uuid, text, uuid) is
+  'Reativa OFF, DISTRATO ou QUEDA como INCOMPLETO no mês atual, para o corretor escolhido e com motivo obrigatório. Gerente, diretor, sócio e administrador (0277).';
 
 -- -----------------------------------------------------------------------------
 
@@ -223,7 +250,8 @@ begin
 
   update public.deals
      set developer_id = p_developer_id, project_id = v_project_id, project_name = v_project,
-         unit = null, status_detail = v_target, review_esteira = 'virar'
+         unit = null, status_detail = v_target, review_esteira = 'virar',
+         construtora_trocada_em = now()
    where id = p_deal_id;
 
   -- O caso volta a ser analisado: a CCA enxerga o cartão de novo na coluna do Status 2.

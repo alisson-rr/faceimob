@@ -18,6 +18,8 @@ declare
   cor   uuid := '00000000-0000-0000-0000-000002770001';
   lider uuid := '00000000-0000-0000-0000-000002770002';
   fora  uuid := '00000000-0000-0000-0000-000002770003';
+  cor2  uuid := '00000000-0000-0000-0000-000002770004';
+  alheio uuid := '00000000-0000-0000-0000-000002770005';
   v_team uuid; v_stage uuid; v_msg text;
   v_off uuid; v_dist uuid; v_queda uuid; v_virou uuid; v_aberto uuid;
   v_dev1 uuid; v_dev2 uuid; v_mes date; v_ant date; v_row public.deals;
@@ -27,11 +29,13 @@ begin
   insert into auth.users (id, email, raw_user_meta_data) values
     (cor, 'cor@a277.test', '{"full_name":"Corretor 277"}'),
     (lider, 'lid@a277.test', '{"full_name":"Lider 277"}'),
-    (fora, 'for@a277.test', '{"full_name":"Fora 277"}');
+    (fora, 'for@a277.test', '{"full_name":"Fora 277"}'),
+    (cor2, 'co2@a277.test', '{"full_name":"Corretor 2 277"}'),
+    (alheio, 'al@a277.test', '{"full_name":"Corretor Alheio 277"}');
   delete from public.user_roles where profile_id in (lider, fora);
   insert into public.user_roles (profile_id, role) values (lider, 'manager'), (fora, 'manager') on conflict do nothing;
   insert into public.teams (name, slug, manager_id) values ('Equipe 277', 'equipe-277', lider) returning id into v_team;
-  insert into public.team_members (team_id, profile_id) values (v_team, cor);
+  insert into public.team_members (team_id, profile_id) values (v_team, cor), (v_team, cor2);
 
   v_mes := public.month_start(coalesce(public.current_season_month(), current_date));
   v_ant := (v_mes - interval '1 month')::date;
@@ -53,7 +57,7 @@ begin
   -- 1. Gerente da equipe reativa OFF de mês anterior.
   perform set_config('request.jwt.claims', json_build_object('sub', lider, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  perform public.reativar_negocio(v_off, 'Cliente voltou a negociar');
+  perform public.reativar_negocio(v_off, 'Cliente voltou a negociar', cor2);
   reset role;
   select * into v_row from public.deals where id = v_off;
   perform pg_temp.ok(public.deal_status_bare(v_row.status_detail) = 'INCOMPLETO', 'OFF volta para INCOMPLETO');
@@ -63,10 +67,16 @@ begin
   perform pg_temp.ok(exists (select 1 from public.deal_history where deal_id = v_off and kind = 'comment' and to_value like 'REATIVAÇÃO (OFF): Cliente voltou%'),
                      'e o motivo fica nos comentários');
 
+  perform pg_temp.ok((select count(*) from public.deal_participants where deal_id = v_off and role = 'broker' and profile_id = cor2) = 1
+                       and not exists (select 1 from public.deal_participants where deal_id = v_off and role = 'broker' and profile_id = cor),
+                     'o negócio vai para o corretor ESCOLHIDO, não para o anterior');
+  perform pg_temp.ok(exists (select 1 from public.deal_participants where deal_id = v_off and role = 'manager' and profile_id = lider),
+                     'e o gerente vem da equipe do corretor escolhido');
+
   -- 2. DISTRATO (mês anterior) e QUEDA (mês atual) também.
   set local role authenticated;
-  perform public.reativar_negocio(v_dist, 'Distrato revertido com o banco');
-  perform public.reativar_negocio(v_queda, 'Queda foi engano do cadastro');
+  perform public.reativar_negocio(v_dist, 'Distrato revertido com o banco', cor);
+  perform public.reativar_negocio(v_queda, 'Queda foi engano do cadastro', cor);
   reset role;
   perform pg_temp.ok((select count(*) from public.deals where id in (v_dist, v_queda)
                        and public.deal_status_bare(status_detail) = 'INCOMPLETO' and month_base = v_mes) = 2,
@@ -74,7 +84,7 @@ begin
 
   -- 3. Sem motivo, fora do status, corretor e gerente de fora são recusados.
   set local role authenticated;
-  begin perform public.reativar_negocio(v_off, '  '); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  begin perform public.reativar_negocio(v_off, '  ', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
   perform pg_temp.ok(v_msg like 'Escreva o motivo%' or v_msg like 'Só negócio em OFF%', 'motivo vazio não passa');
 
@@ -83,24 +93,34 @@ begin
   insert into public.deal_participants (deal_id, profile_id, role, ordinal) values (v_off, cor, 'broker', 1) on conflict do nothing;
 
   set local role authenticated;
-  begin perform public.reativar_negocio(v_off, 'x'); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  begin perform public.reativar_negocio(v_off, 'Motivo válido para testar', null); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  reset role;
+  perform pg_temp.ok(v_msg like 'Escolha o corretor%', 'sem escolher o corretor não reativa');
+
+  set local role authenticated;
+  begin perform public.reativar_negocio(v_off, 'Motivo válido para testar', alheio); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  reset role;
+  perform pg_temp.ok(v_msg like 'Escolha um corretor da sua equipe%', 'gerente não passa o negócio a corretor de fora da equipe dele');
+
+  set local role authenticated;
+  begin perform public.reativar_negocio(v_off, 'x', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
   perform pg_temp.ok(v_msg like 'Escreva o motivo%', 'motivo curto demais não passa');
 
   set local role authenticated;
-  begin perform public.reativar_negocio(v_aberto, 'Motivo qualquer válido'); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  begin perform public.reativar_negocio(v_aberto, 'Motivo qualquer válido', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
   perform pg_temp.ok(v_msg like 'Só negócio em OFF%', 'negócio que não está encerrado não é reativado');
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  begin perform public.reativar_negocio(v_off, 'Corretor tentando'); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  begin perform public.reativar_negocio(v_off, 'Corretor tentando', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
   perform pg_temp.ok(v_msg like 'Só gerente, diretor%', 'corretor não reativa');
 
   perform set_config('request.jwt.claims', json_build_object('sub', fora, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  begin perform public.reativar_negocio(v_off, 'Gerente de outra equipe'); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  begin perform public.reativar_negocio(v_off, 'Gerente de outra equipe', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
   perform pg_temp.ok(v_msg like 'Negócio não encontrado%', 'gerente de outra equipe não reativa');
 
@@ -138,6 +158,7 @@ begin
                      'construtora e empreendimento trocados, unidade zerada');
   perform pg_temp.ok(public.deal_status_bare(v_row.status_detail) = 'ANÁLISE P/ VIRAR NEGÓCIO', 'o Status 2 volta para ANÁLISE P/ VIRAR NEGÓCIO');
   perform pg_temp.ok((select status from public.cca_cases where deal_id = v_virou) = 'under_review', 'o caso volta à CCA em análise');
+  perform pg_temp.ok(v_row.construtora_trocada_em is not null, 'o negócio fica marcado com o selo de troca de construtora');
   perform pg_temp.ok(exists (select 1 from public.deal_history where deal_id = v_virou and kind = 'comment' and to_value like 'CONSTRUTORA ALTERADA:%'),
                      'o histórico registra a troca');
 end $$;

@@ -291,7 +291,7 @@ export async function moveDealStatus(dealId: string, status: string, note?: stri
 type RespostaRpc = PromiseLike<{ error: { message?: string; code?: string } | null }>;
 const rpcDeOff = supabase as unknown as {
   rpc(nome: "marcar_off", args: { p_deal_id: string; p_motivo: string }): RespostaRpc;
-  rpc(nome: "reativar_negocio", args: { p_deal_id: string; p_motivo: string }): RespostaRpc;
+  rpc(nome: "reativar_negocio", args: { p_deal_id: string; p_motivo: string; p_broker_id: string }): RespostaRpc;
   rpc(
     nome: "mudar_construtora_do_negocio",
     args: { p_deal_id: string; p_developer_id: string; p_project: string; p_comentario: string; p_project_id: string | null },
@@ -306,10 +306,11 @@ export async function marcarOff(dealId: string, motivo: string) {
 
 /**
  * Reativa um negócio em OFF, Distrato ou Queda (0277): volta para INCOMPLETO no
- * mês atual, com o motivo no histórico. Gerente, diretor, sócio e administrador.
+ * mês atual, para o corretor escolhido, com o motivo no histórico. Gerente,
+ * diretor, sócio e administrador.
  */
-export async function reativarNegocio(dealId: string, motivo: string) {
-  const { error } = await rpcDeOff.rpc("reativar_negocio", { p_deal_id: dealId, p_motivo: motivo.trim() });
+export async function reativarNegocio(dealId: string, motivo: string, brokerId: string) {
+  const { error } = await rpcDeOff.rpc("reativar_negocio", { p_deal_id: dealId, p_motivo: motivo.trim(), p_broker_id: brokerId });
   if (error) throw dbError("reativar negócio", error);
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, FileSignature, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import {
 import type { SaveLegacyDealInput } from "@/integrations/supabase/newSchema";
 import { DealOffToggle } from "./DealOffToggle";
 import { MoneyField, TextField } from "./fields";
-import { useDevelopers } from "./data";
+import { useDevelopers, usePeople } from "./data";
 
 const EXTERNA = "ANÁLISE EXTERNA";
 const APROVACOES = [
@@ -67,7 +67,7 @@ export function MovimentoDoNegocio({
   onConcluido?: () => void;
 }) {
   const id = useId();
-  const { can, isAdmin, roles } = useAuth();
+  const { can, isAdmin, roles, user } = useAuth();
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const atual = bareStatus(form.status);
 
@@ -80,11 +80,22 @@ export function MovimentoDoNegocio({
   const [ocupado, setOcupado] = useState(false);
   const [projetos, setProjetos] = useState<{ id: string; name: string }[]>([]);
   const [motivoReativar, setMotivoReativar] = useState("");
+  const [corretorReativar, setCorretorReativar] = useState("");
+  const pessoas = usePeople().data;
   const [novaConstrutora, setNovaConstrutora] = useState("");
   const [novoEmpreendimento, setNovoEmpreendimento] = useState("");
   const [comentarioTroca, setComentarioTroca] = useState("");
   const [projetosDaNova, setProjetosDaNova] = useState<{ id: string; name: string }[]>([]);
   const construtoras = useDevelopers().data ?? [];
+  // Quem reativa escolhe o corretor: o antigo pode não ser quem pega de volta. Admin
+  // e sócio veem a casa toda; gerente e diretor, só a própria liderança (o banco repete a trava).
+  const corretores = useMemo(
+    () => (pessoas ?? [])
+      .filter((p) => p.active && p.roles.includes("broker"))
+      .filter((p) => isAdmin || !user?.id || p.manager_id === user.id || p.director_id === user.id)
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    [pessoas, isAdmin, user?.id],
+  );
 
   useEffect(() => {
     if (!isAdmin || !form.developer_id) return;
@@ -141,10 +152,11 @@ export function MovimentoDoNegocio({
   const reativar = async () => {
     setOcupado(true);
     try {
-      await reativarNegocio(dealId, motivoReativar);
+      await reativarNegocio(dealId, motivoReativar, corretorReativar);
       await onMovido(valorDe("INCOMPLETO") ?? "INCOMPLETO");
       toast({ variant: "success", title: "Negócio reativado", description: "Voltou para Incompleto no mês atual. O motivo ficou no histórico." });
       setMotivoReativar("");
+      setCorretorReativar("");
       onConcluido?.();
     } catch (erro) {
       toast({ variant: "destructive", title: "Não foi possível reativar o negócio", description: describeError(erro, "Tente de novo.") });
@@ -302,12 +314,22 @@ export function MovimentoDoNegocio({
         <section className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
           <h3 className="flex items-center gap-2 text-sm font-bold"><RotateCcw className="h-4 w-4" aria-hidden /> Reativar negócio</h3>
           <p className="text-xs text-muted-foreground">
-            O negócio está em {atual}. Reativar leva ele de volta para Incompleto, no mês atual, e o motivo fica no histórico.
+            O negócio está em {atual}. Reativar leva ele de volta para Incompleto, no mês atual, com o corretor que você escolher, e o motivo fica no histórico.
+          </p>
+          <Label htmlFor={`${id}-reativar-corretor`} className="text-xs">Corretor que recebe o negócio (obrigatório)</Label>
+          <Select value={corretorReativar || undefined} onValueChange={setCorretorReativar}>
+            <SelectTrigger id={`${id}-reativar-corretor`} className="text-xs"><SelectValue placeholder="Escolha o corretor" /></SelectTrigger>
+            <SelectContent>
+              {corretores.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}{c.team ? ` · ${c.team}` : ""}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            A equipe é refeita com o gerente e o diretor atuais do corretor escolhido.
           </p>
           <Label htmlFor={`${id}-reativar`} className="text-xs">Motivo da reativação (obrigatório)</Label>
           <Textarea id={`${id}-reativar`} rows={2} maxLength={2000} value={motivoReativar} onChange={(e) => setMotivoReativar(e.target.value)}
             placeholder="Ex.: cliente retomou o contato e quer seguir com a compra" />
-          <Button size="sm" disabled={ocupado || motivoReativar.trim().length < MIN_TEXTO} onClick={() => void reativar()}>
+          <Button size="sm" disabled={ocupado || !corretorReativar || motivoReativar.trim().length < MIN_TEXTO} onClick={() => void reativar()}>
             {ocupado && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
             Reativar para Incompleto no mês atual
           </Button>

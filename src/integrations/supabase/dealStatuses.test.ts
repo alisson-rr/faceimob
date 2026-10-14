@@ -74,10 +74,12 @@ describe("statusMoveBlock · contrato com pendência", () => {
 });
 
 describe("reativação e troca de construtora (0277)", () => {
-  it("reativar manda o motivo sem espaços sobrando", async () => {
+  it("reativar manda o motivo sem espaços sobrando e o corretor escolhido", async () => {
     rpc.mockClear();
-    await reativarNegocio("d1", "  Cliente voltou a negociar  ");
-    expect(rpc).toHaveBeenCalledWith("reativar_negocio", { p_deal_id: "d1", p_motivo: "Cliente voltou a negociar" });
+    await reativarNegocio("d1", "  Cliente voltou a negociar  ", "corretor-9");
+    expect(rpc).toHaveBeenCalledWith("reativar_negocio", {
+      p_deal_id: "d1", p_motivo: "Cliente voltou a negociar", p_broker_id: "corretor-9",
+    });
   });
 
   it("mudar a construtora manda construtora, empreendimento e comentário", async () => {
