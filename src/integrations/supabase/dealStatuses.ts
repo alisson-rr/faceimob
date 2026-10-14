@@ -288,12 +288,49 @@ export async function moveDealStatus(dealId: string, status: string, note?: stri
  * `marcar_off` nasceu na 0271, depois do último `supabase gen types`: a forma
  * vem declarada aqui até a próxima geração do `types.ts`, que não se edita à mão.
  */
+type RespostaRpc = PromiseLike<{ error: { message?: string; code?: string } | null }>;
 const rpcDeOff = supabase as unknown as {
-  rpc(nome: "marcar_off", args: { p_deal_id: string; p_motivo: string }): PromiseLike<{ error: { message?: string; code?: string } | null }>;
+  rpc(nome: "marcar_off", args: { p_deal_id: string; p_motivo: string }): RespostaRpc;
+  rpc(nome: "reativar_negocio", args: { p_deal_id: string; p_motivo: string; p_broker_id: string }): RespostaRpc;
+  rpc(
+    nome: "mudar_construtora_do_negocio",
+    args: { p_deal_id: string; p_developer_id: string; p_project: string; p_comentario: string; p_project_id: string | null },
+  ): RespostaRpc;
 };
 
 /** Marca OFF com o motivo (corretor, gerente, diretor, admin, sócio): Status 2 e comentário juntos. */
 export async function marcarOff(dealId: string, motivo: string) {
   const { error } = await rpcDeOff.rpc("marcar_off", { p_deal_id: dealId, p_motivo: motivo.trim() });
   if (error) throw dbError("marcar OFF", error);
+}
+
+/**
+ * Reativa um negócio em OFF, Distrato ou Queda (0277): volta para INCOMPLETO no
+ * mês atual, para o corretor escolhido, com o motivo no histórico. Gerente,
+ * diretor, sócio e administrador.
+ */
+export async function reativarNegocio(dealId: string, motivo: string, brokerId: string) {
+  const { error } = await rpcDeOff.rpc("reativar_negocio", { p_deal_id: dealId, p_motivo: motivo.trim(), p_broker_id: brokerId });
+  if (error) throw dbError("reativar negócio", error);
+}
+
+/**
+ * Com o Status 2 em VIROU NEGÓCIO, troca a construtora e o empreendimento e
+ * devolve o negócio à CCA para uma nova virada (0277).
+ */
+export async function mudarConstrutoraDoNegocio(input: {
+  dealId: string;
+  developerId: string;
+  project: string;
+  projectId?: string | null;
+  comentario: string;
+}) {
+  const { error } = await rpcDeOff.rpc("mudar_construtora_do_negocio", {
+    p_deal_id: input.dealId,
+    p_developer_id: input.developerId,
+    p_project: input.project.trim(),
+    p_comentario: input.comentario.trim(),
+    p_project_id: input.projectId ?? null,
+  });
+  if (error) throw dbError("mudar a construtora", error);
 }

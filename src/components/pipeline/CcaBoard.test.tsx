@@ -474,6 +474,32 @@ describe("CcaBoard · devolver ao comercial", () => {
   });
 });
 
+describe("CcaBoard · troca de construtora", () => {
+  it("o caso que voltou com construtora nova leva o selo; sem troca, não", async () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    const render = async (troca: boolean) => {
+      await act(async () => {
+        root.render(
+          <CcaBoard
+            stages={[STAGE]}
+            deals={[{ ...DEAL, construtoraTrocada: troca }]}
+            canAct
+            onOpen={() => undefined}
+            onMove={() => undefined}
+          /> as ReactNode,
+        );
+      });
+    };
+    await render(true);
+    expect(container.textContent).toContain("Troca construtora");
+    await render(false);
+    expect(container.textContent).not.toContain("Troca construtora");
+    await act(async () => { root.unmount(); });
+    container.remove();
+  });
+});
+
 describe("CcaBoard · contrato no CCA", () => {
   it("mostra o selo de pendência e libera queda/distrato somente no contrato", async () => {
     const container = document.body.appendChild(document.createElement("div"));

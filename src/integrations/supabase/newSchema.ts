@@ -670,6 +670,7 @@ export async function listLegacyDeals(
       document_review_requested_at: deal.document_review_requested_at || undefined,
       document_review_reason: deal.document_review_reason || undefined,
       contract_has_pending_issue: deal.contract_has_pending_issue,
+      construtora_trocada_em: (deal as DealRow & { construtora_trocada_em?: string | null }).construtora_trocada_em || undefined,
       history: [],
     } satisfies LegacyDealRecord;
   });

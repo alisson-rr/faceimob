@@ -242,6 +242,11 @@ function DealCardBase({
             Pendência no contrato
           </Badge>
         )}
+        {deal.construtora_trocada_em && !statusBare.startsWith("VIROU NEG") && (
+          <Badge variant="outline" className="mb-2 ml-1 h-5 border-info/60 bg-info/15 px-1.5 text-xs text-info">
+            Troca construtora
+          </Badge>
+        )}
         {ccaQueuePosition ? (
           <Badge variant="secondary" className="mb-2 ml-1 h-5 px-1.5 text-xs tabular-nums">
             {ccaQueuePosition.posicao}º {CCA_FILA_ROTULO[ccaQueuePosition.fila]}
