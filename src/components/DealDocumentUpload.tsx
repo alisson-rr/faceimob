@@ -725,9 +725,13 @@ export default function DealDocumentUpload({
   // também recupera propostas cuja conferência foi marcada como `returned`
   // pelo gatilho antigo: Aprovado Total/Condicionado deve oferecer somente o
   // caminho para virar negócio, nunca mandar o corretor de volta à Ágil.
-  // INCOMPLETO com caso aberto: o envio foi pela via errada e o reenvio pela
-  // Esteira Ágil encerra o caso antigo no banco (0253).
-  const reenvioIncompleto = bareStatus(statusDetail ?? "") === "INCOMPLETO" && casoAberto;
+  // INCOMPLETO é sempre recomeço pela Esteira Ágil (14/10/2026), seja qual for o
+  // caso que o negócio carregue: aberto (via errada), aprovado ou reprovado (volta
+  // anterior). O banco encerra o caso antigo no reenvio e fecha o 2º envio (0278).
+  // Sem envio anterior (rascunho novo) segue o 1º envio, e com a conferência do
+  // gerente pendente o banco recusa o reenvio.
+  const reenvioIncompleto = bareStatus(statusDetail ?? "") === "INCOMPLETO" && status !== "pending"
+    && (casoAberto || caseStatus !== null || status === "approved");
   // PENDENTE (13/10/2026): a CCA devolveu o caso pedindo documento. O corretor, ou
   // o gerente e o diretor na falta dele, reenvia pela Esteira Ágil. O dossiê segue
   // "aprovado" pela conferência anterior, e isso fechava os DOIS envios: a Ágil
