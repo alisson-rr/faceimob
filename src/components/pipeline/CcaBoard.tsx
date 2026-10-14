@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useState, type DragEvent } from "react";
-import { AlertTriangle, Building2, ChevronDown, ChevronUp, DollarSign, Gavel, Undo2, User } from "lucide-react";
+import { AlertTriangle, Building2, ChevronDown, ChevronUp, DollarSign, Gavel, Repeat2, Undo2, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -328,6 +328,12 @@ export const CcaBoard = memo(function CcaBoard({
                             {deal.contractHasPendingIssue && (
                               <Badge variant="outline" className="gap-1 border-warning/60 bg-warning/10 px-1.5 text-xs text-warning">
                                 <AlertTriangle className="h-3 w-3" aria-hidden /> Pendência
+                              </Badge>
+                            )}
+                            {deal.construtoraTrocada && (
+                              <Badge variant="outline" className="gap-1 border-info/60 bg-info/10 px-1.5 text-xs text-info"
+                                title="A construtora foi trocada depois de virar negócio: nova virada de negócio">
+                                <Repeat2 className="h-3 w-3" aria-hidden /> Troca construtora
                               </Badge>
                             )}
                           </div>

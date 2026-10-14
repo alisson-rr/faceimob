@@ -81,6 +81,12 @@ type Props = {
   unconfirmedMonth?: string | null;
   onReviewChanged?: () => void | Promise<void>;
   /**
+   * Chamado depois de um MOVIMENTO que já deu certo (enviar ao gerente, aprovar ou
+   * devolver a conferência, devolver ao comercial, enviar à construtora): o modal
+   * fecha o card e o toast fica como confirmação (pedido de 14/10/2026).
+   */
+  onMovimento?: () => void;
+  /**
    * Grava a ficha aberta antes de enviar, aprovar ou devolver: o que foi
    * digitado em Detalhes (PIS, renda, cotista…) e não confirmado sumia no envio
    * pela aba Anexos, e o gerente e a CCA recebiam o campo vazio (06/10/2026).
@@ -190,7 +196,7 @@ function EsteiraDoNegocio({
  * anterior é o trigger `deal_documents_supersede`.
  */
 export default function DealDocumentUpload({
-  dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged, mensagemInicial,
+  dealId, clientName, dealCode, hasDeveloper, closedMonth, unconfirmedMonth, onReviewChanged, onMovimento, mensagemInicial,
   salvarFicha, parte = "tudo", statusDetail, filaCca,
 }: Props) {
   const { toast } = useToast();
@@ -584,6 +590,7 @@ export default function DealDocumentUpload({
         title: "Documentos enviados ao gerente",
         description: `${REVIEW_ESTEIRA_LABEL[esteiraEnvio]}: os gerentes vinculados receberam a mensagem.`,
       });
+      onMovimento?.();
     } catch (e) {
       toast({
         title: "Não foi possível enviar os documentos ao gerente",
@@ -608,6 +615,7 @@ export default function DealDocumentUpload({
         title: approve ? "Documentos aprovados" : "Documentos devolvidos ao corretor",
         description: approve ? "O negócio seguiu para a esteira de análise." : "O corretor recebeu o motivo da devolução.",
       });
+      onMovimento?.();
     } catch (e) {
       toast({
         title: approve ? "Não foi possível aprovar os documentos" : "Não foi possível devolver os documentos",
@@ -948,6 +956,7 @@ export default function DealDocumentUpload({
           onDone={async () => {
             await load();
             await onReviewChanged?.();
+            onMovimento?.();
           }}
         />
       )}
@@ -1330,7 +1339,7 @@ export default function DealDocumentUpload({
           developerName={developer.name}
           // Enfileirar pode mover o caso para "Enviado à Construtora" (gatilho
           // da 0077), e o modal por baixo precisa reler o negócio.
-          onChanged={onReviewChanged}
+          onChanged={async () => { await onReviewChanged?.(); onMovimento?.(); }}
         />
       )}
 

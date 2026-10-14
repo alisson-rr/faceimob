@@ -253,7 +253,11 @@ export default function LeadDetailModal({
       <DialogContent className="glass-strong max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
-            <span>{lead.name}</span>
+            {/* Nome e, logo abaixo, o telefone: o corretor liga ou chama sem abrir outra aba. */}
+            <span className="flex flex-col">
+              <span>{lead.name}</span>
+              {lead.phone && <span className="text-sm font-normal tabular-nums text-muted-foreground">{lead.phone}</span>}
+            </span>
             <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
             <StatusBadge tone={funnelStageTone(lead.funnel_stage)}>{funnelStageLabel(lead.funnel_stage)}</StatusBadge>
             {/* Cronômetro neutro, igual ao funil e ao aviso de lead (lá o âmbar é
@@ -392,12 +396,14 @@ export default function LeadDetailModal({
           </p>
         )}
 
-        <Tabs defaultValue="info" className="mt-2">
+        {/* O formulário (as respostas do cliente) é a primeira coisa que o corretor
+            precisa ler. Lead sem resposta (cadastro manual) abre em Dados. */}
+        <Tabs defaultValue={Object.keys(answers).length > 0 ? "form" : "info"} className="mt-2">
           {/* 7 abas: `grid-cols-6` escondia a última e o `h-10` do TabsList
               cortava o rótulo. Em tela estreita quebra em duas linhas. */}
           <TabsList className="grid h-auto w-full grid-cols-4 sm:grid-cols-7">
-            <TabsTrigger value="info" className="text-xs">Dados</TabsTrigger>
             <TabsTrigger value="form" className="text-xs">Formulário</TabsTrigger>
+            <TabsTrigger value="info" className="text-xs">Dados</TabsTrigger>
             <TabsTrigger value="comments" className="text-xs">Comentar</TabsTrigger>
             <TabsTrigger value="attachments" className="text-xs">Anexos</TabsTrigger>
             <TabsTrigger value="history" className="text-xs">Histórico</TabsTrigger>

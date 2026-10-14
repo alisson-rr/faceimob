@@ -57,6 +57,8 @@ export interface CcaDeal {
   agile?: boolean;
   /** Contrato originado de "Virou negócio com pendências" (0243). */
   contractHasPendingIssue?: boolean;
+  /** Construtora trocada depois de virar negócio (0277): o caso volta à fila com o selo "Troca construtora". */
+  construtoraTrocada?: boolean;
 }
 
 export interface CcaSynthesisEntry {
@@ -417,6 +419,9 @@ export async function loadCcaBoard(
       stageEnteredAt: row.stage_entered_at ?? null,
       agile: bareStatus(deal?.status ?? "").normalize("NFD").replace(/\p{M}/gu, "") === "ESTEIRA AGIL",
       contractHasPendingIssue: deal?.contract_has_pending_issue ?? false,
+      // O selo vale até o negócio virar negócio de novo.
+      construtoraTrocada: Boolean(deal?.construtora_trocada_em)
+        && !foldStatus(deal?.status).startsWith("VIROU NEGOCIO"),
     });
   }
 
