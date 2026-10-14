@@ -34,6 +34,18 @@ vi.mock("@/lib/engagement/audio", () => ({ playSound: tocar }));
 const confete = vi.hoisted(() => vi.fn());
 vi.mock("@/components/engagement/Confetti", () => ({ fireConfetti: confete }));
 
+/**
+ * Preferência de avisos de sucesso (14/10/2026): guardada em localStorage.
+ * Mockamos o storage para controlar ligado/desligado sem sujar o ambiente real.
+ */
+const storageStore = new Map<string, string>();
+const storageMock = {
+  getItem: (k: string) => storageStore.get(k) ?? null,
+  setItem: (k: string, v: string) => storageStore.set(k, v),
+  removeItem: (k: string) => storageStore.delete(k),
+};
+Object.defineProperty(globalThis, "localStorage", { value: storageMock, configurable: true });
+
 /** Opções que chegaram ao sonner numa chamada de um dos mocks. */
 const opcoesDe = (chamada: unknown[] | undefined) => (chamada?.[1] ?? {}) as Record<string, unknown>;
 
@@ -109,5 +121,42 @@ describe("comemoração no sucesso", () => {
     expect(opcoesDe(nativo.success.mock.calls[0]).description).toBe("42 leads");
     toast.error("Não foi possível salvar");
     expect(confete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("preferência de avisos de sucesso (14/10/2026)", () => {
+  beforeEach(() => storageStore.clear());
+
+  it("padrão ligado: sucesso comum mostra bolha, som e confete", () => {
+    toast.success("Lead atualizado");
+    expect(nativo.success).toHaveBeenCalled();
+    expect(tocar).toHaveBeenCalledWith("success");
+    expect(confete).toHaveBeenCalled();
+  });
+
+  it("desligado: sucesso comum fica mudo, sem bolha e sem confete", () => {
+    storageStore.set("faceimob:avisos-sucesso", "desligado");
+    const resultado = toast.success("Lead atualizado");
+    expect(resultado).toBeUndefined();
+    expect(nativo.success).not.toHaveBeenCalled();
+    expect(tocar).not.toHaveBeenCalled();
+    expect(confete).not.toHaveBeenCalled();
+  });
+
+  it("desligado: exceções do pipeline continuam aparecendo com som e confete", () => {
+    storageStore.set("faceimob:avisos-sucesso", "desligado");
+    toast.success("Negócio movido para Análise");
+    toast.success("Enviado para análise");
+    toast.success("Queda registrada");
+    expect(nativo.success).toHaveBeenCalledTimes(3);
+    expect(tocar).toHaveBeenCalledTimes(3);
+    expect(confete).toHaveBeenCalledTimes(3);
+  });
+
+  it("erro nunca é silenciado, mesmo com preferência desligada", () => {
+    storageStore.set("faceimob:avisos-sucesso", "desligado");
+    toast.error("Falha ao salvar");
+    expect(nativo.error).toHaveBeenCalled();
+    expect(tocar).toHaveBeenCalledWith("error");
   });
 });
