@@ -6,6 +6,51 @@ import { playSound } from "@/lib/engagement/audio";
 import { fraseDeSucesso } from "@/lib/engagement/celebrations";
 
 /**
+ * Preferência de avisos de sucesso guardada no aparelho.
+ *
+ * Padrão ligado (`true`). Quando desligado, sucesso não mostra bolha, som nem
+ * confete — exceto os críticos de pipeline (movimentação do negócio e envio ao
+ * gerente/CCA), que ficam sempre ativos porque confirmam ação irreversível ou
+ * mudança de responsabilidade. Erro nunca é silenciado.
+ */
+const CHAVE_PREFERENCIA = "faceimob:avisos-sucesso";
+const lerPreferenciaSucesso = (): boolean => {
+  try {
+    const valor = localStorage.getItem(CHAVE_PREFERENCIA);
+    return valor !== "desligado";
+  } catch {
+    return true;
+  }
+};
+export const setPreferenciaAvisosSucesso = (ligado: boolean): void => {
+  try {
+    localStorage.setItem(CHAVE_PREFERENCIA, ligado ? "ligado" : "desligado");
+  } catch {
+    // Storage indisponível (SSR/teste): preferência cai no padrão.
+  }
+};
+
+/**
+ * Mensagens de sucesso que NUNCA são silenciadas, mesmo com a preferência
+ * desligada. São confirmações de ações críticas do pipeline: mover negócio,
+ * enviar para análise/gerente/CCA, devolver, reativar, reabrir. Sem elas o
+ * corretor perde a certeza de que a ação aconteceu.
+ */
+const EXCECOES_SUCESSO: RegExp[] = [
+  /^Negócio movido para /i,
+  /^Negócio em /i,
+  /^Negócio reaberto$/i,
+  /^Negócio reativado$/i,
+  /^Enviado para análise$/i,
+  /^Caso movido para /i,
+  /^Devolvido ao comercial$/i,
+  /^Proposta reativada$/i,
+  / registrada$/i, // Queda/Distrato/OFF registrada
+];
+const ehExcecaoSucesso = (mensagem: string): boolean =>
+  EXCECOES_SUCESSO.some((regex) => regex.test(mensagem));
+
+/**
  * Som nos avisos de sucesso e de erro (decisão de 12/09/2026).
  *
  * O sonner não tem gancho de "aviso exibido", e várias telas importam `toast`
@@ -24,8 +69,15 @@ const erroNativo = sonnerToast.error;
  * Sucesso também comemora (05/10/2026, "alegria e motivação"): um confete
  * curto saindo do aviso, no meio da tela, e uma frase de ânimo quando quem
  * chamou não mandou descrição. O confete respeita "reduzir movimento".
+ *
+ * Com a preferência desligada (14/10/2026), sucesso comum fica mudo e sem
+ * bolha — só as exceções do pipeline mantêm som, confete e bolha.
  */
 sonnerToast.success = (mensagem, opcoes) => {
+  const preferenciaLigada = lerPreferenciaSucesso();
+  const textoMensagem = typeof mensagem === "string" ? mensagem : "";
+  const ehExcecao = textoMensagem.length > 0 && ehExcecaoSucesso(textoMensagem);
+  if (!preferenciaLigada && !ehExcecao) return undefined;
   playSound("success");
   fireConfetti("burst", { x: 0.5, y: 0.45 });
   return sucessoNativo(mensagem, opcoes?.description ? opcoes : { ...opcoes, description: fraseDeSucesso() });
