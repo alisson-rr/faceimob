@@ -103,6 +103,8 @@ export type PersonSave = {
   managerId?: string | null;
   /** A pessoa já tinha equipe quando a ficha abriu — muda a mensagem de recusa. */
   hadTeam?: boolean;
+  /** Equipe escolhida quando o gerente lidera mais de uma. */
+  teamId?: string | null;
   /** Diretor da(s) equipe(s) que a pessoa gerencia. Omitir = não mudou. */
   directorId?: string | null;
 };
@@ -204,12 +206,25 @@ async function criarEquipeDoDiretor(liderId: string): Promise<string | null> {
  * carregar a equipe do gerente", que não diz nada. Ambiguidade não vira escolha
  * silenciosa: quem chama recebe o nome das equipes e desativa a que sobra.
  */
-export async function activeTeamIdOfManager(managerId: string, criarSeDiretor = false): Promise<string> {
+export async function activeTeamIdOfManager(
+  managerId: string,
+  criarSeDiretor = false,
+  /** Equipe escolhida na ficha quando o gerente lidera mais de uma. */
+  teamId?: string | null,
+): Promise<string> {
   const { data, error } = await supabase
     .from("teams").select("id,name")
     .eq("manager_id", managerId).eq("active", true)
     .order("created_at", { ascending: true });
   if (error) throw dbError("teams", error);
+  if (teamId) {
+    // A escolha só vale se a equipe é DESTE gerente e está ativa: o id vem do
+    // formulário e não é confiável.
+    if (!data?.some((t) => t.id === teamId)) {
+      throw ruleError("A equipe escolhida não é uma equipe ativa deste gerente. Escolha de novo.");
+    }
+    return teamId;
+  }
   if (!data?.length) {
     const criada = criarSeDiretor ? await criarEquipeDoDiretor(managerId) : null;
     if (criada) return criada;
@@ -218,10 +233,20 @@ export async function activeTeamIdOfManager(managerId: string, criarSeDiretor = 
   if (data.length > 1) {
     const nomes = data.map((t) => t.name).join(", ");
     throw ruleError(
-      `Este gerente tem ${data.length} equipes ativas (${nomes}). Desative as que sobram antes de vincular — não dá para adivinhar em qual a pessoa entra.`,
+      `Este gerente tem ${data.length} equipes ativas (${nomes}). Escolha a equipe no campo "Equipe" da ficha — não dá para adivinhar em qual a pessoa entra.`,
     );
   }
   return data[0].id;
+}
+
+/** Equipes ativas que o gerente lidera — a ficha mostra o seletor quando são 2 ou mais. */
+export async function listActiveTeamsOfManager(managerId: string): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await supabase
+    .from("teams").select("id,name")
+    .eq("manager_id", managerId).eq("active", true)
+    .order("created_at", { ascending: true });
+  if (error) throw dbError("teams", error);
+  return data ?? [];
 }
 
 export async function updateProfile(profileId: string, fields: Partial<ProfileFields>): Promise<void> {
@@ -258,12 +283,13 @@ export async function setTeamByManager(
    * `baseline` lido do banco) e essa informação não custa um request a mais.
    */
   tinhaEquipe = false,
+  teamId?: string | null,
 ): Promise<void> {
   if (managerId) {
     // Trocar de equipe é UMA operação no banco (0167): fechar e abrir pela
     // tabela recusava o diretor movendo gente entre as equipes dele — depois de
     // fechado o vínculo a pessoa deixa de ser visível e o insert batia na RLS.
-    await moveTeamMember(profileId, await activeTeamIdOfManager(managerId, true));
+    await moveTeamMember(profileId, await activeTeamIdOfManager(managerId, true, teamId));
     return;
   }
   // Sem gerente = sai da equipe: só o fechamento.
@@ -506,7 +532,7 @@ export async function savePerson(input: PersonSave): Promise<void> {
   }
   if (input.managerId !== undefined) {
     const managerId = input.managerId;
-    await etapa("equipe", () => setTeamByManager(input.id, managerId, !!input.hadTeam));
+    await etapa("equipe", () => setTeamByManager(input.id, managerId, !!input.hadTeam, input.teamId));
   }
   if (input.directorId !== undefined) {
     const directorId = input.directorId;
@@ -588,6 +614,8 @@ export type PersonFormValues = ProfileDetails & {
   avatar_url?: string | null;
   active?: boolean | null;
   manager_id?: string | null;
+  /** Equipe escolhida quando o gerente lidera mais de uma. */
+  team_id?: string | null;
   director_id?: string | null;
   roles: NewAppRole[];
 };
@@ -680,6 +708,7 @@ export function buildPersonSave(
     roles: isAdmin ? form.roles : undefined,
     managerId: managerChanged ? form.manager_id ?? null : undefined,
     hadTeam: !!baseline?.manager_id,
+    teamId: managerChanged ? form.team_id ?? null : undefined,
     directorId: directorChanged ? form.director_id ?? null : undefined,
   };
 }

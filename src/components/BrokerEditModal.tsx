@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { EDITABLE_ROLES } from "@/integrations/supabase/permissions";
-import { EMPTY_DETAILS, authErrorMessage, buildPersonSave, getPersonDetails, savePerson, suggestEmail, type PersonSave, type ProfileDetails, type ProfileStatus } from "@/integrations/supabase/people";
+import { EMPTY_DETAILS, authErrorMessage, buildPersonSave, getPersonDetails, listActiveTeamsOfManager, savePerson, suggestEmail, type PersonSave, type ProfileDetails, type ProfileStatus } from "@/integrations/supabase/people";
 import type { NewAppRole } from "@/integrations/supabase/newSchema";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
@@ -45,7 +45,7 @@ export type EditableBroker = {
   login_email_confirmed?: boolean | null;
 };
 
-type FormState = EditableBroker & ProfileDetails & { roles: NewAppRole[] };
+type FormState = EditableBroker & ProfileDetails & { roles: NewAppRole[]; team_id?: string | null };
 
 /**
  * Papéis de operação que não convivem com "Corretor".
@@ -214,6 +214,19 @@ export function BrokerEditModal({
   // Cadastro concluído: o modal fica aberto para mandar o acesso por WhatsApp.
   const [criado, setCriado] = useState<{ nome: string; email: string; telefone: string | null; gerenteId: string | null } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // Gerente que lidera mais de uma equipe ativa: a ficha pede qual (`team_id`).
+  const gerenteEscolhido = form?.manager_id ?? null;
+  const [equipesDoGerente, setEquipesDoGerente] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    setEquipesDoGerente([]);
+    if (!open || !gerenteEscolhido) return;
+    let vigente = true;
+    // Falha de leitura não bloqueia a ficha: sem a lista, o banco ainda recusa o
+    // caso ambíguo com a frase que manda escolher a equipe.
+    listActiveTeamsOfManager(gerenteEscolhido).then((lista) => { if (vigente) setEquipesDoGerente(lista); }).catch(() => {});
+    return () => { vigente = false; };
+  }, [open, gerenteEscolhido]);
+  const precisaEscolherEquipe = equipesDoGerente.length > 1;
 
   useEffect(() => {
     setCreds(null);
@@ -348,8 +361,8 @@ export function BrokerEditModal({
    * e-mail duplicado a lista chuta `active: true` e `manager_id: null` para
    * alguém que já existe, e comparar com esse chute travava a reativação.
    */
-  const buildSave = (email: string | null | undefined, desligar = false): PersonSave | string =>
-    buildPersonSave({ ...form, id: form.id }, email, {
+  const buildSave = (email: string | null | undefined, desligar = false): PersonSave | string => {
+    const input = buildPersonSave({ ...form, id: form.id }, email, {
       baseline: baseline
         ? {
             active: baseline.active,
@@ -362,6 +375,12 @@ export function BrokerEditModal({
       managesTeam,
       desligar,
     });
+    // Gerente com mais de uma equipe: o banco não adivinha, a ficha pergunta.
+    if (typeof input !== "string" && input.managerId && precisaEscolherEquipe && !form.team_id) {
+      return "Escolha a equipe do gerente no campo \"Equipe\".";
+    }
+    return input;
+  };
 
   /**
    * Envia a foto escolhida e devolve a URL a gravar.
@@ -828,7 +847,7 @@ export function BrokerEditModal({
             label="Equipe (Gerente)"
             hint={equipeTravada ? "Gerente pertence à equipe que lidera; mudar aqui o tiraria dela e o diretor deixaria de enxergá-lo." : undefined}
           >
-            <Select value={form.manager_id || "__none__"} onValueChange={v => upd("manager_id", v === "__none__" ? null : v)} disabled={equipeTravada}>
+            <Select value={form.manager_id || "__none__"} onValueChange={v => { upd("manager_id", v === "__none__" ? null : v); upd("team_id", null); }} disabled={equipeTravada}>
               {/* O SelectTrigger e um `button role="combobox"` cujo nome vem do
                   VALOR escolhido: sem isto o leitor de tela anuncia "Marcos
                   Gerente, caixa de combinacao" sem dizer que campo e. O
@@ -845,6 +864,17 @@ export function BrokerEditModal({
               </SelectContent>
             </Select>
           </Field>
+          {precisaEscolherEquipe && (
+            <Field label="Equipe" hint="Este gerente lidera mais de uma equipe ativa: escolha em qual o colaborador entra.">
+              <Select value={form.team_id || "__none__"} onValueChange={v => upd("team_id", v === "__none__" ? null : v)}>
+                <SelectTrigger aria-label="Equipe do gerente"><SelectValue placeholder="Escolha a equipe" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— escolha a equipe —</SelectItem>
+                  {equipesDoGerente.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
           <Field
             label="Diretor"
             className="md:col-span-2"
@@ -1106,6 +1136,13 @@ export function BrokerEditModal({
                     Enquanto isso, avise o colaborador de que ele ainda não consegue entrar.
                   </p>
                 )}
+                {/* Mesmo envio da tela "cadastrado(a)": a ficha de quem já existe
+                    também precisa mandar o acesso (troca de e-mail, reenvio). */}
+                <Button type="button" size="sm" variant="outline" className="gap-2" disabled={!form.celular}
+                  onClick={() => enviarAcesso({ nome: form.full_name || form.name, email: creds.email, telefone: form.celular, gerenteId: form.manager_id ?? null })}>
+                  <MessageCircle className="h-3 w-3" /> Enviar acesso por WhatsApp
+                </Button>
+                {!form.celular && <p className="text-muted-foreground">Sem celular na ficha — preencha o celular e salve para enviar.</p>}
               </div>
             )}
           </fieldset>

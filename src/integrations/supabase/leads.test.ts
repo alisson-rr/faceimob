@@ -158,6 +158,27 @@ describe("describeLeadEvent", () => {
       .toBe("Atribuído pela roleta: João Lima");
   });
 
+  it("o repasse diz quem repassou, de quem e para quem", () => {
+    const names = new Map([["a", "Ana"], ["b", "Bia"], ["c", "Caio"]]);
+    expect(describeLeadEvent({ kind: "reassigned", actor_id: "a", from_value: "a", to_value: "b" }, names))
+      .toBe("Ana repassou o lead para Bia");
+    expect(describeLeadEvent({ kind: "reassigned", actor_id: "c", from_value: "a", to_value: "b" }, names))
+      .toBe("Caio repassou o lead de Ana para Bia");
+  });
+
+  it("sem o perfil visível, usa os nomes gravados no próprio evento", () => {
+    expect(describeLeadEvent({
+      kind: "reassigned", actor_id: "x", from_value: "x", to_value: "y",
+      detail: { actor_name: "Davi", from_name: "Davi", to_name: "Eva" },
+    })).toBe("Davi repassou o lead para Eva");
+  });
+
+  it("quem pegou o lead aparece pelo nome", () => {
+    expect(describeLeadEvent({ kind: "claimed", actor_id: "b" }, new Map([["b", "Bia"]])))
+      .toBe("Bia pegou o lead");
+    expect(describeLeadEvent({ kind: "claimed" })).toBe("Corretor assumiu o atendimento");
+  });
+
   it("o encerramento diz o motivo, que é o que só ele registra", () => {
     // `close_lead` não regrava o `status_changed` (o gatilho `leads_log_changes`
     // já faz isso, e dois eventos iguais duplicavam a linha do histórico e a

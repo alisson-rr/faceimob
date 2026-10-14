@@ -209,7 +209,11 @@ export const ccaColumnOf = (
   // caso de um negócio ainda marcado "13. ESTEIRA AGIL" aparecer em "EM
   // PROCESSAMENTO". Primeiro casa o Status 2 com o vínculo da coluna e, para os
   // rótulos de sistema que não podem ter vínculo, com o próprio nome da coluna.
-  // Só depois cai no `stage_id` histórico e no desfecho.
+  // Só depois cai no `stage_id` histórico e no desfecho — e só em colunas SEM
+  // vínculo com Status 2. Coluna ligada a um Status 2 recebe apenas quem o tem:
+  // o estágio antigo e o desfecho jogavam nela negócios de outro Status 2 (OFF,
+  // cancelado...), e "Pendente p/ virar negócio" mostrava 63 enquanto o Pipeline,
+  // pelo Status 2, mostrava 3.
   stages.find((item) => {
     const status = foldStatus(dealStatus);
     return Boolean(status) && (
@@ -217,13 +221,16 @@ export const ccaColumnOf = (
       || foldStatus(item.name) === status
     );
   })
-  ?? stages.find((item) => item.id === row.stage_id)
-  ?? stages.find((item) => item.status === row.status);
+  ?? stages.find((item) => !item.deal_status_id && item.id === row.stage_id)
+  ?? stages.find((item) => !item.deal_status_id && item.status === row.status);
 
 /** Chave sem número nem acento, para "13. ESTEIRA AGIL" casar com a coluna
  *  editável "ESTEIRA ÁGIL". */
 const foldStatus = (value?: string | null): string => bareStatus(value ?? "")
   .normalize("NFD").replace(/\p{M}/gu, "");
+
+/** Status 2 vazio: o negócio ainda está em preparação e não entra na esteira. */
+export const semStatus2 = (status?: string | null): boolean => !foldStatus(status);
 
 /** Rótulos que a coluna não pode gravar — a mesma lista do gatilho
  *  `cca_stages_guard_deal_status` (0150): rótulo de envio ou desfecho.
@@ -385,6 +392,8 @@ export async function loadCcaBoard(
   for (const row of boardCases) {
     const deal = dealById.get(row.deal_id);
     if (foraDaEsteiraDoCca(deal?.status, deal?.developer, ccaProprio)) continue;
+    // Negócio sem Status 2 é "Em preparação" no Pipeline: não entra na esteira.
+    if (deal && semStatus2(deal.status)) continue;
     const stage = ccaColumnOf(stages, row, deal?.status);
     if (!stage) {
       outside += 1;
