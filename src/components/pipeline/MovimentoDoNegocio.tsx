@@ -1,11 +1,12 @@
 import { useEffect, useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileSignature, Loader2, ShieldCheck } from "lucide-react";
+import { Building2, FileSignature, Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { brl } from "@/lib/format";
@@ -15,11 +16,12 @@ import { getDealDeveloper, getDealDocumentReview } from "@/integrations/supabase
 import { listDeveloperProjects } from "@/integrations/supabase/leads";
 import { chaveDaConstrutora, construtorasDoCcaProprio } from "@/integrations/supabase/central";
 import {
-  EMPTY_STATUS_CATALOG, moveDealStatus, statusMoveBlock, useDealStatusCatalog,
+  EMPTY_STATUS_CATALOG, moveDealStatus, mudarConstrutoraDoNegocio, reativarNegocio, statusMoveBlock, useDealStatusCatalog,
 } from "@/integrations/supabase/dealStatuses";
 import type { SaveLegacyDealInput } from "@/integrations/supabase/newSchema";
 import { DealOffToggle } from "./DealOffToggle";
 import { MoneyField, TextField } from "./fields";
+import { useDevelopers } from "./data";
 
 const EXTERNA = "ANÁLISE EXTERNA";
 const APROVACOES = [
@@ -32,6 +34,10 @@ const SEM_ANALISE_EXTERNA = new Set([
   "ESTEIRA AGIL", "RET. ESTEIRA AGIL", "ANÁLISE P/ VIRAR NEGÓCIO", "EM ANÁLISE",
 ]);
 const VIROU_NEGOCIO = new Set(["VIROU NEGÓCIO", "VIROU NEGÓCIO COM PENDÊNCIAS"]);
+/** Negócio encerrado que gerente, diretor, sócio e administrador podem reativar (0277). */
+const REATIVAVEIS = new Set(["OFF", "DISTRATO", "QUEDA"]);
+/** Menor texto aceito em motivo e comentário: "ok" não explica nada ao histórico. */
+const MIN_TEXTO = 5;
 
 /**
  * Aba Negócio: o movimento do card num lugar só (pedido de 12/10/2026).
@@ -46,7 +52,7 @@ const VIROU_NEGOCIO = new Set(["VIROU NEGÓCIO", "VIROU NEGÓCIO COM PENDÊNCIAS
  * para a esteira da nossa CCA e a aprovação é registrada à mão.
  */
 export function MovimentoDoNegocio({
-  dealId, form, readOnly, onPatch, onAplicarOff, onGravar, onMovido,
+  dealId, form, readOnly, onPatch, onAplicarOff, onGravar, onMovido, onConcluido,
 }: {
   dealId: string;
   form: SaveLegacyDealInput;
@@ -57,6 +63,8 @@ export function MovimentoDoNegocio({
   onGravar: (status?: string) => Promise<boolean>;
   /** Depois de mover pela RPC: o parent atualiza o status da ficha e renova o dossiê. */
   onMovido: (status: string) => Promise<void>;
+  /** Depois de um movimento que muda o negócio de lugar: o card fecha e o toast confirma. */
+  onConcluido?: () => void;
 }) {
   const id = useId();
   const { can, isAdmin, roles } = useAuth();
@@ -71,6 +79,12 @@ export function MovimentoDoNegocio({
   const [querExterna, setQuerExterna] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [projetos, setProjetos] = useState<{ id: string; name: string }[]>([]);
+  const [motivoReativar, setMotivoReativar] = useState("");
+  const [novaConstrutora, setNovaConstrutora] = useState("");
+  const [novoEmpreendimento, setNovoEmpreendimento] = useState("");
+  const [comentarioTroca, setComentarioTroca] = useState("");
+  const [projetosDaNova, setProjetosDaNova] = useState<{ id: string; name: string }[]>([]);
+  const construtoras = useDevelopers().data ?? [];
 
   useEffect(() => {
     if (!isAdmin || !form.developer_id) return;
@@ -78,6 +92,14 @@ export function MovimentoDoNegocio({
     listDeveloperProjects(form.developer_id).then((lista) => { if (vivo) setProjetos(lista); }).catch(() => { if (vivo) setProjetos([]); });
     return () => { vivo = false; };
   }, [isAdmin, form.developer_id]);
+
+  useEffect(() => {
+    setProjetosDaNova([]);
+    if (!novaConstrutora) return;
+    let vivo = true;
+    listDeveloperProjects(novaConstrutora).then((lista) => { if (vivo) setProjetosDaNova(lista); }).catch(() => { if (vivo) setProjetosDaNova([]); });
+    return () => { vivo = false; };
+  }, [novaConstrutora]);
 
   const valorDe = (bare: string) => catalog.statuses.find((item) => bareStatus(item.value) === bare)?.value ?? null;
   const bloqueio = (bare: string): string | null => {
@@ -97,6 +119,7 @@ export function MovimentoDoNegocio({
       toast({ variant: "success", title: `Negócio em ${bare.toLowerCase()}`, description: "O comentário ficou no histórico." });
       setNota("");
       setQuerExterna(false);
+      onConcluido?.();
     } catch (erro) {
       toast({ variant: "destructive", title: "Não foi possível mover o negócio", description: describeError(erro, "Tente de novo.") });
     } finally {
@@ -115,6 +138,43 @@ export function MovimentoDoNegocio({
     }
   };
 
+  const reativar = async () => {
+    setOcupado(true);
+    try {
+      await reativarNegocio(dealId, motivoReativar);
+      await onMovido(valorDe("INCOMPLETO") ?? "INCOMPLETO");
+      toast({ variant: "success", title: "Negócio reativado", description: "Voltou para Incompleto no mês atual. O motivo ficou no histórico." });
+      setMotivoReativar("");
+      onConcluido?.();
+    } catch (erro) {
+      toast({ variant: "destructive", title: "Não foi possível reativar o negócio", description: describeError(erro, "Tente de novo.") });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const trocarConstrutora = async () => {
+    setOcupado(true);
+    try {
+      const cadastrado = projetosDaNova.find((p) => p.name.toLowerCase() === novoEmpreendimento.trim().toLowerCase());
+      await mudarConstrutoraDoNegocio({
+        dealId, developerId: novaConstrutora, project: novoEmpreendimento,
+        projectId: cadastrado?.id ?? null, comentario: comentarioTroca,
+      });
+      await onMovido(valorDe("ANÁLISE P/ VIRAR NEGÓCIO") ?? "ANÁLISE P/ VIRAR NEGÓCIO");
+      toast({
+        variant: "success", title: "Construtora trocada",
+        description: "O negócio voltou à CCA para uma nova virada, com o comentário no histórico.",
+      });
+      setNovaConstrutora(""); setNovoEmpreendimento(""); setComentarioTroca("");
+      onConcluido?.();
+    } catch (erro) {
+      toast({ variant: "destructive", title: "Não foi possível trocar a construtora", description: describeError(erro, "Tente de novo.") });
+    } finally {
+      setOcupado(false);
+    }
+  };
+
   const nome = construtora.data?.name ?? form.developer;
   const cca = ccaProprio.data;
   const ccaExterno = construtora.data?.flow === "external"
@@ -123,6 +183,13 @@ export function MovimentoDoNegocio({
   const podeOferecerExterna = !readOnly && !SEM_ANALISE_EXTERNA.has(atual) && atual !== EXTERNA && !conferenciaPendente;
   const motivoExterna = bloqueio(EXTERNA);
   const nomeCerto = nota.trim().length >= 5;
+  // Reativar não olha `readOnly`: o caso típico é um OFF de mês fechado, que a ficha
+  // trava para edição — a regra de quem pode e de que mês vale é do banco (0277).
+  const podeReativar = isAdmin || roles.includes("manager") || roles.includes("director");
+  const reativavel = REATIVAVEIS.has(atual);
+  const podeTrocarConstrutora = !readOnly && VIROU_NEGOCIO.has(atual);
+  const trocaCompleta = novaConstrutora !== "" && novoEmpreendimento.trim().length >= 2
+    && comentarioTroca.trim().length >= MIN_TEXTO;
   const vgvLiquido = form.vgv_bruto ? Math.max(form.vgv_bruto - (form.desconto ?? 0), 0) : null;
 
   return (
@@ -228,6 +295,56 @@ export function MovimentoDoNegocio({
           <p className="text-xs text-muted-foreground">
             “Em contrato” vale depois de o negócio virar negócio e pede o VGV bruto. “Assinado” confirma que o contrato foi assinado.
           </p>
+        </section>
+      )}
+
+      {reativavel && podeReativar && (
+        <section className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
+          <h3 className="flex items-center gap-2 text-sm font-bold"><RotateCcw className="h-4 w-4" aria-hidden /> Reativar negócio</h3>
+          <p className="text-xs text-muted-foreground">
+            O negócio está em {atual}. Reativar leva ele de volta para Incompleto, no mês atual, e o motivo fica no histórico.
+          </p>
+          <Label htmlFor={`${id}-reativar`} className="text-xs">Motivo da reativação (obrigatório)</Label>
+          <Textarea id={`${id}-reativar`} rows={2} maxLength={2000} value={motivoReativar} onChange={(e) => setMotivoReativar(e.target.value)}
+            placeholder="Ex.: cliente retomou o contato e quer seguir com a compra" />
+          <Button size="sm" disabled={ocupado || motivoReativar.trim().length < MIN_TEXTO} onClick={() => void reativar()}>
+            {ocupado && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
+            Reativar para Incompleto no mês atual
+          </Button>
+        </section>
+      )}
+
+      {podeTrocarConstrutora && (
+        <section className="space-y-2 rounded-lg border border-border/60 p-3">
+          <h3 className="flex items-center gap-2 text-sm font-bold"><Building2 className="h-4 w-4" aria-hidden /> Mudar construtora p/ negócio</h3>
+          <p className="text-xs text-muted-foreground">
+            Para virar negócio em outra construtora: o negócio volta à CCA para uma nova virada. Informe a nova
+            construtora, o empreendimento e o motivo da troca.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor={`${id}-nova-construtora`} className="text-xs">Nova construtora (obrigatório)</Label>
+              <Select value={novaConstrutora || undefined} onValueChange={(v) => { setNovaConstrutora(v); setNovoEmpreendimento(""); }}>
+                <SelectTrigger id={`${id}-nova-construtora`} className="mt-1 text-xs"><SelectValue placeholder="Escolha a construtora" /></SelectTrigger>
+                <SelectContent>
+                  {construtoras.filter((c) => c.id !== form.developer_id).map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor={`${id}-novo-empreendimento`} className="text-xs">Empreendimento (obrigatório)</Label>
+              <Input id={`${id}-novo-empreendimento`} list={`${id}-projetos-nova`} maxLength={120} className="mt-1 text-xs"
+                disabled={!novaConstrutora} value={novoEmpreendimento} onChange={(e) => setNovoEmpreendimento(e.target.value)} />
+              <datalist id={`${id}-projetos-nova`}>{projetosDaNova.map((p) => <option key={p.id} value={p.name} />)}</datalist>
+            </div>
+          </div>
+          <Label htmlFor={`${id}-troca`} className="text-xs">Comentário (obrigatório)</Label>
+          <Textarea id={`${id}-troca`} rows={2} maxLength={2000} value={comentarioTroca} onChange={(e) => setComentarioTroca(e.target.value)}
+            placeholder="Ex.: cliente preferiu outro empreendimento; reprovado na construtora anterior" />
+          <Button size="sm" disabled={ocupado || !trocaCompleta} onClick={() => void trocarConstrutora()}>
+            {ocupado && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
+            Voltar à CCA com a nova construtora
+          </Button>
         </section>
       )}
 

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createDealStatus, EMPTY_STATUS_CATALOG, statusMoveBlock } from "./dealStatuses";
+import {
+  createDealStatus, EMPTY_STATUS_CATALOG, mudarConstrutoraDoNegocio, reativarNegocio, statusMoveBlock,
+} from "./dealStatuses";
 
 /**
  * Status 2 criado pela tela sem o número na frente do nome exibido.
@@ -9,9 +11,14 @@ import { createDealStatus, EMPTY_STATUS_CATALOG, statusMoveBlock } from "./dealS
  * com o número em todo Select, tabela e planilha.
  */
 const insert = vi.hoisted(() => vi.fn());
+const rpc = vi.hoisted(() => vi.fn());
 
 vi.mock("./client", () => ({
   supabase: {
+    rpc: async (nome: string, args: unknown) => {
+      rpc(nome, args);
+      return { error: null };
+    },
     from: () => ({
       insert: (row: unknown) => {
         insert(row);
@@ -63,5 +70,24 @@ describe("statusMoveBlock · contrato com pendência", () => {
         { isAdmin: false, roles: [role] },
       )).toBeNull();
     }
+  });
+});
+
+describe("reativação e troca de construtora (0277)", () => {
+  it("reativar manda o motivo sem espaços sobrando", async () => {
+    rpc.mockClear();
+    await reativarNegocio("d1", "  Cliente voltou a negociar  ");
+    expect(rpc).toHaveBeenCalledWith("reativar_negocio", { p_deal_id: "d1", p_motivo: "Cliente voltou a negociar" });
+  });
+
+  it("mudar a construtora manda construtora, empreendimento e comentário", async () => {
+    rpc.mockClear();
+    await mudarConstrutoraDoNegocio({
+      dealId: "d1", developerId: "dev2", project: " Residencial Novo ", comentario: " Cliente preferiu outra obra ",
+    });
+    expect(rpc).toHaveBeenCalledWith("mudar_construtora_do_negocio", {
+      p_deal_id: "d1", p_developer_id: "dev2", p_project: "Residencial Novo",
+      p_comentario: "Cliente preferiu outra obra", p_project_id: null,
+    });
   });
 });

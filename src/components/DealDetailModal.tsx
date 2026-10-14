@@ -314,7 +314,8 @@ export default function DealDetailModal({
         description: "O gerente recebeu o aviso com a sua mensagem.",
       });
       setConferencia(null);
-      if (closeOnSave) onClose();
+      // Enviado: o card fecha e o toast acima confirma (pedido de 14/10/2026).
+      onClose();
     } catch (err) {
       setConferencia({ enviando: false, erro: describeError(err, "O envio ao gerente não foi feito.") });
     }
@@ -385,6 +386,7 @@ export default function DealDetailModal({
     setVersaoComentarios((v) => v + 1);
     toast({ variant: "success", title: "Negócio em OFF", description: "O motivo ficou nos comentários." });
     await dossieMudou();
+    onClose();
     return true;
   };
 
@@ -562,6 +564,7 @@ export default function DealDetailModal({
               // enquanto o resto do modal já estava travado pelo mesmo `lock`.
               unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
               onReviewChanged={dossieMudou}
+              onMovimento={onClose}
               mensagemInicial={mensagemEnvio}
               salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
               parte="arquivos"
@@ -607,6 +610,7 @@ export default function DealDetailModal({
                 closedMonth={lock.reason === "month" ? lock.month : null}
                 unconfirmedMonth={lock.reason === "unknown" ? lock.month : null}
                 onReviewChanged={dossieMudou}
+                onMovimento={onClose}
                 mensagemInicial={mensagemEnvio}
                 salvarFicha={async () => Boolean(await gravarAntesDoEnvio())}
                 statusDetail={form.status}
@@ -627,6 +631,7 @@ export default function DealDetailModal({
                     patch({ status, status_group_id: undefined });
                     await dossieMudou();
                   }}
+                  onConcluido={onClose}
                 />
               </div>
             </div>
