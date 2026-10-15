@@ -25,8 +25,10 @@ export function CcaCloseContractDialog({ deal, onClose, onDone }: {
     try {
       await closeCcaContract(deal.dealId, outcome, reason.trim());
       toast.success(`${outcome} registrada`, { description: `${deal.client} saiu do contrato com a justificativa registrada.` });
-      await onDone();
       onClose();
+      try { await onDone(); } catch {
+        toast.warning("Encerramento confirmado", { description: "Recarregue a página para atualizar o quadro." });
+      }
     } catch (error) {
       toast.error("Não foi possível encerrar o contrato", {
         description: describeError(error, "O contrato continua como estava."),

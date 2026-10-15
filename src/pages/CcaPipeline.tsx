@@ -547,6 +547,7 @@ export default function CcaPipeline() {
           key={openDeal.id}
           deal={openDeal}
           open
+          closeOnSave
           stages={pipelineStages.data ?? []}
           people={peopleQuery.data ?? []}
           developers={developersQuery.data ?? []}
@@ -560,8 +561,8 @@ export default function CcaPipeline() {
             const documentoInvalido = dealDocumentNumberError(updated);
             if (documentoInvalido) throw dbError("deals", { code: "P0001", message: documentoInvalido.message });
             await saveLegacyDeal(updated);
-            await invalidateDeals();
-            await refresh();
+            void invalidateDeals();
+            void refresh();
             // O modal fica ABERTO de propósito: logo depois deste `await` ele
             // grava a análise da aba CCA (`saveCcaAnalysis`), que a RLS pode
             // recusar. Fechar aqui apagaria da tela a análise recém-digitada,

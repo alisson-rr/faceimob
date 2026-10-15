@@ -297,6 +297,18 @@ describe("período de criação", () => {
 });
 
 describe("listLegacyDeals · recorte no banco", () => {
+  it("expõe selo do CCA sem alterar o status comercial e remove o selo ao sair da pendência", async () => {
+    rede.tabelas.deals = [{ id: "d1", status_detail: "EM CONTRATO", outcome: "open", created_at: "2026-10-15T12:00:00Z",
+      cca_case: { status: "approved", stage: { name: "RESOLVER P/ ASSINAR BANCO" } } }];
+    let [registro] = await listLegacyDeals(undefined, { ids: ["d1"] });
+    expect(registro.cca_pending_label).toBe("RESOLVER P/ ASSINAR BANCO");
+    expect(registro.status).toBe("EM CONTRATO");
+    rede.tabelas.deals = [{ id: "d1", status_detail: "EM CONTRATO", outcome: "open", created_at: "2026-10-15T12:00:00Z",
+      cca_case: { status: "approved", stage: { name: "EM CONTRATO" } } }];
+    [registro] = await listLegacyDeals(undefined, { ids: ["d1"] });
+    expect(registro.cca_pending_label).toBeNull();
+    expect(registro.status).toBe("EM CONTRATO");
+  });
   beforeEach(() => {
     rede.pedidos = [];
     rede.tabelas = {

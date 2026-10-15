@@ -100,8 +100,7 @@ begin
       'REPROVADO', 'BACEN', 'VIROU NEGÓCIO', 'VIROU NEGÓCIO COM PENDÊNCIAS',
       'ANÁLISE CEOPF', 'INCONFORME CEOPF', 'APROVADO/AGUARDANDO AGENDA',
       'ENTREVISTA AGENDADA', 'ASSINADO BANCO',
-      'PENDENTE P/ VIRAR NEGÓCIO', 'RESOLVER P/ ASSINAR BANCO',
-      'AGUARDANDO DEMANDA MÍNIMA', 'EM CONTRATO', 'ASSINADO'],
+      'PENDENTE P/ VIRAR NEGÓCIO', 'EM CONTRATO', 'ASSINADO'],
     'as colunas operacionais do cliente e do fluxo novo estão ativas com Status 2');
 
   perform pg_temp.check150(
@@ -112,12 +111,14 @@ begin
       where s.name = 'RETORNO À ESTEIRA ÁGIL' and s.active),
     'RETORNO À ESTEIRA ÁGIL é pendência e grava "RET. ESTEIRA AGIL", exibido como "RETORNO À ESTEIRA ÁGIL"');
 
+  -- As pendências da 0282 também são internas, sem Status 2 comercial.
   -- O seed recria "Enviado à Construtora" e o 0248 mantém a entrada sistêmica
   -- "ANÁLISE P/ VIRAR NEGÓCIO": são as únicas colunas sem Status 2 próprio.
   perform pg_temp.check150(
     not exists (select 1 from public.cca_stages
                  where active and deal_status_id is null
                    and status <> 'sent_to_developer'
+                   and not public.cca_stage_is_independent(name)
                    and public.cca_stage_name_key(name) <>
                        public.cca_stage_name_key('ANÁLISE P/ VIRAR NEGÓCIO')),
     'nenhum estágio antigo segue ativo');

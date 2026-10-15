@@ -4,6 +4,7 @@ import { SAO_PAULO_UTC_OFFSET } from "@/integrations/supabase/checkin";
 import { dbError } from "@/lib/supabaseError";
 import { allRows, last30DaysRange, listLegacyDeals, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { bareStatus } from "@/lib/dealStatus";
+import { isIndependentCcaStage } from "@/lib/ccaPending";
 import { chaveDaConstrutora, construtorasDoCcaProprio } from "@/integrations/supabase/central";
 import type { CcaCaseStatus } from "./ccaStage";
 import type { Database } from "@/integrations/supabase/types";
@@ -206,6 +207,8 @@ export const ccaColumnOf = (
   row: { stage_id: string | null; status: string },
   dealStatus?: string | null,
 ): CcaStage | undefined =>
+  stages.find((item) => item.id === row.stage_id && isIndependentCcaStage(item.name))
+  ??
   // O Status 2 é a fonte de verdade das colunas da CCA (0150). Casos antigos
   // podem conservar um `stage_id` anterior à reorganização das colunas: era o
   // caso de um negócio ainda marcado "13. ESTEIRA AGIL" aparecer em "EM
@@ -441,5 +444,9 @@ export function useCcaBoard(periodo: CcaPeriodo, enabled = true, base: CcaPeriod
 
 export function useInvalidateCcaBoard() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: ccaKeys.board });
+  return () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ccaKeys.board }),
+    queryClient.invalidateQueries({ queryKey: ["cca", "synthesis"] }),
+    queryClient.invalidateQueries({ queryKey: ["deals"] }),
+  ]).then(() => undefined);
 }

@@ -346,6 +346,11 @@ export function DealsTable({
                       <Badge variant="outline" className={cn("whitespace-nowrap text-xs", review.className)}>
                         {review.label}
                       </Badge>
+                      {deal.cca_pending_label && (
+                        <Badge variant="outline" className="border-warning/60 bg-warning/15 text-xs text-warning">
+                          Pendência CCA: {deal.cca_pending_label}
+                        </Badge>
+                      )}
                       {deal.contract_has_pending_issue && (
                         <Badge variant="outline" className="whitespace-nowrap border-warning/60 bg-warning/15 text-xs text-warning">
                           Pendência no contrato

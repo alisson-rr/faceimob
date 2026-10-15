@@ -36,8 +36,10 @@ export function CcaDevolverDialog({ deal, onClose, onDone }: {
       const { error } = await semTipos.rpc("devolver_ao_comercial", { p_deal_id: deal.dealId, p_mensagem: limpa });
       if (error) throw error;
       toast.success("Devolvido ao comercial", { description: `${deal.client} saiu da esteira e o corretor foi avisado.` });
-      await onDone();
       onClose();
+      try { await onDone(); } catch {
+        toast.warning("Devolução confirmada", { description: "Recarregue a página para atualizar o quadro." });
+      }
     } catch (err) {
       toast.error("Não foi possível devolver", { description: describeError(err, "O negócio continua na esteira.") });
     } finally {

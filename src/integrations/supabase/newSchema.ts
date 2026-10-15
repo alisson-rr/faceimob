@@ -4,6 +4,7 @@ import { supabase } from "./client";
 import { getCurrentWorkDate, SAO_PAULO_UTC_OFFSET } from "./checkin";
 import { bareStatus, isLossStatus, normalizeStatus } from "@/lib/dealStatus";
 import { ccaStatusLabel } from "@/components/pipeline/ccaStage";
+import { isIndependentCcaStage } from "@/lib/ccaPending";
 import { dbError } from "@/lib/supabaseError";
 import type { Lead, LeadStatus, PipelineDeal } from "@/types/crm";
 import type { Database } from "./types";
@@ -331,7 +332,9 @@ export async function allRows<T>(
 }
 
 type PageFn<T> = (from: number, to: number, count?: "exact") => Page<T>;
-type DealRow = Database["public"]["Tables"]["deals"]["Row"];
+type DealRow = Database["public"]["Tables"]["deals"]["Row"] & {
+  cca_case?: { status: string; stage: { name: string } | null } | null;
+};
 
 /** Ids por requisição no `in.(…)`: 100 uuids dão ~4 kB de URL, abaixo do teto do gateway. */
 const IDS_POR_REQUISICAO = 100;
@@ -420,7 +423,7 @@ export async function listLegacyDeals(
   const recorte = opts.ids !== undefined || Boolean(faixa.gte || faixa.lt || meses.length);
 
   const negocios = (lote: string[] | null): PageFn<DealRow> => (from, to, count) => {
-    let query = db.from("deals").select("*", { count });
+    let query = db.from("deals").select("*,cca_case:cca_cases(status,stage:cca_stages(name))", { count });
     if (lote) query = query.in("id", lote);
     if (meses.length && faixa.gte && faixa.lt) {
       // Uma única consulta: data de criação OU competência. Valores vêm de
@@ -670,6 +673,8 @@ export async function listLegacyDeals(
       document_review_requested_at: deal.document_review_requested_at || undefined,
       document_review_reason: deal.document_review_reason || undefined,
       contract_has_pending_issue: deal.contract_has_pending_issue,
+      cca_pending_label: deal.cca_case?.status !== "cancelled" && isIndependentCcaStage(deal.cca_case?.stage?.name)
+        ? deal.cca_case?.stage?.name : null,
       construtora_trocada_em: (deal as DealRow & { construtora_trocada_em?: string | null }).construtora_trocada_em || undefined,
       history: [],
     } satisfies LegacyDealRecord;

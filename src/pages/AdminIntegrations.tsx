@@ -169,7 +169,7 @@ const EMAIL: Record<TipoDeEmail, { setting: "cca_move_email" | "pipeline_move_em
   cca: {
     setting: "cca_move_email",
     titulo: "Enviar e-mail nas movimentações da CCA",
-    ajuda: "Cada movimento da esteira que avisa o comercial manda também um e-mail ao corretor e ao gerente do negócio.",
+    ajuda: "Cada movimento da esteira que avisa o comercial manda também um e-mail ao corretor e ao gerente do negócio. As pendências Resolver p/ assinar Banco e Aguardando demanda mínima sempre enviam esse aviso, mesmo com esta opção desligada.",
     ligado: "A partir do próximo movimento da CCA que avisa o comercial.",
   },
   pipeline: {
