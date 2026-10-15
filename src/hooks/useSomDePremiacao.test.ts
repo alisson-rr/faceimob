@@ -70,6 +70,16 @@ afterEach(() => {
 });
 
 describe("tocarPremiacao", () => {
+  it("usa a faixa enviada e retorna à original quando restaurada", async () => {
+    const { tocarPremiacao } = await carregar();
+    const { setCustomSoundUrls } = await import("@/lib/engagement/customSounds");
+    setCustomSoundUrls({ premiacao: "https://example.com/premio.mp3" });
+    tocarPremiacao({ manual: true });
+    expect((tocar.mock.instances[0] as HTMLAudioElement).src).toBe("https://example.com/premio.mp3");
+    setCustomSoundUrls({});
+    tocarPremiacao({ manual: true });
+    expect((tocar.mock.instances[1] as HTMLAudioElement).src).toContain("/senna.weba");
+  });
   it("não toca com o som desligado", async () => {
     estado.ligado = false;
     const { tocarPremiacao } = await carregar();

@@ -5,6 +5,7 @@ import { HandMetal, MapPin, Target, TrendingUp, WifiOff } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLoadCustomSounds } from "@/hooks/useCustomSounds";
 import { recorteDoRanking, useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
 // Caminho direto, e não o barril `@/components/dashboard`: o barril arrasta os
 // componentes do Dashboard para a camada que monta em toda tela.
@@ -117,6 +118,7 @@ type GameEventRow = {
 
 export function EngagementLayer({ children }: { children: ReactNode }) {
   const { user, roles, isAdmin } = useAuth();
+  useLoadCustomSounds(Boolean(user));
   const profileId = user?.id ?? null;
   const queryClient = useQueryClient();
 

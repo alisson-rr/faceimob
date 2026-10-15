@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 let agora = 0;
 let notas = 0;
+let arquivos = 0;
 
 const parametro = () => ({
   value: 1,
@@ -23,6 +24,10 @@ const parametro = () => ({
 let ganhos: ReturnType<typeof parametro>[] = [];
 
 class ContextoFalso {
+  decodeAudioData() { return Promise.resolve({ duration: 2 }); }
+  createBufferSource() {
+    return { buffer: null, connect: vi.fn(), disconnect: vi.fn(), onended: null, start: () => { arquivos++; } };
+  }
   destination = {};
   get currentTime() {
     return agora;
@@ -54,6 +59,7 @@ const carregar = async () => {
   vi.resetModules();
   agora = 10;
   notas = 0;
+  arquivos = 0;
   ganhos = [];
   localStorage.clear();
   vi.stubGlobal("AudioContext", ContextoFalso);
@@ -65,6 +71,35 @@ afterEach(() => {
 });
 
 describe("som de aviso cede a vez", () => {
+  it("toca o arquivo enviado, respeita mudo e restaura o sintetizado", async () => {
+    const { playSound, preloadCustomSounds, setSoundOn } = await carregar();
+    const { setCustomSoundUrls } = await import("./customSounds");
+    const urls = { checkin: "https://example.com/checkin.mp3" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(1) }));
+    setCustomSoundUrls(urls);
+    await preloadCustomSounds(urls);
+    playSound("checkin");
+    expect(arquivos).toBe(1);
+    expect(notas).toBe(0);
+    setSoundOn(false);
+    playSound("checkin");
+    expect(arquivos).toBe(1);
+    setSoundOn(true);
+    setCustomSoundUrls({});
+    await preloadCustomSounds({});
+    playSound("checkin");
+    expect(notas).toBe(1);
+  });
+  it("falha ao baixar o arquivo mantém o som padrão", async () => {
+    const { playSound, preloadCustomSounds } = await carregar();
+    const { setCustomSoundUrls } = await import("./customSounds");
+    const urls = { checkin: "https://example.com/offline.mp3" };
+    setCustomSoundUrls(urls);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    await preloadCustomSounds(urls);
+    playSound("checkin");
+    expect(notas).toBe(1);
+  });
   it("rajada de avisos toca uma vez, mesmo espaçada dentro da janela", async () => {
     const { playSound } = await carregar();
     playSound("error");
