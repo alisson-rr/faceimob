@@ -13,7 +13,7 @@ import {
   listWorkShifts,
 } from "@/integrations/supabase/checkin";
 import { supabase } from "@/integrations/supabase/client";
-import { functionErrorMessage } from "@/lib/functionError";
+import { checkinAction } from "@/lib/checkinAction";
 
 const POLL_MS = 60_000;
 const hhmm = (value: string) => value.slice(0, 5);
@@ -34,20 +34,23 @@ export function LeadsCheckinCard() {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<"checkin" | "checkout" | null>(null);
 
-  const shifts = useQuery({ queryKey: ["checkin", "shifts"], queryFn: listWorkShifts });
+  const shifts = useQuery({ queryKey: ["checkin", "shifts"], queryFn: listWorkShifts, retry: false });
   const currentShift = useQuery({
     queryKey: ["checkin", "current-shift"],
     queryFn: getCurrentShiftId,
+    retry: false,
     refetchInterval: POLL_MS,
   });
   const today = useQuery({
     queryKey: ["checkin", "today", userId],
     queryFn: () => listTodayCheckins(userId as string),
+    retry: false,
     enabled: Boolean(userId && role === "broker"),
   });
   const eligibility = useQuery({
     queryKey: ["checkin", "eligibility"],
     queryFn: getCheckinEligibility,
+    retry: false,
     enabled: Boolean(userId && role === "broker"),
     refetchInterval: POLL_MS,
   });
@@ -83,18 +86,16 @@ export function LeadsCheckinCard() {
     }
     setPending(action);
     try {
-      const { data, error: invokeError } = await supabase.functions.invoke("broker-checkin", { body: { action } });
-      if (invokeError) throw new Error(await functionErrorMessage(invokeError, "O servidor de check-in não respondeu."));
-      const returned = (data as { error?: string } | null)?.error;
-      if (returned) throw new Error(returned);
+      await checkinAction(action);
       toast.success(action === "checkin" ? "Check-in realizado — você entrou na fila" : "Check-out realizado");
-      await queryClient.invalidateQueries({ queryKey: ["checkin"] });
     } catch (cause) {
       toast.error(action === "checkin" ? "Não foi possível fazer o check-in" : "Não foi possível fazer o check-out", {
         description: cause instanceof Error ? cause.message : "Tente de novo em instantes.",
       });
     } finally {
       setPending(null);
+      // Reconsulta mesmo após resposta perdida, sem prender o botão na leitura.
+      void queryClient.invalidateQueries({ queryKey: ["checkin"] });
     }
   };
 
@@ -132,9 +133,12 @@ export function LeadsCheckinCard() {
       </div>
 
       {error && (
-        <p role="alert" className="mt-3 flex items-center gap-2 text-xs text-destructive">
-          <AlertTriangle className="h-4 w-4" aria-hidden /> Não consegui confirmar seu turno. Atualize a tela e tente de novo.
-        </p>
+        <div className="mt-3 space-y-2">
+          <p role="alert" className="flex items-center gap-2 text-xs text-destructive">
+            <AlertTriangle className="h-4 w-4" aria-hidden /> Não consegui confirmar seu turno.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: ["checkin"] })}>Tentar novamente</Button>
+        </div>
       )}
       {!error && eligibility.data && blocked && (
         <p role="status" className="mt-3 flex items-start gap-2 text-xs text-warning">

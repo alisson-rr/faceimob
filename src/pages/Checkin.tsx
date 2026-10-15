@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, Clock, ListChecks, LogIn, LogOut, Rocket, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, ListChecks, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, LoadingState, PageHeader, SectionCard, StatusBadge } from "@/components/shared";
 import QueuePosition from "@/components/QueuePosition";
 import LeadCounter from "@/components/LeadCounter";
@@ -12,7 +11,7 @@ import { CheckinExterno } from "@/components/checkin/CheckinExterno";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
-import { functionErrorMessage } from "@/lib/functionError";
+import { checkinAction } from "@/lib/checkinAction";
 import { dateTime, num } from "@/lib/format";
 import {
   getCheckinEligibility, getCurrentShiftId, getLeadCounts,
@@ -34,17 +33,6 @@ const horaDe = (value: string) => dateTime(value).slice(-5);
 
 /** O turno vira sozinho: sem releitura o botão fica travado até um F5. */
 const SHIFT_POLL_MS = 60_000;
-
-/**
- * `broker-checkin` repassa as mensagens em pt-BR das nossas `raise exception`
- * (`perform_checkin`/`perform_checkout`). Só os dois sentinelas dela vêm em
- * inglês e não podem chegar assim ao corretor.
- */
-const FUNCTION_ERRORS: Record<string, string> = {
-  unauthorized: "Sua sessão expirou. Entre novamente.",
-  unknown: "Não foi possível concluir a ação. Tente de novo.",
-};
-const translateFunctionError = (message: string) => FUNCTION_ERRORS[message] ?? message;
 
 /**
  * O que a conta de atraso considera — e o que ela NÃO considera.
@@ -94,23 +82,25 @@ export default function Checkin() {
   // check-in" desabilitava o "Check-out" junto — e vice-versa —, o que fazia o
   // corretor achar que o outro botão tinha sumido no meio da gravação.
   const [pendingAction, setPendingAction] = useState<"checkin" | "checkout" | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [incentive, setIncentive] = useState("");
 
-  const shifts = useQuery({ queryKey: ["checkin", "shifts"], queryFn: listWorkShifts });
+  const shifts = useQuery({ queryKey: ["checkin", "shifts"], queryFn: listWorkShifts, retry: false });
   const today = useQuery({
     queryKey: ["checkin", "today", userId],
     queryFn: () => listTodayCheckins(userId as string),
+    retry: false,
     enabled: Boolean(userId),
   });
   const currentShift = useQuery({
     queryKey: ["checkin", "current-shift"],
     queryFn: getCurrentShiftId,
+    retry: false,
     refetchInterval: SHIFT_POLL_MS,
   });
   const eligibility = useQuery({
     queryKey: ["checkin", "eligibility"],
     queryFn: getCheckinEligibility,
+    retry: false,
     refetchInterval: SHIFT_POLL_MS,
   });
   const counts = useQuery({
@@ -165,33 +155,21 @@ export default function Checkin() {
       return;
     }
     setPendingAction(act);
+    setIncentive("");
     try {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session) throw new Error("Você precisa estar logado. Faça login novamente.");
-      const { data, error } = await supabase.functions.invoke("broker-checkin", { body: { action: act } });
-      // A mensagem útil vem no corpo da resposta da function, não no error.message.
-      if (error) {
-        const semResposta = "O servidor de check-in não respondeu. Tente de novo em instantes.";
-        const mensagem = await functionErrorMessage(error, semResposta);
-        // Sem corpo JSON, `functionErrorMessage` devolve a mensagem do SDK, em
-        // inglês ("Failed to send a request to the Edge Function").
-        throw new Error(translateFunctionError(mensagem === error.message ? semResposta : mensagem));
-      }
-      const returned = (data as { error?: string } | null)?.error;
-      if (returned) throw new Error(translateFunctionError(returned));
+      await checkinAction(act);
       if (act === "checkin") {
         // Sem toast de sucesso: o `EngagementLayer` já avisa o check-in pelo realtime.
         setIncentive(incentives[Math.floor(Math.random() * incentives.length)]);
-        setConfirmOpen(true);
       } else {
         toast.success("Check-out realizado");
       }
-      await queryClient.invalidateQueries({ queryKey: ["checkin"] });
     } catch (err) {
       // Tudo que chega aqui já é texto nosso em pt-BR (function ou RPC).
       toast.error(falha, { description: err instanceof Error ? err.message : "Tente de novo em instantes." });
     } finally {
       setPendingAction(null);
+      void queryClient.invalidateQueries({ queryKey: ["checkin"] });
     }
   };
 
@@ -211,6 +189,8 @@ export default function Checkin() {
           </StatusBadge>
         }
       />
+
+      {incentive && <p role="status" className="rounded-xl border border-primary/20 bg-primary/10 p-4 text-sm">Check-in confirmado! {incentive}</p>}
 
       {loadError ? (
         <EmptyState
@@ -410,20 +390,6 @@ export default function Checkin() {
         )}
       </SectionCard>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="glass-strong max-w-sm border-primary/20 text-center">
-          <DialogHeader>
-            <div className="mx-auto mb-2 grid h-14 w-14 place-items-center rounded-full bg-highlight/15">
-              <Rocket className="h-7 w-7 text-gold" aria-hidden />
-            </div>
-            <DialogTitle className="text-center">Check-in confirmado! ✅</DialogTitle>
-            <DialogDescription className="pt-2 text-center text-sm leading-relaxed">{incentive}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-center">
-            <Button onClick={() => setConfirmOpen(false)}>Bora atender! 💪</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { supabase } from "./client";
 import { dbError } from "@/lib/supabaseError";
+import { checkinDeadline } from "@/lib/checkinAction";
 
 /**
  * Check-in, turno e fila de distribuição.
@@ -47,7 +48,7 @@ export type QueueEntry = {
 };
 
 export async function getCheckinEligibility(): Promise<CheckinEligibility> {
-  const { data, error } = await supabase.rpc("checkin_eligibility");
+  const { data, error } = await checkinDeadline((signal) => supabase.rpc("checkin_eligibility").abortSignal(signal));
   if (error) throw dbError("checkin_eligibility", error);
   const row = (data as CheckinEligibility[] | null)?.[0];
   // Falha fechada: sem resposta, não liberar o check-in por omissão.
@@ -56,35 +57,35 @@ export async function getCheckinEligibility(): Promise<CheckinEligibility> {
 
 /** Id do turno vigente agora, ou null fora de qualquer janela. */
 export async function getCurrentShiftId(): Promise<string | null> {
-  const { data, error } = await supabase.rpc("current_shift");
+  const { data, error } = await checkinDeadline((signal) => supabase.rpc("current_shift").abortSignal(signal));
   if (error) throw dbError("current_shift", error);
   return (data as string | null) ?? null;
 }
 
 export async function listWorkShifts(): Promise<WorkShift[]> {
-  const { data, error } = await supabase
+  const { data, error } = await checkinDeadline((signal) => supabase
     .from("work_shifts")
     .select("id,code,label,checkin_start,distribution_start,checkout_time,position")
     .eq("active", true)
-    .order("position");
+    .order("position").abortSignal(signal));
   if (error) throw dbError("work_shifts", error);
   return (data ?? []) as WorkShift[];
 }
 
 /** Data usada pelo banco nas presenças e na fila; não depende do relógio do navegador. */
 export async function getCurrentWorkDate(): Promise<string> {
-  const { data, error } = await supabase.rpc("current_work_date");
+  const { data, error } = await checkinDeadline((signal) => supabase.rpc("current_work_date").abortSignal(signal));
   if (error) throw dbError("current_work_date", error);
   return data;
 }
 
 export async function listTodayCheckins(profileId: string): Promise<CheckinRecord[]> {
   const workDate = await getCurrentWorkDate();
-  const { data, error } = await supabase
+  const { data, error } = await checkinDeadline((signal) => supabase
     .from("checkins")
     .select("id,shift_id,work_date,checked_in_at,checked_out_at,auto_checkout,leads_received")
     .eq("profile_id", profileId)
-    .eq("work_date", workDate);
+    .eq("work_date", workDate).abortSignal(signal));
   if (error) throw dbError("checkins", error);
   return (data ?? []) as CheckinRecord[];
 }
