@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { JANELA_WHATSAPP, abrirWhatsapp, ehCelular, ehIphone, linkWhatsapp } from "./whatsapp";
+import { JANELA_WHATSAPP, abrirWhatsapp, ehCelular, ehIphone, ehSafariIphone, linkWhatsapp } from "./whatsapp";
 
 describe("linkWhatsapp", () => {
   it("no Android abre o app escolhido pelo pacote", () => {
@@ -53,5 +53,16 @@ describe("ehIphone", () => {
     expect(ehIphone("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", 0)).toBe(false);
     expect(ehIphone("Mozilla/5.0 (Linux; Android 14)", 5)).toBe(false);
     expect(ehIphone("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", 0)).toBe(false);
+  });
+});
+
+describe("ehSafariIphone", () => {
+  const safari = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+  it("só o Safari como navegador; Chrome/Firefox/Edge do iOS e o app instalado ficam de fora", () => {
+    expect(ehSafariIphone(safari, 5, false)).toBe(true);
+    expect(ehSafariIphone(safari.replace("Version/17.0", "CriOS/120.0"), 5, false)).toBe(false);
+    expect(ehSafariIphone(safari.replace("Safari/604.1", "FxiOS/120 Safari/604.1"), 5, false)).toBe(false);
+    expect(ehSafariIphone(safari, 5, true)).toBe(false);
+    expect(ehSafariIphone("Mozilla/5.0 (Linux; Android 14)", 5, false)).toBe(false);
   });
 });

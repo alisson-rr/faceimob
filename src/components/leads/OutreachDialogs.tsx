@@ -13,9 +13,9 @@ import { fillWhatsappTemplate, waNumber } from "./model";
 import { preencherMensagem } from "./mensagensProntas";
 import { useMensagensProntas, useMeuApelido } from "./mensagensProntasData";
 import { MensagensProntasEditor } from "./MensagensProntasEditor";
-import { baixarContato, compartilharContato, nomeDoContato } from "./contatoVcard";
+import { abrirCartaoDoLead, baixarContato, compartilharContato, nomeDoContato } from "./contatoVcard";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
-import { APP_WHATSAPP_ROTULO, abrirWhatsapp, ehAndroid, ehCelular, ehIphone, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
+import { APP_WHATSAPP_ROTULO, abrirWhatsapp, ehAndroid, ehCelular, ehIphone, ehSafariIphone, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
 
 /**
@@ -85,6 +85,14 @@ export function WhatsAppDialog({
   };
 
   const salvarNoIphone = async () => {
+    // Safari: a tela nativa "Adicionar contato" abre já preenchida (um toque em Criar).
+    // O iOS não deixa site nenhum gravar na agenda sozinho.
+    if (ehSafariIphone()) {
+      if (abrirCartaoDoLead(lead) === "sem-telefone") {
+        toast({ variant: "destructive", title: "Lead sem telefone", description: "Cadastre o telefone antes de salvar o contato." });
+      }
+      return;
+    }
     const resultado = await compartilharContato(lead);
     if (resultado === "baixado") {
       toast({ title: "Contato baixado", description: "Abra o arquivo em Arquivos para salvar na agenda." });

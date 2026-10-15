@@ -192,10 +192,10 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
   const saleId = sale?.id ?? null;
   useEffect(() => {
     if (!saleId) return;
-    // Venda é o marco que o cliente pediu com a faixa dele. O card dura o
-    // trecho inteiro, então o card seguinte encontra a faixa livre: duas vendas
-    // seguidas são duas comemorações, uma depois da outra, nunca sobrepostas.
-    tocarPremiacao({ sintetizado: CELEBRATION.sale.sound });
+    // Venda toca a caixa registradora (14/10/2026); a música de premiação ficou
+    // para a movimentação do game (subida no ranking e meta batida). O card segue
+    // um por vez: duas vendas seguidas são duas caixas, uma por card.
+    playSound(CELEBRATION.sale.sound);
     fireConfetti(CELEBRATION.sale.confetti);
     const timer = setTimeout(() => setSaleQueue((queue) => queue.slice(1)), SALE_DISPLAY_MS);
     return () => clearTimeout(timer);

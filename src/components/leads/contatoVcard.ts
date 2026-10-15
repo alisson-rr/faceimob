@@ -58,6 +58,24 @@ export function baixarVcard(vcard: string | null, nomeDoArquivo: string): boolea
 }
 
 /**
+ * Safari do iPhone: navegar para um `data:text/vcard` abre a tela nativa
+ * "Adicionar contato" já preenchida (um toque em Criar grava na agenda). É o máximo
+ * que um site alcança: o iOS não deixa página nenhuma gravar contato sozinha. O
+ * link temporário (blob) cai em Arquivos; o data URI não. `navegar` existe para o
+ * teste, porque o jsdom não navega.
+ */
+export function abrirCartaoNoSafari(
+  vcard: string | null,
+  navegar: (url: string) => void = (url) => { window.location.assign(url); },
+): "aberto" | "sem-telefone" {
+  if (!vcard) return "sem-telefone";
+  navegar(`data:text/vcard;charset=utf-8,${encodeURIComponent(vcard)}`);
+  return "aberto";
+}
+
+export const abrirCartaoDoLead = (lead: LeadDoContato) => abrirCartaoNoSafari(vcardDoLead(lead));
+
+/**
  * iPhone: o Safari não abre "Adicionar contato" para um .vcf baixado por link
  * temporário, mas a folha de compartilhar abre o cartão com a ação de salvar.
  * Precisa de um toque do usuário; sem suporte a compartilhar arquivo, volta ao

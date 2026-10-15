@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { compartilharVcard, nomeDoContato, vcardDoLead } from "./contatoVcard";
+import { abrirCartaoNoSafari, compartilharVcard, nomeDoContato, vcardDoLead } from "./contatoVcard";
 
 const lead = (extra: Partial<Parameters<typeof vcardDoLead>[0]> = {}) => ({
   name: "Maria Souza", phone: "(51) 99999-0000", campaign_name: "Solar do Bosque", utm_campaign: null, source: "Meta",
@@ -56,5 +56,21 @@ describe("compartilharVcard (iPhone)", () => {
 
   it("sem telefone, não faz nada", async () => {
     expect(await compartilharVcard(null, "Maria")).toBe("sem-telefone");
+  });
+});
+
+describe("abrirCartaoNoSafari (iPhone)", () => {
+  it("navega para um data URI text/vcard com o cartão inteiro", () => {
+    const navegar = vi.fn();
+    expect(abrirCartaoNoSafari("BEGIN:VCARD\r\nFN:Maria\r\nEND:VCARD\r\n", navegar)).toBe("aberto");
+    const url = navegar.mock.calls[0][0] as string;
+    expect(url.startsWith("data:text/vcard;charset=utf-8,")).toBe(true);
+    expect(decodeURIComponent(url.split(",").slice(1).join(","))).toContain("FN:Maria");
+  });
+
+  it("sem telefone, não navega", () => {
+    const navegar = vi.fn();
+    expect(abrirCartaoNoSafari(null, navegar)).toBe("sem-telefone");
+    expect(navegar).not.toHaveBeenCalled();
   });
 });

@@ -15,9 +15,10 @@
  * sozinhos. Toda falha aqui é silenciosa.
  */
 
-export type SoundName = "leadNew" | "leadClaimed" | "checkin" | "rankUp" | "sale" | "goal" | "success" | "error" | "birthday";
+export type SoundName = "leadNew" | "leadClaimed" | "checkin" | "rankUp" | "sale" | "cashRegister" | "goal" | "success" | "error" | "birthday";
 
-type Note = { freq: number; at: number; dur: number };
+/** `wave` e `gain` (fração do `peak`) deixam uma nota fugir do timbre do preset: o clique da caixa. */
+type Note = { freq: number; at: number; dur: number; wave?: OscillatorType; gain?: number };
 
 /** `wave` padrão é "sine", o timbre do catálogo inteiro; só o erro troca. */
 type Preset = { notes: Note[]; peak: number; wave?: OscillatorType };
@@ -87,6 +88,19 @@ const CATALOG: Record<SoundName, Preset> = {
       { freq: 1046.5, at: 0.36, dur: 0.55 },
       { freq: 1318.51, at: 0.42, dur: 0.5 },
       { freq: 1567.98, at: 0.48, dur: 0.45 },
+    ],
+    peak: 0.3,
+  },
+  // Caixa registradora na venda fechada (14/10/2026): o "ka" mecânico (dois cliques
+  // secos e graves) e o "ching" do sino, três parciais agudos que esvaem devagar.
+  // Gerado aqui, sem arquivo: nada para baixar e nada de terceiros no bundle.
+  cashRegister: {
+    notes: [
+      { freq: 180, at: 0.0, dur: 0.05, wave: "square", gain: 0.5 },
+      { freq: 260, at: 0.06, dur: 0.05, wave: "square", gain: 0.45 },
+      { freq: 2093, at: 0.14, dur: 1.1 },
+      { freq: 3136, at: 0.14, dur: 0.9, gain: 0.7 },
+      { freq: 4186, at: 0.14, dur: 0.55, gain: 0.45 },
     ],
     peak: 0.3,
   },
@@ -292,12 +306,12 @@ export function playSound(name: SoundName, { manual = false }: { manual?: boolea
       const start = agora + note.at;
       // Rampa exponencial não aceita zero; 0.0001 é o silêncio prático.
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(preset.peak, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(preset.peak * (note.gain ?? 1), start + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + note.dur);
       gain.connect(saida);
 
       const osc = audio.createOscillator();
-      osc.type = preset.wave ?? "sine";
+      osc.type = note.wave ?? preset.wave ?? "sine";
       osc.frequency.value = note.freq;
       osc.connect(gain);
       osc.start(start);
