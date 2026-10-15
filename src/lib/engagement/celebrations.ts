@@ -34,7 +34,7 @@ export const CELEBRATION: Record<
   lead_claimed: { sound: "leadClaimed", confetti: "burst",     visual: "toast" },
   checkin:      { sound: "checkin",     confetti: "none",      visual: "toast" },
   rank_up:      { sound: "rankUp",      confetti: "burst",     visual: "toast" },
-  sale:         { sound: "sale",        confetti: "rain",      visual: "card"  },
+  sale:         { sound: "cashRegister", confetti: "rain",     visual: "card"  },
   goal:         { sound: "goal",        confetti: "fireworks", visual: "toast" },
 };
 

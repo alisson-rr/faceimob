@@ -459,11 +459,14 @@ describe("EngagementLayer · som da venda", () => {
   });
 
   /**
-   * O card durava 6 s e o trecho da música 7 s: o card da segunda venda entrava
-   * com a faixa ainda na trava de não empilhar e a loja via o card sem som.
+   * Venda toca a caixa registradora (14/10/2026), uma por card; a música de
+   * premiação ficou para a movimentação do game. O card segue um por vez: a
+   * segunda venda entra quando a primeira sai e toca a caixa dela.
    */
-  it("a segunda venda seguida também toca: o card dura o trecho inteiro da música", async () => {
+  it("venda toca a caixa registradora, uma por card, e não a música", async () => {
     const { TRECHO_MS } = await import("@/hooks/useSomDePremiacao");
+    const { playSound } = await import("@/lib/engagement/audio");
+    vi.mocked(playSound).mockClear();
     await montar();
 
     await act(async () => {
@@ -474,12 +477,23 @@ describe("EngagementLayer · som da venda", () => {
     await esperarPromessas();
 
     expect(container.querySelector("[data-testid=venda]")?.textContent).toBe("Ana Lima");
-    expect(tocarFaixa.mock.calls).toHaveLength(1);
+    expect(vi.mocked(playSound).mock.calls.filter(([nome]) => nome === "cashRegister")).toHaveLength(1);
+    expect(tocarFaixa.mock.calls, "a música não toca na venda").toHaveLength(0);
 
     await act(async () => { vi.advanceTimersByTime(TRECHO_MS); });
 
     expect(container.querySelector("[data-testid=venda]")?.textContent).toBe("Bruno Reis");
-    expect(tocarFaixa.mock.calls).toHaveLength(2);
+    expect(vi.mocked(playSound).mock.calls.filter(([nome]) => nome === "cashRegister")).toHaveLength(2);
+    expect(tocarFaixa.mock.calls).toHaveLength(0);
+  });
+
+  it("meta batida (movimentação do game) continua tocando a música da vitória", async () => {
+    estado.meta = { target: 100_000, scope: "profile" };
+    estado.placarDoMes = [{ profile_id: "perfil-1", vgv: 60_000 }];
+    await montar();
+    estado.placarDoMes = [{ profile_id: "perfil-1", vgv: 120_000 }];
+    await montar();
+    expect(tocarFaixa.mock.calls).toHaveLength(1);
   });
 });
 

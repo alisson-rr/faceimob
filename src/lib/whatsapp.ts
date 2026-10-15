@@ -56,6 +56,17 @@ export const ehIphone = (
   toques: number = typeof navigator === "undefined" ? 0 : navigator.maxTouchPoints,
 ) => /iphone|ipad|ipod/i.test(userAgent) || (/macintosh/i.test(userAgent) && toques > 1);
 
+/**
+ * Safari do iPhone/iPad, aberto como navegador (não como app instalado na tela
+ * inicial). Só ele abre a tela "Adicionar contato" por um data URI; Chrome, Firefox
+ * e Edge do iOS, e o app instalado, usam a folha de compartilhar.
+ */
+export const ehSafariIphone = (
+  userAgent: string = typeof navigator === "undefined" ? "" : navigator.userAgent,
+  toques: number = typeof navigator === "undefined" ? 0 : navigator.maxTouchPoints,
+  instalado: boolean = typeof navigator !== "undefined" && (navigator as { standalone?: boolean }).standalone === true,
+) => ehIphone(userAgent, toques) && !instalado && !/crios|fxios|edgios|opios|gsa\//i.test(userAgent);
+
 /** Nome da aba do WhatsApp: todo clique reaproveita ela em vez de abrir uma nova. */
 export const JANELA_WHATSAPP = "faceimob-whatsapp";
 
