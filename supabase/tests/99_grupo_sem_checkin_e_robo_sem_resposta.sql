@@ -7,6 +7,10 @@ begin;
 
 update public.automation_settings set leads_recomeco_em = null, leads_paused = false;
 
+-- Dispensa de presença continua sujeita à janela de distribuição (0281).
+insert into public.work_shifts(code,label,checkin_start,distribution_start,checkout_time)
+values ('integral-260','Integral teste 260','00:00','00:00','23:59:59.999999');
+
 create function pg_temp.ok(cond boolean, label text) returns void language plpgsql as $$
 begin
   if not coalesce(cond, false) then raise exception 'FALHOU: %', label; end if;

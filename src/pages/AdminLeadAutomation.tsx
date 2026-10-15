@@ -784,7 +784,7 @@ export default function AdminLeadAutomation() {
                     />
                   </div>
                   {g.deliver_without_checkin && (
-                    <p className="text-xs text-muted-foreground">Todos os membros ativos recebem, mesmo sem check-in e fora do turno.</p>
+                    <p className="text-xs text-muted-foreground">Todos os membros ativos recebem sem check-in, dentro dos horários dos turnos ativos.</p>
                   )}
                 </div>
                 <Button size="sm" variant="outline" className="w-full mt-3 h-8 text-xs" onClick={() => setEditingGroupId(g.id)} aria-label={`Configurar ${g.name}`}>
