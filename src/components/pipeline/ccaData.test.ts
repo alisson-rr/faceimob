@@ -68,6 +68,14 @@ const ativas = [
 ];
 
 describe("ccaColumnOf · onde o caso aparece no quadro", () => {
+  it("pendência interna fica na coluna do CCA mesmo com comercial em contrato", () => {
+    const colunas = [
+      { ...coluna("contrato", "approved", 1), name: "EM CONTRATO", deal_status_id: "ds1", deal_status: { label: "EM CONTRATO" } },
+      { ...coluna("resolver", "approved", 2), name: "RESOLVER P/ ASSINAR BANCO" },
+    ];
+    expect(ccaColumnOf(colunas, { stage_id: "resolver", status: "approved" }, "EM CONTRATO")?.id).toBe("resolver");
+    expect(ccaColumnOf(colunas, { stage_id: "contrato", status: "approved" }, "EM CONTRATO")?.id).toBe("contrato");
+  });
   it("usa o estágio do caso quando ele está entre os ativos", () => {
     expect(ccaColumnOf(ativas, { stage_id: "aprovado-cond", status: "approved" })?.id).toBe("aprovado-cond");
   });

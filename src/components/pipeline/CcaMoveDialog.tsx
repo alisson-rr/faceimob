@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/sonner";
 import { dbError, describeError } from "@/lib/supabaseError";
+import { isIndependentCcaStage } from "@/lib/ccaPending";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { updateDeal, useCanExitStage } from "./data";
@@ -62,7 +63,9 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const levaAoAprovado = Boolean(negocio && isBehindStage(negocio, approvedStage));
+  const independent = isIndependentCcaStage(stage.name);
+  const notifies = independent || ccaStageNotifiesSales(stage);
+  const levaAoAprovado = Boolean(!independent && negocio && isBehindStage(negocio, approvedStage));
 
   /**
    * Por que o negócio NÃO vai andar no funil quando deveria — `""` quando ele
@@ -95,7 +98,7 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
       // A única porta desde a 0150: grava coluna, desfecho, Status 2 da coluna,
       // comentário no negócio e o aviso à equipe numa transação. O PATCH em
       // `cca_cases` passou a ser recusado (42501).
-      const { error } = await supabase.rpc("move_cca_case", {
+      const { data, error } = await supabase.rpc("move_cca_case", {
         p_case_id: deal.caseId,
         p_stage_id: stage.id,
         p_message: message.trim(),
@@ -105,7 +108,8 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
       // O caso JÁ está decidido. Uma recusa aqui (matriz de etapas, mês fechado)
       // não desfaz a decisão: avisa e deixa o negócio para quem move o funil.
       let avisoNegocio = "";
-      if (stage.status === "approved") {
+      const repeated = Boolean(data && typeof data === "object" && "already_moved" in data && data.already_moved);
+      if (!repeated && !independent && stage.status === "approved") {
         if (motivoParado) {
           avisoNegocio = motivoParado;
         } else if (levaAoAprovado && approvedStage) {
@@ -117,15 +121,19 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
         }
       }
 
-      if (avisoNegocio) {
+      if (repeated) {
+        toast.info("Essa pendência já foi registrada", { description: "Nenhuma demanda ou notificação foi duplicada." });
+      } else if (avisoNegocio) {
         toast.warning(`Caso movido para ${stage.name}`, {
           description: `${deal.client}. O negócio ficou parado no Pipeline: ${avisoNegocio}`,
         });
       } else {
         toast.success(`Caso movido para ${stage.name}`, { description: `${deal.client}.` });
       }
-      await onMoved();
       onClose();
+      try { await onMoved(); } catch {
+        toast.warning("Movimento confirmado", { description: "Não foi possível atualizar o quadro. Recarregue a página." });
+      }
     } catch (err) {
       toast.error("Não foi possível mover o caso", {
         description: describeError(err, "Nada foi alterado no servidor."),
@@ -149,13 +157,15 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
         {/* O efeito da coluna antes de confirmar (0155): quem é avisado e o que
             acontece com o status do negócio. */}
         <p className="rounded-xl border border-border bg-muted/30 p-2 text-xs">
-          {ccaStageNotifiesSales(stage)
+          {notifies
             ? "O corretor e o gerente do negócio recebem o aviso com a sua mensagem."
             : stage.status === "pending_documents"
               // A devolução do dossiê (0077) avisa o corretor por conta própria.
               ? "Movimento interno: sem aviso da movimentação, mas o corretor pode receber o aviso de que o dossiê voltou para ele."
               : "Movimento interno: o comercial não é avisado. A mensagem fica só no histórico do negócio."}{" "}
-          {stage.deal_status_id
+          {independent
+            ? "O comercial mantém seu status e recebe um selo de pendência do CCA. A equipe recebe notificação e e-mail."
+            : stage.deal_status_id
             ? <>O status do negócio passa a ser <strong className="text-foreground">{stage.deal_status?.label ?? "o Status 2 da coluna"}</strong>.</>
             : "O status do negócio não muda."}
           {/* A etapa do funil é outra coisa que o Status 2, e aprovar leva o
@@ -171,7 +181,7 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
           <Textarea
             id="cca-move-message" rows={3} className="mt-1 text-xs"
             required maxLength={MAX_MENSAGEM} aria-describedby="cca-move-message-hint"
-            placeholder={ccaStageNotifiesSales(stage)
+            placeholder={notifies
               ? "O que mudou e o próximo passo. Vai para o corretor e o gerente."
               : "O que mudou e o próximo passo. Fica no histórico do negócio."}
             value={message} onChange={(event) => setMessage(event.target.value)}
@@ -184,7 +194,7 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
         {/* Mesma frase do toast, do mesmo `motivoParado`: enquanto o painel e o
             toast montavam o motivo cada um por sua conta, um podia prometer o
             que o outro desmentia. */}
-        {stage.status === "approved" && motivoParado && (
+        {!independent && stage.status === "approved" && motivoParado && (
           <p className="rounded-xl border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
             O caso será aprovado, mas o negócio continua na etapa atual do funil: {motivoParado}
           </p>

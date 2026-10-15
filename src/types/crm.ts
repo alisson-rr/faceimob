@@ -137,6 +137,7 @@ export interface PipelineDeal {
   document_review_reason?: string;
   /** Veio de “Virou negócio com pendências” e mantém o alerta no contrato. */
   contract_has_pending_issue?: boolean;
+  cca_pending_label?: string | null;
   /** Quando a construtora foi trocada depois de virar negócio (0277): dá o selo "Troca construtora". */
   construtora_trocada_em?: string;
   history?: DealHistoryEntry[];

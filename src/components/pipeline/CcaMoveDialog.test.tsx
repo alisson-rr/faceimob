@@ -5,6 +5,9 @@ import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import type { CcaDeal, CcaStage } from "./ccaData";
 import type { PipelineStage } from "./stages";
 import { CcaMoveDialog } from "./CcaMoveDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { updateDeal } from "./data";
+import { toast } from "@/components/ui/sonner";
 
 /**
  * Antes de confirmar, o diálogo diz o efeito da coluna (0155): quem é avisado
@@ -12,7 +15,7 @@ import { CcaMoveDialog } from "./CcaMoveDialog";
  */
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn() } }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ canEnterStage: () => true }) }));
 vi.mock("./data", () => ({ updateDeal: vi.fn(), useCanExitStage: () => () => true }));
@@ -35,14 +38,14 @@ afterEach(async () => {
   root = null;
 });
 
-async function abrir(stage: CcaStage, funil?: { approvedStage: PipelineStage; negocio: LegacyDealRecord }) {
+async function abrir(stage: CcaStage, funil?: { approvedStage: PipelineStage; negocio: LegacyDealRecord }, callbacks?: { onClose: () => void; onMoved: () => void | Promise<void> }) {
   container = document.body.appendChild(document.createElement("div"));
   root = createRoot(container);
   await act(async () => {
     root?.render(
       <CcaMoveDialog
         deal={deal} stage={stage} approvedStage={funil?.approvedStage} negocio={funil?.negocio}
-        onClose={() => undefined} onMoved={() => undefined}
+        onClose={callbacks?.onClose ?? (() => undefined)} onMoved={callbacks?.onMoved ?? (() => undefined)}
       />,
     );
   });
@@ -50,6 +53,29 @@ async function abrir(stage: CcaStage, funil?: { approvedStage: PipelineStage; ne
 }
 
 describe("CcaMoveDialog · o efeito da coluna antes de confirmar", () => {
+  it.each([false, true])("pendência mantém comercial, fecha sem aguardar recarga e trata repetição=%s", async (repeated) => {
+    vi.clearAllMocks();
+    vi.mocked(supabase.rpc).mockResolvedValue({ data: { already_moved: repeated }, error: null } as never);
+    const onClose = vi.fn();
+    const onMoved = vi.fn(() => new Promise<void>(() => {}));
+    const texto = await abrir(coluna({ name: "RESOLVER P/ ASSINAR BANCO", status: "approved", deal_status_id: null }), {
+      approvedStage: { id: "p1", code: "approved", label: "Aprovado", position: 5 } as PipelineStage,
+      negocio: { id: "d1", active: true, stage_position: 3, stage_id: "p0", stage_label: "Em contrato" } as LegacyDealRecord,
+    }, { onClose, onMoved });
+    expect(texto).toContain("O comercial mantém seu status");
+    const campo = document.querySelector("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(campo, "Falta assinatura");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const botao = [...document.querySelectorAll("button")].find((b) => b.textContent === "Confirmar")!;
+    await act(async () => botao.click());
+    expect(updateDeal).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onMoved).toHaveBeenCalledOnce();
+    if (repeated) expect(toast.info).toHaveBeenCalledWith("Essa pendência já foi registrada", expect.anything());
+    else expect(toast.success).toHaveBeenCalled();
+  });
   it("coluna que avisa e grava status: diz quem recebe e qual status", async () => {
     const texto = await abrir(coluna({
       notify_sales: true, deal_status_id: "ds1", deal_status: { label: "09. APROV. TOTAL" },
