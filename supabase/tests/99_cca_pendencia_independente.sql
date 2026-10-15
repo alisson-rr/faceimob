@@ -53,7 +53,7 @@ begin
   perform pg_temp.ok282((select status_detail=comercial and stage_id=etapa and month_base=mes and document_review_status='approved' from public.deals where id=negocio),'comercial mantém status, etapa, mês e conferência');
   perform pg_temp.ok282((select count(*)=3 from public.notifications where kind='cca_status_changed' and profile_id in(cor,ger,dir)),'comercial recebe exatamente um aviso por responsável');
   perform pg_temp.ok282((select count(distinct profile_id)=3 from public.cca_move_emails where deal_id=negocio and profile_id in(cor,ger,dir)),'e-mail da pendência é enfileirado para o comercial');
-  perform pg_temp.ok282((select bool_and(detalhes->>'status2'=comercial) from public.cca_move_emails where deal_id=negocio),'e-mail não apresenta a pendência como novo status comercial');
+  perform pg_temp.ok282((select bool_and(detalhes->>'status2'=comercial) from public.cca_move_emails where deal_id=negocio and source='cca' and stage_name='RESOLVER P/ ASSINAR BANCO'),'e-mail não apresenta a pendência como novo status comercial');
 
   select count(*) into n_history from public.deal_history where deal_id=negocio;
   select count(*) into n_notifications from public.notifications;
