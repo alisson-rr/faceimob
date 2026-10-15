@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { customSoundUrl } from "@/lib/engagement/customSounds";
 import { audioLiberado, isSoundOn, playSound, subscribeSound, type SoundName } from "@/lib/engagement/audio";
 
 /**
@@ -33,6 +34,7 @@ const ESMAECER_MS = 600;
 const VOLUME = 0.5;
 
 let elemento: HTMLAudioElement | null = null;
+let faixaAtual = FAIXA;
 let corte: ReturnType<typeof setTimeout> | undefined;
 let fade: ReturnType<typeof setInterval> | undefined;
 /** `Date.now()` do começo da última comemoração — a trava de não empilhar. */
@@ -116,6 +118,8 @@ export function tocarPremiacao({ manual = false, sintetizado = "sale" }: { manua
   // Nunca duas faixas: é sempre o mesmo elemento, que recomeça do zero, e o
   // esmaecimento do toque anterior (se ainda corria) é cancelado.
   parar();
+  const faixa = customSoundUrl("premiacao") ?? FAIXA;
+  if (faixaAtual !== faixa) { elemento.src = faixa; faixaAtual = faixa; }
   const toque = ++geracao;
   corte = setTimeout(esmaecer, Math.max(0, TRECHO_MS - ESMAECER_MS));
 

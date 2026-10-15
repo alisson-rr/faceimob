@@ -68,6 +68,9 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: { id: "perfil-1" }, roles: estado.roles, isAdmin: false }),
 }));
 
+// A carga dos arquivos é independente dos canais/eventos exercitados aqui.
+vi.mock("@/hooks/useCustomSounds", () => ({ useLoadCustomSounds: vi.fn() }));
+
 vi.mock("@/hooks/useGameRanking", async (importOriginal) => ({
   // `recorteDoRanking` é o real: quem tem meta individual é a regra do card de game.
   ...(await importOriginal<typeof import("@/hooks/useGameRanking")>()),

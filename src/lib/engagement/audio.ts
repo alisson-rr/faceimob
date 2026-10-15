@@ -1,9 +1,8 @@
 /**
  * Áudio do sistema — um AudioContext para o app inteiro.
  *
- * Sem arquivo de áudio de propósito: o app roda em TV da loja e em máquina de
- * corretor, e um mp3 é mais um asset para carregar e falhar. Osciladores dão o
- * mesmo resultado com zero bytes de download.
+ * Usa o arquivo escolhido pelo administrador quando disponível; osciladores
+ * mantêm o som padrão durante carregamento, falha de rede ou codec.
  *
  * A versão anterior criava um `AudioContext` novo a cada toque. Contexto nasce
  * `suspended` até o primeiro gesto do usuário, e `resume()` pedido fora de um
@@ -15,7 +14,31 @@
  * sozinhos. Toda falha aqui é silenciosa.
  */
 
+import { customSoundUrl, type SoundId } from "./customSounds";
+
 export type SoundName = "leadNew" | "leadClaimed" | "checkin" | "rankUp" | "sale" | "cashRegister" | "goal" | "success" | "error" | "birthday";
+
+const customBuffers = new Map<string, AudioBuffer>();
+let loadGeneration = 0;
+/** Decodifica fora do disparo para manter o toque síncrono no gesto do usuário. */
+export async function preloadCustomSounds(urls: Partial<Record<SoundId, string>>): Promise<void> {
+  const generation = ++loadGeneration;
+  const wanted = new Set(Object.values(urls));
+  for (const url of customBuffers.keys()) if (!wanted.has(url)) customBuffers.delete(url);
+  await Promise.all(Object.entries(urls).map(async ([id, url]) => {
+    if (id === "premiacao" || customBuffers.has(url)) return;
+    try {
+      const context = ensureContext();
+      if (!context) return;
+      const response = await fetch(url);
+      if (!response.ok) return;
+      const buffer = await context.decodeAudioData(await response.arrayBuffer());
+      if (generation === loadGeneration && buffer.duration > 0 && buffer.duration <= 10) customBuffers.set(url, buffer);
+    } catch {
+      // Download/codec indisponível: o preset continua disponível.
+    }
+  }));
+}
 
 /** `wave` e `gain` (fração do `peak`) deixam uma nota fugir do timbre do preset: o clique da caixa. */
 type Note = { freq: number; at: number; dur: number; wave?: OscillatorType; gain?: number };
@@ -290,7 +313,9 @@ export function playSound(name: SoundName, { manual = false }: { manual?: boolea
   const agora = audio.currentTime;
   const aviso = AVISOS.has(name);
   const ocupado = agora < livreEm;
-  livreEm = Math.max(livreEm, agora + duracao(preset) + RESPIRO_S);
+  const customUrl = customSoundUrl(name);
+  const buffer = customUrl ? customBuffers.get(customUrl) : undefined;
+  livreEm = Math.max(livreEm, agora + (buffer?.duration ?? duracao(preset)) + RESPIRO_S);
   if (aviso && ocupado && !manual) return;
 
   try {
@@ -300,6 +325,15 @@ export function playSound(name: SoundName, { manual = false }: { manual?: boolea
     if (aviso) avisos.gain.setValueAtTime(1, agora);
     else avisos.gain.setTargetAtTime(0, agora, 0.015);
     const saida = aviso ? avisos : master;
+
+    if (buffer) {
+      const source = audio.createBufferSource();
+      source.buffer = buffer;
+      source.connect(saida);
+      source.onended = () => source.disconnect();
+      source.start();
+      return;
+    }
 
     for (const note of preset.notes) {
       const gain = audio.createGain();

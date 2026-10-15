@@ -4,27 +4,13 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/shared";
 import { isSoundOn, playSound, setSoundOn, subscribeSound, type SoundName } from "@/lib/engagement/audio";
 import { tocarPremiacao } from "@/hooks/useSomDePremiacao";
+import { SoundUpload } from "./SoundUpload";
+import type { SoundId } from "@/lib/engagement/customSounds";
 
-/**
- * Escuta dos sons do sistema, um a um.
- *
- * A música de premiação é a faixa do cliente (`useSomDePremiacao`); o resto sai
- * de osciladores (`lib/engagement/audio`). Nenhuma máquina do harness tem saída
- * de som: nenhum teste automatizado consegue afirmar que um som soa bem — só
- * que ele é disparado. A conferência é por ouvido, e até 06/09 ela exigia
- * fechar uma venda de verdade. Aqui cada som toca sozinho, sem mexer no placar.
- *
- * Os três sons curtos de marco (venda, ranking, meta) só tocam no lugar da
- * música: com `prefers-reduced-motion`, ou quando o navegador recusa a faixa.
- * O texto diz isso para ninguém procurar a fanfarra numa venda normal.
- *
- * Com o som DESLIGADO nada toca: um botão que não faz som e não diz por quê é
- * pior do que um botão desabilitado com o motivo escrito. Por isso a lista
- * inteira sai do ar com o aviso e o atalho para religar.
- */
+/** Ouvir o som vigente e administrar o arquivo sem disparar eventos do game. */
 const catalogo = (name: SoundName) => () => playSound(name, { manual: true });
 
-const SONS: { id: string; label: string; quando: string; tocar: () => void }[] = [
+const SONS: { id: SoundId; label: string; quando: string; tocar: () => void }[] = [
   {
     id: "premiacao",
     label: "Música de premiação",
@@ -39,6 +25,8 @@ const SONS: { id: string; label: string; quando: string; tocar: () => void }[] =
   { id: "goal", label: "Meta batida (curto)", quando: "No lugar da música, para quem bateu a meta de VGV do mês.", tocar: catalogo("goal") },
   { id: "success", label: "Sucesso", quando: "Aviso de gravação concluída (toast de sucesso).", tocar: catalogo("success") },
   { id: "error", label: "Erro", quando: "Aviso de falha (toast de erro).", tocar: catalogo("error") },
+  { id: "birthday", label: "Aniversário", quando: "Comemoração de aniversário.", tocar: catalogo("birthday") },
+  { id: "sale", label: "Fanfarra curta", quando: "Alternativa curta da premiação.", tocar: catalogo("sale") },
 ];
 
 export function SoundPreview() {
@@ -48,7 +36,7 @@ export function SoundPreview() {
     <SectionCard
       title="Sons do sistema"
       icon={ligado ? Volume2 : VolumeX}
-      description="Toca cada som isolado, sem pontuar nada. A música é a faixa entregue pelo cliente; os outros sons são gerados no navegador."
+      description="Envie MP3, OGG, WebM/WEBA ou WAV de até 2 MB e 10 segundos. A premiação toca até 7 segundos. Salvar altera o som para toda a equipe."
       actions={!ligado
         ? (
           <Button size="sm" variant="outline" onClick={() => setSoundOn(true)}>
@@ -57,6 +45,10 @@ export function SoundPreview() {
         )
         : undefined}
     >
+      <p className="mb-4 text-sm text-muted-foreground">
+        Baixe efeitos no <a href="https://mixkit.co/free-sound-effects/" target="_blank" rel="noopener noreferrer" className="underline">Mixkit</a> (busque notification, cash register ou success).
+        {" "}Use arquivos com licença para seu uso. Os áudios enviados ficam acessíveis por link público; envie apenas efeitos sonoros.
+      </p>
       {!ligado && (
         <p className="mb-3 text-sm text-warning">
           Os sons estão desligados neste navegador. Enquanto estiverem, tocar não produz áudio nenhum.
@@ -66,21 +58,24 @@ export function SoundPreview() {
         {SONS.map((som) => (
           <li
             key={som.id}
-            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
+            className="min-w-0 rounded-xl border border-border bg-muted/30 px-3 py-2"
           >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{som.label}</p>
-              <p className="truncate text-xs text-muted-foreground">{som.quando}</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{som.label}</p>
+                <p className="text-xs text-muted-foreground">{som.quando}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={!ligado}
+                aria-label={`Tocar o som ${som.label}`}
+                onClick={som.tocar}
+              >
+                <Play className="h-4 w-4" aria-hidden />
+              </Button>
             </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={!ligado}
-              aria-label={`Tocar o som ${som.label}`}
-              onClick={som.tocar}
-            >
-              <Play className="h-4 w-4" aria-hidden />
-            </Button>
+            <SoundUpload id={som.id} label={som.label} />
           </li>
         ))}
       </ul>
