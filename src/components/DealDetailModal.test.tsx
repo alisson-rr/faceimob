@@ -151,6 +151,36 @@ async function clicarCriar() {
   await act(async () => { botao.click(); });
 }
 
+describe("DealDetailModal · renda informal do cliente 2", () => {
+  it("mostra toggle e área independentes apenas quando há segundo cliente", async () => {
+    await abrirNovoNegocio();
+    const campo = (sufixo: string) => document.body.querySelector<HTMLElement>(`[id$="-${sufixo}"]`);
+    expect(campo("informal2")).toBeNull();
+    await act(async () => campo("second-client")!.click());
+    expect(campo("informal2")).not.toBeNull();
+    expect(campo("segmento2")).toBeNull();
+    await act(async () => campo("informal2")!.click());
+    expect(campo("segmento2")).not.toBeNull();
+    expect(campo("segmento")).toBeNull();
+    await act(async () => campo("informal")!.click());
+    expect(campo("segmento")).not.toBeNull();
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setter.call(campo("segmento2"), "Entregas");
+      campo("segmento2")!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect((campo("segmento") as HTMLInputElement).value).toBe("");
+    await act(async () => campo("informal2")!.click());
+    expect(campo("segmento2")).toBeNull();
+    await act(async () => campo("informal2")!.click());
+    expect((campo("segmento2") as HTMLInputElement).value).toBe("Entregas");
+    await act(async () => campo("second-client")!.click());
+    expect(campo("informal2")).toBeNull();
+    expect(campo("segmento2")).toBeNull();
+    expect(campo("segmento")).not.toBeNull();
+  });
+});
+
 describe("DealDetailModal · negócio sem construtora", () => {
   it("recusa a criação com UMA frase só, e ela pertence ao campo", async () => {
     const { onSave } = await abrirNovoNegocio();

@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const rede = vi.hoisted(() => ({
   tabelas: {} as Record<string, unknown[]>,
   pedidos: [] as URL[],
+  escritas: [] as Record<string, unknown>[],
 }));
 
 vi.mock("@/integrations/supabase/client", async () => {
@@ -26,8 +27,12 @@ vi.mock("@/integrations/supabase/client", async () => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     rede.pedidos.push(url);
     const linhas = rede.tabelas[url.pathname.replace("/rest/v1/", "")] ?? [];
+    if (url.pathname === "/rest/v1/deal_clients" && init?.method === "POST" && init.body) {
+      rede.escritas.push(JSON.parse(String(init.body)));
+    }
+    const single = new Headers(init?.headers).get("accept")?.includes("application/vnd.pgrst.object");
     const faixa = linhas.length ? `0-${linhas.length - 1}` : "*";
-    return new Response(JSON.stringify(linhas), {
+    return new Response(JSON.stringify(single ? linhas[0] ?? null : linhas), {
       status: 200,
       headers: { "content-type": "application/json", "content-range": `${faixa}/${linhas.length}` },
     });
@@ -42,7 +47,7 @@ vi.mock("@/integrations/supabase/client", async () => {
 
 import {
   contarTime, createdAtBounds, dealStageCodeFor, last30DaysRange, legacyDealFields, listLegacyDeals, listSelectableBrokers,
-  saleBlockedReason, STAGES_REQUIRING_REVIEW, toNumberOrNull, type NewAppRole, type SaveLegacyDealInput,
+  saleBlockedReason, saveLegacyDeal, STAGES_REQUIRING_REVIEW, toNumberOrNull, type NewAppRole, type SaveLegacyDealInput,
 } from "./newSchema";
 
 const form = (patch: Partial<SaveLegacyDealInput> = {}): SaveLegacyDealInput => ({
@@ -57,6 +62,43 @@ const form = (patch: Partial<SaveLegacyDealInput> = {}): SaveLegacyDealInput => 
   created_at: "2026-08-01T00:00:00.000Z",
   ...patch,
 } as SaveLegacyDealInput);
+
+describe("renda informal por cliente · gravação e reabertura", () => {
+  beforeEach(() => {
+    rede.escritas = [];
+    rede.tabelas = {
+      deals: [{ id: "d1", created_at: "2026-10-15T12:00:00Z", outcome: "open" }],
+      pipeline_stages: [{ id: "s1", code: "proposal", label: "Proposta" }],
+    };
+  });
+  it("salva e relê duas rendas sem misturar atividade, valor ou IR", async () => {
+    await saveLegacyDeal(form({ id: "d1", has_second_client: true, client2: "Cliente 2",
+      has_informal_income: true, segmento_atividade: "Costura", rendimento_mensal: "2.500,50", declara_ir: "SIM", observacoes_renda: "Titular",
+      has_informal_income2: true, segmento_atividade2: "Entregas", rendimento_mensal2: "1.800,00", declara_ir2: "NÃO", observacoes_renda2: "Segundo cliente",
+      forma_atuacao2: "Autônomo", tempo_atividade2: "3 anos", forma_divulgacao2: "Não emite",
+    }));
+    expect(rede.escritas).toHaveLength(2);
+    expect(rede.escritas[0]).toMatchObject({ ordinal: 1, activity_segment: "Costura", monthly_income: 2500.5, declares_income_tax: true });
+    expect(rede.escritas[1]).toMatchObject({ ordinal: 2, has_informal_income: true, activity_segment: "Entregas", monthly_income: 1800, declares_income_tax: false });
+    rede.tabelas.deal_clients = rede.escritas;
+    const [aberto] = await listLegacyDeals(undefined, { ids: ["d1"] });
+    expect(aberto).toMatchObject({
+      has_informal_income: true, segmento_atividade: "Costura", rendimento_mensal: "2500.5", declara_ir: "SIM", observacoes_renda: "Titular",
+      has_informal_income2: true, segmento_atividade2: "Entregas", rendimento_mensal2: "1800", declara_ir2: "NÃO", observacoes_renda2: "Segundo cliente",
+      forma_atuacao2: "Autônomo", tempo_atividade2: "3 anos", forma_divulgacao2: "Não emite",
+    });
+  });
+  it("cliente 2 pode ter renda informal sozinho e desligá-la sem apagar os campos", async () => {
+    const valores = { id: "d1", has_second_client: true, client2: "Cliente 2", has_informal_income: false,
+      has_informal_income2: true, segmento_atividade2: "Costura" };
+    await saveLegacyDeal(form(valores));
+    expect(rede.escritas[0].has_informal_income).toBe(false);
+    expect(rede.escritas[1].has_informal_income).toBe(true);
+    rede.escritas = [];
+    await saveLegacyDeal(form({ ...valores, has_informal_income2: false }));
+    expect(rede.escritas[1]).toMatchObject({ has_informal_income: false, activity_segment: "Costura" });
+  });
+});
 
 describe("toNumberOrNull", () => {
   it("le o formato brasileiro pela virgula", () => {

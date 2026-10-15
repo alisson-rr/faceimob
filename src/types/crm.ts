@@ -90,6 +90,15 @@ export interface PipelineDeal {
   declara_ir?: string;
   rendimento_mensal?: string;
   observacoes_renda?: string;
+  // Renda informal do segundo cliente, independente do titular.
+  has_informal_income2?: boolean;
+  segmento_atividade2?: string;
+  forma_atuacao2?: string;
+  tempo_atividade2?: string;
+  forma_divulgacao2?: string;
+  declara_ir2?: string;
+  rendimento_mensal2?: string;
+  observacoes_renda2?: string;
   // Core
   developer: string;
   project: string;
