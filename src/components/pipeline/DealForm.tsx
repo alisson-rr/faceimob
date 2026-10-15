@@ -499,12 +499,19 @@ export function DealForm({
           />
         </div>
         <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 sm:mt-5">
-          <Label htmlFor={field("informal")} className="cursor-pointer text-sm font-semibold">Renda informal?</Label>
+          <Label htmlFor={field("informal")} className="cursor-pointer text-sm font-semibold">Renda informal{form.has_second_client ? " — cliente 1" : ""}?</Label>
           <Switch
             id={field("informal")} checked={form.has_informal_income || false}
             onCheckedChange={(v) => onChange({ has_informal_income: v })}
           />
         </div>
+        {form.has_second_client && (
+          <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 sm:mt-5">
+            <Label htmlFor={field("informal2")} className="cursor-pointer text-sm font-semibold">Renda informal — cliente 2?</Label>
+            <Switch id={field("informal2")} checked={form.has_informal_income2 || false}
+              onCheckedChange={(v) => onChange({ has_informal_income2: v })} />
+          </div>
+        )}
       </div>
 
       {!isNew && (
@@ -547,7 +554,7 @@ export function DealForm({
       )}
 
       {form.has_informal_income && (
-        <Section title="Renda informal" className="deal-tone-blue deal-field-light">
+        <Section title={form.has_second_client ? "Renda informal — cliente 1" : "Renda informal"} className="deal-tone-blue deal-field-light">
           <TextField id={field("segmento")} label="Segmento/atividade" value={form.segmento_atividade} onChange={(v) => onChange({ segmento_atividade: v })} />
           <TextField id={field("atuacao")} label="Forma de atuação" value={form.forma_atuacao} onChange={(v) => onChange({ forma_atuacao: v })} />
           <TextField id={field("tempo")} label="Tempo de atividade" value={form.tempo_atividade} onChange={(v) => onChange({ tempo_atividade: v })} />
@@ -565,6 +572,23 @@ export function DealForm({
               value={form.observacoes_renda || ""}
               onChange={(event) => onChange({ observacoes_renda: event.target.value })}
             />
+          </div>
+        </Section>
+      )}
+
+      {form.has_second_client && form.has_informal_income2 && (
+        <Section title="Renda informal — cliente 2" className="deal-tone-gold deal-field-light">
+          <TextField id={field("segmento2")} label="Segmento/atividade" value={form.segmento_atividade2} onChange={(v) => onChange({ segmento_atividade2: v })} />
+          <TextField id={field("atuacao2")} label="Forma de atuação" value={form.forma_atuacao2} onChange={(v) => onChange({ forma_atuacao2: v })} />
+          <TextField id={field("tempo2")} label="Tempo de atividade" value={form.tempo_atividade2} onChange={(v) => onChange({ tempo_atividade2: v })} />
+          <ChoiceField id={field("divulgacao2")} label="Forma de divulgação" value={form.forma_divulgacao2}
+            options={["Emite Nota/Recibo/Documento similar", "Não emite"]} onChange={(v) => onChange({ forma_divulgacao2: v })} />
+          <ChoiceField id={field("ir2")} label="Declara IR" value={form.declara_ir2} options={SIM_NAO} onChange={(v) => onChange({ declara_ir2: v })} />
+          <TextField id={field("rendimento2")} label="Rendimento mensal" value={form.rendimento_mensal2} onChange={(v) => onChange({ rendimento_mensal2: v })} />
+          <div className="sm:col-span-2 lg:col-span-3">
+            <Label htmlFor={field("obs-renda2")} className="text-eyebrow">Observações da renda</Label>
+            <Textarea id={field("obs-renda2")} rows={2} className="mt-1 text-xs" value={form.observacoes_renda2 || ""}
+              onChange={(event) => onChange({ observacoes_renda2: event.target.value })} />
           </div>
         </Section>
       )}

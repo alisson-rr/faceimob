@@ -595,6 +595,14 @@ export async function listLegacyDeals(
       data_admissao2: secondary?.admission_date || undefined,
       referencia_cch2: secondary?.cch_reference || undefined,
       cep2: secondary?.postal_code || undefined,
+      has_informal_income2: secondary?.has_informal_income || false,
+      segmento_atividade2: secondary?.activity_segment || undefined,
+      forma_atuacao2: secondary?.activity_form || undefined,
+      tempo_atividade2: secondary?.activity_duration || undefined,
+      forma_divulgacao2: secondary?.disclosure_form || undefined,
+      declara_ir2: secondary?.declares_income_tax == null ? undefined : secondary.declares_income_tax ? "SIM" : "NÃO",
+      rendimento_mensal2: secondary?.monthly_income == null ? undefined : String(secondary.monthly_income),
+      observacoes_renda2: secondary?.income_notes || undefined,
       has_informal_income: primary?.has_informal_income || false,
       segmento_atividade: primary?.activity_segment || undefined,
       forma_atuacao: primary?.activity_form || undefined,
@@ -604,8 +612,8 @@ export async function listLegacyDeals(
         primary?.declares_income_tax == null
           ? undefined
           : primary.declares_income_tax
-            ? "Sim"
-            : "Não",
+            ? "SIM"
+            : "NÃO",
       rendimento_mensal:
         primary?.monthly_income == null
           ? undefined
@@ -1242,18 +1250,14 @@ const clientRow = (form: SaveLegacyDealInput, ordinal: 1 | 2) => {
     admission_date: toIsoDate(g("data_admissao")),
     cch_reference: g("referencia_cch") || null,
     postal_code: g("cep") || null,
-    ...(ordinal === 1
-      ? {
-          has_informal_income: Boolean(form.has_informal_income),
-          activity_segment: form.segmento_atividade || null,
-          activity_form: form.forma_atuacao || null,
-          activity_duration: form.tempo_atividade || null,
-          disclosure_form: form.forma_divulgacao || null,
-          declares_income_tax: simNao(form.declara_ir),
-          monthly_income: toNumberOrNull(form.rendimento_mensal),
-          income_notes: form.observacoes_renda || null,
-        }
-      : {}),
+    has_informal_income: Boolean(ordinal === 1 ? form.has_informal_income : form.has_informal_income2),
+    activity_segment: g("segmento_atividade") || null,
+    activity_form: g("forma_atuacao") || null,
+    activity_duration: g("tempo_atividade") || null,
+    disclosure_form: g("forma_divulgacao") || null,
+    declares_income_tax: simNao(g("declara_ir")),
+    monthly_income: toNumberOrNull(g("rendimento_mensal")),
+    income_notes: g("observacoes_renda") || null,
   };
 };
 
