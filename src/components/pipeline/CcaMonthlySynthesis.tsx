@@ -36,7 +36,7 @@ export function CcaMonthlySynthesis({ month, onMonthChange, onOpenDeal }: {
     <section className="rounded-xl border border-border bg-card/50 p-3" aria-labelledby="cca-synthesis-title">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 id="cca-synthesis-title" className="text-sm font-semibold">Filtro exclusivo das sínteses do CCA</h2>
+          <h2 id="cca-synthesis-title" className="text-sm font-semibold">Entradas no mês</h2>
           <p className="text-xs text-muted-foreground">
             Conta a entrada nos quatro status abaixo. Não altera nem filtra o mês da venda ou a esteira comercial.
           </p>

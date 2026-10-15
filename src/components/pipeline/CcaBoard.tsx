@@ -209,6 +209,7 @@ export const CcaBoard = memo(function CcaBoard({
         )}
       </div>
 
+      <p className="sticky left-0 mb-2 text-sm font-semibold">Negócios na coluna</p>
       <div className="flex w-max gap-3 pb-2">
         {stages.map((stage) => {
           const cor = ccaStageColor(stage.color);
