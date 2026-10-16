@@ -90,6 +90,40 @@ describe("painel da 3C", () => {
     expect(container.querySelector('input[value="nova-chave-apenas-no-estado"]')).toBeNull();
   });
 
+  it("primeira chave preserva as escolhas quando o refresh cria o registro com config vazio", async () => {
+    const created = { ...record(), config: {} };
+    changed.mockImplementationOnce(async () => {
+      root.render(<ThreeCIntegrationSettings integration={created} canManage onChanged={changed} onRevoke={revoked} />);
+    });
+    await render();
+    const checkbox = (label: string) => Array.from(container.querySelectorAll("label"))
+      .find((element) => element.textContent === label)!.querySelector<HTMLInputElement>("input")!;
+    await act(async () => checkbox("Grupo permitido").click());
+    const entryGroup = container.querySelector<HTMLSelectElement>("select")!;
+    expect(entryGroup.value).toBe("");
+    await act(async () => {
+      entryGroup.value = "g";
+      entryGroup.dispatchEvent(new Event("change", { bubbles: true }));
+      checkbox("Corretora Ana").click();
+    });
+    await setValue(inputFor("Desfechos aceitos (separados por vírgula)"), "agendado, pediu_retorno");
+    await act(async () => button(/Gerar chave 3C/).click());
+    expect(api.rotate).toHaveBeenCalledOnce();
+    expect(changed).toHaveBeenCalledOnce();
+    expect(checkbox("Grupo permitido").checked).toBe(true);
+    expect(entryGroup.value).toBe("g");
+    expect(checkbox("Corretora Ana").checked).toBe(true);
+    expect(inputFor("Desfechos aceitos (separados por vírgula)").value).toBe("agendado, pediu_retorno");
+    expect(container.querySelectorAll('input[value="nova-chave-apenas-no-estado"]')).toHaveLength(1);
+    await act(async () => button(/Salvar configuração 3C/).click());
+    expect(api.configure).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      enabled: false, allowed_group_ids: ["g"], default_group_id: "g", agenda_ids: ["b"],
+      outcomes: ["agendado", "pediu_retorno"],
+    }));
+    await act(async () => button(/Já guardei a chave/).click());
+    expect(container.querySelector('input[value="nova-chave-apenas-no-estado"]')).toBeNull();
+  });
+
   it("remove seleções indisponíveis somente do rascunho e limpa o grupo de entrada removido", async () => {
     const integration = record();
     integration.config = {
