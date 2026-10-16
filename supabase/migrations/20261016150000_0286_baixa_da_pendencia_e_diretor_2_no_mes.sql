@@ -42,12 +42,20 @@ begin
   end if;
 
   -- Baixa da pendência (0286): só por `baixar_pendencia_contrato`, e só o selo
-  -- de ligado para desligado.
+  -- de ligado para desligado. Coluna gerada (`vgv_net`) chega nula no BEFORE e
+  -- não é escrita por ninguém: fica fora da comparação.
   if tg_op = 'UPDATE'
      and coalesce(current_setting('faceimob.baixa_pendencia', true), '') = new.id::text
      and old.contract_has_pending_issue and not new.contract_has_pending_issue
-     and (to_jsonb(new) - array['contract_has_pending_issue', 'updated_at'])
-         = (to_jsonb(old) - array['contract_has_pending_issue', 'updated_at']) then
+     and not exists (
+       select 1
+         from jsonb_each(to_jsonb(new)) n
+         join jsonb_each(to_jsonb(old)) o using (key)
+        where n.value is distinct from o.value
+          and n.key not in ('contract_has_pending_issue', 'updated_at')
+          and n.key not in (select a.attname from pg_attribute a
+                             where a.attrelid = 'public.deals'::regclass and a.attgenerated <> '')
+     ) then
     return new;
   end if;
 
