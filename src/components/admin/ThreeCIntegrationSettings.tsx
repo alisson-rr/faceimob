@@ -31,7 +31,7 @@ export function ThreeCIntegrationSettings({ integration, canManage, onChanged, o
   const [busy, setBusy] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [outcomesText, setOutcomesText] = useState(() => threeCConfig(integration).outcomes.join(", "));
-  const storedConfig = JSON.stringify(integration?.config ?? null);
+  const storedConfig = JSON.stringify(threeCConfig(integration));
   const configured = Boolean(integration?.has_secret && integration.active) || Boolean(newToken);
   const problem = threeCConfigProblem(config);
   const unavailableGroups = loading || error ? [] : config.allowed_group_ids.filter((groupId) => !groups.some((group) => group.id === groupId));
