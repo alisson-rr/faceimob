@@ -892,7 +892,7 @@ export function DealForm({
             }}>
               <SelectTrigger
                 id={field("status")}
-                className="mt-1 text-xs"
+                className="mt-1 text-xs disabled:cursor-default disabled:opacity-100"
                 aria-describedby={vendaBloqueada ? field("status-hint") : undefined}
               >
                 <SelectValue />
