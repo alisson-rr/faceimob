@@ -126,6 +126,7 @@ declare
     "whatsapp_unmatched": "lead_atividade",
     "cca_pending": "credito",
     "cca_status_changed": "credito",
+    "cca_pending_document_attached": "credito",
     "deal_status_changed": "credito",
     "document_review_requested": "credito",
     "document_review_approved": "credito",
