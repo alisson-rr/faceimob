@@ -262,7 +262,7 @@ begin
 
   insert into public.notifications (profile_id, kind, title, body, link, channel)
   select ur.profile_id,
-         'pending_document_attached',
+         'cca_pending_document_attached',
          format('Pendência anexada: %s', coalesce(v_deal.code, 'negócio sem código')),
          format('%s anexou documento na pendência de VIROU NEGÓCIO.', coalesce(v_nome, 'O comercial')),
          '/cca?negocio=' || new.deal_id,
@@ -273,7 +273,7 @@ begin
      and not exists (
        select 1 from public.notifications n
         where n.profile_id = ur.profile_id
-          and n.kind = 'pending_document_attached'
+          and n.kind = 'cca_pending_document_attached'
           and n.link = '/cca?negocio=' || new.deal_id
           and n.created_at > now() - interval '10 minutes'
      );

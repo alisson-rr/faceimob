@@ -70,7 +70,7 @@ begin
     returning id into v_pend;
   execute 'reset role';
   if not exists (select 1 from public.notifications
-                  where profile_id = ana and kind = 'pending_document_attached') then
+                  where profile_id = ana and kind = 'cca_pending_document_attached') then
     raise exception 'FALHOU: CCA deveria ser avisado do anexo na pendência';
   end if;
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
