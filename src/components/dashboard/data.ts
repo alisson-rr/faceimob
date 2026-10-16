@@ -496,18 +496,20 @@ export const perdaIds = (deals: DealRow[]): Set<string> => {
   return ids;
 };
 
-const statsOf = (rows: DealRow[], perdas: Set<string>): MonthStats => {
+const statsOf = (rows: DealRow[], perdas: Set<string>, diretorId: string | null = null): MonthStats => {
   const vendas = rows.filter((deal) => dealCategory(deal) === "venda");
+  // Dashboard próprio do diretor: vendas e VGV na parte dele (`pesoDoDiretor`).
+  const peso = (deal: DealRow) => (diretorId ? pesoDoDiretor(deal, diretorId) : 1);
   // "Proposta" é o Status 1 PROPOSTA. Negócio aberto do LEGADO continua no
   // funil histórico, mas não entra em produção nem nos rankings de propostas.
   const propostas = rows.filter((deal) =>
     dealCategory(deal) === "producao" && deal.status_group_code === "PROPOSTA").length;
   return {
-    vendas: vendas.length,
+    vendas: vendas.reduce((total, deal) => total + peso(deal), 0),
     propostas,
     negocios: vendas.length + propostas,
     perdas: rows.filter((deal) => perdas.has(deal.id)).length,
-    vgv: vendas.reduce((total, deal) => total + (deal.deal_value || 0), 0),
+    vgv: vendas.reduce((total, deal) => total + (deal.deal_value || 0) * peso(deal), 0),
   };
 };
 
@@ -546,6 +548,17 @@ export const participantsOf = (
             [deal.director2_id, deal.director2_name],
           ];
   return slots.flatMap(([id, name]) => (id ? [{ id, name: name || null }] : []));
+};
+
+/**
+ * Quanto da venda é do diretor que olha o próprio Dashboard (16/10/2026): nada
+ * se ele não é diretor do negócio, metade com Diretor 2 no negócio (0266), a
+ * venda inteira sozinho. É a conta do relatório de diretores, para os cartões
+ * baterem com ele.
+ */
+export const pesoDoDiretor = (deal: DealRow, diretorId: string): number => {
+  const diretores = participantsOf(deal, "director");
+  return diretores.some((d) => d.id === diretorId) ? 1 / diretores.length : 0;
 };
 
 /**
@@ -660,14 +673,14 @@ export type MonthView = ReturnType<typeof monthView>;
  * `previous` e o mesmo calculo no mes anterior — e dele que sai o delta dos
  * KPIs. Com "todos os meses" nao ha com o que comparar e o delta some.
  */
-export function monthView(deals: DealRow[], activeMonth: string) {
+export function monthView(deals: DealRow[], activeMonth: string, diretorId: string | null = null) {
   const perdas = perdaIds(deals);
   const inMonth = (month: string) =>
     month === ALL_MONTHS ? deals : deals.filter((deal) => deal.month_base === month);
 
   const rows = inMonth(activeMonth);
   const prevMonth = activeMonth === ALL_MONTHS ? null : previousMonth(activeMonth);
-  const previous = prevMonth ? statsOf(inMonth(prevMonth), perdas) : null;
+  const previous = prevMonth ? statsOf(inMonth(prevMonth), perdas, diretorId) : null;
 
   // A lista de construtoras sai de TODOS os negocios: uma construtora sem
   // negocio no mes continua na grade, com zero, em vez de sumir — some-la
@@ -704,15 +717,15 @@ export function monthView(deals: DealRow[], activeMonth: string) {
   return {
     rows,
     previousMonth: prevMonth,
-    stats: statsOf(rows, perdas),
+    stats: statsOf(rows, perdas, diretorId),
     previous,
     developers,
     brokers: rankBy(rows, "broker"),
   };
 }
 
-export const useMonthView = (deals: DealRow[], activeMonth: string) =>
-  useMemo(() => monthView(deals, activeMonth), [deals, activeMonth]);
+export const useMonthView = (deals: DealRow[], activeMonth: string, diretorId: string | null = null) =>
+  useMemo(() => monthView(deals, activeMonth, diretorId), [deals, activeMonth, diretorId]);
 
 /** Vendas por mes do calendario, uma serie por ano — o comparativo anual. */
 export function monthlySeries(deals: DealRow[]): MonthlySeries {
