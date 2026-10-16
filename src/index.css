@@ -513,3 +513,102 @@
   color: hsl(222 45% 10%);
 }
 .deal-field-light :where(input, textarea)::placeholder { color: hsl(222 12% 42%); }
+
+/* Cadastro: azul para identidade; ciano para renda, independente do cliente. */
+.deal-form-meta {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 16px;
+  background: hsl(var(--muted) / 0.15);
+}
+.deal-meta-fields { display: grid; gap: 12px; align-items: start; }
+.deal-income-toggles { display: grid; gap: 8px; align-content: start; }
+.deal-client-toggle, .deal-income-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+}
+.deal-client-toggle { background: hsl(var(--primary) / 0.06); }
+.deal-income-toggle { border-color: hsl(var(--info) / 0.25); background: hsl(var(--info) / 0.06); }
+:is(.deal-client-toggle, .deal-income-toggle) label { min-width: 0; font-size: 12px; line-height: 1.5; font-weight: 500; }
+:is(.deal-client-toggle, .deal-income-toggle) [role="switch"] { flex-shrink: 0; }
+.deal-form-meta .text-eyebrow, .deal-premium-panel .text-eyebrow {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: hsl(var(--foreground) / 0.8);
+}
+.deal-premium-panel {
+  min-width: 0;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid hsl(var(--deal-accent) / 0.2);
+  border-left: 3px solid hsl(var(--deal-accent) / 0.7);
+  border-radius: 16px;
+  background: hsl(var(--deal-accent) / 0.04);
+}
+.deal-income-panel { --deal-accent: var(--info); }
+.deal-premium-panel > legend.text-eyebrow {
+  padding: 0 8px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--deal-accent));
+}
+.deal-premium-panel > div { gap: 16px; }
+.deal-premium-panel :where(input, textarea, [role="combobox"]),
+.deal-form-meta :where(input, [role="combobox"]) {
+  min-width: 0;
+  min-height: 44px;
+  margin-top: 4px;
+  border-color: hsl(var(--border));
+  border-radius: 12px;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  font-weight: 400;
+  box-shadow: none;
+}
+.deal-premium-panel :where(input, textarea, [role="combobox"]):focus-visible {
+  border-color: hsl(var(--deal-accent));
+}
+@media (min-width: 640px) {
+  .deal-meta-fields { grid-template-columns: 1fr 1fr; }
+  .deal-client-toggle { grid-column: 1 / -1; }
+  .deal-income-toggles { grid-template-columns: 1fr 1fr; }
+  .deal-client-panel > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .deal-client-panel > div > * { grid-column: span 2; min-width: 0; }
+  .deal-client-panel > div > :first-child,
+  .deal-client-panel > div > :nth-child(6) { grid-column: 1 / -1; }
+  .deal-income-panel > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .deal-income-panel > div > :first-child,
+  .deal-income-panel > div > :nth-child(4),
+  .deal-income-panel > div > :last-child { grid-column: 1 / -1; }
+}
+@media (min-width: 1024px) {
+  .deal-form-meta { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; }
+  .deal-income-toggles { grid-template-columns: 1fr; }
+  .deal-client-panel > div { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .deal-client-panel > div > * { grid-column: span 4; }
+  .deal-client-panel > div > :first-child,
+  .deal-client-panel > div > :nth-child(6) { grid-column: span 6; }
+  .deal-client-panel > div > :nth-child(2),
+  .deal-client-panel > div > :nth-child(3),
+  .deal-client-panel > div > :nth-child(4),
+  .deal-client-panel > div > :nth-child(5) { grid-column: span 3; }
+  .deal-income-panel > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .deal-income-panel > div > * { grid-column: span 2; min-width: 0; }
+  .deal-income-panel > div > :first-child,
+  .deal-income-panel > div > :nth-child(4) { grid-column: 1 / -1; }
+  .deal-income-panel > div > :last-child { grid-column: 1 / -1; }
+}
