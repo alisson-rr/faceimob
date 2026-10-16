@@ -114,7 +114,7 @@ begin
   select full_name into v_nome from public.profiles where id = v_ator;
   insert into public.notifications (profile_id, kind, title, body, link, channel)
   select dp.profile_id,
-         'contract_pending_cleared',
+         'cca_contract_pending_cleared',
          format('Pendência do contrato baixada: %s', v_deal.code),
          format('%s deu baixa na pendência do contrato.%s', coalesce(v_nome, 'O CCA'),
                 coalesce(' ' || v_comentario, '')),

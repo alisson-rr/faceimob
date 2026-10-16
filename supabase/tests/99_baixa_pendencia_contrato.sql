@@ -50,7 +50,7 @@ begin
     raise exception 'FALHOU: a baixa deveria ficar no histórico';
   end if;
   if not exists (select 1 from public.notifications
-                  where profile_id = cor and kind = 'contract_pending_cleared') then
+                  where profile_id = cor and kind = 'cca_contract_pending_cleared') then
     raise exception 'FALHOU: o corretor deveria ser avisado';
   end if;
   raise notice '  ok  CCA dá baixa em mês fechado, registra e avisa';
