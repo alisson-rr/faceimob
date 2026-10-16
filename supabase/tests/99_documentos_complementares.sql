@@ -42,7 +42,7 @@ begin
     values (v_deal, v_tipo, v_deal || '/284-aprovado.pdf', 'a.pdf', '284-aprovado.pdf', cor)
     returning id into v_aprovado;
   update public.deals set status_detail = 'APROVADO TOTAL', document_review_status = 'approved' where id = v_deal;
-  insert into public.cca_cases (deal_id, status, submitted_at) values (v_deal, 'approved', now());
+  insert into public.cca_cases (deal_id, status, submitted_at, decided_at) values (v_deal, 'approved', now(), now());
   if (select locked_at from public.deal_documents where id = v_aprovado) is null then
     raise exception 'FALHOU: documento aprovado deveria travar';
   end if;
