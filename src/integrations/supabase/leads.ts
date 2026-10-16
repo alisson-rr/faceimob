@@ -19,6 +19,7 @@ import type { PersonRecord } from "./newSchema";
 import type { Database } from "./types";
 import { dbError } from "@/lib/supabaseError";
 import { slugify } from "@/lib/utils";
+import { dateTime } from "@/lib/format";
 
 // Fronteira sem tipo, num único lugar: `types.ts` é gerado pelo Dev A e ainda
 // está em trânsito (S1.3). Tipar este arquivo contra ele agora amarraria esta
@@ -893,6 +894,7 @@ const EVENT_LABELS: Record<string, string> = {
   status_changed: "Status alterado",
   converted: "Convertido em negócio",
   sdr_handoff: "Repassado pela IA de SDR",
+  voice_ai_call: "Ligação da 3C",
   // `close_lead` (0074) grava só o MOTIVO: a mudança de status já entra pelo
   // gatilho `leads_log_changes`. Dois eventos com o mesmo texto duplicavam a
   // linha do histórico e dobravam a conta de "quantos perdemos por preço".
@@ -928,6 +930,16 @@ export const describeLeadEvent = (
   const reason = detailReason ? RELEASE_REASONS[detailReason] || detailReason : null;
 
   switch (row.kind) {
+    case "voice_ai_call": {
+      const detail = row.detail ?? {};
+      const outcomes: Record<string, string> = { agendado: "Agendado", nao_qualificado: "Não qualificado", sem_interesse: "Sem interesse" };
+      const outcome = typeof detail.desfecho === "string" ? outcomes[detail.desfecho] || detail.desfecho : null;
+      const duration = typeof detail.duracao_seg === "number" && Number.isFinite(detail.duracao_seg)
+        ? `${Math.floor(detail.duracao_seg / 60)}min ${detail.duracao_seg % 60}s` : null;
+      const when = typeof detail.data === "string" && Number.isFinite(Date.parse(detail.data)) ? dateTime(detail.data) : null;
+      const summary = typeof detail.resumo === "string" ? detail.resumo : null;
+      return [base, [when, outcome, duration].filter(Boolean).join(" · "), summary].filter(Boolean).join("\n");
+    }
     case "stage_changed":
       return `${base}: ${funnelStageLabel(row.from_value)} → ${funnelStageLabel(row.to_value)}`;
     case "status_changed":

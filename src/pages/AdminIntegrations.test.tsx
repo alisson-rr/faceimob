@@ -24,6 +24,11 @@ const cofre = vi.hoisted(() => ({
   listCronJobsHealth: vi.fn(),
 }));
 vi.mock("@/integrations/supabase/integrations", () => cofre);
+// O catálogo da 3C não consome as respostas RPC reservadas às sondas deste teste.
+vi.mock("@/integrations/supabase/threeC", async (original) => ({
+  ...(await original<typeof import("@/integrations/supabase/threeC")>()),
+  listThreeCOptions: vi.fn(async () => ({ groups: [], brokers: [] })),
+}));
 
 const cliente = vi.hoisted(() => ({
   invoke: vi.fn(),

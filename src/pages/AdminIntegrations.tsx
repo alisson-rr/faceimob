@@ -31,6 +31,7 @@ import { dbError, describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
 import { MigracaoSiteCard } from "@/components/admin/MigracaoSiteCard";
 import { FilaDeEmails } from "@/components/admin/FilaDeEmails";
+import { ThreeCIntegrationSettings } from "@/components/admin/ThreeCIntegrationSettings";
 
 /**
  * Nome de secret de edge function (`OPENAI_API_KEY`). O catálogo usa "—" nos
@@ -353,6 +354,7 @@ export default function AdminIntegrations() {
     () => new Map(stored.map((s) => [slotKey(s.provider, s.label), s])),
     [stored],
   );
+  const refreshStored = useCallback(async () => { setStored(await listIntegrations()); }, []);
 
   const save = async (provider: string, label: string) => {
     const k = slotKey(provider, label);
@@ -591,6 +593,10 @@ export default function AdminIntegrations() {
           {!cofreErro && INTEGRATION_SLOTS.map((slot) => {
             const k = slotKey(slot.provider, slot.label);
             const current = storedByKey.get(k);
+            if (slot.provider === "3c" && slot.label === "api_token") {
+              return <ThreeCIntegrationSettings key={k} integration={current} canManage={podeGravar}
+                onChanged={refreshStored} onRevoke={() => setRevogando(slot)} />;
+            }
             const configured = !!current?.has_secret;
             const teste = testes[k];
             return (

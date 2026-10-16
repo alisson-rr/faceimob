@@ -31,6 +31,7 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [when, setWhen] = useState("");
+  const [until, setUntil] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,6 +55,12 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
     // Sem data o botão fica desabilitado: campo vazio não é falha e não merece
     // o som de erro.
     if (!when) return;
+    const start = new Date(when);
+    const end = until ? new Date(until) : null;
+    if (!Number.isFinite(start.getTime()) || (end && !(end.getTime() > start.getTime()))) {
+      toast.warning("Informe um fim válido posterior ao início da visita.");
+      return;
+    }
     const broker = brokerId || user?.id;
     if (!broker) {
       toast.warning("Sem corretor responsável");
@@ -62,8 +69,9 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
 
     setBusy("new");
     try {
-      await scheduleVisit({ leadId, dealId, brokerId: broker, scheduledAt: new Date(when).toISOString() });
+      await scheduleVisit({ leadId, dealId, brokerId: broker, scheduledAt: start.toISOString(), ...(end ? { endsAt: end.toISOString() } : {}) });
       setWhen("");
+      setUntil("");
       await load();
       toast.success("Visita agendada");
     } catch (e) {
@@ -111,18 +119,30 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
         <p className="text-sm font-bold">Visitas</p>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-2">
-        <Input
+      <div className="flex flex-col md:flex-row md:items-end gap-2">
+        <label className="space-y-1 text-xs">Início
+          <Input
           type="datetime-local"
           value={when}
           onChange={(e) => setWhen(e.target.value)}
           className="h-8 text-xs md:w-56"
           aria-label="Data e hora da visita"
-        />
+          />
+        </label>
+        <label className="space-y-1 text-xs">Término (opcional)
+          <Input
+          type="datetime-local"
+          value={until}
+          onChange={(event) => setUntil(event.target.value)}
+          className="h-8 text-xs md:w-56"
+          aria-label="Data e hora de término da visita (opcional)"
+          />
+        </label>
         <Button size="sm" onClick={add} disabled={busy === "new" || !when} className="h-8 text-xs gap-1">
           {busy === "new" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Agendar
         </Button>
       </div>
+      {!until && <p className="text-xs text-muted-foreground">Sem horário de término, a visita ocupa o dia inteiro na agenda consultada pela 3C.</p>}
 
       {loading ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -136,6 +156,7 @@ export default function VisitPanel({ leadId, dealId, brokerId }: Props) {
             <div key={v.id} className="flex items-center justify-between gap-2 rounded border border-border/50 px-2 py-1 text-xs">
               <span className="truncate">
                 {formatWhen(v.scheduled_at)}
+                {v.ends_at && ` até ${formatWhen(v.ends_at)}`}
                 <Badge variant={v.result === "completed" ? "default" : "outline"} size="sm" className="ml-2">
                   {VISIT_RESULT_LABEL[v.result]}
                 </Badge>

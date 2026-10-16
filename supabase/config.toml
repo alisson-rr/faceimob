@@ -49,6 +49,10 @@ verify_jwt = false
 [functions.voice-ai-webhook]
 verify_jwt = false
 
+# A chave própria da 3C é validada a cada pedido pela RPC restrita da integração.
+[functions.integracao-3c]
+verify_jwt = false
+
 # Mensagens da WhatsApp Cloud API (respostas de lead ao SDR/remarketing).
 # Autentica pela assinatura X-Hub-Signature-256 da Meta, não por JWT.
 [functions.whatsapp-inbound-webhook]

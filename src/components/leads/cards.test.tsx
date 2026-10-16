@@ -30,6 +30,7 @@ const sessao = {
 };
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => sessao }));
+vi.mock("@/components/leads/RespostasDoSdrIa", () => ({ RespostasDoSdrIa: () => null }));
 
 // O modal carrega histórico, comentários e anexos por `useQuery`; aqui só
 // interessa quais ações ele oferece, então o detalhe vem vazio.
@@ -475,5 +476,19 @@ describe("LeadDetailModal · ações que o banco aceita", () => {
       sessao.roles = [];
       await cleanup();
     }
+  });
+
+  it("mostra os dados da 3C e mantém respostas Meta separadas", async () => {
+    const { cleanup } = await abrir({
+      form_answers: { interesse_meta: "Casa no Centro" },
+      raw_payload: { integracoes: { tres_c: { dados_adicionais: { renda: "5 a 10 mil", interesse_meta: "Apartamento" } } } },
+    });
+    try {
+      await irPara(/formulário/i);
+      expect(document.body.textContent).toContain("Informações coletadas pela 3C");
+      expect(document.body.textContent).toContain("5 a 10 mil");
+      expect(document.body.textContent).toContain("Casa no Centro");
+      expect(document.body.textContent).toContain("Apartamento");
+    } finally { await cleanup(); }
   });
 });
