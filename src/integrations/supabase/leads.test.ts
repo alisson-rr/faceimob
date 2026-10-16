@@ -137,6 +137,16 @@ describe("sourcePerformance", () => {
 });
 
 describe("describeLeadEvent", () => {
+  it("mostra a data real, o desfecho e a duração da ligação com resumo", () => {
+    const result = describeLeadEvent({ kind: "voice_ai_call", detail: {
+      data: "2026-10-16T14:32:00-03:00", duracao_seg: 245, desfecho: "nao_qualificado", resumo: "Sem interesse no imóvel.",
+    } });
+    expect(result).toContain("Ligação da 3C");
+    expect(result).toContain("16/10/2026");
+    expect(result).toContain("Não qualificado");
+    expect(result).toContain("4min 5s");
+    expect(result).toContain("Sem interesse no imóvel.");
+  });
   it("traduz mudança de etapa", () => {
     expect(describeLeadEvent({ kind: "stage_changed", from_value: "new", to_value: "hot" }))
       .toBe("Etapa alterada: Recebido agora → Interesse confirmado");

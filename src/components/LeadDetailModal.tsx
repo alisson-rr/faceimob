@@ -58,6 +58,9 @@ const EDIT_FIELDS: { key: EditableField; label: string; type?: string }[] = [
   { key: "document", label: "CPF / documento" },
 ];
 
+const record = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+
 export default function LeadDetailModal({
   lead, open, onOpenChange, actorName, onConvert, onStageChanged,
 }: {
@@ -144,6 +147,7 @@ export default function LeadDetailModal({
   const lastActivity = new Date(lead.last_activity_at || lead.created_at);
   const inactiveHours = (Date.now() - lastActivity.getTime()) / 3_600_000;
   const answers: Record<string, unknown> = lead.form_answers || {};
+  const threeCAnswers = record(record(record(lead.raw_payload?.integracoes).tres_c).dados_adicionais);
   const digits = (lead.phone || "").replace(/\D/g, "");
   const waLink = digits
     ? `https://wa.me/${digits.startsWith("55") ? digits : `55${digits}`}?text=${encodeURIComponent(`Olá ${lead.name}, tudo bem?`)}`
@@ -466,6 +470,11 @@ export default function LeadDetailModal({
 
           <TabsContent value="form" className="space-y-3">
             <RespostasDoSdrIa leadId={lead.id} />
+            {Object.keys(threeCAnswers).length > 0 && <div className="space-y-2">
+              <p className="text-xs font-medium">Informações coletadas pela 3C</p>
+              {Object.entries(threeCAnswers).map(([key, value]) => <Row key={`3c-${key}`} k={key}
+                v={value !== null && typeof value === "object" ? JSON.stringify(value) : String(value ?? "—")} />)}
+            </div>}
             {Object.keys(answers).length === 0 ? (
               <p className="text-sm text-muted-foreground">Sem respostas de formulário.</p>
             ) : (

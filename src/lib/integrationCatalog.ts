@@ -201,6 +201,15 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     ondePegar: { passos: "Não vem de um site: crie uma senha longa, cole aqui e entregue a MESMA ao fornecedor da IA de voz, junto do contrato em docs/integracoes/voice-ai-webhook.md." },
   },
   {
+    provider: "3c",
+    label: "api_token",
+    title: "3C — agente de voz",
+    envName: "THREE_C_API_TOKEN",
+    usedBy: "integracao-3c",
+    help: "Chave exclusiva da 3C para consultar leads e horários, agendar visitas e registrar ligações nas agendas autorizadas.",
+    ondePegar: { passos: "Gere a chave nesta tela e guarde-a em um gerenciador de senhas. Entregue à 3C por cofre seguro." },
+  },
+  {
     provider: "brevo",
     label: "api_key",
     title: "Brevo — chave de API",

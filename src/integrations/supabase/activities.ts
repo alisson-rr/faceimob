@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
 import { dbError } from "@/lib/supabaseError";
 
@@ -184,6 +185,7 @@ export type VisitRecord = {
   lead_id: string | null;
   broker_id: string | null;
   scheduled_at: string;
+  ends_at?: string | null;
   performed_at: string | null;
   result: VisitResult;
   notes: string | null;
@@ -196,14 +198,14 @@ export const VISIT_RESULT_LABEL: Record<VisitResult, string> = {
   cancelled: "Cancelada",
 };
 
-const VISIT_COLUMNS = "id,deal_id,lead_id,broker_id,scheduled_at,performed_at,result,notes";
+const VISIT_COLUMNS = "id,deal_id,lead_id,broker_id,scheduled_at,ends_at,performed_at,result,notes";
 
 export async function listVisitsFor(ref: { leadId?: string; dealId?: string }): Promise<VisitRecord[]> {
   let query = supabase.from("visits").select(VISIT_COLUMNS);
   if (ref.leadId) query = query.eq("lead_id", ref.leadId);
   else if (ref.dealId) query = query.eq("deal_id", ref.dealId);
   else return [];
-  const { data, error } = await query.order("scheduled_at", { ascending: false });
+  const { data, error } = await query.order("scheduled_at", { ascending: false }).returns<VisitRecord[]>();
   if (error) throw dbError("visits", error);
   return (data ?? []) as VisitRecord[];
 }
@@ -213,20 +215,27 @@ export async function scheduleVisit(input: {
   dealId?: string;
   brokerId: string;
   scheduledAt: string;
+  endsAt?: string;
   notes?: string;
 }): Promise<VisitRecord> {
-  const { data, error } = await supabase
+  if (input.endsAt !== undefined && !(Date.parse(input.endsAt) > Date.parse(input.scheduledAt))) {
+    throw dbError("agendar visita", { code: "P0001", message: "Informe um fim válido posterior ao início da visita." });
+  }
+  // ends_at da 0284 ainda não está em types.ts, que é gerado.
+  const { data, error } = await (supabase as unknown as SupabaseClient)
     .from("visits")
     .insert({
       lead_id: input.leadId ?? null,
       deal_id: input.dealId ?? null,
       broker_id: input.brokerId,
       scheduled_at: input.scheduledAt,
+      ...(input.endsAt !== undefined ? { ends_at: input.endsAt } : {}),
       notes: input.notes || null,
     })
     .select(VISIT_COLUMNS)
-    .single();
-  if (error) throw dbError("agendar visita", error);
+    .single<VisitRecord>();
+  if (error) throw dbError("agendar visita", error.code === "23P01"
+    ? { code: "P0001", message: "Este horário já está ocupado na agenda do corretor. Escolha outro horário." } : error);
   return data as VisitRecord;
 }
 
