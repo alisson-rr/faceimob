@@ -66,6 +66,7 @@ const doc = (over: Partial<DealDocumentRecord> = {}): DealDocumentRecord => ({
   size_bytes: 10,
   version: 1,
   superseded_at: null,
+  locked_at: null,
   created_at: "2026-08-02T10:00:00Z",
   ...over,
 });

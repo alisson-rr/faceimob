@@ -16,7 +16,7 @@ export const DEAL_DOCUMENTS_BUCKET = "deal-documents";
  *  colunas escritas duas vezes, e uma coluna nova entrava numa e esquecia a
  *  outra. */
 const DOCUMENT_COLUMNS =
-  "id,deal_id,document_type_id,storage_path,original_name,stored_name,display_name,mime_type,size_bytes,version,superseded_at,created_at";
+  "id,deal_id,document_type_id,storage_path,original_name,stored_name,display_name,mime_type,size_bytes,version,superseded_at,locked_at,created_at";
 
 /**
  * Fronteira do upload: nada de tamanho nem de extensão era conferido antes de o
@@ -91,6 +91,9 @@ export type DealDocumentRecord = {
   size_bytes: number | null;
   version: number;
   superseded_at: string | null;
+  /** Travado na aprovação do crédito ou ao virar negócio (0285). `null` =
+   *  complementar: o comercial ainda exclui. Limpo quando volta ao INCOMPLETO. */
+  locked_at: string | null;
   created_at: string;
 };
 

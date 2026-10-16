@@ -292,7 +292,9 @@ export function DealsTable({
                       <SelectTrigger
                         aria-label={`Status 2 de ${deal.client}${motivo}`}
                         title={podeMoverStatus2 ? undefined : "Só diretor, administrador e sócio mudam o Status 2 pela lista. Use a aba Negócio do card."}
-                        className="h-7 min-w-[150px] gap-1 whitespace-nowrap rounded border-0 px-2 py-0 text-xs font-bold"
+                        // Sem permissão o badge segue com a cor do Status 2, só
+                        // sem ação (16/10/2026): o `opacity-50` do kit apagava a cor.
+                        className="h-7 min-w-[150px] gap-1 whitespace-nowrap rounded border-0 px-2 py-0 text-xs font-bold disabled:cursor-default disabled:opacity-100"
                         style={faceimobStatusStyle(catalog, status)}
                       >
                         <SelectValue />

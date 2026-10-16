@@ -935,6 +935,18 @@ export async function listDealHistory(dealId: string): Promise<HistoryEntry[]> {
   return (data ?? []) as HistoryEntry[];
 }
 
+/**
+ * Nomes de quem aparece no histórico do negócio (0285). `profiles` só entrega
+ * quem o chamador enxerga, e o CCA via "por —" em quase tudo.
+ */
+export async function listDealHistoryNames(dealId: string): Promise<Map<string, string>> {
+  const { data, error } = await untyped.rpc("deal_history_names", { p_deal_id: dealId });
+  if (error) throw dbError("nomes do histórico", error);
+  return new Map(((data ?? []) as { id: string; full_name: string | null }[])
+    .filter((row) => row.full_name)
+    .map((row) => [row.id, row.full_name as string]));
+}
+
 export async function listCcaCaseEvents(caseId: string): Promise<HistoryEntry[]> {
   const { data, error } = await supabase
     .from("cca_case_events")

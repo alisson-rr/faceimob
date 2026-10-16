@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Upload, Download, Paperclip, Loader2, History, CheckCircle2, RotateCcw, Send, Trash2, FileX, FileStack,
-  AlertTriangle, Pencil, Check, X, Eye, Undo2,
+  AlertTriangle, Pencil, Check, X, Eye, Undo2, Lock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -407,13 +407,38 @@ export default function DealDocumentUpload({
    * cada um como arquivo separado, dentro de UMA pasta compactada (.zip) — um
    * clique para salvar, sem juntar em PDF e sem o navegador perguntar arquivo
    * por arquivo.
+   *
+   * 16/10/2026: dois cliques — "Baixar" e "Salvar" na janela do sistema, onde
+   * a CCA escolhe a pasta. O .zip sai pronto para subir (arquivos na raiz, sem
+   * pasta dentro), sem precisar abrir. A janela abre ANTES de baixar os
+   * arquivos: depois de esperar a rede o navegador já não aceita abri-la.
+   * Sem a API (Firefox), cai no download de sempre.
    */
   const baixarTodos = async (vigentes: DealDocumentRecord[]) => {
     if (vigentes.length === 0 || baixandoTodos) return;
+    const pasta = slugify(dealCode || "negocio") || "negocio";
+    const nomeDoZip = `${pasta}-documentos.zip`;
+    const janela = window as Window & {
+      showSaveFilePicker?: (opcoes: {
+        suggestedName: string;
+        types: { description: string; accept: Record<string, string[]> }[];
+      }) => Promise<{ createWritable: () => Promise<{ write: (dados: Blob) => Promise<void>; close: () => Promise<void> }> }>;
+    };
+    let destino: Awaited<ReturnType<NonNullable<typeof janela.showSaveFilePicker>>> | null = null;
+    if (janela.showSaveFilePicker) {
+      try {
+        destino = await janela.showSaveFilePicker({
+          suggestedName: nomeDoZip,
+          types: [{ description: "Pasta compactada", accept: { "application/zip": [".zip"] } }],
+        });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        destino = null;
+      }
+    }
     setBaixandoTodos(true);
     try {
       const { montarZip } = await import("@/lib/zipSimples");
-      const pasta = slugify(dealCode || "negocio") || "negocio";
       const usados = new Set<string>();
       const falharam: string[] = [];
       const arquivos = (await Promise.all(vigentes.map(async (doc) => {
@@ -431,17 +456,24 @@ export default function DealDocumentUpload({
         let nome = item.doc.stored_name;
         for (let n = 2; usados.has(nome); n++) nome = item.doc.stored_name.replace(/(\.[^.]*)?$/, ` (${n})$1`);
         usados.add(nome);
-        return [{ nome: `${pasta}/${nome}`, bytes: item.bytes }];
+        return [{ nome, bytes: item.bytes }];
       });
       if (arquivos.length === 0) throw new Error("Nenhum arquivo pôde ser baixado.");
-      const url = URL.createObjectURL(new Blob([montarZip(arquivos)], { type: "application/zip" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${pasta}-documentos.zip`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      const zip = new Blob([montarZip(arquivos)], { type: "application/zip" });
+      if (destino) {
+        const gravador = await destino.createWritable();
+        await gravador.write(zip);
+        await gravador.close();
+      } else {
+        const url = URL.createObjectURL(zip);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = nomeDoZip;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
       toast(falharam.length
         ? { variant: "destructive", title: `Pasta com ${arquivos.length} de ${vigentes.length} arquivos`, description: `Não entraram: ${falharam.join(", ")}.` }
         : { variant: "success", title: `Pasta com ${arquivos.length} arquivo${arquivos.length > 1 ? "s" : ""} baixada` });
@@ -678,14 +710,22 @@ export default function DealDocumentUpload({
   // precisa espelhar os três; antes o diretor via a pendência no cabeçalho, mas
   // ao abrir os Anexos não recebia os botões para decidir.
   const canReview = isAdmin || myRoles.some((role) => role === "manager" || role === "director");
-  // 0243: qualquer usuário que enxerga o negócio pode corrigir um documento
-  // errado, em qualquer fase. A RLS repete o mesmo limite de visibilidade.
-  const canDelete = true;
+  // 0285: o aprovado na CCA (e tudo depois de VIROU NEGÓCIO) chega travado
+  // (`locked_at`); o complementar, não. CCA e admin excluem em qualquer fase.
+  // A RLS (`deal_document_pode_excluir`) ainda recusa o complementar enquanto o
+  // dossiê está em análise, com a frase de `remove`.
+  const podeExcluir = (doc: DealDocumentRecord) =>
+    isAdmin || roles.includes("cca") || (canUpload && !doc.locked_at);
+  const temTravados = docs.some((doc) => doc.locked_at && !doc.superseded_at);
   // Anexar segue a MESMA cláusula que `deal_documents_insert` cobra desde a
   // 0077: depois do envio ao gerente o dossiê é prova. Sem isto o corretor
   // trocava a versão que o gerente aprovou e que o analista ia baixar, e o
   // banco aceitava calado. O CCA continua podendo juntar documento depois.
-  const canAttach = canUpload && canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review"), caseStatus });
+  // VIROU NEGÓCIO COM PENDÊNCIAS (0285): o comercial anexa o que falta e o CCA
+  // é avisado pelo banco.
+  const pendenciaDoContrato = bareStatus(statusDetail ?? "") === "VIROU NEGÓCIO COM PENDÊNCIAS";
+  const canAttach = canUpload
+    && (pendenciaDoContrato || canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review"), caseStatus }));
   // Caso aberto na CCA prende o dossiê aprovado. Um caso parado de meses atrás
   // (cliente retomado, 05/10/2026) não aparece no quadro do mês, então a CCA
   // devolve daqui também — a mesma checagem de `devolver_ao_comercial`.
@@ -1010,6 +1050,13 @@ export default function DealDocumentUpload({
           <History className="h-3 w-3" /> {showHistory ? "Ocultar" : "Ver"} histórico
         </Button>
       </div>
+      {temTravados && (
+        <p className="text-xs text-muted-foreground">
+          {pendenciaDoContrato
+            ? "Virou negócio com pendência: anexe o que falta (o CCA é avisado). Os documentos aprovados ficam travados."
+            : "Documentos aprovados ficam travados. Os complementares podem ser excluídos ou renomeados até o envio para análise."}
+        </p>
+      )}
 
       {/* A marca por linha explica UM documento; sem esta frase o corretor lê
           "Faltam 3 obrigatórios" olhando para um tipo que visivelmente tem anexo
@@ -1229,6 +1276,11 @@ export default function DealDocumentUpload({
                         )}
                         <span className="shrink-0 opacity-70">v{d.version} {formatSize(d.size_bytes)}</span>
                         {d.superseded_at && <span className="shrink-0 italic">· substituído</span>}
+                        {!d.superseded_at && temTravados && (
+                          d.locked_at
+                            ? <span className="flex shrink-0 items-center gap-0.5 font-semibold"><Lock className="h-3 w-3" aria-hidden /> aprovado</span>
+                            : <span className="shrink-0 font-semibold text-info">· complementar</span>
+                        )}
                         {ausente && <span className="shrink-0 font-semibold">· arquivo ausente</span>}
                       </span>
                       )}
@@ -1291,7 +1343,7 @@ export default function DealDocumentUpload({
                             </button>
                           </>
                         )}
-                        {canDelete && !d.superseded_at && (
+                        {podeExcluir(d) && !d.superseded_at && (
                           <button
                             type="button"
                             onClick={() => remove(d)}
