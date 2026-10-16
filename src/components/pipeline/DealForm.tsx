@@ -435,7 +435,8 @@ export function DealForm({
           tudo no gatilho do banco. Recarregue a página para tentar de novo.
         </p>
       )}
-      <div className="deal-tone-blue grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="deal-form-meta">
+      <div className="deal-tone-blue deal-meta-fields">
         <div>
           <Label htmlFor={field("month")} className="text-eyebrow">Mês-base</Label>
           {/* Seletor, não texto (pedido de 28/09/2026): "9/2026" ou "set/26"
@@ -488,17 +489,17 @@ export function DealForm({
             </SelectContent>
           </Select>
         </div>
-        {/* Nome e toggle no mesmo cartão (10/10/2026): separados, o rótulo
-            ficava longe do interruptor e não dava para saber qual era qual.
-            `sm:mt-5` alinha o cartão aos campos ao lado, que têm rótulo em cima. */}
-        <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 sm:mt-5">
+        {/* A presença do segundo cliente fica junto do cadastro; renda tem área própria. */}
+        <div className="deal-client-toggle">
           <Label htmlFor={field("second-client")} className="cursor-pointer text-sm font-semibold">2º cliente?</Label>
           <Switch
             id={field("second-client")} checked={form.has_second_client || false}
             onCheckedChange={(v) => onChange({ has_second_client: v })}
           />
         </div>
-        <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 sm:mt-5">
+      </div>
+      <div className="deal-income-toggles">
+        <div className="deal-income-toggle">
           <Label htmlFor={field("informal")} className="cursor-pointer text-sm font-semibold">Renda informal{form.has_second_client ? " — cliente 1" : ""}?</Label>
           <Switch
             id={field("informal")} checked={form.has_informal_income || false}
@@ -506,12 +507,13 @@ export function DealForm({
           />
         </div>
         {form.has_second_client && (
-          <div className="flex h-10 items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 sm:mt-5">
+          <div className="deal-income-toggle">
             <Label htmlFor={field("informal2")} className="cursor-pointer text-sm font-semibold">Renda informal — cliente 2?</Label>
             <Switch id={field("informal2")} checked={form.has_informal_income2 || false}
               onCheckedChange={(v) => onChange({ has_informal_income2: v })} />
           </div>
         )}
+      </div>
       </div>
 
       {!isNew && (
@@ -521,7 +523,7 @@ export function DealForm({
         </p>
       )}
 
-      <Section title="Cliente" className="deal-tone-blue deal-field-light">
+      <Section title="Cliente" className="deal-tone-blue deal-client-panel deal-premium-panel">
         <TextField id={field("client")} label="Cliente *" value={form.client} onChange={(v) => onChange({ client: v })} />
         <TextField id={field("cpf")} label="CPF" value={form.cpf} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "cpf" ? documentNumberError.message : null} onChange={(v) => onChange({ cpf: v })} onBlur={onCpfBlur} />
         <TextField id={field("contato")} label="Contato" value={form.contato} onChange={(v) => onChange({ contato: v })} />
@@ -537,7 +539,7 @@ export function DealForm({
       </Section>
 
       {form.has_second_client && (
-        <Section title="2º cliente" className="deal-tone-gold deal-field-light">
+        <Section title="2º cliente" className="deal-tone-blue deal-client-panel deal-premium-panel">
           <TextField id={field("client2")} label="Cliente" value={form.client2} onChange={(v) => onChange({ client2: v })} />
           <TextField id={field("cpf2")} label="CPF" value={form.cpf2} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "cpf2" ? documentNumberError.message : null} onChange={(v) => onChange({ cpf2: v })} onBlur={onCpfBlur} />
           <TextField id={field("contato2")} label="Contato" value={form.contato2} onChange={(v) => onChange({ contato2: v })} />
@@ -554,7 +556,7 @@ export function DealForm({
       )}
 
       {form.has_informal_income && (
-        <Section title={form.has_second_client ? "Renda informal — cliente 1" : "Renda informal"} className="deal-tone-blue deal-field-light">
+        <Section title={form.has_second_client ? "Renda informal — cliente 1" : "Renda informal"} className="deal-income-panel deal-premium-panel">
           <TextField id={field("segmento")} label="Segmento/atividade" value={form.segmento_atividade} onChange={(v) => onChange({ segmento_atividade: v })} />
           <TextField id={field("atuacao")} label="Forma de atuação" value={form.forma_atuacao} onChange={(v) => onChange({ forma_atuacao: v })} />
           <TextField id={field("tempo")} label="Tempo de atividade" value={form.tempo_atividade} onChange={(v) => onChange({ tempo_atividade: v })} />
@@ -577,7 +579,7 @@ export function DealForm({
       )}
 
       {form.has_second_client && form.has_informal_income2 && (
-        <Section title="Renda informal — cliente 2" className="deal-tone-gold deal-field-light">
+        <Section title="Renda informal — cliente 2" className="deal-income-panel deal-premium-panel">
           <TextField id={field("segmento2")} label="Segmento/atividade" value={form.segmento_atividade2} onChange={(v) => onChange({ segmento_atividade2: v })} />
           <TextField id={field("atuacao2")} label="Forma de atuação" value={form.forma_atuacao2} onChange={(v) => onChange({ forma_atuacao2: v })} />
           <TextField id={field("tempo2")} label="Tempo de atividade" value={form.tempo_atividade2} onChange={(v) => onChange({ tempo_atividade2: v })} />
