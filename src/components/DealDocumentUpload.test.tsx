@@ -144,7 +144,7 @@ describe("DealDocumentUpload — arrastar e PDF único", () => {
   const doc = (patch: Partial<DealDocumentRecord>): DealDocumentRecord => ({
     id: "d1", deal_id: "deal-1", document_type_id: "t-rg", storage_path: "deal-1/rg.pdf",
     original_name: "rg.pdf", stored_name: "rg.pdf", display_name: null, mime_type: "application/pdf",
-    size_bytes: 10, version: 1, superseded_at: null, created_at: "2026-09-29T10:00:00Z", ...patch,
+    size_bytes: 10, version: 1, superseded_at: null, locked_at: null, created_at: "2026-09-29T10:00:00Z", ...patch,
   });
   const soltar = async (alvo: Element, arquivos: File[]) => {
     const evento = new Event("drop", { bubbles: true, cancelable: true });
@@ -176,6 +176,23 @@ describe("DealDocumentUpload — arrastar e PDF único", () => {
     h.docs = [doc({ superseded_at: "2026-09-28T10:00:00Z" })];
     await montar();
     expect([...container.querySelectorAll("button")].some((b) => b.textContent === "Baixar tudo em PDF")).toBe(false);
+  });
+
+  // 0285: o aprovado trava; o complementar, anexado depois da aprovação, sai.
+  it("documento aprovado não oferece Excluir; o complementar oferece", async () => {
+    h.status = "approved";
+    h.papeis = ["broker"];
+    h.podeEditar = true;
+    h.tipos = [tipo];
+    h.docs = [
+      doc({ id: "d-aprovado", stored_name: "aprovado.pdf", locked_at: "2026-10-15T10:00:00Z" }),
+      doc({ id: "d-compl", stored_name: "complementar.pdf" }),
+    ];
+    await montar();
+    const excluir = (nome: string) => container.querySelector(`button[aria-label="Excluir ${nome}"]`);
+    expect(excluir("aprovado.pdf")).toBeNull();
+    expect(excluir("complementar.pdf")).not.toBeNull();
+    expect(container.textContent).toContain("complementar");
   });
 });
 

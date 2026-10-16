@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, History } from "lucide-react";
-import { listDealHistory, type HistoryEntry } from "@/integrations/supabase/analytics";
+import { listDealHistory, listDealHistoryNames, type HistoryEntry } from "@/integrations/supabase/analytics";
 import { dateTime } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
-import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
 import { REVIEW_ESTEIRA_LABEL } from "@/integrations/supabase/documents";
 
 // Chaves = valores reais de `deal_history.kind` gravados pelos triggers e RPCs.
@@ -33,16 +32,16 @@ const KIND_LABEL: Record<string, string> = {
  */
 export default function DealHistoryPanel({ dealId }: { dealId: string }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [people, setPeople] = useState<PersonRecord[]>([]);
+  const [names, setNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, persons] = await Promise.all([listDealHistory(dealId), listPeople()]);
+      const [rows, nomes] = await Promise.all([listDealHistory(dealId), listDealHistoryNames(dealId)]);
       setEntries(rows);
-      setPeople(persons);
+      setNames(nomes);
       setError(null);
     } catch (e) {
       setError(describeError(e, "Não consegui carregar o histórico deste negócio."));
@@ -54,7 +53,7 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
   useEffect(() => { void load(); }, [load]);
 
   const actorName = (id: string | null) =>
-    id ? people.find((p) => p.id === id)?.name ?? "—" : "sistema";
+    id ? names.get(id) ?? "—" : "sistema";
 
   if (loading) {
     return (

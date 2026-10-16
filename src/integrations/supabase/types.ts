@@ -1129,6 +1129,7 @@ export type Database = {
           display_name: string | null
           document_type_id: string
           id: string
+          locked_at: string | null
           mime_type: string | null
           original_name: string
           size_bytes: number | null
@@ -1145,6 +1146,7 @@ export type Database = {
           display_name?: string | null
           document_type_id: string
           id?: string
+          locked_at?: string | null
           mime_type?: string | null
           original_name: string
           size_bytes?: number | null
@@ -1161,6 +1163,7 @@ export type Database = {
           display_name?: string | null
           document_type_id?: string
           id?: string
+          locked_at?: string | null
           mime_type?: string | null
           original_name?: string
           size_bytes?: number | null
@@ -6252,6 +6255,7 @@ export type Database = {
           display_name: string | null
           document_type_id: string
           id: string
+          locked_at: string | null
           mime_type: string | null
           original_name: string
           size_bytes: number | null

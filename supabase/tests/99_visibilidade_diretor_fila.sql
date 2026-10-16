@@ -594,9 +594,10 @@ begin
     true, 'apagar documento de negócio exige editar o negócio');
   -- Arquivo segue a regra da linha: com o dossiê enviado, nem sobe arquivo que a
   -- linha recusaria (órfão) nem some o de um documento que a linha protege.
+  -- 0285: a trava saiu para `deal_document_pode_excluir`, a mesma da tabela.
   perform pg_temp.assert_eq(
     (select qual from pg_policies
-      where schemaname = 'storage' and policyname = 'deal_documents_storage_delete') like '%document_review_status%',
+      where schemaname = 'storage' and policyname = 'deal_documents_storage_delete') like '%deal_document_pode_excluir%',
     true, 'apagar arquivo respeita a trava do dossiê enviado, igual a deal_documents_delete');
   perform pg_temp.assert_eq(
     (select with_check from pg_policies
