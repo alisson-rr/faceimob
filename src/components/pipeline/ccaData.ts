@@ -101,7 +101,7 @@ export const ccaKeys = {
 };
 
 const ccaExtraRpc = supabase as unknown as {
-  rpc: (name: "cca_monthly_synthesis" | "cca_close_contract", params: Record<string, unknown>) =>
+  rpc: (name: "cca_monthly_synthesis" | "cca_close_contract" | "baixar_pendencia_contrato", params: Record<string, unknown>) =>
     PromiseLike<{ data: unknown; error: { code?: string; message: string; details?: string; hint?: string } | null }>;
 };
 
@@ -127,6 +127,14 @@ export async function closeCcaContract(
     p_deal_id: dealId, p_outcome: outcome, p_reason: reason,
   });
   if (error) throw dbError("cca_close_contract", error);
+}
+
+/** CCA/admin desliga o selo "Pendência no contrato" e avisa a equipe do negócio (0286). */
+export async function baixarPendenciaContrato(dealId: string, comentario: string): Promise<void> {
+  const { error } = await ccaExtraRpc.rpc("baixar_pendencia_contrato", {
+    p_deal_id: dealId, p_comentario: comentario.trim() || null,
+  });
+  if (error) throw dbError("baixar_pendencia_contrato", error);
 }
 
 const DIA_MS = 86_400_000;

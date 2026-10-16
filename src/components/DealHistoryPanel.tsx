@@ -19,6 +19,8 @@ const KIND_LABEL: Record<string, string> = {
   esteira_sent: "Envio para a esteira",
   created: "Negócio criado",
   comment: "Comentário",
+  // Baixa do selo "Pendência no contrato" pelo CCA (0286); o texto é o comentário.
+  contract_pending_cleared: "Pendência do contrato baixada",
 };
 
 /**
@@ -79,11 +81,13 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
                 <span className="text-muted-foreground">{dateTime(e.created_at)}</span>
               </div>
               <div className="text-muted-foreground">
-                {e.kind === "comment" ? (
-                  <>
-                    <span className="text-foreground">{e.to_value}</span>
-                    {" · "}
-                  </>
+                {e.kind === "comment" || e.kind === "contract_pending_cleared" ? (
+                  e.to_value ? (
+                    <>
+                      <span className="text-foreground">{e.to_value}</span>
+                      {" · "}
+                    </>
+                  ) : null
                 ) : e.kind === "esteira_sent" ? (
                   <>
                     <span className="text-foreground">

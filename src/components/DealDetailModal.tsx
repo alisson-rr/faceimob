@@ -16,6 +16,7 @@ import {
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
 import { addDealComment } from "@/components/pipeline/DealCommentsPanel";
+import { BaixaPendenciaContrato } from "@/components/pipeline/BaixaPendenciaContrato";
 import { marcarOff } from "@/integrations/supabase/dealStatuses";
 import { MovimentoDoNegocio } from "@/components/pipeline/MovimentoDoNegocio";
 import { ConferenciaGerenteDialog } from "@/components/pipeline/ConferenciaGerenteDialog";
@@ -585,7 +586,10 @@ export default function DealDetailModal({
           )}
 
           {montada("cca") && dealId && (
-            <div hidden={tab !== "cca"}>
+            <div hidden={tab !== "cca"} className="space-y-3">
+            {deal?.contract_has_pending_issue && (
+              <BaixaPendenciaContrato dealId={dealId} onDone={onReviewChanged} />
+            )}
             <DealCcaPanel
               dealId={dealId}
               value={cca}
