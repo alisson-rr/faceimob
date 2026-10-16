@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { describeError } from "@/lib/supabaseError";
@@ -44,6 +46,9 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
   const { user, canEnterStage } = useAuth();
   const canExitStage = useCanExitStage();
   const [date, setDate] = useState<Date | undefined>();
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const fieldId = useId();
   const [saving, setSaving] = useState(false);
 
   const stage = stages.find((row) => row.code === "visit_scheduled");
@@ -56,14 +61,31 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
   const moveTo = behind && canMove && stage ? stage.id : null;
 
   const confirm = async () => {
-    if (!date) return;
+    if (!date || !startTime) return;
+    const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+    if (!timePattern.test(startTime) || (endTime && !timePattern.test(endTime))) {
+      toast.warning("Informe horários válidos para a visita.");
+      return;
+    }
+    const scheduled = new Date(date);
+    const [startHours, startMinutes] = startTime.split(":").map(Number);
+    scheduled.setHours(startHours, startMinutes, 0, 0);
+    const ends = endTime ? new Date(date) : null;
+    if (ends) {
+      const [endHours, endMinutes] = endTime.split(":").map(Number);
+      ends.setHours(endHours, endMinutes, 0, 0);
+      if (!(ends.getTime() > scheduled.getTime())) {
+        toast.warning("Informe um término posterior ao início da visita no dia escolhido.");
+        return;
+      }
+    }
     if (!user?.id) {
       toast.error("Não foi possível agendar a visita", { description: "Sessão expirada. Entre de novo." });
       return;
     }
     setSaving(true);
     try {
-      await scheduleVisit({ dealId: deal.id, brokerId: user.id, scheduledAt: date.toISOString() });
+      await scheduleVisit({ dealId: deal.id, brokerId: user.id, scheduledAt: scheduled.toISOString(), ...(ends ? { endsAt: ends.toISOString() } : {}) });
       // A visita JÁ está gravada. Se o banco recusar a etapa (a matriz da tela
       // pode estar desatualizada em relação à do servidor), o agendamento não é
       // desfeito: o aviso entra no toast de sucesso em vez de virar erro.
@@ -75,7 +97,7 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
           avisoEtapa = describeError(err, "A etapa não foi movida.");
         }
       }
-      const quando = format(date, "dd/MM/yyyy");
+      const quando = format(scheduled, "dd/MM/yyyy 'às' HH:mm");
       if (avisoEtapa) {
         toast.warning("Visita agendada sem mudar a etapa", {
           description: `${deal.client} em ${quando}. O negócio continua em "${deal.stage_label}": ${avisoEtapa}`,
@@ -110,6 +132,17 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
           mode="single" selected={date} onSelect={setDate}
           className="pointer-events-auto rounded-xl border border-border p-3"
         />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor={`${fieldId}-start`}>Hora de início da visita</Label>
+            <Input id={`${fieldId}-start`} type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${fieldId}-end`}>Hora de término (opcional)</Label>
+            <Input id={`${fieldId}-end`} type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">Os horários são do dia escolhido. Sem término, a visita ocupa o dia inteiro na agenda consultada pela 3C.</p>
 
         {behind && !canMove && (
           <p className="rounded-xl border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
@@ -122,7 +155,7 @@ export function ScheduleVisitDialog({ deal, stages, onClose, onScheduled }: Prop
 
         <DialogFooter>
           <DialogClose asChild><Button variant="outline" size="sm">Cancelar</Button></DialogClose>
-          <Button size="sm" disabled={!date || saving} onClick={() => void confirm()}>
+          <Button size="sm" disabled={!date || !startTime || saving} onClick={() => void confirm()}>
             {saving ? "Agendando…" : "Agendar"}
           </Button>
         </DialogFooter>

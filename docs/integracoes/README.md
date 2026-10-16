@@ -10,6 +10,12 @@ comentário documentava um campo (`source_code` como coluna de `leads`) que nunc
 existiu. Ninguém percebeu porque nenhum teste tocava a function e o documento
 nunca foi lido por quem o usaria.
 
+## Acréscimo em 16/10/2026
+
+| Integração | Nosso lado | Falta | De quem |
+|---|---|---|---|
+| [3C agente de voz](./3c-agente-voz.md) | API implementada; regras de atendimento e intervalos definidos pela 3C nas requisições | autorizar agendas e grupos, chave por cofre seguro e testes conjuntos | FaceImob / 3C |
+
 ## Estado em 06/09/2026
 
 | Integração | Nosso lado | Falta | De quem |
