@@ -1042,6 +1042,12 @@ export default function Equipes() {
         podeInativar={!isAdmin && roles.includes("director") && !!profileEdit
           && profileEdit.id !== myBrokerId && profileEdit.role !== "director"
           && profileEdit.director_id === myBrokerId}
+        // Nascimento e CRECI (0287): diretor, nunca na própria ficha nem na de
+        // outro diretor. Quem decide se ele lidera o alvo é o banco
+        // (`manages_profile`), que já inclui o Diretor 2 — a linha da lista só
+        // traz o Diretor 1 da equipe.
+        diretorEditaFicha={!isAdmin && roles.includes("director") && !!profileEdit
+          && profileEdit.id !== myBrokerId && profileEdit.role !== "director"}
         onClose={() => { setProfileEdit(null); load(); }}
         onSaved={() => { setProfileEdit(null); load(); }}
       />

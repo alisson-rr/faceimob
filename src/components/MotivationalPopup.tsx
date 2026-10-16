@@ -98,15 +98,18 @@ export function MotivationalPopup() {
 
   // Festa uma vez quando os dados chegam: aniversário com fogos e música,
   // análise à espera com uma chuva de confete ("negócio à vista").
+  // 16/10/2026: o parabéns toca para TODOS quando há aniversariante no dia, não
+  // só para quem faz aniversário.
+  const temAniversario = lista.length > 0;
   useEffect(() => {
     if (!open) return;
-    if (souAniversariante) {
+    if (temAniversario) {
       fireConfetti("fireworks");
       playSound("birthday");
     } else if (pendentes > 0) {
       fireConfetti("rain");
     }
-  }, [open, souAniversariante, pendentes]);
+  }, [open, temAniversario, pendentes]);
 
   const Icon = souAniversariante ? Cake : msg.icon;
 
@@ -165,7 +168,14 @@ export function MotivationalPopup() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-2 text-xs text-muted-foreground">Mande os parabéns! 🎂</p>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">Mande os parabéns! 🎂</p>
+                    {!souAniversariante && (
+                      <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => playSound("birthday", { manual: true })}>
+                        <Music className="h-3 w-3" aria-hidden /> Tocar o parabéns
+                      </Button>
+                    )}
+                  </div>
                 </section>
               )}
 

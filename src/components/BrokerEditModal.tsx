@@ -143,7 +143,7 @@ function motivoDoErro(error: unknown, fallback: string): string {
 
 export function BrokerEditModal({
   open, broker, managers, directors, onClose, onSaved, isAdmin, podeMudarSituacao = false,
-  criando = false, metas, onDuplicado, podeInativar = false,
+  criando = false, metas, onDuplicado, podeInativar = false, diretorEditaFicha = false,
 }: {
   open: boolean;
   broker: EditableBroker | null;
@@ -177,6 +177,11 @@ export function BrokerEditModal({
    * numa chamada só, e confere de novo quem pode.
    */
   podeInativar?: boolean;
+  /**
+   * Diretor que lidera o alvo: atualiza nascimento, habilitação e CRECI (pedido
+   * de 16/10/2026, 0287). O resto dos dados pessoais segue só com o admin.
+   */
+  diretorEditaFicha?: boolean;
 }) {
   const [form, setForm] = useState<FormState | null>(null);
   /**
@@ -348,6 +353,8 @@ export function BrokerEditModal({
    * crachá; o banco recusa o resto (0167) e `buildPersonSave` nem os envia.
    */
   const dadosTravados = !isAdmin && !criando;
+  // Exceção do diretor (0287): nascimento, habilitação e CRECI.
+  const nascimentoECreciTravados = dadosTravados && !diretorEditaFicha;
   const situacaoNoBanco = baseline?.status ?? form.status;
   const desligado = situacaoNoBanco === "terminated";
   /**
@@ -381,6 +388,7 @@ export function BrokerEditModal({
           }
         : null,
       isAdmin,
+      diretor: diretorEditaFicha,
       managesTeam,
       desligar,
     });
@@ -801,7 +809,9 @@ export function BrokerEditModal({
             resposta chegasse, e depois de falhar seria gravar vazio por cima. */}
         {dadosTravados && (
           <p role="status" className="rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
-            Dados pessoais só o administrador altera. Aqui você muda a equipe, a situação e o crachá.
+            {diretorEditaFicha
+              ? "Dados pessoais só o administrador altera. Aqui você muda a equipe, a situação, o crachá, o nascimento e o CRECI."
+              : "Dados pessoais só o administrador altera. Aqui você muda a equipe, a situação e o crachá."}
           </p>
         )}
         <fieldset disabled={details !== "ready"} className="grid min-w-0 grid-cols-1 md:grid-cols-3 gap-3">
@@ -935,10 +945,10 @@ export function BrokerEditModal({
 
           <Field label="CPF"><Input disabled={dadosTravados} inputMode="numeric" value={form.cpf || ""} onChange={e => upd("cpf", e.target.value)} /></Field>
           <Field label="Celular"><Input disabled={dadosTravados} value={form.celular || ""} onChange={e => upd("celular", e.target.value)} /></Field>
-          <Field label="Nascimento"><Input disabled={dadosTravados} type="date" value={form.birth_date || ""} onChange={e => upd("birth_date", e.target.value)} /></Field>
+          <Field label="Nascimento"><Input disabled={nascimentoECreciTravados} type="date" value={form.birth_date || ""} onChange={e => upd("birth_date", e.target.value)} /></Field>
 
           <Field label="Habilitação">
-            <Select disabled={dadosTravados} value={form.habilitation || "__none__"} onValueChange={v => upd("habilitation", v === "__none__" ? null : v)}>
+            <Select disabled={nascimentoECreciTravados} value={form.habilitation || "__none__"} onValueChange={v => upd("habilitation", v === "__none__" ? null : v)}>
               <SelectTrigger aria-label="Habilitação"><SelectValue placeholder="—" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">—</SelectItem>
@@ -948,7 +958,7 @@ export function BrokerEditModal({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="CRECI"><Input disabled={dadosTravados} value={form.creci || ""} onChange={e => upd("creci", e.target.value)} /></Field>
+          <Field label="CRECI"><Input disabled={nascimentoECreciTravados} value={form.creci || ""} onChange={e => upd("creci", e.target.value)} /></Field>
           {/* `profiles_guard_admin_columns` (0012) levanta 42501 quando quem
               não é admin (nem gestor do alvo) mexe em `hired_at`. O campo era
               oferecido a todos: um diretor SEM equipe editando a própria ficha

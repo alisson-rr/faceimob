@@ -136,3 +136,23 @@ describe("buildPersonSave: o que mudou é medido contra o banco", () => {
     expect(comEquipe.directorId).toBe("d2");
   });
 });
+
+// 0287: o diretor atualiza nascimento e CRECI de quem lidera; o gerente, não.
+describe("buildPersonSave: nascimento e CRECI do diretor", () => {
+  const dados = form({ birth_date: "1990-05-12", habilitation: "CRECI", creci: " 123456 ", cpf: "12345678901" });
+
+  it("diretor envia nascimento, habilitação e CRECI, e nenhum outro dado pessoal", () => {
+    const save = buildPersonSave(dados, "a@b.com", { ...base, isAdmin: false, diretor: true });
+    if (typeof save === "string") throw new Error(save);
+    expect(save.profile).toMatchObject({ birth_date: "1990-05-12", habilitation: "CRECI", creci: "123456" });
+    expect(save.profile).not.toHaveProperty("cpf");
+    expect(save.profile).not.toHaveProperty("full_name");
+  });
+
+  it("gerente continua sem enviar esses campos", () => {
+    const save = buildPersonSave(dados, "a@b.com", { ...base, isAdmin: false });
+    if (typeof save === "string") throw new Error(save);
+    expect(save.profile).not.toHaveProperty("birth_date");
+    expect(save.profile).not.toHaveProperty("creci");
+  });
+});
