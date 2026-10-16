@@ -211,6 +211,18 @@ describe("monthView — o mês inteiro numa conta só", () => {
     expect(monthView(rows, "all").stats.vendas).toBe(2);
   });
 
+  // 16/10/2026: o Dashboard do diretor mostrava 5 vendas onde o relatório dizia 3.
+  it("no painel do diretor, venda com Diretor 2 conta meia e venda de outro diretor não conta", () => {
+    const rows = [
+      venda({ id: "so-dele", month_base: "10/2026", deal_value: 100, director1_id: "arch" }),
+      venda({ id: "dividida", month_base: "10/2026", deal_value: 200, director1_id: "fabio", director2_id: "arch" }),
+      venda({ id: "do-outro", month_base: "10/2026", deal_value: 400, director1_id: "fabio" }),
+    ];
+    expect(monthView(rows, "10/2026", "arch").stats).toMatchObject({ vendas: 1.5, vgv: 200 });
+    // Sem diretor (admin, imobiliária) segue inteiro.
+    expect(monthView(rows, "10/2026").stats).toMatchObject({ vendas: 3, vgv: 700 });
+  });
+
   it("a construtora sem negócio no mês continua na grade, com zero", () => {
     const rows = [
       venda({ id: "a", developer: " mrv ", month_base: "07/2026", deal_value: 300_000 }),

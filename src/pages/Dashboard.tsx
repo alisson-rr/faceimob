@@ -62,7 +62,7 @@ export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("geral");
   const [dashboardView, setDashboardView] = useState<DashboardDataScope>("company");
-  const { roles, can } = useAuth();
+  const { roles, can, user } = useAuth();
   const queryClient = useQueryClient();
   // Mesmo padrao do `can()`: o papel previsualizado vem na frente.
   // Todo o recorte por papel vive numa funcao pura testada (`dashboardScope`):
@@ -98,7 +98,11 @@ export default function Dashboard() {
   // operacional ainda aberto — e ele ja esta certo na primeira pintura.
   const activeMonth = month ?? defaultMonth;
 
-  const view = useMonthView(deals, activeMonth);
+  // Diretor na própria diretoria: vendas e VGV na parte dele, meia venda com
+  // Diretor 2 no negócio (16/10/2026) — os mesmos números do relatório de
+  // diretores. A visão da imobiliária e o admin seguem contando inteiro.
+  const diretorDoPainel = diretorPodeAlternar && dataScope === "own" ? user?.id ?? null : null;
+  const view = useMonthView(deals, activeMonth, diretorDoPainel);
   // Produção, negócios, perdas e distratos pelo Status 1/2 (28/09/2026): o
   // catálogo diz o grupo de cada negócio. Sem ele ainda, os cartões esperam.
   const statusCatalog = useDealStatusCatalog();
