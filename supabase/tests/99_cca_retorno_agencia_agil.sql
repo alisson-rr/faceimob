@@ -23,7 +23,8 @@ begin
     values((select id from public.pipeline_stages where code='proposal'),'11. AG. RET. AGENCIA',public.current_season_month(),'approved') returning id into negocio;
   insert into public.deal_clients(deal_id,ordinal,full_name) values(negocio,1,'Cliente retorno 283');
   insert into public.deal_participants(deal_id,profile_id,role,ordinal) values(negocio,corretor,'broker',1);
-  insert into public.cca_cases(deal_id,status,stage_id) values(negocio,'sent_to_agency',agencia) returning id into caso;
+  insert into public.cca_cases(deal_id,status,stage_id,submitted_at)
+    values(negocio,'sent_to_agency',agencia,now()-interval '1 day') returning id into caso;
   update public.deals set status_detail='11. AG. RET. AGENCIA' where id=negocio;
   select month_base,stage_id into mes,etapa from public.deals where id=negocio;
   select submitted_at into entrada from public.cca_cases where id=caso;
