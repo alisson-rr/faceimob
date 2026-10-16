@@ -635,6 +635,8 @@ export type BuildPersonSaveOptions = {
   managesTeam: boolean;
   /** Desligamento definitivo (`profile_status = 'terminated'`). Só admin. */
   desligar?: boolean;
+  /** Diretor que lidera o alvo: grava também nascimento, habilitação e CRECI (0287). */
+  diretor?: boolean;
 };
 
 /**
@@ -648,7 +650,7 @@ export type BuildPersonSaveOptions = {
 export function buildPersonSave(
   form: PersonFormValues,
   email: string | null | undefined,
-  { baseline, isAdmin, managesTeam, desligar = false }: BuildPersonSaveOptions,
+  { baseline, isAdmin, managesTeam, desligar = false, diretor = false }: BuildPersonSaveOptions,
 ): PersonSave | string {
   const full_name = (form.full_name || form.name || "").trim();
   if (!full_name) return "Informe o nome completo.";
@@ -666,6 +668,11 @@ export function buildPersonSave(
   const profile: Partial<ProfileFields> = !isAdmin ? {
     badge_requested_at: form.badge_requested_at || null,
     badge_delivered_at: form.badge_delivered_at || null,
+    ...(diretor ? {
+      creci: form.creci?.trim() || null,
+      habilitation: form.habilitation || null,
+      birth_date: form.birth_date || null,
+    } : {}),
   } : {
     full_name,
     nickname: form.nickname?.trim() || null,

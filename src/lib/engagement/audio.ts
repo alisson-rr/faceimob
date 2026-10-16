@@ -52,7 +52,8 @@ const MASTER_GAIN = 0.32;
 const STORAGE_KEY = "faceimob-sound";
 
 const CATALOG: Record<SoundName, Preset> = {
-  // "Parabéns pra você" (03/10/2026): as duas primeiras frases, em compasso 3/4.
+  // "Parabéns pra você" (03/10/2026), em compasso 3/4. As quatro frases desde
+  // 16/10/2026: com só as duas primeiras a música parava no meio.
   birthday: {
     notes: [
       { freq: 392.0, at: 0.0, dur: 0.2 },
@@ -67,6 +68,19 @@ const CATALOG: Record<SoundName, Preset> = {
       { freq: 392.0, at: 3.5, dur: 0.4 },
       { freq: 587.33, at: 3.95, dur: 0.4 },
       { freq: 523.25, at: 4.4, dur: 0.8 },
+      { freq: 392.0, at: 5.4, dur: 0.2 },
+      { freq: 392.0, at: 5.7, dur: 0.12 },
+      { freq: 783.99, at: 5.85, dur: 0.4 },
+      { freq: 659.25, at: 6.3, dur: 0.4 },
+      { freq: 523.25, at: 6.75, dur: 0.4 },
+      { freq: 493.88, at: 7.2, dur: 0.4 },
+      { freq: 440.0, at: 7.65, dur: 0.7 },
+      { freq: 698.46, at: 8.5, dur: 0.2 },
+      { freq: 698.46, at: 8.8, dur: 0.12 },
+      { freq: 659.25, at: 8.95, dur: 0.4 },
+      { freq: 523.25, at: 9.4, dur: 0.4 },
+      { freq: 587.33, at: 9.85, dur: 0.4 },
+      { freq: 523.25, at: 10.3, dur: 0.9 },
     ],
     peak: 0.26,
   },
