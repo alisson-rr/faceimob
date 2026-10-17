@@ -42,6 +42,10 @@ export const SECRET_SLOTS = {
   // lido por `metaAds.ts`. Não é o token da página: aquele só completa o lead do
   // Lead Ads; este lê gasto e resultados das contas e pausa ou muda verba.
   META_MARKETING_ACCESS_TOKEN: { provider: "meta", label: "marketing_access_token" },
+  // API de Conversões para CRM (0288, `meta-crm-events`): o token gerado no
+  // próprio conjunto de dados e o id dele (o "Pixel Site Faceimob").
+  META_CAPI_ACCESS_TOKEN: { provider: "meta", label: "capi_access_token" },
+  META_CAPI_DATASET_ID: { provider: "meta", label: "capi_dataset_id" },
   VOICE_AI_WEBHOOK_SECRET: { provider: "voice_ai", label: "webhook_secret" },
   // Token só da ponte do relatório do Telegram (`relatorio-qualidade-campanhas`):
   // dá acesso de LEITURA às contagens por campanha, nunca à service role.
