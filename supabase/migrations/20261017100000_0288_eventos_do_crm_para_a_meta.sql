@@ -71,7 +71,7 @@ end;
 $$;
 revoke all on function public.meta_crm_enfileirar(uuid, text) from public, anon, authenticated;
 
-create or replace function public.lead_do_negocio(p_deal_id uuid)
+create or replace function public.meta_crm_lead_do_negocio(p_deal_id uuid)
 returns uuid
 language sql
 stable
@@ -82,7 +82,7 @@ as $$
     (select d.lead_id from public.deals d where d.id = p_deal_id),
     (select k.lead_id from public.deal_lead_links k where k.deal_id = p_deal_id));
 $$;
-revoke all on function public.lead_do_negocio(uuid) from public, anon, authenticated;
+revoke all on function public.meta_crm_lead_do_negocio(uuid) from public, anon, authenticated;
 
 -- 1. Lead atendido -------------------------------------------------------------
 create or replace function public.meta_crm_lead_atendido()
@@ -105,7 +105,7 @@ create trigger meta_crm_lead_atendido
 create or replace function public.meta_crm_visita()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin
-  perform public.meta_crm_enfileirar(coalesce(new.lead_id, public.lead_do_negocio(new.deal_id)), 'Visita agendada');
+  perform public.meta_crm_enfileirar(coalesce(new.lead_id, public.meta_crm_lead_do_negocio(new.deal_id)), 'Visita agendada');
   return null;
 end;
 $$;
@@ -121,10 +121,10 @@ create or replace function public.meta_crm_caso_cca()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   if tg_op = 'INSERT' then
-    perform public.meta_crm_enfileirar(public.lead_do_negocio(new.deal_id), 'Enviado para análise');
+    perform public.meta_crm_enfileirar(public.meta_crm_lead_do_negocio(new.deal_id), 'Enviado para análise');
   end if;
   if new.status = 'approved' and (tg_op = 'INSERT' or old.status is distinct from 'approved') then
-    perform public.meta_crm_enfileirar(public.lead_do_negocio(new.deal_id), 'Crédito aprovado');
+    perform public.meta_crm_enfileirar(public.meta_crm_lead_do_negocio(new.deal_id), 'Crédito aprovado');
   end if;
   return null;
 end;
@@ -142,7 +142,7 @@ returns trigger language plpgsql security definer set search_path = public, pg_t
 begin
   if public.deal_status_bare(new.status_detail) in ('VIROU NEGÓCIO', 'VIROU NEGOCIO', 'VIROU NEGÓCIO COM PENDÊNCIAS')
      and public.deal_status_bare(old.status_detail) is distinct from public.deal_status_bare(new.status_detail) then
-    perform public.meta_crm_enfileirar(public.lead_do_negocio(new.id), 'Virou negócio');
+    perform public.meta_crm_enfileirar(public.meta_crm_lead_do_negocio(new.id), 'Virou negócio');
   end if;
   return null;
 end;
