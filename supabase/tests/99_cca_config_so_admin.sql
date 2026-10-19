@@ -79,9 +79,13 @@ begin
     insert into public.cca_stages (name, color, position, status, active)
     values ('Coluna 151 nova CCA', '#000000', 152, 'under_review', false)
     returning id into v_novo;
+    -- 0292: a CCA oculta a coluna, não exclui (excluir soltava os casos dela).
     delete from public.cca_stages where id = v_novo;
     get diagnostics v_linhas = row_count;
-    if v_linhas <> 1 then v_passou := v_passou || 'não apagou estágio;'; end if;
+    if v_linhas <> 0 then v_passou := v_passou || 'CCA apagou estágio (0292 proíbe);'; end if;
+    update public.cca_stages set active = false where id = v_novo;
+    get diagnostics v_linhas = row_count;
+    if v_linhas <> 1 then v_passou := v_passou || 'CCA não ocultou estágio;'; end if;
   exception when insufficient_privilege then
     v_passou := v_passou || 'não criou estágio;';
   end;
@@ -108,7 +112,7 @@ begin
     and v_passou = ''
     and (select name from public.cca_stages where id = v_col) = 'Coluna 151 CCA'
     and (select label from public.document_types where id = v_tipo) = 'Tipo 151',
-    format('o CCA cria/edita/apaga estágio, mas não altera tipo de documento (%s)', nullif(v_passou, '')));
+    format('o CCA cria, edita e oculta estágio (não apaga, 0292) e não altera tipo de documento (%s)', nullif(v_passou, '')));
 
   -- ── anon ──────────────────────────────────────────────────────────────────
   perform set_config('request.jwt.claims', '', false);

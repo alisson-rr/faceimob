@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -19,7 +19,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { ColorField } from "@/components/shared";
 import { TONE_HEX } from "@/lib/tone";
 import { CCA_STATUS_OPTIONS, ccaStageColor, ccaStatusLabel, type CcaCaseStatus } from "./ccaStage";
-import { ccaKeys, ccaStageNotifiesSales, loadCcaStatusOptions, type CcaStage } from "./ccaData";
+import { useAuth } from "@/contexts/AuthContext";
+import { ccaKeys, ccaStageNotifiesSales, loadCcaStagesForSettings, loadCcaStatusOptions, type CcaStage } from "./ccaData";
 
 /** Selo da lista: raio da escala (`rounded-md`), sem pílula. */
 const SELO = "rounded-md border border-border px-1.5 py-0.5 text-xs leading-none";
@@ -68,6 +69,12 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<CcaStage | null>(null);
   const catalogo = useQuery({ queryKey: ccaKeys.statusOptions, queryFn: loadCcaStatusOptions });
+  const { isAdmin } = useAuth();
+  // Ocultas inclusive (0292): o quadro só traz as ativas, e sem elas aqui não
+  // havia como mostrar de volta uma coluna ocultada.
+  const todas = useQuery({ queryKey: ["cca", "stages", "config"], queryFn: loadCcaStagesForSettings });
+  const lista = todas.data ?? stages;
+  const atualizar = async () => { await Promise.all([onChanged(), todas.refetch()]); };
   // Inativo só aparece se já for o da coluna: some da escolha nova, mas a
   // ligação existente continua visível em vez de parecer "nenhum".
   const opcoes = (catalogo.data ?? []).filter((option) => option.active || option.id === dealStatusId);
@@ -106,12 +113,12 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
           });
         }
       } else {
-        const { error } = await supabase.from("cca_stages").insert({ ...payload, position: Math.max(0, ...stages.map((s) => s.position)) + 1 });
+        const { error } = await supabase.from("cca_stages").insert({ ...payload, position: Math.max(0, ...lista.map((s) => s.position)) + 1 });
         if (error) throw error;
       }
       toast({ variant: "success", title: editing ? "Estágio atualizado" : "Estágio criado" });
       reset();
-      await onChanged();
+      await atualizar();
     } catch (err) {
       toast({
         variant: "destructive",
@@ -134,7 +141,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
         });
       }
       toast({ variant: "success", title: "Estágio excluído" });
-      await onChanged();
+      await atualizar();
     } catch (err) {
       toast({
         variant: "destructive",
@@ -146,15 +153,42 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
     }
   };
 
+  /** Ocultar tira a coluna do quadro sem soltar os casos; mostrar a devolve (0292). */
+  const alternarOculta = async (stage: CcaStage) => {
+    const ocultar = stage.active !== false;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from("cca_stages").update({ active: !ocultar }).eq("id", stage.id).select("id");
+      if (error) throw error;
+      if (!data?.length) {
+        throw dbError("cca_stages", {
+          code: "P0001",
+          message: "Ela pode ter sido removida por outra pessoa ou seu perfil não tem permissão. Recarregue a página.",
+        });
+      }
+      toast({ variant: "success", title: ocultar ? `"${stage.name}" oculta do quadro` : `"${stage.name}" de volta ao quadro` });
+      await atualizar();
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: ocultar ? "Não foi possível ocultar a coluna" : "Não foi possível mostrar a coluna",
+        description: describeError(err, "A coluna continua como estava."),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const reorder = async (index: number, direction: number) => {
-    const ids = stages.map((s) => s.id);
+    const ids = lista.map((s) => s.id);
     [ids[index], ids[index + direction]] = [ids[index + direction], ids[index]];
     setSaving(true);
     try {
       // RPC da 0156; remover a ponte quando types.ts for regenerado.
       const { error } = await supabase.rpc("reorder_cca_stages" as never, { p_stage_ids: ids } as never);
       if (error) throw error;
-      await onChanged();
+      await atualizar();
       toast({ variant: "success", title: "Ordem das colunas atualizada" });
     } catch (error) {
       toast({ variant: "destructive", title: "Não foi possível reordenar", description: describeError(error, "A ordem não foi alterada.") });
@@ -287,19 +321,22 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
             )}
 
             <ul className="space-y-2">
-              {stages.map((stage, index) => {
+              {lista.map((stage, index) => {
                 // Reserva: o rótulo que o quadro já carrega (0155). O catálogo é
                 // filtrado e pode falhar; sem ela o selo ficava em "…" para sempre.
                 const gravado = rotuloDoStatus(stage.deal_status_id) ?? stage.deal_status?.label;
                 return (
-                  <li key={stage.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-2">
+                  <li key={stage.id} className={`flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/20 p-2 ${stage.active === false ? "opacity-60" : ""}`}>
                     {/* Nome em linha própria e sem corte: com as 19 colunas da 0150
                         os nomes são longos e parecidos ("ANÁLISE CEOPF", "INCONFORME
                         CEOPF"), e é por ele que se escolhe qual editar. */}
                     <div className="flex min-w-0 items-start gap-2">
                       <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: ccaStageColor(stage.color) }} aria-hidden />
                       <div className="min-w-0">
-                        <p className="break-words text-xs font-medium">{stage.name}</p>
+                        <p className="break-words text-xs font-medium">
+                          {stage.name}
+                          {stage.active === false && <span className={`${SELO} ml-1 bg-muted text-muted-foreground`}>Oculta</span>}
+                        </p>
                         <p className="break-words text-xs text-muted-foreground">{ccaStatusLabel(stage.status)}</p>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {ccaStageNotifiesSales(stage)
@@ -314,7 +351,7 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
                     <div className="flex flex-shrink-0 gap-1">
                       <Button variant="ghost" size="icon" className="h-7 w-7" disabled={saving || index === 0}
                         aria-label={`Mover ${stage.name} para a esquerda`} onClick={() => void reorder(index, -1)}><ArrowUp className="h-3 w-3" /></Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={saving || index === stages.length - 1}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" disabled={saving || index === lista.length - 1}
                         aria-label={`Mover ${stage.name} para a direita`} onClick={() => void reorder(index, 1)}><ArrowDown className="h-3 w-3" /></Button>
                       {!somenteOrdem && (<>
                       <Button
@@ -338,13 +375,26 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <Button
-                        variant="ghost" size="icon" className="h-7 w-7 text-destructive"
-                        aria-label={`Excluir o estágio ${stage.name}`}
+                        variant="ghost" size="icon" className="h-7 w-7"
+                        aria-label={stage.active === false ? `Mostrar a coluna ${stage.name}` : `Ocultar a coluna ${stage.name}`}
+                        title={stage.active === false ? "Mostrar no quadro" : "Ocultar do quadro"}
                         disabled={saving}
-                        onClick={() => setRemoving(stage)}
+                        onClick={() => void alternarOculta(stage)}
                       >
-                        <Trash2 className="h-3 w-3" />
+                        {stage.active === false ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
                       </Button>
+                      {/* Excluir solta os casos da coluna (eles somem do quadro):
+                          só o admin, desde a 0292. A CCA oculta. */}
+                      {isAdmin && (
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                          aria-label={`Excluir o estágio ${stage.name}`}
+                          disabled={saving}
+                          onClick={() => setRemoving(stage)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                       </>)}
                     </div>
                   </li>
@@ -365,7 +415,8 @@ export function CcaStageSettingsDialog({ stages, onClose, onChanged, somenteOrde
             <AlertDialogHeader>
               <AlertDialogTitle>Excluir o estágio "{removing.name}"?</AlertDialogTitle>
               <AlertDialogDescription>
-                Os casos que estiverem nele ficam sem estágio: passam para a primeira coluna de mesmo
+                Prefira ocultar: a coluna sai do quadro e volta quando quiser. Excluir solta os casos dela:
+                eles ficam sem estágio, passam para a primeira coluna de mesmo
                 desfecho e, sem nenhuma, saem do quadro. Não dá para desfazer.
               </AlertDialogDescription>
             </AlertDialogHeader>

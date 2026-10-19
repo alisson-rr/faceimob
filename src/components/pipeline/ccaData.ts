@@ -27,6 +27,21 @@ export interface CcaStage {
   notify_sales?: boolean;
   /** Nome do Status 2 de `deal_status_id`, para o diálogo de mover dizer qual grava. */
   deal_status?: { label: string } | null;
+  /** Coluna oculta (0292): sai do quadro sem soltar os casos. O quadro só lê as ativas. */
+  active?: boolean;
+}
+
+/**
+ * Todas as colunas, ocultas inclusive, para a configuração da esteira poder
+ * mostrar de volta o que foi ocultado (0292). O quadro continua lendo só as ativas.
+ */
+export async function loadCcaStagesForSettings(): Promise<CcaStage[]> {
+  const { data, error } = await supabase
+    .from("cca_stages")
+    .select("id,name,color,position,status,active,deal_status_id,notify_sales,deal_status:deal_statuses(label)")
+    .order("position");
+  if (error) throw dbError("cca_stages", error);
+  return data ?? [];
 }
 
 /** A coluna avisa o comercial? Ausente é o padrão do banco: avisa. */
