@@ -32,8 +32,9 @@ begin
   insert into public.team_members (team_id, profile_id) values (v_t1, cor1), (v_t1, cor2), (v_t2, cor3);
 
   -- Venda a dois corretores no mês: meia venda para cada.
-  insert into public.deals (stage_id, created_by, status_detail, month_base, outcome)
-    values ((select id from public.pipeline_stages where is_initial limit 1), cor1, 'EM CONTRATO', v_mes, 'won')
+  -- Em contrato: o Status 1 VENDA conta como venda com o negócio ainda aberto.
+  insert into public.deals (stage_id, created_by, status_detail, month_base)
+    values ((select id from public.pipeline_stages where is_initial limit 1), cor1, 'EM CONTRATO', v_mes)
     returning id into v_deal;
   insert into public.deal_participants (deal_id, profile_id, role, ordinal) values
     (v_deal, cor1, 'broker', 1), (v_deal, cor2, 'broker', 2) on conflict do nothing;
