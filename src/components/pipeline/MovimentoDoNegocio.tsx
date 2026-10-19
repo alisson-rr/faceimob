@@ -210,7 +210,7 @@ export function MovimentoDoNegocio({
       <Textarea id={`${id}-${sufixo}`} rows={2} maxLength={2000} value={nota} onChange={(e) => setNota(e.target.value)} placeholder={exemplo} />
     </>
   );
-  const botao = (rotulo: string, aoClicar: () => void, desabilitado: boolean, variante: "default" | "outline" = "default") => (
+  const botao = (rotulo: string, aoClicar: () => void, desabilitado: boolean, variante: "success" | "outline" = "success") => (
     <Button size="sm" variant={variante} disabled={ocupado || desabilitado} onClick={aoClicar}>
       {ocupado && <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />}
       {rotulo}
@@ -230,7 +230,7 @@ export function MovimentoDoNegocio({
           <div className="flex flex-wrap gap-2">
             {APROVACOES.map(({ bare, rotulo }) => (
               <span key={bare} title={bloqueio(bare) ?? undefined}>
-                {botao(rotulo, () => void mover(bare, `Negócio em ${rotulo.toLowerCase()}`), !comentarioOk || Boolean(bloqueio(bare)), "outline")}
+                {botao(rotulo, () => void mover(bare, `Negócio em ${rotulo.toLowerCase()}`), !comentarioOk || Boolean(bloqueio(bare)))}
               </span>
             ))}
           </div>

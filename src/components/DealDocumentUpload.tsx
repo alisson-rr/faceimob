@@ -985,7 +985,7 @@ export default function DealDocumentUpload({
             )}
             <Button
               size="sm"
-              variant="outline"
+              variant="success"
               className="ml-auto h-8 shrink-0 gap-1 text-xs"
               disabled={!developer.hasEmail}
               aria-describedby={developer.hasEmail ? undefined : `${fieldId}-construtora-motivo`}

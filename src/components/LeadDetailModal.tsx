@@ -392,7 +392,7 @@ export default function LeadDetailModal({
           {/* Encerrar com motivo: a saída que faltava. Sem ela o único jeito de
               tirar o lead da conta dos atrasados era reagendar para sempre. */}
           {writable && encerravel && (
-            <Button size="sm" variant="tintDanger" onClick={() => setClosing(true)}>
+            <Button size="sm" variant="destructive" onClick={() => setClosing(true)}>
               <XCircle className="h-4 w-4" /> Encerrar
             </Button>
           )}

@@ -463,6 +463,7 @@ export default function DeveloperSubmissionDialog({
               sequer clicável: o botão habilitado só levaria a um toast pedindo
               o que a tela não oferece. */}
           <Button
+            variant="success"
             onClick={submit}
             disabled={loading || sending || docs.length === 0 || ausentes === docs.length}
             className="gap-2"

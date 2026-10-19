@@ -131,7 +131,7 @@ export default function Candidatos() {
               {disponiveis.map((c) => (
                 <CartaoCandidato key={c.id} c={c} ocupado={ocupado === c.id} onDescartar={() => setDescartando(c)}>
                   <Button
-                    size="sm" className="gap-1" disabled={ocupado === c.id}
+                    size="sm" variant="success" className="gap-1" disabled={ocupado === c.id}
                     onClick={() => void agir(c.id, () => pegarCandidato(c.id), `${c.nome} agora é seu`, "Não foi possível pegar o candidato")}
                   >
                     {ocupado === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}

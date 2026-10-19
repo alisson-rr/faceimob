@@ -105,7 +105,7 @@ export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }:
         )}
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose} disabled={enviando}>Não</Button>
-          <Button onClick={() => onAssumir(comentario)} disabled={enviando}>
+          <Button variant="success" onClick={() => onAssumir(comentario)} disabled={enviando}>
             {enviando ? "Retomando…" : "Sim, retomar negociação"}
           </Button>
         </DialogFooter>

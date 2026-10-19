@@ -87,7 +87,7 @@ export function MoverStatusDialog({ movimento, envioParaAnalise, onClose, onMove
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={enviando}>Cancelar</Button>
-          <Button onClick={() => void confirmar()} disabled={!limpo || enviando}>
+          <Button variant="success" onClick={() => void confirmar()} disabled={!limpo || enviando}>
             {enviando ? "Enviando…" : envioParaAnalise ? "Enviar para análise" : "Mover"}
           </Button>
         </DialogFooter>
