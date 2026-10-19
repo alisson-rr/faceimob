@@ -331,7 +331,11 @@ describe("EngagementLayer · placar", () => {
       await act(async () => { handlerDe("game_events")(evento({ id: `r${i}`, event_code: "esteira" })); });
       await act(async () => { vi.advanceTimersByTime(100); });
     }
-    await act(async () => { vi.advanceTimersByTime(2000); });
+    // Check-in do meio-dia (19/10/2026): nada vai ao banco no primeiro minuto;
+    // a releitura sai entre 60 e 90 s, uma vez só.
+    await act(async () => { vi.advanceTimersByTime(55_000); });
+    expect(spy).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(36_000); });
 
     expect(spy).toHaveBeenCalledTimes(1);
     expect(invalidada(CHAVES.ranking)).toBe(true);
