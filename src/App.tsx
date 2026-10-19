@@ -52,6 +52,7 @@ const MetaAdsSetup = tela(() => import("@/pages/MetaAdsSetup"));
 const AdminLeadAutomation = tela(() => import("@/pages/AdminLeadAutomation"));
 const SdrModule = tela(() => import("@/pages/SdrModule"));
 const Candidatos = tela(() => import("@/pages/Candidatos"));
+const Diretorias = tela(() => import("@/pages/Diretorias"));
 const CampanhasFacebook = tela(() => import("@/pages/CampanhasFacebook"));
 
 /**
@@ -312,6 +313,7 @@ const App = () => (
               <Route path="/gamification" element={<Gamification />} />
               <Route path="/sdr" element={<SdrModule />} />
               <Route path="/candidatos" element={<Candidatos />} />
+              <Route path="/diretorias" element={<Diretorias />} />
               <Route path="/campanhas" element={<CampanhasFacebook />} />
               </Route>
             </Route>
