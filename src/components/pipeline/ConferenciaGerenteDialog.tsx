@@ -61,7 +61,7 @@ export function ConferenciaGerenteDialog({ cliente, isNew, enviando, erro, onEnv
           <Button variant="outline" onClick={() => onAnexos(limpa)} disabled={enviando}>
             {isNew ? "Criar e anexar documentos" : "Anexar documentos"}
           </Button>
-          <Button onClick={() => onEnviar(limpa)} disabled={!limpa || enviando} className="gap-1">
+          <Button variant="success" onClick={() => onEnviar(limpa)} disabled={!limpa || enviando} className="gap-1">
             <Send className="h-3.5 w-3.5" aria-hidden />
             {enviando ? "Enviando…" : "Enviar ao gerente"}
           </Button>

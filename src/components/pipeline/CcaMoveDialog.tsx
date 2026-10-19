@@ -64,6 +64,11 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
   const [saving, setSaving] = useState(false);
 
   const independent = isIndependentCcaStage(stage.name);
+  // Cor pelo destino (19/10/2026): avanço em verde, pendência que volta para
+  // correção em amarelo, reprovado/cancelado em vermelho.
+  const corDoMovimento = stage.status === "rejected" || stage.status === "cancelled"
+    ? "destructive"
+    : stage.status === "pending_documents" ? "devolver" : "success";
   const notifies = independent || ccaStageNotifiesSales(stage);
   const levaAoAprovado = Boolean(!independent && negocio && isBehindStage(negocio, approvedStage));
 
@@ -202,7 +207,7 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
 
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" disabled={saving || !message.trim()} onClick={() => void confirm()}>
+          <Button size="sm" variant={corDoMovimento} disabled={saving || !message.trim()} onClick={() => void confirm()}>
             {saving ? "Movendo…" : "Confirmar"}
           </Button>
         </DialogFooter>
