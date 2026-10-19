@@ -102,7 +102,7 @@ export default function DealDetailModal({
   deal, open, onClose, onSave, onReviewChanged, people, developers, stages, defaultMonth, closeOnSave, onAssumido,
   initialTab = "detalhes",
 }: Props) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const id = useId();
   const field = (name: string) => `${id}-${name}`;
 
@@ -265,7 +265,11 @@ export default function DealDetailModal({
           });
         }
       }
-      if (dealId && Object.keys(cca).length > 0) await saveCcaAnalysis(dealId, cca);
+      // Só quem edita a análise a grava (`cca.review`, a mesma trava do painel).
+      // Abrir a aba CCA semeia `cca` com o que está no banco para qualquer um;
+      // sem esta guarda o gerente que só olhou a aba via a gravação falhar e,
+      // com ela, a aprovação da conferência que vinha logo depois (19/10/2026).
+      if (dealId && can("cca.review") && Object.keys(cca).length > 0) await saveCcaAnalysis(dealId, cca);
       if (avisar && !virouVenda) toast({ variant: "success", title: isNew ? "Negócio criado! 🚀" : "Negócio atualizado" });
       if (fechar) {
         onClose();
