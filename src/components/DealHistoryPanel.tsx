@@ -30,6 +30,13 @@ const KIND_LABEL: Record<string, string> = {
  * DEFINER) e nenhuma tela lia. É o "histórico de alterações" que o CCA pediu:
  * quem mudou o quê e quando, incluindo troca de etapa e de documento.
  */
+/**
+ * Status sem o número da planilha antiga ("16. PENDENTE" → "PENDENTE", 19/10/2026).
+ * Só na troca de status: valor e data também começam com número e ponto.
+ */
+const valorDoHistorico = (e: Pick<HistoryEntry, "kind">, valor: string | null) =>
+  !valor ? "—" : e.kind === "status_changed" ? valor.replace(/^\s*\d+\s*\.\s*/, "") : valor;
+
 export default function DealHistoryPanel({ dealId }: { dealId: string }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [names, setNames] = useState<Map<string, string>>(new Map());
@@ -97,7 +104,7 @@ export default function DealHistoryPanel({ dealId }: { dealId: string }) {
                   </>
                 ) : e.from_value || e.to_value ? (
                   <>
-                    {e.from_value ?? "—"} → <span className="text-foreground">{e.to_value ?? "—"}</span>
+                    {valorDoHistorico(e, e.from_value)} → <span className="text-foreground">{valorDoHistorico(e, e.to_value)}</span>
                     {" · "}
                   </>
                 ) : null}

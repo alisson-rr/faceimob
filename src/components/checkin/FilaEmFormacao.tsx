@@ -56,8 +56,11 @@ function porGrupo(linhas: LinhaDaFila[]) {
  * atrasados). Atualiza com o check-in e cada entrega.
  */
 export function FilaEmFormacao() {
-  const { user } = useAuth();
+  const { user, isAdmin, roles } = useAuth();
   const queryClient = useQueryClient();
+  // Corretor vê só a roleta em que está (19/10/2026): as dos outros grupos geravam
+  // dúvida ("por que não estou nessa?"). Liderança e admin seguem vendo todas.
+  const veTodas = isAdmin || roles.some((r) => r === "manager" || r === "director" || r === "partner");
 
   const fila = useQuery({
     queryKey: ["checkin", "fila-em-formacao"],
@@ -84,8 +87,11 @@ export function FilaEmFormacao() {
 
   if (!user?.id) return null;
 
-  const grupos = porGrupo(fila.data ?? []);
-  const presentes = (fila.data ?? []).filter((l) => l.situacao !== "bloqueado").length;
+  const grupos = porGrupo(fila.data ?? [])
+    .filter((g) => veTodas || g.linhas.some((l) => l.profile_id === user.id));
+  // Fora de todas as roletas, o corretor não vê o quadro.
+  if (!veTodas && !fila.isPending && !fila.isError && grupos.length === 0) return null;
+  const presentes = grupos.flatMap((g) => g.linhas).filter((l) => l.situacao !== "bloqueado").length;
 
   return (
     <details className="group rounded-2xl border border-primary/35 bg-card p-4">
