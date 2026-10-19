@@ -1,7 +1,6 @@
 import { useId, useState } from "react";
 import { Mail, Send, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,25 +12,10 @@ import { fillWhatsappTemplate, waNumber } from "./model";
 import { preencherMensagem } from "./mensagensProntas";
 import { useMensagensProntas, useMeuApelido } from "./mensagensProntasData";
 import { MensagensProntasEditor } from "./MensagensProntasEditor";
-import { abrirCartaoDoLead, baixarContato, compartilharContato, nomeDoContato } from "./contatoVcard";
+import { abrirCartaoDoLead, compartilharContato, nomeDoContato } from "./contatoVcard";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
-import { APP_WHATSAPP_ROTULO, abrirWhatsapp, ehAndroid, ehCelular, ehIphone, ehSafariIphone, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
+import { APP_WHATSAPP_ROTULO, abrirWhatsapp, ehAndroid, ehCelular, ehSafariIphone, gravarAppWhatsapp, lerAppWhatsapp, linkWhatsapp, type AppWhatsapp } from "@/lib/whatsapp";
 import { cn } from "@/lib/utils";
-
-/**
- * Preferência do aparelho: salvar o contato junto com o WhatsApp (padrão: sim no
- * celular). No computador o .vcf só vira download inútil — nem o nome salva —,
- * então lá a opção nem existe.
- */
-const CHAVE_SALVAR_CONTATO = "faceimob:salvar-contato-no-whatsapp";
-const lerSalvarContato = () => {
-  if (!ehCelular()) return false;
-  try {
-    return localStorage.getItem(CHAVE_SALVAR_CONTATO) !== "nao";
-  } catch {
-    return true;
-  }
-};
 
 /** Abre o WhatsApp Web com a mensagem pronta — o envio é no aplicativo. */
 export function WhatsAppDialog({
@@ -48,7 +32,6 @@ export function WhatsAppDialog({
   const [message, setMessage] = useState("");
   const [app, setApp] = useState<AppWhatsapp>(lerAppWhatsapp);
   const [gerenciando, setGerenciando] = useState(false);
-  const [salvarContato, setSalvarContato] = useState(lerSalvarContato);
   const prontas = useMensagensProntas();
   const apelido = useMeuApelido();
   const mensagens = prontas.data ?? [];
@@ -84,7 +67,11 @@ export function WhatsAppDialog({
     }));
   };
 
-  const salvarNoIphone = async () => {
+  // Só sob pedido (19/10/2026): baixar o .vcf a cada WhatsApp enchia os
+  // Downloads do Android sem criar o contato. No Android o botão abre o
+  // compartilhamento (o corretor escolhe "Contatos"); no Safari do iPhone, a
+  // tela nativa "Adicionar contato".
+  const salvarNoCelular = async () => {
     // Safari: a tela nativa "Adicionar contato" abre já preenchida (um toque em Criar).
     // O iOS não deixa site nenhum gravar na agenda sozinho.
     if (ehSafariIphone()) {
@@ -107,9 +94,6 @@ export function WhatsAppDialog({
       toast({ variant: "destructive", title: "Lead sem telefone", description: "Cadastre o telefone antes de mandar WhatsApp." });
       return;
     }
-    // Contato no celular num toque (04/10/2026): o .vcf abre "Adicionar contato".
-    // iPhone não abre o .vcf baixado: lá o contato sai pelo botão "Salvar contato".
-    if (salvarContato && ehCelular() && !ehIphone()) baixarContato(lead);
     const link = linkWhatsapp(number, message, app);
     // `intent://` só abre o app pela própria aba; o `wa.me` reaproveita a aba do WhatsApp.
     if (ehAndroid()) window.location.href = link;
@@ -177,37 +161,15 @@ export function WhatsAppDialog({
           />
         </div>
 
-        {ehIphone() && (
+        {ehCelular() && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
           <div className="min-w-0 text-sm leading-snug">
-            Contato no iPhone
+            Contato no celular
             <span className="block truncate text-xs text-muted-foreground">{nomeDoContato(lead)}</span>
           </div>
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => void salvarNoIphone()}>
+          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => void salvarNoCelular()}>
             Salvar contato
           </Button>
-        </div>
-        )}
-
-        {ehCelular() && !ehIphone() && (
-        <div className="flex items-start gap-2 rounded-lg border border-border p-3">
-          <Checkbox
-            id={`${fieldId}-contato`}
-            checked={salvarContato}
-            onCheckedChange={(marcado) => {
-              const valor = marcado === true;
-              setSalvarContato(valor);
-              try {
-                localStorage.setItem(CHAVE_SALVAR_CONTATO, valor ? "sim" : "nao");
-              } catch {
-                // Sem armazenamento local, vale só nesta janela.
-              }
-            }}
-          />
-          <Label htmlFor={`${fieldId}-contato`} className="cursor-pointer text-sm font-normal leading-snug">
-            Salvar contato no celular
-            <span className="block text-xs text-muted-foreground">{nomeDoContato(lead)}</span>
-          </Label>
         </div>
         )}
 
