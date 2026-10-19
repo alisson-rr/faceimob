@@ -94,6 +94,9 @@ const celula = (rotulo: string, valor: string, borda: boolean) =>
  * CORRETOR 2 | GERENTE 2 — o que estiver vazio sai, para não sobrar "| |".
  * O CPF vai completo, como no modelo anterior (decisão do cliente).
  */
+/** Tira o número de ordem do Excel do começo do status ("16. PENDENTE" → "PENDENTE"). */
+export const semNumero = (texto: string) => texto.replace(/^\s*\d+\s*\.\s*/, "");
+
 export function montarEmailDeMovimento(
   email: CcaMoveEmail,
   appUrl?: string | null,
@@ -101,7 +104,8 @@ export function montarEmailDeMovimento(
   const d = email.detalhes ?? {};
   const pipeline = email.source === "pipeline";
   const codigo = umaLinha(d.codigo ?? email.deal_code) || "negócio sem código";
-  const status2 = umaLinha(d.status2) || umaLinha(email.stage_name) || "Sem Status 2";
+  // Sem o número da planilha antiga ("16. PENDENTE" vira "PENDENTE", 19/10/2026).
+  const status2 = semNumero(umaLinha(d.status2) || umaLinha(email.stage_name)) || "Sem Status 2";
   const cliente = umaLinha(d.cliente ?? email.client_name) || "Cliente não informado";
   const cpf = formatarCpf(d.cpf);
   const quem = umaLinha(email.actor_name) || "Alguém";

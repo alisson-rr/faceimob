@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** Fila em formação: todo usuário autenticado vê; ordem e situação vêm do banco. */
-const m = vi.hoisted(() => ({ user: { id: "u1" } as { id: string } | null, linhas: [] as unknown[], rpc: vi.fn() }));
+const m = vi.hoisted(() => ({ user: { id: "u1" } as { id: string } | null, isAdmin: true, linhas: [] as unknown[], rpc: vi.fn() }));
 
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: m.user }) }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: m.user, isAdmin: m.isAdmin, roles: m.isAdmin ? ["admin"] : ["broker"] }) }));
 vi.mock("@/integrations/supabase/client", () => {
   const canal = { on: () => canal, subscribe: () => canal };
   return {
@@ -71,11 +71,25 @@ describe("FilaEmFormacao", () => {
     expect(el.textContent).toContain("2 corretor(es) em check-in hoje");
   });
 
-  it("também aparece e consulta para usuário autenticado que não é admin", async () => {
-    m.user = { id: "corretor" };
-    m.linhas = [linha("Corretor", 1, "na_fila")];
+  // 19/10/2026: o corretor vê só a roleta em que está; fora de todas, nada.
+  it("corretor vê só a roleta em que está", async () => {
+    m.user = { id: "Corretor" };
+    m.isAdmin = false;
+    m.linhas = [linha("Corretor", 1, "na_fila"), linha("Outro", 1, "na_fila", { group_id: "g2", group_name: "Roleta Sul" })];
     const el = montar();
     await vi.waitFor(() => expect(el.textContent).toContain("Corretor"));
     expect(m.rpc).toHaveBeenCalledWith("fila_em_formacao");
+    expect(el.textContent).not.toContain("Roleta Sul");
+    m.isAdmin = true;
+  });
+
+  it("corretor fora de todas as roletas não vê o quadro", async () => {
+    m.user = { id: "Ninguem" };
+    m.isAdmin = false;
+    m.linhas = [linha("Outro", 1, "na_fila")];
+    const el = montar();
+    await vi.waitFor(() => expect(m.rpc).toHaveBeenCalled());
+    await vi.waitFor(() => expect(el.textContent).not.toContain("Fila em formação"));
+    m.isAdmin = true;
   });
 });

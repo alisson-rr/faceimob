@@ -108,3 +108,17 @@ describe("linkDoPipeline", () => {
     expect(linkDoPipeline(undefined)).toBeNull();
   });
 });
+
+// 19/10/2026: o número da planilha antiga sai do título e do corpo.
+describe("título sem o número do status", () => {
+  it("\"16. PENDENTE\" vira \"PENDENTE\" no assunto", async () => {
+    const { montarEmailDeMovimento, semNumero } = await import("./email.ts");
+    expect(semNumero("16. PENDENTE")).toBe("PENDENTE");
+    expect(semNumero("RET. ESTEIRA AGIL")).toBe("RET. ESTEIRA AGIL");
+    const { subject } = montarEmailDeMovimento({
+      id: "e9", deal_id: "d9", to_email: "a@b.com", deal_code: "NEG-1", client_name: "JOÃO VITOR", stage_name: "16. PENDENTE",
+      actor_name: "Ana", message: "", attempts: 0, status: "pending", source: "cca", detalhes: null,
+    } as never);
+    expect(subject.startsWith("PENDENTE | JOÃO VITOR")).toBe(true);
+  });
+});
