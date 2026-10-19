@@ -21,6 +21,8 @@ import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import { loadCcaCase } from "@/components/pipeline/ccaData";
 import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
+import { PdfPaginas } from "@/components/PdfPaginas";
+import { ehCelular } from "@/lib/whatsapp";
 import {
   DEVELOPER_WITHOUT_EMAIL,
   MAX_DOCUMENT_ALIAS,
@@ -483,6 +485,9 @@ export default function DealDocumentUpload({
       setBaixandoTodos(false);
     }
   };
+
+  const ehPdf = (doc: DealDocumentRecord) =>
+    doc.mime_type === "application/pdf" || /.pdf$/i.test(doc.stored_name);
 
   /** Abre no próprio modal: não troca de aba e não dispara download. */
   const previewDocument = async (doc: DealDocumentRecord) => {
@@ -1430,6 +1435,9 @@ export default function DealDocumentUpload({
                   alt={documentDisplayName(preview.doc)}
                   className="mx-auto h-auto max-w-full"
                 />
+              ) : ehPdf(preview.doc) && ehCelular() ? (
+                // Celular (19/10/2026): todas as páginas, roláveis, no próprio modal.
+                <PdfPaginas url={preview.url} titulo={documentDisplayName(preview.doc)} />
               ) : (
                 <iframe
                   title={`Visualização de ${documentDisplayName(preview.doc)}`}
