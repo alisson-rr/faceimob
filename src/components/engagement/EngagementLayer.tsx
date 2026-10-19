@@ -57,8 +57,16 @@ const SALE_WINDOW_MS = 500;
  * por corretor do rateio e por regra, e toda aba logada recebe todas: refazer o
  * ranking a cada linha repetia no servidor a mesma leitura cara N vezes por aba
  * (o cancelamento do TanStack Query só vale no cliente).
+ *
+ * 19/10/2026: com 1,5 s o check-in do meio-dia (dezenas de pontos em poucos
+ * segundos) fazia TODA aba aberta refazer `visible_game_ranking` (~1 s no
+ * banco) junto com as outras, e o pool da API esgotava: o app inteiro caía.
+ * Agora é no máximo uma releitura por minuto por aba, e cada aba sorteia um
+ * atraso extra para as releituras não chegarem ao banco no mesmo segundo. A
+ * venda continua refazendo na hora (`flushSales`), porque o card precisa do nome.
  */
-const PLACAR_MS = 1500;
+const PLACAR_MS = 60_000;
+const PLACAR_ESPALHAR_MS = 30_000;
 
 /**
  * Tempo do card de venda na tela: o trecho inteiro da música. Aviso permanente
@@ -350,7 +358,7 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
           // Qualquer pontuação mexe no placar — o ranking deixa de ser a foto do
           // momento em que a tela abriu. Uma releitura por rajada (`PLACAR_MS`),
           // não uma por linha: a venda sozinha já grava várias.
-          if (!placarTimer.current) placarTimer.current = setTimeout(() => void atualizarPlacar(), PLACAR_MS);
+          if (!placarTimer.current) placarTimer.current = setTimeout(() => void atualizarPlacar(), PLACAR_MS + Math.random() * PLACAR_ESPALHAR_MS);
           if (row.event_code !== "venda") return;
           if (seen.current.has(row.id)) return;
           if (seen.current.size >= SEEN_LIMIT) seen.current.clear();

@@ -712,8 +712,8 @@ export default function DealDocumentUpload({
   const canReview = isAdmin || myRoles.some((role) => role === "manager" || role === "director");
   // 0285: o aprovado na CCA (e tudo depois de VIROU NEGÓCIO) chega travado
   // (`locked_at`); o complementar, não. CCA e admin excluem em qualquer fase.
-  // A RLS (`deal_document_pode_excluir`) ainda recusa o complementar enquanto o
-  // dossiê está em análise, com a frase de `remove`.
+  // Desde a 0290 o complementar sai em qualquer fase, inclusive com a análise
+  // na CCA; depois de VIROU NEGÓCIO tudo chega travado.
   const podeExcluir = (doc: DealDocumentRecord) =>
     isAdmin || roles.includes("cca") || (canUpload && !doc.locked_at);
   const temTravados = docs.some((doc) => doc.locked_at && !doc.superseded_at);
@@ -1064,7 +1064,7 @@ export default function DealDocumentUpload({
         <p className="text-xs text-muted-foreground">
           {pendenciaDoContrato
             ? "Virou negócio com pendência: anexe o que falta (o CCA é avisado). Os documentos aprovados ficam travados."
-            : "Documentos aprovados ficam travados. Os complementares podem ser excluídos ou renomeados até o envio para análise."}
+            : "Documentos aprovados ficam travados. Os complementares podem ser excluídos ou renomeados até virar negócio."}
         </p>
       )}
 
