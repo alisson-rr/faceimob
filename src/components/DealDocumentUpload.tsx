@@ -844,57 +844,11 @@ export default function DealDocumentUpload({
   const mostraAcoes = parte !== "arquivos";
   const mostraArquivos = parte !== "acoes";
 
-  return (
-    <div className="space-y-3">
-      {mostraAcoes && (
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
-          {casoAberto && filaCca && <p className="text-xs text-muted-foreground">Na fila da CCA: {filaCca}</p>}
-        </div>
-
-        {/* Quem enviou e quem decidiu: a primeira pergunta de quem recebe a devolução. */}
-        {(enviadoPor || decididoPor) && (
-          <dl className="space-y-0.5 text-xs text-muted-foreground">
-            {enviadoPor && (
-              <div className="flex flex-wrap gap-x-1">
-                <dt>Último envio</dt>
-                <dd className="text-foreground">
-                  {enviadoPor}{review?.review_esteira ? ` · ${REVIEW_ESTEIRA_LABEL[review.review_esteira]}` : ""}
-                </dd>
-              </div>
-            )}
-            {decididoPor && (
-              <div className="flex flex-wrap gap-x-1">
-                <dt>{status === "returned" ? "Devolvido por" : "Conferido por"}</dt>
-                <dd className="text-foreground">{decididoPor}</dd>
-              </div>
-            )}
-          </dl>
-        )}
-
-        {status === "returned" && review?.document_review_reason && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2">
-            <p className="text-xs font-semibold text-destructive">Motivo da devolução</p>
-            <p className="mt-0.5 text-xs text-foreground">{review.document_review_reason}</p>
-          </div>
-        )}
-
-        <EsteiraDoNegocio
-          titulo={REVIEW_ESTEIRA_LABEL.agil}
-          envios={enviosAgil}
-          nomes={nomes}
-          aberta={aberta === "agil"}
-          disponivel={podeAgil}
-          rotuloEnvio={reenvioIncompleto ? "Reenviar (encerra o envio anterior)" : reenvioPendente ? "Reenviar à Esteira Ágil (pendência)" : "Enviar à Esteira Ágil"}
-          onAlternar={(ligado) => setAberta(ligado ? "agil" : null)}
-          aviso={!canSubmit && (status === "draft" || status === "returned")
-            ? "Só corretor, gerente ou diretor do negócio envia o dossiê; aqui você acompanha o andamento."
-            : null}
-        >
-          {formularioDeEnvio("agil")}
-        </EsteiraDoNegocio>
-
+  // Conferência do gerente embaixo da esteira EM ANÁLISE (19/10/2026): no 2º
+  // envio ela ficava sob a Esteira Ágil e parecia ser dela.
+  const esteiraEmConferencia: ReviewEsteira = review?.review_esteira === "virar" ? "virar" : "agil";
+  const conferencia = (
+    <>
         {canReview && status === "pending" && (
           <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
             <p className="text-sm font-bold">Conferência do gerente</p>
@@ -948,6 +902,61 @@ export default function DealDocumentUpload({
             crédito. O andamento aparece no Status 2 e no histórico.
           </p>
         )}
+    </>
+  );
+
+  return (
+    <div className="space-y-3">
+      {mostraAcoes && (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Badge variant="outline" className={meta.className}>{meta.label}</Badge>
+          {casoAberto && filaCca && <p className="text-xs text-muted-foreground">Na fila da CCA: {filaCca}</p>}
+        </div>
+
+        {/* Quem enviou e quem decidiu: a primeira pergunta de quem recebe a devolução. */}
+        {(enviadoPor || decididoPor) && (
+          <dl className="space-y-0.5 text-xs text-muted-foreground">
+            {enviadoPor && (
+              <div className="flex flex-wrap gap-x-1">
+                <dt>Último envio</dt>
+                <dd className="text-foreground">
+                  {enviadoPor}{review?.review_esteira ? ` · ${REVIEW_ESTEIRA_LABEL[review.review_esteira]}` : ""}
+                </dd>
+              </div>
+            )}
+            {decididoPor && (
+              <div className="flex flex-wrap gap-x-1">
+                <dt>{status === "returned" ? "Devolvido por" : "Conferido por"}</dt>
+                <dd className="text-foreground">{decididoPor}</dd>
+              </div>
+            )}
+          </dl>
+        )}
+
+        {status === "returned" && review?.document_review_reason && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2">
+            <p className="text-xs font-semibold text-destructive">Motivo da devolução</p>
+            <p className="mt-0.5 text-xs text-foreground">{review.document_review_reason}</p>
+          </div>
+        )}
+
+        <EsteiraDoNegocio
+          titulo={REVIEW_ESTEIRA_LABEL.agil}
+          envios={enviosAgil}
+          nomes={nomes}
+          aberta={aberta === "agil"}
+          disponivel={podeAgil}
+          rotuloEnvio={reenvioIncompleto ? "Reenviar (encerra o envio anterior)" : reenvioPendente ? "Reenviar à Esteira Ágil (pendência)" : "Enviar à Esteira Ágil"}
+          onAlternar={(ligado) => setAberta(ligado ? "agil" : null)}
+          aviso={!canSubmit && (status === "draft" || status === "returned")
+            ? "Só corretor, gerente ou diretor do negócio envia o dossiê; aqui você acompanha o andamento."
+            : null}
+        >
+          {formularioDeEnvio("agil")}
+        </EsteiraDoNegocio>
+
+        {esteiraEmConferencia === "agil" && conferencia}
 
         {mostraVirar && (
           <EsteiraDoNegocio
@@ -963,6 +972,7 @@ export default function DealDocumentUpload({
             {formularioDeEnvio("virar")}
           </EsteiraDoNegocio>
         )}
+        {esteiraEmConferencia === "virar" && conferencia}
 
         {/* Envio do dossiê à construtora: do gerente, depois de conferir, só no
             fluxo externo. Sem e-mail o botão diz por quê em vez de sumir. */}

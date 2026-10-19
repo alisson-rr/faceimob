@@ -33,13 +33,16 @@ import DealDetailModal from "./DealDetailModal";
 
 vi.mock("@/hooks/use-toast", () => ({ toast: vi.fn() }));
 
+// `revisaCca` desliga só `cca.review`: o gerente que abre a aba CCA sem poder
+// editá-la (19/10/2026).
+const auth = vi.hoisted(() => ({ revisaCca: true }));
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     user: { id: "u1" },
     isAdmin: true,
     roles: ["admin"],
     canEnterStage: () => true,
-    can: () => true,
+    can: (permission: string) => permission !== "cca.review" || auth.revisaCca,
   }),
 }));
 
@@ -304,5 +307,17 @@ describe("DealDetailModal · análise do CCA", () => {
 
     expect(toast).toHaveBeenCalledWith({ variant: "success", title: "Negócio atualizado" });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("sem permissão de CCA, salva o negócio sem tentar gravar a análise que só leu", async () => {
+    auth.revisaCca = false;
+    try {
+      const { onClose } = await salvarComAnalise();
+      expect(saveCcaAnalysis).not.toHaveBeenCalled();
+      expect(toast).toHaveBeenCalledWith({ variant: "success", title: "Negócio atualizado" });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      auth.revisaCca = true;
+    }
   });
 });
