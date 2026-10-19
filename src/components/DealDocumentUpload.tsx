@@ -724,8 +724,11 @@ export default function DealDocumentUpload({
   // VIROU NEGÓCIO COM PENDÊNCIAS (0285): o comercial anexa o que falta e o CCA
   // é avisado pelo banco.
   const pendenciaDoContrato = bareStatus(statusDetail ?? "") === "VIROU NEGÓCIO COM PENDÊNCIAS";
+  // Status 2 em pendência (0294): devolução para correção, mesmo com o caso numa
+  // coluna de análise (NEG-001243 ficou em AGUARDANDO RETORNO AGÊNCIA).
+  const pendenciaPeloStatus2 = /^PENDENTE/.test(bareStatus(statusDetail ?? ""));
   const canAttach = canUpload
-    && (pendenciaDoContrato || canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review"), caseStatus }));
+    && (pendenciaDoContrato || pendenciaPeloStatus2 || canAttachNow({ status, isAdmin, hasCcaReview: can("cca.review"), caseStatus }));
   // Caso aberto na CCA prende o dossiê aprovado. Um caso parado de meses atrás
   // (cliente retomado, 05/10/2026) não aparece no quadro do mês, então a CCA
   // devolve daqui também — a mesma checagem de `devolver_ao_comercial`.
@@ -785,7 +788,7 @@ export default function DealDocumentUpload({
   const emPendencia = caseStatus === "pending_documents" || /^PENDENTE/.test(bareStatus(statusDetail ?? ""));
   const casoEmAnalise = caseStatus === "under_review" || caseStatus === "sent_to_agency" || caseStatus === "sent_to_developer";
   const pendenciaDeVirar = pendenteParaVirar || (caseStatus === "pending_documents" && review?.review_esteira === "virar");
-  const reenvioPendente = emPendencia && !casoEmAnalise && !pendenciaDeVirar;
+  const reenvioPendente = emPendencia && (!casoEmAnalise || pendenciaPeloStatus2) && !pendenciaDeVirar;
   const agilBloqueio = reenvioIncompleto || reenvioPendente ? null
     : status === "approved" || caseStatus === "approved"
       ? "A documentação já foi aprovada: o próximo envio é a análise p/ virar negócio."
