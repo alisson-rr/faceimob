@@ -51,6 +51,8 @@ begin
 
   -- 0295: equipe B passa a ter o Diretor 1 como Diretor 2; a venda com os dois
   -- diretores no negócio conta meia em cada diretoria.
+  -- Sem sessão (como a migration): a trava do Diretor 2 é só para quem está logado.
+  perform set_config('request.jwt.claims', '', true);
   update public.teams set co_director_id = dir1 where id = v_t2;
   insert into public.deals (stage_id, created_by, status_detail, month_base)
     values ((select id from public.pipeline_stages where is_initial limit 1), cor3, 'EM CONTRATO', v_mes)
