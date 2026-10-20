@@ -1,6 +1,7 @@
 -- =============================================================================
 -- 0291 — equipes por diretoria: diretor vê as dele, corretor é recusado, rateio
--- divide a venda entre os corretores.
+-- divide a venda entre os corretores; venda com dois diretores conta meia em
+-- cada diretoria (0295).
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -13,7 +14,7 @@ declare
   cor1 uuid := '00000000-0000-0000-0000-000002910004';
   cor2 uuid := '00000000-0000-0000-0000-000002910005';
   cor3 uuid := '00000000-0000-0000-0000-000002910006';
-  v_t1 uuid; v_t2 uuid; v_deal uuid;
+  v_t1 uuid; v_t2 uuid; v_deal uuid; v_deal2 uuid;
   v_mes date := public.month_start(coalesce(public.current_season_month(), current_date));
   v_vendas numeric; v_n int; v_ok boolean;
 begin
@@ -47,6 +48,25 @@ begin
   if v_n <> 2 then raise exception 'FALHOU: diretor 1 deveria ver só os 2 corretores da equipe dele (veio %)', v_n; end if;
   if v_vendas <> 0.5 then raise exception 'FALHOU: venda a dois corretores deveria contar meia (veio %)', v_vendas; end if;
   raise notice '  ok  diretor vê a própria diretoria e a venda rateada conta meia';
+
+  -- 0295: equipe B passa a ter o Diretor 1 como Diretor 2; a venda com os dois
+  -- diretores no negócio conta meia em cada diretoria.
+  update public.teams set co_director_id = dir1 where id = v_t2;
+  insert into public.deals (stage_id, created_by, status_detail, month_base)
+    values ((select id from public.pipeline_stages where is_initial limit 1), cor3, 'EM CONTRATO', v_mes)
+    returning id into v_deal2;
+  insert into public.deal_participants (deal_id, profile_id, role, ordinal) values
+    (v_deal2, cor3, 'broker', 1) on conflict do nothing;
+  delete from public.deal_participants where deal_id = v_deal2 and role = 'director';
+  insert into public.deal_participants (deal_id, profile_id, role, ordinal) values
+    (v_deal2, dir2, 'director', 1), (v_deal2, dir1, 'director', 2);
+
+  perform set_config('request.jwt.claims', json_build_object('sub', dir1, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  select vendas into v_vendas from public.equipes_por_diretoria(v_mes) where corretor_id = cor3 and diretor_id = dir1;
+  execute 'reset role';
+  if v_vendas is distinct from 0.5 then raise exception 'FALHOU: venda com dois diretores deveria contar meia na diretoria (veio %)', v_vendas; end if;
+  raise notice '  ok  venda com dois diretores conta meia na diretoria';
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor1, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
