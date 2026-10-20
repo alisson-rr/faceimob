@@ -780,6 +780,8 @@ export type ConvertLeadInput = {
   leadId: string;
   developerId: string;
   projectId?: string | null;
+  /** Empreendimento digitado (0295); o banco liga ao cadastro quando o nome bate. */
+  projectName?: string | null;
   unit?: string | null;
   vgvGross?: number | null;
 };
@@ -795,10 +797,12 @@ export type ConvertLeadInput = {
  * converte chama `promoteLeadAttachments` logo em seguida.
  */
 export async function convertLeadToDeal(input: ConvertLeadInput): Promise<void> {
-  const { error } = await db.rpc("convert_lead_to_deal", {
+  // `p_project_name` (0295) ainda fora do `types.ts` gerado.
+  const { error } = await untyped.rpc("convert_lead_to_deal", {
     p_lead_id: input.leadId,
     p_developer_id: input.developerId,
     p_project_id: input.projectId || null,
+    p_project_name: input.projectName?.trim() || null,
     p_unit: input.unit || null,
     // `??` deixa NaN passar e o JSON o serializa como null: o negócio nascia
     // sem VGV e sem aviso. A tela valida antes; aqui é a rede de segurança.

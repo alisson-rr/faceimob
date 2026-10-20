@@ -13,7 +13,7 @@ import {
   addLeadComment, ATTACHMENT_HINT, convertLeadToDeal, leadStatusLabel, promoteLeadAttachments,
   rejectAttachment, uploadLeadAttachment, type LeadRecord,
 } from "@/integrations/supabase/leads";
-import { useDeveloperProjects, useDevelopers, useInvalidateLeads } from "./data";
+import { useDevelopers, useInvalidateLeads } from "./data";
 import { FileDropzone } from "./FileDropzone";
 import { parseVgvInput } from "./model";
 
@@ -45,15 +45,13 @@ export function ConvertLeadDialog({
   const fieldId = useId();
   const developers = useDevelopers(true);
   const [developerId, setDeveloperId] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [unit, setUnit] = useState("");
   const [vgv, setVgv] = useState("");
   const [doc, setDocument] = useState<File | null>(null);
   const [converting, setConverting] = useState(false);
   const [reabrir, setReabrir] = useState(false);
-  const projects = useDeveloperProjects(developerId);
   const developerList = developers.data ?? [];
-  const projectList = projects.data ?? [];
   // Derivado na renderização: "R$ 500.000,00" vale, "1.5 mi" é recusado com
   // aviso — VGV é a base do rateio e texto inválido virava null no banco.
   const { value: vgvGross, invalid: vgvInvalid } = parseVgvInput(vgv);
@@ -69,11 +67,10 @@ export function ConvertLeadDialog({
 
   const pickDeveloper = (next: string) => {
     setDeveloperId(next);
-    setProjectId("");
   };
 
   const submit = async () => {
-    if (!developerId || vgvInvalid || (encerrado && !reabrir)) return;
+    if (!developerId || !projectName.trim() || vgvInvalid || (encerrado && !reabrir)) return;
     setConverting(true);
     try {
       // Com prazo (29/09/2026): sem ele, um envio que a rede deixava pendurado
@@ -89,7 +86,7 @@ export function ConvertLeadDialog({
         convertLeadToDeal({
           leadId: lead.id,
           developerId,
-          projectId: projectId || null,
+          projectName: projectName.trim(),
           unit: unit || null,
           vgvGross,
         }),
@@ -228,21 +225,18 @@ export function ConvertLeadDialog({
           </div>
 
           <div className="space-y-1.5 sm:col-span-2">
-            {/* Obrigatório desde 05/10/2026 (pedido do cliente). */}
+            {/* Obrigatório desde 05/10/2026; digitado desde 19/10/2026 (pedido do
+                cliente): a lista do cadastro podia estar desatualizada. O banco liga
+                ao cadastro quando o nome bate (0295). */}
             <Label htmlFor={`${fieldId}-empreendimento`}>Empreendimento *</Label>
-            <Select value={projectId} onValueChange={setProjectId} disabled={!developerId || projectList.length === 0}>
-              <SelectTrigger id={`${fieldId}-empreendimento`}>
-                <SelectValue placeholder={developerId ? (projectList.length ? "Escolha o empreendimento" : "Sem empreendimentos") : "Escolha a construtora"} />
-              </SelectTrigger>
-              <SelectContent>
-                {projectList.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {developerId && !projects.isPending && projectList.length === 0 && (
-              <p role="alert" className="text-xs text-destructive">
-                Esta construtora não tem empreendimento cadastrado. Peça ao administrador para cadastrar em Construtoras antes de converter.
-              </p>
-            )}
+            <Input
+              id={`${fieldId}-empreendimento`}
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              maxLength={120}
+              placeholder="Nome do empreendimento"
+              required
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -301,7 +295,7 @@ export function ConvertLeadDialog({
             size="sm"
             variant="success"
             onClick={submit}
-            disabled={!developerId || !projectId || vgvInvalid || converting || (encerrado && !reabrir)}
+            disabled={!developerId || !projectName.trim() || vgvInvalid || converting || (encerrado && !reabrir)}
           >
             {converting ? "Convertendo…" : "Converter"}
           </Button>

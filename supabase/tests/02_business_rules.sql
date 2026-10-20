@@ -363,6 +363,23 @@ begin
     not exists (select 1 from public.deal_documents where deal_id = v_deal.id),
     'negócio recém-convertido pode começar sem anexos');
 
+  -- 0295: empreendimento digitado. Nome que bate com o cadastro liga o vínculo;
+  -- nome novo é gravado sem vínculo.
+  insert into public.developer_projects (developer_id, name) values (v_dev, 'Residencial Teste 295');
+  insert into public.leads (full_name, phone, status, assigned_to)
+  values ('Cliente Empreendimento 295', '11900000295', 'in_progress', c1)
+  returning id into v_lead;
+  v_deal := public.convert_lead_to_deal(v_lead, v_dev, p_project_name => '  residencial teste 295 ');
+  perform pg_temp.check(v_deal.project_name = 'residencial teste 295'
+      and v_deal.project_id = (select id from public.developer_projects where name = 'Residencial Teste 295'),
+    'empreendimento digitado que bate com o cadastro grava o nome e liga o vínculo');
+  insert into public.leads (full_name, phone, status, assigned_to)
+  values ('Cliente Empreendimento Novo 295', '11900000296', 'in_progress', c1)
+  returning id into v_lead;
+  v_deal := public.convert_lead_to_deal(v_lead, v_dev, p_project_name => 'Lançamento Fora da Lista');
+  perform pg_temp.check(v_deal.project_name = 'Lançamento Fora da Lista' and v_deal.project_id is null,
+    'empreendimento digitado fora do cadastro é gravado sem vínculo');
+
   -- Anexos que já existiam no lead continuam sendo promovidos.
   insert into public.leads (full_name, phone, status, assigned_to)
   values ('Cliente Convertido Com Documento', '11900000021', 'in_progress', c1)

@@ -26,6 +26,8 @@ const COLUNAS: { chave: keyof Numeros; rotulo: string; dinheiro?: boolean }[] = 
 
 // Rateio com três corretores dá dízima: uma casa basta (0,3).
 const valor = (n: number, dinheiro?: boolean) => (dinheiro ? brl(n, { cents: true }) : num(Math.round(n * 10) / 10));
+// Zero em vermelho (pedido de 19/10/2026): quem não produziu salta aos olhos.
+const ZERO_EM_VERMELHO = "font-semibold text-destructive";
 
 /**
  * Equipes por diretoria (pedido de 19/10/2026): o funil da diretoria do
@@ -86,7 +88,9 @@ function BlocoDaDiretoria({ diretoria }: { diretoria: Diretoria }) {
         </h2>
         <dl className="flex flex-wrap gap-2 text-xs">
           <Resumo rotulo="Corretores" texto={num(diretoria.corretores)} />
-          {COLUNAS.map((c) => <Resumo key={c.chave} rotulo={c.rotulo} texto={valor(diretoria.total[c.chave], c.dinheiro)} />)}
+          {COLUNAS.map((c) => (
+            <Resumo key={c.chave} rotulo={c.rotulo} texto={valor(diretoria.total[c.chave], c.dinheiro)} zero={diretoria.total[c.chave] === 0} />
+          ))}
         </dl>
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
@@ -96,11 +100,11 @@ function BlocoDaDiretoria({ diretoria }: { diretoria: Diretoria }) {
   );
 }
 
-function Resumo({ rotulo, texto }: { rotulo: string; texto: string }) {
+function Resumo({ rotulo, texto, zero }: { rotulo: string; texto: string; zero?: boolean }) {
   return (
     <div className="rounded-lg border border-border bg-card px-2.5 py-1">
       <dt className="text-muted-foreground">{rotulo}</dt>
-      <dd className="font-bold tabular-nums">{texto}</dd>
+      <dd className={cn("font-bold tabular-nums", zero && ZERO_EM_VERMELHO)}>{texto}</dd>
     </div>
   );
 }
@@ -132,7 +136,7 @@ function TabelaDaEquipe({ equipe }: { equipe: EquipeDaDiretoria }) {
                     key={col.chave}
                     className={cn(
                       "whitespace-nowrap p-2 text-right tabular-nums",
-                      c[col.chave] === 0 ? "text-muted-foreground" : col.chave === "vendas" || col.chave === "vgv" ? "font-bold text-success" : col.chave === "off" ? "text-destructive" : "",
+                      c[col.chave] === 0 ? ZERO_EM_VERMELHO : col.chave === "vendas" || col.chave === "vgv" ? "font-bold text-success" : col.chave === "off" ? "text-destructive" : "",
                     )}
                   >
                     {valor(c[col.chave], col.dinheiro)}
@@ -145,7 +149,9 @@ function TabelaDaEquipe({ equipe }: { equipe: EquipeDaDiretoria }) {
             <tr>
               <td className="p-2" colSpan={2}>Total da equipe</td>
               {COLUNAS.map((c) => (
-                <td key={c.chave} className="whitespace-nowrap p-2 text-right tabular-nums">{valor(equipe.total[c.chave], c.dinheiro)}</td>
+                <td key={c.chave} className={cn("whitespace-nowrap p-2 text-right tabular-nums", equipe.total[c.chave] === 0 && ZERO_EM_VERMELHO)}>
+                  {valor(equipe.total[c.chave], c.dinheiro)}
+                </td>
               ))}
             </tr>
           </tfoot>
