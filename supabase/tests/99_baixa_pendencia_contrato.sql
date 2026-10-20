@@ -1,5 +1,6 @@
 -- =============================================================================
--- 0286 — CCA dá baixa na pendência do contrato, inclusive em mês fechado.
+-- 0286 — CCA dá baixa na pendência do contrato, inclusive em mês fechado;
+-- 0296 — com comentário obrigatório.
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -36,6 +37,19 @@ begin
   execute 'reset role';
   if v_ok then raise exception 'FALHOU: corretor não pode dar baixa na pendência'; end if;
   raise notice '  ok  corretor não dá baixa';
+
+  -- 0296: sem dizer o que foi sanado, nem o CCA dá baixa.
+  perform set_config('request.jwt.claims', json_build_object('sub', ana, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  begin
+    perform public.baixar_pendencia_contrato(v_deal, '   ');
+    v_ok := true;
+  exception when sqlstate 'P0001' then
+    v_ok := false;
+  end;
+  execute 'reset role';
+  if v_ok then raise exception 'FALHOU: baixa sem comentário deveria ser recusada'; end if;
+  raise notice '  ok  baixa exige o comentário do que foi sanado';
 
   -- CCA dá baixa mesmo com o mês fechado.
   perform set_config('request.jwt.claims', json_build_object('sub', ana, 'role', 'authenticated')::text, true);

@@ -591,9 +591,6 @@ export default function DealDetailModal({
 
           {montada("cca") && dealId && (
             <div hidden={tab !== "cca"} className="space-y-3">
-            {deal?.contract_has_pending_issue && (
-              <BaixaPendenciaContrato dealId={dealId} onDone={onReviewChanged} />
-            )}
             <DealCcaPanel
               dealId={dealId}
               value={cca}
@@ -608,6 +605,10 @@ export default function DealDetailModal({
               qualquer decisão renova os dois (`versaoDossie`). */}
           {montada("negocio") && dealId && (
             <div hidden={tab !== "negocio"}>
+              {/* Pendência sanada (20/10/2026): CCA, admin e sócio tiram o selo daqui. */}
+              {deal?.contract_has_pending_issue && (
+                <div className="mb-4"><BaixaPendenciaContrato dealId={dealId} onDone={onReviewChanged} /></div>
+              )}
               <DealDocumentUpload
                 key={`acoes-${versaoDossie}`}
                 parte="acoes"
