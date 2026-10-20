@@ -12,15 +12,15 @@ export type LinhaDaDiretoria = {
   corretor_id: string;
   corretor_nome: string | null;
   leads: number;
-  visitas: number;
-  agil: number;
+  legado: number;
+  proposta: number;
   negocio: number;
   vendas: number;
   vgv: number;
   off: number;
 };
 
-export type Numeros = Pick<LinhaDaDiretoria, "leads" | "visitas" | "agil" | "negocio" | "vendas" | "vgv" | "off">;
+export type Numeros = Pick<LinhaDaDiretoria, "leads" | "legado" | "proposta" | "negocio" | "vendas" | "vgv" | "off">;
 export type CorretorDaEquipe = Numeros & { id: string; nome: string };
 export type EquipeDaDiretoria = { id: string; nome: string; gerente: string | null; corretores: CorretorDaEquipe[]; total: Numeros };
 export type Diretoria = { id: string | null; nome: string; equipes: EquipeDaDiretoria[]; total: Numeros; corretores: number };
@@ -35,8 +35,8 @@ export async function carregarEquipesPorDiretoria(mes: string | null): Promise<L
   return ((data ?? []) as Record<string, unknown>[]).map((linha) => ({
     ...(linha as unknown as LinhaDaDiretoria),
     leads: Number(linha.leads ?? 0),
-    visitas: Number(linha.visitas ?? 0),
-    agil: Number(linha.agil ?? 0),
+    legado: Number(linha.legado ?? 0),
+    proposta: Number(linha.proposta ?? 0),
     negocio: Number(linha.negocio ?? 0),
     vendas: Number(linha.vendas ?? 0),
     vgv: Number(linha.vgv ?? 0),
@@ -44,15 +44,15 @@ export async function carregarEquipesPorDiretoria(mes: string | null): Promise<L
   }));
 }
 
-const ZERO: Numeros = { leads: 0, visitas: 0, agil: 0, negocio: 0, vendas: 0, vgv: 0, off: 0 };
+const ZERO: Numeros = { leads: 0, legado: 0, proposta: 0, negocio: 0, vendas: 0, vgv: 0, off: 0 };
 const somar = (a: Numeros, b: Numeros): Numeros => ({
-  leads: a.leads + b.leads, visitas: a.visitas + b.visitas, agil: a.agil + b.agil,
+  leads: a.leads + b.leads, legado: a.legado + b.legado, proposta: a.proposta + b.proposta,
   negocio: a.negocio + b.negocio, vendas: a.vendas + b.vendas, vgv: a.vgv + b.vgv, off: a.off + b.off,
 });
 
-/** Ordem da tabela: quem vende mais primeiro; empate pelo VGV, pela Ágil e pelo nome. */
+/** Ordem da tabela: quem vende mais primeiro; empate pelo VGV, pelas propostas e pelo nome. */
 const porDesempenho = (a: CorretorDaEquipe, b: CorretorDaEquipe) =>
-  b.vendas - a.vendas || b.vgv - a.vgv || b.agil - a.agil || a.nome.localeCompare(b.nome, "pt-BR");
+  b.vendas - a.vendas || b.vgv - a.vgv || b.proposta - a.proposta || a.nome.localeCompare(b.nome, "pt-BR");
 
 /**
  * Diretoria → equipes → corretores, com o total de cada nível. Diretorias e
@@ -65,7 +65,7 @@ export function agruparPorDiretoria(linhas: LinhaDaDiretoria[]): Diretoria[] {
     const dir = diretorias.get(chave) ?? { id: l.diretor_id, nome: l.diretor_nome, equipes: new Map() };
     const equipe = dir.equipes.get(l.equipe_id)
       ?? { id: l.equipe_id, nome: l.equipe_nome, gerente: l.gerente_nome, corretores: [], total: ZERO };
-    const numeros: Numeros = { leads: l.leads, visitas: l.visitas, agil: l.agil, negocio: l.negocio, vendas: l.vendas, vgv: l.vgv, off: l.off };
+    const numeros: Numeros = { leads: l.leads, legado: l.legado, proposta: l.proposta, negocio: l.negocio, vendas: l.vendas, vgv: l.vgv, off: l.off };
     equipe.corretores.push({ id: l.corretor_id, nome: l.corretor_nome ?? "—", ...numeros });
     equipe.total = somar(equipe.total, numeros);
     dir.equipes.set(l.equipe_id, equipe);
