@@ -16,8 +16,8 @@ const mesAtual = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Ameri
 
 const COLUNAS: { chave: keyof Numeros; rotulo: string; dinheiro?: boolean }[] = [
   { chave: "leads", rotulo: "Leads" },
-  { chave: "visitas", rotulo: "Visitas" },
-  { chave: "agil", rotulo: "Ágil" },
+  { chave: "legado", rotulo: "Legado" },
+  { chave: "proposta", rotulo: "Proposta" },
   { chave: "negocio", rotulo: "Negócio" },
   { chave: "vendas", rotulo: "Vendas" },
   { chave: "vgv", rotulo: "VGV", dinheiro: true },

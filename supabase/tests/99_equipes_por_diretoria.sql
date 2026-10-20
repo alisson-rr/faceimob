@@ -1,7 +1,7 @@
 -- =============================================================================
 -- 0291 — equipes por diretoria: diretor vê as dele, corretor é recusado, rateio
 -- divide a venda entre os corretores; venda com dois diretores conta meia em
--- cada diretoria (0295).
+-- cada diretoria (0295); Proposta pelo Status 1 (0297).
 -- =============================================================================
 \set ON_ERROR_STOP on
 begin;
@@ -48,6 +48,21 @@ begin
   if v_n <> 2 then raise exception 'FALHOU: diretor 1 deveria ver só os 2 corretores da equipe dele (veio %)', v_n; end if;
   if v_vendas <> 0.5 then raise exception 'FALHOU: venda a dois corretores deveria contar meia (veio %)', v_vendas; end if;
   raise notice '  ok  diretor vê a própria diretoria e a venda rateada conta meia';
+
+  -- 0297: Proposta e Legado contam pelo Status 1 do negócio do mês.
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.deals (stage_id, created_by, status_detail, status_group_id, month_base)
+    values ((select id from public.pipeline_stages where is_initial limit 1), cor2, '06. ENVIO DE RP',
+            (select id from public.deal_status_groups where code = 'PROPOSTA'), v_mes)
+    returning id into v_deal;
+  insert into public.deal_participants (deal_id, profile_id, role, ordinal) values
+    (v_deal, cor2, 'broker', 1) on conflict do nothing;
+  perform set_config('request.jwt.claims', json_build_object('sub', dir1, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  select proposta into v_vendas from public.equipes_por_diretoria(v_mes) where corretor_id = cor2;
+  execute 'reset role';
+  if v_vendas is distinct from 1 then raise exception 'FALHOU: negócio em PROPOSTA deveria contar na coluna Proposta (veio %)', v_vendas; end if;
+  raise notice '  ok  proposta do mês conta para o corretor';
 
   -- 0295: equipe B passa a ter o Diretor 1 como Diretor 2; a venda com os dois
   -- diretores no negócio conta meia em cada diretoria.
