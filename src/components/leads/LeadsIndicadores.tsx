@@ -39,7 +39,7 @@ export function LeadsIndicadores({
               <p className="text-xl font-bold tabular-nums sm:text-2xl">{valor === undefined ? "…" : num(valor)}</p>
               {/* Detalhe do mês (22/10/2026): descartados em vermelho e o resto em atendimento. */}
               {rotulo === "Este mês" && porPeriodo && (
-                <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+                <p className="mt-0.5 text-xs leading-tight text-muted-foreground">
                   <span className="text-destructive">Descartados {num(porPeriodo.mesDescartados)}</span>
                   {" · "}
                   Em atendimento {num(porPeriodo.mes - porPeriodo.mesDescartados)}
