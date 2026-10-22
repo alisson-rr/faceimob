@@ -465,14 +465,22 @@ export const LEADS_PAGE_SIZE = 1_000;
  * perdidos e descartados pelo último corretor e não para no teto da lista.
  * `broker` segue o seletor da tela: "all", "none" (fila) ou o id do corretor.
  */
-export async function contarLeadsRecebidos(broker: string): Promise<{ hoje: number; semana: number; mes: number }> {
+export async function contarLeadsRecebidos(
+  broker: string,
+): Promise<{ hoje: number; semana: number; mes: number; mesDescartados: number }> {
   const { data, error } = await untyped.rpc("leads_recebidos", {
     p_corretor: broker === "all" || broker === "none" ? null : broker,
     p_sem_corretor: broker === "none",
   });
   asError("contar leads recebidos", error);
   const conta = (data ?? {}) as Record<string, unknown>;
-  return { hoje: Number(conta.hoje ?? 0), semana: Number(conta.semana ?? 0), mes: Number(conta.mes ?? 0) };
+  return {
+    hoje: Number(conta.hoje ?? 0),
+    semana: Number(conta.semana ?? 0),
+    mes: Number(conta.mes ?? 0),
+    // 0301: perdidos e descartados do mês; o resto do mês está em atendimento.
+    mesDescartados: Number(conta.mes_descartados ?? 0),
+  };
 }
 
 export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRecord[]> {

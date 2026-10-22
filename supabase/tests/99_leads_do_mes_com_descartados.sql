@@ -38,7 +38,7 @@ begin
   execute 'set local role authenticated';
   v_r := public.leads_recebidos(cor, false);
   execute 'reset role';
-  if (v_r ->> 'mes')::int <> 1 or (v_r ->> 'hoje')::int <> 1 then
+  if (v_r ->> 'mes')::int <> 1 or (v_r ->> 'hoje')::int <> 1 or (v_r ->> 'mes_descartados')::int <> 1 then
     raise exception 'FALHOU: o descartado deveria contar nos leads do corretor (veio %)', v_r;
   end if;
   raise notice '  ok  descartado conta nos leads do mês do corretor';
