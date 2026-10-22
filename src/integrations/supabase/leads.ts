@@ -460,6 +460,21 @@ export const leadSearchFilter = (term: string): string | null => {
  */
 export const LEADS_PAGE_SIZE = 1_000;
 
+/**
+ * Leads recebidos hoje, na semana e no mês, contados no banco (0299): inclui
+ * perdidos e descartados pelo último corretor e não para no teto da lista.
+ * `broker` segue o seletor da tela: "all", "none" (fila) ou o id do corretor.
+ */
+export async function contarLeadsRecebidos(broker: string): Promise<{ hoje: number; semana: number; mes: number }> {
+  const { data, error } = await untyped.rpc("leads_recebidos", {
+    p_corretor: broker === "all" || broker === "none" ? null : broker,
+    p_sem_corretor: broker === "none",
+  });
+  asError("contar leads recebidos", error);
+  const conta = (data ?? {}) as Record<string, unknown>;
+  return { hoje: Number(conta.hoje ?? 0), semana: Number(conta.semana ?? 0), mes: Number(conta.mes ?? 0) };
+}
+
 export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRecord[]> {
   let query = db.from("leads").select("*").order("created_at", { ascending: false });
   if (options.statuses?.length) query = query.in("status", options.statuses);

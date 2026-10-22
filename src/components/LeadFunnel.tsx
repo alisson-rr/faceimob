@@ -173,7 +173,6 @@ export default function LeadFunnel({
         <FilaEmFormacao />
         {baseQuery.data && (
           <LeadsIndicadores
-            leads={base}
             broker={broker}
             onBroker={setBroker}
             brokers={verPorCorretor ? brokersQuery.data ?? [] : []}

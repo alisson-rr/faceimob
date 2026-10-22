@@ -1,41 +1,42 @@
-import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PersonRecord } from "@/integrations/supabase/newSchema";
-import type { LeadRecord } from "@/integrations/supabase/leads";
+import { contarLeadsRecebidos } from "@/integrations/supabase/leads";
 import { num } from "@/lib/format";
-import { leadsPorPeriodo } from "./model";
+import { leadKeys } from "./data";
 
 /**
  * Leads de hoje, da semana e do mês e o "Ver por corretor". A régua de KPIs
  * (total, fila, em atendimento…) saiu em 03/10/2026: ocupava a tela do celular.
- * Mesmo bloco na tela de Leads e na aba Leads do Pipeline: `leads` já chega
- * recortado pelo corretor escolhido, para os números falarem dele.
+ * Mesmo bloco na tela de Leads e na aba Leads do Pipeline. Desde 22/10/2026 a
+ * conta sai do banco (`leads_recebidos`, 0299), pelo corretor escolhido, com
+ * perdidos e descartados — o total de leads do mês.
  */
 export function LeadsIndicadores({
-  leads, broker, onBroker, brokers, canViewQueue,
+  broker, onBroker, brokers, canViewQueue,
 }: {
-  leads: LeadRecord[];
   broker: string;
   onBroker: (broker: string) => void;
   /** Vazio esconde o seletor. */
   brokers: PersonRecord[];
   canViewQueue: boolean;
 }) {
-  // A base importada da Leadfy (0188) chega com a data original e não é
-  // "lead recebido" de hoje nem da semana.
-  const porPeriodo = useMemo(
-    () => leadsPorPeriodo(leads.filter((lead) => !lead.external_id?.startsWith("leadfy:"))),
-    [leads],
-  );
+  // Sob `leadKeys.records`: o Realtime de leads já recarrega a conta.
+  const recebidos = useQuery({
+    queryKey: [...leadKeys.records, "recebidos", broker],
+    queryFn: () => contarLeadsRecebidos(broker),
+    staleTime: 30_000,
+  });
+  const porPeriodo = recebidos.data;
 
   return (
     <>
       <section aria-label="Leads recebidos" className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 lg:flex-row lg:items-center">
         <div className="grid flex-1 grid-cols-3 gap-3">
-          {([["Hoje", porPeriodo.hoje], ["Esta semana", porPeriodo.semana], ["Este mês", porPeriodo.mes]] as const).map(([rotulo, valor]) => (
+          {([["Hoje", porPeriodo?.hoje], ["Esta semana", porPeriodo?.semana], ["Este mês", porPeriodo?.mes]] as const).map(([rotulo, valor]) => (
             <div key={rotulo} className="rounded-xl border border-primary/25 bg-primary/5 px-2 py-1.5 sm:px-3 sm:py-2">
               <p className="text-eyebrow">Leads · {rotulo}</p>
-              <p className="text-xl font-bold tabular-nums sm:text-2xl">{num(valor)}</p>
+              <p className="text-xl font-bold tabular-nums sm:text-2xl">{valor === undefined ? "…" : num(valor)}</p>
             </div>
           ))}
         </div>
