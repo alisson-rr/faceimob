@@ -13,8 +13,8 @@
 
 do $do$
 begin
-  if not exists (select 1 from pg_extension where extname = 'pg_cron') then
-    raise warning '[0300] pg_cron ausente; nada a reagendar.';
+  if to_regprocedure('cron.schedule(text,text,text)') is null then
+    raise notice '[0300] cron.schedule ausente; nada reagendado (ambiente de teste).';
     return;
   end if;
   begin
