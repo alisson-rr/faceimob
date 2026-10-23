@@ -32,7 +32,7 @@ begin
     returning id into v_deal;
   insert into public.deal_participants (deal_id, profile_id, role, ordinal)
     values (v_deal, cor, 'broker', 1) on conflict do nothing;
-  insert into public.cca_cases (deal_id, status) values (v_deal, 'approved') returning id into v_case;
+  insert into public.cca_cases (deal_id, status, decided_at) values (v_deal, 'approved', now()) returning id into v_case;
   update public.deals set status_detail = '04. EM CONTRATO' where id = v_deal;
   insert into public.closed_months (period) values (v_mes) on conflict do nothing;
 
