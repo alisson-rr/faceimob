@@ -12,7 +12,7 @@
 -- silêncio. Também cobre a coluna sem o vínculo com o Status 2.
 --
 --   1. A coluna ASSINADO BANCO aponta para "02. ASS. BANCO" (e ASSINADO para
---      "03. ASSINADO"), e o CCA pode entrar e sair dos status de contrato.
+--      "03. ASSINADO"), e o CCA avança o contrato (sem colocar EM CONTRATO).
 --   2. Avanço de contrato pelo CCA (EM CONTRATO → ASSINADO → ASS. BANCO → RC
 --      EMITIDA, em qualquer ordem entre eles) passa no mês fechado: muda só o
 --      Status 2 e o que segue dele; o mês-base, o VGV e o rateio não mudam —
@@ -35,11 +35,19 @@ update public.cca_stages s
    and public.deal_status_bare(ds.value) = 'ASSINADO'
    and s.deal_status_id is null;
 
+-- O CCA avança o contrato: entra em ASSINADO, ASS. BANCO e RC EMITIDA e sai de
+-- qualquer um deles. Colocar EM CONTRATO continua fora do CCA (0164).
 insert into public.deal_status_permissions (status_id, role, can_enter, can_exit)
 select s.id, 'cca'::public.app_role, true, true
   from public.deal_statuses s
- where public.deal_status_bare(s.value) in ('EM CONTRATO', 'ASSINADO', 'ASS. BANCO', 'RC EMITIDA')
+ where public.deal_status_bare(s.value) in ('ASSINADO', 'ASS. BANCO', 'RC EMITIDA')
 on conflict (status_id, role) do update set can_enter = true, can_exit = true, updated_at = now();
+
+insert into public.deal_status_permissions (status_id, role, can_enter, can_exit)
+select s.id, 'cca'::public.app_role, false, true
+  from public.deal_statuses s
+ where public.deal_status_bare(s.value) = 'EM CONTRATO'
+on conflict (status_id, role) do update set can_exit = true, updated_at = now();
 
 -- 2a. A trava do mês fechado aceita o avanço de contrato feito pelo CCA ------------
 create or replace function public.deal_status_e_contrato(p_status text)
