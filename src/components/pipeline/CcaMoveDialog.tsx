@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/sonner";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { isIndependentCcaStage } from "@/lib/ccaPending";
+import { isCcaAgileStage } from "@/lib/ccaAgileReturn";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { updateDeal, useCanExitStage } from "./data";
@@ -170,6 +171,8 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
               : "Movimento interno: o comercial não é avisado. A mensagem fica só no histórico do negócio."}{" "}
           {independent
             ? "O comercial mantém seu status e recebe um selo de pendência do CCA. A equipe recebe notificação e e-mail."
+            : isCcaAgileStage(stage.name)
+            ? "O CCA e o status comercial voltam para Esteira Ágil, sem um novo envio ao gerente."
             : stage.deal_status_id
             ? <>O status do negócio passa a ser <strong className="text-foreground">{stage.deal_status?.label ?? "o Status 2 da coluna"}</strong>.</>
             : "O status do negócio não muda."}
