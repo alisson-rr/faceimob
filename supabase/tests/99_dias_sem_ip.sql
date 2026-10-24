@@ -22,6 +22,8 @@ begin
     (cor,'cor@a191.test','{"full_name":"Corretor 191"}');
   insert into public.user_roles(profile_id,role) values (adm,'admin'), (cor,'broker') on conflict do nothing;
   delete from public.checkin_dias_sem_ip;
+  -- 0304: no fim de semana o IP já é livre; o teste fala só dos dias marcados.
+  update public.automation_settings set checkin_ip_livre_fim_de_semana = false where id;
 
   perform pg_temp.ok(not public.ip_is_allowed('192.0.2.33'::inet, cor), 'sem dia marcado, IP de fora é barrado');
 
