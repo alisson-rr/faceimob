@@ -13,6 +13,8 @@ do $$
 declare
   v_profile uuid;
 begin
+  -- 0304: no fim de semana o IP é livre; este teste fala só da faixa.
+  update public.automation_settings set checkin_ip_livre_fim_de_semana = false where id;
   select id into v_profile from public.profiles where bypass_ip_check is not true limit 1;
   if v_profile is null then
     raise exception 'FALHOU: sem perfil para testar (o bypass mascararia o resultado)';
@@ -44,6 +46,7 @@ begin
   raise notice '  ok  IP fora das faixas continua barrado';
 
   delete from public.allowed_ips where label in ('teste host 0024', 'teste faixa 0024');
+  update public.automation_settings set checkin_ip_livre_fim_de_semana = true where id;
 end
 $$;
 
