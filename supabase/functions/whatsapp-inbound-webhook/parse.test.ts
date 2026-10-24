@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  AUDIO_NAO_TRANSCRITO, AUDIOS_POR_TELEFONE_DIA, baloesDaResposta, corpoDaMensagem, decidirReentrega, decidirRota, inicioDoDiaEmSaoPaulo,
+  AUDIO_NAO_TRANSCRITO, AUDIOS_POR_TELEFONE_DIA, baloesDaResposta, corpoDaMensagem, decidirReentrega, decidirRota, inicioDoDiaEmSaoPaulo, numeroIgnorado,
   caminhoDoAnexo, extensaoDaMidia, leituraDaMidia, MIDIAS_POR_TELEFONE_DIA, nomeDoAnexo, nomeDoAudio, parseMessages, passouDoTetoDeAudios, passouDoTetoDeMidias, planejar,
   RESERVA_DO_AUDIO, RESERVA_RETOMADA,
 } from "./parse.ts";
@@ -76,12 +76,20 @@ describe("anúncio clique-para-WhatsApp (09/10/2026)", () => {
     });
   });
 
-  it("número desconhecido vindo de anúncio vira lead; sem anúncio continua sem destino", () => {
-    expect(decidirRota(null, false, true)).toBe("anuncio");
-    expect(decidirRota(null, false, false)).toBe("sem_destino");
-    // Quem já tem conversa segue nela, mesmo voltando por outro anúncio.
-    expect(decidirRota({ status: "human" }, false, true)).toBe("humano");
-    expect(decidirRota({ status: "active" }, false, true)).toBe("robo");
+  it("número desconhecido vira lead na roleta, com ou sem anúncio (24/10/2026)", () => {
+    expect(decidirRota(null, false)).toBe("anuncio");
+    // Quem já tem conversa segue nela.
+    expect(decidirRota({ status: "human" }, false)).toBe("humano");
+    expect(decidirRota({ status: "active" }, false)).toBe("robo");
+  });
+
+  it("números da casa que recebem o relatório ficam de fora, com ou sem DDI e nono dígito", () => {
+    expect(numeroIgnorado("555192942662")).toBe(true);
+    expect(numeroIgnorado("5551992942662")).toBe(true);
+    expect(numeroIgnorado("+55 51 8331-9176")).toBe(true);
+    expect(numeroIgnorado("5551982791505")).toBe(true);
+    expect(numeroIgnorado("5551981111226")).toBe(false);
+    expect(numeroIgnorado("")).toBe(false);
   });
 });
 
@@ -99,10 +107,10 @@ describe("decidirRota", () => {
     expect(decidirRota({ status: "resolved" }, false)).toBe("reabrir");
   });
 
-  it("remarketing vem antes da conversa encerrada; sem ninguém, sem destino", () => {
+  it("remarketing vem antes da conversa encerrada; sem ninguém, vira lead", () => {
     expect(decidirRota({ status: "resolved" }, true)).toBe("remarketing");
     expect(decidirRota(null, true)).toBe("remarketing");
-    expect(decidirRota(null, false)).toBe("sem_destino");
+    expect(decidirRota(null, false)).toBe("anuncio");
   });
 });
 

@@ -226,23 +226,33 @@ export type Rota = "robo" | "remarketing" | "humano" | "reabrir" | "anuncio" | "
  *  2. contato de remarketing esperando resposta → vira lead e conversa;
  *  3. conversa mais recente em qualquer outro status → entra nela, sem IA; a
  *     `resolved` reabre como `human`;
- *  4. ninguém, mas veio de anúncio "clique para o WhatsApp" → vira lead na
- *     roleta, com a conversa aberta para o corretor (`anuncio`);
- *  5. ninguém → `unmatched`.
+ *  4. ninguém → vira lead na roleta, com a conversa aberta para o corretor
+ *     (`anuncio`). Desde 24/10/2026 vale para todo número desconhecido, com
+ *     ou sem anúncio "clique para o WhatsApp" — antes, sem anúncio, caía em
+ *     `unmatched` e não virava lead.
  * `conversa` é a ativa, se houver; senão, a mais recente do telefone.
+ * Os números de `numeroIgnorado` nem chegam aqui.
  */
-export function decidirRota(
-  conversa: { status: string } | null,
-  remarketing: boolean,
-  /** A mensagem veio de um anúncio "clique para o WhatsApp" (09/10/2026). */
-  anuncio = false,
-): Rota {
+export function decidirRota(conversa: { status: string } | null, remarketing: boolean): Rota {
   if (conversa?.status === "active") return "robo";
   if (remarketing) return "remarketing";
-  // Ninguém conhecia o telefone, mas ele chegou por anúncio: vira lead na
-  // roleta, com a conversa aberta para o corretor (sem robô).
-  if (!conversa) return anuncio ? "anuncio" : "sem_destino";
+  if (!conversa) return "anuncio";
   return conversa.status === "resolved" ? "reabrir" : "humano";
+}
+
+/**
+ * Números da casa que recebem o relatório (24/10/2026): mensagem deles não
+ * vira lead, não entra em conversa e a IA não responde. Compara os últimos 8
+ * dígitos, para casar com e sem DDI, DDD e o nono dígito.
+ *
+ * ponytail: lista fixa no código; evoluir para um cadastro na tela quando a
+ * lista mudar mais de uma vez.
+ */
+const NUMEROS_IGNORADOS = ["92942662", "83319176", "82791505"];
+
+export function numeroIgnorado(phone: string): boolean {
+  const digitos = phone.replace(/\D/g, "");
+  return digitos.length >= 8 && NUMEROS_IGNORADOS.includes(digitos.slice(-8));
 }
 
 export type Plano =
