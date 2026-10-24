@@ -12,6 +12,7 @@ import {
   decidirReentrega,
   caminhoDoAnexo,
   decidirRota,
+  numeroIgnorado,
   extensaoDaMidia,
   type InboundMessage,
   inicioDoDiaEmSaoPaulo,
@@ -92,7 +93,9 @@ type InboundOutcome =
   | "unmatched"
   | "agent_error"
   | "human_turn"
-  | "audio_falhou";
+  | "audio_falhou"
+  /** Número da casa que recebe o relatório: nem lead, nem conversa, nem IA (0303). */
+  | "ignorado";
 /** A conversa em que a mensagem entra. */
 /** `robo`: conversa aberta agora já com agente de IA (anúncio com origem ligada a agente). */
 type Alvo = { id: string; lead_id: string | null; robo?: boolean };
@@ -367,10 +370,15 @@ Deno.serve(async (req) => {
         ? await supabase.from("lead_sources").select("id, sdr_agent_id")
           .eq("form_id", anuncio.adId).eq("active", true).maybeSingle()
         : { data: null };
-      const { data: geral } = daCampanha || doAnuncio
+      // Sem anúncio (24/10/2026): a origem "WhatsApp · Direto"; na falta dela,
+      // a geral do WhatsApp.
+      const { data: direto } = !anuncio
+        ? await supabase.from("lead_sources").select("id, sdr_agent_id").eq("code", "whatsapp_direto").eq("active", true).maybeSingle()
+        : { data: null };
+      const { data: geral } = daCampanha || doAnuncio || direto
         ? { data: null }
         : await supabase.from("lead_sources").select("id, sdr_agent_id").eq("code", "whatsapp_ads").maybeSingle();
-      const origem = (daCampanha ?? doAnuncio ?? geral) as OrigemAnuncio | null;
+      const origem = (daCampanha ?? doAnuncio ?? direto ?? geral) as OrigemAnuncio | null;
       const agente = origem?.sdr_agent_id ?? null;
       const { data: lead, error: leadErr } = await supabase
         .from("leads")
@@ -385,8 +393,8 @@ Deno.serve(async (req) => {
           ad_name: anuncio?.titulo ?? null,
           campaign_id: campanha?.id ?? null,
           campaign_name: campanha?.nome ?? null,
-          utm_source: "whatsapp_ads",
-          utm_medium: "click_to_whatsapp",
+          utm_source: anuncio ? "whatsapp_ads" : "whatsapp",
+          utm_medium: anuncio ? "click_to_whatsapp" : null,
           landing_page: anuncio?.url ?? null,
           raw_payload: { whatsapp_anuncio: anuncio ?? null, primeira_mensagem: corpoDaMensagem(msg) },
         })
@@ -673,6 +681,11 @@ Deno.serve(async (req) => {
     };
 
     const processar = async (msg: InboundMessage, phone: string) => {
+      // Números da casa (relatório): só o registro, antes de qualquer conversa ou IA.
+      if (numeroIgnorado(phone)) {
+        await registrar(msg, phone, "ignorado");
+        return;
+      }
       let conversa = await conversaDoTelefone(phone, true);
       const contato = conversa ? null : await contatoDeRemarketing(phone);
       if (!conversa && !contato) conversa = await conversaDoTelefone(phone, false);
@@ -683,7 +696,7 @@ Deno.serve(async (req) => {
         if (retErr) console.error("whatsapp-inbound: falha ao retomar conversa arquivada —", retErr.message);
         if (retomou === true) conversa = { ...conversa, status: "active" };
       }
-      const rota = decidirRota(conversa, contato !== null, Boolean(msg.anuncio));
+      const rota = decidirRota(conversa, contato !== null);
 
       if (rota === "sem_destino") {
         // Nada é baixado nem transcrito para quem não tem conversa: fica o
