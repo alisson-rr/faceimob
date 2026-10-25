@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -21,8 +21,6 @@ import { DOCUMENT_REVIEW_META } from "@/components/pipeline/review";
 import { loadCcaCase } from "@/components/pipeline/ccaData";
 import { CcaDevolverDialog } from "@/components/pipeline/CcaDevolverDialog";
 import DeveloperSubmissionDialog from "@/components/DeveloperSubmissionDialog";
-import { PdfPaginas } from "@/components/PdfPaginas";
-import { ehCelular } from "@/lib/whatsapp";
 import {
   DEVELOPER_WITHOUT_EMAIL,
   MAX_DOCUMENT_ALIAS,
@@ -60,6 +58,8 @@ import {
   type EnvioDaEsteira,
   type ReviewEsteira,
 } from "@/integrations/supabase/documents";
+
+const PdfDocumentViewer = lazy(() => import("./PdfDocumentViewer"));
 
 type Props = {
   dealId: string;
@@ -487,7 +487,7 @@ export default function DealDocumentUpload({
   };
 
   const ehPdf = (doc: DealDocumentRecord) =>
-    doc.mime_type === "application/pdf" || /.pdf$/i.test(doc.stored_name);
+    doc.mime_type === "application/pdf" || /\.pdf$/i.test(doc.stored_name) || /\.pdf$/i.test(doc.original_name);
 
   /** Abre no próprio modal: não troca de aba e não dispara download. */
   const previewDocument = async (doc: DealDocumentRecord) => {
@@ -1419,7 +1419,7 @@ export default function DealDocumentUpload({
 
       <Dialog open={Boolean(preview)} onOpenChange={(open) => { if (!open) setPreview(null); }}>
         <DialogContent className="flex h-[88dvh] max-w-5xl flex-col overflow-hidden p-0">
-          <DialogHeader className="border-b border-border px-5 py-4">
+          <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
             <DialogTitle className="truncate pr-8">
               {preview ? documentDisplayName(preview.doc) : "Visualizar documento"}
             </DialogTitle>
@@ -1427,26 +1427,16 @@ export default function DealDocumentUpload({
               Visualização rápida. Use Baixar se o navegador não conseguir exibir este formato.
             </DialogDescription>
           </DialogHeader>
-          {preview && (
-            // Rolável: no celular a imagem maior que a tela ficava cortada, sem como
-            // ver o resto. O PDF no iframe do iOS só mostra a 1ª página e não rola,
-            // por isso o link abaixo abre o arquivo inteiro numa aba.
+          {preview && ehPdf(preview.doc) ? (
+            <Suspense fallback={<p role="status" className="flex-1 p-4 text-center">Carregando visualizador…</p>}>
+              <PdfDocumentViewer key={preview.url} url={preview.url} />
+            </Suspense>
+          ) : preview && (
             <div className="min-h-0 flex-1 overflow-auto bg-slate-950/60 p-2 [-webkit-overflow-scrolling:touch]">
               {preview.doc.mime_type?.startsWith("image/") ? (
-                <img
-                  src={preview.url}
-                  alt={documentDisplayName(preview.doc)}
-                  className="mx-auto h-auto max-w-full"
-                />
-              ) : ehPdf(preview.doc) && ehCelular() ? (
-                // Celular (19/10/2026): todas as páginas, roláveis, no próprio modal.
-                <PdfPaginas url={preview.url} titulo={documentDisplayName(preview.doc)} />
+                <img src={preview.url} alt={documentDisplayName(preview.doc)} className="mx-auto h-auto max-w-full" />
               ) : (
-                <iframe
-                  title={`Visualização de ${documentDisplayName(preview.doc)}`}
-                  src={preview.url}
-                  className="h-full w-full rounded-md bg-white"
-                />
+                <iframe title={`Visualização de ${documentDisplayName(preview.doc)}`} src={preview.url} className="h-full w-full rounded-md bg-white" />
               )}
             </div>
           )}
@@ -1455,7 +1445,7 @@ export default function DealDocumentUpload({
               href={preview.url}
               target="_blank"
               rel="noreferrer"
-              className="border-t border-border px-5 py-2 text-center text-xs font-medium text-primary underline"
+              className="shrink-0 border-t border-border px-5 py-2 text-center text-xs font-medium text-primary underline"
             >
               Abrir em tela cheia
             </a>
