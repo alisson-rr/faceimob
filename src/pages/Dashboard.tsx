@@ -36,7 +36,7 @@ import {
   withZeroSellers,
   type DashboardDataScope,
 } from "@/components/dashboard";
-import { intervaloDoMes } from "@/components/dashboard/periodoLeads";
+import { intervaloDoAno, intervaloDoMes } from "@/components/dashboard/periodoLeads";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { num, parseMonthStart } from "@/lib/format";
@@ -58,6 +58,9 @@ import { esteiraDoMes } from "@/components/dashboard/esteiraDoMes";
  * so tinha o comparativo: quem manda na operacao via menos numero que o corretor
  * que ele dirige, e nao havia caminho de volta.
  */
+/** Valor do seletor de periodo para o ano inteiro: "ano:2026". */
+const ANO_PREFIXO = "ano:";
+
 export default function Dashboard() {
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<string>("geral");
@@ -92,11 +95,25 @@ export default function Dashboard() {
   const isManager = roles.includes("manager");
   const temAbaDeLideranca = isDirector || isManager;
 
-  const { query, deals, months, monthsWithDeals, closedMonths, defaultMonth, payload } =
+  const { query, deals: todosOsNegocios, months, monthsWithDeals, closedMonths, defaultMonth, payload } =
     useDashboardPayload(dataScope);
   // Derivado, nao sincronizado: enquanto o usuario nao escolhe, vale o mes
   // operacional ainda aberto — e ele ja esta certo na primeira pintura.
-  const activeMonth = month ?? defaultMonth;
+  const selecionado = month ?? defaultMonth;
+  // Ano inteiro (26/10/2026: "quantas vendas o corretor X tem neste ano"): os
+  // negocios do ano entram no painel como se fossem "todos os meses" — os
+  // rankings, cartoes e blocos somam o ano; comparativo com o mes anterior e
+  // meta do mes somem, como em "todos os meses".
+  const ano = selecionado.startsWith(ANO_PREFIXO) ? selecionado.slice(ANO_PREFIXO.length) : null;
+  const activeMonth = ano ? ALL_MONTHS : selecionado;
+  const deals = useMemo(
+    () => (ano ? todosOsNegocios.filter((deal) => deal.month_base?.endsWith(`/${ano}`)) : todosOsNegocios),
+    [todosOsNegocios, ano],
+  );
+  const anos = useMemo(
+    () => [...new Set(months.map((item) => item.slice(-4)))].sort((a, b) => b.localeCompare(a)),
+    [months],
+  );
 
   // Diretor na própria diretoria: vendas e VGV na parte dele, meia venda com
   // Diretor 2 no negócio (16/10/2026) — os mesmos números do relatório de
@@ -128,16 +145,17 @@ export default function Dashboard() {
     ),
     [deals, activeMonth, payload?.ccaDealIds],
   );
-  const monthly = useMonthlySeries(deals);
+  // A serie mensal mostra todos os meses, qualquer que seja o periodo do topo.
+  const monthly = useMonthlySeries(todosOsNegocios);
   const goal = useSalesGoal(activeMonth, dataScope);
   const vgvGoal = useVgvGoal(activeMonth, dataScope);
   const leadsQuery = useDashboardLeads(dataScope);
   // O mês vem inteiro do banco (mesma consulta e cache da aba Leads): contado
   // na lista sem recorte, parava nos 1.000 mais recentes.
   const mesDosLeads = useMemo(() => {
-    const intervalo = intervaloDoMes(activeMonth);
+    const intervalo = ano ? intervaloDoAno(Number(ano)) : intervaloDoMes(activeMonth);
     return intervalo ? { de: intervalo.de.toISOString(), ate: intervalo.ate.toISOString() } : null;
-  }, [activeMonth]);
+  }, [activeMonth, ano]);
   const leadsDoMes = useDashboardLeadsNoIntervalo(mesDosLeads, dataScope);
   const leadsNoPeriodo = useMemo(() => {
     if (mesDosLeads) return leadsDoMes.data ? leadsDoMes.data.length : null;
@@ -153,7 +171,7 @@ export default function Dashboard() {
       : null;
 
   const isClosed = activeMonth !== ALL_MONTHS && closedMonths.includes(activeMonth);
-  const periodo = activeMonth === ALL_MONTHS ? "todos os meses" : activeMonth;
+  const periodo = ano ? `o ano de ${ano}` : activeMonth === ALL_MONTHS ? "todos os meses" : activeMonth;
   const atualizando = query.isFetching || leadsQuery.isFetching || leadsDoMes.isFetching;
 
   // Funil de Vendas (04/10/2026): da liderança — admin, sócio, diretor e
@@ -246,12 +264,15 @@ export default function Dashboard() {
               {isClosed ? "Mês fechado" : "Mês aberto"}
             </StatusBadge>
           )}
-          <Select value={activeMonth} onValueChange={setMonth}>
+          <Select value={selecionado} onValueChange={setMonth}>
             <SelectTrigger className="w-[210px]" aria-label="Filtrar por período">
               <SelectValue placeholder="Período" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_MONTHS}>Todos os meses</SelectItem>
+              {anos.map((item) => (
+                <SelectItem key={`ano-${item}`} value={`${ANO_PREFIXO}${item}`}>Ano {item} (todos os meses)</SelectItem>
+              ))}
               {/* O mes operacional entra na lista mesmo sem negocio (e nele que
                   a meta do mes e cadastrada); o rotulo diz que ele esta vazio, em
                   vez de deixar quem escolhe achar que o painel quebrou. */}
@@ -309,7 +330,7 @@ export default function Dashboard() {
   // entao zero aqui so prova que a BASE esta vazia para quem enxerga todo mundo.
   // Para o corretor recem-entrado na roleta o vazio e o dele, e afirmar que o
   // CRM esta vazio o deixava sem saber se era falta de permissao ou de lead.
-  if (deals.length === 0 && !payload?.leadsCount) {
+  if (todosOsNegocios.length === 0 && !payload?.leadsCount) {
     return (
       <>
         {header}
@@ -379,7 +400,7 @@ export default function Dashboard() {
               {/* Histórico: recebe `deals` inteiro, não `view.rows`. A grade
                   compara ano com ano e ignora o filtro de período do topo — o
                   mesmo acordo do `MonthlyTrend`. */}
-              <GradeAnual deals={deals} />
+              <GradeAnual deals={todosOsNegocios} />
             </div>
           </TabsContent>
 

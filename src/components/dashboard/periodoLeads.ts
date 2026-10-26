@@ -54,6 +54,11 @@ export function intervaloDoPeriodo(
   }
 }
 
+/** O ano inteiro, 1º de janeiro a 1º de janeiro (Dashboard "Ano", 26/10/2026). */
+export function intervaloDoAno(ano: number): Intervalo {
+  return { de: dia(ano, 0, 1), ate: dia(ano + 1, 0, 1) };
+}
+
 /**
  * O mês do filtro do topo ("MM/AAAA") como intervalo; "todos os meses" → null.
  * Com ele o mês vem inteiro do banco, em páginas: a lista sem recorte para nos
