@@ -1267,11 +1267,17 @@ export const canWriteLead = (
   return ability.canViewQueue;
 };
 
+/** Status da atribuição atual: repasse pode manter contato/etapa do dono anterior.
+ * Não usar ausência de prazo, etapa ou first_contact_at para inferir espera. */
+export const isLeadAwaitingAttendance = (
+  lead: Pick<LeadRecord, "status">,
+): boolean => lead.status === "assigned";
+
 /** O lead está na minha mão aguardando o clique em "Atender"? */
 export const canClaim = (
   lead: Pick<LeadRecord, "status" | "assigned_to">,
   profileId?: string | null,
-): boolean => Boolean(profileId) && lead.status === "assigned" && lead.assigned_to === profileId;
+): boolean => Boolean(profileId) && isLeadAwaitingAttendance(lead) && lead.assigned_to === profileId;
 
 /**
  * Mesma definição de "atrasado" de `public.overdue_lead_count`: é o que decide

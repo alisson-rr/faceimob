@@ -15,8 +15,8 @@ const semTipos = supabase as unknown as SupabaseClient;
 
 /**
  * "Devolver ao comercial" (pedido da CCA em 05/10/2026): o negócio sai da
- * esteira, mantém o Status 2 e volta ao corretor com a mensagem do que falta,
- * para ele completar e reenviar. Abre do card da CCA e da aba Documentos do
+ * esteira e invalida a conferência anterior. Não substitui pendenciar na
+ * etapa atual: serve para um negócio que entrou indevidamente. Abre do card da CCA e da aba Documentos do
  * negócio — o caso parado de meses atrás não aparece no quadro do mês.
  */
 export function CcaDevolverDialog({ deal, onClose, onDone }: {
@@ -53,15 +53,20 @@ export function CcaDevolverDialog({ deal, onClose, onDone }: {
             <Undo2 className="h-5 w-5 text-warning" aria-hidden /> Devolver ao comercial
           </DialogTitle>
           <DialogDescription>
-            {deal.client} sai da esteira da CCA e volta ao corretor no mesmo status, para completar e reenviar.
+            {deal.client} sairá da esteira da CCA. Devolver ao comercial cancela o caso e invalida a
+            aprovação anterior, inclusive quando já estava em análise para virar negócio.
           </DialogDescription>
         </DialogHeader>
+        <p role="alert" className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+          Use somente se o negócio entrou indevidamente na esteira. Se falta documento ou correção,
+          coloque como pendente na etapa atual para preservar as aprovações e permitir o reenvio correto.
+        </p>
         <div className="space-y-1.5">
-          <Label htmlFor={campo}>O que falta</Label>
+          <Label htmlFor={campo}>Por que o negócio entrou indevidamente na esteira?</Label>
           <Textarea
             id={campo} rows={4} maxLength={2000} value={mensagem}
             onChange={(e) => setMensagem(e.target.value)}
-            placeholder="Ex.: falta o comprovante de residência atualizado."
+            placeholder="Explique por que este negócio não deveria estar na esteira."
           />
         </div>
         <DialogFooter>

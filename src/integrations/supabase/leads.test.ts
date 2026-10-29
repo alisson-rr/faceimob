@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  attendSecondsLeft, formatCountdown, canClaim, isLeadOverdue,
+  attendSecondsLeft, formatCountdown, canClaim, isLeadAwaitingAttendance, isLeadOverdue,
   sourcePerformance, describeLeadEvent, decorateLead, trackingFields,
   FUNNEL_STAGES, LEAD_STATUSES, funnelStageLabel, nomeDeArquivoSeguro,
   type LeadRecord,
@@ -55,6 +55,19 @@ describe("trava de atendimento", () => {
     expect(formatCountdown(300)).toBe("05:00");
     expect(formatCountdown(59)).toBe("00:59");
     expect(formatCountdown(-10)).toBe("00:00");
+  });
+});
+
+describe("isLeadAwaitingAttendance", () => {
+  it("usa o status atual mesmo após repasse de lead com contato e etapa anteriores", () => {
+    const repassado = lead({ first_contact_at: "2026-07-29T12:00:00Z", funnel_stage: "hot" });
+    expect(isLeadAwaitingAttendance(repassado)).toBe(true);
+    expect(canClaim(repassado, "broker-1")).toBe(true);
+    expect(attendSecondsLeft(repassado, NOW)).toBeNull();
+    for (const status of ["attending", "in_progress", "queued", "converted", "lost", "discarded"] as const) {
+      expect(isLeadAwaitingAttendance(lead({ status }))).toBe(false);
+      expect(canClaim(lead({ status }), "broker-1")).toBe(false);
+    }
   });
 });
 

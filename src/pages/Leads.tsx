@@ -22,7 +22,7 @@ import {
   type LeadDialogState, type LeadPermissions, type LeadRowActions,
 } from "@/components/leads";
 import {
-  canWriteLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE, OPEN_LEAD_STATUSES,
+  canWriteLead, distributeQueuedLead, isLeadAwaitingAttendance, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE, OPEN_LEAD_STATUSES,
   type LeadRecord,
 } from "@/integrations/supabase/leads";
 
@@ -147,7 +147,7 @@ export default function Leads() {
   const doCorretor = useMemo(() => leadsDoCorretor(base, filters.broker), [base, filters.broker]);
   // Para o corretor: o que está esperando o "Atender" dele, no topo da tela.
   const paraAtender = useMemo(
-    () => (canManageReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && lead.status === "assigned")),
+    () => (canManageReassign ? [] : base.filter((lead) => lead.assigned_to === profileId && isLeadAwaitingAttendance(lead))),
     [base, canManageReassign, profileId],
   );
   const metrics = useMemo(() => leadMetrics(doCorretor, now, profileId), [doCorretor, now, profileId]);
@@ -191,47 +191,8 @@ export default function Leads() {
     }
   }, [focusLeadId, leadsQuery.isPending, leads, base, setSearchParams]);
 
-  /**
-   * Aviso de lead que saiu da mão do corretor com a tela aberta.
-   *
-   * O cronômetro chegava a 00:00 e a linha mudava sozinha quando o cron passava
-   * — sem nada dizer que o lead tinha voltado para a fila. Quem estava em outra
-   * aba do sistema perdia o lead em silêncio.
-   *
-   * O mapa começa vazio: numa primeira carga ninguém é avisado de nada. "Sair
-   * da minha mão" é deixar de estar comigo (`assigned_to`), não mudar de
-   * status: atender move para `attending` e o lead continua sendo meu.
-   */
-  //
-  // Roda sobre `base`, e não sobre o recorte da busca: digitar um termo encolhe
-  // `leads` e cada lead meu que sai do recorte pareceria ter saído da minha mão
-  // — um toast vermelho por lead, sem nada ter acontecido no banco.
-  const meusNaTrava = useRef(new Map<string, string>());
-  useEffect(() => {
-    if (!profileId) return;
-    const atuais = new Map(
-      base
-        .filter((lead) => lead.status === "assigned" && lead.assigned_to === profileId)
-        .map((lead) => [lead.id, lead.name] as const),
-    );
-    const saiu: string[] = [];
-    for (const [id, nome] of meusNaTrava.current) {
-      if (atuais.has(id)) continue;
-      const agora = base.find((lead) => lead.id === id);
-      if (agora && agora.assigned_to === profileId) continue;
-      saiu.push(nome);
-    }
-    meusNaTrava.current = atuais;
-    if (saiu.length === 0) return;
-    // Um aviso só: o cron solta vários leads na mesma passada, e um toast por
-    // lead empilhava a tela.
-    const nomes = saiu.length <= 3
-      ? saiu.join(", ")
-      : `${saiu.slice(0, 3).join(", ")} e mais ${num(saiu.length - 3)}`;
-    toast.error(saiu.length === 1 ? "Lead fora da sua mão" : `${num(saiu.length)} leads fora da sua mão`, {
-      description: `${nomes}: o prazo de atendimento venceu ou houve realocação.`,
-    });
-  }, [base, profileId]);
+  // Saída da carteira só é avisada pelo evento confirmado no banco
+  // (lead_lost_timeout no sino), nunca por sumir de uma lista limitada.
 
   // Deriva da lista para o modal acompanhar o realtime em vez de congelar uma
   // cópia. As duas listas, porque o modal abre pela tabela (recorte da busca) e
@@ -388,7 +349,7 @@ export default function Leads() {
             <SectionCard
               title="Para atender agora"
               description={paraAtender.length > 0
-                ? "Leads que caíram para você. Clique em Pegar lead antes de o prazo acabar."
+                ? "Leads novos ou repassados esperando você. Clique em Pegar lead; repasses não têm cronômetro."
                 : "Nenhum lead esperando você agora. Mantenha o check-in ativo para receber."}
               icon={HandMetal}
               flush={paraAtender.length > 0}

@@ -1,6 +1,5 @@
--- 0274 — com o Status 2 em PENDENTE P/ VIRAR NEGÓCIO o 2º envio (virar) vale, mesmo
--- com o caso em pendência de um envio pela Ágil; sem esse Status 2 continua só com
--- crédito aprovado.
+-- 0281 revoga o atalho da 0274: o rótulo não substitui aprovação ou
+-- pendência legítima da segunda análise.
 \set ON_ERROR_STOP on
 begin;
 
@@ -40,8 +39,28 @@ begin
   exception when others then v_msg := sqlerrm;
   end;
   reset role;
-  perform pg_temp.ok(v_msg not like 'A análise p/ virar negócio é o 2º envio%',
-    'em PENDENTE P/ VIRAR NEGÓCIO o reenvio passa da regra do 2º envio (' || v_msg || ')');
+  perform pg_temp.ok(v_msg like 'A análise p/ virar negócio é o 2º envio%',
+    'o rótulo PENDENTE P/ VIRAR não libera caso da Ágil (' || v_msg || ')');
+
+  update public.deals set review_esteira = 'virar' where id = v_deal;
+  set local role authenticated;
+  begin
+    perform public.submit_deal_for_manager_review(v_deal, 'reenvio legítimo', 'virar');
+    v_msg := 'passou';
+  exception when others then v_msg := sqlerrm;
+  end;
+  reset role;
+  perform pg_temp.ok(v_msg not like 'A análise p/ virar negócio é o 2º envio%', 'pendência do segundo envio continua elegível');
+
+  update public.cca_cases set status = 'cancelled' where deal_id = v_deal;
+  set local role authenticated;
+  begin
+    perform public.submit_deal_for_manager_review(v_deal, 'devolvido ao comercial', 'virar');
+    v_msg := 'passou';
+  exception when others then v_msg := sqlerrm;
+  end;
+  reset role;
+  perform pg_temp.ok(v_msg like 'A análise p/ virar negócio é o 2º envio%', 'caso cancelado pela devolução não reutiliza a aprovação');
 end;
 $$;
 

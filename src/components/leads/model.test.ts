@@ -64,6 +64,19 @@ describe("matchesFilters", () => {
     expect(matchesFilters(meta, { ...emptyLeadFilters, source: "s1" })).toBe(true);
   });
 
+  it("aguardando inclui repasse sem prazo e com histórico do dono anterior, sem capturar progresso", () => {
+    const repassado = lead({ status: "assigned", assigned_to: "eu", attend_deadline: null,
+      first_contact_at: "2026-08-20T10:00:00Z", funnel_stage: "hot", source_id: "s1" });
+    const filters = { ...emptyLeadFilters, status: "assigned", broker: "eu", source: "s1" };
+    expect(matchesFilters(repassado, filters)).toBe(true);
+    expect(matchesFilters({ ...repassado, attend_deadline: "2026-08-20T10:10:00Z" }, filters)).toBe(true);
+    for (const status of ["attending", "in_progress", "queued", "converted", "lost", "discarded"] as const) {
+      expect(matchesFilters({ ...repassado, status, first_contact_at: null, funnel_stage: "new" }, filters)).toBe(false);
+    }
+    expect(matchesFilters(repassado, { ...filters, broker: "outro" })).toBe(false);
+    expect(matchesFilters(repassado, { ...filters, source: "outra" })).toBe(false);
+  });
+
   it("hasActiveFilter ignora busca só de espaço", () => {
     expect(hasActiveFilter(emptyLeadFilters)).toBe(false);
     expect(hasActiveFilter({ ...emptyLeadFilters, search: "   " })).toBe(false);

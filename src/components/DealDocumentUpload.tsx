@@ -748,7 +748,7 @@ export default function DealDocumentUpload({
       : null;
   const virarBloqueio = reenvioIncompleto
     ? "Em INCOMPLETO o reenvio vai pela Esteira Ágil."
-    : virarBlockReason(caseStatus, review?.review_esteira, pendenteParaVirar);
+    : virarBlockReason(caseStatus, review?.review_esteira);
   // Aba Negócio (10/10/2026): cada esteira tem o seu toggle. A Ágil vale até a
   // aprovação; a análise p/ virar negócio só aparece depois dela.
   const livreParaEnviar = reenvioIncompleto || reenvioPendente || status === "draft" || status === "returned";

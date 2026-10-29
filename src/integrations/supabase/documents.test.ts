@@ -481,7 +481,6 @@ describe("submitDealForManagerReview", () => {
 describe("virarBlockReason", () => {
   it("libera com crédito aprovado, ou devolvido pela CCA depois de um 2º envio", () => {
     expect(virarBlockReason("approved", null)).toBeNull();
-    expect(virarBlockReason("pending_documents", "agil", true)).toBeNull();
     expect(virarBlockReason("pending_documents", "agil")).not.toBeNull();
     expect(virarBlockReason("approved", "agil")).toBeNull();
     expect(virarBlockReason("pending_documents", "virar")).toBeNull();
@@ -489,7 +488,7 @@ describe("virarBlockReason", () => {
 
   it("trava o resto com o motivo", () => {
     for (const [status, esteira] of [
-      [null, null], ["under_review", "virar"], ["pending_documents", "agil"], ["rejected", "virar"],
+      [null, null], ["under_review", "virar"], ["pending_documents", "agil"], ["rejected", "virar"], ["cancelled", "virar"],
     ] as const) {
       expect(virarBlockReason(status, esteira), `${status}/${esteira}`).toMatch(/2º envio/);
     }

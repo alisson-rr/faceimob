@@ -38,6 +38,7 @@ const RECARGA_MS = 600;
 /** Avisos operacionais que também precisam aparecer enquanto a pessoa está
  * trabalhando no app — além de persistirem no sino e no push. */
 const POPUP_KINDS = new Set([
+  "lead_reassigned",
   "cca_pending",
   "cca_status_changed",
   "deal_status_changed",
@@ -137,6 +138,13 @@ export default function NotificationBell() {
           // 0176: lead que chegou ganha popup na tela para o admin, com atalho
           // para a ficha. O sino e o push seguem como sempre.
           const nova = payload.new as { kind?: unknown; title?: unknown; body?: unknown; link?: unknown };
+          if (nova.kind === "lead_lost_timeout" && typeof nova.title === "string") {
+            toast.warning(nova.title, {
+              description: typeof nova.body === "string" ? nova.body : "O prazo encerrou e o lead voltou à distribuição. Veja os contatos ainda aguardando seu atendimento.",
+              duration: 15_000,
+              action: { label: "Ver meus leads", onClick: () => navigateRef.current("/leads") },
+            });
+          }
           if (nova.kind === "lead_new_admin" && typeof nova.title === "string") {
             const link = typeof nova.link === "string" ? nova.link : "/leads";
             avisarLead(nova.title, {

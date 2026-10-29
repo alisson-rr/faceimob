@@ -6,7 +6,7 @@
  * quebra o fast refresh do Vite.
  */
 import { parseBrl } from "@/lib/format";
-import { isLeadOverdue, searchPhoneDigits, searchTerm, type LeadRecord } from "@/integrations/supabase/leads";
+import { isLeadAwaitingAttendance, isLeadOverdue, searchPhoneDigits, searchTerm, type LeadRecord } from "@/integrations/supabase/leads";
 import type { AppRole } from "@/contexts/AuthContext";
 
 export type LeadFilterState = {
@@ -54,7 +54,8 @@ export const matchesFilters = (lead: LeadRecord, filters: LeadFilterState): bool
     || (lead.email || "").toLowerCase().includes(term)
     || (digits !== null && (lead.phone || "").includes(digits))
     || (lead.campaign_name || "").toLowerCase().includes(term);
-  const matchStatus = filters.status === "all" || lead.status === filters.status;
+  const matchStatus = filters.status === "all"
+    || (filters.status === "assigned" ? isLeadAwaitingAttendance(lead) : lead.status === filters.status);
   const matchSource = filters.source === "all"
     || lead.source_id === filters.source
     || (filters.source === "none" && !lead.source_id);
@@ -94,7 +95,7 @@ export const leadMetrics = (leads: LeadRecord[], now: number, profileId?: string
   total: leads.length,
   queued: leads.filter((lead) => lead.status === "queued").length,
   awaiting: leads.filter(
-    (lead) => lead.status === "assigned" && (!profileId || lead.assigned_to === profileId),
+    (lead) => isLeadAwaitingAttendance(lead) && (!profileId || lead.assigned_to === profileId),
   ).length,
   attending: leads.filter((lead) => lead.status === "attending" || lead.status === "in_progress").length,
   converted: leads.filter((lead) => lead.status === "converted").length,

@@ -191,24 +191,28 @@ export async function listMyDealRoles(dealId: string, profileId: string): Promis
 }
 
 /**
- * Nome de cada participante do negócio, por `profile_id`.
+ * Nome de cada participante e autor real do negócio, por `profile_id`.
  *
  * A auditoria da conferência (quem enviou, quem aprovou/devolveu) só existia em
  * `deals.document_review_*`, e a tela mostrava nada. Ler `profiles` direto não
  * serve: `profiles_select` é `auth_visible_profiles()`, e o corretor **não
  * enxerga o perfil do gerente** — a linha voltaria vazia justamente para quem
- * mais precisa saber quem devolveu o dossiê. A RPC `deal_participant_names`
- * (0027) é `security definer` e existe para isto: nome de quem participa de um
- * negócio que a pessoa já pode abrir, sem ampliar a visibilidade de perfis.
+ * mais precisa saber quem devolveu o dossiê. A RPC `deal_actor_names` (0279)
+ * inclui autores do histórico e da esteira CCA, mesmo sem participação
+ * comercial, sem ampliar a visibilidade de perfis.
  *
- * O filtro por `deal_id` vai no PostgREST: a função devolve os participantes de
- * TODOS os negócios visíveis, e o modal precisa de um só.
+ * O negócio é parâmetro autorizado no banco; não recebe ids arbitrários de pessoas.
  */
 export async function dealParticipantNames(dealId: string): Promise<Record<string, string>> {
-  const { data, error } = await supabase
-    .rpc("deal_participant_names")
-    .eq("deal_id", dealId);
-  if (error) throw dbError("deal_participant_names", error);
+  // Fronteira local até a próxima geração de types.ts (não editar o gerado).
+  const actorRpc = supabase as unknown as {
+    rpc(name: "deal_actor_names", params: { p_deal_id: string }): PromiseLike<{
+      data: { profile_id: string; full_name: string | null }[] | null;
+      error: { code?: string; message: string } | null;
+    }>;
+  };
+  const { data, error } = await actorRpc.rpc("deal_actor_names", { p_deal_id: dealId });
+  if (error) throw dbError("deal_actor_names", error);
   const nomes: Record<string, string> = {};
   for (const row of (data ?? []) as { profile_id: string; full_name: string | null }[]) {
     if (row.full_name) nomes[row.profile_id] = row.full_name;
@@ -609,13 +613,10 @@ export function submitBlockReason(input: {
 export function virarBlockReason(
   caseStatus: string | null | undefined,
   reviewEsteira: ReviewEsteira | null | undefined,
-  /** Status 2 em PENDENTE P/ VIRAR NEGÓCIO: a CCA devolveu o 2º envio pedindo documento. */
-  pendenteParaVirar = false,
 ): string | null {
   if (
     caseStatus === "approved"
     || (caseStatus === "pending_documents" && reviewEsteira === "virar")
-    || pendenteParaVirar
   ) {
     return null;
   }
