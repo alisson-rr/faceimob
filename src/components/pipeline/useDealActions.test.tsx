@@ -85,6 +85,23 @@ describe("useDealActions · mover o Status 2", () => {
     expect(toast.success).toHaveBeenCalledWith("Negócio movido para PENDENTE", { duration: 2500 });
   });
 
+  it("gerente registra retorno externo pelo diálogo de comentário, mesmo sem requires_note no destino", async () => {
+    h.auth = { isAdmin: false, roles: ["manager"], can: () => true };
+    const base = porValor(catalogoDeTeste, "16. PENDENTE");
+    const aprovacoes = ["09. APROV. TOTAL", "10. APROV. COND."].map((value) => ({
+      ...base, id: value, value, label: value, requires_note: false,
+    }));
+    catalog = buildDealStatusCatalog(catalogoDeTeste.groups, [...catalogoDeTeste.statuses, ...aprovacoes]);
+    await act(async () => { root.render(<Harness />); });
+    const externo = { ...negocio, status: "ANÁLISE EXTERNA" };
+    for (const status of aprovacoes) {
+      await act(async () => { await actions.moveStatus(externo, status.value); });
+      expect(texto).toHaveBeenCalledWith(externo, expect.objectContaining({ value: status.value }), false);
+    }
+    expect(moveDealStatus).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("Status 1 VENDA com corretor deixa a confirmação para o card de venda; sem corretor confirma", async () => {
     vi.mocked(moveDealStatus).mockResolvedValue(undefined);
     await act(async () => { await actions.moveStatus(negocio, "02. ASS. BANCO"); });

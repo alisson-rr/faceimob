@@ -6,7 +6,7 @@ import { avisarQueda } from "@/components/ui/avisos";
 import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import {
-  moveDealStatus, statusKey, statusMoveBlock, type DealStatus, type DealStatusCatalog,
+  isExternalAnalysisApproval, moveDealStatus, statusKey, statusMoveBlock, type DealStatus, type DealStatusCatalog,
 } from "@/integrations/supabase/dealStatuses";
 import type { PipelineDeal } from "@/types/crm";
 import { useInvalidateDeals } from "./data";
@@ -124,7 +124,7 @@ export function useDealActions({ catalog, closedMonths, onNeedsLossConfirmation,
       onNeedsLossConfirmation(deal, status.value);
       return;
     }
-    if (status.requires_note) {
+    if (status.requires_note || isExternalAnalysisApproval(deal.status, status.value)) {
       onNeedsText(deal, status, false);
       return;
     }

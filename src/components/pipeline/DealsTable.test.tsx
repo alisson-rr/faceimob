@@ -1,14 +1,16 @@
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { DealsTable } from "./DealsTable";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const auth = vi.hoisted(() => ({ roles: ["broker"], allowed: false }));
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ isAdmin: false, roles: ["broker"], can: () => false }),
+  useAuth: () => ({ isAdmin: false, roles: auth.roles, can: () => auth.allowed }),
 }));
+beforeEach(() => { auth.roles = ["broker"]; auth.allowed = false; });
 
 vi.mock("@/integrations/supabase/dealStatuses", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/integrations/supabase/dealStatuses")>();
@@ -93,6 +95,25 @@ async function renderHistoricalOff() {
 }
 
 describe("DealsTable · posição da Esteira Ágil", () => {
+  it("libera o seletor do gerente somente em análise externa e respeita a permissão de Status 2", async () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    auth.roles = ["manager"];
+    auth.allowed = true;
+    const renderStatus = async (status: string) => {
+      await act(async () => { root.render(<DealsTable deals={[{ ...NEGOCIO, status }]}
+        canWrite closedMonths={[]} onOpen={() => undefined} onStatusChange={() => undefined}
+        onScheduleVisit={() => undefined} onLose={() => undefined} onReopen={() => undefined} />); });
+      return container.querySelector<HTMLButtonElement>('[aria-label^="Status 2 de"]')!.disabled;
+    };
+    expect(await renderStatus("ANÁLISE EXTERNA")).toBe(false);
+    expect(await renderStatus("16. PENDENTE")).toBe(true);
+    auth.allowed = false;
+    expect(await renderStatus("ANÁLISE EXTERNA")).toBe(true);
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("expõe a colocação do negócio na tabela usada pelo corretor", async () => {
     expect(await render(4)).toContain("4º na Esteira Ágil");
   });

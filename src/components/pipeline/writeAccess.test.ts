@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canWriteDeals } from "./writeAccess";
+import { canMoveStatusInPipeline, canWriteDeals } from "./writeAccess";
 
 describe("canWriteDeals", () => {
   // O caso que a tela errava: todo perfil carrega 'broker' desde o cadastro
@@ -21,5 +21,20 @@ describe("canWriteDeals", () => {
 
   it("recusa lista vazia: é o estado de carregamento do AuthContext", () => {
     expect(canWriteDeals([])).toBe(false);
+  });
+});
+
+describe("movimentação da análise externa pelo Pipeline", () => {
+  it("libera gerente na análise externa, com ou sem número no status", () => {
+    const who = { isAdmin: false, roles: ["manager", "broker"] };
+    expect(canMoveStatusInPipeline("ANÁLISE EXTERNA", who)).toBe(true);
+    expect(canMoveStatusInPipeline("22. ANÁLISE EXTERNA", who)).toBe(true);
+    expect(canMoveStatusInPipeline("16. PENDENTE", who)).toBe(false);
+  });
+
+  it("não libera corretor e preserva diretor, administrador e sócio", () => {
+    expect(canMoveStatusInPipeline("ANÁLISE EXTERNA", { isAdmin: false, roles: ["broker"] })).toBe(false);
+    expect(canMoveStatusInPipeline("16. PENDENTE", { isAdmin: false, roles: ["director"] })).toBe(true);
+    expect(canMoveStatusInPipeline("16. PENDENTE", { isAdmin: true, roles: ["partner"] })).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { isSystemStatus } from "@/lib/dealStatus";
+import { bareStatus, isSystemStatus } from "@/lib/dealStatus";
 import {
   statusKey, statusMoveBlock, type DealStatus, type DealStatusCatalog,
 } from "@/integrations/supabase/dealStatuses";
@@ -9,6 +9,7 @@ import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { DealCard } from "./DealCard";
 import { KanbanColumnHeader } from "./KanbanColumnHeader";
 import { dealLock } from "./guards";
+import { canMoveStatusInPipeline } from "./writeAccess";
 import type { PipelineStage } from "./stages";
 import { faceimobStatusColor, ordemDeEvolucao } from "./statuses";
 import type { CcaQueueSpot } from "@/integrations/supabase/cca";
@@ -60,9 +61,6 @@ export function StatusKanban({
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const { isAdmin, roles } = useAuth();
-  // Mesma regra da lista do Pipeline (12/10/2026): o Status 2 pelo quadro é de
-  // diretor, administrador e sócio; os demais movem pela aba Negócio do card.
-  const podeMoverStatus2 = isAdmin || roles.includes("director");
 
   const colunas = useMemo<Coluna[]>(() => {
     const doCadastro = ordemDeEvolucao(catalog.statuses.filter((status) =>
@@ -118,7 +116,7 @@ export function StatusKanban({
   /** A recusa da matriz para este destino, ou `null`. Voltar à análise (envio
    *  ao gerente) só confere a saída: quem pode enviar, o banco diz no envio. */
   const blockedMove = useCallback((deal: LegacyDealRecord, destino: PipelineStage) => {
-    if (!podeMoverStatus2) return "Só diretor, administrador e sócio movem o Status 2 pelo quadro. Use a aba Negócio do card.";
+    if (!canMoveStatusInPipeline(deal.status, { isAdmin, roles })) return "Só diretor, administrador e sócio movem o Status 2 pelo quadro. Use a aba Negócio do card.";
     const status = statusPorColuna.get(destino.id);
     if (!status) return "Esta coluna não é um Status 2 do cadastro.";
     if (statusKey(deal.status) === statusKey(status.value)) return "O negócio já está neste status.";
@@ -126,7 +124,7 @@ export function StatusKanban({
       return podeSair(deal) ? null : `Seu perfil não tira o negócio de "${statusAtual(deal)?.label ?? deal.status}".`;
     }
     return statusMoveBlock(catalog, deal.status, status.value, { isAdmin, roles });
-  }, [catalog, statusPorColuna, isAdmin, roles, podeSair, statusAtual, podeMoverStatus2]);
+  }, [catalog, statusPorColuna, isAdmin, roles, podeSair, statusAtual]);
 
   const mover = useCallback((deal: LegacyDealRecord, destino: PipelineStage) => {
     const status = statusPorColuna.get(destino.id);
@@ -212,7 +210,9 @@ export function StatusKanban({
                     onOpen={onOpen}
                     onMove={mover}
                     lock={dealLock(deal, { canWrite, isAdmin, closedMonths })}
-                    canExit={podeMoverStatus2 && podeSair(deal)}
+                    canExit={canMoveStatusInPipeline(deal.status, { isAdmin, roles })
+                      && (podeSair(deal) || (bareStatus(deal.status) === "ANÁLISE EXTERNA"
+                        && roles.some((role) => role === "manager" || role === "director")))}
                     blockedMove={blockedMove}
                     onBlockedMove={setAnnouncement}
                     previousStage={colunas[index - 1]?.status ? colunas[index - 1].stage : undefined}

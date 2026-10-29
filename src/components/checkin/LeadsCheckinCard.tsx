@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Clock3, LogIn, LogOut, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared";
 import QueuePosition from "@/components/QueuePosition";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCheckinUpdates } from "@/hooks/useCheckinUpdates";
 import {
   getCheckinEligibility,
   getCurrentShiftId,
@@ -31,13 +32,14 @@ export function LeadsCheckinCard() {
   // Na prévia "Ver como…", vale o papel da prévia.
   const role = (previewRole ? previewRole === "broker" : roles.includes("broker")) ? "broker" : null;
   const userId = user?.id ?? null;
-  const queryClient = useQueryClient();
+  const refreshCheckin = useCheckinUpdates(userId, role === "broker");
   const [pending, setPending] = useState<"checkin" | "checkout" | null>(null);
 
-  const shifts = useQuery({ queryKey: ["checkin", "shifts"], queryFn: listWorkShifts });
+  const shifts = useQuery({ queryKey: ["checkin", "shifts"], queryFn: listWorkShifts, enabled: Boolean(userId && role === "broker") });
   const currentShift = useQuery({
     queryKey: ["checkin", "current-shift"],
     queryFn: getCurrentShiftId,
+    enabled: Boolean(userId && role === "broker"),
     refetchInterval: POLL_MS,
   });
   const today = useQuery({
@@ -52,16 +54,6 @@ export function LeadsCheckinCard() {
     refetchInterval: POLL_MS,
   });
 
-  useEffect(() => {
-    if (!userId || role !== "broker") return;
-    const invalidate = () => { void queryClient.invalidateQueries({ queryKey: ["checkin"] }); };
-    const channel = supabase
-      .channel(`leads-checkin-${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${userId}` }, invalidate)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments", filter: `profile_id=eq.${userId}` }, invalidate)
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [queryClient, role, userId]);
 
   const activeShift = useMemo(
     () => (shifts.data ?? []).find((shift) => shift.id === currentShift.data) ?? null,
@@ -88,7 +80,7 @@ export function LeadsCheckinCard() {
       const returned = (data as { error?: string } | null)?.error;
       if (returned) throw new Error(returned);
       toast.success(action === "checkin" ? "Check-in realizado — você entrou na fila" : "Check-out realizado");
-      await queryClient.invalidateQueries({ queryKey: ["checkin"] });
+      await refreshCheckin();
     } catch (cause) {
       toast.error(action === "checkin" ? "Não foi possível fazer o check-in" : "Não foi possível fazer o check-out", {
         description: cause instanceof Error ? cause.message : "Tente de novo em instantes.",
@@ -133,7 +125,12 @@ export function LeadsCheckinCard() {
 
       {error && (
         <p role="alert" className="mt-3 flex items-center gap-2 text-xs text-destructive">
-          <AlertTriangle className="h-4 w-4" aria-hidden /> Não consegui confirmar seu turno. Atualize a tela e tente de novo.
+          <AlertTriangle className="h-4 w-4" aria-hidden /> Não consegui confirmar seu turno.
+          <Button type="button" variant="link" size="sm"
+            disabled={shifts.isFetching || today.isFetching || currentShift.isFetching || eligibility.isFetching}
+            onClick={() => void Promise.all([refreshCheckin(), shifts.refetch({ cancelRefetch: false })])}>
+            Tentar novamente
+          </Button>
         </p>
       )}
       {!error && eligibility.data && blocked && (

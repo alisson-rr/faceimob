@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, Clock, ListChecks, LogIn, LogOut, Rocket, ShieldCheck } from "lucide-react";
@@ -11,6 +11,7 @@ import LeadCounter from "@/components/LeadCounter";
 import { CheckinExterno } from "@/components/checkin/CheckinExterno";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCheckinUpdates } from "@/hooks/useCheckinUpdates";
 import { describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
 import { dateTime, num } from "@/lib/format";
@@ -119,24 +120,7 @@ export default function Checkin() {
     enabled: Boolean(userId),
   });
 
-  /**
-   * F12 — a tela precisa acompanhar o banco sem F5.
-   *
-   * `lead_assignments` porque o lead cai pela roleta sem nenhuma ação aqui; e
-   * `checkins` porque a presença muda por fora (check-out automático no fim do
-   * turno, outra aba, outro dispositivo). Sem o segundo, o corretor continuava
-   * vendo "Fazer check-in" depois de já ter batido ponto em outro lugar.
-   */
-  useEffect(() => {
-    if (!userId) return;
-    const invalidate = () => { void queryClient.invalidateQueries({ queryKey: ["checkin"] }); };
-    const channel = supabase
-      .channel(`checkin-${userId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments", filter: `profile_id=eq.${userId}` }, invalidate)
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${userId}` }, invalidate)
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [userId, queryClient]);
+  const refreshCheckin = useCheckinUpdates(userId);
 
   const shiftList = shifts.data ?? [];
   const activeShift = shiftList.find((shift) => shift.id === currentShift.data) ?? null;
@@ -186,7 +170,7 @@ export default function Checkin() {
       } else {
         toast.success("Check-out realizado");
       }
-      await queryClient.invalidateQueries({ queryKey: ["checkin"] });
+      await refreshCheckin();
     } catch (err) {
       // Tudo que chega aqui já é texto nosso em pt-BR (function ou RPC).
       toast.error(falha, { description: err instanceof Error ? err.message : "Tente de novo em instantes." });

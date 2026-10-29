@@ -48,6 +48,36 @@ async function montar(deals: LegacyDealRecord[], onMove = vi.fn(), catalog = cat
 }
 
 describe("StatusKanban", () => {
+  it("gerente move análise externa para aprovação mesmo sem saída geral na matriz", async () => {
+    h.auth = { isAdmin: false, roles: ["manager"] };
+    const base = catalogoDeTeste.statuses.find((s) => s.value === "16. PENDENTE")!;
+    const catalog = buildDealStatusCatalog(catalogoDeTeste.groups, [
+      ...catalogoDeTeste.statuses,
+      { ...base, id: "externa", value: "ANÁLISE EXTERNA", label: "ANÁLISE EXTERNA", position: 8 },
+      { ...base, id: "total", value: "09. APROV. TOTAL", label: "APROV. TOTAL", position: 9 },
+    ]);
+    const mover = vi.fn();
+    const tela = await montar([deal("a", "ANÁLISE EXTERNA", 1)], mover, catalog);
+    expect(tela.container.querySelector('[draggable="true"]')).not.toBeNull();
+    await tela.soltar("Cliente a", "APROV. TOTAL");
+    expect(mover).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }), "09. APROV. TOTAL");
+    tela.sair();
+  });
+
+  it("liberar o gesto ao gerente não libera outros destinos da matriz", async () => {
+    h.auth = { isAdmin: false, roles: ["manager"] };
+    const base = catalogoDeTeste.statuses.find((s) => s.value === "16. PENDENTE")!;
+    const catalog = buildDealStatusCatalog(catalogoDeTeste.groups, [
+      ...catalogoDeTeste.statuses,
+      { ...base, id: "externa", value: "ANÁLISE EXTERNA", label: "ANÁLISE EXTERNA" },
+    ]);
+    const mover = vi.fn();
+    const tela = await montar([deal("a", "ANÁLISE EXTERNA", 1)], mover, catalog);
+    await tela.soltar("Cliente a", "VIROU NEGÓCIO");
+    expect(mover).not.toHaveBeenCalled();
+    tela.sair();
+  });
+
   it("colunas são os Status 2 do Status 1 escolhido; a vazia vira faixa com o nome", async () => {
     h.auth = { isAdmin: true, roles: ["admin"] };
     const tela = await montar([

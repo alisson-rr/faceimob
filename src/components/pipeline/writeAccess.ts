@@ -13,6 +13,7 @@
  * atribui o corretor de verdade.
  */
 import { primaryRole, type NewAppRole } from "@/integrations/supabase/newSchema";
+import { bareStatus } from "@/lib/dealStatus";
 
 const DEAL_WRITERS: NewAppRole[] = ["admin", "director", "manager", "broker", "cca"];
 
@@ -21,3 +22,10 @@ const DEAL_WRITERS: NewAppRole[] = ["admin", "director", "manager", "broker", "c
 // mostraria o botão para os dois. O banco recusa os dois, então a tela também.
 export const canWriteDeals = (roles: NewAppRole[]): boolean =>
   roles.length > 0 && DEAL_WRITERS.includes(primaryRole(roles));
+
+/** Movimentação direta na lista/quadro; gerente ganha somente a análise externa. */
+export const canMoveStatusInPipeline = (
+  from: string | null | undefined,
+  who: { isAdmin: boolean; roles: readonly string[] },
+): boolean => who.isAdmin || who.roles.includes("director")
+  || (who.roles.includes("manager") && bareStatus(from) === "ANÁLISE EXTERNA");

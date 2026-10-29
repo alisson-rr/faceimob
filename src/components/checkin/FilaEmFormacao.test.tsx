@@ -3,11 +3,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** Fila em formação: todo usuário autenticado vê; ordem e situação vêm do banco. */
-const m = vi.hoisted(() => ({ user: { id: "u1" } as { id: string } | null, linhas: [] as unknown[], rpc: vi.fn() }));
+const m = vi.hoisted(() => ({ user: { id: "u1" } as { id: string } | null, linhas: [] as unknown[], rpc: vi.fn(), callbacks: new Map<string, () => void>() }));
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: m.user }) }));
 vi.mock("@/integrations/supabase/client", () => {
-  const canal = { on: () => canal, subscribe: () => canal };
+  const canal = {
+    on: (_event: string, filter: { table: string }, callback: () => void) => {
+      m.callbacks.set(filter.table, callback);
+      return canal;
+    },
+    subscribe: () => canal,
+  };
   return {
     supabase: {
       rpc: (...args: unknown[]) => { m.rpc(...args); return Promise.resolve({ data: m.linhas, error: null }); },
@@ -25,6 +31,8 @@ afterEach(() => {
   root = null;
   document.body.innerHTML = "";
   m.rpc.mockClear();
+  m.callbacks.clear();
+  vi.useRealTimers();
 });
 
 function montar() {
@@ -45,6 +53,28 @@ const linha = (nome: string, posicao: number | null, situacao: string, extra = {
 });
 
 describe("FilaEmFormacao", () => {
+  it("não acompanha rajadas recolhida e agrupa as atualizações quando aberta", async () => {
+    m.user = { id: "corretor" };
+    m.linhas = [linha("Ana", 1, "na_fila")];
+    const el = montar();
+    await vi.waitFor(() => expect(m.rpc).toHaveBeenCalledTimes(1));
+    expect(m.callbacks.size).toBe(0);
+    const details = el.querySelector("details")!;
+    details.open = true;
+    details.dispatchEvent(new Event("toggle"));
+    await vi.waitFor(() => expect(m.callbacks.size).toBe(2));
+    await vi.waitFor(() => expect(m.rpc.mock.calls.length).toBeGreaterThan(1));
+    const before = m.rpc.mock.calls.length;
+    vi.useFakeTimers();
+    for (let i = 0; i < 30; i++) {
+      m.callbacks.get("checkins")!();
+      m.callbacks.get("lead_assignments")!();
+    }
+    expect(m.rpc).toHaveBeenCalledTimes(before);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(m.rpc).toHaveBeenCalledTimes(before + 1);
+  });
+
   it("mostra a hora em que a pessoa voltou à fila, não só o check-in (0263)", async () => {
     m.user = { id: "admin" };
     m.linhas = [

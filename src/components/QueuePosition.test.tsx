@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import QueuePosition from "./QueuePosition";
 
 /**
@@ -39,14 +40,16 @@ vi.mock("@/integrations/supabase/checkin", () => ({
 async function render(ui: ReactNode) {
   const container = document.body.appendChild(document.createElement("div"));
   const root = createRoot(container);
-  await act(async () => { root.render(ui); });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () => { root.render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>); });
   // Um tique para a consulta da fila resolver antes de ler a tela.
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const cleanup = async () => {
     await act(async () => { root.unmount(); });
+    client.clear();
     container.remove();
   };
-  return { container, cleanup };
+  return { container, cleanup, client };
 }
 
 const grupo = (entries: { profile_id: string; full_name: string; queue_position: number }[]) => [{
@@ -61,6 +64,27 @@ beforeEach(() => {
 });
 
 describe("QueuePosition", () => {
+  it("mantém cache após erro de atualização e permite retry pelo indicador", async () => {
+    const data = grupo([{ profile_id: "eu", full_name: "Eu", queue_position: 1 }]);
+    filas.mockResolvedValue(data);
+    const { container, cleanup, client } = await render(<QueuePosition checkedIn />);
+    expect(container.textContent).toMatch(/você é o 1º de 1/i);
+    filas.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["my-queues", "eu"], exact: true }, { cancelRefetch: false });
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(client.getQueryData(["my-queues", "eu"])).toEqual(data);
+    const retry = container.querySelector("button")!;
+    expect(retry.textContent).toMatch(/tentar de novo/i);
+    expect(retry.disabled).toBe(false);
+    await act(async () => { retry.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(container.textContent).toMatch(/você é o 1º de 1/i);
+    expect(client.getQueryState(["my-queues", "eu"])?.status).toBe("success");
+    await cleanup();
+  });
+
   it("na fila, diz a posição e o tamanho dela", async () => {
     filas.mockResolvedValue(grupo([
       { profile_id: "outro", full_name: "Ana", queue_position: 1 },

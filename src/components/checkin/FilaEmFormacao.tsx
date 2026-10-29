@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronDown, ListOrdered } from "lucide-react";
@@ -58,6 +58,7 @@ function porGrupo(linhas: LinhaDaFila[]) {
 export function FilaEmFormacao() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
 
   const fila = useQuery({
     queryKey: ["checkin", "fila-em-formacao"],
@@ -72,15 +73,28 @@ export function FilaEmFormacao() {
   });
 
   useEffect(() => {
-    if (!user?.id) return;
-    const recarregar = () => { void queryClient.invalidateQueries({ queryKey: ["checkin", "fila-em-formacao"] }); };
+    if (!user?.id || !expanded) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const recarregar = () => {
+      if (timer !== undefined) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        void queryClient.invalidateQueries(
+          { queryKey: ["checkin", "fila-em-formacao"], exact: true },
+          { cancelRefetch: false },
+        );
+      }, 1_000);
+    };
     const canal = supabase
       .channel("fila-em-formacao")
       .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, recarregar)
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, recarregar)
       .subscribe();
-    return () => { void supabase.removeChannel(canal); };
-  }, [user?.id, queryClient]);
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      void supabase.removeChannel(canal);
+    };
+  }, [user?.id, queryClient, expanded]);
 
   if (!user?.id) return null;
 
@@ -88,7 +102,13 @@ export function FilaEmFormacao() {
   const presentes = (fila.data ?? []).filter((l) => l.situacao !== "bloqueado").length;
 
   return (
-    <details className="group rounded-2xl border border-primary/35 bg-card p-4">
+    <details className="group rounded-2xl border border-primary/35 bg-card p-4" onToggle={(event) => {
+      const open = event.currentTarget.open;
+      setExpanded(open);
+      if (open) void queryClient.invalidateQueries(
+        { queryKey: ["checkin", "fila-em-formacao"], exact: true }, { cancelRefetch: false },
+      );
+    }}>
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
         <ListOrdered className="h-4 w-4 text-primary" aria-hidden />
         <h2 className="font-display text-sm font-bold">Fila em formação</h2>

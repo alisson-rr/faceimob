@@ -1,18 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ListOrdered, Loader2, RefreshCcw } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { getMyQueues, type QueueEntry } from "@/integrations/supabase/checkin";
+import { useMyQueues } from "@/hooks/useMyQueues";
 import { describeError } from "@/lib/supabaseError";
-
-/**
- * A fila abre sozinha no horário de distribuição do turno, e nada muda em
- * `checkins` nem em `lead_assignments` nesse instante: sem releitura, quem
- * bateu ponto às 08:05 leria "a fila abre às 08:30" até um F5.
- */
-const QUEUE_POLL_MS = 60_000;
 
 type Props = {
   /** Presença aberta no turno vigente — quem sabe disso é a tela de check-in. */
@@ -45,40 +37,21 @@ type Props = {
  */
 export default function QueuePosition({ checkedIn, opensAt, blocked = false }: Props) {
   const { user } = useAuth();
-  const [queues, setQueues] = useState<{ groupId: string; groupName: string; entries: QueueEntry[] }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setQueues(await getMyQueues(user.id));
-      setError(null);
-    } catch (e) {
-      setError(describeError(e, "Não foi possível carregar sua posição na fila."));
-    } finally {
-      setLoading(false);
+  const profileId = user?.id ?? null;
+  const query = useMyQueues(profileId);
+  const { scheduleRefresh } = query;
+  const previous = useRef({ profileId, checkedIn });
+  useEffect(() => {
+    if (previous.current.profileId === profileId && previous.current.checkedIn !== checkedIn) {
+      scheduleRefresh();
     }
-  }, [user?.id]);
-
-  // `checkedIn` nas dependências: a própria tela de check-in já sabe que a
-  // presença mudou antes de o realtime avisar.
-  useEffect(() => { void load(); }, [load, checkedIn]);
-
-  useEffect(() => {
-    const timer = setInterval(() => { void load(); }, QUEUE_POLL_MS);
-    return () => clearInterval(timer);
-  }, [load]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    const channel = supabase
-      .channel(`queue-position-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${user.id}` }, () => void load())
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [user?.id, load]);
+    previous.current = { profileId, checkedIn };
+  }, [profileId, checkedIn, scheduleRefresh]);
+  const queues = query.data ?? [];
+  const loading = query.isLoading || (query.isError && query.isFetching);
+  const error = query.error
+    ? describeError(query.error, "Não foi possível carregar sua posição na fila.")
+    : null;
 
   if (loading) {
     return (
@@ -101,7 +74,7 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
           variant="outline"
           size="sm"
           className="h-7 gap-1 px-2 text-xs"
-          onClick={() => { setLoading(true); void load(); }}
+          onClick={() => { void query.refetch({ cancelRefetch: false }); }}
         >
           <RefreshCcw className="h-3 w-3" aria-hidden /> Tentar de novo
         </Button>

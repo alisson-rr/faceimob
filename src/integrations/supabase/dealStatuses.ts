@@ -228,11 +228,13 @@ export async function setDealStatusPermission(
   if (!data?.length) conferir("deal_status_permissions", null);
 }
 
-/**
- * Por que quem está logado não pode trocar o Status 2 de `from` para `to`, ou
- * `null`. O MESMO recorte de `deal_status_move_block` (0164) — a tela usa para
- * desenhar a recusa antes do gesto; quem decide é o banco.
- */
+/** Retorno externo exige comentário mesmo se o destino não exige em geral (0270). */
+export function isExternalAnalysisApproval(from: string | null | undefined, to: string): boolean {
+  return bareStatus(from ?? "") === "ANÁLISE EXTERNA"
+    && ["APROV. TOTAL", "APROV. COND."].includes(bareStatus(to));
+}
+
+/** Motivo da recusa de movimentação; espelha `deal_status_move_block`. */
 export function statusMoveBlock(
   catalog: Pick<DealStatusCatalog, "statuses" | "indexByKey" | "permissions">,
   from: string | null | undefined,
@@ -246,8 +248,7 @@ export function statusMoveBlock(
   // depender da CCA. É uma exceção de transição, não acesso geral aos status
   // de aprovação: corretor segue bloqueado e os demais caminhos usam a matriz.
   if (
-    bareStatus(from ?? "") === "ANÁLISE EXTERNA"
-    && ["APROV. TOTAL", "APROV. COND."].includes(bareStatus(to))
+    isExternalAnalysisApproval(from, to)
     && who.roles.some((role) => role === "manager" || role === "director")
   ) return null;
   if (

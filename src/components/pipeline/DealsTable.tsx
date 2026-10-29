@@ -21,6 +21,7 @@ import { offDistratoBlocked } from "./useDealActions";
 import { dealBrokers, dealMonth, pct, sortDealsBy, type DealSortKey } from "./filters";
 import { CCA_FILA_ROTULO, type CcaQueueSpot } from "@/integrations/supabase/cca";
 import { diasNoStatus } from "./dias";
+import { canMoveStatusInPipeline } from "./writeAccess";
 
 const PER_PAGE = 15;
 
@@ -74,9 +75,6 @@ export function DealsTable({
   onReactivate, currentMonth,
 }: Props) {
   const { isAdmin, roles, can } = useAuth();
-  // Status 2 direto na lista: só diretor, administrador e sócio (12/10/2026).
-  // Os demais movem o negócio pela aba Negócio do card.
-  const podeMoverStatus2 = isAdmin || roles.includes("director");
   const catalog = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const [page, setPage] = useState(1);
   // A ordem era fixa (construtora, depois catálogo de Status 2): não dava para
@@ -183,6 +181,7 @@ export function DealsTable({
               const review = conferenciaDoNegocio(deal.document_review_status, deal.status);
               const ccaQueuePosition = ccaQueuePositions?.get(deal.id);
               const status = deal.status || "PROPOSTA";
+              const podeMoverStatus2 = canMoveStatusInPipeline(status, { isAdmin, roles });
               const grupo = statusGroupLabel(catalog, deal.status_group_id);
               const bolinha = developerDot(deal.developer, deal.developer_color);
               const corretores = dealBrokers(deal);
