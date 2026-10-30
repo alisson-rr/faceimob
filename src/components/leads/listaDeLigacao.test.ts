@@ -5,12 +5,13 @@ import { embaralhar, intercalarCampanhas, lerLinhas, montarListaPdf, paraPdf } f
 describe("lista de ligação", () => {
   it("valida as linhas da RPC e descarta quem não tem telefone", () => {
     expect(lerLinhas([
-      { campanha: "[FORM] GERAL", cliente: "Ana", telefone: "51999990000" },
+      { campanha: "[FORM] GERAL", cliente: "Ana", telefone: "51999990000", criado_em: "2026-03-01T02:30:00Z" },
       { campanha: null, cliente: "", telefone: "51988880000" },
       { campanha: "X", cliente: "Sem fone", telefone: null },
     ])).toEqual([
-      { campanha: "[FORM] GERAL", cliente: "Ana", telefone: "51999990000" },
-      { campanha: "Sem campanha", cliente: "Sem nome", telefone: "51988880000" },
+      // 01/03 às 02:30 UTC ainda é fevereiro em São Paulo.
+      { campanha: "[FORM] GERAL", cliente: "Ana", telefone: "51999990000", mesAno: "02/2026" },
+      { campanha: "Sem campanha", cliente: "Sem nome", telefone: "51988880000", mesAno: "" },
     ]);
     expect(lerLinhas(null)).toEqual([]);
   });
@@ -18,7 +19,7 @@ describe("lista de ligação", () => {
   it("PDF aceita acento e troca emoji, e quebra página na lista longa", async () => {
     expect(paraPdf("João Conceição 🏠")).toBe("João Conceição ?");
     const linhas = Array.from({ length: 120 }, (_, i) => ({
-      campanha: `[FORM] CAMPANHA COM NOME BEM COMPRIDO QUE NÃO CABE ${i}`, cliente: `Cliente ${i}`, telefone: "51999990000",
+      campanha: `[FORM] CAMPANHA COM NOME BEM COMPRIDO QUE NÃO CABE ${i}`, cliente: `Cliente ${i}`, telefone: "51999990000", mesAno: "10/2026",
     }));
     const pdf = await PDFDocument.load(await montarListaPdf(linhas));
     expect(pdf.getPageCount()).toBeGreaterThan(1);
@@ -35,9 +36,9 @@ describe("lista de ligação", () => {
 
   it("intercala campanhas em vez de gerar blocos contínuos", () => {
     const linhas = [
-      ...Array.from({ length: 4 }, (_, i) => ({ campanha: "Bella Citta", cliente: `B${i}`, telefone: `51${i}` })),
-      ...Array.from({ length: 3 }, (_, i) => ({ campanha: "Park", cliente: `P${i}`, telefone: `52${i}` })),
-      ...Array.from({ length: 2 }, (_, i) => ({ campanha: "Solar", cliente: `S${i}`, telefone: `53${i}` })),
+      ...Array.from({ length: 4 }, (_, i) => ({ campanha: "Bella Citta", cliente: `B${i}`, telefone: `51${i}`, mesAno: "" })),
+      ...Array.from({ length: 3 }, (_, i) => ({ campanha: "Park", cliente: `P${i}`, telefone: `52${i}`, mesAno: "" })),
+      ...Array.from({ length: 2 }, (_, i) => ({ campanha: "Solar", cliente: `S${i}`, telefone: `53${i}`, mesAno: "" })),
     ];
     const resultado = intercalarCampanhas(linhas, () => 0.4);
     expect(resultado).toHaveLength(linhas.length);

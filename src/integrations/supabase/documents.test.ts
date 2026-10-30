@@ -483,14 +483,15 @@ describe("virarBlockReason", () => {
   it("libera com crédito aprovado, ou devolvido pela CCA depois de um 2º envio", () => {
     expect(virarBlockReason("approved", null)).toBeNull();
     expect(virarBlockReason("pending_documents", "agil", true)).toBeNull();
-    expect(virarBlockReason("pending_documents", "agil")).not.toBeNull();
+    // #176: devolvido pela CCA depois do 1º envio na Ágil libera o reenvio.
+    expect(virarBlockReason("pending_documents", "agil")).toBeNull();
     expect(virarBlockReason("approved", "agil")).toBeNull();
     expect(virarBlockReason("pending_documents", "virar")).toBeNull();
   });
 
   it("trava o resto com o motivo", () => {
     for (const [status, esteira] of [
-      [null, null], ["under_review", "virar"], ["pending_documents", "agil"], ["rejected", "virar"],
+      [null, null], [null, "agil"], ["under_review", "agil"], ["under_review", "virar"], ["rejected", "virar"],
     ] as const) {
       expect(virarBlockReason(status, esteira), `${status}/${esteira}`).toMatch(/2º envio/);
     }
