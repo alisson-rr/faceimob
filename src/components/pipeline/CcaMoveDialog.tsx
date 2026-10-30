@@ -17,6 +17,22 @@ import type { PipelineStage } from "./stages";
 
 /** Teto que `move_cca_case` cobra (0150). */
 const MAX_MENSAGEM = 4000;
+// Tamanho da letra da mensagem (pedido do CCA): escolhido por pessoa e lembrado
+// neste aparelho. Veio do branch `avisos-sucesso` (29/10/2026), que chegou a ir
+// ao ar fora da main e foi sobrescrito; trazido de volta em 30/10/2026.
+const FONT_SIZE_KEY = "faceimob-cca-message-font-size";
+const FONT_SIZES = ["text-xs", "text-base", "text-xl"] as const;
+
+function readFontSize(key: string | null) {
+  if (!key) return 0;
+  try {
+    const saved = localStorage.getItem(key);
+    return saved !== null && ["0", "1", "2"].includes(saved) ? Number(saved) : 0;
+  } catch {
+    // Armazenamento indisponível: mantém o tamanho padrão.
+    return 0;
+  }
+}
 
 interface Props {
   deal: CcaDeal;
@@ -56,12 +72,25 @@ interface Props {
 // atrás de "Aprovado" nem espelhar a metade "sair" da matriz. É o registro que a
 // esteira já carregou para o período, não a base inteira de negócios.
 export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, onMoved }: Props) {
-  const { canEnterStage } = useAuth();
+  const { canEnterStage, user } = useAuth();
   const canExitStage = useCanExitStage();
   // Abre VAZIA: a mensagem é o aviso desta movimentação para corretor e gerente,
   // e semear com a observação antiga (a do Bubble) mandava texto velho como novo.
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const fontSizeKey = user ? `${FONT_SIZE_KEY}:${user.id}` : null;
+  const [fontPreference, setFontPreference] = useState(() => ({ key: fontSizeKey, size: readFontSize(fontSizeKey) }));
+  const fontSize = fontPreference.key === fontSizeKey ? fontPreference.size : readFontSize(fontSizeKey);
+
+  const changeFontSize = (size: number) => {
+    setFontPreference({ key: fontSizeKey, size });
+    if (!fontSizeKey) return;
+    try {
+      localStorage.setItem(fontSizeKey, String(size));
+    } catch {
+      // A preferência continua válida nesta abertura se o aparelho não permitir gravá-la.
+    }
+  };
 
   const independent = isIndependentCcaStage(stage.name);
   // Cor pelo destino (19/10/2026): avanço em verde, pendência que volta para
@@ -183,8 +212,17 @@ export function CcaMoveDialog({ deal, stage, approvedStage, negocio, onClose, on
 
         <div>
           <Label htmlFor="cca-move-message">Mensagem para a equipe</Label>
+          <div role="group" aria-label="Tamanho da fonte da mensagem" className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">Tamanho da fonte</span>
+            <Button type="button" variant="outline" size="sm" aria-label="Reduzir fonte da mensagem"
+              aria-controls="cca-move-message" disabled={fontSize === 0}
+              onClick={() => changeFontSize(fontSize - 1)}>A−</Button>
+            <Button type="button" variant="outline" size="sm" aria-label="Aumentar fonte da mensagem"
+              aria-controls="cca-move-message" disabled={fontSize === FONT_SIZES.length - 1}
+              onClick={() => changeFontSize(fontSize + 1)}>A+</Button>
+          </div>
           <Textarea
-            id="cca-move-message" rows={3} className="mt-1 text-xs"
+            id="cca-move-message" rows={3} className={`mt-1 ${FONT_SIZES[fontSize]}`}
             required maxLength={MAX_MENSAGEM} aria-describedby="cca-move-message-hint"
             placeholder={notifies
               ? "O que mudou e o próximo passo. Vai para o corretor e o gerente."

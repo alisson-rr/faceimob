@@ -17,7 +17,8 @@ import { toast } from "@/components/ui/sonner";
 
 vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn() } }));
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ canEnterStage: () => true }) }));
+const auth = vi.hoisted(() => ({ user: { id: "cca-1" } }));
+vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: auth.user, canEnterStage: () => true }) }));
 vi.mock("./data", () => ({ updateDeal: vi.fn(), useCanExitStage: () => () => true }));
 
 const deal: CcaDeal = {
@@ -36,6 +37,9 @@ afterEach(async () => {
   await act(async () => { root?.unmount(); });
   container.remove();
   root = null;
+  vi.restoreAllMocks();
+  localStorage.clear();
+  auth.user = { id: "cca-1" };
 });
 
 async function abrir(stage: CcaStage, funil?: { approvedStage: PipelineStage; negocio: LegacyDealRecord }, callbacks?: { onClose: () => void; onMoved: () => void | Promise<void> }) {
@@ -53,6 +57,82 @@ async function abrir(stage: CcaStage, funil?: { approvedStage: PipelineStage; ne
 }
 
 describe("CcaMoveDialog · o efeito da coluna antes de confirmar", () => {
+  it("preserva o padrão, ajusta pelos controles e restaura a preferência ao reabrir", async () => {
+    localStorage.setItem("faceimob-cca-message-font-size", "2");
+    await abrir(coluna({ status: "pending_documents" }));
+    const mensagem = document.querySelector("textarea")!;
+    const reduzir = document.querySelector<HTMLButtonElement>('[aria-label="Reduzir fonte da mensagem"]')!;
+    const aumentar = document.querySelector<HTMLButtonElement>('[aria-label="Aumentar fonte da mensagem"]')!;
+    expect(mensagem.classList.contains("text-xs")).toBe(true);
+    expect(reduzir.disabled).toBe(true);
+    await act(async () => { aumentar.click(); });
+    expect(mensagem.classList.contains("text-base")).toBe(true);
+    expect(localStorage.getItem("faceimob-cca-message-font-size:cca-1")).toBe("1");
+    await act(async () => { aumentar.click(); });
+    expect(mensagem.classList.contains("text-xl")).toBe(true);
+    expect(aumentar.disabled).toBe(true);
+    await act(async () => { reduzir.click(); });
+    expect(mensagem.classList.contains("text-base")).toBe(true);
+    await act(async () => { root?.unmount(); });
+    container.remove();
+    await abrir(coluna({ status: "pending_documents" }));
+    expect(document.querySelector("textarea")!.classList.contains("text-base")).toBe(true);
+    expect(document.querySelector("textarea")!.value).toBe("");
+  });
+
+  it("ignora preferência inválida e mantém as regras e a mensagem enviada ao ajustar a fonte", async () => {
+    localStorage.setItem("faceimob-cca-message-font-size:cca-1", "99");
+    await abrir(coluna({ status: "pending_documents" }));
+    const mensagem = document.querySelector("textarea")!;
+    const confirmar = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Confirmar")!;
+    expect(mensagem.classList.contains("text-xs")).toBe(true);
+    expect(mensagem.required).toBe(true);
+    expect(mensagem.maxLength).toBe(4000);
+    expect(confirmar.disabled).toBe(true);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(mensagem, "  Enviar comprovante  ");
+      mensagem.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Aumentar fonte da mensagem"]')!.click(); });
+    expect(mensagem.value).toBe("  Enviar comprovante  ");
+    expect(confirmar.disabled).toBe(false);
+    const { supabase } = await import("@/integrations/supabase/client");
+    vi.mocked(supabase.rpc).mockResolvedValueOnce({ data: null, error: null, count: null, status: 200, statusText: "OK", success: true });
+    await act(async () => { confirmar.click(); });
+    expect(supabase.rpc).toHaveBeenCalledWith("move_cca_case", {
+      p_case_id: deal.caseId, p_stage_id: "s1", p_message: "Enviar comprovante",
+    });
+  });
+
+  it("permite ajustar a fonte mesmo com armazenamento indisponível", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    await abrir(coluna({}));
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Aumentar fonte da mensagem"]')!.click(); });
+    expect(document.querySelector("textarea")!.classList.contains("text-base")).toBe(true);
+  });
+
+  it("isola a preferência entre dois CCAs no mesmo aparelho, inclusive ao trocar o perfil aberto", async () => {
+    await abrir(coluna({}));
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Aumentar fonte da mensagem"]')!.click(); });
+    auth.user = { id: "cca-2" };
+    await act(async () => {
+      root?.render(<CcaMoveDialog deal={deal} stage={coluna({})} onClose={() => undefined} onMoved={() => undefined} />);
+    });
+    expect(document.querySelector("textarea")!.classList.contains("text-xs")).toBe(true);
+    expect(localStorage.getItem("faceimob-cca-message-font-size:cca-2")).toBeNull();
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Aumentar fonte da mensagem"]')!.click(); });
+    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Aumentar fonte da mensagem"]')!.click(); });
+    expect(localStorage.getItem("faceimob-cca-message-font-size:cca-2")).toBe("2");
+    auth.user = { id: "cca-1" };
+    await act(async () => {
+      root?.render(<CcaMoveDialog deal={deal} stage={coluna({})} onClose={() => undefined} onMoved={() => undefined} />);
+    });
+    expect(document.querySelector("textarea")!.classList.contains("text-base")).toBe(true);
+    expect(localStorage.getItem("faceimob-cca-message-font-size:cca-1")).toBe("1");
+  });
+
+
   it.each([false, true])("pendência mantém comercial, fecha sem aguardar recarga e trata repetição=%s", async (repeated) => {
     vi.clearAllMocks();
     vi.mocked(supabase.rpc).mockResolvedValue({ data: { already_moved: repeated }, error: null } as never);
