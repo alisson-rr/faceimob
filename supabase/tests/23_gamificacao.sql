@@ -50,10 +50,14 @@ $$;
 -- no-op (o "corretor sem histórico" era o sócio) e, pior, o `grant broker`
 -- mutava um usuário compartilhado para todos os arquivos seguintes.
 -- -----------------------------------------------------------------------------
+-- 0312: as vendas do cenário são do mês corrente (o da temporada); nenhum
+-- teste anterior pode ter travado esse mês.
+delete from public.closed_months where period in (public.month_start(current_date), (public.month_start(current_date) + interval '1 month')::date);
+
 do $$
 declare
   jogador uuid := '00000000-0000-0000-0000-000000600001';
-  v_mes   date := public.month_start((current_date + interval '8 months')::date);
+  v_mes   date := public.month_start(current_date);  -- 0312: o mês da temporada
 begin
   -- Corretor sem equipe e sem histórico: o VGV congelado dele é medível, o dos
   -- corretores do 01 já carrega negócio de outros testes.
@@ -86,7 +90,7 @@ $$;
 do $$
 declare
   bruno   uuid := '00000000-0000-0000-0000-0000000000b1';
-  v_mes   date := public.month_start((current_date + interval '8 months')::date);
+  v_mes   date := public.month_start(current_date);  -- 0312: o mês da temporada
   v_deal  uuid;
   v_tipo  uuid;
 begin
@@ -217,7 +221,7 @@ $$;
 do $$
 declare
   bruno  uuid := '00000000-0000-0000-0000-0000000000b1';
-  v_mes  date := public.month_start((current_date + interval '8 months')::date);
+  v_mes  date := public.month_start(current_date);  -- 0312: o mês da temporada
   v_deal uuid;
 begin
   -- Sem `created_by`, pelo mesmo motivo do bloco 1.
@@ -244,7 +248,7 @@ $$;
 do $$
 declare
   jogador uuid := '00000000-0000-0000-0000-000000600001';
-  v_mes   date := public.month_start((current_date + interval '8 months')::date);
+  v_mes   date := public.month_start(current_date);  -- 0312: o mês da temporada
   v_deal  uuid;
 begin
   -- Importação de planilha e carga inicial gravam o negócio já em `won`. O
@@ -337,7 +341,7 @@ do $$
 declare
   adm     uuid := '00000000-0000-0000-0000-000000600000';
   jogador uuid := '00000000-0000-0000-0000-000000600001';
-  v_mes   date := public.month_start((current_date + interval '8 months')::date);
+  v_mes   date := public.month_start(current_date);  -- 0312: o mês da temporada
   v_deal  uuid;
   v_season uuid := public.current_game_season();
   v_vgv   numeric;
@@ -347,7 +351,8 @@ begin
   -- VGV congelado negócio que não é dela — e o congelamento é irreversível.
   -- Sem `created_by`, pelo mesmo motivo do bloco 1.
   insert into public.deals (stage_id, outcome, closed_at, vgv_gross, month_base)
-  select id, 'won', (current_date + 40)::timestamptz, 900000, v_mes
+  -- 0312: quem decide é o mês do negócio — o de outro mês fica fora.
+  select id, 'won', (current_date + 40)::timestamptz, 900000, (v_mes + interval '1 month')::date
   from public.pipeline_stages where code = 'closed'
   returning id into v_deal;
 
@@ -379,7 +384,7 @@ $$;
 do $$
 declare
   jogador uuid := '00000000-0000-0000-0000-000000600001';
-  v_mes   date := public.month_start((current_date + interval '8 months')::date);
+  v_mes   date := public.month_start(current_date);  -- 0312: o mês da temporada
   v_deal  uuid;
 begin
   -- O editor de negócio troca rateio por upsert seguido de delete
