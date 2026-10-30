@@ -3,14 +3,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { dbError } from "@/lib/supabaseError";
 
 /**
- * Lista de ligação da liderança (0185/0239): leads de antes do
- * mês corrente que não viraram negócio — CAMPANHA | CLIENTE | TELEFONE — em
+ * Lista de ligação da liderança (0185/0239/0307): leads do ano corrente, de
+ * antes do mês corrente, que não viraram negócio — CAMPANHA | CLIENTE |
+ * TELEFONE | MÊS/ANO do lead — em
  * Excel e PDF. Quem decide o que entra é o banco (`lista_de_ligacao()`, com a
  * RLS de quem pede); aqui só se monta o arquivo.
  */
-export type LinhaDeLigacao = { campanha: string; cliente: string; telefone: string };
+export type LinhaDeLigacao = { campanha: string; cliente: string; telefone: string; mesAno: string };
 
-export const CABECALHO = ["NOME DA CAMPANHA", "NOME CLIENTE", "TELEFONE"] as const;
+export const CABECALHO = ["NOME DA CAMPANHA", "NOME CLIENTE", "TELEFONE", "MÊS/ANO"] as const;
+
+/** "10/2026" no fuso de São Paulo; data inválida fica em branco. */
+export function mesAnoDoLead(criadoEm: unknown): string {
+  if (typeof criadoEm !== "string") return "";
+  const data = new Date(criadoEm);
+  if (Number.isNaN(data.getTime())) return "";
+  return data.toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+}
 
 // RPC da 0185, ainda fora do `types.ts` gerado.
 const untyped = supabase as unknown as SupabaseClient;
@@ -27,6 +36,7 @@ export function lerLinhas(data: unknown): LinhaDeLigacao[] {
         campanha: texto(r.campanha) || "Sem campanha",
         cliente: texto(r.cliente) || "Sem nome",
         telefone: texto(r.telefone),
+        mesAno: mesAnoDoLead(r.criado_em),
       };
     })
     .filter((linha) => linha.telefone !== "");
@@ -98,9 +108,10 @@ export async function baixarListaExcel(linhas: LinhaDeLigacao[]): Promise<void> 
         { value: l.campanha, type: String },
         { value: l.cliente, type: String },
         { value: l.telefone, type: String },
+        { value: l.mesAno, type: String },
       ]),
     ],
-    { columns: [{ width: 40 }, { width: 36 }, { width: 18 }], stickyRowsCount: 1, sheet: "Lista de ligação" },
+    { columns: [{ width: 40 }, { width: 36 }, { width: 18 }, { width: 10 }], stickyRowsCount: 1, sheet: "Lista de ligação" },
   ).toFile(nomeDoArquivo("xlsx"));
 }
 
@@ -115,8 +126,8 @@ export async function montarListaPdf(linhas: LinhaDeLigacao[]): Promise<Uint8Arr
   const negrito = await pdf.embedFont(StandardFonts.HelveticaBold);
   const [largura, altura] = [595.28, 841.89];
   const margem = 36;
-  const colunas = [margem, margem + 210, margem + 400];
-  const larguras = [200, 180, 120];
+  const colunas = [margem, margem + 190, margem + 350, margem + 460];
+  const larguras = [180, 150, 100, 60];
   const tamanho = 9;
   const passo = 16;
 
@@ -146,7 +157,7 @@ export async function montarListaPdf(linhas: LinhaDeLigacao[]): Promise<Uint8Arr
       y = altura - margem;
       titulo();
     }
-    [linha.campanha, linha.cliente, linha.telefone].forEach((valor, i) =>
+    [linha.campanha, linha.cliente, linha.telefone, linha.mesAno].forEach((valor, i) =>
       pagina.drawText(cabe(valor, larguras[i]), { x: colunas[i], y, size: tamanho, font: fonte }));
     y -= passo;
   }
