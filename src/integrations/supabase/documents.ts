@@ -623,8 +623,10 @@ export function virarBlockReason(
     return null;
   }
   // Permite reenvio para "virar negócio" quando o dossiê foi devolvido pela CCA
-  // após um primeiro envio na esteira ágil (motivo: "esteira errada", etc.)
-  if (reviewEsteira === "agil") {
+  // após um primeiro envio na esteira ágil (motivo: "esteira errada", etc.).
+  // Só DEVOLVIDO (`pending_documents`): dossiê nunca enviado, ou ainda em
+  // análise, segue travado (#176 liberava qualquer esteira ágil).
+  if (caseStatus === "pending_documents" && reviewEsteira === "agil") {
     return null;
   }
   return "A análise p/ virar negócio é o 2º envio: libera quando o crédito estiver aprovado na CCA.";
