@@ -86,9 +86,10 @@ describe("rankBy — cada ranking com os números do papel (29/09/2026)", () => 
 
   it("geral é só corretor: o diretor no slot de gestor não entra", () => {
     expect(rankBy(vendas, "broker", people)).toEqual([
-      { id: "b1", name: "Ana", vendas: 1, vgv: 150_000 },
-      { id: "b2", name: "Bia", vendas: 1, vgv: 150_000 },
+      // Caio vendeu sozinho (1); Ana e Bia dividiram (meia cada).
       { id: "b3", name: "Caio", vendas: 1, vgv: 100_000 },
+      { id: "b1", name: "Ana", vendas: 0.5, vgv: 150_000 },
+      { id: "b2", name: "Bia", vendas: 0.5, vgv: 150_000 },
     ]);
   });
 
@@ -407,10 +408,10 @@ describe("rankBy — rateio do negocio", () => {
     director1_name: "Daniela",
   });
 
-  it("credita a venda aos dois corretores e divide o VGV pelo numero deles", () => {
+  it("meia venda para cada um dos dois corretores e o VGV dividido pelo numero deles", () => {
     expect(rankBy([meioAMeio], "broker")).toEqual([
-      { id: "b1", name: "Diego", vendas: 1, vgv: 300_000 },
-      { id: "b2", name: "Gustavo", vendas: 1, vgv: 300_000 },
+      { id: "b1", name: "Diego", vendas: 0.5, vgv: 300_000 },
+      { id: "b2", name: "Gustavo", vendas: 0.5, vgv: 300_000 },
     ]);
   });
 
@@ -450,7 +451,7 @@ describe("rankBy — rateio do negocio", () => {
       broker2_name: null,
     });
     expect(rankBy([semNome], "broker")).toEqual([
-      { id: "b1", name: "Diego", vendas: 1, vgv: 303_050 },
+      { id: "b1", name: "Diego", vendas: 0.5, vgv: 303_050 },
     ]);
   });
 
