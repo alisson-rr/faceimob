@@ -6,6 +6,10 @@
 -- venda do game nasce no contrato (0163) — o negócio em contrato pontuava e
 -- aparecia com VGV zero. Agora o VGV é o do negócio de cada venda que o corretor
 -- pontuou na temporada (no intervalo, quando há), pela parte dele no rateio.
+-- E (pedido de 30/10/2026: "o game deve acompanhar o mês") venda e distrato
+-- só contam — vendas, pontos e VGV — quando o negócio é do mês da temporada
+-- (`deals.month_base`), como no Pipeline: o remanescente que passa para o mês
+-- conta nele; o negócio de um mês anterior que pontuou agora, não.
 -- O resto da função é a da 0308.
 -- =============================================================================
 
@@ -54,6 +58,12 @@ as $$
                filter (where e.event_code = 'venda'), 0) as code_sales
     from public.game_events e
     where e.season_id = p_season_id
+      -- 0311: venda e distrato só do negócio do mês da temporada.
+      and (e.event_code not in ('venda', 'distrato') or e.ref_type <> 'deal'
+           or exists (select 1 from public.deals d join public.game_seasons gs on gs.id = p_season_id
+                       where d.id = e.ref_id
+                         and d.month_base between date_trunc('month', gs.period_start)::date
+                                              and coalesce(gs.period_end, current_date)))
       -- Intervalo nulo = temporada inteira: é assim que a assinatura antiga
       -- continua devolvendo exatamente o que devolvia.
       and (p_from is null or (e.occurred_at at time zone 'America/Sao_Paulo')::date >= p_from)
@@ -105,10 +115,8 @@ as $$
     from public.deals d
     join public.deal_participants dp on dp.deal_id = d.id and dp.profile_id = p.id and dp.role = 'broker'
     join public.game_seasons gs on gs.id = p_season_id
-    -- Negócio já fechado só conta se fechou dentro da temporada (0060): o
-    -- congelado não absorve venda de fora dela. Em contrato, ainda sem data.
-    where (d.closed_at is null
-           or d.closed_at::date between gs.period_start and coalesce(gs.period_end, current_date))
+    -- Só negócio do mês da temporada (mês-base), como as vendas acima.
+    where d.month_base between date_trunc('month', gs.period_start)::date and coalesce(gs.period_end, current_date)
       and d.id in (
       select e.ref_id
       from public.game_events e

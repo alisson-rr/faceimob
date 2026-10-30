@@ -5,6 +5,7 @@ const catalog = {
   groupById: new Map([
     ["g-venda", { code: "VENDA" }], ["g-prop", { code: "PROPOSTA" }],
     ["g-leg", { code: "LEGADO" }], ["g-off", { code: "OFF" }], ["g-dist", { code: "DISTRATO" }],
+    ["g-pos", { code: "POS_VENDA" }],
   ]),
 } as never;
 
@@ -25,6 +26,16 @@ describe("contarStatus1PorPessoa", () => {
     expect(contagem.get("c2")).toEqual({ VENDA: 0, PROPOSTA: 1, LEGADO: 0, OFF: 1 });
     expect(contagem.has("g1")).toBe(false);
     expect(contagem.has("d1")).toBe(false);
+  });
+
+  it("PÓS VENDA conta como venda e a venda dividida vale meia (30/10/2026)", () => {
+    const contagem = contarStatus1PorPessoa([
+      negocio("g-pos", { broker1_id: "c1" }),
+      negocio("g-venda", { broker1_id: "c1", broker2_id: "c2" }),
+    ], catalog);
+    expect(contagem.get("c1")?.VENDA).toBe(1.5);
+    expect(contagem.get("c2")?.VENDA).toBe(0.5);
+    expect(textoDaContagem(contagem.get("c1"))).toBe("Venda 1,5 · Proposta 0 · Legado 0 · Off 0");
   });
 
   it("distrato e negócio sem Status 1 ficam de fora", () => {
