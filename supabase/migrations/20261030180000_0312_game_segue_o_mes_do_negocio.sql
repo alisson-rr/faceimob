@@ -56,7 +56,7 @@ as $$
     from public.game_events e
     where e.season_id = p_season_id
       -- 0311: venda e distrato só do negócio do mês da temporada.
-      and (e.event_code not in ('venda', 'distrato') or e.ref_type <> 'deal'
+      and (e.event_code not in ('venda', 'distrato') or e.ref_type is distinct from 'deal'
            or exists (select 1 from public.deals d join public.game_seasons gs on gs.id = p_season_id
                        where d.id = e.ref_id
                          and d.month_base >= date_trunc('month', gs.period_start)::date
