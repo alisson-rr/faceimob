@@ -31,12 +31,17 @@ export function contarStatus1PorPessoa(
 ): Map<string, ContagemStatus1> {
   const porPessoa = new Map<string, ContagemStatus1>();
   for (const deal of deals) {
-    const code = deal.status_group_id ? catalog.groupById.get(deal.status_group_id)?.code : undefined;
+    // 30/10/2026: PÓS VENDA (onde mora o ASS. BANCO) é venda — antes a venda
+    // sumia do cartão ao assinar no banco —, e a venda com dois corretores conta
+    // meia para cada um, como no ranking e no game.
+    const bruto = deal.status_group_id ? catalog.groupById.get(deal.status_group_id)?.code : undefined;
+    const code = bruto === "POS_VENDA" ? "VENDA" : bruto;
     if (!GRUPOS_DO_PLACAR.some((grupo) => grupo.code === code)) continue;
     const pessoas = new Set([deal.broker1_id, deal.broker2_id, deal.broker3_id].filter((id): id is string => Boolean(id)));
+    const peso = code === "VENDA" ? 1 / (pessoas.size || 1) : 1;
     for (const id of pessoas) {
       const contagem = porPessoa.get(id) ?? { VENDA: 0, PROPOSTA: 0, LEGADO: 0, OFF: 0 };
-      contagem[code as CodigoDoPlacar] += 1;
+      contagem[code as CodigoDoPlacar] += peso;
       porPessoa.set(id, contagem);
     }
   }
@@ -45,4 +50,4 @@ export function contarStatus1PorPessoa(
 
 /** "Venda 2 · Proposta 5 · Legado 1 · Off 0" — zerado quando a pessoa não tem negócio no período. */
 export const textoDaContagem = (contagem: ContagemStatus1 | undefined): string =>
-  GRUPOS_DO_PLACAR.map(({ code, rotulo }) => `${rotulo} ${contagem?.[code] ?? 0}`).join(" · ");
+  GRUPOS_DO_PLACAR.map(({ code, rotulo }) => `${rotulo} ${(contagem?.[code] ?? 0).toLocaleString("pt-BR")}`).join(" · ");

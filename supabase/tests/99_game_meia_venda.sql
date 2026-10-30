@@ -24,8 +24,9 @@ begin
     values (v_temp, 'Temporada 308', date '2020-01-01', date '2020-01-31', now());
 
   -- Negócio ainda em proposta: o rateio entra sem gerar venda pelos gatilhos.
-  insert into public.deals (stage_id, created_by, status_detail)
-    values ((select id from public.pipeline_stages where is_initial limit 1), cor_a, 'PROPOSTA')
+  -- 0311: o negócio é do mês da temporada.
+  insert into public.deals (stage_id, created_by, status_detail, month_base)
+    values ((select id from public.pipeline_stages where is_initial limit 1), cor_a, 'PROPOSTA', date '2020-01-01')
     returning id into v_deal;
   insert into public.deal_participants (deal_id, profile_id, role, ordinal) values
     (v_deal, cor_a, 'broker', 1), (v_deal, cor_b, 'broker', 2) on conflict do nothing;
