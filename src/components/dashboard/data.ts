@@ -565,9 +565,9 @@ export const pesoDoDiretor = (deal: DealRow, diretorId: string): number => {
  * Ranking por papel (pedido de 29/09/2026), com o rateio do banco.
  *
  *   · corretor (e o ranking geral): só os negócios em que a pessoa é CORRETOR.
- *     A venda conta para cada corretor (a convenção de `deals_award_points`) e o
- *     VGV divide por quantos corretores o negócio tem — o `100/n` de
- *     `recalc_deal_shares`;
+ *     Venda e VGV dividem por quantos corretores o negócio tem — o `100/n` de
+ *     `recalc_deal_shares`: dois corretores, meia venda para cada (30/10/2026;
+ *     antes a venda contava inteira para cada um);
  *   · gerente: a soma dos corretores das equipes em que ele é `teams.manager_id`;
  *   · diretor: a soma dos corretores das equipes em que ele é `teams.director_id`
  *     ou Diretor 2 (`co_director_id`, 0266) — meia venda e meio VGV para cada,
@@ -578,7 +578,7 @@ export const pesoDoDiretor = (deal: DealRow, diretorId: string): number => {
  * de gerentes vencendo gerentes, e no geral esmagando o resultado individual.
  * Quem acumula papéis aparece em cada ranking com os números daquele papel.
  * Negócio com dois corretores da mesma equipe é UMA venda do gerente, com a
- * soma das duas fatias.
+ * soma das duas meias; de equipes diferentes, meia para cada gerente.
  *
  * A equipe é a ATUAL do corretor (`people`, recortado pela RLS de quem olha).
  * ponytail: corretor que troca de equipe leva o histórico para a equipe nova;
@@ -604,12 +604,13 @@ export const diretoresDaVenda = (
 };
 
 export const rankBy = (rows: DealRow[], role: RankRole, people: PersonRecord[] = []): RankRow[] => {
-  const map = new Map<string, RankRow & { deals?: Set<string> }>();
+  const map = new Map<string, RankRow>();
   const personById = new Map(people.map((person) => [person.id, person]));
   for (const deal of rows) {
     if (dealCategory(deal) !== "venda") continue;
     const brokers = participantsOf(deal, "broker");
-    const share = (deal.deal_value || 0) / (brokers.length || 1);
+    const fatia = 1 / (brokers.length || 1);
+    const share = (deal.deal_value || 0) * fatia;
     for (const broker of brokers) {
       // Quem leva a fatia deste corretor, e com que peso: o próprio corretor, o
       // gerente da equipe, ou o(s) diretor(es) — com Diretor 2, meio a meio (0266).
@@ -624,11 +625,8 @@ export const rankBy = (rows: DealRow[], role: RankRole, people: PersonRecord[] =
         const id = credor.id;
         const name = role === "broker" ? credor.name : id ? personById.get(id)?.name ?? null : null;
         if (!id || !name) continue;
-        const entry = map.get(id) ?? { id, name, vendas: 0, vgv: 0, deals: new Set<string>() };
-        if (!entry.deals?.has(deal.id)) {
-          entry.deals?.add(deal.id);
-          entry.vendas += credor.peso;
-        }
+        const entry = map.get(id) ?? { id, name, vendas: 0, vgv: 0 };
+        entry.vendas += fatia * credor.peso;
         entry.vgv += share * credor.peso;
         map.set(id, entry);
       }

@@ -259,7 +259,8 @@ export async function listRanking(seasonId: string, week?: WeekRange | null): Pr
     .rpc("visible_game_ranking", args)
     .order("points", { ascending: false });
   if (error) throw dbError("visible_game_ranking", error);
-  const rows = (data ?? []) as RankingRow[];
+  // 0308: vendas virou numeric (meia venda); a fronteira garante número.
+  const rows = ((data ?? []) as RankingRow[]).map((row) => ({ ...row, sales: Number(row.sales ?? 0) }));
   if (!rows.length) return rows;
 
   // A RPC preserva `full_name`, usado para casar participantes dos negócios.
