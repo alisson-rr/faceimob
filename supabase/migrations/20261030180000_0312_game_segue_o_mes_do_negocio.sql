@@ -6,6 +6,7 @@
 -- vendas, pontos e VGV — só contam no placar quando o negócio é do mês da
 -- temporada (`deals.month_base`), como no Pipeline: o remanescente que passa
 -- para o mês conta nele; o negócio de um mês anterior que pontuou agora, não.
+-- Temporada aberta não tem teto de mês (o mês fecha com ela).
 -- Mantém a 0308 (meia venda) e a 0311 (VGV da venda em contrato).
 -- =============================================================================
 
@@ -58,8 +59,8 @@ as $$
       and (e.event_code not in ('venda', 'distrato') or e.ref_type <> 'deal'
            or exists (select 1 from public.deals d join public.game_seasons gs on gs.id = p_season_id
                        where d.id = e.ref_id
-                         and d.month_base between date_trunc('month', gs.period_start)::date
-                                              and coalesce(gs.period_end, current_date)))
+                         and d.month_base >= date_trunc('month', gs.period_start)::date
+                         and (gs.period_end is null or d.month_base <= gs.period_end)))
       -- Intervalo nulo = temporada inteira: é assim que a assinatura antiga
       -- continua devolvendo exatamente o que devolvia.
       and (p_from is null or (e.occurred_at at time zone 'America/Sao_Paulo')::date >= p_from)
@@ -112,7 +113,8 @@ as $$
     join public.deal_participants dp on dp.deal_id = d.id and dp.profile_id = p.id and dp.role = 'broker'
     join public.game_seasons gs on gs.id = p_season_id
     -- Só negócio do mês da temporada (mês-base), como as vendas acima.
-    where d.month_base between date_trunc('month', gs.period_start)::date and coalesce(gs.period_end, current_date)
+    where d.month_base >= date_trunc('month', gs.period_start)::date
+      and (gs.period_end is null or d.month_base <= gs.period_end)
       and d.id in (
       select e.ref_id
       from public.game_events e
