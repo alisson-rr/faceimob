@@ -130,7 +130,8 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
               <span className="text-xs font-medium">{q.groupName}:</span>
               {mine >= 0 ? (
                 <Badge variant="default">
-                  você é o {q.entries[mine].queue_position}º de {q.entries.length}
+                  {/* 0310: o corretor recebe só a própria linha — sem o total nem os nomes. */}
+                  você é o {q.entries[mine].queue_position}º{q.entries.length > 1 ? ` de ${q.entries.length}` : ""}
                 </Badge>
               ) : !checkedIn ? (
                 <span className="text-xs text-muted-foreground">
@@ -149,7 +150,7 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
                   em check-in, mas fora da fila agora
                 </span>
               )}
-              {q.entries.length > 0 && (
+              {q.entries.length > 1 && (
                 <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
                   ver fila ({q.entries.length})
                   <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden />
@@ -166,7 +167,7 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
               para o fim. Deixar o prazo de atendimento vencer conta como vez usada: o lead volta para a
               fila e você vai para o fim.
             </p>
-            {q.entries.length > 0 && (
+            {q.entries.length > 1 && (
               <ol aria-label={`Fila ${q.groupName}`} className="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
                 {q.entries.map((entry) => {
                   const isMine = entry.profile_id === user?.id;

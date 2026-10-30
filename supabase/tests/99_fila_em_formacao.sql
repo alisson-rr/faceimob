@@ -95,7 +95,7 @@ begin
 end
 $$;
 
-\echo '== todo usuário autenticado =='
+\echo '== corretor vê só a própria linha (0310) =='
 do $$
 declare
   v_n int;
@@ -104,7 +104,8 @@ begin
   set local role authenticated;
   select count(*) into v_n from public.fila_em_formacao() where group_name = 'Roleta 198';
   reset role;
-  perform pg_temp.ok(v_n = 4, 'corretor autenticado vê a composição da fila');
+  -- 0310: o corretor não vê quem mais está na fila, só a própria colocação.
+  perform pg_temp.ok(v_n = 1, 'corretor vê só a própria colocação, não a composição da fila');
 end
 $$;
 select pg_temp.ok(not has_function_privilege('anon', 'public.fila_em_formacao()', 'execute'), 'anon não executa');

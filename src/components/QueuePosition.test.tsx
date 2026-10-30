@@ -137,7 +137,7 @@ describe("QueuePosition", () => {
     filas.mockResolvedValue(grupo([{ profile_id: "eu", full_name: "Eu", queue_position: 1 }]));
     await act(async () => { retry?.click(); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(container.textContent).toMatch(/você é o 1º de 1/i);
+    expect(container.textContent).toMatch(/você é o 1º/i);
     await cleanup();
   });
 });
