@@ -104,7 +104,12 @@ as $$
     select sum(d.vgv_net * dp.share_pct / 100) as vgv
     from public.deals d
     join public.deal_participants dp on dp.deal_id = d.id and dp.profile_id = p.id and dp.role = 'broker'
-    where d.id in (
+    join public.game_seasons gs on gs.id = p_season_id
+    -- Negócio já fechado só conta se fechou dentro da temporada (0060): o
+    -- congelado não absorve venda de fora dela. Em contrato, ainda sem data.
+    where (d.closed_at is null
+           or d.closed_at::date between gs.period_start and coalesce(gs.period_end, current_date))
+      and d.id in (
       select e.ref_id
       from public.game_events e
       where e.season_id = p_season_id
