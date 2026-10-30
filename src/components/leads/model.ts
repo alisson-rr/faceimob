@@ -55,7 +55,9 @@ export const matchesFilters = (lead: LeadRecord, filters: LeadFilterState): bool
     || contemTexto(lead.email, term)
     || (digits !== null && (lead.phone || "").includes(digits))
     || contemTexto(lead.campaign_name, term);
-  const matchStatus = filters.status === "all" || lead.status === filters.status;
+  // Convertido sai da lista (30/10/2026: "já comprou"); só volta escolhendo o
+  // status Convertido no filtro. Os indicadores contam pelo banco, não por aqui.
+  const matchStatus = filters.status === "all" ? lead.status !== "converted" : lead.status === filters.status;
   const matchSource = filters.source === "all"
     || lead.source_id === filters.source
     || (filters.source === "none" && !lead.source_id);

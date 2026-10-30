@@ -99,7 +99,8 @@ export function FilaEmFormacao() {
         <ListOrdered className="h-4 w-4 text-primary" aria-hidden />
         <h2 className="font-display text-sm font-bold">Fila em formação</h2>
         <span className="text-xs text-muted-foreground">
-          {fila.isPending ? "consultando…" : `${presentes} corretor(es) em check-in hoje`}
+          {/* 0310: o corretor só recebe a própria colocação; a contagem é da liderança. */}
+          {fila.isPending ? "consultando…" : veTodas ? `${presentes} corretor(es) em check-in hoje` : "sua colocação"}
         </span>
         <ChevronDown className="ml-auto h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
       </summary>

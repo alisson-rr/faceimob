@@ -30,6 +30,12 @@ const source = (patch: Partial<LeadSource>): LeadSource => ({
 });
 
 describe("matchesFilters", () => {
+  it("lead convertido sai da lista e só volta filtrando por Convertido", () => {
+    const convertido = lead({ id: "c", status: "converted" });
+    expect(matchesFilters(convertido, emptyLeadFilters)).toBe(false);
+    expect(matchesFilters(convertido, { ...emptyLeadFilters, status: "converted" })).toBe(true);
+  });
+
   const meta = lead({ full_name: "Ana Silva", name: "Ana Silva", email: "ana@ex.com", phone: "11988887777", source_id: "s1", status: "assigned", campaign_name: "Campanha Verão" });
   const semOrigem = lead({ id: "b", full_name: "Bruno", name: "Bruno", status: "queued" });
 
