@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Send } from "lucide-react";
+import { ClipboardCheck, MessageSquare, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { describeError } from "@/lib/supabaseError";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { addDealComment } from "./DealCommentsPanel";
+import { Section } from "./fields";
 import { ccaKeys, loadCcaCase, type CcaAnalysis } from "./ccaData";
 
 const CCA_FIELDS: { key: string; label: string; options?: string[] }[] = [
@@ -105,14 +106,13 @@ export function DealCcaPanel({ dealId, value, onChange, onCommentAdded }: {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-primary">Aprovação CCA</h3>
-        {!canEdit && (
+      {!canEdit && (
+        <div className="flex justify-end">
           <Badge variant="outline" className="border-warning/50 text-xs text-warning">
             Somente leitura — falta a permissão de análise do CCA
           </Badge>
-        )}
-      </div>
+        </div>
+      )}
 
       {query.isPending && <LoadingState variant="kpi" rows={2} label="Carregando a análise…" />}
 
@@ -133,7 +133,7 @@ export function DealCcaPanel({ dealId, value, onChange, onCommentAdded }: {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <Section title="Aprovação CCA" icon={<ClipboardCheck className="h-4 w-4" aria-hidden="true" />} className="deal-tone-cyan">
         {CCA_FIELDS.map((item) => (
           <div key={item.key}>
             <Label htmlFor={`${id}-${item.key}`} className="text-eyebrow">{item.label}</Label>
@@ -154,10 +154,10 @@ export function DealCcaPanel({ dealId, value, onChange, onCommentAdded }: {
             )}
           </div>
         ))}
-      </div>
+      </Section>
 
-      <div className="rounded-xl border border-blue-800/40 bg-blue-950/35 p-3">
-        <Label htmlFor={`${id}-comentario`} className="text-eyebrow">Comentário do CCA</Label>
+      <div className="deal-band-box deal-tone-cyan rounded-xl border border-blue-800/40 bg-blue-950/35 p-3">
+        <Label htmlFor={`${id}-comentario`} className="deal-band"><MessageSquare className="h-4 w-4" aria-hidden="true" />Comentário do CCA</Label>
         <p className="mb-2 mt-1 text-xs text-muted-foreground">
           O texto entra no histórico auditado e aparece para todos nos comentários do Cadastro.
         </p>

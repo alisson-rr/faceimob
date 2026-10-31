@@ -590,7 +590,7 @@ export default function DealDetailModal({
           )}
 
           {montada("cca") && dealId && (
-            <div hidden={tab !== "cca"} className="space-y-3">
+            <div hidden={tab !== "cca"} className="deal-form-claro space-y-3">
             <DealCcaPanel
               dealId={dealId}
               value={cca}
@@ -604,7 +604,7 @@ export default function DealDetailModal({
               p/ virar negócio. Anexos e Negócio saem do mesmo componente, e
               qualquer decisão renova os dois (`versaoDossie`). */}
           {montada("negocio") && dealId && (
-            <div hidden={tab !== "negocio"}>
+            <div hidden={tab !== "negocio"} className="deal-form-claro">
               {/* Pendência sanada (20/10/2026): CCA, admin e sócio tiram o selo daqui. */}
               {deal?.contract_has_pending_issue && (
                 <div className="mb-4"><BaixaPendenciaContrato dealId={dealId} onDone={onReviewChanged} /></div>

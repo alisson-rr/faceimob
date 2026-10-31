@@ -588,6 +588,8 @@
    borda tingidos dos blocos acima. A faixa escurece a cor do bloco para o
    texto branco ler nos dois temas. */
 .deal-tone-violet { --deal-accent: 250 55% 62%; }
+.deal-tone-cyan { --deal-accent: var(--info); }
+.deal-tone-warning { --deal-accent: var(--warning); }
 .deal-form-claro :is(input:not([type="checkbox"]):not([type="radio"]), textarea, [role="combobox"], .deal-readout) {
   border-color: hsl(220 13% 80%);
   background-color: hsl(0 0% 100%);
@@ -608,7 +610,8 @@
   overflow: hidden;
   background: hsl(var(--deal-accent, var(--muted-foreground)) / 0.04);
 }
-.deal-form-claro fieldset > legend.text-eyebrow {
+.deal-form-claro fieldset > legend.text-eyebrow,
+.deal-form-claro .deal-band {
   float: left;
   display: flex;
   align-items: center;
@@ -624,6 +627,10 @@
   text-transform: none;
 }
 .deal-form-claro fieldset > legend.text-eyebrow + div { clear: both; padding: 0 12px 12px; }
+/* Abas Negócio e CCA: o bloco que não é `fieldset` (caixa com p-3) usa
+   `.deal-band-box` + `.deal-band` no título; a faixa sangra até a borda. */
+.deal-form-claro .deal-band-box { overflow: hidden; border-color: hsl(var(--border)); background: hsl(var(--deal-accent) / 0.04); }
+.deal-form-claro .deal-band-box > .deal-band { float: none; width: auto; margin: -12px -12px 8px; }
 @media (min-width: 640px) {
   .deal-meta-fields { grid-template-columns: 1fr 1fr; }
   .deal-client-toggle { grid-column: 1 / -1; }
