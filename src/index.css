@@ -582,6 +582,48 @@
 .deal-premium-panel :where(input, textarea, [role="combobox"]):focus-visible {
   border-color: hsl(var(--deal-accent));
 }
+/* Formulário do negócio (31/10/2026, opção B): campos brancos com texto preto,
+   borda cinza e placeholder cinza; a seção se distingue pela faixa colorida do
+   título, na cor do bloco (`--deal-accent`). `:is` para vencer o fundo e a
+   borda tingidos dos blocos acima. A faixa escurece a cor do bloco para o
+   texto branco ler nos dois temas. */
+.deal-tone-violet { --deal-accent: 250 55% 62%; }
+.deal-form-claro :is(input:not([type="checkbox"]):not([type="radio"]), textarea, [role="combobox"], .deal-readout) {
+  border-color: hsl(220 13% 80%);
+  background-color: hsl(0 0% 100%);
+  color: hsl(222 45% 8%);
+  box-shadow: none;
+}
+.deal-form-claro :is(input:not([type="checkbox"]):not([type="radio"]), textarea, [role="combobox"]):focus-visible {
+  border-color: hsl(var(--deal-accent, var(--primary)));
+  box-shadow: 0 0 0 2px hsl(var(--deal-accent, var(--primary)) / 0.35);
+}
+.deal-form-claro :is(input, textarea)::placeholder,
+.deal-form-claro [role="combobox"][data-placeholder] > span { color: hsl(220 9% 55%); }
+.deal-form-claro fieldset:has(> legend.text-eyebrow) {
+  margin-top: 16px;
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  overflow: hidden;
+  background: hsl(var(--deal-accent, var(--muted-foreground)) / 0.04);
+}
+.deal-form-claro fieldset > legend.text-eyebrow {
+  float: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, hsl(var(--deal-accent, var(--muted-foreground))) 60%, black);
+  color: hsl(0 0% 100%);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.deal-form-claro fieldset > legend.text-eyebrow + div { clear: both; padding: 0 12px 12px; }
 @media (min-width: 640px) {
   .deal-meta-fields { grid-template-columns: 1fr 1fr; }
   .deal-client-toggle { grid-column: 1 / -1; }
