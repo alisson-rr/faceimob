@@ -158,8 +158,8 @@ function EsteiraDoNegocio({
   const id = useId();
   const proximo = envios.length + 1;
   return (
-    <section className="space-y-2 rounded-lg border border-border/60 bg-muted/10 p-3" aria-label={titulo}>
-      <div className="flex items-center justify-between gap-2">
+    <section className="deal-band-box deal-tone-blue space-y-2 rounded-lg border border-border/60 bg-muted/10 p-3" aria-label={titulo}>
+      <div className="deal-band flex items-center justify-between gap-2">
         <p className="text-sm font-bold">{titulo}</p>
         <span className="text-xs text-muted-foreground">
           {envios.length === 0 ? "nenhum envio" : `${envios.length} envio${envios.length > 1 ? "s" : ""}`}
@@ -858,8 +858,8 @@ export default function DealDocumentUpload({
   const conferencia = (
     <>
         {canReview && status === "pending" && (
-          <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
-            <p className="text-sm font-bold">Conferência do gerente</p>
+          <div className="deal-band-box deal-tone-warning space-y-2 rounded-lg border border-warning/40 bg-warning/5 p-3">
+            <p className="deal-band text-sm font-bold">Conferência do gerente</p>
             {submitHint && <p className="text-xs text-warning">{submitHint}</p>}
             <Label htmlFor={`${fieldId}-conferencia`} className="text-xs">Mensagem da conferência</Label>
             {/* Um campo para as duas decisões: motivo obrigatório na devolução;

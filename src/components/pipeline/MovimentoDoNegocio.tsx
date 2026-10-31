@@ -256,8 +256,8 @@ export function MovimentoDoNegocio({
       )}
 
       {isAdmin && (
-        <section className="space-y-3 rounded-lg border border-success/40 bg-success/5 p-3">
-          <h3 className="flex items-center gap-2 text-sm font-bold"><FileSignature className="h-4 w-4" aria-hidden /> Dados do contrato (administrador e sócio)</h3>
+        <section className="deal-band-box deal-tone-green space-y-3 rounded-lg border border-success/40 bg-success/5 p-3">
+          <h3 className="deal-band flex items-center gap-2 text-sm font-bold"><FileSignature className="h-4 w-4" aria-hidden /> Dados do contrato (administrador e sócio)</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor={`${id}-empreendimento`} className="text-eyebrow">Empreendimento</Label>
