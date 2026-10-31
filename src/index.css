@@ -582,6 +582,17 @@
 .deal-premium-panel :where(input, textarea, [role="combobox"]):focus-visible {
   border-color: hsl(var(--deal-accent));
 }
+/* Campos claros no formulário do negócio (31/10/2026): caixa branca, texto
+   preto e placeholder cinza, como formulário em papel. `:is` (e não `:where`)
+   para vencer o fundo tingido dos blocos acima; a borda fica com eles, e o
+   foco continua colorido. */
+.deal-form-claro :is(input:not([type="checkbox"]):not([type="radio"]), textarea, [role="combobox"]) {
+  background-color: hsl(0 0% 100%);
+  color: hsl(222 45% 8%);
+  box-shadow: none;
+}
+.deal-form-claro :is(input, textarea)::placeholder,
+.deal-form-claro [role="combobox"][data-placeholder] > span { color: hsl(220 9% 55%); }
 @media (min-width: 640px) {
   .deal-meta-fields { grid-template-columns: 1fr 1fr; }
   .deal-client-toggle { grid-column: 1 / -1; }
