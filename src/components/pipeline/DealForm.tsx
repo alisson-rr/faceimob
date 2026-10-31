@@ -423,7 +423,7 @@ export function DealForm({
       {/* `fieldset disabled` é a trava nativa: desabilita todo controle
           descendente de uma vez, inclusive os gatilhos de Select do Radix.
           `contents` mantém o espaçamento do modal, que é do pai. */}
-      <fieldset disabled={lock.readOnly} className="contents">
+      <fieldset disabled={lock.readOnly} className="contents deal-form-claro">
       {/* Terceiro motivo do `lock`, e o único que o modal ainda não escreve
           acima das abas: a consulta de meses fechados não respondeu. A trava
           fecha em vez de abrir — sem saber se o mês está congelado, deixar
