@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState } from "@/components/shared";
 import { toast } from "sonner";
-import { Hand, Bot as BotIcon, Send, CheckCircle2 } from "lucide-react";
+import { Hand, Bot as BotIcon, Send, CheckCircle2, Shuffle } from "lucide-react";
 import { describeError } from "@/lib/supabaseError";
 import { functionErrorMessage } from "@/lib/functionError";
 import { dateTime } from "@/lib/format";
@@ -231,6 +231,30 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
       setSalvando(false);
     }
   }
+  /**
+   * "Mandar para a roleta" (30/10/2026): a conversa que a IA passou para humano
+   * e ninguém assumiu deixava o lead parado. A RPC recusa o lead que já está
+   * com corretor; o corretor que recebeu vem de volta, ou nulo se a roleta está
+   * fechada ou sem corretor livre — aí o lead espera na fila.
+   */
+  async function mandarParaRoleta() {
+    if (!atual) return;
+    setSalvando(true);
+    try {
+      const { data, error } = await untyped.rpc("sdr_mandar_para_roleta", { p_conversation_id: atual.id });
+      if (error) throw error;
+      toast.success("Lead mandado para a roleta", {
+        description: data
+          ? "Já foi entregue a um corretor."
+          : "Ficou na fila: vai para o próximo corretor disponível assim que a roleta abrir.",
+      });
+      await recarregar();
+    } catch (e) {
+      toast.error("Não foi possível mandar para a roleta", { description: describeError(e, "Tente de novo.") });
+    } finally {
+      setSalvando(false);
+    }
+  }
   async function resolver() {
     const ok = await gravar(
       { status: "resolved" }, ["active", "human"],
@@ -418,6 +442,11 @@ export function ConversationsTab({ agents, canWrite }: { agents: Agent[]; canWri
                       <BotIcon className="h-3.5 w-3.5 mr-1" aria-hidden="true" />Passar para o agente
                     </Button>
                   </div>
+                )}
+                {acoes?.roleta && !ehSimulacao(atual) && (
+                  <Button size="sm" variant="outline" disabled={salvando} onClick={() => void mandarParaRoleta()}>
+                    <Shuffle className="h-3.5 w-3.5 mr-1" aria-hidden="true" />Mandar para a roleta
+                  </Button>
                 )}
                 {acoes?.resolver && (
                   <Button size="sm" variant="outline" disabled={salvando} onClick={resolver}>

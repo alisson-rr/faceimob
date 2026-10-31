@@ -212,7 +212,9 @@ export function seloDeMidia(
  *  · devolver ao robô é recusado pelo gatilho da 0120 em conversa já entregue
  *    a corretor (o robô requalificaria e o `sdr_handoff` tiraria o lead dele);
  *  · responder é de quem assumiu: é para o dono que o sino avisa a próxima
- *    mensagem, e é o dono que segura o lead fora da roleta.
+ *    mensagem, e é o dono que segura o lead fora da roleta;
+ *  · mandar para a roleta (0313) é da humana sem dono e nunca entregue: o
+ *    banco ainda recusa o lead que já está com corretor ou virou negócio.
  */
 export function acoesDaConversa(
   c: Pick<Conversation, "status" | "assumed_by" | "handed_off_at">,
@@ -225,6 +227,7 @@ export function acoesDaConversa(
     devolver: podeEscrever && c.status === "human" && !c.handed_off_at,
     resolver: podeEscrever && (c.status === "active" || c.status === "human"),
     responder: podeEscrever && minha,
+    roleta: podeEscrever && c.status === "human" && !c.assumed_by && !c.handed_off_at,
   };
 }
 

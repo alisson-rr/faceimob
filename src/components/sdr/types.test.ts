@@ -289,17 +289,23 @@ describe("acoesDaConversa", () => {
 
   it("com o robô: assumir e resolver; responder só depois de assumir", () => {
     expect(acoesDaConversa(conversa("active"), "eu", true))
-      .toEqual({ assumir: true, devolver: false, resolver: true, responder: false });
+      .toEqual({ assumir: true, devolver: false, resolver: true, responder: false, roleta: false });
   });
 
   it("assumida por mim: devolver, resolver e responder", () => {
     expect(acoesDaConversa(conversa("human", "eu"), "eu", true))
-      .toEqual({ assumir: false, devolver: true, resolver: true, responder: true });
+      .toEqual({ assumir: false, devolver: true, resolver: true, responder: true, roleta: false });
   });
 
   it("humana sem dono ou de outro: assumir antes de responder", () => {
     expect(acoesDaConversa(conversa("human", null), "eu", true).responder).toBe(false);
     expect(acoesDaConversa(conversa("human", "outro"), "eu", true).assumir).toBe(true);
+  });
+
+  it("roleta só na humana sem dono e nunca entregue (0313)", () => {
+    expect(acoesDaConversa(conversa("human", null), "eu", true).roleta).toBe(true);
+    expect(acoesDaConversa(conversa("human", "outro"), "eu", true).roleta).toBe(false);
+    expect(acoesDaConversa(conversa("human", null, "2026-09-10T12:00:00Z"), "eu", true).roleta).toBe(false);
   });
 
   it("entregue a corretor: dá para assumir e responder ao lead, mas não devolver ao robô", () => {
