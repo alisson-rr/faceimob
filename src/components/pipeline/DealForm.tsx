@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Building2, Coins, Flag, User, Users, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -523,7 +523,7 @@ export function DealForm({
         </p>
       )}
 
-      <Section title="Cliente" className="deal-tone-blue deal-client-panel deal-premium-panel">
+      <Section title="Cliente" icon={<User className="h-4 w-4" aria-hidden="true" />} className="deal-tone-blue deal-client-panel deal-premium-panel">
         <TextField id={field("client")} label="Cliente *" value={form.client} onChange={(v) => onChange({ client: v })} />
         <TextField id={field("cpf")} label="CPF" value={form.cpf} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "cpf" ? documentNumberError.message : null} onChange={(v) => onChange({ cpf: v })} onBlur={onCpfBlur} />
         <TextField id={field("contato")} label="Contato" value={form.contato} onChange={(v) => onChange({ contato: v })} />
@@ -539,7 +539,7 @@ export function DealForm({
       </Section>
 
       {form.has_second_client && (
-        <Section title="2º cliente" className="deal-tone-blue deal-client-panel deal-premium-panel">
+        <Section title="2º cliente" icon={<User className="h-4 w-4" aria-hidden="true" />} className="deal-tone-blue deal-client-panel deal-premium-panel">
           <TextField id={field("client2")} label="Cliente" value={form.client2} onChange={(v) => onChange({ client2: v })} />
           <TextField id={field("cpf2")} label="CPF" value={form.cpf2} inputMode="numeric" maxLength={14} error={documentNumberError?.field === "cpf2" ? documentNumberError.message : null} onChange={(v) => onChange({ cpf2: v })} onBlur={onCpfBlur} />
           <TextField id={field("contato2")} label="Contato" value={form.contato2} onChange={(v) => onChange({ contato2: v })} />
@@ -556,7 +556,7 @@ export function DealForm({
       )}
 
       {form.has_informal_income && (
-        <Section title={form.has_second_client ? "Renda informal — cliente 1" : "Renda informal"} className="deal-income-panel deal-premium-panel">
+        <Section title={form.has_second_client ? "Renda informal — cliente 1" : "Renda informal"} icon={<Wallet className="h-4 w-4" aria-hidden="true" />} className="deal-income-panel deal-premium-panel">
           <TextField id={field("segmento")} label="Segmento/atividade" value={form.segmento_atividade} onChange={(v) => onChange({ segmento_atividade: v })} />
           <TextField id={field("atuacao")} label="Forma de atuação" value={form.forma_atuacao} onChange={(v) => onChange({ forma_atuacao: v })} />
           <TextField id={field("tempo")} label="Tempo de atividade" value={form.tempo_atividade} onChange={(v) => onChange({ tempo_atividade: v })} />
@@ -579,7 +579,7 @@ export function DealForm({
       )}
 
       {form.has_second_client && form.has_informal_income2 && (
-        <Section title="Renda informal — cliente 2" className="deal-income-panel deal-premium-panel">
+        <Section title="Renda informal — cliente 2" icon={<Wallet className="h-4 w-4" aria-hidden="true" />} className="deal-income-panel deal-premium-panel">
           <TextField id={field("segmento2")} label="Segmento/atividade" value={form.segmento_atividade2} onChange={(v) => onChange({ segmento_atividade2: v })} />
           <TextField id={field("atuacao2")} label="Forma de atuação" value={form.forma_atuacao2} onChange={(v) => onChange({ forma_atuacao2: v })} />
           <TextField id={field("tempo2")} label="Tempo de atividade" value={form.tempo_atividade2} onChange={(v) => onChange({ tempo_atividade2: v })} />
@@ -595,7 +595,7 @@ export function DealForm({
         </Section>
       )}
 
-      <Section title="Empreendimento" className="deal-tone-gold">
+      <Section title="Empreendimento" icon={<Building2 className="h-4 w-4" aria-hidden="true" />} className="deal-tone-gold">
         <div>
           <Label htmlFor={field("developer")} className="text-eyebrow">Construtora *</Label>
           <Select
@@ -675,7 +675,7 @@ export function DealForm({
         <TextField id={field("unit")} label="Bloco | unidade" value={form.unit} onChange={(v) => onChange({ unit: v })} />
       </Section>
 
-      <Section title="Equipe" className="deal-tone-gold">
+      <Section title="Equipe" icon={<Users className="h-4 w-4" aria-hidden="true" />} className="deal-tone-gold">
         <PersonField id={field("broker1")} label="Corretor 1 *" hint={rateio(form.broker1_share)} value={form.broker1_id} fallbackName={form.broker1} options={brokers} onChange={(v) => onChange({ broker1_id: v, ...sugestaoDaEquipe(v, 1) })} />
         <PersonField id={field("broker2")} label="Corretor 2" hint={rateio(form.broker2_share)} value={form.broker2_id} fallbackName={form.broker2} options={brokers} onChange={(v) => onChange({ broker2_id: v, ...sugestaoDaEquipe(v, 2) })} optional />
         <PersonField id={field("broker3")} label="Corretor 3" hint={rateio(form.broker3_share)} value={form.broker3_id} fallbackName={form.broker3} options={brokers} onChange={(v) => onChange({ broker3_id: v, ...sugestaoDaEquipe(v, 3) })} optional />
@@ -728,7 +728,7 @@ export function DealForm({
         </div>
       </Section>
 
-      <Section title="VGV" className="deal-tone-green">
+      <Section title="VGV" icon={<Coins className="h-4 w-4" aria-hidden="true" />} className="deal-tone-green">
         {/* Os dois em R$ com máscara (pedido de 28/09/2026). Negativo não se
             digita; desconto acima do bruto quem barra é `dealRangeError` no
             salvamento, com o nome do campo — o CHECK da 0159 sozinho voltaria
@@ -758,7 +758,7 @@ export function DealForm({
         </div>
       </Section>
 
-      <div className="deal-tone-gold grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-3">
+      <Section title="Etapa" icon={<Flag className="h-4 w-4" aria-hidden="true" />} className="deal-tone-violet">
         <div>
           <Label htmlFor={field("stage")} className="text-eyebrow">Etapa</Label>
           <Select
@@ -957,7 +957,7 @@ export function DealForm({
             )}
           </div>
         )}
-      </div>
+      </Section>
 
       {willLose && (
         <p className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">

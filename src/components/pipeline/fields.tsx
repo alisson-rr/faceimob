@@ -18,10 +18,10 @@ import { cn } from "@/lib/utils";
  * `className` recebe a cor do bloco (`deal-tone-*`, `deal-field-light` — ver
  * `index.css`).
  */
-export function Section({ title, className, children }: { title: string; className?: string; children: ReactNode }) {
+export function Section({ title, icon, className, children }: { title: string; icon?: ReactNode; className?: string; children: ReactNode }) {
   return (
     <fieldset className={cn("border-t border-border pt-3", className)}>
-      <legend className="text-eyebrow mb-2">{title}</legend>
+      <legend className="text-eyebrow mb-2">{icon}{title}</legend>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
     </fieldset>
   );
