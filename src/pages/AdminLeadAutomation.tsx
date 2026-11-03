@@ -196,7 +196,10 @@ export default function AdminLeadAutomation() {
    * junto) sem dizer QUANTOS. O número é o que decide se dá para excluir.
    */
   const [confirmando, setConfirmando] = useState<
-    { tipo: "turno"; id: string; label: string } | { tipo: "grupo"; grupo: Group } | null
+    | { tipo: "turno"; id: string; label: string }
+    | { tipo: "grupo"; grupo: Group }
+    | { tipo: "mover-form"; form: FormRef; de: Group; para: Group }
+    | null
   >(null);
   const [formDialog, setFormDialog] = useState<{ groupId: string; form_id: string; form_name: string } | null>(null);
   const editingGroup = groups.find((g) => g.id === editingGroupId) || null;
@@ -571,6 +574,20 @@ export default function AdminLeadAutomation() {
     if (ok) { toast.success("Formulário vinculado", { duration: 2500 }); load(); }
     return ok;
   };
+  // Um UPDATE só: o formulário nunca fica sem grupo no meio do caminho, e o
+  // `group_id` antigo no filtro recusa a troca se outro admin já o moveu.
+  const moverForm = async (form: FormRef, de: Group, para: Group) => {
+    const ok = await wrote(
+      supabase.from("distribution_group_forms")
+        .update({ group_id: para.id, ...(form.form_name ? { form_name: form.form_name } : {}) })
+        .eq("form_id", form.form_id).eq("group_id", de.id).select("form_id"),
+      "Não foi possível mover o formulário",
+      {},
+      "O formulário mudou de grupo enquanto você olhava. Lista recarregada.",
+    );
+    if (ok) toast.success(`Formulário movido para ${para.name}`, { duration: 2500 });
+    load();
+  };
   const removeGroupForm = async (groupId: string, formId: string) => {
     if (await wrote(supabase.from("distribution_group_forms").delete().eq("group_id", groupId).eq("form_id", formId).select("form_id"), "Não foi possível desvincular o formulário")) {
       toast.success("Formulário desvinculado", { duration: 2500 });
@@ -922,7 +939,11 @@ export default function AdminLeadAutomation() {
                             checked={on}
                             disabled={readOnly}
                             onCheckedChange={(v) => {
-                              if (v) addGroupForm(editingGroup.id, d.form_id, d.form_name);
+                              // Formulário de outro grupo (03/11/2026): o clique move, com
+                              // confirmação. Antes recusava com "remova-o de lá antes", e
+                              // achar o formulário entre os 315 da fila geral era o trabalho.
+                              if (v && owner) setConfirmando({ tipo: "mover-form", form: d, de: owner, para: editingGroup });
+                              else if (v) addGroupForm(editingGroup.id, d.form_id, d.form_name);
                               else removeGroupForm(editingGroup.id, d.form_id);
                             }}
                           />
@@ -1107,7 +1128,22 @@ export default function AdminLeadAutomation() {
 
       <AlertDialog open={!!confirmando} onOpenChange={(aberto) => { if (!aberto) setConfirmando(null); }}>
         <AlertDialogContent>
-          {confirmando?.tipo === "grupo" ? (
+          {confirmando?.tipo === "mover-form" ? (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Mover “{confirmando.form.form_name || confirmando.form.form_id}” para {confirmando.para.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Hoje este formulário é do grupo <b>{confirmando.de.name}</b>. Um formulário alimenta uma roleta só:
+                  a partir do próximo lead, quem recebe é o grupo <b>{confirmando.para.name}</b>, e o
+                  {" "}{confirmando.de.name} deixa de receber por ele. Os leads que já chegaram não mudam.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={() => moverForm(confirmando.form, confirmando.de, confirmando.para)}>Mover formulário</AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          ) : confirmando?.tipo === "grupo" ? (
             <>
               <AlertDialogHeader>
                 <AlertDialogTitle>Excluir o grupo “{confirmando.grupo.name}”?</AlertDialogTitle>
