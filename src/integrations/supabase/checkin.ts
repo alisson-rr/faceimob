@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "./client";
 import { dbError } from "@/lib/supabaseError";
 import { checkinDeadline } from "@/lib/checkinAction";
@@ -119,6 +120,20 @@ export async function listTodayExternalCheckins(): Promise<ExternalCheckin[]> {
     .order("checked_in_at", { ascending: false });
   if (error) throw dbError("checkins", error);
   return (data ?? []) as ExternalCheckin[];
+}
+
+/** O que mexeu na fila do próprio corretor hoje (0315), do mais recente ao mais antigo. */
+export type AndamentoDaFila = {
+  ocorreu_em: string;
+  tipo: "checkin" | "recebeu" | "atendeu" | "prazo_vencido" | "bloqueado" | "desbloqueado";
+  detalhe: string | null;
+};
+
+/** `minha_fila_andamento` (0315) ainda não está no `types.ts` gerado. */
+export async function getMinhaFilaAndamento(): Promise<AndamentoDaFila[]> {
+  const { data, error } = await (supabase as unknown as SupabaseClient).rpc("minha_fila_andamento");
+  if (error) throw dbError("minha_fila_andamento", error);
+  return (data ?? []) as AndamentoDaFila[];
 }
 
 /**
