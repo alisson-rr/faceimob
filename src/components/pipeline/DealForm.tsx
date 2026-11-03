@@ -11,9 +11,10 @@ import type { DealStage } from "@/types/crm";
 import { useAuth } from "@/contexts/AuthContext";
 import { listDeveloperProjects } from "@/integrations/supabase/leads";
 import {
-  choosesLoss, dealStageCodeFor, saleBlockedReason,
+  choosesLoss, dealStageCodeFor, saleBlockedReason, setVendaInterna,
   type PersonRecord, type SaveLegacyDealInput,
 } from "@/integrations/supabase/newSchema";
+import { toast } from "@/components/ui/sonner";
 import {
   EMPTY_STATUS_CATALOG, statusKey, statusMoveBlock, useDealStatusCatalog, type DealStatusCatalog,
 } from "@/integrations/supabase/dealStatuses";
@@ -511,6 +512,30 @@ export function DealForm({
             <Label htmlFor={field("informal2")} className="cursor-pointer text-sm font-semibold">Renda informal — cliente 2?</Label>
             <Switch id={field("informal2")} checked={form.has_informal_income2 || false}
               onCheckedChange={(v) => onChange({ has_informal_income2: v })} />
+          </div>
+        )}
+        {/* Venda interna (03/11/2026, 0319): segue no Pipeline e na esteira do
+            CCA, mas fora do mês, do game e do ranking. Só o admin marca (o
+            banco recusa os outros); para os demais aparece só quando marcada. */}
+        {dealId && (isAdmin || form.venda_interna) && (
+          <div className="deal-income-toggle">
+            <Label htmlFor={field("interna")} className="cursor-pointer text-sm font-semibold">
+              Venda interna? <span className="font-normal text-muted-foreground">(fora do mês, do game e do ranking)</span>
+            </Label>
+            <Switch id={field("interna")} checked={form.venda_interna || false} disabled={!isAdmin}
+              onCheckedChange={async (v) => {
+                if (!isAdmin || !dealId) return;
+                // Grava na hora: a coluna fica fora do "Confirmar alterações".
+                try {
+                  await setVendaInterna(dealId, v);
+                  onChange({ venda_interna: v });
+                  toast.success(v ? "Marcada como venda interna" : "Voltou a contar como venda", {
+                    description: v ? "Fora do mês, do game e do ranking. Segue no Pipeline e no CCA." : undefined,
+                  });
+                } catch (err) {
+                  toast.error("Não foi possível alterar a venda interna", { description: describeError(err, "tente de novo") });
+                }
+              }} />
           </div>
         )}
       </div>

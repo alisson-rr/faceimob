@@ -54,6 +54,8 @@ export interface DealHistoryEntry {
 
 export interface PipelineDeal {
   id: string;
+  /** Venda interna (0319): segue no Pipeline e no CCA, fora do mês, do game e do ranking. */
+  venda_interna?: boolean;
   code?: string;
   client: string;
   cpf?: string;

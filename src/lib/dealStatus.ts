@@ -162,4 +162,8 @@ export const closableMonths = (
 export const contaComoVenda = (deal: {
   outcome: string;
   status_group_code?: string | null;
-}): boolean => deal.outcome === "won" || (deal.outcome === "open" && deal.status_group_code === "VENDA");
+  venda_interna?: boolean;
+}): boolean =>
+  // Venda interna (0319) não conta no mês: segue só no Pipeline e na esteira.
+  !deal.venda_interna
+  && (deal.outcome === "won" || (deal.outcome === "open" && deal.status_group_code === "VENDA"));

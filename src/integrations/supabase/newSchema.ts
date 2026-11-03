@@ -1,4 +1,5 @@
 import { differenceInDays, format, parseISO } from "date-fns";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCoDiretores } from "./coDiretores";
 import { supabase } from "./client";
 import { getCurrentWorkDate, SAO_PAULO_UTC_OFFSET } from "./checkin";
@@ -665,6 +666,7 @@ export async function listLegacyDeals(
       manager2_name: profileById.get(managers[1]?.profile_id) || null,
       director1_name: profileById.get(directors[0]?.profile_id) || null,
       director2_name: profileById.get(directors[1]?.profile_id) || null,
+      venda_interna: Boolean((deal as DealRow & { venda_interna?: boolean }).venda_interna),
       vgv_bruto: Number(deal.vgv_gross || 0),
       perc_desconto: String(deal.discount_pct || 0),
       desconto: Number(deal.discount_amount || 0),
@@ -1436,6 +1438,18 @@ export function legacyDealFields(form: SaveLegacyDealInput) {
     // derivação é a troca manual que o banco cobra (`deals.edit_status_group`).
     status_group_id: form.status_group_id ?? undefined,
   };
+}
+
+/**
+ * Marca ou desmarca a venda interna (0319): fora do mês, do game e do ranking.
+ * Só o admin — o gatilho `deals_guarda_venda_interna` recusa os outros. Fica
+ * fora do `saveLegacyDeal` porque a coluna ainda não está no `types.ts` gerado.
+ */
+export async function setVendaInterna(dealId: string, valor: boolean): Promise<void> {
+  const { data, error } = await (db as unknown as SupabaseClient)
+    .from("deals").update({ venda_interna: valor }).eq("id", dealId).select("id");
+  throwIfError("deals", { error });
+  if (!data?.length) throw dbError("deals", { code: "42501", message: "nenhuma linha atualizada (sem permissão)" });
 }
 
 export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string> {
