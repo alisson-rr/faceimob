@@ -209,6 +209,7 @@ begin
   return new;
 end;
 $$;
+revoke all on function public.leads_grupo_da_origem() from public, anon, authenticated;
 drop trigger if exists leads_grupo_da_origem on public.leads;
 create trigger leads_grupo_da_origem
   before insert on public.leads
