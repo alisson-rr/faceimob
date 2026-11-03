@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/sonner";
-import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle, Settings2, FileText, UserCheck, Lock, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, Save, Zap, Timer, Users, Layers, PauseCircle, Settings2, FileText, UserCheck, Lock, ArrowUp, ArrowDown, MessageCircle } from "lucide-react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { ehOrigemWa, rotuloOrigemWa, type OrigemWa } from "@/lib/origemWa";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
@@ -186,6 +188,7 @@ export default function AdminLeadAutomation() {
   const [alcance, setAlcance] = useState<ReadonlySet<string>>(new Set());
   const [alcanceFalhou, setAlcanceFalhou] = useState(false);
   const [detectedForms, setDetectedForms] = useState<FormRef[]>([]);
+  const [origensWa, setOrigensWa] = useState<OrigemWa[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [groupDialog, setGroupDialog] = useState<{ mode: "create" | "rename"; id?: string; name: string; kind: string } | null>(null);
@@ -199,6 +202,7 @@ export default function AdminLeadAutomation() {
     | { tipo: "turno"; id: string; label: string }
     | { tipo: "grupo"; grupo: Group }
     | { tipo: "mover-form"; form: FormRef; de: Group; para: Group }
+    | { tipo: "mover-origem"; origem: OrigemWa; de: Group; para: Group }
     | null
   >(null);
   const [formDialog, setFormDialog] = useState<{ groupId: string; form_id: string; form_name: string } | null>(null);
@@ -246,7 +250,7 @@ export default function AdminLeadAutomation() {
 
   const load = async () => {
     try {
-      const [s, w, people, g, gb, gf, lf, alc, opcoes] = await Promise.all([
+      const [s, w, people, g, gb, gf, lf, alc, opcoes, origens] = await Promise.all([
         supabase.from("automation_settings").select("*").eq("id", true).maybeSingle(),
         supabase.from("work_shifts").select("*").order("position"),
         listPeople(),
@@ -258,6 +262,9 @@ export default function AdminLeadAutomation() {
         // diretor via e clicava em roleta que a policy de gravação recusa.
         supabase.rpc("auth_distribution_group_ids"),
         listOpcoesDosGrupos(),
+        // `distribution_group_id` (0315) ainda não está no `types.ts` gerado.
+        (supabase as unknown as SupabaseClient).from("lead_sources")
+          .select("id,label,code,channel,distribution_group_id").eq("active", true).order("label"),
       ]);
       const failed = [s, w, g, gb, gf, lf].find((r) => r.error);
       if (failed?.error) throw failed.error;
@@ -302,6 +309,8 @@ export default function AdminLeadAutomation() {
       links.forEach((x) => map.set(x.form_id, x.form_name));
       (lf.data ?? []).forEach((r) => { if (r.form_id && !map.has(r.form_id)) map.set(r.form_id, null); });
       setDetectedForms(Array.from(map.entries()).map(([form_id, form_name]) => ({ form_id, form_name })));
+      // Lista das origens é complemento: a falha dela não derruba a tela.
+      setOrigensWa(((origens.data ?? []) as (OrigemWa & { channel: string | null })[]).filter(ehOrigemWa));
       // Quase toda gravação recarrega: a carga que deu certo tira o aviso fixo de
       // uma falha anterior, que senão seguiria dizendo que a tela está nos padrões.
       toast.dismiss(AVISO_CARGA);
@@ -586,6 +595,17 @@ export default function AdminLeadAutomation() {
       "O formulário mudou de grupo enquanto você olhava. Lista recarregada.",
     );
     if (ok) toast.success(`Formulário movido para ${para.name}`, { duration: 2500 });
+    load();
+  };
+  // Liga (ou solta) a origem de WhatsApp ao grupo. Com o `group_id` antigo no
+  // filtro: se outro admin já mudou, nada muda e a lista recarrega.
+  const ligarOrigemWa = async (origem: OrigemWa, para: string | null) => {
+    let q = (supabase as unknown as SupabaseClient).from("lead_sources")
+      .update({ distribution_group_id: para }).eq("id", origem.id);
+    q = origem.distribution_group_id ? q.eq("distribution_group_id", origem.distribution_group_id) : q.is("distribution_group_id", null);
+    const ok = await wrote(q.select("id"), "Não foi possível alterar a campanha de WhatsApp", {},
+      "A campanha mudou de grupo enquanto você olhava. Lista recarregada.");
+    if (ok) toast.success(para ? "Campanha de WhatsApp ligada ao grupo" : "Campanha de WhatsApp solta do grupo", { duration: 2500 });
     load();
   };
   const removeGroupForm = async (groupId: string, formId: string) => {
@@ -984,6 +1004,56 @@ export default function AdminLeadAutomation() {
               </div>
             </div>
           )}
+          {/* Campanhas de WhatsApp (05/11/2026): "Recebe de WhatsApp" só filtrava
+              listas; nada ligava a campanha ao grupo. Aqui é como os formulários:
+              marcar diz para qual grupo vão os leads daquela origem. */}
+          {editingGroup && (
+            <div className="space-y-2 border-t border-border pt-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold flex items-center gap-1">
+                  <MessageCircle className="h-3.5 w-3.5" aria-hidden /> Campanhas de WhatsApp
+                </h3>
+                <Badge variant="secondary">
+                  {origensWa.filter((o) => o.distribution_group_id === editingGroup.id).length} selecionadas
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Marque de onde vêm os leads de WhatsApp deste grupo. Para receber todos os anúncios de WhatsApp, marque
+                “Todas as campanhas de WhatsApp não cadastradas” e as campanhas já cadastradas. Lead que passa pela IA
+                continua no grupo marcado aqui.
+              </p>
+              <div className="space-y-1">
+                {[...origensWa]
+                  .sort((a, b) => Number(b.code === "whatsapp_ads") - Number(a.code === "whatsapp_ads")
+                    || Number(b.code === "whatsapp_direto") - Number(a.code === "whatsapp_direto"))
+                  .map((o) => {
+                    const on = o.distribution_group_id === editingGroup.id;
+                    const dono = on ? null : groups.find((g) => g.id === o.distribution_group_id) ?? null;
+                    const { titulo, detalhe } = rotuloOrigemWa(o);
+                    return (
+                      <label key={o.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded hover:bg-muted/50 cursor-pointer">
+                        <Checkbox
+                          checked={on}
+                          disabled={readOnly}
+                          onCheckedChange={(v) => {
+                            if (v && dono) setConfirmando({ tipo: "mover-origem", origem: o, de: dono, para: editingGroup });
+                            else void ligarOrigemWa(o, v ? editingGroup.id : null);
+                          }}
+                        />
+                        <span className="truncate flex-1">{titulo}</span>
+                        <span className="text-xs text-muted-foreground truncate">{detalhe}</span>
+                        {dono && <span className="text-xs text-warning truncate">grupo: {dono.name}</span>}
+                      </label>
+                    );
+                  })}
+                {origensWa.length === 0 && (
+                  <p className="text-xs text-muted-foreground p-2">
+                    Nenhuma origem de WhatsApp cadastrada. As campanhas aparecem aqui depois de cadastradas em SDR IA → Origens.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingGroupId(null)}>Fechar</Button>
           </DialogFooter>
@@ -1128,7 +1198,21 @@ export default function AdminLeadAutomation() {
 
       <AlertDialog open={!!confirmando} onOpenChange={(aberto) => { if (!aberto) setConfirmando(null); }}>
         <AlertDialogContent>
-          {confirmando?.tipo === "mover-form" ? (
+          {confirmando?.tipo === "mover-origem" ? (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Mover “{rotuloOrigemWa(confirmando.origem).titulo}” para {confirmando.para.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Hoje os leads desta origem vão para o grupo <b>{confirmando.de.name}</b>. A partir do próximo lead,
+                  quem recebe é o grupo <b>{confirmando.para.name}</b>. Os leads que já chegaram não mudam.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={() => ligarOrigemWa(confirmando.origem, confirmando.para.id)}>Mover campanha</AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          ) : confirmando?.tipo === "mover-form" ? (
             <>
               <AlertDialogHeader>
                 <AlertDialogTitle>Mover “{confirmando.form.form_name || confirmando.form.form_id}” para {confirmando.para.name}?</AlertDialogTitle>
