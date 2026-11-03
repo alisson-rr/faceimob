@@ -6,7 +6,8 @@
 --      DENTRO do mês do game. Com outubro aberto e o relógio em novembro, todo
 --      envio de novembro ficou fora. Agora vale do mês aberto em diante, até
 --      fecharem o mês.
---   2. Visita agendada pela 3C: o aviso não abria o lead (ver abaixo).
+--   2. Visita agendada pela 3C na agenda do dono do lead: o aviso não abria o
+--      lead (ver abaixo).
 --   3. "Quantos leads foram entregues no turno": `fila_entregas_do_turno`.
 -- =============================================================================
 
@@ -66,12 +67,16 @@ begin
     return null;
   end if;
 
-  -- 0318: sem o filtro de visibilidade de quem agendou. A integração 3C não
-  -- "enxerga" o corretor, o lead vinha nulo e o aviso caía num link genérico
-  -- do Pipeline ("nem clicando na notificação"). O aviso vai só ao corretor da
-  -- visita e ao dono do lead, que enxergam o lead.
+  -- 0318: a integração 3C não "enxerga" o corretor, o lead vinha nulo e o
+  -- aviso caía num link genérico do Pipeline ("nem clicando na notificação").
+  -- Vale também a visita marcada NA AGENDA DO DONO do lead (é o que a 3C faz).
+  -- A trava da 0143 continua: quem não enxerga o lead não o usa para avisar
+  -- outra pessoa.
   if new.lead_id is not null then
-    select l.* into v_lead from public.leads l where l.id = new.lead_id;
+    select l.* into v_lead from public.leads l
+     where l.id = new.lead_id
+       and (l.assigned_to = new.broker_id
+            or l.assigned_to in (select public.auth_visible_profiles()));
   end if;
   select full_name into v_ator_nome from public.profiles where id = v_ator;
 
