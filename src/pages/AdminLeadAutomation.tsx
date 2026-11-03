@@ -693,7 +693,7 @@ export default function AdminLeadAutomation() {
             <strong>Sem resposta:</strong> lead parado em Primeiro Contato por essas horas vai para Sem Resposta e o corretor é avisado no sino.{" "}
             <strong>Inatividade:</strong> destaca na lista o lead sem movimento há essas horas.{" "}
             <strong>Auto 1º contato:</strong> ao clicar em Atender, o lead entra direto em Primeiro Contato.{" "}
-            <strong>Vencidos p/ bloquear:</strong> com essa quantidade de leads vencidos em aberto, o corretor sai da fila até atender.{" "}
+            <strong>Vencidos p/ bloquear:</strong> com essa quantidade de leads vencidos em aberto, o corretor continua na fila do dia, mas o próximo check-in fica travado até regularizar.{" "}
             <strong>Avisos:</strong> desligam a notificação de lead recebido e a de lead vencido para todos os corretores.
           </p>
         </CardContent>

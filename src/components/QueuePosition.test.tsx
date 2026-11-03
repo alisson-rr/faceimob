@@ -76,7 +76,7 @@ describe("QueuePosition", () => {
 
     expect(container.textContent).toMatch(/andamento da sua fila hoje/i);
     expect(container.textContent).toMatch(/14:10Perdeu o prazo de Maria: o lead voltou para a roleta e você foi para o fim/);
-    expect(container.textContent).toMatch(/Regularizou os atrasados e voltou à fila, no fim/);
+    expect(container.textContent).toMatch(/Regularizou os atrasados: o próximo check-in está liberado/);
     await cleanup();
   });
 
@@ -118,16 +118,15 @@ describe("QueuePosition", () => {
     await cleanup();
   });
 
-  it("bloqueado por atrasados, explica o bloqueio em vez do horário", async () => {
-    // A fila usa a mesma trava do check-in (0014): dizer "a fila abre às 08:30"
-    // embaixo do banner de bloqueio seria mentira.
+  it("com atrasados demais, avisa que só o próximo check-in trava (0317)", async () => {
+    // Desde a 0317 os atrasos não tiram da fila: a fila abre normalmente hoje.
     filas.mockResolvedValue(grupo([]));
     const { container, cleanup } = await render(
       <QueuePosition checkedIn opensAt="08:30" blocked />,
     );
 
-    expect(container.textContent).toMatch(/leads atrasados demais/i);
-    expect(container.textContent).not.toMatch(/a fila abre/i);
+    expect(container.textContent).toMatch(/próximo check-in fica travado/i);
+    expect(container.textContent).toMatch(/a fila abre às 08:30/i);
     await cleanup();
   });
 

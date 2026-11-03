@@ -47,7 +47,8 @@ begin
     (bia,  t, public.current_work_date(), now() - interval '50 minutes'),
     (caio, t, public.current_work_date(), now() - interval '40 minutes');
 
-  -- Ana tem um lead atrasado: sai da fila.
+  -- Ana tem um lead atrasado: o bloqueio é registrado (andamento), mas desde a
+  -- 0317 ela continua na fila — o limite trava só o próximo check-in.
   insert into public.leads (full_name, phone, status, assigned_to, assigned_at, next_action_at)
   values ('Atrasado 315', '11900315001', 'attending', ana, now() - interval '30 minutes', now() - interval '5 minutes')
   returning id into l_atrasado;
@@ -55,13 +56,13 @@ begin
   perform pg_temp.ok(exists (select 1 from public.fila_bloqueios where profile_id = ana and fim is null),
     'o lead atrasado abre o bloqueio da Ana');
 
-  -- Ela regulariza: volta, mas no FIM (antes voltava em 1º, na frente de todos).
+  -- Ela regulariza: nada muda na ordem, ela nunca saiu.
   update public.leads set next_action_at = now() + interval '1 day' where id = l_atrasado;
   perform public.fila_registrar_bloqueios();
   select string_agg(p.full_name, ' > ' order by q.queue_position) into ordem
     from public.distribution_queue_interna(g) q join public.profiles p on p.id = q.profile_id;
-  perform pg_temp.ok(ordem = 'Bia 315 > Caio 315 > Ana 315',
-    'quem volta do bloqueio por atrasados entra no fim da fila (' || coalesce(ordem, '∅') || ')');
+  perform pg_temp.ok(ordem = 'Ana 315 > Bia 315 > Caio 315',
+    'atrasos não mexem na fila: quem chegou primeiro continua primeiro (' || coalesce(ordem, '∅') || ')');
 
   -- O andamento conta à Ana por que ela foi para o fim.
   perform set_config('request.jwt.claims', json_build_object('sub', ana, 'role', 'authenticated')::text, true);

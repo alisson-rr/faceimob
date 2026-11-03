@@ -84,8 +84,9 @@ begin
     into linhas
     from public.fila_em_formacao() where group_name = 'Roleta 198';
   reset role;
-  perform pg_temp.ok(linhas = 'Aberto 198:na_fila:1 | Espera Um 198:aguardando:2 | Espera Dois 198:aguardando:3 | Bloqueado 198:bloqueado:-',
-    'na fila primeiro, depois quem aguarda pela ordem do motor, bloqueado sem posição, quem saiu fora: ' || coalesce(linhas, '∅'));
+  -- 0317: atrasos não tiram da fila (só travam o próximo check-in).
+  perform pg_temp.ok(linhas = 'Aberto 198:na_fila:1 | Bloqueado 198:na_fila:2 | Espera Um 198:aguardando:3 | Espera Dois 198:aguardando:4',
+    'na fila primeiro (com atrasos ou não), depois quem aguarda pela ordem do motor, quem saiu fora: ' || coalesce(linhas, '∅'));
 
   perform pg_temp.como('00000000-0000-0000-0000-000001980001');
   set local role authenticated;
