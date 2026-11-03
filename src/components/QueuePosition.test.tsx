@@ -32,8 +32,10 @@ vi.mock("@/integrations/supabase/client", () => ({
 }));
 
 const filas = vi.fn();
+const andamento = vi.fn();
 vi.mock("@/integrations/supabase/checkin", () => ({
   getMyQueues: (...args: unknown[]) => filas(...args),
+  getMinhaFilaAndamento: () => andamento(),
 }));
 
 async function render(ui: ReactNode) {
@@ -57,10 +59,27 @@ const grupo = (entries: { profile_id: string; full_name: string; queue_position:
 
 beforeEach(() => {
   filas.mockReset();
+  andamento.mockReset();
+  andamento.mockResolvedValue([]);
   sessao.user = { id: "eu" };
 });
 
 describe("QueuePosition", () => {
+  it("conta o que mandou o corretor para o fim da fila (03/11/2026)", async () => {
+    filas.mockResolvedValue(grupo([{ profile_id: "eu", full_name: "Eu", queue_position: 8 }]));
+    andamento.mockResolvedValue([
+      { ocorreu_em: "2026-11-03T17:10:00Z", tipo: "prazo_vencido", detalhe: "Maria" },
+      { ocorreu_em: "2026-11-03T16:42:00Z", tipo: "recebeu", detalhe: "Maria" },
+      { ocorreu_em: "2026-11-03T15:00:00Z", tipo: "desbloqueado", detalhe: null },
+    ]);
+    const { container, cleanup } = await render(<QueuePosition checkedIn opensAt="08:30" />);
+
+    expect(container.textContent).toMatch(/andamento da sua fila hoje/i);
+    expect(container.textContent).toMatch(/14:10Perdeu o prazo de Maria: o lead voltou para a roleta e você foi para o fim/);
+    expect(container.textContent).toMatch(/Regularizou os atrasados e voltou à fila, no fim/);
+    await cleanup();
+  });
+
   it("na fila, diz a posição e o tamanho dela", async () => {
     filas.mockResolvedValue(grupo([
       { profile_id: "outro", full_name: "Ana", queue_position: 1 },

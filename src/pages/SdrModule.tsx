@@ -187,7 +187,7 @@ export default function SdrModule() {
             <TabsContent value="agents"><AgentsTab agents={agents} groups={groups} sources={sources} lists={lists} canWrite={canWrite} iaConfigurada={iaConfigurada} reload={loadAll} /></TabsContent>
             <TabsContent value="sources" className="space-y-3">
               <CampanhasWhatsapp agents={agents} canWrite={canWrite} onChange={loadAll} />
-              <SourcesTab sources={sources} agents={agents} templates={templates} canWrite={canWrite} reload={loadAll} />
+              <SourcesTab sources={sources} agents={agents} groups={groups} templates={templates} canWrite={canWrite} reload={loadAll} />
             </TabsContent>
             {/* Um turno que deu certo prova a chave melhor que a consulta de status:
                 sem avisar aqui, o Playground respondia e a tela seguia dizendo
