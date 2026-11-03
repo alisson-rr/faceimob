@@ -107,6 +107,9 @@ as $$
   )
   select e.profile_id, e.full_name,
          row_number() over (order by greatest(e.checked_in_at, e.last_turn_at, e.voltou_do_bloqueio_em) nulls first, e.profile_id)::int,
+         e.last_assigned_at, e.last_turn_at
+    from eligible e;
+$$;
 
 revoke all on function public.distribution_queue_interna(uuid) from public, anon, authenticated;
 grant execute on function public.distribution_queue_interna(uuid) to service_role;
