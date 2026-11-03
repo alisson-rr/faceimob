@@ -136,6 +136,13 @@ export async function getMinhaFilaAndamento(): Promise<AndamentoDaFila[]> {
   return (data ?? []) as AndamentoDaFila[];
 }
 
+/** Leads entregues pela roleta em cada grupo do corretor, no turno vigente (0318). */
+export async function getEntregasDoTurno(): Promise<Map<string, number>> {
+  const { data, error } = await (supabase as unknown as SupabaseClient).rpc("fila_entregas_do_turno");
+  if (error) throw dbError("fila_entregas_do_turno", error);
+  return new Map(((data ?? []) as { group_id: string; entregues: number }[]).map((r) => [r.group_id, r.entregues]));
+}
+
 /**
  * Fila do grupo de distribuição do corretor.
  *

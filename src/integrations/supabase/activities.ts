@@ -125,6 +125,40 @@ export type TaskWithAssignee = TaskRecord & { assignee_name: string | null };
  * `tasks` tem duas FKs para `profiles` (`assigned_to` e `created_by`); sem o
  * nome da constraint o PostgREST recusa o embed por ambiguidade.
  */
+/** Visita agendada que ainda vai acontecer, com o nome do lead para a agenda. */
+export type UpcomingVisit = {
+  id: string;
+  lead_id: string | null;
+  deal_id: string | null;
+  broker_id: string;
+  scheduled_at: string;
+  title: string | null;
+  origin: string | null;
+  lead_name: string | null;
+};
+
+/**
+ * Visitas agendadas de hoje em diante (03/11/2026). As da 3C só apareciam
+ * dentro do lead, e o corretor não as achava nem pelo aviso. A RLS de `visits`
+ * recorta quem vê (o próprio corretor e a liderança dele).
+ */
+export async function listUpcomingVisits(): Promise<UpcomingVisit[]> {
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  // `title`/`origin` da 0284 ainda não estão no `types.ts` gerado.
+  const { data, error } = await (supabase as unknown as SupabaseClient)
+    .from("visits")
+    .select("id,lead_id,deal_id,broker_id,scheduled_at,title,origin,leads(full_name)")
+    .eq("result", "scheduled")
+    .gte("scheduled_at", hoje.toISOString())
+    .order("scheduled_at")
+    .limit(200);
+  if (error) throw dbError("visits", error);
+  // O embed de `leads` vem como objeto (FK n:1); o tipo inferido diz lista.
+  type Linha = Omit<UpcomingVisit, "lead_name"> & { leads: { full_name: string | null } | null };
+  return ((data ?? []) as unknown as Linha[]).map(({ leads, ...v }) => ({ ...v, lead_name: leads?.full_name ?? null }));
+}
+
 export async function listOpenTasksVisible(): Promise<TaskWithAssignee[]> {
   const { data, error } = await supabase
     .from("tasks")

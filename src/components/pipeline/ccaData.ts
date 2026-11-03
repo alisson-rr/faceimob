@@ -185,6 +185,18 @@ export function periodoCcaPreset(preset: Exclude<CcaPeriodoPreset, "customizado"
   return { de: `${ultimo.slice(0, 8)}01`, ate: ultimo };
 }
 
+/**
+ * "Mês vigente" e "mês passado" da Esteira CCA seguem o mês do game aberto, não
+ * o relógio (03/11/2026): outubro segue na esteira até fecharem o mês, e assim
+ * Comercial, CCA e Game fecham juntos. Mês inteiro, do dia 1 ao último.
+ */
+export function periodoDoMesDoGame(preset: "mes" | "mes_passado", mesDoGame: Date): CcaPeriodo {
+  const mes = mesDoGame.getMonth() - (preset === "mes_passado" ? 1 : 0);
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { de: iso(new Date(mesDoGame.getFullYear(), mes, 1)), ate: iso(new Date(mesDoGame.getFullYear(), mes + 1, 0)) };
+}
+
 const DATA = /^20\d{2}-\d{2}-\d{2}$/;
 
 /**
