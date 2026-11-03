@@ -354,7 +354,8 @@ export default function Pipeline() {
   // `visible`, e não `deals`: a contagem ao lado, na mesma frase, é filtrada —
   // ler "3 negócio(s) ativo(s) · R$ 12 mi em VGV" com o VGV da base inteira
   // descrevia dois conjuntos diferentes na mesma linha.
-  const vgv = visible.filter((deal) => deal.active).reduce((total, deal) => total + (deal.deal_value || 0), 0);
+  // Venda interna (0319) não entra no VGV do mês.
+  const vgv = visible.filter((deal) => deal.active && !deal.venda_interna).reduce((total, deal) => total + (deal.deal_value || 0), 0);
 
   // O mês do fechamento é o do ciclo aberto do game (migration 0032), não o do
   // relógio nem o que estiver no filtro.

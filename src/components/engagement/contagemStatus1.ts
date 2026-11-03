@@ -12,7 +12,7 @@ export const GRUPOS_DO_PLACAR = [
 export type CodigoDoPlacar = (typeof GRUPOS_DO_PLACAR)[number]["code"];
 export type ContagemStatus1 = Record<CodigoDoPlacar, number>;
 
-type NegocioContado = Pick<LegacyDealRecord, "status_group_id" | "broker1_id" | "broker2_id" | "broker3_id">;
+type NegocioContado = Pick<LegacyDealRecord, "status_group_id" | "broker1_id" | "broker2_id" | "broker3_id" | "venda_interna">;
 
 /**
  * Quantos negócios de cada Status 1 cada pessoa tem, entre os negócios que a
@@ -31,6 +31,8 @@ export function contarStatus1PorPessoa(
 ): Map<string, ContagemStatus1> {
   const porPessoa = new Map<string, ContagemStatus1>();
   for (const deal of deals) {
+    // Venda interna (0319) fica fora do placar, como no game.
+    if (deal.venda_interna) continue;
     // 30/10/2026: PÓS VENDA (onde mora o ASS. BANCO) é venda — antes a venda
     // sumia do cartão ao assinar no banco —, e a venda com dois corretores conta
     // meia para cada um, como no ranking e no game.
