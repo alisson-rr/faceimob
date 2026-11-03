@@ -317,13 +317,13 @@ begin
     (select overdue_count from public.checkin_eligibility(c1)) = 20,
     'contagem de atrasados bate');
 
-  -- E some da roleta.
+  -- 0317: continua na roleta; o limite trava só o PRÓXIMO check-in.
   perform pg_temp.check(
-    not exists (
+    exists (
       select 1 from public.distribution_queue(
         (select id from public.distribution_groups where kind = 'general' limit 1))
       where profile_id = c1),
-    'corretor bloqueado sai da fila da roleta');
+    'corretor com 20 atrasados continua na fila (só o check-in trava)');
 end
 $$;
 

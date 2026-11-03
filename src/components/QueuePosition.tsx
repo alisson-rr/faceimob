@@ -20,9 +20,9 @@ type Props = {
   /** "HH:MM" em que a distribuição do turno vigente começa; null fora de turno. */
   opensAt?: string | null;
   /**
-   * Check-in travado por leads atrasados (`checkin_eligibility`). A fila usa a
-   * mesma trava (0014): quem estoura o limite depois de bater ponto sai dela, e
-   * "a fila abre às HH:MM" seria mentira embaixo do banner de bloqueio.
+   * Leads atrasados acima do limite (`checkin_eligibility`). Desde a 0317 o
+   * corretor NÃO sai da fila por isso (pedido de 03/11/2026): segue recebendo
+   * hoje, e o que trava é o próximo check-in até regularizar.
    */
   blocked?: boolean;
 };
@@ -122,6 +122,11 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
 
   return (
     <div className="space-y-2">
+      {blocked && (
+        <p className="text-xs text-warning">
+          Leads atrasados demais: você segue na fila hoje, mas o próximo check-in fica travado até regularizar.
+        </p>
+      )}
       {queues.map((q) => {
         const mine = q.entries.findIndex((e) => e.profile_id === user?.id);
         return (
@@ -140,13 +145,9 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
                 <span className="text-xs text-muted-foreground">
                   fora da fila agora — é preciso estar em check-in no turno
                 </span>
-              ) : q.entries.length === 0 && !blocked ? (
+              ) : q.entries.length === 0 ? (
                 <span className="text-xs text-muted-foreground">
                   check-in confirmado — a fila abre {opensAt ? `às ${opensAt}` : "no horário de distribuição do turno"}
-                </span>
-              ) : blocked ? (
-                <span className="text-xs text-muted-foreground">
-                  fora da fila: leads atrasados demais — regularize para voltar a receber
                 </span>
               ) : (
                 <span className="text-xs text-muted-foreground">
@@ -204,8 +205,8 @@ export function fraseDoAndamento(item: AndamentoDaFila): string {
     case "recebeu": return `Recebeu ${lead} e saiu da fila até atender.`;
     case "atendeu": return `Atendeu ${lead} e voltou à fila, no fim.`;
     case "prazo_vencido": return `Perdeu o prazo de ${lead}: o lead voltou para a roleta e você foi para o fim.`;
-    case "bloqueado": return "Saiu da fila: leads atrasados acima do limite.";
-    case "desbloqueado": return "Regularizou os atrasados e voltou à fila, no fim.";
+    case "bloqueado": return "Passou do limite de leads atrasados: o próximo check-in fica travado até regularizar.";
+    case "desbloqueado": return "Regularizou os atrasados: o próximo check-in está liberado.";
   }
 }
 
@@ -235,7 +236,8 @@ function AndamentoDaSuaFila({ itens }: { itens: AndamentoDaFila[] }) {
       </ol>
       <p className="mt-2 text-xs text-muted-foreground">
         Você sobe quando alguém à sua frente recebe um lead. Também pode descer quando começa o turno
-        de quem fez check-in antes de você.
+        de quem fez check-in antes de você. Leads atrasados não tiram ninguém da fila: travam só o
+        próximo check-in.
       </p>
     </details>
   );
