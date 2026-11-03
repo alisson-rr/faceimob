@@ -10,7 +10,7 @@ import type { LegacyDealRecord, PersonRecord } from "@/integrations/supabase/new
 import { brl, num } from "@/lib/format";
 import { bareStatus, contaComoVenda } from "@/lib/dealStatus";
 import { currentMonthRange } from "@/lib/currentMonthRange";
-import { useCurrentSeasonId } from "@/hooks/useGameRanking";
+import { useCurrentSeasonId, useMesDoGame } from "@/hooks/useGameRanking";
 import { listScoredDealIds } from "@/integrations/supabase/game";
 import { dealMonth } from "@/components/pipeline/filters";
 
@@ -30,7 +30,8 @@ export function ResultadosDoPipeline({ deals, people, loading, error, onOpen }: 
   const director = !isAdmin && roles.includes("director");
   const manager = !isAdmin && !director && roles.includes("manager");
   const ownId = user?.id ?? "";
-  const monthRange = currentMonthRange();
+  // O mês da temporada aberta, não o do relógio (02/11/2026).
+  const monthRange = currentMonthRange(useMesDoGame());
   const monthLabel = monthRange.from.slice(5, 7) + "/" + monthRange.from.slice(0, 4);
   const monthDeals = deals.filter((deal) => dealMonth(deal) === monthLabel);
   const scoped = isAdmin ? monthDeals

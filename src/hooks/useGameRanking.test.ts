@@ -10,7 +10,7 @@ vi.mock("@tanstack/react-query", () => ({ useQuery }));
 // Renomeado na importação de propósito: `rules-of-hooks` proíbe chamar algo
 // `use*` de dentro de um callback, e aqui o alvo do teste é a chave que a
 // função monta, não o ciclo de vida do React.
-import { recorteDoRanking, useSeasonRanking as consultaDoPlacar } from "./useGameRanking";
+import { inicioDoMesDoGame, recorteDoRanking, useSeasonRanking as consultaDoPlacar } from "./useGameRanking";
 
 const chaveDaUltimaConsulta = () => useQuery.mock.calls.at(-1)?.[0].queryKey;
 
@@ -55,6 +55,18 @@ describe("useSeasonRanking", () => {
  * dela no card do Pipeline, e foi a divergência entre as duas que gerou o
  * defeito do cabeçalho mostrando o pódio da equipe ao corretor.
  */
+describe("inicioDoMesDoGame", () => {
+  it("segue o mês da temporada aberta, e não o do relógio (02/11/2026)", () => {
+    const novembro = new Date(2026, 10, 2);
+    expect(inicioDoMesDoGame("2026-10-01", novembro)).toEqual(new Date(2026, 9, 1));
+  });
+
+  it("sem temporada aberta vale o relógio", () => {
+    const hoje = new Date(2026, 10, 2);
+    expect(inicioDoMesDoGame(null, hoje)).toBe(hoje);
+  });
+});
+
 describe("recorteDoRanking", () => {
   it("admin e sócio veem o pódio da empresa", () => {
     // Um caso só, e é o certo: `isAdmin` do AuthContext já responde por admin E
