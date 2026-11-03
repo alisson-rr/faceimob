@@ -799,6 +799,15 @@ export async function reassignLead(id: string, targetProfileId: string): Promise
   asError("realocar lead", error);
 }
 
+/** Lead perdido/descartado de volta, direto para um corretor (0316). */
+export async function reativarLead(id: string, targetProfileId: string): Promise<void> {
+  const { error } = await untyped.rpc("reativar_lead", {
+    p_lead_id: id,
+    p_target: targetProfileId,
+  });
+  asError("reativar lead", error);
+}
+
 export type ConvertLeadInput = {
   leadId: string;
   developerId: string;
@@ -917,6 +926,7 @@ const EVENT_LABELS: Record<string, string> = {
   claimed: "Corretor assumiu o atendimento",
   released: "Devolvido à fila",
   reassigned: "Realocado manualmente",
+  reactivated: "Reativado e entregue a um corretor",
   stage_changed: "Etapa alterada",
   status_changed: "Status alterado",
   converted: "Convertido em negócio",

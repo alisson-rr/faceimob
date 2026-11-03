@@ -95,6 +95,7 @@ export default function LeadDetailModal({
   const [anuncioAberto, setAnuncioAberto] = useState(false);
   const [pegarAberto, setPegarAberto] = useState(false);
   const [repassando, setRepassando] = useState(false);
+  const [reativando, setReativando] = useState(false);
   const [vinculando, setVinculando] = useState(false);
   // Pelo id: abrir outro lead no mesmo modal volta a ficha travada.
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -115,7 +116,11 @@ export default function LeadDetailModal({
   const podeRepassar = Boolean(lead && (OPEN_LEAD_STATUSES ?? []).includes(lead.status)
     && (can("leads.reassign")
       || ((roles ?? []).includes("broker") && lead.assigned_to === profileId)));
-  const brokersQuery = useAssignableBrokers(open && podeRepassar);
+  // Reativar (03/11/2026): lead perdido/descartado volta direto a um corretor.
+  // É da liderança, como a realocação: `reativar_lead` exige `leads.reassign`.
+  const podeReativar = Boolean(lead && ["lost", "discarded"].includes(lead.status)
+    && !lead.converted_deal_id && can("leads.reassign"));
+  const brokersQuery = useAssignableBrokers(open && (podeRepassar || podeReativar));
   // Cronômetro da trava: tique de 1s só com o modal aberto num lead em trava.
   // Sem trava não há contagem, e o tique refazia o modal inteiro a cada segundo.
   const now = useNowTicker(open && !!lead && attendSecondsLeft(lead) !== null);
@@ -368,6 +373,11 @@ export default function LeadDetailModal({
           {podeRepassar && (
             <Button size="sm" variant="outline" onClick={() => setRepassando(true)}>
               <UserPlus className="h-4 w-4" /> Repassar lead
+            </Button>
+          )}
+          {podeReativar && (
+            <Button size="sm" variant="outline" onClick={() => setReativando(true)}>
+              <UserPlus className="h-4 w-4" /> Reativar e entregar a um corretor
             </Button>
           )}
           {lead.email && (
@@ -665,6 +675,15 @@ export default function LeadDetailModal({
           lead={lead}
           brokers={brokersQuery.data ?? []}
           onClose={() => setRepassando(false)}
+        />
+      )}
+
+      {reativando && (
+        <ReassignLeadDialog
+          reativar
+          lead={lead}
+          brokers={brokersQuery.data ?? []}
+          onClose={() => setReativando(false)}
         />
       )}
 
