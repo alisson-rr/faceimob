@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,9 +15,13 @@ import { toast } from "sonner";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { describeError } from "@/lib/supabaseError";
 import { templateIssues } from "./templateVars";
-import { SEM_PERMISSAO, SEM_SELECAO, type Agent, type Source, type WhatsAppTemplate } from "./types";
+import { SEM_PERMISSAO, SEM_SELECAO, type Agent, type Group, type Source, type WhatsAppTemplate } from "./types";
 
-type Draft = Partial<Source>;
+/** `distribution_group_id` (0315) ainda não está no `types.ts` gerado; o
+ *  tipo local morre no próximo `supabase gen types`. */
+type SourceComGrupo = Source & { distribution_group_id?: string | null };
+type Draft = Partial<SourceComGrupo>;
+const untyped = supabase as unknown as SupabaseClient;
 const VAZIO: Draft = { label: "", active: true, channel: "meta" };
 
 /** CHECK de `lead_sources.channel` (0004). Ficava sempre nulo porque a tela
@@ -35,8 +40,8 @@ const CANAIS: Array<{ value: string; label: string }> = [
 const slug = (text: string) =>
   text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
-export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
-  sources: Source[]; agents: Agent[]; templates: WhatsAppTemplate[]; canWrite: boolean; reload: () => void;
+export function SourcesTab({ sources, agents, groups, templates, canWrite, reload }: {
+  sources: SourceComGrupo[]; agents: Agent[]; groups: Group[]; templates: WhatsAppTemplate[]; canWrite: boolean; reload: () => void;
 }) {
   const [row, setRow] = useState<Draft>(VAZIO);
   // Confirmação pelo AlertDialog do app, como nas abas Agentes e Remarketing: o
@@ -63,6 +68,8 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
       code, label: row.label, form_id: row.form_id?.trim() || null,
       channel: row.channel || "meta",
       sdr_agent_id: row.sdr_agent_id || null,
+      // 0315: o lead desta origem vai só para este grupo, mesmo passando pela IA.
+      distribution_group_id: row.distribution_group_id || null,
       welcome_template_id: row.welcome_template_id || null,
       active: row.active ?? true,
     };
@@ -70,8 +77,8 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
     // existia o insert, e trocar o agente de uma origem exigia apagar e
     // recadastrar — o que zerava a origem dos leads já gravados.
     const q = row.id
-      ? supabase.from("lead_sources").update(payload).eq("id", row.id)
-      : supabase.from("lead_sources").insert(payload);
+      ? untyped.from("lead_sources").update(payload).eq("id", row.id)
+      : untyped.from("lead_sources").insert(payload);
     const { data, error } = await q.select("id");
     if (error) {
       // `lead_sources_form_idx` é único parcial: duas origens com o mesmo
@@ -127,7 +134,14 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
               <Label htmlFor="src-active" className="text-xs">Ativa</Label>
             </div>
           </div>
-          <div className="grid md:grid-cols-3 gap-2">
+          <div className="grid md:grid-cols-4 gap-2">
+            <Select value={row.distribution_group_id || SEM_SELECAO} onValueChange={v => setRow({ ...row, distribution_group_id: v === SEM_SELECAO ? null : v })}>
+              <SelectTrigger aria-label="Grupo que recebe os leads"><SelectValue placeholder="Grupo que recebe os leads" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SEM_SELECAO}>Grupo do agente (ou geral)</SelectItem>
+                {groups.filter(g => g.active).map(g => <SelectItem key={g.id} value={g.id}>Grupo {g.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <Select value={row.sdr_agent_id || SEM_SELECAO} onValueChange={v => setRow({ ...row, sdr_agent_id: v === SEM_SELECAO ? null : v })}>
               <SelectTrigger aria-label="Agente"><SelectValue placeholder="Agente" /></SelectTrigger>
               <SelectContent>
@@ -177,11 +191,12 @@ export function SourcesTab({ sources, agents, templates, canWrite, reload }: {
             descarta os descendentes e o único caminho de exclusão deixa de
             existir para quem depende dele. */}
         {sources.map(s => {
+          const grupo = groups.find(g => g.id === s.distribution_group_id);
           const resumo = (
             <>
               <b>{s.label}</b>{" "}
               <span className="text-muted-foreground text-xs">
-                · {filtro(s)} · {CANAIS.find(c => c.value === s.channel)?.label || s.channel} · {agents.find(a => a.id === s.sdr_agent_id)?.name || "sem agente · não entra na IA"} · {templates.find(t => t.id === s.welcome_template_id)?.name || "sem template"}{!s.active && " · inativa"}
+                · {filtro(s)} · {CANAIS.find(c => c.value === s.channel)?.label || s.channel} · {agents.find(a => a.id === s.sdr_agent_id)?.name || "sem agente · não entra na IA"} · {grupo ? `grupo ${grupo.name}` : "grupo do agente"} · {templates.find(t => t.id === s.welcome_template_id)?.name || "sem template"}{!s.active && " · inativa"}
               </span>
             </>
           );

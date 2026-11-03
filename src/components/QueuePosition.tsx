@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ListOrdered, Loader2, RefreshCcw } from "lucide-react";
+import { ChevronDown, History, ListOrdered, Loader2, RefreshCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { getMyQueues, type QueueEntry } from "@/integrations/supabase/checkin";
+import { getMinhaFilaAndamento, getMyQueues, type AndamentoDaFila, type QueueEntry } from "@/integrations/supabase/checkin";
 import { describeError } from "@/lib/supabaseError";
 
 /**
@@ -48,9 +48,12 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
   const [queues, setQueues] = useState<{ groupId: string; groupName: string; entries: QueueEntry[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [andamento, setAndamento] = useState<AndamentoDaFila[] | null>(null);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
+    // O andamento é explicação, não a posição: se ele falhar, a fila continua.
+    void getMinhaFilaAndamento().then(setAndamento, () => setAndamento(null));
     try {
       setQueues(await getMyQueues(user.id));
       setError(null);
@@ -185,6 +188,55 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
           </details>
         );
       })}
+      {andamento && andamento.length > 0 && <AndamentoDaSuaFila itens={andamento} />}
     </div>
+  );
+}
+
+const hora = (iso: string) =>
+  new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+
+/** Frase de cada evento: o que aconteceu e o efeito na fila. */
+export function fraseDoAndamento(item: AndamentoDaFila): string {
+  const lead = item.detalhe?.trim() || "um lead";
+  switch (item.tipo) {
+    case "checkin": return "Fez check-in e entrou no fim da fila.";
+    case "recebeu": return `Recebeu ${lead} e saiu da fila até atender.`;
+    case "atendeu": return `Atendeu ${lead} e voltou à fila, no fim.`;
+    case "prazo_vencido": return `Perdeu o prazo de ${lead}: o lead voltou para a roleta e você foi para o fim.`;
+    case "bloqueado": return "Saiu da fila: leads atrasados acima do limite.";
+    case "desbloqueado": return "Regularizou os atrasados e voltou à fila, no fim.";
+  }
+}
+
+/**
+ * "Estava em 3º e fui para 8º" (03/11/2026): o corretor via a posição mudar sem
+ * saber por quê. Aqui ele lê o que, do lado dele, o mandou para o fim. Só os
+ * próprios eventos (0315): os nomes de quem está na fila seguem privados (0310).
+ */
+function AndamentoDaSuaFila({ itens }: { itens: AndamentoDaFila[] }) {
+  return (
+    <details className="group rounded-md border border-border/40 p-2.5">
+      <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+        <History className="h-4 w-4 text-primary shrink-0" aria-hidden />
+        <span className="text-xs font-medium">Andamento da sua fila hoje</span>
+        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+          ver ({itens.length})
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden />
+        </span>
+      </summary>
+      <ol className="mt-2 space-y-1">
+        {itens.map((item) => (
+          <li key={`${item.ocorreu_em}-${item.tipo}`} className="flex gap-2 text-xs">
+            <span className="w-11 shrink-0 tabular-nums text-muted-foreground">{hora(item.ocorreu_em)}</span>
+            <span>{fraseDoAndamento(item)}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Você sobe quando alguém à sua frente recebe um lead. Também pode descer quando começa o turno
+        de quem fez check-in antes de você.
+      </p>
+    </details>
   );
 }
