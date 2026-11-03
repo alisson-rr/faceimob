@@ -27,8 +27,9 @@ import {
   type CcaDeal, type CcaStage,
 } from "@/components/pipeline";
 import {
-  periodoCcaPreset, periodoValido, useCcaSendCounts, type CcaPeriodo, type CcaPeriodoPreset,
+  periodoCcaPreset, periodoDoMesDoGame, periodoValido, useCcaSendCounts, type CcaPeriodo, type CcaPeriodoPreset,
 } from "@/components/pipeline/ccaData";
+import { useMesDoGame } from "@/hooks/useGameRanking";
 import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 
 /** Normaliza para busca: sem acento e em minúscula, como o resto das telas. */
@@ -230,9 +231,14 @@ export default function CcaPipeline() {
   const gerenciaEstagios = isAdmin || roles.includes("cca");
   // O quadro mensal segue a competência já gravada no negócio; não modifica
   // month_base. O mês das sínteses abaixo continua totalmente independente.
+  // 03/11/2026: "mês vigente" é o do game aberto, como no Pipeline — outubro
+  // segue aqui até fecharem o mês. Os outros atalhos seguem o relógio.
+  const mesDoGame = useMesDoGame();
+  const presetDe = (p: Exclude<CcaPeriodoPreset, "customizado">) =>
+    p === "mes" || p === "mes_passado" ? periodoDoMesDoGame(p, mesDoGame) : periodoCcaPreset(p);
   const [periodoPreset, setPeriodoPreset] = useState<CcaPeriodoPreset>("mes");
   const [periodoEscolhido, setPeriodoEscolhido] = useState<CcaPeriodo>(() => periodoCcaPreset("mes"));
-  const periodo = periodoPreset === "customizado" ? periodoEscolhido : periodoCcaPreset(periodoPreset);
+  const periodo = periodoPreset === "customizado" ? periodoEscolhido : presetDe(periodoPreset);
   const periodoBase = periodoPreset === "mes" || periodoPreset === "mes_passado" ? "month_base" : "submitted_at";
   const periodoOk = periodoValido(periodo);
   // Buscar por nome ignora o recorte de datas, como já acontece no Pipeline.
@@ -435,7 +441,7 @@ export default function CcaPipeline() {
           </div>
           <Select value={periodoPreset} onValueChange={(value: CcaPeriodoPreset) => {
             setPeriodoPreset(value);
-            if (value !== "customizado") setPeriodoEscolhido(periodoCcaPreset(value));
+            if (value !== "customizado") setPeriodoEscolhido(presetDe(value));
           }}>
             <SelectTrigger className="h-9 w-[150px] text-xs" aria-label="Período da esteira CCA">
               <SelectValue />
@@ -445,7 +451,7 @@ export default function CcaPipeline() {
               <SelectItem value="hoje">Hoje</SelectItem>
               <SelectItem value="ontem">Ontem</SelectItem>
               <SelectItem value="semana">Esta semana</SelectItem>
-              <SelectItem value="mes">Este mês</SelectItem>
+              <SelectItem value="mes">Mês vigente</SelectItem>
               <SelectItem value="mes_passado">Mês passado</SelectItem>
               <SelectItem value="customizado">Customizado</SelectItem>
             </SelectContent>

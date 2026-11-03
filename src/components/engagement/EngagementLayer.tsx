@@ -11,6 +11,7 @@ import { recorteDoRanking, useCurrentSeasonId, useMesDoGame, useSeasonRanking } 
 // componentes do Dashboard para a camada que monta em toda tela.
 import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard/data";
 import { brl, nomesDeExibicao } from "@/lib/format";
+import { bareStatus } from "@/lib/dealStatus";
 import {
   countSalesSince,
   gameKeys,
@@ -95,6 +96,8 @@ function marcarMetaComemorada(chave: string): void {
   }
 }
 
+/** Só comemora a assinatura que acabou de acontecer, não a de uma edição posterior. */
+const ASSINATURA_RECENTE_MS = 2 * 60_000;
 const TOAST_MS = 5000;
 
 /**
@@ -129,6 +132,10 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
   useLoadCustomSounds(Boolean(user));
   const profileId = user?.id ?? null;
   const queryClient = useQueryClient();
+  // Ref e não dependência do efeito do canal: trocar papel não reassina.
+  const ehCca = useRef(false);
+  ehCca.current = roles.includes("cca");
+  const assinaturasComemoradas = useRef<Set<string>>(new Set());
 
   const [saleQueue, setSaleQueue] = useState<SaleCard[]>([]);
   const sale = saleQueue[0] ?? null;
@@ -404,6 +411,27 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
         (payload) => {
           const row = payload.new as { kind: string };
           if (row.kind === "claimed") celebrate("lead_claimed");
+        },
+      );
+
+      // Assinou no banco (03/11/2026): a CCA ouve a MESMA música da venda. O
+      // realtime de `deals` (0076) não traz o status anterior; quem diz que a
+      // troca acabou de acontecer é `status_detail_changed_at` (0214), e a
+      // chave negócio+instante segura o "uma vez" contra outras edições.
+      ch.on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "deals" },
+        (payload) => {
+          if (!ehCca.current) return;
+          const row = payload.new as { id: string; code?: string | null; status_detail?: string | null; status_detail_changed_at?: string | null };
+          if (bareStatus(row.status_detail ?? "") !== "ASS. BANCO" || !row.status_detail_changed_at) return;
+          if (Date.now() - Date.parse(row.status_detail_changed_at) > ASSINATURA_RECENTE_MS) return;
+          const chave = `${row.id}:${row.status_detail_changed_at}`;
+          if (assinaturasComemoradas.current.has(chave)) return;
+          assinaturasComemoradas.current.add(chave);
+          playSound(CELEBRATION.sale.sound);
+          fireConfetti(CELEBRATION.sale.confetti);
+          toast("Assinado no banco!", { description: row.code ?? undefined, duration: TOAST_MS });
         },
       );
 

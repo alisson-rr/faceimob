@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, History, ListOrdered, Loader2, RefreshCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { getMinhaFilaAndamento, getMyQueues, type AndamentoDaFila, type QueueEntry } from "@/integrations/supabase/checkin";
+import { getEntregasDoTurno, getMinhaFilaAndamento, getMyQueues, type AndamentoDaFila, type QueueEntry } from "@/integrations/supabase/checkin";
 import { describeError } from "@/lib/supabaseError";
 
 /**
@@ -49,11 +49,14 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [andamento, setAndamento] = useState<AndamentoDaFila[] | null>(null);
+  const [entregas, setEntregas] = useState<Map<string, number> | null>(null);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
     // O andamento é explicação, não a posição: se ele falhar, a fila continua.
     void getMinhaFilaAndamento().then(setAndamento, () => setAndamento(null));
+    // "Chegou até mim?" (03/11/2026): quantos leads o grupo recebeu no turno.
+    void getEntregasDoTurno().then(setEntregas, () => setEntregas(null));
     try {
       setQueues(await getMyQueues(user.id));
       setError(null);
@@ -152,6 +155,11 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
               ) : (
                 <span className="text-xs text-muted-foreground">
                   em check-in, mas fora da fila agora
+                </span>
+              )}
+              {entregas?.has(q.groupId) && (
+                <span className="text-xs text-muted-foreground">
+                  · {entregas.get(q.groupId)} lead{entregas.get(q.groupId) === 1 ? "" : "s"} entregue{entregas.get(q.groupId) === 1 ? "" : "s"} neste turno
                 </span>
               )}
               {q.entries.length > 1 && (

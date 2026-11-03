@@ -33,9 +33,11 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 const filas = vi.fn();
 const andamento = vi.fn();
+const entregas = vi.fn();
 vi.mock("@/integrations/supabase/checkin", () => ({
   getMyQueues: (...args: unknown[]) => filas(...args),
   getMinhaFilaAndamento: () => andamento(),
+  getEntregasDoTurno: () => entregas(),
 }));
 
 async function render(ui: ReactNode) {
@@ -61,10 +63,21 @@ beforeEach(() => {
   filas.mockReset();
   andamento.mockReset();
   andamento.mockResolvedValue([]);
+  entregas.mockReset();
+  entregas.mockResolvedValue(new Map());
   sessao.user = { id: "eu" };
 });
 
 describe("QueuePosition", () => {
+  it("mostra quantos leads o grupo recebeu no turno (03/11/2026)", async () => {
+    filas.mockResolvedValue(grupo([{ profile_id: "eu", full_name: "Eu", queue_position: 3 }]));
+    entregas.mockResolvedValue(new Map([["g1", 12]]));
+    const { container, cleanup } = await render(<QueuePosition checkedIn opensAt="08:30" />);
+
+    expect(container.textContent).toMatch(/12 leads entregues neste turno/);
+    await cleanup();
+  });
+
   it("conta o que mandou o corretor para o fim da fila (03/11/2026)", async () => {
     filas.mockResolvedValue(grupo([{ profile_id: "eu", full_name: "Eu", queue_position: 8 }]));
     andamento.mockResolvedValue([

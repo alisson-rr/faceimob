@@ -15,6 +15,7 @@ import {
   DUE_BUCKETS,
   groupTasksByDue,
   listOpenTasksVisible,
+  listUpcomingVisits,
   setTaskStatus,
   TASK_PRIORITY_LABEL,
   TASK_REF_LABEL,
@@ -49,6 +50,8 @@ export default function Activities() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const tasksQuery = useQuery({ queryKey: QUERY_KEY, queryFn: listOpenTasksVisible });
+  const visitsQuery = useQuery({ queryKey: ["visits", "upcoming"], queryFn: listUpcomingVisits });
+  const visitas = (visitsQuery.data ?? []).filter((v) => assignee === ALL || v.broker_id === assignee);
   const tasks = useMemo(() => tasksQuery.data ?? [], [tasksQuery.data]);
   const canFilter = roles.some((role) => TEAM_ROLES.includes(role));
 
@@ -115,6 +118,30 @@ export default function Activities() {
           ) : undefined
         }
       />
+
+      {/* Visitas agendadas (03/11/2026): as da 3C só apareciam dentro do lead, e o
+          corretor não as achava nem clicando no aviso. */}
+      {visitas.length > 0 && (
+        <SectionCard title="Visitas agendadas" description={`${num(visitas.length)} visita(s) de hoje em diante`} flush>
+          <ul className="divide-y divide-border">
+            {visitas.map((v) => (
+              <li key={v.id} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
+                <CalendarCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                <span className="font-medium tabular-nums">{dateTime(v.scheduled_at)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {v.lead_name || v.title || "Visita"}
+                  {v.origin && <Badge variant="outline" className="ml-2">{v.origin}</Badge>}
+                </span>
+                {v.lead_id && (
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to={`/leads?lead=${v.lead_id}`}>Abrir lead</Link>
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
 
       {tasksQuery.error ? (
         <EmptyState

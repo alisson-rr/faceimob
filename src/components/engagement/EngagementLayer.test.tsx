@@ -231,13 +231,29 @@ afterEach(async () => {
 // ── testes ───────────────────────────────────────────────────────────────────
 
 describe("EngagementLayer · realtime", () => {
-  it("assina as três tabelas que o banco realmente emite", async () => {
+  it("assina as quatro tabelas que o banco realmente emite", async () => {
     await montar();
     expect(canal.filtros.map((f) => f.table).sort()).toEqual([
       "checkins",
+      "deals",
       "game_events",
       "lead_events",
     ]);
+  });
+
+  it("ASS. BANCO toca a música da venda só para a CCA, uma vez (03/11/2026)", async () => {
+    const { playSound } = await import("@/lib/engagement/audio");
+    const assinou = { new: { id: "d1", code: "NEG-1", status_detail: "02. ASS. BANCO", status_detail_changed_at: new Date().toISOString() } };
+
+    await montar();
+    vi.mocked(playSound).mockClear();
+    await act(async () => { handlerDe("deals")(assinou); });
+    expect(vi.mocked(playSound), "corretor não ouve").not.toHaveBeenCalled();
+
+    estado.roles = ["cca"];
+    await montar();
+    await act(async () => { handlerDe("deals")(assinou); handlerDe("deals")(assinou); });
+    expect(vi.mocked(playSound).mock.calls.filter(([nome]) => nome === "cashRegister")).toHaveLength(1);
   });
 
   it("um INSERT de venda vira o card com o nome de quem vendeu", async () => {
