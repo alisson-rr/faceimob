@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/shared";
 import { brl, num, primeiroEUltimoNome } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
-import { useCurrentSeasonId, useGameRanking, useSeasonRanking } from "@/hooks/useGameRanking";
+import { useCurrentSeasonId, useGameRanking, useMesDoGame, useSeasonRanking } from "@/hooks/useGameRanking";
 import { contarStatus1PorPessoa, textoDaContagem } from "@/components/engagement/contagemStatus1";
 import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
@@ -76,7 +76,9 @@ export default function PipelineTopRanking({ onAbrirPainel, deals }: Props) {
   // Sem os negócios, como o `AppLayout`: eles só alimentavam `ScoreRow.leads`,
   // que ninguém lê, e custavam 287 corretores × 7.579 negócios em comparação
   // de nome a cada render do Pipeline (cada tecla da busca, cada modal).
-  const monthRange = intervaloDoMes();
+  // O mês da temporada aberta (02/11/2026): outubro em jogo até ser fechado.
+  const mesDoGame = useMesDoGame();
+  const monthRange = intervaloDoMes(mesDoGame);
   const { scoped, meuScore, recorte, seasonId } = useGameRanking(undefined, monthRange);
   const { profile, user } = useAuth();
 
@@ -86,7 +88,7 @@ export default function PipelineTopRanking({ onAbrirPainel, deals }: Props) {
   // negócios que o Pipeline já carregou no período — dentro da RLS de quem
   // olha. O corretor só enxerga os dele, e é só a linha dele que ele vê.
   const catalog = useDealStatusCatalog().data;
-  const mesVigente = format(new Date(), "MM/yyyy");
+  const mesVigente = format(mesDoGame, "MM/yyyy");
   const dealsDoMes = deals?.filter((deal) => dealMonth(deal) === mesVigente);
   const contagem = dealsDoMes && catalog ? contarStatus1PorPessoa(dealsDoMes, catalog) : null;
 
@@ -113,7 +115,7 @@ export default function PipelineTopRanking({ onAbrirPainel, deals }: Props) {
    * (perfil > equipes lideradas) e o mesmo prefixo de cache: não há como a
    * faixa mostrar um alvo e o painel outro.
    */
-  const metaVgv = useVgvGoal(mesDaMetaDoCorretor(soMinhaPosicao));
+  const metaVgv = useVgvGoal(mesDaMetaDoCorretor(soMinhaPosicao, mesDoGame));
 
   /**
    * O realizado do MESMO mês da meta, pela mesma RPC do placar.

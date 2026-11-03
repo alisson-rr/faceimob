@@ -7,7 +7,11 @@ import { ResultadosDoPipeline } from "./ResultadosDoPipeline";
 
 const auth = vi.hoisted(() => ({ user: { id: "broker" }, roles: ["broker"], isAdmin: false }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => auth }));
-vi.mock("@/hooks/useGameRanking", () => ({ useCurrentSeasonId: () => ({ data: "season-current" }) }));
+// Temporada de outubro ainda aberta: o painel segue o mês do game, não o relógio.
+vi.mock("@/hooks/useGameRanking", () => ({
+  useCurrentSeasonId: () => ({ data: "season-current" }),
+  useMesDoGame: () => new Date(2026, 9, 1),
+}));
 vi.mock("@/integrations/supabase/game", () => ({
   listScoredDealIds: async (_season: string, profileId: string) => new Set([
     `Proposta ${profileId}`,

@@ -75,6 +75,8 @@ vi.mock("@/hooks/useGameRanking", async (importOriginal) => ({
   // `recorteDoRanking` é o real: quem tem meta individual é a regra do card de game.
   ...(await importOriginal<typeof import("@/hooks/useGameRanking")>()),
   useCurrentSeasonId: () => ({ data: "temporada-1" }),
+  // Sem temporada aberta na lista: o mês do game é o do relógio.
+  useMesDoGame: () => new Date(),
   // Com `week` é a leitura do mês (o realizado da meta); sem, o placar da temporada.
   useSeasonRanking: (seasonId: string | null, week?: unknown) => ({
     data: week ? (seasonId ? estado.placarDoMes : undefined) : [],

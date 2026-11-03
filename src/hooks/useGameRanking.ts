@@ -10,6 +10,7 @@ import {
   gameKeys,
   getCurrentSeasonId,
   listRanking,
+  listSeasons,
   type RankingRow,
   type WeekRange,
 } from "@/integrations/supabase/game";
@@ -65,6 +66,24 @@ export function useCurrentSeasonId() {
     queryFn: getCurrentSeasonId,
     staleTime: 60_000,
   });
+}
+
+/**
+ * O mês do game: o da temporada ABERTA, e não o do relógio (pedido de
+ * 02/11/2026). Outubro segue em jogo até o admin fechar o mês e a temporada,
+ * mesmo com o relógio em novembro — é a mesma regra do mês vigente do
+ * Pipeline (`period_start` da temporada aberta). Sem temporada aberta, ou
+ * antes de a lista chegar, vale o relógio.
+ */
+export function inicioDoMesDoGame(periodStart: string | null | undefined, hoje: Date = new Date()): Date {
+  if (!periodStart) return hoje;
+  const [ano, mes] = periodStart.split("-").map(Number);
+  return new Date(ano, mes - 1, 1);
+}
+
+export function useMesDoGame(): Date {
+  const { data } = useQuery({ queryKey: gameKeys.seasons, queryFn: listSeasons, staleTime: 60_000 });
+  return inicioDoMesDoGame(data?.find((season) => !season.closed_at)?.period_start);
 }
 
 /**

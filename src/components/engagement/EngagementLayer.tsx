@@ -6,7 +6,7 @@ import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLoadCustomSounds } from "@/hooks/useCustomSounds";
-import { recorteDoRanking, useCurrentSeasonId, useSeasonRanking } from "@/hooks/useGameRanking";
+import { recorteDoRanking, useCurrentSeasonId, useMesDoGame, useSeasonRanking } from "@/hooks/useGameRanking";
 // Caminho direto, e não o barril `@/components/dashboard`: o barril arrasta os
 // componentes do Dashboard para a camada que monta em toda tela.
 import { ALL_MONTHS, useVgvGoal } from "@/components/dashboard/data";
@@ -507,13 +507,13 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
    * ~1 s por corretor na carga real.
    */
   const individual = recorteDoRanking(roles, isAdmin).soMinhaPosicao;
-  const hoje = new Date();
-  const mesDaMeta = format(hoje, "MM/yyyy");
+  const mesDoGame = useMesDoGame();
+  const mesDaMeta = format(mesDoGame, "MM/yyyy");
   const { data: meta } = useVgvGoal(individual ? mesDaMeta : ALL_MONTHS);
   const alvo = meta?.scope === "profile" && meta.target && meta.target > 0 ? meta.target : null;
   const { data: placarDoMes } = useSeasonRanking(alvo ? seasonId : null, {
-    from: format(startOfMonth(hoje), "yyyy-MM-dd"),
-    to: format(endOfMonth(hoje), "yyyy-MM-dd"),
+    from: format(startOfMonth(mesDoGame), "yyyy-MM-dd"),
+    to: format(endOfMonth(mesDoGame), "yyyy-MM-dd"),
   });
   // Fora da lista é zero, como na faixa do card; lista ainda não lida é "não sei".
   const vgvDoMes = placarDoMes
