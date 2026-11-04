@@ -213,9 +213,9 @@ begin
     'o caso interno também nasce com estágio gravado');
 
   select id into v_stage from public.cca_stages
-   where status = 'under_review' and active order by position limit 1;
+   where active and public.cca_stage_name_key(name)='ESTEIRA AGIL' order by position limit 1;
   perform pg_temp.check77(v_case2.stage_id = v_stage,
-    'o estágio gravado é o de menor posição com o desfecho do caso');
+    'a entrada oficial segue a coluna homônima da Esteira Ágil (0181/0283)');
 
   -- ── 3a. envio avulso a construtora INTERNA não tira o caso da casa ───────
   -- O diálogo de envio permite de propósito mandar o dossiê para um contato
