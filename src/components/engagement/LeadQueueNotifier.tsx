@@ -28,11 +28,13 @@ function savePositions(profileId: string, positions: Positions): void {
 }
 
 /** Aviso global da roleta: acompanha a posição mesmo fora da tela de Leads. */
-export function LeadQueueNotifier() {
+export function LeadQueueNotifier({ paused = false }: { paused?: boolean }) {
   const { user, role } = useAuth();
   const profileId = user?.id ?? null;
   const previous = useRef<Positions | null>(null);
   const loading = useRef(false);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   const load = useCallback(async () => {
     if (!profileId || role !== "broker" || loading.current) return;
@@ -41,11 +43,13 @@ export function LeadQueueNotifier() {
       const queues = await getMyQueues(profileId);
       const before = previous.current ?? readPositions(profileId);
       const next: Positions = {};
+      const initial = previous.current === null;
 
       for (const queue of queues) {
         const mine = queue.entries.find((entry) => entry.profile_id === profileId);
         const position = mine?.queue_position ?? null;
         next[queue.groupId] = position;
+        if (initial || pausedRef.current) continue;
         if (before[queue.groupId] === position) continue;
 
         if (position === 1) {
@@ -55,6 +59,7 @@ export function LeadQueueNotifier() {
             icon: <BellRing className="h-4 w-4 text-warning" />,
             description: `${queue.groupName}: você agora é o 1º da fila.`,
             duration: 10_000,
+            position: "top-right",
           });
         } else if (position) {
           toast(`Você agora é o ${position}º na fila`, {
@@ -62,12 +67,14 @@ export function LeadQueueNotifier() {
             icon: <ListOrdered className="h-4 w-4 text-primary" />,
             description: queue.groupName,
             duration: 7_000,
+            position: "top-right",
           });
         } else if (before[queue.groupId]) {
           toast("Você saiu da fila de leads", {
             id: `lead-queue-${queue.groupId}`,
             description: `${queue.groupName}: faça check-in e regularize eventuais atrasos para voltar.`,
             duration: 7_000,
+            position: "top-right",
           });
         }
       }
@@ -100,6 +107,13 @@ export function LeadQueueNotifier() {
       void supabase.removeChannel(channel);
     };
   }, [profileId, role, load]);
+
+  useEffect(() => {
+    if (paused) {
+      for (const groupId of Object.keys(previous.current ?? {})) toast.dismiss(`lead-queue-${groupId}`);
+    }
+    void load();
+  }, [paused, load]);
 
   return null;
 }

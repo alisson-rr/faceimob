@@ -131,6 +131,7 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
   const { user, roles, isAdmin } = useAuth();
   useLoadCustomSounds(Boolean(user));
   const profileId = user?.id ?? null;
+  const [pendingLead, setPendingLead] = useState(false);
   const queryClient = useQueryClient();
   // Ref e não dependência do efeito do canal: trocar papel não reassina.
   const ehCca = useRef(false);
@@ -598,9 +599,9 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
           Sem conexão ao vivo — venda fechada agora não vai tocar. Reconectando…
         </div>
       )}
-      <MotivationalPopup />
-      <NewLeadNotifier />
-      <LeadQueueNotifier />
+      <MotivationalPopup paused={pendingLead} />
+      <NewLeadNotifier onPendingChange={setPendingLead} />
+      <LeadQueueNotifier paused={pendingLead} />
     </CelebrationContext.Provider>
   );
 }
