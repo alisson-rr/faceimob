@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "../_shared/secrets.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { META_GRAPH } from "../_shared/metaAds.ts";
-import { montarMensagemWhatsApp } from "./mensagem.ts";
+import { montarMensagemWhatsApp, parametroDoModelo } from "./mensagem.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -236,7 +236,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const text = montarMensagemWhatsApp(row);
+      // Com modelo cadastrado, só vai o que cabe nele (lead novo); o resto
+      // continua no sino e no push e sai da fila de WhatsApp com o motivo.
+      const text = templateName ? parametroDoModelo(row) : montarMensagemWhatsApp(row);
+      if (!text) {
+        await supabase.from("notifications").update({
+          sent_at: new Date().toISOString(),
+          last_error: "fora do modelo de WhatsApp: só aviso de lead novo é enviado",
+        }).eq("id", row.id);
+        skipped++;
+        continue;
+      }
       const result = await sendWhatsApp(token, phoneId, phone, text, templateName);
 
       if (result.ok) {
