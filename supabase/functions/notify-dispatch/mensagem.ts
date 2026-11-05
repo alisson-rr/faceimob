@@ -20,7 +20,21 @@ const EMOJI_POR_TIPO: [RegExp, string][] = [
   [/^meta|^cpl/, "📊"],
 ];
 
-const comecaComEmoji = (texto: string) => /^\p{Extended_Pictographic}/u.test(texto);
+/**
+ * Texto da variável {{1}} do modelo aprovado na Meta (`aviso_do_crm`, 05/11/2026).
+ * O modelo já diz "Um novo lead foi atribuído a você no CRM Faceimob" e pede o
+ * atendimento no prazo; a variável leva só o miolo do aviso. A Meta aprovou o
+ * modelo como Utilidade por ser específico de lead novo — mandar outro tipo de
+ * aviso por ele trocaria o sentido da mensagem. Por isso devolve null para o
+ * resto, e o worker tira da fila sem enviar.
+ */
+export function parametroDoModelo(aviso: { kind?: string | null; body?: string | null }): string | null {
+  if (aviso.kind !== "lead_assigned") return null;
+  const corpo = (aviso.body ?? "").trim();
+  return corpo || null;
+}
+
+const comecaComEmoji =(texto: string) => /^\p{Extended_Pictographic}/u.test(texto);
 
 export function montarMensagemWhatsApp(aviso: { kind?: string | null; title: string; body?: string | null }): string {
   const titulo = aviso.title.trim();

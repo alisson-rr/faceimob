@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { ASSINATURA, montarMensagemWhatsApp } from "./mensagem.ts";
+import { ASSINATURA, montarMensagemWhatsApp, parametroDoModelo } from "./mensagem.ts";
+
+describe("parametroDoModelo", () => {
+  it("lead novo leva só o texto do aviso", () => {
+    expect(parametroDoModelo({ kind: "lead_assigned", body: " Maria acabou de cair para você. Atenda em até 10 minutos. " }))
+      .toBe("Maria acabou de cair para você. Atenda em até 10 minutos.");
+  });
+
+  it("outros avisos e lead sem texto ficam fora do modelo", () => {
+    expect(parametroDoModelo({ kind: "lead_lost_timeout", body: "Prazo encerrado" })).toBeNull();
+    expect(parametroDoModelo({ kind: "lead_reassigned", body: "Repassado" })).toBeNull();
+    expect(parametroDoModelo({ kind: "lead_assigned", body: "  " })).toBeNull();
+  });
+});
 
 describe("montarMensagemWhatsApp", () => {
   it("emoji pelo tipo, título em negrito, texto e assinatura", () => {
