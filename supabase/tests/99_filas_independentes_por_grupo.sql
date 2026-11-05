@@ -3,7 +3,7 @@
 begin;
 set local statement_timeout = '30s';
 -- Determinístico em qualquer hora/dia; substituição desfeita no rollback.
-create or replace function public.roleta_horario_aberto() returns boolean
+create or replace function public.roleta_horario_aberto(p_at timestamptz default now()) returns boolean
 language sql stable as $$ select true $$;
 
 create function pg_temp.ok(cond boolean, label text) returns void language plpgsql as $$
