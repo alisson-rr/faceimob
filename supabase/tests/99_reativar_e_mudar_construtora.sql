@@ -110,13 +110,20 @@ begin
   set local role authenticated;
   begin perform public.reativar_negocio(v_aberto, 'Motivo qualquer válido', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
-  perform pg_temp.ok(v_msg like 'Só negócio em OFF%', 'negócio que não está encerrado não é reativado');
+  perform pg_temp.ok(v_msg like 'O negócio já está no começo%', 'negócio ainda no começo da jornada não reinicia (0320)');
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  begin perform public.reativar_negocio(v_off, 'Corretor tentando', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
+  begin perform public.reativar_negocio(v_off, 'Corretor tentando passar adiante', cor2); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
-  perform pg_temp.ok(v_msg like 'Só gerente, diretor%', 'corretor não reativa');
+  perform pg_temp.ok(v_msg like 'O negócio volta para você mesmo%', 'corretor não passa o negócio para outro ao reiniciar (0320)');
+
+  -- 0320: o corretor do negócio reinicia a jornada para si mesmo.
+  set local role authenticated;
+  perform public.reativar_negocio(v_off, 'Cliente reprovado vai tentar de novo', cor);
+  reset role;
+  perform pg_temp.ok((select public.deal_status_bare(status_detail) = 'INCOMPLETO' from public.deals where id = v_off),
+    'o corretor do negócio reinicia a jornada para si (0320)');
 
   perform set_config('request.jwt.claims', json_build_object('sub', fora, 'role', 'authenticated')::text, true);
   set local role authenticated;

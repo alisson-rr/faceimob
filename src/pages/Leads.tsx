@@ -22,7 +22,7 @@ import {
   type LeadDialogState, type LeadPermissions, type LeadRowActions,
 } from "@/components/leads";
 import {
-  canWriteLead, distributeQueuedLead, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE, OPEN_LEAD_STATUSES,
+  canWriteLead, distributeQueuedLead, getLeadById, isLeadOverdue, isLeadUnattended, LEADS_PAGE_SIZE, OPEN_LEAD_STATUSES,
   type LeadRecord,
 } from "@/integrations/supabase/leads";
 
@@ -104,6 +104,8 @@ export default function Leads() {
 
   const [showSources, setShowSources] = useState(false);
   const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
+  // Lead aberto por link que não está nas listas (passou do teto de `LEADS_PAGE_SIZE`).
+  const [leadDoLink, setLeadDoLink] = useState<LeadRecord | null>(null);
   const [dialogs, setDialogs] = useState<LeadDialogState>(noLeadDialogs);
   const openDialog = useCallback(
     (patch: Partial<LeadDialogState>) => setDialogs((prev) => ({ ...prev, ...patch })),
@@ -184,11 +186,21 @@ export default function Leads() {
     }, { replace: true });
     if (base.some((lead) => lead.id === focusLeadId) || leads.some((lead) => lead.id === focusLeadId)) {
       setDetailLeadId(focusLeadId);
-    } else {
-      toast("Lead indisponível", {
-        description: "Ele pode ter voltado para a fila ou sido realocado para outro corretor.",
-      });
+      return;
     }
+    // Fora das listas não quer dizer fora do alcance (04/11/2026): a lista para
+    // em `LEADS_PAGE_SIZE`, e a gerente com equipe grande não abria o lead da
+    // visita da 3C. Busca o próprio lead; a RLS decide se ela o vê.
+    void getLeadById(focusLeadId).then((lead) => {
+      if (lead) {
+        setLeadDoLink(lead);
+        setDetailLeadId(lead.id);
+      } else {
+        toast("Você não tem acesso a este lead", {
+          description: "Ele está com um corretor fora da sua equipe, voltou para a fila ou foi encerrado antes do recomeço de outubro.",
+        });
+      }
+    }, () => toast("Não foi possível abrir o lead", { description: "Tente de novo em instantes." }));
   }, [focusLeadId, leadsQuery.isPending, leads, base, setSearchParams]);
 
   /**
@@ -240,8 +252,8 @@ export default function Leads() {
   const detailLead = useMemo(
     () => leads.find((lead) => lead.id === detailLeadId)
       ?? base.find((lead) => lead.id === detailLeadId)
-      ?? null,
-    [leads, base, detailLeadId],
+      ?? (leadDoLink?.id === detailLeadId ? leadDoLink : null),
+    [leads, base, detailLeadId, leadDoLink],
   );
 
   // "Pegar lead" (05/10/2026): pergunta antes quando vai retornar o contato;
