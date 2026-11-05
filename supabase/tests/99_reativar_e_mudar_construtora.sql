@@ -86,7 +86,7 @@ begin
   set local role authenticated;
   begin perform public.reativar_negocio(v_off, '  ', cor); v_msg := 'passou'; exception when others then v_msg := sqlerrm; end;
   reset role;
-  perform pg_temp.ok(v_msg like 'Escreva o motivo%' or v_msg like 'Só negócio em OFF%', 'motivo vazio não passa');
+  perform pg_temp.ok(v_msg like 'Escreva o motivo%' or v_msg like 'O negócio já está no começo%', 'motivo vazio não passa');
 
   insert into public.deals (stage_id, created_by, month_base, status_detail)
     values (v_stage, cor, v_ant, pg_temp.status2('OFF')) returning id into v_off;
