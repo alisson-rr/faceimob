@@ -26,7 +26,7 @@ function savePositions(profileId: string, positions: Positions): void {
 }
 
 /** Aviso global da roleta: acompanha a posição mesmo fora da tela de Leads. */
-export function LeadQueueNotifier() {
+export function LeadQueueNotifier({ paused = false }: { paused?: boolean }) {
   const { user, role } = useAuth();
   const profileId = user?.id ?? null;
   const previous = useRef<Positions | null>(null);
@@ -38,11 +38,15 @@ export function LeadQueueNotifier() {
     if (!profileId || role !== "broker" || !queues.isSuccess) return;
     const before = previous.current ?? readPositions(profileId);
     const next: Positions = {};
+    // A primeira leitura é referência, não uma sequência de avisos do login.
+    const initial = previous.current === null;
 
     for (const queue of queues.data) {
       const mine = queue.entries.find((entry) => entry.profile_id === profileId);
       const position = mine?.queue_position ?? null;
       next[queue.groupId] = position;
+      if (paused) toast.dismiss(`lead-queue-${queue.groupId}`);
+      if (initial || paused) continue;
       if (before[queue.groupId] === position) continue;
 
       if (position === 1) {
@@ -52,6 +56,7 @@ export function LeadQueueNotifier() {
           icon: <BellRing className="h-4 w-4 text-warning" />,
           description: `${queue.groupName}: você agora é o 1º da fila.`,
           duration: 10_000,
+          position: "top-right",
         });
       } else if (position) {
         toast(`Você agora é o ${position}º na fila`, {
@@ -59,19 +64,21 @@ export function LeadQueueNotifier() {
           icon: <ListOrdered className="h-4 w-4 text-primary" />,
           description: queue.groupName,
           duration: 7_000,
+          position: "top-right",
         });
       } else if (before[queue.groupId]) {
         toast("Você saiu da fila de leads", {
           id: `lead-queue-${queue.groupId}`,
           description: `${queue.groupName}: faça check-in e regularize eventuais atrasos para voltar.`,
           duration: 7_000,
+          position: "top-right",
         });
       }
     }
 
     previous.current = next;
     savePositions(profileId, next);
-  }, [profileId, role, queues.data, queues.isSuccess]);
+  }, [profileId, role, queues.data, queues.isSuccess, paused]);
 
   return null;
 }

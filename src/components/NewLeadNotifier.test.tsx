@@ -94,6 +94,25 @@ async function montar() {
 describe("NewLeadNotifier · lead atribuído", () => {
   afterEach(() => { avisos.length = 0; celebrar.mockClear(); });
 
+  it("prioriza o aviso de chegada com Pegar lead e libera os avisos após fechá-lo", async () => {
+    const pending = vi.fn();
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<MemoryRouter><NewLeadNotifier onPendingChange={pending} /></MemoryRouter>);
+    });
+    expect(pending).toHaveBeenLastCalledWith(false);
+    await act(async () => { chegou(atribuido("prioridade", "Novo contato", 300_000)); });
+    expect(pending).toHaveBeenLastCalledWith(true);
+    expect(dialogo()).toContain("Novo contato");
+    expect(dialogo()).toContain("Pegar lead");
+    const depois = [...document.querySelectorAll("button")].find((b) => b.textContent === "Depois");
+    await act(async () => { depois?.click(); });
+    expect(pending).toHaveBeenLastCalledWith(false);
+    await act(async () => { root.unmount(); });
+    container.remove();
+  });
+
   it("toca o aviso de chegada uma vez quando o popup aparece", async () => {
     const desmontar = await montar();
     await act(async () => { chegou(atribuido("som", "Som do Lead", 5 * 60_000)); });

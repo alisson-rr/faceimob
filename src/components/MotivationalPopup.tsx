@@ -55,7 +55,7 @@ const iniciais = (nome: string) => nome.split(" ").map((p) => p[0]).slice(0, 2).
  * primeiro acesso do dia — a sessão dura dias, e o aniversariante não precisa
  * sair e entrar para ver o parabéns.
  */
-export function MotivationalPopup() {
+export function MotivationalPopup({ paused = false }: { paused?: boolean }) {
   const navigate = useNavigate();
   const { user, roles, isAdmin } = useAuth();
   const apelido = useMeuApelido();
@@ -99,19 +99,19 @@ export function MotivationalPopup() {
   // Festa uma vez quando os dados chegam: aniversário com fogos e música,
   // análise à espera com uma chuva de confete ("negócio à vista").
   useEffect(() => {
-    if (!open) return;
+    if (!open || paused) return;
     if (souAniversariante) {
       fireConfetti("fireworks");
       playSound("birthday");
     } else if (pendentes > 0) {
       fireConfetti("rain");
     }
-  }, [open, souAniversariante, pendentes]);
+  }, [open, paused, souAniversariante, pendentes]);
 
   const Icon = souAniversariante ? Cake : msg.icon;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open && !paused} onOpenChange={setOpen}>
       {/* Destaque em âmbar, não mais o azul `glow-primary`: brilho só no escuro
           (`.light .glow-highlight` zera), ícone em `gold` porque `highlight` em
           traço some no claro. */}

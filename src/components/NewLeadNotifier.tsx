@@ -56,7 +56,7 @@ const isFresh = (iso: string | null | undefined, commitTimestamp?: string) => {
  *     trava, com o botão "Atender" ali mesmo;
  *   · gestor — chegou lead novo na fila dos grupos dele.
  */
-export default function NewLeadNotifier() {
+export default function NewLeadNotifier({ onPendingChange }: { onPendingChange?: (pending: boolean) => void }) {
   const { user, can } = useAuth();
   const profileId = user?.id || null;
   /**
@@ -70,6 +70,8 @@ export default function NewLeadNotifier() {
   const celebrate = useCelebration();
 
   const [lead, setLead] = useState<IncomingLead | null>(null);
+  const hasPendingLead = !!lead;
+  useEffect(() => { onPendingChange?.(hasPendingLead); }, [hasPendingLead, onPendingChange]);
   const [kind, setKind] = useState<"assigned" | "queued">("assigned");
   const [now, setNow] = useState(() => Date.now());
   const [claiming, setClaiming] = useState(false);

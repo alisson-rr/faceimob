@@ -118,6 +118,7 @@ type GameEventRow = {
 export function EngagementLayer({ children }: { children: ReactNode }) {
   const { user, roles, isAdmin } = useAuth();
   const profileId = user?.id ?? null;
+  const [pendingLead, setPendingLead] = useState(false);
   const queryClient = useQueryClient();
 
   const [saleQueue, setSaleQueue] = useState<SaleCard[]>([]);
@@ -560,9 +561,9 @@ export function EngagementLayer({ children }: { children: ReactNode }) {
           Sem conexão ao vivo — venda fechada agora não vai tocar. Reconectando…
         </div>
       )}
-      <MotivationalPopup />
-      <NewLeadNotifier />
-      <LeadQueueNotifier />
+      <MotivationalPopup paused={pendingLead} />
+      <NewLeadNotifier onPendingChange={setPendingLead} />
+      <LeadQueueNotifier paused={pendingLead} />
     </CelebrationContext.Provider>
   );
 }
