@@ -368,6 +368,8 @@ export type ListLeadsOptions = {
   /** Por padrão traz tudo; o funil pede só os leads ainda em operação. */
   statuses?: LeadStatus[];
   limit?: number;
+  /** Só estes leads: o link de um aviso ou da agenda abre lead fora do teto da lista. */
+  ids?: string[];
   /**
    * Busca no BANCO por nome, telefone ou e-mail.
    *
@@ -486,6 +488,7 @@ export async function contarLeadsRecebidos(
 export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRecord[]> {
   let query = db.from("leads").select("*").order("created_at", { ascending: false });
   if (options.statuses?.length) query = query.in("status", options.statuses);
+  if (options.ids?.length) query = query.in("id", options.ids);
   const filtro = options.search ? leadSearchFilter(options.search) : null;
   if (filtro) query = query.or(filtro);
   query = query.limit(options.limit ?? LEADS_PAGE_SIZE);
@@ -515,6 +518,16 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   return (leadsRes.data || [])
     .filter((row) => row.assigned_to || !comRobo.has(row.id))
     .map((row) => decorateLead(row, sourceLabels, brokerNames));
+}
+
+/**
+ * Um lead pelo id, dentro da RLS de quem pede (04/11/2026). A lista para em
+ * `LEADS_PAGE_SIZE`: para a gerente com equipe grande, o lead da visita da 3C
+ * ficava fora dela e o "Abrir lead" dizia "indisponível". `null` = não enxerga.
+ */
+export async function getLeadById(id: string): Promise<LeadRecord | null> {
+  const [lead] = await listLeads({ ids: [id], limit: 1 });
+  return lead ?? null;
 }
 
 export type NewLeadInput = {

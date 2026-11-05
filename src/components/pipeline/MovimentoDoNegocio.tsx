@@ -34,8 +34,6 @@ const SEM_ANALISE_EXTERNA = new Set([
   "ESTEIRA AGIL", "RET. ESTEIRA AGIL", "ANÁLISE P/ VIRAR NEGÓCIO", "EM ANÁLISE",
 ]);
 const VIROU_NEGOCIO = new Set(["VIROU NEGÓCIO", "VIROU NEGÓCIO COM PENDÊNCIAS"]);
-/** Negócio encerrado que gerente, diretor, sócio e administrador podem reativar (0277). */
-const REATIVAVEIS = new Set(["OFF", "DISTRATO", "QUEDA"]);
 /** Menor texto aceito em motivo e comentário: "ok" não explica nada ao histórico. */
 const MIN_TEXTO = 5;
 type Acao = "externa" | "retorno" | "contrato" | "assinado" | "reativar" | "troca";
@@ -153,9 +151,10 @@ export function MovimentoDoNegocio({
   const reativar = async () => {
     setOcupado(true);
     try {
-      await reativarNegocio(dealId, nota, corretorReativar);
+      // O corretor reinicia para si mesmo (0320); a liderança escolhe quem recebe.
+      await reativarNegocio(dealId, nota, lider ? corretorReativar : (user?.id ?? ""));
       await onMovido(valorDe("INCOMPLETO") ?? "INCOMPLETO");
-      toast({ variant: "success", title: "Negócio reativado", description: "Voltou para Incompleto no mês atual. O motivo ficou no histórico." });
+      toast({ variant: "success", title: "Jornada reiniciada", description: "Voltou para Incompleto no mês vigente. Já pode enviar à Esteira Ágil de novo." });
       fechar();
       onConcluido?.();
     } catch (erro) {
@@ -197,8 +196,14 @@ export function MovimentoDoNegocio({
   const comentarioOk = nota.trim().length >= MIN_TEXTO;
   // Reativar não olha `readOnly`: o caso típico é um OFF de mês fechado, que a ficha
   // trava para edição — a regra de quem pode e de que mês vale é do banco (0277).
-  const podeReativar = isAdmin || roles.includes("manager") || roles.includes("director");
-  const reativavel = REATIVAVEIS.has(atual);
+  // 0320 (04/11/2026): reinicia de qualquer ponto da jornada, menos da venda
+  // (essa sai por Distrato/Queda); o corretor do negócio reinicia para si.
+  const lider = isAdmin || roles.includes("manager") || roles.includes("director") || roles.includes("partner");
+  const souCorretorDoNegocio = Boolean(user?.id) && [form.broker1_id, form.broker2_id, form.broker3_id].includes(user?.id);
+  const podeReativar = lider || souCorretorDoNegocio;
+  const grupoAtual = form.status_group_id ? catalog.groupById.get(form.status_group_id)?.code : undefined;
+  const vendido = form.outcome === "won" || grupoAtual === "VENDA" || grupoAtual === "POS_VENDA";
+  const reativavel = !vendido && !((atual === "INCOMPLETO" || atual === "") && form.outcome !== "lost");
   const podeTrocarConstrutora = !readOnly && VIROU_NEGOCIO.has(atual);
   const trocaCompleta = novaConstrutora !== "" && novoEmpreendimento.trim().length >= 2 && comentarioOk;
   const vgvLiquido = form.vgv_bruto ? Math.max(form.vgv_bruto - (form.desconto ?? 0), 0) : null;
@@ -310,20 +315,35 @@ export function MovimentoDoNegocio({
 
       {reativavel && podeReativar && (
         <AcaoDoNegocio
-          titulo="Reativar negócio" tom="atencao"
-          descricao={`O negócio está em ${atual}. Reativar leva ele de volta para Incompleto, no mês atual, com o corretor que você escolher, e o motivo fica no histórico.`}
+          titulo="Reiniciar a jornada do cliente" tom="atencao"
+          descricao={`Hoje em ${atual || "sem Status 2"}. O negócio volta para Incompleto, no mês vigente e na etapa inicial; o caso antigo do CCA é encerrado e você pode enviar de novo à Esteira Ágil. O motivo fica no histórico.`}
           aberta={aberta === "reativar"} onAlternar={alternar("reativar")}
         >
-          <Label htmlFor={`${id}-reativar-corretor`} className="text-xs">Corretor que recebe o negócio (obrigatório)</Label>
-          <Select value={corretorReativar || undefined} onValueChange={setCorretorReativar}>
-            <SelectTrigger id={`${id}-reativar-corretor`} className="text-xs"><SelectValue placeholder="Escolha o corretor" /></SelectTrigger>
-            <SelectContent>
-              {corretores.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}{c.team ? ` · ${c.team}` : ""}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">A equipe é refeita com o gerente e o diretor atuais do corretor escolhido.</p>
-          {campoComentario("reativar", "Motivo da reativação (obrigatório)", "Ex.: cliente retomou o contato e quer seguir com a compra")}
-          {botao("Reativar para Incompleto no mês atual", () => void reativar(), !corretorReativar || !comentarioOk)}
+          <div className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">Quando usar</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              <li>Reprovado ou em OFF e o cliente quer tentar de novo.</li>
+              <li>Aprovado em outra construtora e vai recomeçar na nova.</li>
+              <li>Aprovado condicionado antigo que precisa ser reavaliado.</li>
+            </ul>
+            <p className="mt-1">Negócio vendido não reinicia: para ele, use Distrato ou Queda.</p>
+          </div>
+          {lider ? (
+            <>
+              <Label htmlFor={`${id}-reativar-corretor`} className="text-xs">Corretor que recebe o negócio (obrigatório)</Label>
+              <Select value={corretorReativar || undefined} onValueChange={setCorretorReativar}>
+                <SelectTrigger id={`${id}-reativar-corretor`} className="text-xs"><SelectValue placeholder="Escolha o corretor" /></SelectTrigger>
+                <SelectContent>
+                  {corretores.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}{c.team ? ` · ${c.team}` : ""}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">A equipe é refeita com o gerente e o diretor atuais do corretor escolhido.</p>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">O negócio volta para você, com o seu gerente e diretor atuais.</p>
+          )}
+          {campoComentario("reativar", "Motivo (obrigatório)", "Ex.: reprovado na Caixa, vamos reavaliar com nova renda")}
+          {botao("Reiniciar como Incompleto", () => void reativar(), (lider && !corretorReativar) || !comentarioOk)}
         </AcaoDoNegocio>
       )}
 
