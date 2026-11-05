@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0320 — reiniciar a jornada do negócio pela aba Negócio.
+-- 0321 — reiniciar a jornada do negócio pela aba Negócio.
 -- =============================================================================
 -- Pedido de 04/11/2026: "gerentes tentam retomar negócios e não conseguem".
 -- A `reativar_negocio` (0277) só aceitava OFF, Distrato e Queda, e só da
@@ -168,4 +168,4 @@ $$;
 revoke all on function public.reativar_negocio(uuid, text, uuid) from public, anon;
 grant execute on function public.reativar_negocio(uuid, text, uuid) to authenticated, service_role;
 comment on function public.reativar_negocio(uuid, text, uuid) is
-  'Reinicia a jornada: qualquer Status 2 menos a venda volta a INCOMPLETO no mês aberto, com motivo obrigatório. Liderança escolhe o corretor; o corretor do negócio reinicia para si (0320).';
+  'Reinicia a jornada: qualquer Status 2 menos a venda volta a INCOMPLETO no mês aberto, com motivo obrigatório. Liderança escolhe o corretor; o corretor do negócio reinicia para si (0321).';
