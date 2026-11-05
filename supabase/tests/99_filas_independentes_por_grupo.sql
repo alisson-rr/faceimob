@@ -42,8 +42,8 @@ begin
   perform pg_temp.ok((select queue_position = 1 from public.distribution_queue_interna(ga) where profile_id = ana), 'Ana começa em primeiro em A');
   perform pg_temp.ok((select queue_position = 1 from public.distribution_queue_interna(gb) where profile_id = ana), 'Ana começa em primeiro em B');
 
-  insert into public.leads (full_name, phone, status, distribution_group_id)
-    values ('Contato teste 320', '11900320001', 'attending', ga) returning id into lead;
+  insert into public.leads (full_name, phone, status, distribution_group_id, assigned_to, assigned_at)
+    values ('Contato teste 320', '11900320001', 'attending', ga, ana, now() - interval '5 minutes') returning id into lead;
   insert into public.lead_assignments (lead_id, profile_id, group_id, assigned_at, deadline, counts_for_queue)
     values (lead, ana, ga, now() - interval '5 minutes', now() + interval '5 minutes', true) returning id into assignment;
   perform pg_temp.ok(not exists(select 1 from public.distribution_queue_interna(ga) where profile_id = ana)
