@@ -19,7 +19,7 @@ import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Link2, Loader2, Mail,
   Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
-  UserPlus,
+  UserPlus, Megaphone, ExternalLink, Users, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime } from "@/lib/format";
@@ -27,7 +27,7 @@ import { describeError } from "@/lib/supabaseError";
 import {
   addLeadComment, uploadLeadAttachment, signedAttachmentUrl,
   updateLead, moveLeadStage,
-  ATTACHMENT_HINT, FUNNEL_STAGES, LEAD_ROADMAP, OPEN_LEAD_STATUSES, funnelStageLabel, funnelStageTone, leadSourceTone,
+  ATTACHMENT_HINT, FUNNEL_STAGES, LEAD_ROADMAP, OPEN_LEAD_STATUSES, funnelStageLabel, funnelStageTone,
   leadStatusLabel, leadStatusTone,
   attendSecondsLeft, canWriteLead, formatCountdown, canClaim, isLeadUnattended, trackingFields,
   type LeadRecord, type LeadAttachment,
@@ -262,58 +262,78 @@ export default function LeadDetailModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="glass-strong max-h-[92vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex flex-wrap items-center gap-2">
-            {/* Nome e, logo abaixo, o telefone: o corretor liga ou chama sem abrir outra aba. */}
-            <span className="flex flex-col">
-              <span>{lead.name}</span>
-              {lead.phone && <span className="text-sm font-normal tabular-nums text-muted-foreground">{lead.phone}</span>}
-            </span>
-            <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
-            <StatusBadge tone={funnelStageTone(lead.funnel_stage)}>{funnelStageLabel(lead.funnel_stage)}</StatusBadge>
-            {/* Cronômetro neutro, igual ao funil e ao aviso de lead (lá o âmbar é
-                o botão "Atender"). No último minuto vira alerta vermelho. */}
-            {secondsLeft !== null && (
-              <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
-                <span className="tabular-nums">{formatCountdown(secondsLeft)}</span> para atender
-              </StatusBadge>
-            )}
-            {inactiveHours > 24 && (
-              <StatusBadge tone="danger" icon={AlertTriangle}>Inativo há {inactiveHours.toFixed(0)}h</StatusBadge>
-            )}
-          </DialogTitle>
-          {/* `DialogDescription` de verdade, e não `aria-describedby={undefined}`:
-              esta linha É a descrição do diálogo (de onde o lead veio, com quem
-              está, quantas voltas deu). Sem ela o Radix avisava em runtime e o
-              leitor de tela anunciava o título e parava. `asChild` porque o
-              conteúdo é uma linha de badges, e `<div>` dentro de `<p>` é HTML
-              inválido. */}
-          <DialogDescription asChild>
-          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" aria-hidden /> Chegou {formatDistanceToNow(arrived, { locale: ptBR, addSuffix: true })}
-            </span>
-            <span className="flex items-center gap-1">
-              <User className="h-3.5 w-3.5" aria-hidden /> {lead.broker_name || "Sem corretor"}
-            </span>
-            <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
-            {/* Anúncio de Meta: o clique mostra a arte e a copy que o lead viu (0265). */}
-            {lead.campaign_name && lead.ad_id ? (
-              <button type="button" onClick={() => setAnuncioAberto(true)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title="Ver a arte e a copy do anúncio">
-                <StatusBadge tone="info">📣 {lead.campaign_name} · ver anúncio</StatusBadge>
+        {/* Opção B (06/11/2026): campanha numa faixa no topo — é a primeira coisa
+            que o corretor procura —, nome e situação à esquerda e a ficha técnica
+            numa coluna à direita. Nada saiu do card, só mudou de lugar. */}
+        <DialogHeader className="space-y-3 text-left">
+          {lead.campaign_name && (
+            lead.ad_id ? (
+              <button
+                type="button" onClick={() => setAnuncioAberto(true)} title="Ver a arte e a copy do anúncio"
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-info/40 bg-info/15 px-3 py-2 text-left text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="min-w-0 text-sm font-semibold"><Megaphone className="mr-1.5 inline h-4 w-4 align-[-3px]" aria-hidden />Campanha: <span className="break-words">{lead.campaign_name}</span></span>
+                <span className="flex shrink-0 items-center gap-1 text-xs">ver anúncio <ExternalLink className="h-3.5 w-3.5" aria-hidden /></span>
               </button>
-            ) : lead.campaign_name && <StatusBadge tone="neutral">📣 {lead.campaign_name}</StatusBadge>}
-            {lead.form_name && <StatusBadge tone="neutral">📋 {lead.form_name}</StatusBadge>}
-            {grupo && <StatusBadge tone="neutral">Fila: {grupo.name}</StatusBadge>}
-            {lead.roulette_misses > 0 && (
-              <StatusBadge tone={semAtendimento ? "danger" : "warning"} icon={RefreshCcw}>
-                {semAtendimento
-                  ? `Sem atendimento · ${lead.roulette_misses} voltas na roleta`
-                  : `${lead.roulette_misses}ª volta na roleta`}
-              </StatusBadge>
-            )}
+            ) : (
+              <p className="rounded-xl border border-info/40 bg-info/15 px-3 py-2 text-sm font-semibold text-info">
+                <Megaphone className="mr-1.5 inline h-4 w-4 align-[-3px]" aria-hidden />Campanha: <span className="break-words">{lead.campaign_name}</span>
+              </p>
+            )
+          )}
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-2">
+              <DialogTitle className="break-words pr-6">{lead.name}</DialogTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone={leadStatusTone(lead.status)}>{leadStatusLabel(lead.status)}</StatusBadge>
+                <StatusBadge tone={funnelStageTone(lead.funnel_stage)}>{funnelStageLabel(lead.funnel_stage)}</StatusBadge>
+                {/* Cronômetro neutro, igual ao funil e ao aviso de lead (lá o âmbar é
+                    o botão "Atender"). No último minuto vira alerta vermelho. */}
+                {secondsLeft !== null && (
+                  <StatusBadge tone={secondsLeft <= 60 ? "danger" : "neutral"} icon={Timer}>
+                    <span className="tabular-nums">{formatCountdown(secondsLeft)}</span> para atender
+                  </StatusBadge>
+                )}
+              </div>
+            </div>
+            {/* `DialogDescription` de verdade: esta coluna É a descrição do
+                diálogo (de onde o lead veio, com quem está, quantas voltas deu).
+                Sem ela o Radix avisava em runtime e o leitor de tela anunciava o
+                título e parava. `asChild` porque `<div>` dentro de `<p>` é HTML
+                inválido. */}
+            <DialogDescription asChild>
+              <div className="flex flex-col gap-1.5 text-xs text-muted-foreground sm:border-l sm:border-border sm:pl-3">
+                {lead.phone && (
+                  <span className="flex items-center gap-1.5 tabular-nums"><Phone className="h-3.5 w-3.5" aria-hidden /> {lead.phone}</span>
+                )}
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5" aria-hidden /> Chegou {formatDistanceToNow(arrived, { locale: ptBR, addSuffix: true })}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5" aria-hidden /> {lead.broker_name || "Sem corretor"}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" aria-hidden /> {grupo ? grupo.name : "Sem fila"} · {lead.source || "Origem —"}
+                </span>
+                {lead.form_name && (
+                  <span className="flex items-center gap-1.5 break-all"><ClipboardList className="h-3.5 w-3.5 shrink-0" aria-hidden /> {lead.form_name}</span>
+                )}
+                {inactiveHours > 24 && (
+                  <span className="flex items-center gap-1.5 font-medium text-destructive">
+                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> Inativo há {inactiveHours.toFixed(0)}h
+                  </span>
+                )}
+                {lead.roulette_misses > 0 && (
+                  <span className={cn("flex items-center gap-1.5 font-medium", semAtendimento ? "text-destructive" : "text-warning")}>
+                    <RefreshCcw className="h-3.5 w-3.5" aria-hidden />
+                    {semAtendimento
+                      ? `Sem atendimento · ${lead.roulette_misses} voltas na roleta`
+                      : `${lead.roulette_misses}ª volta na roleta`}
+                  </span>
+                )}
+              </div>
+            </DialogDescription>
           </div>
-          </DialogDescription>
         </DialogHeader>
 
         {/* Abrir o lead não reserva (queixas de 03/10/2026: "cliquei no lead e
