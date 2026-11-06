@@ -11,7 +11,7 @@ import type { DealStage } from "@/types/crm";
 import { useAuth } from "@/contexts/AuthContext";
 import { listDeveloperProjects } from "@/integrations/supabase/leads";
 import {
-  choosesLoss, dealStageCodeFor, saleBlockedReason, setVendaInterna,
+  choosesLoss, dealStageCodeFor, saleBlockedReason, setVendaInterna, toNumberOrNull,
   type PersonRecord, type SaveLegacyDealInput,
 } from "@/integrations/supabase/newSchema";
 import { toast } from "@/components/ui/sonner";
@@ -591,7 +591,10 @@ export function DealForm({
             onChange={(v) => onChange({ forma_divulgacao: v })}
           />
           <ChoiceField id={field("ir")} label="Declara IR" value={form.declara_ir} options={["SIM", "NÃO"]} onChange={(v) => onChange({ declara_ir: v })} />
-          <TextField id={field("rendimento")} label="Rendimento mensal" value={form.rendimento_mensal} onChange={(v) => onChange({ rendimento_mensal: v })} />
+          {/* R$ com máscara (06/11/2026): texto livre gravava "3.100" como 3,1 —
+              o ponto de milhar virava decimal em `toNumberOrNull`. */}
+          <MoneyField id={field("rendimento")} label="Rendimento mensal" value={toNumberOrNull(form.rendimento_mensal)}
+            onChange={(v) => onChange({ rendimento_mensal: v ? String(v) : "" })} />
           <div className="sm:col-span-2 lg:col-span-3">
             <Label htmlFor={field("obs-renda")} className="text-eyebrow">Observações da renda</Label>
             <Textarea
@@ -611,7 +614,8 @@ export function DealForm({
           <ChoiceField id={field("divulgacao2")} label="Forma de divulgação" value={form.forma_divulgacao2}
             options={["Emite Nota/Recibo/Documento similar", "Não emite"]} onChange={(v) => onChange({ forma_divulgacao2: v })} />
           <ChoiceField id={field("ir2")} label="Declara IR" value={form.declara_ir2} options={SIM_NAO} onChange={(v) => onChange({ declara_ir2: v })} />
-          <TextField id={field("rendimento2")} label="Rendimento mensal" value={form.rendimento_mensal2} onChange={(v) => onChange({ rendimento_mensal2: v })} />
+          <MoneyField id={field("rendimento2")} label="Rendimento mensal" value={toNumberOrNull(form.rendimento_mensal2)}
+            onChange={(v) => onChange({ rendimento_mensal2: v ? String(v) : "" })} />
           <div className="sm:col-span-2 lg:col-span-3">
             <Label htmlFor={field("obs-renda2")} className="text-eyebrow">Observações da renda</Label>
             <Textarea id={field("obs-renda2")} rows={2} className="mt-1 text-xs" value={form.observacoes_renda2 || ""}
