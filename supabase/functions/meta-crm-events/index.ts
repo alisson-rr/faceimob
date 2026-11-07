@@ -7,7 +7,7 @@ import { requireServiceRole, serviceClient } from '../_shared/auth.ts';
 import { normalizePhone } from '../_shared/meta.ts';
 import { META_GRAPH } from '../_shared/metaGraph.ts';
 import { getSecret } from '../_shared/secrets.ts';
-import { corpoDoLote, eventoParaMeta, type EventoDaFila, type EventoMeta } from './payload.ts';
+import { corpoDoLote, ehDoWhatsapp, eventoParaMeta, type EventoDaFila, type EventoMeta } from './payload.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,9 +25,12 @@ Deno.serve(async (req) => {
   const denied = await requireServiceRole(req, corsHeaders);
   if (denied) return denied;
 
-  const [token, conjunto] = await Promise.all([
+  const [token, conjunto, wabaId] = await Promise.all([
     getSecret('META_CAPI_ACCESS_TOKEN'),
     getSecret('META_CAPI_DATASET_ID'),
+    // 0322: só o LeadConfirmado do clique-para-WhatsApp usa. Sem ele, esses
+    // eventos esperam na fila e o resto segue normal.
+    getSecret('META_WHATSAPP_BUSINESS_ACCOUNT_ID'),
   ]);
   if (!token || !conjunto || !/^[0-9]+$/.test(conjunto)) {
     return json({ skipped: 'cadastre o token e o conjunto de dados da API de Conversões em Integrações' });
@@ -42,9 +45,11 @@ Deno.serve(async (req) => {
 
   const prontos: { id: string; evento: EventoMeta }[] = [];
   const semLead: string[] = [];
+  const aguardandoWaba: string[] = [];
   for (const linha of (data ?? []) as EventoDaFila[]) {
-    const evento = await eventoParaMeta({ ...linha, phone: normalizePhone(linha.phone) });
+    const evento = await eventoParaMeta({ ...linha, phone: normalizePhone(linha.phone) }, { wabaId });
     if (evento) prontos.push({ id: linha.id, evento });
+    else if (ehDoWhatsapp(linha)) aguardandoWaba.push(linha.id);
     else semLead.push(linha.id);
   }
   if (semLead.length) {
@@ -52,11 +57,25 @@ Deno.serve(async (req) => {
       .update({ status: 'failed', attempts: 5, last_error: 'lead sem leadgen_id da Meta' })
       .in('id', semLead);
   }
+  if (aguardandoWaba.length) {
+    // Volta para a fila sem gastar tentativa: sai quando o id da conta do
+    // WhatsApp Business for cadastrado em Integrações.
+    await supabase.from('meta_crm_events')
+      .update({ status: 'pending', attempts: 0, last_error: 'aguardando o id da conta do WhatsApp Business' })
+      .in('id', aguardandoWaba);
+  }
+
+  // Lead Ads e WhatsApp em lotes separados: se a Meta recusar um tipo, o outro
+  // não cai junto.
+  prontos.sort((a, b) => a.evento.action_source.localeCompare(b.evento.action_source));
 
   let enviados = 0;
   let falhas = 0;
-  for (let i = 0; i < prontos.length; i += POR_CHAMADA) {
-    const lote = prontos.slice(i, i + POR_CHAMADA);
+  let lote: typeof prontos = [];
+  for (let i = 0; i < prontos.length; i += lote.length) {
+    const fatia = prontos.slice(i, i + POR_CHAMADA);
+    const tipo = fatia[0].evento.action_source;
+    lote = fatia.filter((p) => p.evento.action_source === tipo);
     const ids = lote.map((p) => p.id);
     let erro: string | null = null;
     try {
@@ -88,5 +107,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ enviados, falhas, sem_lead: semLead.length });
+  return json({ enviados, falhas, sem_lead: semLead.length, aguardando_waba: aguardandoWaba.length });
 });
