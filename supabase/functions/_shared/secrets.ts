@@ -46,6 +46,9 @@ export const SECRET_SLOTS = {
   // próprio conjunto de dados e o id dele (o "Pixel Site Faceimob").
   META_CAPI_ACCESS_TOKEN: { provider: "meta", label: "capi_access_token" },
   META_CAPI_DATASET_ID: { provider: "meta", label: "capi_dataset_id" },
+  // 0322: id da conta do WhatsApp Business, para o LeadConfirmado do
+  // clique-para-WhatsApp (`action_source: business_messaging`). Opcional.
+  META_WHATSAPP_BUSINESS_ACCOUNT_ID: { provider: "meta", label: "whatsapp_business_account_id" },
   VOICE_AI_WEBHOOK_SECRET: { provider: "voice_ai", label: "webhook_secret" },
   // Token só da ponte do relatório do Telegram (`relatorio-qualidade-campanhas`):
   // dá acesso de LEITURA às contagens por campanha, nunca à service role.

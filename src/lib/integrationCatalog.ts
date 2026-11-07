@@ -202,6 +202,16 @@ export const INTEGRATION_SLOTS: IntegrationSlot[] = [
     ondePegar: { passos: "Gerenciador de Eventos › conjunto de dados › Configurações › API de Conversões › Gerar token de acesso.", link: { url: "https://business.facebook.com/events_manager2/list/dataset", rotulo: "Abrir conjuntos de dados da Meta" } },
   },
   {
+    provider: "meta",
+    label: "whatsapp_business_account_id",
+    title: "Meta — conta do WhatsApp Business (API de Conversões)",
+    envName: "META_WHATSAPP_BUSINESS_ACCOUNT_ID",
+    usedBy: "meta-crm-events",
+    formato: "digits",
+    help: "Opcional. Com ele, o LeadConfirmado do lead que veio de anúncio clique-para-WhatsApp também vai para a Meta. Sem ele, só os leads de formulário recebem o evento.",
+    ondePegar: { passos: "Gerenciador do WhatsApp › Configurações da conta: copie a Identificação da conta do WhatsApp Business (só números).", link: { url: "https://business.facebook.com/wa/manage/home/", rotulo: "Abrir o Gerenciador do WhatsApp" } },
+  },
+  {
     provider: "relatorio",
     label: "api_token",
     title: "Relatório do Telegram — token da ponte",
