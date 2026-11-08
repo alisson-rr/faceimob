@@ -141,7 +141,7 @@ function Resumo({ rotulo, valor, detalhe }: { rotulo: string; valor: string; det
     <div className="rounded-lg border border-border/40 p-2">
       <dt className="text-xs text-muted-foreground">{rotulo}</dt>
       <dd className="text-base font-semibold tabular-nums">{valor}</dd>
-      {detalhe && <dd className="text-[11px] text-muted-foreground">{detalhe}</dd>}
+      {detalhe && <dd className="text-xs text-muted-foreground">{detalhe}</dd>}
     </div>
   );
 }
