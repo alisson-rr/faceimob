@@ -32,6 +32,7 @@ import { functionErrorMessage } from "@/lib/functionError";
 import { MigracaoSiteCard } from "@/components/admin/MigracaoSiteCard";
 import { FilaDeEmails } from "@/components/admin/FilaDeEmails";
 import { ThreeCIntegrationSettings } from "@/components/admin/ThreeCIntegrationSettings";
+import { CustoWhatsApp } from "@/components/admin/CustoWhatsApp";
 
 /**
  * Nome de secret de edge function (`OPENAI_API_KEY`). O catálogo usa "—" nos
@@ -535,7 +536,12 @@ export default function AdminIntegrations() {
         <TabsList>
           <TabsTrigger value="secrets" className="text-xs">Credenciais</TabsTrigger>
           <TabsTrigger value="cron" className="text-xs">Saúde dos jobs</TabsTrigger>
+          <TabsTrigger value="whatsapp" className="text-xs">Custo do WhatsApp</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="whatsapp" className="mt-4">
+          {tab === "whatsapp" && <CustoWhatsApp />}
+        </TabsContent>
 
         <TabsContent value="secrets" className="space-y-3 mt-4">
           {cofreErro && (
