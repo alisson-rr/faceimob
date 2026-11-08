@@ -31,6 +31,11 @@ type Aniversariante = { profile_id: string; nome: string; avatar_url: string | n
 
 const hojeLocal = () => new Date().toLocaleDateString("sv-SE");
 
+// Feirão de Fim de Ano (pedido de 07/11/2026): 45 dias, de 07/11 a 21/12/2026.
+// Datas em "AAAA-MM-DD" comparadas como texto, no fuso do navegador.
+const FEIRAO = { inicio: "2026-11-07", fim: "2026-12-21" } as const;
+export const feiraoNoAr = (dia: string) => dia >= FEIRAO.inicio && dia <= FEIRAO.fim;
+
 /** Primeira vez no dia para este usuário? Storage bloqueado não abre de novo a cada tela. */
 function primeiraVezHoje(userId: string): boolean {
   try {
@@ -112,14 +117,31 @@ export function MotivationalPopup({ paused = false }: { paused?: boolean }) {
   }, [open, paused, temAniversario, pendentes]);
 
   const Icon = souAniversariante ? Cake : msg.icon;
+  const feirao = feiraoNoAr(hojeLocal());
 
   return (
     <Dialog open={open && !paused} onOpenChange={setOpen}>
       {/* Destaque em âmbar, não mais o azul `glow-primary`: brilho só no escuro
           (`.light .glow-highlight` zera), ícone em `gold` porque `highlight` em
           traço some no claro. */}
-      <DialogContent className="glass-strong glow-highlight max-w-sm text-center">
+      <DialogContent className={`glass-strong glow-highlight text-center ${feirao ? "max-h-[90vh] max-w-md overflow-y-auto" : "max-w-sm"}`}>
         <DialogTitle className="sr-only">Boas-vindas</DialogTitle>
+        {feirao && (
+          <section className="-mx-2 -mt-2 overflow-hidden rounded-xl border border-gold/40 bg-gold/10" aria-label="Feirão de Fim de Ano">
+            <img
+              src="/feirao-fim-de-ano.webp"
+              alt="Feirão de Fim de Ano Faceimob: a sua casa própria ainda em 2026"
+              className="block aspect-[1847/851] w-full object-cover"
+            />
+            <div className="space-y-1 p-3">
+              <p className="text-base font-bold text-foreground">🔥 Começou o Feirão de Fim de Ano!</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                São <strong className="text-foreground">45 dias de feirão</strong>, até 21/12, com condições especiais,
+                atendimento prioritário e imóveis selecionados. É hora de muita venda! 🏡💰
+              </p>
+            </div>
+          </section>
+        )}
         <AnimatePresence>
           {open && (
             <motion.div
