@@ -6,6 +6,7 @@ import { functionErrorMessage } from "@/lib/functionError";
 export type Anuncio = {
   ad_id: string;
   nome: string | null;
+  campanha_id: string | null;
   campanha_nome: string | null;
   status: string | null;
   ativo: boolean;
@@ -32,8 +33,9 @@ type Resultado<T> = PromiseLike<{ data: T | null; error: { message?: string; cod
  * forma vem declarada aqui até a próxima geração do `types.ts`, que não se
  * edita à mão. Leitura liberada a todo autenticado.
  */
-const COLUNAS = "ad_id,nome,campanha_nome,status,ativo,formato,copy,titulo,imagem_meta_url,imagem_path,imagens,preview_url,synced_at";
+const COLUNAS = "ad_id,nome,campanha_id,campanha_nome,status,ativo,formato,copy,titulo,imagem_meta_url,imagem_path,imagens,preview_url,synced_at";
 const db = supabase as unknown as {
+  rpc(fn: "campanhas_por_cpl", args: { p_dias: number }): Resultado<CplDaCampanha[]>;
   from(tabela: "meta_anuncios"): {
     select(colunas: typeof COLUNAS): {
       eq(coluna: "ativo", valor: true): { order(coluna: "campanha_nome", opcoes: { ascending: boolean }): Resultado<Anuncio[]> };
@@ -46,6 +48,25 @@ export async function listAnunciosAtivos(): Promise<Anuncio[]> {
   const { data, error } = await db.from("meta_anuncios").select(COLUNAS).eq("ativo", true).order("campanha_nome", { ascending: true });
   if (error) throw dbError("meta_anuncios", error);
   return data ?? [];
+}
+
+/** Posição de cada campanha por CPL (0325); `cpl` só vem para quem vê finanças. */
+export type CplDaCampanha = { campanha_id: string; posicao: number; cpl: number | null };
+
+export async function listCplDasCampanhas(dias = 7): Promise<CplDaCampanha[]> {
+  const { data, error } = await db.rpc("campanhas_por_cpl", { p_dias: dias });
+  if (error) throw dbError("campanhas_por_cpl", error);
+  return (data ?? []).map((c) => ({ ...c, cpl: c.cpl === null ? null : Number(c.cpl) }));
+}
+
+/**
+ * Menor CPL primeiro; campanha sem CPL no período vai para o fim, na ordem de
+ * nome que a lista já tinha (o sort é estável).
+ */
+export function ordenarPorCpl(anuncios: Anuncio[], cpls: CplDaCampanha[]): Anuncio[] {
+  const posicao = new Map(cpls.map((c) => [c.campanha_id, c.posicao]));
+  const pos = (a: Anuncio) => (a.campanha_id ? posicao.get(a.campanha_id) : undefined) ?? Number.MAX_SAFE_INTEGER;
+  return [...anuncios].sort((a, b) => pos(a) - pos(b));
 }
 
 /** O anúncio do lead; `null` se ainda não foi sincronizado. */

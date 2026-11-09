@@ -10,7 +10,10 @@ import { LoadingState, PageHeader } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { AnuncioDialog } from "@/components/anuncios/AnuncioDialog";
-import { artesDoAnuncio, atualizarAnuncios, listAnunciosAtivos, ROTULO_FORMATO, type Anuncio } from "@/integrations/supabase/anuncios";
+import {
+  artesDoAnuncio, atualizarAnuncios, listAnunciosAtivos, listCplDasCampanhas, ordenarPorCpl, ROTULO_FORMATO, type Anuncio,
+} from "@/integrations/supabase/anuncios";
+import { brl } from "@/lib/format";
 
 const CHAVE = ["anuncios", "ativos"] as const;
 
@@ -29,13 +32,16 @@ export default function CampanhasFacebook() {
   const [aberto, setAberto] = useState<Anuncio | null>(null);
   const [atualizando, setAtualizando] = useState(false);
   const lista = useQuery({ queryKey: CHAVE, queryFn: listAnunciosAtivos });
+  // Ordem por CPL é melhoria: se falhar, a lista segue na ordem de nome.
+  const cpls = useQuery({ queryKey: ["anuncios", "cpl", 7], queryFn: () => listCplDasCampanhas(7), staleTime: 10 * 60_000 });
+  const cplPorCampanha = useMemo(() => new Map((cpls.data ?? []).map((c) => [c.campanha_id, c.cpl])), [cpls.data]);
 
   const visiveis = useMemo(() => {
     const termo = normalizar(busca.trim());
-    const todos = lista.data ?? [];
+    const todos = ordenarPorCpl(lista.data ?? [], cpls.data ?? []);
     if (!termo) return todos;
     return todos.filter((a) => normalizar(`${a.campanha_nome ?? ""} ${a.nome ?? ""} ${a.copy ?? ""}`).includes(termo));
-  }, [lista.data, busca]);
+  }, [lista.data, cpls.data, busca]);
 
   async function atualizar() {
     setAtualizando(true);
@@ -55,7 +61,7 @@ export default function CampanhasFacebook() {
       <PageHeader
         title="Campanhas do Facebook"
         icon={Megaphone}
-        description="Anúncios ativos, prontos para você replicar nas conversas."
+        description="Anúncios ativos, do menor CPL dos últimos 7 dias para o maior, prontos para você replicar nas conversas."
         actions={
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">{lista.data?.length ?? 0} anúncios ativos</span>
@@ -86,6 +92,7 @@ export default function CampanhasFacebook() {
         <Card className="divide-y divide-border/60 overflow-hidden">
           {visiveis.map((a) => {
             const capa = artesDoAnuncio(a)[0];
+            const cpl = a.campanha_id ? cplPorCampanha.get(a.campanha_id) : undefined;
             return (
               <button
                 key={a.ad_id} type="button" onClick={() => setAberto(a)}
@@ -106,6 +113,7 @@ export default function CampanhasFacebook() {
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-semibold">{a.campanha_nome ?? a.nome ?? "Anúncio"}</span>
                     <Badge variant="outline">{ROTULO_FORMATO[a.formato]}</Badge>
+                    {typeof cpl === "number" && <Badge variant="secondary">CPL {brl(cpl, { cents: true })}</Badge>}
                   </span>
                   <span className="block truncate text-sm text-muted-foreground">{a.copy ?? a.nome ?? ""}</span>
                 </span>
