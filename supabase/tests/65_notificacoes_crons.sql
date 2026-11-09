@@ -29,6 +29,8 @@
 -- =============================================================================
 
 \set ON_ERROR_STOP on
+-- 0326: o despacho não pode depender da hora em que a CI roda.
+set faceimob.silencio_noturno = 'off';
 \pset tuples_only on
 \pset format unaligned
 

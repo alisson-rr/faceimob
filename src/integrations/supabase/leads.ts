@@ -764,6 +764,7 @@ export const LEAD_CLOSE_REASONS = [
   "Fora da região atendida",
   "Contato inválido",
   "Duplicado",
+  "Cliente bloqueou",
 ] as const;
 
 /** Status de encerramento aceitos por `close_lead`. */
