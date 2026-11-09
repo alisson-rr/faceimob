@@ -1,7 +1,7 @@
 import { requireUserPermission } from "../_shared/auth.ts";
 import { getSecret } from "../_shared/secrets.ts";
 import { MetaApiError, metaGet } from "../_shared/metaGraph.ts";
-import { custoPorDia } from "./custo.ts";
+import { custoDoModeloPorDia, custoPorDia, idDoModelo } from "./custo.ts";
 
 /**
  * Custo do WhatsApp (pedido de 07/11/2026): quanto a Meta cobrou por dia, para
@@ -36,9 +36,10 @@ Deno.serve(async (req) => {
   const corpo = await req.json().catch(() => null) as { dias?: unknown } | null;
   const dias = DIAS_PERMITIDOS.find((d) => d === corpo?.dias) ?? 30;
 
-  const [token, conta] = await Promise.all([
+  const [token, conta, modelo] = await Promise.all([
     getSecret("META_WHATSAPP_ACCESS_TOKEN"),
     getSecret("META_WHATSAPP_BUSINESS_ACCOUNT_ID"),
+    getSecret("META_WHATSAPP_NOTIFY_TEMPLATE"),
   ]);
   if (!conta || !/^\d+$/.test(conta.trim())) {
     return json({
@@ -56,7 +57,29 @@ Deno.serve(async (req) => {
 
   try {
     const resposta = await metaGet<{ currency?: string }>(conta.trim(), { fields: campos }, token);
-    return json({ moeda: resposta.currency ?? null, dias: custoPorDia(resposta) });
+    const moeda = resposta.currency ?? null;
+
+    // 09/11/2026: o custo é só do modelo do aviso (Integrações › modelo de
+    // WhatsApp). Sem modelo cadastrado ou sem as métricas por modelo ligadas na
+    // conta, cai para a categoria utilidade e a tela avisa a diferença.
+    const nome = modelo?.trim();
+    if (nome) {
+      try {
+        const modelos = await metaGet(`${conta.trim()}/message_templates`, { name: nome, fields: "id,name,language" }, token);
+        const id = idDoModelo(modelos, nome);
+        if (id) {
+          const porModelo = await metaGet(`${conta.trim()}/template_analytics`, {
+            start: String(inicio), end: String(fim), granularity: "DAILY",
+            template_ids: JSON.stringify([id]),
+            metric_types: JSON.stringify(["SENT", "DELIVERED", "READ", "COST"]),
+          }, token);
+          return json({ moeda, fonte: "modelo", modelo: nome, dias: custoDoModeloPorDia(porModelo) });
+        }
+      } catch (e) {
+        console.warn("whatsapp-custos: métricas do modelo indisponíveis, usando a categoria", e instanceof MetaApiError ? e.status : "rede");
+      }
+    }
+    return json({ moeda, fonte: "categoria", modelo: nome ?? null, dias: custoPorDia(resposta) });
   } catch (e) {
     const frase = e instanceof MetaApiError ? e.message : "Não consegui ler o custo na Meta.";
     console.error("whatsapp-custos: falha na Meta", e instanceof MetaApiError ? e.status : "rede");
