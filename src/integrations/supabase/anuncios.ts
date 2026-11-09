@@ -69,6 +69,22 @@ export function ordenarPorCpl(anuncios: Anuncio[], cpls: CplDaCampanha[]): Anunc
   return [...anuncios].sort((a, b) => pos(a) - pos(b));
 }
 
+/**
+ * A Meta devolve um anúncio por conjunto: a mesma peça (campanha, texto e
+ * arte iguais) em dois conjuntos aparecia duas vezes na tela. Fica a primeira.
+ * A arte compara pelo NOME do arquivo: o caminho leva o id do anúncio
+ * (`<ad_id>/0-<hash>.jpg`), e o hash é o mesmo quando a peça é a mesma.
+ */
+export function semRepetidos(anuncios: Anuncio[]): Anuncio[] {
+  const vistos = new Set<string>();
+  return anuncios.filter((a) => {
+    const chave = JSON.stringify([a.campanha_id ?? a.campanha_nome, a.formato, a.titulo, a.copy, (artesDoAnuncio(a)[0] ?? a.ad_id).split("?")[0].split("/").pop()]);
+    if (vistos.has(chave)) return false;
+    vistos.add(chave);
+    return true;
+  });
+}
+
 /** O anúncio do lead; `null` se ainda não foi sincronizado. */
 export async function anuncioPorId(adId: string): Promise<Anuncio | null> {
   const { data, error } = await db.from("meta_anuncios").select(COLUNAS).eq("ad_id", adId).maybeSingle();

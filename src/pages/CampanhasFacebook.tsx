@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { describeError } from "@/lib/supabaseError";
 import { AnuncioDialog } from "@/components/anuncios/AnuncioDialog";
 import {
-  artesDoAnuncio, atualizarAnuncios, listAnunciosAtivos, listCplDasCampanhas, ordenarPorCpl, ROTULO_FORMATO, type Anuncio,
+  artesDoAnuncio, atualizarAnuncios, listAnunciosAtivos, listCplDasCampanhas, ordenarPorCpl, ROTULO_FORMATO, semRepetidos, type Anuncio,
 } from "@/integrations/supabase/anuncios";
 import { brl } from "@/lib/format";
 
@@ -36,12 +36,14 @@ export default function CampanhasFacebook() {
   const cpls = useQuery({ queryKey: ["anuncios", "cpl", 7], queryFn: () => listCplDasCampanhas(7), staleTime: 10 * 60_000 });
   const cplPorCampanha = useMemo(() => new Map((cpls.data ?? []).map((c) => [c.campanha_id, c.cpl])), [cpls.data]);
 
+  const unicos = useMemo(() => semRepetidos(lista.data ?? []), [lista.data]);
+
   const visiveis = useMemo(() => {
     const termo = normalizar(busca.trim());
-    const todos = ordenarPorCpl(lista.data ?? [], cpls.data ?? []);
+    const todos = ordenarPorCpl(unicos, cpls.data ?? []);
     if (!termo) return todos;
     return todos.filter((a) => normalizar(`${a.campanha_nome ?? ""} ${a.nome ?? ""} ${a.copy ?? ""}`).includes(termo));
-  }, [lista.data, cpls.data, busca]);
+  }, [unicos, cpls.data, busca]);
 
   async function atualizar() {
     setAtualizando(true);
@@ -64,7 +66,7 @@ export default function CampanhasFacebook() {
         description="Anúncios ativos, do menor CPL dos últimos 7 dias para o maior, prontos para você replicar nas conversas."
         actions={
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{lista.data?.length ?? 0} anúncios ativos</span>
+            <span className="text-sm text-muted-foreground">{unicos.length} anúncios ativos</span>
             {can("marketing.meta_manage") && (
               <Button size="sm" variant="outline" className="gap-1" disabled={atualizando} onClick={() => void atualizar()}>
                 {atualizando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
