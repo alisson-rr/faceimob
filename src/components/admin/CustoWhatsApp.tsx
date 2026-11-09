@@ -12,8 +12,8 @@ import { num } from "@/lib/format";
 const untyped = supabase as unknown as SupabaseClient;
 
 type AvisoDoDia = { dia: string; enviados: number; falhas: number; sem_telefone: number; esperando: number };
-type CustoDoDia = { dia: string; mensagens: number; cobradas: number; custo: number };
-type Custo = { moeda: string | null; dias: CustoDoDia[] };
+type CustoDoDia = { dia: string; mensagens: number; cobradas: number; custo: number; lidas?: number };
+type Custo = { moeda: string | null; fonte?: "modelo" | "categoria"; modelo?: string | null; dias: CustoDoDia[] };
 
 const PERIODOS = [7, 30, 90] as const;
 
@@ -62,6 +62,8 @@ export function CustoWhatsApp() {
   const custoTotal = linhasCusto.reduce((s, l) => s + l.custo, 0);
   const cobradas = linhasCusto.reduce((s, l) => s + l.cobradas, 0);
   const entregues = linhasCusto.reduce((s, l) => s + l.mensagens, 0);
+  const porModelo = custo.data?.fonte === "modelo";
+  const lidas = linhasCusto.reduce((s, l) => s + (l.lidas ?? 0), 0);
 
   const porDia = new Map<string, { aviso?: AvisoDoDia; custo?: CustoDoDia }>();
   for (const l of linhasAviso) porDia.set(l.dia, { ...porDia.get(l.dia), aviso: l });
@@ -88,7 +90,7 @@ export function CustoWhatsApp() {
           <Resumo rotulo="Avisos enviados" valor={avisos.isLoading ? "…" : num(enviados)}
             detalhe={falhas || semTelefone ? `${num(falhas)} com falha · ${num(semTelefone)} sem telefone` : "nenhuma falha"} />
           <Resumo rotulo="Entregues (Meta)" valor={custo.data ? num(entregues) : "—"}
-            detalhe={custo.data ? `${num(cobradas)} cobradas` : undefined} />
+            detalhe={custo.data ? (porModelo ? `${num(lidas)} lidas` : `${num(cobradas)} cobradas`) : undefined} />
           <Resumo rotulo="Custo no período" valor={custo.data ? dinheiro(custoTotal, moeda) : "—"} />
           <Resumo rotulo="Custo por aviso" valor={custo.data && enviados ? dinheiro(custoTotal / enviados, moeda) : "—"} />
         </dl>
@@ -128,8 +130,11 @@ export function CustoWhatsApp() {
         )}
 
         <p className="text-xs text-muted-foreground">
-          Enviados e falhas vêm do CRM. Entregues e custo vêm da Meta e contam só mensagens de utilidade (o modelo do
-          aviso); conversas do SDR e remarketing ficam de fora. A Meta pode levar algumas horas para fechar o dia.
+          Enviados e falhas vêm do CRM. Entregues e custo vêm da Meta
+          {porModelo
+            ? <> e contam só o modelo do aviso (<code>{custo.data?.modelo}</code>), sem relatório, robô ou remarketing.</>
+            : <> e somam as mensagens de utilidade da conta (as métricas por modelo não responderam), o que pode incluir outro modelo de utilidade além do aviso.</>}
+          {" "}A Meta pode levar algumas horas para fechar o dia.
         </p>
       </CardContent>
     </Card>
