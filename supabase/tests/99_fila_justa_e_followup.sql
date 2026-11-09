@@ -1,5 +1,5 @@
 -- =============================================================================
--- 0263 — quem volta de uma vez entra no fim da fila (caso Julia, 10/10/2026);
+-- 0263/0324 — a vez conta do recebimento e quem está com lead segura o lugar;
 -- follow-up 1 h / 23 h, arquivo em 24 h, candidato fora da base, retomada.
 -- =============================================================================
 \set ON_ERROR_STOP on
@@ -45,12 +45,20 @@ begin
     (julia, v_shift, public.current_work_date(), now() - interval '2 hours 50 minutes');
   insert into public.leads (full_name, phone, distribution_group_id, status)
     values ('Lead 263', '11900263001', v_group, 'in_progress') returning id into v_lead;
-  insert into public.lead_assignments (lead_id, profile_id, group_id, sequence, assigned_at, deadline, responded_at, counts_for_queue)
-    values (v_lead, pedro, v_group, 1, now() - interval '2 hours 55 minutes', now(), now() - interval '10 minutes', true);
+  -- 0324: Pedro recebe ANTES de a Julia entrar e ainda não clicou "Atender".
+  insert into public.lead_assignments (lead_id, profile_id, group_id, sequence, assigned_at, deadline, counts_for_queue)
+    values (v_lead, pedro, v_group, 1, now() - interval '2 hours 55 minutes', now() + interval '1 hour', true);
 
   perform pg_temp.ok(
-    (select profile_id from public.distribution_queue_interna(v_group) where queue_position = 1) = julia,
-    'quem atendeu volta para o fim: Julia (nunca recebeu) fica à frente do Pedro');
+    not exists (select 1 from public.distribution_queue_interna(v_group) where profile_id = pedro)
+    and (select queue_position from public.distribution_queue_interna(v_group) where profile_id = julia) = 2,
+    'Pedro com lead não recebe outro, mas segura o 1º lugar: Julia, que entrou depois, é a 2ª');
+
+  update public.lead_assignments set responded_at = now() - interval '10 minutes' where lead_id = v_lead;
+  perform pg_temp.ok(
+    (select profile_id from public.distribution_queue_interna(v_group) where queue_position = 1) = pedro
+    and (select queue_position from public.distribution_queue_interna(v_group) where profile_id = julia) = 2,
+    'a vez conta do recebimento: Pedro atende e a Julia continua 2ª, sem pular');
 
   -- AGENTES E CONVERSAS ----------------------------------------------------------
   insert into public.sdr_agents (name, system_prompt, active, lead_de_compra)
