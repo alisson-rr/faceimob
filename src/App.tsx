@@ -54,6 +54,7 @@ const SdrModule = tela(() => import("@/pages/SdrModule"));
 const Candidatos = tela(() => import("@/pages/Candidatos"));
 const Diretorias = tela(() => import("@/pages/Diretorias"));
 const CampanhasFacebook = tela(() => import("@/pages/CampanhasFacebook"));
+const ConsultaCpf = tela(() => import("@/pages/ConsultaCpf"));
 
 /**
  * Baixa as telas logadas depois do login, uma por vez e só com o navegador
@@ -315,6 +316,7 @@ const App = () => (
               <Route path="/candidatos" element={<Candidatos />} />
               <Route path="/diretorias" element={<Diretorias />} />
               <Route path="/campanhas" element={<CampanhasFacebook />} />
+              <Route path="/consulta-cpf" element={<ConsultaCpf />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
