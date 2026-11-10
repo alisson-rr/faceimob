@@ -34,6 +34,7 @@ import { PessoaCard, ListaPessoas, ContagemPessoas, iniciais } from "@/component
 import { enviarAcessoPorWhatsapp } from "@/components/boasVindas";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
 import { CofreCredenciais } from "@/components/equipes/CofreCredenciais";
+import { RepasseDeNegocios } from "@/components/equipes/RepasseDeNegocios";
 import { DiretorDuploCard } from "@/components/equipes/DiretorDuploCard";
 import { goalPeriods, goalsByProfile, otherMetricsByProfile } from "@/components/equipes/metas";
 
@@ -684,6 +685,7 @@ export default function Equipes() {
         <TabsList>
           <TabsTrigger value="equipe">Equipe</TabsTrigger>
           {isAdmin && <TabsTrigger value="cofre">Cofre de credenciais</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="repasse">Repasse de negócios</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="equipe" className="mt-0 space-y-6">
@@ -981,6 +983,11 @@ export default function Equipes() {
         {isAdmin && (
           <TabsContent value="cofre" className="mt-0">
             <CofreCredenciais />
+          </TabsContent>
+        )}
+        {isAdmin && (
+          <TabsContent value="repasse" className="mt-0">
+            <RepasseDeNegocios />
           </TabsContent>
         )}
       </Tabs>
