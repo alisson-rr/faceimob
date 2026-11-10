@@ -62,7 +62,7 @@ export function RepasseDeNegocios() {
   if (porCorretor.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        Nenhum corretor desligado ou suspenso tem negócio aberto no pipeline.
+        Nenhum corretor desligado ou suspenso tem negócio em negociação no pipeline.
       </p>
     );
   }
@@ -70,7 +70,8 @@ export function RepasseDeNegocios() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Negócios <b>abertos</b> de quem está desligado ou suspenso. Ganhos e perdidos ficam com quem vendeu. O corretor
+        Negócios <b>em negociação</b> de quem está desligado ou suspenso. Venda (ganho ou Status 1 VENDA: em contrato,
+        assinado, ass. banco, RC emitida) e perdido ficam com quem vendeu. O corretor
         novo entra no lugar do antigo no rateio, o gerente passa a ser o da equipe dele e o repasse fica no histórico.
       </p>
       {porCorretor.map(([id, grupo]) => (
@@ -122,7 +123,7 @@ function GrupoDoCorretor({ corretorId, nome, status, negocios, ativos }: {
           {nome}
           <Badge variant="outline">{SITUACAO[status] ?? status}</Badge>
           <span className="text-muted-foreground font-normal">
-            {negocios.length} {negocios.length === 1 ? "negócio aberto" : "negócios abertos"}
+            {negocios.length} {negocios.length === 1 ? "negócio em negociação" : "negócios em negociação"}
           </span>
         </CardTitle>
       </CardHeader>
