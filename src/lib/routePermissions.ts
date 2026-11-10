@@ -30,6 +30,7 @@ export const ROUTE_PERMISSION: Record<string, string> = {
   "/candidatos": "menu.candidatos",
   "/diretorias": "menu.diretorias",
   "/campanhas": "menu.campanhas",
+  "/consulta-cpf": "menu.consulta_cpf",
   "/central": "menu.central",
   "/central/suporte": "menu.central",
   "/central/drive": "menu.central",

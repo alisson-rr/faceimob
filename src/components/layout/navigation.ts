@@ -1,5 +1,5 @@
 import {
-  Bot, Building2, LayoutGrid, CalendarClock, CreditCard, Database, GitBranch, Globe, KeyRound, LayoutDashboard,
+  Bot, Building2, LayoutGrid, CalendarClock, CreditCard, Database, GitBranch, Globe, IdCard, KeyRound, LayoutDashboard,
   LogIn, Megaphone, Network, Settings, Shield, Target, TrendingUp, Trophy, UserPlus, UserSearch, Users, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -29,6 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, group: "principal" },
   { title: "Pipeline", url: "/pipeline", icon: GitBranch, group: "principal" },
   { title: "Leads", url: "/leads", icon: UserSearch, group: "principal" },
+  { title: "Consulta CPF", url: "/consulta-cpf", icon: IdCard, group: "principal" },
   { title: "Roleta por corretor", url: "/leads/roleta", icon: UserSearch, group: "principal", hidden: true },
   { title: "Atividades", url: "/atividades", icon: CalendarClock, group: "principal" },
   { title: "Esteira CCA", url: "/cca", icon: CreditCard, group: "principal" },

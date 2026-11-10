@@ -20,6 +20,8 @@ import type { NegocioDoCpf } from "@/integrations/supabase/batidaCpf";
  *    PROPOSTA. Nenhum negócio novo é criado.
  *  · DISTRATO: só avisa. Já foi contabilizado em mês anterior; retomar é com o
  *    gerente.
+ *  · Corretor desligado/suspenso (0329): dá para resgatar; o negócio segue no
+ *    Status 2 em que está, só o corretor muda.
  */
 export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }: {
   negocio: NegocioDoCpf;
@@ -33,18 +35,20 @@ export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }:
   const cliente = negocio.cliente ?? "Este cliente";
   const corretor = negocio.corretor ?? "sem corretor";
   const gerente = negocio.gerente ?? "sem gerente";
+  const diretor = negocio.diretor ? <> e o diretor <strong className="text-foreground">{negocio.diretor}</strong></> : null;
+  const quando = negocio.ultimo_comentario_em ? dateTime(negocio.ultimo_comentario_em) : null;
   const status = negocio.status2 ? bareStatus(negocio.status2) : null;
 
   const quemEsta = (
     <>
       <strong className="text-foreground">{cliente}</strong> já está no Pipeline com o corretor{" "}
       <strong className="text-foreground">{corretor}</strong> e o gerente{" "}
-      <strong className="text-foreground">{gerente}</strong>
+      <strong className="text-foreground">{gerente}</strong>{diretor}
       {status ? <> (Status 2: {status})</> : null}.
     </>
   );
 
-  if (negocio.situacao === "ativo" || negocio.situacao === "distrato") {
+  if (!negocio.pode_resgatar) {
     const distrato = negocio.situacao === "distrato";
     return (
       <Dialog open onOpenChange={(aberto) => { if (!aberto) onClose(); }}>
@@ -56,7 +60,7 @@ export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }:
           {negocio.ultimo_comentario && (
             <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
               <p className="text-eyebrow">
-                Último comentário{negocio.ultimo_comentario_em ? ` · ${dateTime(negocio.ultimo_comentario_em)}` : ""}
+                Último comentário{quando ? ` · ${quando}` : ""}
               </p>
               <p className="mt-1 whitespace-pre-line">{negocio.ultimo_comentario}</p>
             </div>
@@ -82,12 +86,15 @@ export function BatidaCpfDialog({ negocio, enviando, erro, onAssumir, onClose }:
           <DialogDescription>
             <strong className="text-foreground">{cliente}</strong> tem um negócio
             {status ? <> em <strong className="text-foreground">{status}</strong></> : " encerrado"} com o corretor{" "}
-            {corretor} e o gerente {gerente}. Quer retomar a negociação?
+            {corretor}{negocio.corretor_inativo ? " (desligado ou suspenso)" : ""}, o gerente {gerente}
+            {negocio.diretor ? ` e o diretor ${negocio.diretor}` : ""}. Quer retomar a negociação?
           </DialogDescription>
         </DialogHeader>
+        {quando && <p className="text-xs text-muted-foreground">Último comentário em {quando}.</p>}
         <p className="text-sm text-muted-foreground">
-          Retomando, o negócio vem para você com tudo o que já existe — dados do cliente, histórico e documentos — e
-          volta para PROPOSTA, com o seu gerente e diretor. Nenhum cadastro novo é criado.
+          {negocio.corretor_inativo
+            ? "Retomando, o negócio vem para você com tudo o que já existe e continua no status em que está, com o seu gerente e diretor. Nenhum cadastro novo é criado."
+            : "Retomando, o negócio vem para você com tudo o que já existe — dados do cliente, histórico e documentos — e volta para PROPOSTA, com o seu gerente e diretor. Nenhum cadastro novo é criado."}
         </p>
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-comentario`}>Comentário (opcional)</Label>

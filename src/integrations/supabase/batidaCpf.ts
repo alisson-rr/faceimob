@@ -17,6 +17,12 @@ export type NegocioDoCpf = {
   /** Último comentário do histórico e quando foi feito (0205). */
   ultimo_comentario: string | null;
   ultimo_comentario_em: string | null;
+  /** Consulta CPF (0329). */
+  diretor: string | null;
+  /** Aberto e nenhum corretor dele está ativo (desligado ou suspenso). */
+  corretor_inativo: boolean;
+  /** OFF/QUEDA (fora distrato) ou corretor inativo sem venda: dá para trazer para si. */
+  pode_resgatar: boolean;
 };
 
 const SITUACOES = ["ativo", "encerrado", "distrato"] as const;
@@ -45,6 +51,9 @@ export function lerNegocioDoCpf(row: unknown): NegocioDoCpf | null {
     gerente: texto(r.gerente),
     ultimo_comentario: texto(r.ultimo_comentario),
     ultimo_comentario_em: texto(r.ultimo_comentario_em),
+    diretor: texto(r.diretor),
+    corretor_inativo: r.corretor_inativo === true,
+    pode_resgatar: r.pode_resgatar === true,
   };
 }
 

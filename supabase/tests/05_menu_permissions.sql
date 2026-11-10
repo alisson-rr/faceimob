@@ -83,7 +83,9 @@ begin
   -- 22 com Candidatos (0264): gerente, diretor e sócio.
   -- 23 com Campanhas Facebook (0265), concedida a todos os papéis.
   -- 24 com Diretorias (0291): sócio e diretor (admin passa sempre).
-  perform pg_temp.check5(n = 24, format('catálogo tem os 24 códigos menu.* (tem %s)', n));
+  -- 25 com Consulta CPF (0329): quem cadastra negócio (admin, sócio, diretor,
+  -- gerente, corretor e CCA).
+  perform pg_temp.check5(n = 25, format('catálogo tem os 25 códigos menu.* (tem %s)', n));
 
   perform pg_temp.check5(
     exists (select 1 from public.permissions where code = 'menu.dashboard'),
