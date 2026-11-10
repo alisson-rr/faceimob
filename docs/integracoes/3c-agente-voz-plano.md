@@ -41,7 +41,7 @@ o domínio e o roteamento atuais, sem exigir outro serviço ou DNS.
 | Operação | Comportamento do contrato |
 | --- | --- |
 | `GET /leads` | Buscar por `telefone`, `email` ou `id`. Ausência é `200` com `encontrado:false` e `lead:null`. |
-| `POST /leads` | Receber nome, telefone, e-mail, origem, etapa, observação e dados adicionais. Novo: `201` e `criado:true`; telefone existente: `200`, mesmo ID e `criado:false`. |
+| `POST /leads` | Receber nome, telefone, e-mail, origem, etapa, observação e dados adicionais. Só aceita lead com visita agendada (`etapa_id: "visita_agendada"`); sem isso responde `422 SOMENTE_AGENDADO` e nada entra no CRM (10/11/2026). Novo: `201` e `criado:true`; telefone existente: `200`, mesmo ID e `criado:false`. |
 | `PATCH /leads/{id}` | Alterar somente os campos enviados. Retornar `200` com `id` e `atualizado:true`, ou `404` para lead inexistente. |
 | `GET /agenda/disponibilidade` | Receber `inicio`, `fim`, `duracao_min` e, conforme a agenda definida, `agenda_id`. Retornar objeto com `horarios`, inclusive array vazio. Responder em até um segundo. |
 | `POST /agenda/eventos` | Receber lead, agenda, início, fim, tipo, título, observação e origem. Revalidar ocupação na gravação. Retornar `201` com `evento_id` e `criado:true`, ou `409` com `HORARIO_OCUPADO`. |

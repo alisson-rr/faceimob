@@ -19,7 +19,8 @@ const successful = () => vi.fn<ThreeCRpc>().mockResolvedValue({ status: 200, bod
 describe("contrato HTTP da integração 3C", () => {
   it.each([
     ["GET", `/leads?id=${id}`, undefined, "buscar_lead", { id }],
-    ["POST", "/leads", { nome: "Contato de teste", telefone: "5542999999999" }, "criar_lead", { nome: "Contato de teste", telefone: "5542999999999" }],
+    ["POST", "/leads", { nome: "Contato de teste", telefone: "5542999999999", etapa_id: "visita_agendada" }, "criar_lead",
+      { nome: "Contato de teste", telefone: "5542999999999", etapa_id: "visita_agendada" }],
     ["PATCH", `/leads/${id}`, { etapa_id: "scheduled_visit" }, "atualizar_lead", { id, etapa_id: "scheduled_visit" }],
     ["GET", `/agenda/disponibilidade?inicio=${encodeURIComponent(start)}&fim=${encodeURIComponent(end)}&duracao_min=60&agenda_id=${id}`, undefined,
       "disponibilidade", { inicio: start, fim: end, duracao_min: 60, agenda_id: id }],
@@ -34,6 +35,14 @@ describe("contrato HTTP da integração 3C", () => {
     expect(rpc).toHaveBeenCalledOnce();
     expect(rpc).toHaveBeenCalledWith(token, operation, data);
     expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it.each([undefined, "novo", "warm"])("não cria lead sem visita agendada (etapa %s)", async (etapa_id) => {
+    const rpc = successful();
+    const response = await handleRequest(request("POST", "/leads", { nome: "Sem agenda", telefone: "5542999999999", etapa_id }), rpc);
+    expect(response.status).toBe(422);
+    expect((await response.json()).erro).toBe("SOMENTE_AGENDADO");
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("aceita o prefixo usado pelo runtime self-hosted", async () => {
@@ -126,7 +135,7 @@ describe("contrato HTTP da integração 3C", () => {
     expect((await handleRequest(request("POST", "/agenda/eventos", event, { "idempotency-key": "chamada-123-evento" }), rpc)).status).toBe(200);
     expect(rpc).toHaveBeenCalledWith(token, "criar_evento", { ...event, _idempotency_key: "chamada-123-evento" });
     rpc.mockClear();
-    expect((await handleRequest(request("POST", "/leads", { nome: "Teste", telefone: "5542999999999" }, { "idempotency-key": "nao-aceita" }), rpc)).status).toBe(400);
+    expect((await handleRequest(request("POST", "/leads", { nome: "Teste", telefone: "5542999999999", etapa_id: "visita_agendada" }, { "idempotency-key": "nao-aceita" }), rpc)).status).toBe(400);
     expect(rpc).not.toHaveBeenCalled();
   });
 

@@ -125,6 +125,11 @@ export async function handleRequest(req: Request, rpc: ThreeCRpc): Promise<Respo
     if (path === "/leads" && req.method === "POST") {
       operation = "criar_lead";
       invalid = validate(data, [...leadFields, "origem"], ["nome", "telefone"]);
+      // Pedido de 10/11/2026: da 3C só entra no CRM (e na roleta) quem agendou
+      // visita. Ligação sem agendamento fica só na 3C.
+      if (!invalid && !["visita_agendada", "scheduled_visit"].includes(String(data.etapa_id))) {
+        return failure(422, "SOMENTE_AGENDADO", "Só envie o lead com visita agendada (etapa_id \"visita_agendada\").");
+      }
     } else if (leadPath && req.method === "PATCH" && !leadPath[2]) {
       operation = "atualizar_lead";
       invalid = Object.keys(data).length ? validate(data, leadFields) : "Envie ao menos um campo para atualizar.";
