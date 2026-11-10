@@ -55,10 +55,12 @@ begin
   -- Negócios do corretor que saiu (o criador entra como corretor e traz o gerente A).
   insert into public.deals (stage_id, created_by) values (v_stage, saiu) returning id into d_aberto;
   insert into public.deals (stage_id, created_by) values (v_stage, saiu) returning id into d_ganho;
-  -- O desfecho sai da etapa (0102), e a etapa de venda exige a conferência
-  -- aprovada (0028) — mesmo caminho do 23_gamificacao.
-  update public.deals set document_review_status = 'approved' where id = d_ganho;
-  update public.deals set stage_id = (select id from public.pipeline_stages where code = 'closed') where id = d_ganho;
+  -- Cenário: um negócio já ganho. As travas de etapa (documento, conferência)
+  -- não são o assunto aqui, então os gatilhos ficam de fora só neste UPDATE.
+  set local session_replication_role = replica;
+  update public.deals set stage_id = (select id from public.pipeline_stages where code = 'closed'),
+         outcome = 'won', closed_at = now() where id = d_ganho;
+  set local session_replication_role = origin;
   insert into public.deals (stage_id, created_by) values (v_stage, saiu) returning id into d_dois;
   insert into public.deal_participants (deal_id, profile_id, role) values (d_dois, colega, 'broker');
 
