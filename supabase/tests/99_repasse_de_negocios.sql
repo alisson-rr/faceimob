@@ -65,6 +65,8 @@ begin
   insert into public.deal_participants (deal_id, profile_id, role) values (d_dois, colega, 'broker');
 
   perform pg_temp.ok((select outcome = 'won' from public.deals where id = d_ganho), 'cenário: um negócio ganho');
+  -- Desligar é ato do admin (guarda de perfil), então o cenário entra como ele.
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
   update public.profiles set status = 'terminated' where id = saiu;
 
   perform set_config('request.jwt.claims', json_build_object('sub', novo, 'role', 'authenticated')::text, true);
