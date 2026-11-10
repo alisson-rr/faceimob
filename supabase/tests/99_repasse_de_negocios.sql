@@ -55,7 +55,9 @@ begin
   -- Negócios do corretor que saiu (o criador entra como corretor e traz o gerente A).
   insert into public.deals (stage_id, created_by) values (v_stage, saiu) returning id into d_aberto;
   insert into public.deals (stage_id, created_by) values (v_stage, saiu) returning id into d_ganho;
-  update public.deals set outcome = 'won' where id = d_ganho;
+  -- O desfecho sai da etapa (0102): o ganho vai para uma etapa de venda.
+  update public.deals set stage_id = (select id from public.pipeline_stages where outcome = 'won' order by position limit 1),
+         outcome = 'won', closed_at = now() where id = d_ganho;
   insert into public.deals (stage_id, created_by) values (v_stage, saiu) returning id into d_dois;
   insert into public.deal_participants (deal_id, profile_id, role) values (d_dois, colega, 'broker');
 
