@@ -100,7 +100,7 @@ describe("QueuePosition", () => {
     ]));
     const { container, cleanup } = await render(<QueuePosition checkedIn opensAt="08:30" />);
 
-    expect(container.textContent).toMatch(/você é o 2º de 2/i);
+    expect(container.textContent).toMatch(/você é o 2º de 2 em Fila Geral/i);
     // O critério de ordem aparece junto: sem ele o corretor perde a vez e não
     // entende por quê.
     expect(container.textContent).toMatch(/ordem de chegada/i);

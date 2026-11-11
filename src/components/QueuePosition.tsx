@@ -138,11 +138,16 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
           <details key={q.groupId} className="group rounded-md border border-border/40 p-2.5">
             <summary className="flex cursor-pointer list-none items-center gap-2 flex-wrap [&::-webkit-details-marker]:hidden">
               <ListOrdered className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-xs font-medium">{q.groupName}:</span>
+              {/* 11/11/2026: com dois grupos, o corretor lia a posição de uma
+                  fila como se fosse da outra. O nome da fila vem em destaque e
+                  repetido na própria posição. */}
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-sm font-semibold text-primary">
+                {nomeDaFila(q.groupName)}
+              </span>
               {mine >= 0 ? (
                 <Badge variant="default">
                   {/* 0310: o corretor recebe só a própria linha — sem o total nem os nomes. */}
-                  você é o {q.entries[mine].queue_position}º{q.entries.length > 1 ? ` de ${q.entries.length}` : ""}
+                  você é o {q.entries[mine].queue_position}º{q.entries.length > 1 ? ` de ${q.entries.length}` : ""} em {nomeDaFila(q.groupName)}
                 </Badge>
               ) : !checkedIn ? (
                 <span className="text-xs text-muted-foreground">
@@ -201,6 +206,9 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
     </div>
   );
 }
+
+/** "Leads Qualificados" → "Fila Leads Qualificados"; não repete quando o grupo já se chama "Fila ...". */
+const nomeDaFila = (grupo: string) => (grupo.trim().toLowerCase().startsWith("fila ") ? grupo.trim() : `Fila ${grupo.trim()}`);
 
 const hora = (iso: string) =>
   new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
