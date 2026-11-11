@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, BedDouble, Building2, Pencil, ExternalLink, Map as MapIcon, MapPin, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, LoadingState, PageHeader, StatusBadge } from "@/components/shared";
 import { SITE_PUBLICO, STATUS_DO_IMOVEL, listarImoveisDoMapa, type ImovelDoMapa } from "@/integrations/supabase/central";
 import { Button } from "@/components/ui/button";
@@ -38,10 +37,6 @@ const POSICAO_DA_CIDADE: Record<string, { x: number; y: number }> = {
   "triunfo": { x: 15, y: 40 },
   "montenegro": { x: 40, y: 15 },
 };
-
-/** O "Mapa Google" do site: My Maps da Faceimob, embutido aqui sem sair do CRM. */
-const MAPA_GOOGLE =
-  "https://www.google.com/maps/d/u/0/embed?mid=1gyhEad0cjyHOalVWap1H0TssJaiIf20&ll=-30.07673837976231%2C-51.02201918265033&z=11";
 
 type Cidade = { chave: string; nome: string; imoveis: ImovelDoMapa[]; pos: { x: number; y: number } | null };
 
@@ -89,26 +84,7 @@ export default function CentralMapa() {
         )}
       />
 
-      <Tabs defaultValue="faceimob">
-        <TabsList>
-          <TabsTrigger value="faceimob">Mapa Faceimob</TabsTrigger>
-          <TabsTrigger value="google">Mapa Google</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="google" className="mt-4">
-          <Card className="overflow-hidden">
-            <iframe
-              title="Mapa de empreendimentos Faceimob no Google"
-              src={MAPA_GOOGLE}
-              className="h-[70vh] min-h-[420px] w-full border-0"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              allowFullScreen
-            />
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="faceimob" className="mt-4">
+      <div>
           {imoveis.isError ? (
             <p role="alert" className="text-sm text-destructive">{describeError(imoveis.error, "Não consegui carregar os imóveis.")}</p>
           ) : imoveis.isPending ? (
@@ -240,8 +216,7 @@ export default function CentralMapa() {
               {semCidade} {semCidade === 1 ? "imóvel sem cidade cadastrada" : "imóveis sem cidade cadastrada"} no painel do site.
             </p>
           )}
-        </TabsContent>
-      </Tabs>
+      </div>
     </div>
   );
 }
