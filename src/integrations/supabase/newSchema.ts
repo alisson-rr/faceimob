@@ -685,6 +685,9 @@ export async function listLegacyDeals(
       contract_has_pending_issue: deal.contract_has_pending_issue,
       cca_pending_label: deal.cca_case?.status !== "cancelled" && isIndependentCcaStage(deal.cca_case?.stage?.name)
         ? deal.cca_case?.stage?.name : null,
+      // Mesmo critério de `deal_com_cca` (0332).
+      cca_em_analise: ["under_review", "sent_to_agency", "sent_to_developer"].includes(deal.cca_case?.status ?? "")
+        && !bareStatus(deal.status_detail).startsWith("PENDENTE"),
       construtora_trocada_em: (deal as DealRow & { construtora_trocada_em?: string | null }).construtora_trocada_em || undefined,
       history: [],
     } satisfies LegacyDealRecord;

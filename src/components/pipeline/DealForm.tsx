@@ -250,6 +250,8 @@ export function DealForm({
   // Negócio já criado: o Status 2 do Cadastro é de quem move por ele (admin, sócio e
   // CCA). Corretor, gerente e diretor movem pela aba Negócio (12/10/2026).
   const status2Escondido = !isNew && !isAdmin && !roles.includes("cca");
+  // 0332: em análise na CCA, a renda informal é do CCA; o comercial só vê.
+  const rendaTravada = !isNew && Boolean(form.cca_em_analise) && !isAdmin && !can("cca.review");
   const canExitStage = useCanExitStage();
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   /** Falha de carga do catálogo de empreendimentos — separada do "não tem
@@ -503,14 +505,14 @@ export function DealForm({
         <div className="deal-income-toggle">
           <Label htmlFor={field("informal")} className="cursor-pointer text-sm font-semibold">Renda informal{form.has_second_client ? " — cliente 1" : ""}?</Label>
           <Switch
-            id={field("informal")} checked={form.has_informal_income || false}
+            id={field("informal")} checked={form.has_informal_income || false} disabled={rendaTravada}
             onCheckedChange={(v) => onChange({ has_informal_income: v })}
           />
         </div>
         {form.has_second_client && (
           <div className="deal-income-toggle">
             <Label htmlFor={field("informal2")} className="cursor-pointer text-sm font-semibold">Renda informal — cliente 2?</Label>
-            <Switch id={field("informal2")} checked={form.has_informal_income2 || false}
+            <Switch id={field("informal2")} checked={form.has_informal_income2 || false} disabled={rendaTravada}
               onCheckedChange={(v) => onChange({ has_informal_income2: v })} />
           </div>
         )}
@@ -580,6 +582,10 @@ export function DealForm({
         </Section>
       )}
 
+      {rendaTravada && (form.has_informal_income || form.has_informal_income2) && (
+        <p className="text-xs text-muted-foreground">A renda informal está em análise na CCA: só o CCA altera até a decisão.</p>
+      )}
+      <fieldset disabled={rendaTravada} className="contents">
       {form.has_informal_income && (
         <Section title={form.has_second_client ? "Renda informal — cliente 1" : "Renda informal"} icon={<Wallet className="h-4 w-4" aria-hidden="true" />} className="deal-income-panel deal-premium-panel">
           <TextField id={field("segmento")} label="Segmento/atividade" value={form.segmento_atividade} onChange={(v) => onChange({ segmento_atividade: v })} />
@@ -623,6 +629,8 @@ export function DealForm({
           </div>
         </Section>
       )}
+
+      </fieldset>
 
       <Section title="Empreendimento" icon={<Building2 className="h-4 w-4" aria-hidden="true" />} className="deal-tone-gold">
         <div>

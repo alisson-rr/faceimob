@@ -38,7 +38,7 @@ export type CcaQueueSpot = { posicao: number; fila: CcaFila };
 // `types.ts`. O cast fica isolado nesta fronteira e os retornos são tipados.
 const ccaRpc = supabase as unknown as {
   rpc: (
-    name: "my_cca_queue_position" | "reactivate_deal" | "reactivate_deal_with_destination",
+    name: "my_cca_queue_position" | "reactivate_deal" | "reactivate_deal_with_destination" | "cca_corrigir_nome_proponente",
     params?: Record<string, unknown>,
   ) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>;
 };
@@ -107,6 +107,14 @@ export async function reactivateDeal(params: ReactivateDealParams): Promise<Reac
   });
   if (error) throw dbError("reactivate_deal_with_destination", error);
   return data as ReactivateDealResult;
+}
+
+/** CCA corrige o nome digitado errado pelo corretor (0332), em qualquer fase. */
+export async function corrigirNomeProponente(dealId: string, ordinal: 1 | 2, nome: string): Promise<void> {
+  const { error } = await ccaRpc.rpc("cca_corrigir_nome_proponente", {
+    p_deal_id: dealId, p_ordinal: ordinal, p_nome: nome,
+  });
+  if (error) throw dbError("cca_corrigir_nome_proponente", error);
 }
 
 export const useReactivateDeal = () => {
