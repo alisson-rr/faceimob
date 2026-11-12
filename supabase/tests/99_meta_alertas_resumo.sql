@@ -731,10 +731,10 @@ do $$
 begin
   perform pg_temp.check117(exists (
     select 1 from cron.job
-     where jobname = 'faceimob-meta-resumo-diario'
-       and schedule = '0 11 * * *'
+     where jobname = 'faceimob-meta-resumo-0830'
+       and schedule = '30 11 * * *'
        and command like '%meta_enfileirar_resumo_diario()%'),
-    'faceimob-meta-resumo-diario agendado às 11:00 UTC (08:00 em São Paulo)');
+    'faceimob-meta-resumo-0830 agendado às 11:30 UTC (08:30 em São Paulo, 0333)');
 end
 $$;
 
