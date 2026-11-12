@@ -149,6 +149,8 @@ export interface PipelineDeal {
   /** Veio de “Virou negócio com pendências” e mantém o alerta no contrato. */
   contract_has_pending_issue?: boolean;
   cca_pending_label?: string | null;
+  /** Em análise na CCA (0332): a renda informal trava para o comercial. */
+  cca_em_analise?: boolean;
   /** Quando a construtora foi trocada depois de virar negócio (0277): dá o selo "Troca construtora". */
   construtora_trocada_em?: string;
   history?: DealHistoryEntry[];

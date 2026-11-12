@@ -15,6 +15,7 @@ import {
   DealCcaPanel, DealCommentsPanel, DealForm, dealDocumentNumberError, dealRequiredError, saveCcaAnalysis, useDealWriteLock,
   type CcaAnalysis, type PipelineStage,
 } from "@/components/pipeline";
+import { CorrigirNomeProponentes } from "@/components/pipeline/CorrigirNomeProponentes";
 import { addDealComment } from "@/components/pipeline/DealCommentsPanel";
 import { BaixaPendenciaContrato } from "@/components/pipeline/BaixaPendenciaContrato";
 import { marcarOff } from "@/integrations/supabase/dealStatuses";
@@ -591,6 +592,18 @@ export default function DealDetailModal({
 
           {montada("cca") && dealId && (
             <div hidden={tab !== "cca"} className="deal-form-claro space-y-3">
+            {can("cca.review") && (
+              <CorrigirNomeProponentes
+                dealId={dealId}
+                nome1={form.client}
+                nome2={form.client2}
+                temSegundo={Boolean(form.has_second_client)}
+                onCorrigido={(ordinal, nome) => {
+                  patch(ordinal === 1 ? { client: nome } : { client2: nome });
+                  setVersaoComentarios((v) => v + 1);
+                }}
+              />
+            )}
             <DealCcaPanel
               dealId={dealId}
               value={cca}
