@@ -93,19 +93,22 @@ begin
     (v_conv_cand, 'lead', 'quero a vaga', now() - interval '25 hours'),
     (v_conv_cand, 'agent', 'Qual unidade?', now() - interval '25 hours' + interval '1 minute');
 
+  -- 0330: só o candidato é arquivado; a conversa de compra parada fica para o
+  -- dreno, que a entrega à roleta (teste 99_sdr_parada_vai_para_roleta).
   v_n := public.sdr_arquivar_sem_resposta();
-  perform pg_temp.ok(v_n = 2, format('arquiva as duas conversas paradas há 24 h (%s)', v_n));
-  perform pg_temp.ok((select status from public.sdr_conversations where id = v_conv) = 'abandoned',
+  perform pg_temp.ok(v_n = 1, format('arquiva só a conversa do candidato parada há 24 h (%s)', v_n));
+  perform pg_temp.ok((select status from public.sdr_conversations where id = v_conv_cand) = 'abandoned',
     'conversa arquivada sai da caixa');
-  perform pg_temp.ok((select status from public.leads where id = v_lead) = 'lost',
-    'lead de compra sem resposta vai para a base');
+  perform pg_temp.ok((select status from public.sdr_conversations where id = v_conv) = 'active'
+    and (select status from public.leads where id = v_lead) = 'queued',
+    'lead de compra sem resposta não é arquivado (vai para a roleta pelo dreno)');
   perform pg_temp.ok((select status from public.leads where id = v_cand) = 'discarded',
     'candidato sem resposta não entra na base');
 
   -- Voltou a escrever: retoma com o robô e o lead volta para a fila.
-  perform pg_temp.ok(public.sdr_retomar_conversa(v_conv), 'conversa arquivada é retomada');
-  perform pg_temp.ok((select status from public.sdr_conversations where id = v_conv) = 'active'
-    and (select status from public.leads where id = v_lead) = 'queued',
+  perform pg_temp.ok(public.sdr_retomar_conversa(v_conv_cand), 'conversa arquivada é retomada');
+  perform pg_temp.ok((select status from public.sdr_conversations where id = v_conv_cand) = 'active'
+    and (select status from public.leads where id = v_cand) = 'queued',
     'robô volta a atender e o lead sai da base');
 
   -- Candidato fora do perfil também vai para descartado.
