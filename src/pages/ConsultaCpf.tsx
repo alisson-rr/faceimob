@@ -65,7 +65,8 @@ export default function ConsultaCpf() {
         icon={IdCard}
         description="Veja se o cliente já está em atendimento e com quem. Negócio OFF ou de corretor desligado pode ser resgatado."
       />
-      <Card className="max-w-xl p-4">
+      {/* Centralizado: com o menu aberto, o cartão encostado à esquerda ficava por baixo dele. */}
+      <Card className="mx-auto w-full max-w-xl p-4">
         <form onSubmit={(e) => void consultar(e)} className="space-y-3">
           <Label htmlFor={`${id}-cpf`}>CPF do cliente</Label>
           <div className="flex gap-2">
