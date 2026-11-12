@@ -216,6 +216,20 @@ begin
   perform pg_temp.ok(v_result#>>'{body,encontrado}' = 'false' and v_result#>'{body,lead}' = 'null', 'GET não reaproveita autorização depois de repasse fora do escopo');
   v_result := public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','criar_lead','{"nome":"Não revelar","telefone":"11928300002"}');
   perform pg_temp.ok(v_result->>'status' = '404' and not (v_result->'body' ? 'id'), 'POST existente não revela ID depois de repasse fora do escopo');
+  -- 0331: corretor suspenso na agenda não derruba a integração; sem nenhum ativo, sim.
+  insert into auth.users (id,email,raw_user_meta_data) values
+    ('00000000-0000-0000-0000-000002830005','extra@teste-283.invalid','{"full_name":"Corretor extra 283"}');
+  insert into public.user_roles (profile_id,role) values ('00000000-0000-0000-0000-000002830005','broker') on conflict do nothing;
+  update private.integration_credentials
+     set config = jsonb_set(config,'{agenda_ids}',jsonb_build_array(v_broker,'00000000-0000-0000-0000-000002830005'::uuid))
+   where provider = '3c' and label = 'api_token';
+  update public.profiles set status = 'suspended' where id = '00000000-0000-0000-0000-000002830005';
+  perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','etapas')->>'status' = '200',
+    'corretor suspenso na agenda não derruba a integração');
+  update public.profiles set status = 'suspended' where id = v_broker;
+  perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','etapas')->>'status' = '503',
+    'sem nenhum corretor ativo na agenda a integração fica indisponível');
+  update public.profiles set status = 'active' where id = v_broker;
   update private.integration_credentials set active = false where provider = '3c' and label = 'api_token';
   perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','etapas')->>'status' = '401', 'revogação é fresca a cada pedido');
   update private.integration_credentials set active = true,config = config || '{"enabled":false}' where provider = '3c' and label = 'api_token';
