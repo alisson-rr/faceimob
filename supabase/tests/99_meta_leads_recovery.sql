@@ -14,9 +14,9 @@ end;
 $$;
 
 select pg_temp.check174(exists (
-  select 1 from cron.job where jobname = 'faceimob-meta-sync'
-    and schedule = '15 * * * *' and command like '%dispatch_meta_sync()%'),
-  'a completa segue agendada (de hora em hora desde a 0197)');
+  select 1 from cron.job where jobname = 'faceimob-meta-sync-diaria'
+    and schedule = '20 11 * * *' and command like '%dispatch_meta_sync()%'),
+  'a completa segue agendada (uma vez por dia desde a 0333)');
 
 select pg_temp.check174(exists (
   select 1 from cron.job where jobname = 'faceimob-meta-leads'

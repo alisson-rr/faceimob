@@ -564,7 +564,7 @@ begin
 end
 $$;
 
-\echo '== 7. resumo diário: uma vez por dia, sócio e diretor, começa pela falha =='
+\echo '== 7. resumo diário: uma vez por dia, só administrador no sino (0333), começa pela falha =='
 
 do $$
 declare
@@ -581,6 +581,8 @@ declare
   n2      int;
   v       record;
 begin
+  -- 0333: a Dora vira administradora; a sócia sai da lista.
+  insert into public.user_roles (profile_id, role) values (dir, 'admin') on conflict do nothing;
   -- Sem conta ligada, não há o que resumir.
   select array_agg(id) into ligadas from public.meta_ad_accounts where enabled;
   update public.meta_ad_accounts set enabled = false where id = any (ligadas);
@@ -607,20 +609,20 @@ begin
   reset role;
   perform set_config('request.jwt.claims', '', false);
 
-  perform pg_temp.check117(n1 >= 2 and n2 = 0,
+  perform pg_temp.check117(n1 >= 1 and n2 = 0,
     format('duas vezes no mesmo dia: insere uma (%s e depois %s)', n1, n2));
-  perform pg_temp.check117(pg_temp.avisos117(soc, 'meta_resumo_diario') = 1
-    and pg_temp.avisos117(dir, 'meta_resumo_diario') = 1,
-    'vai para a sócia e para o diretor, uma linha por pessoa');
+  perform pg_temp.check117(pg_temp.avisos117(dir, 'meta_resumo_diario') = 1
+    and pg_temp.avisos117(soc, 'meta_resumo_diario') = 0,
+    'vai só para administrador, uma linha por pessoa');
   perform pg_temp.check117(pg_temp.avisos117(cor, 'meta_resumo_diario') = 0
     and pg_temp.avisos117(mkt, 'meta_resumo_diario') = 0,
     'corretor e marketing não recebem o resumo');
 
   select title, body, channel, link into v
-    from public.notifications where profile_id = soc and kind = 'meta_resumo_diario';
-  perform pg_temp.check117(v.channel = 'whatsapp' and v.link = '/marketing'
+    from public.notifications where profile_id = dir and kind = 'meta_resumo_diario';
+  perform pg_temp.check117(v.channel = 'in_app' and v.link = '/marketing'
     and v.title = 'Resumo da Meta de ontem (' || to_char(ontem, 'DD/MM') || ')',
-    'só WhatsApp, com o dia no título');
+    'no sino do CRM, com o dia no título');
   perform pg_temp.check117(v.body like 'A sincronização de hoje falhou; números até ' || to_char(ontem, 'DD/MM') || '.%',
     format('com a última sincronização boa de ontem, o texto começa pelo aviso (%s)', left(v.body, 80)));
   perform pg_temp.check117(v.body like '%Gasto: R$ 330,00.%'

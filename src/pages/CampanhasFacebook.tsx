@@ -86,7 +86,7 @@ export default function CampanhasFacebook() {
       {lista.isError && <p className="text-sm text-destructive">{describeError(lista.error, "Não foi possível carregar os anúncios.")}</p>}
       {!lista.isPending && !lista.isError && visiveis.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          {busca ? "Nenhum anúncio com essa busca." : "Nenhum anúncio ativo sincronizado ainda. A lista se atualiza de hora em hora."}
+          {busca ? "Nenhum anúncio com essa busca." : "Nenhum anúncio ativo sincronizado ainda. A lista se atualiza todo dia às 08:25."}
         </p>
       )}
 
