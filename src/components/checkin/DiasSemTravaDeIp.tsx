@@ -90,7 +90,7 @@ export function DiasSemTravaDeIp({ podeEditar }: { podeEditar: boolean }) {
                 >
                   <span className="block text-xs capitalize">{dia === query.data.hoje ? "hoje" : semana.format(data).replace(".", "")}</span>
                   <span className="block tabular-nums">{diaMes.format(data)}</span>
-                  <span className="block max-w-[7rem] truncate text-[10px] font-normal">{automatico}</span>
+                  <span className="block max-w-[7rem] truncate text-xs font-normal">{automatico}</span>
                 </div>
               );
             }
