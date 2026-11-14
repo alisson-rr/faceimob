@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AUDIO_NAO_TRANSCRITO, AUDIOS_POR_TELEFONE_DIA, baloesDaResposta, corpoDaMensagem, decidirReentrega, decidirRota, inicioDoDiaEmSaoPaulo, numeroIgnorado,
-  caminhoDoAnexo, extensaoDaMidia, extrairTelefone, leituraDaMidia, lerWebhook, MIDIAS_POR_TELEFONE_DIA, nomeDoAnexo, nomeDoAudio, parseMessages, passouDoTetoDeAudios, passouDoTetoDeMidias, planejar,
+  caminhoDoAnexo, extensaoDaMidia, extrairTelefone, leituraDaMidia, lerWebhook, pedeRelatorio, MIDIAS_POR_TELEFONE_DIA, nomeDoAnexo, nomeDoAudio, parseMessages, passouDoTetoDeAudios, passouDoTetoDeMidias, planejar,
   RESERVA_DO_AUDIO, RESERVA_RETOMADA,
 } from "./parse.ts";
 
@@ -355,5 +355,19 @@ describe("nome de usuário e BSUID (0335)", () => {
     expect(extrairTelefone("CEP 91000-000")).toBeNull();
     expect(extrairTelefone("99999-8888")).toBeNull();
     expect(extrairTelefone("51 89999-8888")).toBeNull();
+  });
+});
+
+describe("relatório da Meta pelo WhatsApp (0336)", () => {
+  it("o clique no botão do modelo chega como texto e é reconhecido", () => {
+    const [m] = parseMessages(payload({ ...de, id: "rb", type: "button", button: { text: "Receber relatório", payload: "Receber relatório" } }));
+    expect(m.text).toBe("Receber relatório");
+    expect(pedeRelatorio(m.text)).toBe(true);
+    expect(pedeRelatorio(" receber relatorio ")).toBe(true);
+  });
+
+  it("outra frase não pede o relatório", () => {
+    expect(pedeRelatorio("quero receber o relatório amanhã")).toBe(false);
+    expect(pedeRelatorio("ok")).toBe(false);
   });
 });

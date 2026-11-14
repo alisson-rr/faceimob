@@ -106,8 +106,18 @@ export async function sendWhatsAppTemplate(
   templateName: string,
   language: string,
   bodyParams: string[],
+  /** Modelo com imagem no cabeçalho: o link público da imagem vai em todo envio. */
+  headerImageUrl?: string,
 ) {
   const { token, phoneId } = await whatsAppCreds();
+  const components = [
+    ...(headerImageUrl
+      ? [{ type: "header", parameters: [{ type: "image", image: { link: headerImageUrl } }] }]
+      : []),
+    ...(bodyParams.length
+      ? [{ type: "body", parameters: bodyParams.map((p) => ({ type: "text", text: p })) }]
+      : []),
+  ];
   const body: Record<string, unknown> = {
     messaging_product: "whatsapp",
     to,
@@ -115,14 +125,7 @@ export async function sendWhatsAppTemplate(
     template: {
       name: templateName,
       language: { code: language },
-      ...(bodyParams.length
-        ? {
-            components: [{
-              type: "body",
-              parameters: bodyParams.map((p) => ({ type: "text", text: p })),
-            }],
-          }
-        : {}),
+      ...(components.length ? { components } : {}),
     },
   };
   const res = await fetch(`${META_GRAPH}/${phoneId}/messages`, {
