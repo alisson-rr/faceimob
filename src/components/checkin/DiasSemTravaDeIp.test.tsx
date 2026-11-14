@@ -10,12 +10,17 @@ import { DiasSemTravaDeIp } from "./DiasSemTravaDeIp";
 vi.mock("@/integrations/supabase/checkin", () => ({ getCurrentWorkDate: async () => "2026-10-02" }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: () => ({ select: () => ({ gte: async () => ({ data: [{ dia: "2026-10-03" }], error: null }) }) }),
+    from: () => ({ select: () => ({ gte: async () => ({ data: [{ dia: "2026-10-06" }], error: null }) }) }),
+    // 0334: sábado e domingo chegam do banco como livres sozinhos.
+    rpc: async () => ({
+      data: [{ dia: "2026-10-03", motivo: "Fim de semana" }, { dia: "2026-10-04", motivo: "Fim de semana" }],
+      error: null,
+    }),
   },
 }));
 
 describe("DiasSemTravaDeIp", () => {
-  it("mostra os 7 dias da semana a partir de hoje, com sábado liberado", async () => {
+  it("mostra o fim de semana livre sozinho e o dia marcado à mão como botão", async () => {
     const container = document.body.appendChild(document.createElement("div"));
     const root = createRoot(container);
     await act(async () => {
@@ -25,14 +30,17 @@ describe("DiasSemTravaDeIp", () => {
     });
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-    const dias = Array.from(container.querySelectorAll("button[aria-pressed]"));
-    expect(dias).toHaveLength(7);
-    expect(dias[0].textContent).toContain("hoje");
-    expect(dias[0].textContent).toContain("02/10");
-    expect(dias[1].textContent).toMatch(/sáb/i);
-    expect(dias[1].getAttribute("aria-pressed")).toBe("true");
-    expect(dias[2].getAttribute("aria-pressed")).toBe("false");
-    expect(dias[6].textContent).toContain("08/10");
+    const botoes = Array.from(container.querySelectorAll("button[aria-pressed]"));
+    expect(botoes).toHaveLength(5);
+    expect(botoes[0].textContent).toContain("hoje");
+    expect(botoes[0].textContent).toContain("02/10");
+    expect(botoes[1].textContent).toContain("05/10");
+    expect(botoes[2].textContent).toContain("06/10");
+    expect(botoes[2].getAttribute("aria-pressed")).toBe("true");
+    expect(botoes[1].getAttribute("aria-pressed")).toBe("false");
+    const automaticos = Array.from(container.querySelectorAll("[title^='Liberado sozinho']"));
+    expect(automaticos).toHaveLength(2);
+    expect(automaticos[0].textContent).toMatch(/sáb.*03\/10.*Fim de semana/i);
     await act(async () => root.unmount());
   });
 });

@@ -26,11 +26,20 @@ function proximosDias(inicio: string, quantos = DIAS_NA_TELA): string[] {
 const semana = new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" });
 const diaMes = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
 
-async function carregar(): Promise<{ hoje: string; marcados: Set<string> }> {
+async function carregar(): Promise<{ hoje: string; marcados: Set<string>; automaticos: Map<string, string> }> {
   const hoje = await getCurrentWorkDate();
-  const { data, error } = await untyped.from("checkin_dias_sem_ip").select("dia").gte("dia", hoje);
-  if (error) throw dbError("checkin_dias_sem_ip", error);
-  return { hoje, marcados: new Set((data ?? []).map((row: { dia: string }) => row.dia)) };
+  const [marcados, automaticos] = await Promise.all([
+    untyped.from("checkin_dias_sem_ip").select("dia").gte("dia", hoje),
+    // 0334: fim de semana e feriado já são livres sem marcar.
+    untyped.rpc("checkin_dias_livres_automaticos", { p_inicio: hoje, p_dias: DIAS_NA_TELA }),
+  ]);
+  if (marcados.error) throw dbError("checkin_dias_sem_ip", marcados.error);
+  if (automaticos.error) throw dbError("checkin_dias_livres_automaticos", automaticos.error);
+  return {
+    hoje,
+    marcados: new Set((marcados.data ?? []).map((row: { dia: string }) => row.dia)),
+    automaticos: new Map((automaticos.data ?? []).map((row: { dia: string; motivo: string }) => [row.dia, row.motivo])),
+  };
 }
 
 /**
@@ -59,7 +68,7 @@ export function DiasSemTravaDeIp({ podeEditar }: { podeEditar: boolean }) {
     <SectionCard
       title="Dias sem trava de IP"
       icon={CalendarCheck}
-      description="Marque os dias em que o check-in vale de qualquer lugar (feriado, plantão, fim de semana). Turno e atrasados continuam valendo."
+      description="Sábado, domingo e feriados já ficam livres sozinhos. Marque os outros dias em que o check-in vale de qualquer lugar (plantão, ponte). Turno e atrasados continuam valendo."
       contentClassName="space-y-2"
     >
       {query.error ? (
@@ -70,7 +79,21 @@ export function DiasSemTravaDeIp({ podeEditar }: { podeEditar: boolean }) {
         <div className="flex flex-wrap gap-2">
           {proximosDias(query.data.hoje).map((dia) => {
             const liberado = query.data.marcados.has(dia);
+            const automatico = query.data.automaticos.get(dia);
             const data = new Date(`${dia}T12:00:00Z`);
+            if (automatico) {
+              return (
+                <div
+                  key={dia}
+                  title={`Liberado sozinho: ${automatico}`}
+                  className="min-w-[4.5rem] rounded-xl border border-success/60 bg-success/15 px-3 py-2 text-center text-sm font-semibold text-success"
+                >
+                  <span className="block text-xs capitalize">{dia === query.data.hoje ? "hoje" : semana.format(data).replace(".", "")}</span>
+                  <span className="block tabular-nums">{diaMes.format(data)}</span>
+                  <span className="block max-w-[7rem] truncate text-xs font-normal">{automatico}</span>
+                </div>
+              );
+            }
             return (
               <button
                 key={dia}
