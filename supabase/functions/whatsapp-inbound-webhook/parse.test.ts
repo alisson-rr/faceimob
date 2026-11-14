@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AUDIO_NAO_TRANSCRITO, AUDIOS_POR_TELEFONE_DIA, baloesDaResposta, corpoDaMensagem, decidirReentrega, decidirRota, inicioDoDiaEmSaoPaulo, numeroIgnorado,
-  caminhoDoAnexo, extensaoDaMidia, leituraDaMidia, MIDIAS_POR_TELEFONE_DIA, nomeDoAnexo, nomeDoAudio, parseMessages, passouDoTetoDeAudios, passouDoTetoDeMidias, planejar,
+  caminhoDoAnexo, extensaoDaMidia, extrairTelefone, leituraDaMidia, lerWebhook, pedeRelatorio, MIDIAS_POR_TELEFONE_DIA, nomeDoAnexo, nomeDoAudio, parseMessages, passouDoTetoDeAudios, passouDoTetoDeMidias, planejar,
   RESERVA_DO_AUDIO, RESERVA_RETOMADA,
 } from "./parse.ts";
 
@@ -42,13 +42,23 @@ describe("parseMessages", () => {
     ]);
   });
 
-  it("imagem vira tipo 'imagem' com texto vazio; reação e tipo desconhecido não entram", () => {
-    const r = parseMessages(payload(
+  it("imagem vira tipo 'imagem'; tipo desconhecido vira texto (0335); reação fica só no registro", () => {
+    const r = lerWebhook(payload(
       { ...de, id: "img", type: "image", image: { id: "333", mime_type: "image/jpeg", caption: "fachada" } },
       { ...de, id: "r", type: "reaction", reaction: { message_id: "wamid.0", emoji: "ok" } },
-      { ...de, id: "x", type: "constructor" },
+      { ...de, id: "x", type: "order" },
     ));
-    expect(r).toEqual([{ ...de, id: "img", text: "", tipo: "imagem", mediaId: "333", mimeType: "image/jpeg", legenda: "fachada" }]);
+    expect(r.mensagens).toEqual([
+      { ...de, id: "img", text: "", tipo: "imagem", mediaId: "333", mimeType: "image/jpeg", legenda: "fachada" },
+      { ...de, id: "x", text: "[tipo order recebido]", tipo: "texto", mediaId: null, mimeType: null },
+    ]);
+    expect(r.descartadas.map((d) => [d.id, d.motivo, d.tipo])).toEqual([["r", "descartado_tipo_desconhecido", "reaction"]]);
+    expect(r.descartadas[0].payload).toMatchObject({ reaction: { emoji: "ok" } });
+  });
+
+  it("sticker continua entrando como 'outro'", () => {
+    const [m] = parseMessages(payload({ ...de, id: "s", type: "sticker", sticker: { id: "444", mime_type: "image/webp" } }));
+    expect([m.tipo, m.mediaId]).toEqual(["outro", "444"]);
   });
 
   it("os marcadores começam por '[áudio', que é como a aba Conversas separa o áudio que falhou", () => {
@@ -294,5 +304,70 @@ describe("baloesDaResposta", () => {
     expect(baloesDaResposta("a\n\nb\n \nc\n\nd")).toEqual(["a", "b", "c\n\nd"]);
     expect(baloesDaResposta("linha 1\nlinha 2")).toEqual(["linha 1\nlinha 2"]);
     expect(baloesDaResposta("  ")).toEqual([]);
+  });
+});
+
+describe("nome de usuário e BSUID (0335)", () => {
+  const anuncio = { source_type: "ad", source_id: "120253064331240042", headline: "Feirão 06", ctwa_clid: "ARAk1" };
+
+  it("mensagem só com BSUID (sem from) entra, com o anúncio e o nome do perfil", () => {
+    const body = {
+      entry: [{ changes: [{ field: "messages", value: {
+        contacts: [{ user_id: "BR.123abc", profile: { name: "Ana" } }],
+        messages: [{ from_user_id: "BR.123abc", id: "u1", type: "text", text: { body: "Oi, vi o anúncio" }, referral: anuncio }],
+      } }] }],
+    };
+    const r = lerWebhook(body);
+    expect(r.descartadas).toEqual([]);
+    expect(r.mensagens).toHaveLength(1);
+    expect(r.mensagens[0]).toMatchObject({ from: "", userId: "BR.123abc", nome: "Ana", text: "Oi, vi o anúncio" });
+    expect(r.mensagens[0].anuncio).toMatchObject({ adId: "120253064331240042", ctwaClid: "ARAk1" });
+  });
+
+  it("com from e BSUID, os dois seguem juntos", () => {
+    const [m] = parseMessages(payload({ ...de, from_user_id: "BR.9", id: "u2", type: "text", text: { body: "oi" } }));
+    expect([m.from, m.userId]).toEqual(["5511999990000", "BR.9"]);
+  });
+
+  it("sem from e sem BSUID: não vira atendimento, mas fica registrada com o payload cru", () => {
+    const r = lerWebhook(payload({ id: "u3", type: "text", text: { body: "perdida" } }));
+    expect(r.mensagens).toEqual([]);
+    expect(r.descartadas).toEqual([{
+      id: "u3", from: "", userId: null, motivo: "descartado_sem_telefone", tipo: "text",
+      payload: { id: "u3", type: "text", text: { body: "perdida" } },
+    }]);
+  });
+
+  it("sem id também fica registrada (o id é gerado ao gravar)", () => {
+    const r = lerWebhook(payload({ ...de, type: "text", text: { body: "sem id" } }));
+    expect(r.descartadas.map((d) => [d.id, d.motivo])).toEqual([[null, "descartado_sem_telefone"]]);
+  });
+
+  it("acha o telefone que o lead escreveu, nos formatos de sempre", () => {
+    expect(extrairTelefone("meu número é (51) 99999-8888")).toBe("5551999998888");
+    expect(extrairTelefone("+55 51 9 9999 8888")).toBe("5551999998888");
+    expect(extrairTelefone("51 3333-4444 comercial")).toBe("555133334444");
+    expect(extrairTelefone("pode ligar 51999998888 depois das 18h")).toBe("5551999998888");
+  });
+
+  it("não confunde valor, CEP ou número sem DDD com telefone", () => {
+    expect(extrairTelefone("tenho 250 mil de entrada")).toBeNull();
+    expect(extrairTelefone("CEP 91000-000")).toBeNull();
+    expect(extrairTelefone("99999-8888")).toBeNull();
+    expect(extrairTelefone("51 89999-8888")).toBeNull();
+  });
+});
+
+describe("relatório da Meta pelo WhatsApp (0336)", () => {
+  it("o clique no botão do modelo chega como texto e é reconhecido", () => {
+    const [m] = parseMessages(payload({ ...de, id: "rb", type: "button", button: { text: "Receber relatório", payload: "Receber relatório" } }));
+    expect(m.text).toBe("Receber relatório");
+    expect(pedeRelatorio(m.text)).toBe(true);
+    expect(pedeRelatorio(" receber relatorio ")).toBe(true);
+  });
+
+  it("outra frase não pede o relatório", () => {
+    expect(pedeRelatorio("quero receber o relatório amanhã")).toBe(false);
+    expect(pedeRelatorio("ok")).toBe(false);
   });
 });
