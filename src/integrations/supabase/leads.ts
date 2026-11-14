@@ -199,6 +199,8 @@ export type LeadRecord = {
    * roleta foi desligado na 0212 (04/10/2026): ele gira até alguém atender.
    */
   roulette_misses: number;
+  /** BSUID do WhatsApp (0335): sem telefone, o corretor atende pelo chat do CRM. */
+  whatsapp_user_id?: string | null;
 
   // Derivados para a UI.
   name: string;
@@ -245,6 +247,8 @@ export const decorateLead = (
     ...complete,
     raw_payload: complete.raw_payload == null ? null : payload,
     roulette_misses: Number.isFinite(misses) ? misses : 0,
+    // Coluna da 0335, ainda fora do `types.ts` gerado.
+    whatsapp_user_id: ((row as Record<string, unknown>).whatsapp_user_id as string | null | undefined) ?? null,
     name: complete.full_name,
     whatsapp: complete.phone || "",
     source:

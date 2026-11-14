@@ -24,7 +24,10 @@ export type AnuncioWhatsapp = {
 };
 
 export type InboundMessage = {
+  /** Telefone de quem escreveu. Vazio quando a Meta só manda o BSUID (nome de usuário). */
   from: string;
+  /** BSUID (`from_user_id`): id do usuário no escopo da empresa, sempre presente desde 04/2026. */
+  userId?: string | null;
   id: string;
   text: string;
   tipo: TipoMensagem;
@@ -79,8 +82,30 @@ const MIDIA = new Map<string, Exclude<TipoMensagem, "texto">>([
   ["unsupported", "outro"],
 ]);
 
+/**
+ * Mensagem que não vira atendimento, mas fica registrada com o payload cru
+ * (0335): antes ela sumia no `continue`, com 200 para a Meta e sem log.
+ */
+export type MensagemDescartada = {
+  id: string | null;
+  from: string;
+  userId: string | null;
+  motivo: "descartado_sem_telefone" | "descartado_tipo_desconhecido";
+  tipo: string;
+  payload: Record<string, unknown>;
+};
+
+/** Tipos que não são fala nova do lead: ficam só no registro. */
+const SO_REGISTRO = new Set(["reaction", "system"]);
+
+/** Compatível com quem só quer as mensagens que viram atendimento. */
 export function parseMessages(body: unknown): InboundMessage[] {
+  return lerWebhook(body).mensagens;
+}
+
+export function lerWebhook(body: unknown): { mensagens: InboundMessage[]; descartadas: MensagemDescartada[] } {
   const out: InboundMessage[] = [];
+  const descartadas: MensagemDescartada[] = [];
   for (const entry of lista(registro(body).entry)) {
     for (const changeValue of lista(registro(entry).changes)) {
       const change = registro(changeValue);
@@ -90,16 +115,32 @@ export function parseMessages(body: unknown): InboundMessage[] {
         const c = registro(contato);
         const nome = texto(registro(c.profile).name);
         if (texto(c.wa_id) && nome) nomes.set(texto(c.wa_id), nome);
+        if (texto(c.user_id) && nome) nomes.set(texto(c.user_id), nome);
       }
       for (const messageValue of lista(registro(change.value).messages)) {
         const m = registro(messageValue);
         const from = texto(m.from);
+        const userId = texto(m.from_user_id) || null;
         const id = texto(m.id);
-        if (!from || !id) continue;
+        const tipoMeta = texto(m.type);
+        // 0335: só o BSUID basta (nome de usuário sem telefone). Sem nenhum dos
+        // dois, ou sem id, não há a quem responder: fica registrada.
+        if (!id || (!from && !userId)) {
+          descartadas.push({ id: id || null, from, userId, motivo: "descartado_sem_telefone", tipo: tipoMeta, payload: m });
+          continue;
+        }
+        if (SO_REGISTRO.has(tipoMeta)) {
+          descartadas.push({ id, from, userId, motivo: "descartado_tipo_desconhecido", tipo: tipoMeta, payload: m });
+          continue;
+        }
         // Só entram quando existem: a mensagem comum continua com a forma de sempre.
-        const nome = nomes.get(from);
+        const nome = nomes.get(from) ?? (userId ? nomes.get(userId) : undefined);
         const anuncio = lerAnuncio(m);
-        const extra = { ...(nome ? { nome } : {}), ...(anuncio ? { anuncio } : {}) };
+        const extra = {
+          ...(userId ? { userId } : {}),
+          ...(nome ? { nome } : {}),
+          ...(anuncio ? { anuncio } : {}),
+        };
 
         const text =
           texto(registro(m.text).body) ||
@@ -111,9 +152,12 @@ export function parseMessages(body: unknown): InboundMessage[] {
           continue;
         }
 
-        const tipoMeta = texto(m.type);
         const tipo = MIDIA.get(tipoMeta);
-        if (!tipo) continue;
+        // 0335: tipo novo (order, request_welcome...) entra como texto, em vez de sumir.
+        if (!tipo) {
+          out.push({ from, id, text: `[tipo ${tipoMeta || "desconhecido"} recebido]`, tipo: "texto", mediaId: null, mimeType: null, ...extra });
+          continue;
+        }
         const midia = registro(m[tipoMeta]);
         const legenda = texto(midia.caption).trim();
         const arquivo = texto(midia.filename).trim();
@@ -131,8 +175,31 @@ export function parseMessages(body: unknown): InboundMessage[] {
       }
     }
   }
-  return out;
+  return { mensagens: out, descartadas };
 }
+
+/**
+ * Telefone brasileiro escrito pelo lead ("51 99999-8888", "(51) 9 9999 8888",
+ * "+55 51 999998888"), normalizado com DDI 55. Nulo se não houver um.
+ */
+export function extrairTelefone(textoLivre: string): string | null {
+  for (const trecho of textoLivre.match(/\+?\d[\d\s().-]{8,20}\d/g) ?? []) {
+    let d = trecho.replace(/\D/g, "");
+    if (d.length === 12 || d.length === 13) {
+      if (!d.startsWith("55")) continue;
+      d = d.slice(2);
+    }
+    if (d.length !== 10 && d.length !== 11) continue;
+    if (Number(d.slice(0, 2)) < 11) continue;
+    if (d.length === 11 && d[2] !== "9") continue;
+    return `55${d}`;
+  }
+  return null;
+}
+
+/** Pergunta do robô ao lead que chegou só com o nome de usuário (0335). */
+export const PEDIDO_DE_TELEFONE =
+  "Olá! Recebemos sua mensagem 😊 Para um corretor te ligar, me passa seu telefone com DDD, por favor?";
 
 /**
  * Corpo gravado para a mídia. A aba Conversas tira o selo de `media_type` e

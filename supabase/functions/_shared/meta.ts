@@ -65,13 +65,33 @@ async function whatsAppCreds() {
  * estouro lança como qualquer falha de rede, e o chamador já trata.
  */
 export async function sendWhatsAppText(to: string, text: string) {
+  return await sendWhatsAppTextPara({ to }, text);
+}
+
+/**
+ * Destino do envio (0335): telefone (`to`) e/ou BSUID (`recipient`). Com os
+ * dois, a Meta usa o `to`; só com o BSUID, vale o `recipient` (lead que chegou
+ * pelo nome de usuário, sem telefone).
+ */
+export type DestinoWhatsApp = { to?: string | null; recipient?: string | null };
+
+export function corpoDoDestino(destino: DestinoWhatsApp): { to?: string; recipient?: string } | null {
+  const to = destino.to?.trim() || undefined;
+  const recipient = destino.recipient?.trim() || undefined;
+  if (!to && !recipient) return null;
+  return { ...(to ? { to } : {}), ...(recipient ? { recipient } : {}) };
+}
+
+export async function sendWhatsAppTextPara(destino: DestinoWhatsApp, text: string) {
+  const alvo = corpoDoDestino(destino);
+  if (!alvo) return { ok: false, data: { error: "sem telefone nem BSUID" } };
   const { token, phoneId } = await whatsAppCreds();
   const res = await fetch(`${META_GRAPH}/${phoneId}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       messaging_product: "whatsapp",
-      to,
+      ...alvo,
       type: "text",
       text: { body: text },
     }),

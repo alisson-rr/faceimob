@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSecret } from "../_shared/secrets.ts";
-import { checkMetaSignature, downloadWhatsAppMedia, normalizePhone, sendWhatsAppText } from "../_shared/meta.ts";
+import { checkMetaSignature, downloadWhatsAppMedia, normalizePhone, sendWhatsAppTextPara } from "../_shared/meta.ts";
 import { META_GRAPH } from "../_shared/metaGraph.ts";
 import { descreverMidia, transcreverAudio } from "../_shared/openai.ts";
 import { DuplicateMessageError, runSdrAgentTurn } from "../_shared/sdrAgent.ts";
@@ -12,14 +12,16 @@ import {
   decidirReentrega,
   caminhoDoAnexo,
   decidirRota,
+  extrairTelefone,
+  lerWebhook,
   numeroIgnorado,
+  PEDIDO_DE_TELEFONE,
   extensaoDaMidia,
   type InboundMessage,
   inicioDoDiaEmSaoPaulo,
   type LeituraDeMidia,
   nomeDoAnexo,
   nomeDoAudio,
-  parseMessages,
   passouDoTetoDeAudios,
   passouDoTetoDeMidias,
   planejar,
@@ -95,7 +97,15 @@ type InboundOutcome =
   | "human_turn"
   | "audio_falhou"
   /** Número da casa que recebe o relatório: nem lead, nem conversa, nem IA (0303). */
-  | "ignorado";
+  | "ignorado"
+  /** 0335: sem telefone nem BSUID (ou sem id), e tipo que não é fala (reação, sistema). */
+  | "descartado_sem_telefone"
+  | "descartado_tipo_desconhecido";
+/**
+ * Quem escreveu (0335): telefone e/ou BSUID. Quem tem nome de usuário pode
+ * chegar só com o BSUID; o envio vai pelo `recipient`.
+ */
+type Contato = { phone: string | null; userId: string | null };
 /** A conversa em que a mensagem entra. */
 /** `robo`: conversa aberta agora já com agente de IA (anúncio com origem ligada a agente). */
 type Alvo = { id: string; lead_id: string | null; robo?: boolean };
@@ -132,10 +142,21 @@ Deno.serve(async (req) => {
       return new Response("Method not allowed", { status: 405, headers: corsHeaders });
     }
 
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    // 0335: POST recusado também deixa rastro (sem o corpo, que não é confiável).
+    const registrarRecusa = async (motivo: "assinatura_invalida" | "segredo_ausente" | "json_invalido", bytes: number) => {
+      const { error } = await supabase.from("whatsapp_webhook_recusas").insert({ motivo, bytes });
+      if (error) console.error("whatsapp-inbound: falha ao registrar POST recusado —", error.message);
+    };
+
     const raw = await req.text();
     const sig = await checkMetaSignature(raw, req.headers.get("x-hub-signature-256"));
     if (sig === "invalid") {
       console.error("whatsapp-inbound: assinatura inválida — POST recusado");
+      await registrarRecusa("assinatura_invalida", raw.length);
       return new Response("Invalid signature", { status: 401, headers: corsHeaders });
     }
     if (sig === "unconfigured") {
@@ -149,6 +170,7 @@ Deno.serve(async (req) => {
       // webhook no painel da Meta de qualquer jeito, então nada de legítimo é
       // perdido. O 401 diz o motivo em vez de falhar em silêncio.
       console.error("whatsapp-inbound: META_APP_SECRET não cadastrado — POST recusado");
+      await registrarRecusa("segredo_ausente", raw.length);
       return new Response(
         JSON.stringify({
           error: "Webhook não configurado.",
@@ -163,14 +185,10 @@ Deno.serve(async (req) => {
       body = JSON.parse(raw) as unknown;
     } catch {
       console.warn("whatsapp-inbound: payload JSON inválido");
+      await registrarRecusa("json_invalido", raw.length);
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
-    const messages = parseMessages(body);
+    const { mensagens: messages, descartadas } = lerWebhook(body);
     let handled = 0;
     let registradas = 0;
     /** Algum áudio deste POST ficou sem desfecho e sem dono vivo conhecido: a Meta tem de reenviar. */
@@ -191,13 +209,14 @@ Deno.serve(async (req) => {
      */
     const registrar = async (
       msg: InboundMessage,
-      phone: string,
+      contato: Contato,
       outcome: InboundOutcome,
       extra: Registro = {},
     ) => {
       const linha = {
         provider_message_id: msg.id,
-        from_phone: phone,
+        from_phone: contato.phone,
+        from_user_id: contato.userId,
         body: extra.body ?? corpoDaMensagem(msg),
         lead_id: extra.leadId ?? null,
         conversation_id: extra.conversationId ?? null,
@@ -233,18 +252,39 @@ Deno.serve(async (req) => {
       registradas++;
     };
 
-    /** Conversa do lead com este telefone: a ativa ou, sem `soAtiva`, a mais recente em qualquer status. */
-    const conversaDoTelefone = async (phone: string, soAtiva: boolean) => {
-      let consulta = supabase
-        .from("sdr_conversations")
-        .select("id, lead_id, status, leads!inner(phone_raw, phone)")
-        .or(`phone_raw.eq.${phone},phone.eq.${phone}`, { foreignTable: "leads" });
-      if (soAtiva) consulta = consulta.eq("status", "active");
-      const { data, error } = await consulta.order("started_at", { ascending: false }).limit(1).maybeSingle();
-      if (error) console.error("whatsapp-inbound: falha ao procurar a conversa —", error.message);
-      return data
-        ? { id: data.id as string, lead_id: data.lead_id as string | null, status: data.status as string }
-        : null;
+    /**
+     * Conversa do lead deste contato: a ativa ou, sem `soAtiva`, a mais recente
+     * em qualquer status. 0335: procura primeiro pelo BSUID e depois pelo
+     * telefone, e completa no lead o que faltava (o telefone que chegou depois,
+     * ou o BSUID de quem já era lead pelo telefone) — sem lead duplicado.
+     */
+    const conversaDoContato = async (contato: Contato, soAtiva: boolean) => {
+      const buscar = async (coluna: "whatsapp_user_id" | "telefone", valor: string) => {
+        let consulta = supabase
+          .from("sdr_conversations")
+          .select("id, lead_id, status, leads!inner(phone_raw, phone, whatsapp_user_id)");
+        consulta = coluna === "whatsapp_user_id"
+          ? consulta.eq("leads.whatsapp_user_id", valor)
+          : consulta.or(`phone_raw.eq.${valor},phone.eq.${valor}`, { foreignTable: "leads" });
+        if (soAtiva) consulta = consulta.eq("status", "active");
+        const { data, error } = await consulta.order("started_at", { ascending: false }).limit(1).maybeSingle();
+        if (error) console.error("whatsapp-inbound: falha ao procurar a conversa —", error.message);
+        return data;
+      };
+      const data = (contato.userId ? await buscar("whatsapp_user_id", contato.userId) : null)
+        ?? (contato.phone ? await buscar("telefone", contato.phone) : null);
+      if (!data) return null;
+      const lead = data.leads as unknown as { phone: string | null; whatsapp_user_id: string | null } | null;
+      if (data.lead_id && lead) {
+        const completar: Record<string, string> = {};
+        if (!lead.phone && contato.phone) Object.assign(completar, { phone: contato.phone, phone_raw: contato.phone });
+        if (!lead.whatsapp_user_id && contato.userId) completar.whatsapp_user_id = contato.userId;
+        if (Object.keys(completar).length) {
+          const { error } = await supabase.from("leads").update(completar).eq("id", data.lead_id);
+          if (error) console.error("whatsapp-inbound: falha ao completar o contato do lead —", error.message);
+        }
+      }
+      return { id: data.id as string, lead_id: data.lead_id as string | null, status: data.status as string };
     };
 
     const contatoDeRemarketing = async (phone: string) => {
@@ -262,9 +302,10 @@ Deno.serve(async (req) => {
     /** Contato de remarketing respondeu o template: vira lead (se ainda não é) e abre conversa com o agente da lista. */
     const abrirRemarketing = async (
       msg: InboundMessage,
-      phone: string,
+      contato: Contato,
       contact: ContatoRemarketing,
     ): Promise<Alvo | null> => {
+      const phone = contato.phone;
       const listConfig = contact.remarketing_lists;
       let leadId = contact.lead_id;
       if (!leadId) {
@@ -278,6 +319,7 @@ Deno.serve(async (req) => {
             full_name: contact.full_name || "Contato de remarketing",
             phone,
             phone_raw: phone,
+            whatsapp_user_id: contato.userId,
             status: "queued",
             funnel_stage: "new",
             utm_source: "remarketing",
@@ -288,7 +330,7 @@ Deno.serve(async (req) => {
           .single();
         if (leadErr) {
           console.error("whatsapp-inbound: falha ao criar lead de remarketing —", leadErr.message);
-          await registrar(msg, phone, "agent_error", {
+          await registrar(msg, contato, "agent_error", {
             detail: `falha ao criar lead de remarketing: ${leadErr.message}`,
           });
           return null;
@@ -309,7 +351,7 @@ Deno.serve(async (req) => {
         .single();
       if (convErr) {
         console.error("whatsapp-inbound: falha ao abrir conversa —", convErr.message);
-        await registrar(msg, phone, "agent_error", {
+        await registrar(msg, contato, "agent_error", {
           leadId,
           detail: `falha ao abrir conversa: ${convErr.message}`,
         });
@@ -352,8 +394,9 @@ Deno.serve(async (req) => {
       }
     };
 
-    const abrirAnuncio = async (msg: InboundMessage, phone: string): Promise<Alvo | null> => {
+    const abrirAnuncio = async (msg: InboundMessage, contato: Contato): Promise<Alvo | null> => {
       const anuncio = msg.anuncio;
+      const phone = contato.phone;
       // Origem do ANÚNCIO (o id dele no campo form_id, aba SDR IA → Origens)
       // decide se a IA atende e qual agente; sem ela, a origem geral do
       // WhatsApp. Falha de leitura cai na origem geral: melhor a roleta do que
@@ -379,13 +422,16 @@ Deno.serve(async (req) => {
         ? { data: null }
         : await supabase.from("lead_sources").select("id, sdr_agent_id").eq("code", "whatsapp_ads").maybeSingle();
       const origem = (daCampanha ?? doAnuncio ?? direto ?? geral) as OrigemAnuncio | null;
-      const agente = origem?.sdr_agent_id ?? null;
+      // 0335: sem telefone o robô de IA não atende — pedimos o telefone (abaixo)
+      // e a conversa fica com o corretor.
+      const agente = phone ? origem?.sdr_agent_id ?? null : null;
       const { data: lead, error: leadErr } = await supabase
         .from("leads")
         .insert({
           full_name: msg.nome?.trim() || "Lead do WhatsApp",
           phone,
           phone_raw: phone,
+          whatsapp_user_id: contato.userId,
           status: "queued",
           funnel_stage: "new",
           source_id: origem?.id ?? null,
@@ -402,7 +448,7 @@ Deno.serve(async (req) => {
         .single();
       if (leadErr) {
         console.error("whatsapp-inbound: falha ao criar lead do anúncio —", leadErr.message);
-        await registrar(msg, phone, "agent_error", { detail: `falha ao criar lead do anúncio: ${leadErr.message}` });
+        await registrar(msg, contato, "agent_error", { detail: `falha ao criar lead do anúncio: ${leadErr.message}` });
         return null;
       }
       const leadId = lead.id as string;
@@ -416,10 +462,33 @@ Deno.serve(async (req) => {
       if (convErr) {
         // O lead já está na roleta; só a conversa ficou de fora.
         console.error("whatsapp-inbound: falha ao abrir conversa do anúncio —", convErr.message);
-        await registrar(msg, phone, "agent_error", { leadId, detail: `lead criado, conversa não: ${convErr.message}` });
+        await registrar(msg, contato, "agent_error", { leadId, detail: `lead criado, conversa não: ${convErr.message}` });
         return null;
       }
+      if (!phone) await pedirTelefone(contato, conv.id as string);
       return { id: conv.id as string, lead_id: leadId, robo: agente !== null };
+    };
+
+    /**
+     * Lead que chegou só com o BSUID (0335): o robô pede o telefone na hora,
+     * pelo `recipient`. Sem resposta em 15 min, a roleta entrega mesmo assim
+     * (`assign_queued_leads`) e o corretor fala pelo chat do CRM.
+     */
+    const pedirTelefone = async (contato: Contato, conversationId: string) => {
+      try {
+        const enviado = await sendWhatsAppTextPara({ recipient: contato.userId }, PEDIDO_DE_TELEFONE);
+        if (!enviado.ok) {
+          console.error("whatsapp-inbound: a Meta recusou o pedido de telefone pelo BSUID");
+          return;
+        }
+        const { error } = await supabase.from("sdr_messages").insert({
+          conversation_id: conversationId, author: "agent", body: PEDIDO_DE_TELEFONE,
+          provider_message_id: (enviado.data as { messages?: { id?: string }[] })?.messages?.[0]?.id ?? null,
+        });
+        if (error) console.error("whatsapp-inbound: pedido de telefone enviado, não gravado —", error.message);
+      } catch (e) {
+        console.error("whatsapp-inbound: WhatsApp indisponível no pedido de telefone —", e instanceof Error ? e.message : String(e));
+      }
     };
 
     /** A mensagem já entrou na conversa (réplica): nada a baixar. */
@@ -439,13 +508,14 @@ Deno.serve(async (req) => {
      */
     const reservar = async (
       msg: InboundMessage,
-      phone: string,
+      contato: Contato,
       alvo: Alvo,
     ): Promise<{ chegada: string } | "duplicata" | "tentar_de_novo"> => {
       const tabela = () => supabase.from("whatsapp_inbound_messages");
       const { data, error } = await tabela().insert({
         provider_message_id: msg.id,
-        from_phone: phone,
+        from_phone: contato.phone,
+        from_user_id: contato.userId,
         body: corpoDaMensagem(msg),
         lead_id: alvo.lead_id,
         conversation_id: alvo.id,
@@ -481,7 +551,11 @@ Deno.serve(async (req) => {
     };
 
     /** Baixa e transcreve o áudio da conversa, com os dois tetos de custo. Todo erro daqui manda a conversa para humano. */
-    const lerAudio = async (msg: InboundMessage, phone: string, chegada: string): Promise<string> => {
+    /** O teto diário conta por telefone; quem só tem BSUID, pelo BSUID (0335). */
+    const doContato = (contato: Contato): [string, string] =>
+      contato.phone ? ["from_phone", contato.phone] : ["from_user_id", contato.userId ?? ""];
+
+    const lerAudio = async (msg: InboundMessage, contato: Contato, chegada: string): Promise<string> => {
       if (!msg.mediaId) throw new Error("a Meta não mandou o id da mídia");
       // Conta as reservas do telefone até a deste áudio, inclusive: elas entram
       // antes do download, então entregas simultâneas se enxergam, e a posição
@@ -490,7 +564,7 @@ Deno.serve(async (req) => {
       const { count, error } = await supabase
         .from("whatsapp_inbound_messages")
         .select("id", { count: "exact", head: true })
-        .eq("from_phone", phone)
+        .eq(...doContato(contato))
         .eq("media_type", "audio")
         .not("conversation_id", "is", null)
         .gte("created_at", inicioDoDiaEmSaoPaulo(new Date(chegada)))
@@ -510,12 +584,12 @@ Deno.serve(async (req) => {
      * O teto diário conta as mídias do telefone já registradas hoje. Todo erro
      * daqui vira marcador na conversa e aviso ao SDR, nunca fala inventada.
      */
-    const lerMidia = async (msg: InboundMessage, phone: string, leitura: LeituraDeMidia, alvo: Alvo): Promise<string> => {
+    const lerMidia = async (msg: InboundMessage, contato: Contato, leitura: LeituraDeMidia, alvo: Alvo): Promise<string> => {
       if (!msg.mediaId) throw new Error("a Meta não mandou o id da mídia");
       const { count, error } = await supabase
         .from("whatsapp_inbound_messages")
         .select("id", { count: "exact", head: true })
-        .eq("from_phone", phone)
+        .eq(...doContato(contato))
         .in("media_type", ["imagem", "documento"])
         .not("conversation_id", "is", null)
         .gte("created_at", inicioDoDiaEmSaoPaulo(new Date()));
@@ -664,7 +738,7 @@ Deno.serve(async (req) => {
      */
     const gravarNaConversa = async (
       msg: InboundMessage,
-      phone: string,
+      contato: Contato,
       extra: Registro,
       linhas: Record<string, unknown>[],
     ) => {
@@ -672,7 +746,7 @@ Deno.serve(async (req) => {
       if (!error) return true;
       if (error.code !== "23505") {
         console.error("whatsapp-inbound: falha ao gravar na conversa —", error.message);
-        await registrar(msg, phone, "agent_error", {
+        await registrar(msg, contato, "agent_error", {
           ...extra,
           detail: `falha ao gravar a mensagem na conversa: ${error.message}`,
         });
@@ -680,15 +754,16 @@ Deno.serve(async (req) => {
       return false;
     };
 
-    const processar = async (msg: InboundMessage, phone: string) => {
+    const processar = async (msg: InboundMessage, contato: Contato) => {
+      const phone = contato.phone;
       // Números da casa (relatório): só o registro, antes de qualquer conversa ou IA.
-      if (numeroIgnorado(phone)) {
-        await registrar(msg, phone, "ignorado");
+      if (phone && numeroIgnorado(phone)) {
+        await registrar(msg, contato, "ignorado");
         return;
       }
-      let conversa = await conversaDoTelefone(phone, true);
-      const contato = conversa ? null : await contatoDeRemarketing(phone);
-      if (!conversa && !contato) conversa = await conversaDoTelefone(phone, false);
+      let conversa = await conversaDoContato(contato, true);
+      const remarketing = conversa || !phone ? null : await contatoDeRemarketing(phone);
+      if (!conversa && !remarketing) conversa = await conversaDoContato(contato, false);
       // Conversa arquivada por falta de resposta (0263): o lead voltou, o robô
       // retoma de onde parou.
       if (conversa?.status === "abandoned") {
@@ -696,25 +771,36 @@ Deno.serve(async (req) => {
         if (retErr) console.error("whatsapp-inbound: falha ao retomar conversa arquivada —", retErr.message);
         if (retomou === true) conversa = { ...conversa, status: "active" };
       }
-      const rota = decidirRota(conversa, contato !== null);
+      const rota = decidirRota(conversa, remarketing !== null);
 
       if (rota === "sem_destino") {
         // Nada é baixado nem transcrito para quem não tem conversa: fica o
         // registro (a mídia, no marcador) e o aviso do gatilho da 0083.
-        await registrar(msg, phone, "unmatched");
+        await registrar(msg, contato, "unmatched");
         return;
       }
 
-      const alvo = rota === "remarketing" && contato ? await abrirRemarketing(msg, phone, contato)
-        : rota === "anuncio" ? await abrirAnuncio(msg, phone)
+      const alvo = rota === "remarketing" && remarketing ? await abrirRemarketing(msg, contato, remarketing)
+        : rota === "anuncio" ? await abrirAnuncio(msg, contato)
         : conversa;
       if (!alvo) return; // a falha ao abrir o atendimento já ficou registrada
       const extra: Registro = { leadId: alvo.lead_id, conversationId: alvo.id };
 
+      // 0335: quem chegou só com o BSUID e respondeu o pedido com o telefone.
+      if (!phone && alvo.lead_id && msg.tipo === "texto") {
+        const informado = extrairTelefone(msg.text);
+        if (informado) {
+          const { error } = await supabase.from("leads")
+            .update({ phone: informado, phone_raw: informado })
+            .eq("id", alvo.lead_id).is("phone", null);
+          if (error) console.error("whatsapp-inbound: falha ao gravar o telefone informado —", error.message);
+        }
+      }
+
       let chegada = "";
       if (msg.tipo === "audio") {
         if (await jaNaConversa(msg.id)) return;
-        const reserva = await reservar(msg, phone, alvo);
+        const reserva = await reservar(msg, contato, alvo);
         if (reserva === "duplicata") return;
         if (reserva === "tentar_de_novo") {
           retentar = true;
@@ -729,14 +815,14 @@ Deno.serve(async (req) => {
       if (midiaLida && await jaNaConversa(msg.id)) return;
 
       const plano = await planejar(
-        msg, alvo.robo ? "robo" : rota, () => lerAudio(msg, phone, chegada),
-        (leitura) => lerMidia(msg, phone, leitura, alvo),
+        msg, alvo.robo ? "robo" : rota, () => lerAudio(msg, contato, chegada),
+        (leitura) => lerMidia(msg, contato, leitura, alvo),
       );
 
       if (plano.acao === "anexar") {
-        if (!(await gravarNaConversa(msg, phone, extra, [linhaDoLead(msg, alvo.id, plano.corpo)]))) return;
+        if (!(await gravarNaConversa(msg, contato, extra, [linhaDoLead(msg, alvo.id, plano.corpo)]))) return;
         if (plano.humanoDe) await passarParaHumano(alvo.id, plano.humanoDe);
-        await registrar(msg, phone, plano.desfecho, { ...extra, body: plano.corpo, detail: plano.detalhe });
+        await registrar(msg, contato, plano.desfecho, { ...extra, body: plano.corpo, detail: plano.detalhe });
         handled++;
         return;
       }
@@ -748,12 +834,12 @@ Deno.serve(async (req) => {
         const aviso = `Áudio do lead não transcrito (${plano.motivo.slice(0, 300)}).` +
           (plano.humanoDe === "active" ? " A conversa passou para atendimento humano e o robô não respondeu." : "") +
           " Peça ao lead para repetir por escrito.";
-        const gravou = await gravarNaConversa(msg, phone, extra, [
+        const gravou = await gravarNaConversa(msg, contato, extra, [
           linhaDoLead(msg, alvo.id, AUDIO_NAO_TRANSCRITO),
           { conversation_id: alvo.id, author: "system", body: aviso, provider_message_id: null, media_type: null, media_id: null },
         ]);
         if (!gravou) return;
-        await registrar(msg, phone, "audio_falhou", { ...extra, body: AUDIO_NAO_TRANSCRITO, detail: plano.motivo });
+        await registrar(msg, contato, "audio_falhou", { ...extra, body: AUDIO_NAO_TRANSCRITO, detail: plano.motivo });
         handled++;
         return;
       }
@@ -769,7 +855,7 @@ Deno.serve(async (req) => {
         // Um balão por parágrafo, em ordem: o seguinte só sai depois do anterior.
         try {
           for (const balao of baloesDaResposta(turn.reply)) {
-            const sent = await sendWhatsAppText(phone, balao);
+            const sent = await sendWhatsAppTextPara({ to: phone, recipient: contato.userId }, balao);
             if (!sent.ok) {
               console.error("whatsapp-inbound: falha ao responder conversa", alvo.id);
               break;
@@ -798,7 +884,7 @@ Deno.serve(async (req) => {
             console.log("whatsapp-inbound: conversa", alvo.id, "qualificada e devolvida à roleta");
           }
         }
-        await registrar(msg, phone, rota === "remarketing" ? "remarketing_lead" : "sdr_turn", {
+        await registrar(msg, contato, rota === "remarketing" ? "remarketing_lead" : "sdr_turn", {
           ...extra,
           body: plano.texto,
         });
@@ -813,10 +899,10 @@ Deno.serve(async (req) => {
         // O áudio não é reprocessado (a reserva barra a reentrega): a
         // transcrição, já paga, fica na conversa para o SDR ler o que o lead
         // disse. O texto segue como sempre — só no registro, com o motivo.
-        if ((msg.tipo === "audio" || midiaLida) && !(await gravarNaConversa(msg, phone, extra, [linhaDoLead(msg, alvo.id, plano.texto)]))) {
+        if ((msg.tipo === "audio" || midiaLida) && !(await gravarNaConversa(msg, contato, extra, [linhaDoLead(msg, alvo.id, plano.texto)]))) {
           return;
         }
-        await registrar(msg, phone, "agent_error", { ...extra, body: plano.texto, detail: motivo });
+        await registrar(msg, contato, "agent_error", { ...extra, body: plano.texto, detail: motivo });
       }
     };
 
@@ -825,13 +911,28 @@ Deno.serve(async (req) => {
       console.error("whatsapp-inbound: varredura de reservas falhou —", e instanceof Error ? e.message : String(e))
     );
 
+    // 0335: o que não vira atendimento fica registrado, com o payload cru.
+    for (const d of descartadas) {
+      const { error } = await supabase.from("whatsapp_inbound_messages").upsert({
+        provider_message_id: d.id ?? `descartado:${crypto.randomUUID()}`,
+        from_phone: normalizePhone(d.from),
+        from_user_id: d.userId,
+        body: `[${d.tipo || "sem tipo"}]`,
+        outcome: d.motivo,
+        detail: d.tipo ? `tipo ${d.tipo}` : null,
+        payload: d.payload,
+      }, { onConflict: "provider_message_id", ignoreDuplicates: true });
+      if (error) console.error("whatsapp-inbound: falha ao registrar mensagem descartada —", error.message);
+    }
+
     for (const msg of messages) {
-      const phone = normalizePhone(msg.from);
-      if (!phone) {
+      const contato: Contato = { phone: normalizePhone(msg.from), userId: msg.userId ?? null };
+      if (!contato.phone && !contato.userId) {
         console.warn("whatsapp-inbound: mensagem sem telefone utilizável, descartada");
+        await registrar(msg, contato, "descartado_sem_telefone", { detail: "telefone inválido e sem BSUID" });
         continue;
       }
-      await processar(msg, phone);
+      await processar(msg, contato);
     }
 
     // 503 só para áudio sem desfecho: a Meta reenvia o POST inteiro com recuo

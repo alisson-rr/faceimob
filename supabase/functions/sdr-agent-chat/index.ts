@@ -5,7 +5,7 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import { ConversationClosedError, gerarPromptDoAgente, InactiveAgentError, runSdrAgentTurn } from '../_shared/sdrAgent.ts';
 import { hasAnyRole, requireUserPermission, serviceClient } from '../_shared/auth.ts';
 import { getSecret } from '../_shared/secrets.ts';
-import { normalizePhone, sendWhatsAppText } from '../_shared/meta.ts';
+import { normalizePhone, sendWhatsAppTextPara } from '../_shared/meta.ts';
 import { baloesDaResposta } from '../whatsapp-inbound-webhook/parse.ts';
 
 const corsHeaders = {
@@ -188,13 +188,15 @@ async function passarParaAgente(
   const turn = await runSdrAgentTurn(supabase, { conversationId, agentId, message: null });
 
   const { data: lead } = await supabase
-    .from('leads').select('phone, phone_raw, assigned_to').eq('id', conv.lead_id).maybeSingle();
+    .from('leads').select('phone, phone_raw, whatsapp_user_id, assigned_to').eq('id', conv.lead_id).maybeSingle();
   const fone = normalizePhone(lead?.phone_raw || lead?.phone);
+  // 0335: sem telefone, o BSUID de quem chegou pelo nome de usuário.
+  const bsuid = lead?.whatsapp_user_id || null;
   let enviado = false;
-  if (fone) {
+  if (fone || bsuid) {
     enviado = true;
     for (const balao of baloesDaResposta(turn.reply)) {
-      const res = await sendWhatsAppText(fone, balao).catch(() => ({ ok: false }));
+      const res = await sendWhatsAppTextPara({ to: fone, recipient: bsuid }, balao).catch(() => ({ ok: false }));
       if (!res.ok) { enviado = false; break; }
     }
   }

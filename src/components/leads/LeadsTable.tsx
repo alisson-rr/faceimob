@@ -199,6 +199,9 @@ const LeadRow = memo(function LeadRow({
                 : `${lead.roulette_misses}ª volta na roleta`}
             </StatusBadge>
           )}
+          {!lead.phone && lead.whatsapp_user_id && (
+            <StatusBadge tone="warning">sem telefone · atender pelo chat do CRM</StatusBadge>
+          )}
         </div>
         <p className="mt-1 text-xs text-muted-foreground lg:hidden">
           {lead.source || "Sem origem"} · {lead.broker_name || "sem corretor"} · {dateTime(lead.created_at)}

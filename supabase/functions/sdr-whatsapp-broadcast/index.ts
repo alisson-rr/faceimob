@@ -111,7 +111,7 @@ async function humanReply(
 
   const { data: conv, error: convErr } = await supabase
     .from('sdr_conversations')
-    .select('id, status, lead_id, leads(phone_raw, phone)')
+    .select('id, status, lead_id, leads(phone_raw, phone, whatsapp_user_id)')
     .eq('id', conversationId)
     .maybeSingle();
   if (convErr) return json({ error: `sdr_conversations: ${convErr.message}` }, 500);
@@ -123,12 +123,14 @@ async function humanReply(
     }, 409);
   }
 
-  const lead = conv.leads as { phone_raw?: string | null; phone?: string | null } | null;
+  const lead = conv.leads as { phone_raw?: string | null; phone?: string | null; whatsapp_user_id?: string | null } | null;
   const digits = String(lead?.phone_raw || lead?.phone || '').replace(/\D/g, '');
-  if (!digits) {
+  // 0335: lead que chegou só pelo nome de usuário responde pelo BSUID (`recipient`).
+  const bsuid = lead?.whatsapp_user_id?.trim() || '';
+  if (!digits && !bsuid) {
     return json({ error: 'O lead desta conversa não tem telefone gravado — não há para onde enviar.' }, 422);
   }
-  const to = digits.startsWith('55') ? digits : `55${digits}`;
+  const destino = digits ? { to: digits.startsWith('55') ? digits : `55${digits}` } : { recipient: bsuid };
 
   // O cofre só é tocado depois de o pedido estar validado — e a ausência de
   // credencial é dita por escrito, nunca convertida num sucesso silencioso.
@@ -140,7 +142,7 @@ async function humanReply(
   const res = await fetch(`${META_GRAPH}/${phoneId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } }),
+    body: JSON.stringify({ messaging_product: 'whatsapp', ...destino, type: 'text', text: { body } }),
     signal: AbortSignal.timeout(TIMEOUT_META_MS),
   }).catch(() => null);
   // Sem timeout, a resposta do operador ficava pendurada até o runtime matar a
