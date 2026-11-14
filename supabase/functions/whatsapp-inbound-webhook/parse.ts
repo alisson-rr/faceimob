@@ -197,6 +197,11 @@ export function extrairTelefone(textoLivre: string): string | null {
   return null;
 }
 
+/** Clique no botão "Receber relatório" do modelo das 08:30 (0336). */
+export function pedeRelatorio(textoLivre: string): boolean {
+  return /^\s*receber\s+relat[oó]rio\s*$/i.test(textoLivre);
+}
+
 /** Pergunta do robô ao lead que chegou só com o nome de usuário (0335). */
 export const PEDIDO_DE_TELEFONE =
   "Olá! Recebemos sua mensagem 😊 Para um corretor te ligar, me passa seu telefone com DDD, por favor?";

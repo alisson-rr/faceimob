@@ -16,6 +16,7 @@ import {
   lerWebhook,
   numeroIgnorado,
   PEDIDO_DE_TELEFONE,
+  pedeRelatorio,
   extensaoDaMidia,
   type InboundMessage,
   inicioDoDiaEmSaoPaulo,
@@ -100,7 +101,9 @@ type InboundOutcome =
   | "ignorado"
   /** 0335: sem telefone nem BSUID (ou sem id), e tipo que não é fala (reação, sistema). */
   | "descartado_sem_telefone"
-  | "descartado_tipo_desconhecido";
+  | "descartado_tipo_desconhecido"
+  /** 0336: sócio ou administrador pedindo o relatório da Meta (nunca vira lead). */
+  | "relatorio";
 /**
  * Quem escreveu (0335): telefone e/ou BSUID. Quem tem nome de usuário pode
  * chegar só com o BSUID; o envio vai pelo `recipient`.
@@ -754,8 +757,51 @@ Deno.serve(async (req) => {
       return false;
     };
 
+    /**
+     * Sócio ou administrador (0336): o clique em "Receber relatório" recebe o
+     * relatório; o resto do que ele escrever sem conversa aberta só fica
+     * registrado. Nos dois casos, nada de lead nem roleta.
+     */
+    const atenderDestinatario = async (msg: InboundMessage, contato: Contato): Promise<boolean> => {
+      const phone = contato.phone;
+      if (!phone) return false;
+      const { data: ehDestinatario, error } = await supabase.rpc("relatorio_meta_e_destinatario", { p_telefone: phone });
+      if (error) {
+        console.error("whatsapp-inbound: falha ao conferir destinatário do relatório —", error.message);
+        return false;
+      }
+      if (ehDestinatario !== true) return false;
+      if (!(msg.tipo === "texto" && pedeRelatorio(msg.text))) {
+        if (await conversaDoContato(contato, false)) return false;
+        await registrar(msg, contato, "ignorado", { detail: "sócio/administrador sem conversa aberta" });
+        return true;
+      }
+      let status: "relatorio_enviado" | "relatorio_falhou" = "relatorio_falhou";
+      let erro: string | null = null;
+      const { data: texto, error: txtErr } = await supabase.rpc("meta_relatorio_whatsapp_texto");
+      if (txtErr || typeof texto !== "string") {
+        erro = `relatório não montado: ${txtErr?.message ?? "vazio"}`;
+      } else {
+        try {
+          const enviado = await sendWhatsAppTextPara({ to: phone }, texto);
+          if (enviado.ok) status = "relatorio_enviado";
+          else erro = "a Meta recusou o relatório";
+        } catch (e) {
+          erro = e instanceof Error ? e.message : String(e);
+        }
+      }
+      if (erro) console.error("whatsapp-inbound: relatório da Meta não enviado —", erro);
+      const { error: regErr } = await supabase.from("relatorio_meta_envios")
+        .insert({ telefone: phone, status, erro: erro?.slice(0, 300) ?? null });
+      if (regErr) console.error("whatsapp-inbound: envio do relatório não registrado —", regErr.message);
+      await registrar(msg, contato, "relatorio", { detail: status });
+      handled++;
+      return true;
+    };
+
     const processar = async (msg: InboundMessage, contato: Contato) => {
       const phone = contato.phone;
+      if (await atenderDestinatario(msg, contato)) return;
       // Números da casa (relatório): só o registro, antes de qualquer conversa ou IA.
       if (phone && numeroIgnorado(phone)) {
         await registrar(msg, contato, "ignorado");
