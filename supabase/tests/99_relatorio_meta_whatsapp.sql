@@ -61,6 +61,13 @@ select pg_temp.ok(not has_function_privilege('authenticated', 'public.meta_relat
   and not has_function_privilege('authenticated', 'public.relatorio_meta_destinatarios()', 'execute')
   and not has_function_privilege('anon', 'public.dispatch_relatorio_meta_whatsapp()', 'execute'),
   'só a service role monta e dispara o relatório');
+-- 0337: a edge chama pelo PostgREST, onde o pg_safeupdate recusa DELETE sem
+-- WHERE; este banco de teste não carrega o safeupdate, então checa o fonte.
+select pg_temp.ok(not exists (
+    select 1 from regexp_matches(pg_get_functiondef('public.meta_relatorio_whatsapp_texto()'::regprocedure),
+                                 '(delete\s+from\s+[^;]*;)', 'gi') m
+     where m[1] !~* '\mwhere\M'),
+  'relatório sem DELETE sem WHERE (pg_safeupdate do PostgREST)');
 select pg_temp.ok((select relrowsecurity from pg_class where oid = 'public.relatorio_meta_envios'::regclass),
   'envios com RLS ligada');
 
