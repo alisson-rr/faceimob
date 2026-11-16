@@ -18,6 +18,7 @@ import { dbError, describeError } from '@/lib/supabaseError';
 import { useAuth, type AppRole } from '@/contexts/AuthContext';
 import PushSettings from '@/components/notifications/PushSettings';
 import { clearPushOnAllDevices, signOutWithPush } from '@/lib/push';
+import { concluirNovaSenha, precisaNovaSenha } from '@/integrations/supabase/cofre';
 import { setPreferenciaAvisosSucesso } from '@/components/ui/toast-faceimob';
 import { Switch } from '@/components/ui/switch';
 
@@ -152,6 +153,12 @@ export default function Settings() {
   // `realRoles`: esta tela mostra QUEM VOCÊ É. Com os papéis efetivos, um admin
   // em prévia leria o próprio cadastro dizendo que ele é corretor.
   const { user, profile, realRoles: roles, perfilFalhou, refreshProfile } = useAuth();
+  // 0338: o admin invalidou a senha (notebook roubado); mesma chave do guard em App.tsx.
+  const { data: senhaExigida } = useQuery({
+    queryKey: ['precisa-nova-senha', user?.id],
+    queryFn: user ? () => precisaNovaSenha(user.id) : skipToken,
+    staleTime: 5 * 60_000,
+  });
 
   // ── perfil ────────────────────────────────────────────────────────────────
   const [name, setName] = useState('');
@@ -381,6 +388,14 @@ export default function Settings() {
         // tem sessão para apagar a própria assinatura. Se isso falhar, as
         // sessões caem mesmo assim: derrubar o invasor vale mais que o aviso,
         // e o toast manda repetir por "Encerrar todas as sessões".
+        // 0338: libera as telas antes de o signOut global derrubar esta sessão.
+        if (senhaExigida) {
+          try {
+            await concluirNovaSenha();
+          } catch (concluirError) {
+            console.error(concluirError);
+          }
+        }
         const pushCleared = await clearPushOnAllDevices();
         const { error: signOutError } = await signOutWithPush(
           () => supabase.auth.signOut({ scope: 'global' }),
@@ -480,6 +495,16 @@ export default function Settings() {
         icon={SettingsIcon}
         description="Seus dados, os avisos no celular, como você entra e o controle das sessões abertas."
       />
+
+      {senhaExigida && (
+        <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-foreground">
+          <p className="font-semibold">Crie uma senha nova para continuar</p>
+          <p className="mt-1 text-muted-foreground">
+            Por segurança, a sua senha anterior foi desativada. Defina a nova em "Senha de acesso", logo abaixo. Depois
+            de salvar, entre de novo com o seu e-mail e a senha nova.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-4">
         <SectionCard

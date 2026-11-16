@@ -150,3 +150,58 @@ async function corpoDoErro(error: unknown) {
     return undefined;
   }
 }
+
+// ── Exigir nova senha em massa (0338, notebooks roubados em 16/11/2026) ─────
+
+/** RPCs e tabela da 0338 ainda fora do `types.ts` gerado. */
+const senhaDb = supabase as unknown as {
+  rpc: (
+    name: "exigir_nova_senha_alvos" | "concluir_nova_senha",
+    params?: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>;
+  from: (table: "senha_troca_exigida") => {
+    select: (cols: string) => {
+      eq: (col: string, val: string) => {
+        maybeSingle: () => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>;
+      };
+    };
+  };
+};
+
+export type AlvoNovaSenha = { profile_id: string; full_name: string; email: string | null; equipes: string };
+
+/** Quem entra no corte: membros, gerente e diretores das equipes escolhidas. */
+export async function listarAlvosNovaSenha(teamIds: string[]): Promise<AlvoNovaSenha[]> {
+  if (teamIds.length === 0) return [];
+  const { data, error } = await senhaDb.rpc("exigir_nova_senha_alvos", { p_team_ids: teamIds });
+  if (error) throw dbError("exigir_nova_senha_alvos", error);
+  return (data as AlvoNovaSenha[] | null) ?? [];
+}
+
+/** Derruba as sessões, invalida a senha e exige uma nova no próximo acesso. */
+export async function exigirNovaSenha(profileIds: string[]): Promise<{ feitos: number; falhas: number }> {
+  const { data, error } = await supabase.functions.invoke<{
+    success?: boolean;
+    feitos?: number;
+    falhas?: unknown[];
+    error?: string;
+  }>("provision-broker-user", { body: { access: "exigir_nova_senha", profile_ids: profileIds } });
+  const contexto = (error as { context?: Response } | null)?.context;
+  const corpo = data ?? (contexto ? await contexto.clone().json().catch(() => null) : null);
+  if (corpo?.error) throw new Error(corpo.error);
+  if (error) throw error;
+  return { feitos: corpo?.feitos ?? 0, falhas: corpo?.falhas?.length ?? 0 };
+}
+
+/** A pessoa logada ainda precisa criar a senha nova? */
+export async function precisaNovaSenha(userId: string): Promise<boolean> {
+  const { data, error } = await senhaDb.from("senha_troca_exigida").select("profile_id").eq("profile_id", userId).maybeSingle();
+  if (error) throw dbError("senha_troca_exigida", error);
+  return data != null;
+}
+
+/** Chamado logo depois de salvar a senha nova em Configurações. */
+export async function concluirNovaSenha(): Promise<void> {
+  const { error } = await senhaDb.rpc("concluir_nova_senha");
+  if (error) throw dbError("concluir_nova_senha", error);
+}

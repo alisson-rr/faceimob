@@ -61,6 +61,17 @@ create table if not exists auth.users (
   created_at timestamptz not null default now()
 );
 
+-- Sessões do GoTrue: só o que a 0338 apaga para derrubar quem está logado.
+create table if not exists auth.sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null
+);
+create table if not exists auth.refresh_tokens (
+  id bigserial primary key,
+  user_id varchar(255),
+  session_id uuid
+);
+
 -- Claims do JWT corrente. Em produção o GoTrue popula request.jwt.claims;
 -- nos testes o harness injeta o valor via set_config().
 create or replace function auth.jwt()
