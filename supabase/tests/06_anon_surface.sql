@@ -153,7 +153,9 @@ begin
         or c.relname in ('whatsapp_inbound_messages', 'push_subscriptions', 'cca_cases', 'cca_move_emails',
                          'deal_status_history', 'deal_lead_links', 'meta_crm_events',
                          'meta_ad_accounts', 'meta_sync_runs', 'meta_campaign_insights_daily',
-                         'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts')
+                         'meta_ai_runs', 'meta_actions', 'meta_campaign_plans', 'meta_alerts',
+                         -- `senha_troca_exigida` (0338): só a edge marca; a pessoa libera por concluir_nova_senha().
+                         'senha_troca_exigida')
       )
       and has_table_privilege('service_role', c.oid, 'SELECT')
     );
