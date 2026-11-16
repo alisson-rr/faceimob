@@ -59,7 +59,7 @@ begin
         cross join lateral (values (t.manager_id), (t.director_id), (t.co_director_id)) x(pid)
        where t.id = any (p_team_ids) and x.pid is not null
     )
-    select p.id, p.full_name, p.email, string_agg(distinct a.name, ', ' order by a.name)
+    select p.id, p.full_name, p.email::text, string_agg(distinct a.name, ', ' order by a.name)
       from alvo a join public.profiles p on p.id = a.pid
      where p.status <> 'terminated' and p.id <> auth.uid()
      group by p.id, p.full_name, p.email
