@@ -16,6 +16,7 @@ declare
   dir uuid := '00000000-0000-0000-0000-000001850001';
   cor uuid := '00000000-0000-0000-0000-000001850002';
   ger uuid := '00000000-0000-0000-0000-000001850003';
+  adm uuid := '00000000-0000-0000-0000-000001850004';
   v_time uuid;
   v_n int;
   v_t int;
@@ -58,7 +59,19 @@ begin
     ('Mes Escolhido 51', '5551999990003', '[FORM] GERAL', cor, '2025-03-10 12:00-03'),
     ('Mes Escolhido 11', '11999990004', '[FORM] GERAL', cor, '2025-03-11 12:00-03'),
     ('Mes Seguinte 51', '51999990005', '[FORM] GERAL', cor, '2025-04-01 00:30-03');
+  -- 0340: mês e DDD só para administrador e sócio.
   perform set_config('request.jwt.claims', json_build_object('sub', dir, 'role', 'authenticated')::text, true);
+  begin
+    set local role authenticated;
+    perform public.lista_de_ligacao('2025-03-01', '2025-04-01', null);
+    raise exception 'FALHOU: diretor escolheu o mês';
+  exception when insufficient_privilege then
+    raise notice '  ok  diretor não escolhe mês nem DDD';
+  end;
+  reset role;
+  insert into auth.users(id,email,raw_user_meta_data) values (adm,'adm@l185.test','{"full_name":"Admin 185"}');
+  insert into public.user_roles(profile_id,role) values (adm,'admin') on conflict do nothing;
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select count(*) into v_n from public.lista_de_ligacao('2025-03-01', '2025-04-01', null) l where l.cliente like 'Mes %';
   select count(*) into v_t from public.lista_de_ligacao('2025-03-01', '2025-04-01', '51') l where l.cliente like 'Mes %';

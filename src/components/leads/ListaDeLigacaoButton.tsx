@@ -15,7 +15,7 @@ import {
 
 /** Botão e diálogo da lista de ligação (0185). Só aparece com `leads.call_list`. */
 export function ListaDeLigacaoButton() {
-  const { can } = useAuth();
+  const { can, isAdmin } = useAuth();
   const [aberto, setAberto] = useState(false);
   const [linhas, setLinhas] = useState<LinhaDeLigacao[] | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -66,10 +66,11 @@ export function ListaDeLigacaoButton() {
             <DialogTitle>Lista de ligação</DialogTitle>
             <DialogDescription>
               Leads que não viraram negócio, com campanha, cliente e telefone. Sem mês escolhido, vale o ano
-              corrente até o mês passado.
+              corrente até o mês passado, em ordem sortida.
             </DialogDescription>
           </DialogHeader>
-          <form
+          {/* 0340: mês e DDD só para administrador e sócio; gerente e diretor seguem com a lista sortida. */}
+          {isAdmin && <form
             className="flex flex-wrap items-end gap-3"
             onSubmit={(e) => { e.preventDefault(); void montar({ mes, ddd }); }}
           >
@@ -87,7 +88,7 @@ export function ListaDeLigacaoButton() {
             <Button type="submit" variant="secondary" size="sm" disabled={linhas === null || !mes || (ddd !== "" && ddd.length !== 2)}>
               Atualizar lista
             </Button>
-          </form>
+          </form>}
           <p className="text-sm" aria-live="polite">
             {linhas === null ? "Montando a lista…" : `${linhas.length} contato(s) para ligar.`}
           </p>
