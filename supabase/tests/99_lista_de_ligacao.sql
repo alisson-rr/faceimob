@@ -18,6 +18,7 @@ declare
   ger uuid := '00000000-0000-0000-0000-000001850003';
   v_time uuid;
   v_n int;
+  v_t int;
 begin
   insert into auth.users(id,email,raw_user_meta_data) values
     (dir,'dir@l185.test','{"full_name":"Diretor 185"}'),
@@ -51,6 +52,19 @@ begin
   select count(*) into v_n from public.lista_de_ligacao() l where l.cliente = 'Antigo Um';
   reset role;
   perform pg_temp.ok(v_n = 1, 'gerente também extrai a lista antiga da própria equipe');
+
+  -- 0339: mês escolhido e DDD.
+  insert into public.leads(full_name, phone, campaign_name, assigned_to, created_at) values
+    ('Mes Escolhido 51', '5551999990003', '[FORM] GERAL', cor, '2025-03-10 12:00-03'),
+    ('Mes Escolhido 11', '11999990004', '[FORM] GERAL', cor, '2025-03-11 12:00-03'),
+    ('Mes Seguinte 51', '51999990005', '[FORM] GERAL', cor, '2025-04-01 00:30-03');
+  perform set_config('request.jwt.claims', json_build_object('sub', dir, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into v_n from public.lista_de_ligacao('2025-03-01', '2025-04-01', null) l where l.cliente like 'Mes %';
+  select count(*) into v_t from public.lista_de_ligacao('2025-03-01', '2025-04-01', '51') l where l.cliente like 'Mes %';
+  reset role;
+  perform pg_temp.ok(v_n = 2, 'mês escolhido: só março, sem o lead de 01/04 00:30');
+  perform pg_temp.ok(v_t = 1, 'DDD 51 tira o 11 e aceita telefone com 55 na frente');
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   begin

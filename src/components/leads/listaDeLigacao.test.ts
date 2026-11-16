@@ -51,3 +51,13 @@ describe("lista de ligação", () => {
     }
   });
 });
+
+describe("periodoDoMes (0339)", () => {
+  it("vira o ano em dezembro e recusa mês inválido", async () => {
+    const { periodoDoMes } = await import("./listaDeLigacao");
+    expect(periodoDoMes("2026-10")).toEqual({ inicio: "2026-10-01", fim: "2026-11-01" });
+    expect(periodoDoMes("2026-12")).toEqual({ inicio: "2026-12-01", fim: "2027-01-01" });
+    expect(periodoDoMes("2026-13")).toBeNull();
+    expect(periodoDoMes("")).toBeNull();
+  });
+});
