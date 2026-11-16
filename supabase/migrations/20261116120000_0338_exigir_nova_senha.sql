@@ -30,6 +30,7 @@ create policy senha_troca_exigida_select on public.senha_troca_exigida
   for select to authenticated using (profile_id = auth.uid() or public.is_admin());
 revoke all on public.senha_troca_exigida from anon, authenticated;
 grant select on public.senha_troca_exigida to authenticated;
+grant all on public.senha_troca_exigida to service_role;
 
 alter table public.access_provision_log drop constraint if exists access_provision_log_action_check;
 alter table public.access_provision_log add constraint access_provision_log_action_check
