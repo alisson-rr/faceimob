@@ -34,6 +34,7 @@ import { PessoaCard, ListaPessoas, ContagemPessoas, iniciais } from "@/component
 import { enviarAcessoPorWhatsapp } from "@/components/boasVindas";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
 import { CofreCredenciais } from "@/components/equipes/CofreCredenciais";
+import { ExigirNovaSenha } from "@/components/equipes/ExigirNovaSenha";
 import { RepasseDeNegocios } from "@/components/equipes/RepasseDeNegocios";
 import { DiretorDuploCard } from "@/components/equipes/DiretorDuploCard";
 import { goalPeriods, goalsByProfile, otherMetricsByProfile } from "@/components/equipes/metas";
@@ -670,6 +671,8 @@ export default function Equipes() {
                 <FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> {extraindo ? "Gerando…" : "Extrair corretores"}
               </Button>
             )}
+            {/* Notebooks roubados (0338): só admin e sócio; a edge confere de novo. */}
+            {isAdmin && <ExigirNovaSenha />}
           </>
         }
       />

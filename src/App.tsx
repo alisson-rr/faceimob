@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ehSoCorretor, firstAllowedRoute, permissionForPath, safeRedirect } from "@/lib/routePermissions";
@@ -11,6 +11,7 @@ import AppLayout from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
 import NotFound from "./pages/NotFound";
 import { Button } from "@/components/ui/button";
+import { precisaNovaSenha } from "@/integrations/supabase/cofre";
 
 /** Imports das telas logadas, para a pré-carga — o mesmo `import()` do `lazy`. */
 const importsDasTelas: Array<() => Promise<unknown>> = [];
@@ -203,11 +204,21 @@ function HomeRedirect() {
  * mas uma tela vazia sem explicação parece defeito; esta é a mensagem honesta.
  */
 function RequirePermission() {
-  const { can, loading, previewRole, perfilFalhou, perfilFalha, signOut } = useAuth();
+  const { user, can, loading, previewRole, perfilFalhou, perfilFalha, signOut } = useAuth();
   const location = useLocation();
+  // 0338: senha invalidada pelo admin (notebook roubado). Até criar a nova em
+  // Configurações, nenhuma outra tela abre. Falha da consulta não tranca ninguém:
+  // a senha antiga já morreu no servidor, isto é só o caminho até a nova.
+  const novaSenha = useQuery({
+    queryKey: ["precisa-nova-senha", user?.id],
+    queryFn: () => precisaNovaSenha(user?.id ?? ""),
+    enabled: !bypassAuth && !!user,
+    staleTime: 5 * 60_000,
+  });
 
   if (bypassAuth) return <Outlet />;
-  if (loading) return null;
+  if (loading || novaSenha.isLoading) return null;
+  if (novaSenha.data && location.pathname !== "/settings") return <Navigate to="/settings" replace />;
 
   // Falha de leitura não é falta de permissão: dizer "seu perfil não tem
   // permissão" mandava o corretor reclamar de acesso que ele tem (03/10/2026).

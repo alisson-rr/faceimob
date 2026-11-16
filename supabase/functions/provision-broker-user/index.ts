@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
      */
     const registrar = async (
       target: string | null,
-      action: "create" | "reset" | "denied" | "revoked" | "restored" | "password",
+      action: "create" | "reset" | "denied" | "revoked" | "restored" | "password" | "nova_senha_exigida",
       email: string,
     ) => {
       const { error } = await admin.from("access_provision_log")
@@ -136,6 +136,45 @@ Deno.serve(async (req) => {
     // desligada e o `access_provision_log` registrava "denied": a pessoa saía
     // das listas e continuava entrando no sistema.
     const ehAdmin = (roleRows || []).some((row) => row.role === "admin" || row.role === "partner");
+
+    // ── Exigir nova senha em massa (notebooks roubados, 16/11/2026) ─────────
+    //
+    // Para cada pessoa: senha aleatória no Auth (a antiga, salva no notebook,
+    // morre), depois `aplicar_exigencia_nova_senha` (0338) apaga as sessões,
+    // esquece o cofre e marca a troca. Ela volta pelo link do e-mail e cria a
+    // senha em Configurações. Uma falha não para as outras.
+    if (String(body.access || "").trim() === "exigir_nova_senha") {
+      if (!ehAdmin) {
+        await registrar(null, "denied", "");
+        return json({ error: "Só administrador ou sócio." }, 403);
+      }
+      const ids = Array.isArray(body.profile_ids) ? body.profile_ids : [];
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (ids.length === 0 || ids.length > 300 || !ids.every((id: unknown) => typeof id === "string" && UUID_RE.test(id))) {
+        return json({ error: "profile_ids precisa ter de 1 a 300 ids válidos." }, 400);
+      }
+      if (ids.includes(actorId)) return json({ error: "Você não pode incluir a si mesmo." }, 409);
+
+      const feitos: string[] = [];
+      const falhas: { profile_id: string; erro: string }[] = [];
+      for (const id of ids as string[]) {
+        const aleatoria = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, "0")).join("");
+        const { error: senhaError } = await admin.auth.admin.updateUserById(id, { password: aleatoria });
+        if (senhaError) {
+          falhas.push({ profile_id: id, erro: senhaError.message });
+          continue;
+        }
+        const { error: rpcError } = await admin.rpc("aplicar_exigencia_nova_senha", { p_profile_id: id, p_actor_id: actorId });
+        if (rpcError) {
+          falhas.push({ profile_id: id, erro: rpcError.message });
+          continue;
+        }
+        const { data: alvo } = await admin.from("profiles").select("email").eq("id", id).maybeSingle();
+        await registrar(id, "nova_senha_exigida", alvo?.email ?? "");
+        feitos.push(id);
+      }
+      return json({ success: falhas.length === 0, feitos: feitos.length, falhas });
+    }
 
     // ── Ramo do diretor: inativar quem saiu (pedido de 29/09/2026) ──────────
     //
