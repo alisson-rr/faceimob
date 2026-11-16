@@ -90,8 +90,25 @@ export function intercalarCampanhas(
   return resultado;
 }
 
-export async function buscarListaDeLigacao(): Promise<LinhaDeLigacao[]> {
-  const { data, error } = await untyped.rpc("lista_de_ligacao");
+/** "2026-10" → primeiro dia do mês e do mês seguinte (0339). */
+export function periodoDoMes(mes: string): { inicio: string; fim: string } | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(mes);
+  if (!m) return null;
+  const ano = Number(m[1]);
+  const numero = Number(m[2]);
+  if (numero < 1 || numero > 12) return null;
+  const fim = numero === 12 ? `${ano + 1}-01-01` : `${ano}-${String(numero + 1).padStart(2, "0")}-01`;
+  return { inicio: `${mes}-01`, fim };
+}
+
+/** Sem mês: a regra da 0307 (ano corrente até o mês passado). Com mês e DDD: 0339. */
+export async function buscarListaDeLigacao(filtro?: { mes: string; ddd?: string }): Promise<LinhaDeLigacao[]> {
+  const periodo = filtro ? periodoDoMes(filtro.mes) : null;
+  if (filtro && !periodo) throw new Error("Escolha um mês válido.");
+  const ddd = filtro?.ddd?.replace(/\D/g, "") || null;
+  const { data, error } = periodo
+    ? await untyped.rpc("lista_de_ligacao", { p_inicio: periodo.inicio, p_fim: periodo.fim, p_ddd: ddd })
+    : await untyped.rpc("lista_de_ligacao");
   if (error) throw dbError("lista_de_ligacao", error);
   return intercalarCampanhas(lerLinhas(data));
 }
