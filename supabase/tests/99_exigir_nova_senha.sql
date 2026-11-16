@@ -29,6 +29,7 @@ begin
     (des, 'des@c338.test', '{"full_name":"Desligado 338"}'),
     (fora, 'out@c338.test', '{"full_name":"Outra equipe 338"}');
   insert into public.user_roles (profile_id, role) values (adm, 'admin') on conflict do nothing;
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
   update public.profiles set status = 'terminated', terminated_at = now() where id = des;
 
   insert into public.teams (name, director_id, manager_id) values ('Equipe 338', dir, ger) returning id into t1;
