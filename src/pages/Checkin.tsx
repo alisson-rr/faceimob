@@ -242,7 +242,7 @@ export default function Checkin() {
                     {COMO_CONTA_O_ATRASO} {QUANDO_LIBERA}
                   </p>
                   <Button asChild size="sm" variant="outline" className="mt-2">
-                    <Link to="/leads"><ListChecks className="h-4 w-4" /> Regularizar meus leads</Link>
+                    <Link to="/leads?aba=dia"><ListChecks className="h-4 w-4" /> Regularizar meus leads</Link>
                   </Button>
                   <p className="mt-1 text-xs text-destructive/90">
                     O painel “Leads atrasados” abre no topo da tela de Leads, com o botão de reagendar em cada linha.
@@ -263,7 +263,7 @@ export default function Checkin() {
               </p>
               <p className="mt-1 text-xs text-warning/90">{COMO_CONTA_O_ATRASO}</p>
               <Button asChild size="sm" variant="outline" className="mt-2">
-                <Link to="/leads"><ListChecks className="h-4 w-4" /> Regularizar meus leads</Link>
+                <Link to="/leads?aba=dia"><ListChecks className="h-4 w-4" /> Regularizar meus leads</Link>
               </Button>
               <p className="mt-1 text-xs text-warning/90">
                 O painel “Leads atrasados” abre no topo da tela de Leads, com o botão de reagendar em cada linha.
