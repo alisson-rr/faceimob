@@ -18,6 +18,7 @@ export function SourcePerformanceCard({ leads }: { leads: LeadRecord[] }) {
 
   return (
     <SectionCard
+      recolhivel
       title="Desempenho por origem"
       description="Conversão e tempo médio até fechar, por campanha"
       icon={BarChart3}
