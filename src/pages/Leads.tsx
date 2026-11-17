@@ -118,11 +118,11 @@ export default function Leads() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const focusLeadId = searchParams.get("lead");
-  // Aba na URL: o corretor começa no que tem para fazer; o gestor, na lista.
+  // Aba na URL; sem ela, o funil (kanban em evidência, pedido de 17/11/2026).
   const pedida = searchParams.get("aba");
   const aba: AbaLeads = pedida === "dia" || pedida === "funil" || pedida === "lista" || (pedida === "gestao" && canViewQueue)
     ? pedida
-    : canManageReassign ? "lista" : "dia";
+    : "funil";
   const trocarAba = (nova: AbaLeads) =>
     setSearchParams((atual) => {
       const proximo = new URLSearchParams(atual);
@@ -395,8 +395,8 @@ export default function Leads() {
           direto na certa. */}
       <Tabs value={aba} onValueChange={(v) => trocarAba(v as AbaLeads)} className="space-y-5">
         <TabsList>
-          <TabsTrigger value="dia">Meu dia</TabsTrigger>
           <TabsTrigger value="funil">Funil</TabsTrigger>
+          <TabsTrigger value="dia">Meu dia</TabsTrigger>
           <TabsTrigger value="lista">Lista</TabsTrigger>
           {canViewQueue && <TabsTrigger value="gestao">Gestão</TabsTrigger>}
         </TabsList>
@@ -431,7 +431,8 @@ export default function Leads() {
                 <FilaEmFormacao />
               {!canManageReassign && (
                 <SectionCard
-                  title="Para atender agora"
+                  recolhivel
+                  title={`Para atender agora (${num(paraAtender.length)})`}
                   description={paraAtender.length > 0
                     ? "Leads que caíram para você. Clique em Pegar lead antes de o prazo acabar."
                     : "Nenhum lead esperando você agora. Mantenha o check-in ativo para receber."}
@@ -478,7 +479,8 @@ export default function Leads() {
               {showSources && <SourcePerformanceCard leads={base} />}
 
               <SectionCard
-                title="Lista de leads"
+                recolhivel
+                title={`Lista de leads (${num(filtered.length)})`}
                 description="Clique no nome do cliente para abrir o histórico completo."
                 icon={Users}
                 flush={filtered.length > 0}

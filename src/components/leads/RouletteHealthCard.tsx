@@ -62,6 +62,7 @@ export function RouletteHealthCard({
 
   return (
     <SectionCard
+      recolhivel
       title="Saúde da roleta"
       description="Quem está pronto para receber lead agora, por grupo de distribuição."
       icon={RadioTower}

@@ -41,6 +41,7 @@ export function OverdueLeadsCard({
   if (leads.length === 0) {
     return (
       <SectionCard
+        recolhivel
         title="Leads atrasados (0)"
         description="Nenhuma próxima ação vencida: nada aqui bloqueia o seu check-in."
         icon={CheckCircle2}
@@ -62,6 +63,7 @@ export function OverdueLeadsCard({
 
   return (
     <SectionCard
+      recolhivel
       title={`Leads atrasados (${num(leads.length)})`}
       description={
         meus.length > 0
