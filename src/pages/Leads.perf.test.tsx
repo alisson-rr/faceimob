@@ -119,7 +119,7 @@ describe("Leads com 1.000 linhas e 1 lead em trava", () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
+          <MemoryRouter initialEntries={["/leads?aba=lista"]}>
             <Profiler id="leads" onRender={(_id, _fase, dur) => { commitMs += dur; }}>
               <Leads />
             </Profiler>

@@ -12,6 +12,8 @@ import { useAuth, type AppRole } from "@/contexts/AuthContext";
 import LeadDetailModal from "@/components/LeadDetailModal";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
 import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
+import LeadFunnel from "@/components/LeadFunnel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   LeadDialogs, LeadFilters, LeadsIndicadores, LeadsTable, OverdueLeadsCard, RouletteHealthCard,
   SourcePerformanceCard,
@@ -48,6 +50,8 @@ const LEAD_INSERT_ROLES: AppRole[] = ["admin", "director", "manager", "marketing
  * marketing aparecia na lista sem ter `menu.leads`, e desligar "Realocar leads"
  * na matriz não tirava o botão da tela.
  */
+type AbaLeads = "dia" | "funil" | "lista" | "gestao";
+
 export default function Leads() {
   const { user, roles, previewRole, isAdmin, can, profile } = useAuth();
   const profileId = user?.id || null;
@@ -114,6 +118,17 @@ export default function Leads() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const focusLeadId = searchParams.get("lead");
+  // Aba na URL: o corretor começa no que tem para fazer; o gestor, na lista.
+  const pedida = searchParams.get("aba");
+  const aba: AbaLeads = pedida === "dia" || pedida === "funil" || pedida === "lista" || (pedida === "gestao" && canViewQueue)
+    ? pedida
+    : canManageReassign ? "lista" : "dia";
+  const trocarAba = (nova: AbaLeads) =>
+    setSearchParams((atual) => {
+      const proximo = new URLSearchParams(atual);
+      proximo.set("aba", nova);
+      return proximo;
+    }, { replace: true });
 
   // Falha nas cargas auxiliares deixava filtros e selects vazios em silêncio.
   // Um aviso discreto avisa sem bloquear a lista, que é o que importa aqui.
@@ -374,142 +389,172 @@ export default function Leads() {
         </p>
       )}
 
-      <LeadsCheckinCard />
-      <FilaEmFormacao />
+      {/* Tela única de leads (17/11/2026): o que era Leads, Pipeline → Leads e o
+          aviso do check-in agora vive aqui, em abas. A aba fica na URL
+          (`?aba=dia|funil|lista|gestao`) para o Pipeline e o Check-in abrirem
+          direto na certa. */}
+      <Tabs value={aba} onValueChange={(v) => trocarAba(v as AbaLeads)} className="space-y-5">
+        <TabsList>
+          <TabsTrigger value="dia">Meu dia</TabsTrigger>
+          <TabsTrigger value="funil">Funil</TabsTrigger>
+          <TabsTrigger value="lista">Lista</TabsTrigger>
+          {canViewQueue && <TabsTrigger value="gestao">Gestão</TabsTrigger>}
+        </TabsList>
 
-      {leadsQuery.error || baseQuery.error ? (
-        <EmptyState
-          icon={AlertTriangle}
-          tone="danger"
-          title="Não consegui carregar os leads"
-          description={describeError(leadsQuery.error ?? baseQuery.error, "a lista não respondeu; verifique a conexão e tente de novo")}
-          action={
-            <Button onClick={() => { void leadsQuery.refetch(); void baseQuery.refetch(); }}>
-              Tentar de novo
-            </Button>
-          }
-        />
-      ) : leadsQuery.isPending || baseQuery.isPending ? (
-        <>
-          <LoadingState variant="kpi" rows={5} label="Carregando indicadores de leads…" />
-          <LoadingState variant="table" rows={6} label="Carregando a lista de leads…" />
-        </>
-      ) : (
-        <>
-          {!canManageReassign && (
-            <SectionCard
-              title="Para atender agora"
-              description={paraAtender.length > 0
-                ? "Leads que caíram para você. Clique em Pegar lead antes de o prazo acabar."
-                : "Nenhum lead esperando você agora. Mantenha o check-in ativo para receber."}
-              icon={HandMetal}
-              flush={paraAtender.length > 0}
-            >
-              {paraAtender.length > 0 && (
-                <ul className="divide-y divide-border">
-                  {paraAtender.map((lead) => (
-                    <li key={lead.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                      <button type="button" className="min-w-0 text-left" onClick={() => actions.onOpen(lead)}>
-                        <p className="truncate font-semibold">{lead.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{lead.campaign_name || lead.phone || "Sem campanha"}</p>
-                      </button>
-                      <Button size="sm" variant="success" className="gap-1" onClick={() => actions.onAttend(lead)}>
-                        <HandMetal className="h-4 w-4" aria-hidden /> Pegar lead
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </SectionCard>
-          )}
+        <TabsContent value="funil" className="mt-0">
+          <LeadFunnel actorName={profile?.name || "Você"} onConvert={(lead) => openDialog({ convert: lead })} />
+        </TabsContent>
 
-          <LeadsIndicadores
-            broker={filters.broker}
-            onBroker={(broker) => setFilters((f) => ({ ...f, broker }))}
-            brokers={verPorCorretor ? brokersQuery.data ?? [] : []}
-            canViewQueue={canViewQueue}
-          />
-
-          {showSources && <SourcePerformanceCard leads={base} />}
-
-          {canViewQueue && (
-            <RouletteHealthCard
-              queues={queuesQuery.data ?? []}
-              queuedLeads={queuedLeads}
-              isPending={queuesQuery.isPending}
-              error={queuesQuery.error}
-              onRetry={() => void queuesQuery.refetch()}
-              onOpenLead={(lead) => setDetailLeadId(lead.id)}
-              onDistribute={distribute}
-              distributingId={distributingId}
-              paused={settingsQuery.data?.leads_paused ?? false}
-              maxRounds={maxRounds}
+        {aba !== "funil" && (
+          <>
+          {leadsQuery.error || baseQuery.error ? (
+            <EmptyState
+              icon={AlertTriangle}
+              tone="danger"
+              title="Não consegui carregar os leads"
+              description={describeError(leadsQuery.error ?? baseQuery.error, "a lista não respondeu; verifique a conexão e tente de novo")}
+              action={
+                <Button onClick={() => { void leadsQuery.refetch(); void baseQuery.refetch(); }}>
+                  Tentar de novo
+                </Button>
+              }
             />
-          )}
+          ) : leadsQuery.isPending || baseQuery.isPending ? (
+            <>
+              <LoadingState variant="kpi" rows={5} label="Carregando indicadores de leads…" />
+              <LoadingState variant="table" rows={6} label="Carregando a lista de leads…" />
+            </>
+          ) : (
+            <>
+              <TabsContent value="dia" className="mt-0 space-y-5">
+                <LeadsCheckinCard />
+                <FilaEmFormacao />
+              {!canManageReassign && (
+                <SectionCard
+                  title="Para atender agora"
+                  description={paraAtender.length > 0
+                    ? "Leads que caíram para você. Clique em Pegar lead antes de o prazo acabar."
+                    : "Nenhum lead esperando você agora. Mantenha o check-in ativo para receber."}
+                  icon={HandMetal}
+                  flush={paraAtender.length > 0}
+                >
+                  {paraAtender.length > 0 && (
+                    <ul className="divide-y divide-border">
+                      {paraAtender.map((lead) => (
+                        <li key={lead.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                          <button type="button" className="min-w-0 text-left" onClick={() => actions.onOpen(lead)}>
+                            <p className="truncate font-semibold">{lead.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">{lead.campaign_name || lead.phone || "Sem campanha"}</p>
+                          </button>
+                          <Button size="sm" variant="success" className="gap-1" onClick={() => actions.onAttend(lead)}>
+                            <HandMetal className="h-4 w-4" aria-hidden /> Pegar lead
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </SectionCard>
+              )}
 
-          <OverdueLeadsCard
-            leads={overdueLeads}
-            threshold={settingsQuery.data?.overdue_block_threshold ?? 20}
-            profileId={profileId}
-            onOpen={(lead) => setDetailLeadId(lead.id)}
-            onReschedule={(lead) => openDialog({ nextAction: lead })}
-            onCloseLead={(lead) => openDialog({ close: lead })}
-          />
-
-          <SectionCard
-            title="Lista de leads"
-            description="Clique no nome do cliente para abrir o histórico completo."
-            icon={Users}
-            flush={filtered.length > 0}
-            footer={
-              truncated
-                ? `A tela mostra ${num(LEADS_PAGE_SIZE)} leads por vez. Há leads mais antigos fora desta lista — a busca por nome, telefone, e-mail ou campanha (3 letras ou mais) consulta o banco inteiro, não só o que está na tela.`
-                : undefined
-            }
-          >
-            <div className={filtered.length > 0 ? "border-b border-border p-4 sm:p-5" : "pb-4"}>
-              <LeadFilters
-                filters={filters}
-                onChange={setFilters}
-                sources={sources}
-                brokers={canManageReassign || verPorCorretor ? brokersQuery.data ?? [] : []}
-                groups={canViewQueue ? groupsQuery.data ?? [] : []}
-              />
-            </div>
-            {filtered.length === 0 && buscaEmVoo ? (
-              <div className="p-4">
-                <LoadingState variant="table" rows={3} label="Procurando no banco…" />
-              </div>
-            ) : filtered.length === 0 ? (
-              <EmptyState
-                icon={Inbox}
-                title={hasActiveFilter(filters) ? "Nenhum lead com esses filtros" : "Nenhum lead ainda"}
-                description={
-                  hasActiveFilter(filters)
-                    ? "Tente outro termo de busca ou volte para todos os status e origens."
-                    : "Assim que a Leadfy ou o Meta Ads entregarem um lead, ele aparece aqui e entra na roleta."
-                }
-                action={
-                  hasActiveFilter(filters)
-                    ? <Button variant="outline" onClick={() => setFilters(emptyLeadFilters)}>Limpar filtros</Button>
-                    : canInsertLead
-                      ? <Button onClick={() => openDialog({ form: { open: true, lead: null } })}>Novo lead</Button>
-                      : undefined
-                }
-              />
-            ) : (
-              <LeadsTable
-                leads={filtered}
-                now={now}
+              <OverdueLeadsCard
+                leads={overdueLeads}
+                threshold={settingsQuery.data?.overdue_block_threshold ?? 20}
                 profileId={profileId}
-                permissions={permissions}
-                actions={actions}
-                maxRounds={maxRounds}
+                onOpen={(lead) => setDetailLeadId(lead.id)}
+                onReschedule={(lead) => openDialog({ nextAction: lead })}
+                onCloseLead={(lead) => openDialog({ close: lead })}
               />
-            )}
-          </SectionCard>
-        </>
-      )}
+
+              </TabsContent>
+
+              <TabsContent value="lista" className="mt-0 space-y-5">
+              <LeadsIndicadores
+                broker={filters.broker}
+                onBroker={(broker) => setFilters((f) => ({ ...f, broker }))}
+                brokers={verPorCorretor ? brokersQuery.data ?? [] : []}
+                canViewQueue={canViewQueue}
+              />
+
+              {showSources && <SourcePerformanceCard leads={base} />}
+
+              <SectionCard
+                title="Lista de leads"
+                description="Clique no nome do cliente para abrir o histórico completo."
+                icon={Users}
+                flush={filtered.length > 0}
+                footer={
+                  truncated
+                    ? `A tela mostra ${num(LEADS_PAGE_SIZE)} leads por vez. Há leads mais antigos fora desta lista — a busca por nome, telefone, e-mail ou campanha (3 letras ou mais) consulta o banco inteiro, não só o que está na tela.`
+                    : undefined
+                }
+              >
+                <div className={filtered.length > 0 ? "border-b border-border p-4 sm:p-5" : "pb-4"}>
+                  <LeadFilters
+                    filters={filters}
+                    onChange={setFilters}
+                    sources={sources}
+                    brokers={canManageReassign || verPorCorretor ? brokersQuery.data ?? [] : []}
+                    groups={canViewQueue ? groupsQuery.data ?? [] : []}
+                  />
+                </div>
+                {filtered.length === 0 && buscaEmVoo ? (
+                  <div className="p-4">
+                    <LoadingState variant="table" rows={3} label="Procurando no banco…" />
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <EmptyState
+                    icon={Inbox}
+                    title={hasActiveFilter(filters) ? "Nenhum lead com esses filtros" : "Nenhum lead ainda"}
+                    description={
+                      hasActiveFilter(filters)
+                        ? "Tente outro termo de busca ou volte para todos os status e origens."
+                        : "Assim que a Leadfy ou o Meta Ads entregarem um lead, ele aparece aqui e entra na roleta."
+                    }
+                    action={
+                      hasActiveFilter(filters)
+                        ? <Button variant="outline" onClick={() => setFilters(emptyLeadFilters)}>Limpar filtros</Button>
+                        : canInsertLead
+                          ? <Button onClick={() => openDialog({ form: { open: true, lead: null } })}>Novo lead</Button>
+                          : undefined
+                    }
+                  />
+                ) : (
+                  <LeadsTable
+                    leads={filtered}
+                    now={now}
+                    profileId={profileId}
+                    permissions={permissions}
+                    actions={actions}
+                    maxRounds={maxRounds}
+                  />
+                )}
+              </SectionCard>
+              </TabsContent>
+
+              {canViewQueue && (
+                <TabsContent value="gestao" className="mt-0 space-y-5">
+              {canViewQueue && (
+                <RouletteHealthCard
+                  queues={queuesQuery.data ?? []}
+                  queuedLeads={queuedLeads}
+                  isPending={queuesQuery.isPending}
+                  error={queuesQuery.error}
+                  onRetry={() => void queuesQuery.refetch()}
+                  onOpenLead={(lead) => setDetailLeadId(lead.id)}
+                  onDistribute={distribute}
+                  distributingId={distributingId}
+                  paused={settingsQuery.data?.leads_paused ?? false}
+                  maxRounds={maxRounds}
+                />
+              )}
+
+                </TabsContent>
+              )}
+            </>
+          )}
+          </>
+        )}
+      </Tabs>
 
       <LeadDialogs
         state={dialogs}

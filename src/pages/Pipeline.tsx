@@ -11,14 +11,11 @@ import { compareMonth, currentMonthBase } from "@/lib/dealStatus";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader, StatusBadge } from "@/components/shared";
 import DealDetailModal from "@/components/DealDetailModal";
-import LeadFunnel from "@/components/LeadFunnel";
 import PipelineTopRanking from "@/components/PipelineTopRanking";
 import PainelDoCorretor, { usePainelDoCorretor } from "@/components/engagement/PainelDoCorretor";
-import { ConvertLeadDialog } from "@/components/leads/ConvertLeadDialog";
 import { listLegacyDeals, saveLegacyDeal, type LegacyDealRecord } from "@/integrations/supabase/newSchema";
 import { EMPTY_STATUS_CATALOG, useDealStatusCatalog, type DealStatus } from "@/integrations/supabase/dealStatuses";
 import { MoverStatusDialog, type MovimentoComTexto } from "@/components/pipeline/MoverStatusDialog";
-import type { LeadRecord } from "@/integrations/supabase/leads";
 import {
   CloseMonthDialog, DealFilters, DealStatusSettingsDialog, DealsBoard, DealsToolbar,
   EMPTY_FILTERS, LoseDealDialog, PipelineAnalytics, ReactivateDealDialog, ReopenDealDialog, ReopenMonthDialog,
@@ -96,7 +93,6 @@ export default function Pipeline() {
    *  exige a mesma permissão, então o botão é o espelho dela. */
   const podeCadastrarStatus = can("deals.manage_statuses");
 
-  const [tab, setTab] = useState<"deals" | "leads">("deals");
   const [extraindo, setExtraindo] = useState(false);
   // `null` = ninguém mexeu nos filtros ainda, e o recorte de abertura é
   // DERIVADO do papel (abaixo). Guardar o padrão em `useState` congelaria o
@@ -117,7 +113,6 @@ export default function Pipeline() {
   const [closeMonthOpen, setCloseMonthOpen] = useState(false);
   const [reopenMonthOpen, setReopenMonthOpen] = useState(false);
   const [statusSettingsOpen, setStatusSettingsOpen] = useState(false);
-  const [convertingLead, setConvertingLead] = useState<LeadRecord | null>(null);
   const [openingPendingReviews, setOpeningPendingReviews] = useState(false);
   const [pendingReviewList, setPendingReviewList] = useState<LegacyDealRecord[] | null>(null);
 
@@ -388,7 +383,7 @@ export default function Pipeline() {
       {roles.includes("partner") ? <DirectorPipelineCards people={people} deals={deals}
         selected={filters.directorId} onPanel={painel.abrir}
         loading={peopleQuery.isPending || dealsQuery.isPending} error={peopleQuery.isError || dealsQuery.isError}
-        onSelect={(directorId) => { setFiltrosEscolhidos({ ...EMPTY_FILTERS, directorId }); setTab("deals"); }} />
+        onSelect={(directorId) => { setFiltrosEscolhidos({ ...EMPTY_FILTERS, directorId }); }} />
         : <PipelineTopRanking onAbrirPainel={painel.abrir} deals={deals} />}
 
       <PageHeader
@@ -408,83 +403,71 @@ export default function Pipeline() {
         }
         actions={
           <>
-            {tab === "deals" ? (
-              <>
-                {canReviewDocuments && pendingReviews > 0 && (
-                  <Button
-                    variant="tintWarning"
-                    size="sm"
-                    className="animate-pulse border-warning bg-warning/20 shadow-[0_0_18px_hsl(var(--warning)/0.35)]"
-                    disabled={openingPendingReviews}
-                    onClick={() => void openPendingReviews()}
-                  >
-                    {openingPendingReviews
-                      ? <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />
-                      : <FileCheck2 className="mr-1 h-4 w-4" aria-hidden />}
-                    {pendingReviews} {pendingReviews === 1
-                      ? "aguardando sua aprovação"
-                      : "aguardando suas aprovações"}
-                  </Button>
-                )}
-                {/* Azul, verde e âmbar: as cores de Filtrar, Adicionar e Extrair
-                    no sistema anterior, para a transição não estranhar. */}
-                <Button variant="tintInfo" size="sm" onClick={() => setShowFilters((open) => !open)}>
-                  <Filter className="mr-1 h-4 w-4" /> Filtrar
-                </Button>
-                {canWrite ? (
-                  <Button variant="tintSuccess" size="sm" onClick={() => setEditor({ deal: null })}>
-                    <Plus className="mr-1 h-4 w-4" /> Adicionar negócio
-                  </Button>
-                ) : (
-                  <StatusBadge tone="neutral">Somente leitura</StatusBadge>
-                )}
-                {podeExtrair && (
-                  <Button
-                    variant="tintGold" size="sm"
-                    disabled={visible.length === 0 || extraindo}
-                    onClick={() => void extrair()}
-                  >
-                    <Download className="mr-1 h-4 w-4" />
-                    {extraindo ? "Gerando…" : "Extrair planilha"}
-                  </Button>
-                )}
-                {podeCadastrarStatus && (
-                  <Button variant="outline" size="sm" onClick={() => setStatusSettingsOpen(true)}>
-                    <ListChecks className="mr-1 h-4 w-4" /> Status do negócio
-                  </Button>
-                )}
-                {/* Discreto de propósito: é ação rara do admin, e o âmbar fica
-                    reservado para o botão principal de cada tela. */}
-                {/* Quais meses ainda dá para fechar, o próprio diálogo lê do
-                    banco: a lista desta tela é só o período filtrado, e decidir
-                    por ela esconderia o mês antigo que ficou aberto. */}
-                {isAdmin && (
-                  <Button
-                    variant="outline" size="sm"
-                    disabled={closedMonths.isPending || openSeason.isPending || Boolean(closedMonths.error)}
-                    onClick={() => setCloseMonthOpen(true)}
-                  >
-                    <Target className="mr-1 h-4 w-4" /> Fechar mês
-                  </Button>
-                )}
-                {/* Reabrir só aparece quando há mês fechado — e só para o admin,
-                    que é quem a policy `closed_months_write` autoriza. Sem este
-                    botão, o "Fale com o administrador para reabrir" que a tela
-                    escreve em três lugares apontava para um caminho que só
-                    existia em SQL na mão. */}
-                {isAdmin && closed.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={() => setReopenMonthOpen(true)}>
-                    <Unlock className="mr-1 h-4 w-4" /> Reabrir mês
-                  </Button>
-                )}
-              </>
+            {canReviewDocuments && pendingReviews > 0 && (
+              <Button
+                variant="tintWarning"
+                size="sm"
+                className="animate-pulse border-warning bg-warning/20 shadow-[0_0_18px_hsl(var(--warning)/0.35)]"
+                disabled={openingPendingReviews}
+                onClick={() => void openPendingReviews()}
+              >
+                {openingPendingReviews
+                  ? <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden />
+                  : <FileCheck2 className="mr-1 h-4 w-4" aria-hidden />}
+                {pendingReviews} {pendingReviews === 1
+                  ? "aguardando sua aprovação"
+                  : "aguardando suas aprovações"}
+              </Button>
+            )}
+            {/* Azul, verde e âmbar: as cores de Filtrar, Adicionar e Extrair
+                no sistema anterior, para a transição não estranhar. */}
+            <Button variant="tintInfo" size="sm" onClick={() => setShowFilters((open) => !open)}>
+              <Filter className="mr-1 h-4 w-4" /> Filtrar
+            </Button>
+            {canWrite ? (
+              <Button variant="tintSuccess" size="sm" onClick={() => setEditor({ deal: null })}>
+                <Plus className="mr-1 h-4 w-4" /> Adicionar negócio
+              </Button>
             ) : (
-              // Criar lead é da tela de Leads (achado F02): o botão daqui inseria
-              // direto em `leads` com `status: 'queued'` e um `assigned_to` que a
-              // roleta sobrescreve — e a policy só aceita gestor, então o corretor
-              // levava erro de RLS num botão que a tela mostrava a ele.
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/leads"><Users className="mr-1 h-4 w-4" /> Abrir tela de Leads</Link>
+              <StatusBadge tone="neutral">Somente leitura</StatusBadge>
+            )}
+            {podeExtrair && (
+              <Button
+                variant="tintGold" size="sm"
+                disabled={visible.length === 0 || extraindo}
+                onClick={() => void extrair()}
+              >
+                <Download className="mr-1 h-4 w-4" />
+                {extraindo ? "Gerando…" : "Extrair planilha"}
+              </Button>
+            )}
+            {podeCadastrarStatus && (
+              <Button variant="outline" size="sm" onClick={() => setStatusSettingsOpen(true)}>
+                <ListChecks className="mr-1 h-4 w-4" /> Status do negócio
+              </Button>
+            )}
+            {/* Discreto de propósito: é ação rara do admin, e o âmbar fica
+                reservado para o botão principal de cada tela. */}
+            {/* Quais meses ainda dá para fechar, o próprio diálogo lê do
+                banco: a lista desta tela é só o período filtrado, e decidir
+                por ela esconderia o mês antigo que ficou aberto. */}
+            {isAdmin && (
+              <Button
+                variant="outline" size="sm"
+                disabled={closedMonths.isPending || openSeason.isPending || Boolean(closedMonths.error)}
+                onClick={() => setCloseMonthOpen(true)}
+              >
+                <Target className="mr-1 h-4 w-4" /> Fechar mês
+              </Button>
+            )}
+            {/* Reabrir só aparece quando há mês fechado — e só para o admin,
+                que é quem a policy `closed_months_write` autoriza. Sem este
+                botão, o "Fale com o administrador para reabrir" que a tela
+                escreve em três lugares apontava para um caminho que só
+                existia em SQL na mão. */}
+            {isAdmin && closed.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setReopenMonthOpen(true)}>
+                <Unlock className="mr-1 h-4 w-4" /> Reabrir mês
               </Button>
             )}
           </>
@@ -516,28 +499,22 @@ export default function Pipeline() {
           Esta nao usa o `TabsList` compartilhado — e um `role=tablist` proprio,
           entao o `mx-auto` precisa vir aqui; sem ele a barra ficava encostada a
           esquerda enquanto Dashboard, Marketing e Gamificacao ja centravam. */}
-      <div className="mx-auto flex w-fit rounded-xl border border-border p-0.5" role="tablist" aria-label="Seções do pipeline">
-        {([["deals", "Negócios"], ["leads", "Leads"]] as const).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            className={cn(
-              "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              tab === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Leads vivem na tela de Leads (17/11/2026): "Leads" aqui é um atalho
+          para o funil de lá, não mais uma aba com outra conta de atrasados. */}
+      <nav className="mx-auto flex w-fit rounded-xl border border-border p-0.5" aria-label="Seções do pipeline">
+        <span aria-current="page" className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground">
+          Negócios
+        </span>
+        <Link
+          to="/leads?aba=funil"
+          className="rounded-lg px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Leads
+        </Link>
+      </nav>
 
 
-      {tab === "deals" ? (
-        <div className="flex flex-col gap-4 lg:flex-row">
+      <div className="flex flex-col gap-4 lg:flex-row">
           {showFilters && (
             <DealFilters
               filters={filters}
@@ -620,9 +597,6 @@ export default function Pipeline() {
 
           {showAnalytics && <PipelineAnalytics deals={deals} stages={stages} />}
         </div>
-      ) : (
-        <LeadFunnel actorName={user?.email || "Usuário"} onConvert={setConvertingLead} />
-      )}
 
       {editor && (
         <DealDetailModal
@@ -793,13 +767,6 @@ export default function Pipeline() {
         <DealStatusSettingsDialog onClose={() => setStatusSettingsOpen(false)} />
       )}
 
-      {convertingLead && (
-        <ConvertLeadDialog
-          lead={convertingLead}
-          onClose={() => setConvertingLead(null)}
-          onConverted={async () => { await invalidateDeals(); setTab("deals"); }}
-        />
-      )}
 
       {/* Sempre montado, e não `{painel.open && …}`: o `Dialog` do Radix precisa
           da transição de fechado→aberto para prender o foco e devolvê-lo ao
