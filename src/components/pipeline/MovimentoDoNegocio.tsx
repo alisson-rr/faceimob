@@ -53,13 +53,15 @@ type Acao = "externa" | "retorno" | "contrato" | "assinado" | "reativar" | "troc
  * para a esteira da nossa CCA e a aprovação é registrada à mão.
  */
 export function MovimentoDoNegocio({
-  dealId, form, readOnly, onPatch, onAplicarOff, onGravar, onMovido, onConcluido,
+  dealId, form, readOnly, onPatch, onAplicarOff, onEncerrarContrato, onGravar, onMovido, onConcluido,
 }: {
   dealId: string;
   form: SaveLegacyDealInput;
   readOnly: boolean;
   onPatch: (next: Partial<SaveLegacyDealInput>) => void;
   onAplicarOff: (motivo: string, valorOff: string) => Promise<boolean>;
+  /** Contrato sai por Queda/Distrato, não OFF (0341). */
+  onEncerrarContrato?: (motivo: string) => Promise<boolean>;
   /** Grava a ficha (com o Status 2 novo, se vier). `false` = não gravou. `silencioso` = sem o aviso de salvo. */
   onGravar: (status?: string, silencioso?: boolean) => Promise<boolean>;
   /** Depois de mover pela RPC: o parent atualiza o status da ficha e renova o dossiê. */
@@ -375,7 +377,8 @@ export function MovimentoDoNegocio({
         </AcaoDoNegocio>
       )}
 
-      <DealOffToggle status={form.status} isNew={false} readOnly={readOnly} onAplicar={onAplicarOff} />
+      <DealOffToggle status={form.status} isNew={false} readOnly={readOnly} onAplicar={onAplicarOff}
+        monthBase={form.month_base} onEncerrarContrato={onEncerrarContrato} />
     </div>
   );
 }

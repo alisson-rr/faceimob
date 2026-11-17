@@ -291,6 +291,7 @@ export async function moveDealStatus(dealId: string, status: string, note?: stri
 type RespostaRpc = PromiseLike<{ error: { message?: string; code?: string } | null }>;
 const rpcDeOff = supabase as unknown as {
   rpc(nome: "marcar_off", args: { p_deal_id: string; p_motivo: string }): RespostaRpc;
+  rpc(nome: "encerrar_contrato", args: { p_deal_id: string; p_motivo: string }): PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>;
   rpc(nome: "reativar_negocio", args: { p_deal_id: string; p_motivo: string; p_broker_id: string }): RespostaRpc;
   rpc(
     nome: "mudar_construtora_do_negocio",
@@ -302,6 +303,16 @@ const rpcDeOff = supabase as unknown as {
 export async function marcarOff(dealId: string, motivo: string) {
   const { error } = await rpcDeOff.rpc("marcar_off", { p_deal_id: dealId, p_motivo: motivo.trim() });
   if (error) throw dbError("marcar OFF", error);
+}
+
+/** Status 2 de contrato: daqui o negócio não vai para OFF, e sim Queda ou Distrato (0341). */
+export const STATUS_DE_CONTRATO = new Set(["EM CONTRATO", "ASSINADO", "ASS. BANCO", "RC EMITIDA"]);
+
+/** Encerra contrato pela equipe (0341): o banco escolhe QUEDA (mês vigente) ou DISTRATO (anterior). */
+export async function encerrarContrato(dealId: string, motivo: string): Promise<string> {
+  const { data, error } = await rpcDeOff.rpc("encerrar_contrato", { p_deal_id: dealId, p_motivo: motivo.trim() });
+  if (error) throw dbError("encerrar contrato", error);
+  return typeof data === "string" ? data : "";
 }
 
 /**
