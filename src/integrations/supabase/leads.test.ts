@@ -264,3 +264,11 @@ describe("nomeDeArquivoSeguro", () => {
     expect(nomeDeArquivoSeguro("sem-extensao")).toBe("sem-extensao");
   });
 });
+
+describe("isLeadOverdue e o recomeço da base (0187)", () => {
+  it("lead de antes do recomeço não conta, igual a overdue_lead_count", () => {
+    const vencido = { status: "in_progress" as const, next_action_at: "2026-07-30T10:00:00.000Z" };
+    expect(isLeadOverdue({ ...vencido, antes_do_recomeco: true }, NOW)).toBe(false);
+    expect(isLeadOverdue({ ...vencido, antes_do_recomeco: false }, NOW)).toBe(true);
+  });
+});

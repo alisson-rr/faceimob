@@ -201,6 +201,8 @@ export type LeadRecord = {
   roulette_misses: number;
   /** BSUID do WhatsApp (0335): sem telefone, o corretor atende pelo chat do CRM. */
   whatsapp_user_id?: string | null;
+  /** Recebido antes do recomeço da base (0187): não conta como atrasado nem trava o check-in. */
+  antes_do_recomeco?: boolean;
 
   // Derivados para a UI.
   name: string;
@@ -497,7 +499,7 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   if (filtro) query = query.or(filtro);
   query = query.limit(options.limit ?? LEADS_PAGE_SIZE);
 
-  const [leadsRes, sourcesRes, profilesRes, comRoboRes] = await Promise.all([
+  const [leadsRes, sourcesRes, profilesRes, comRoboRes, recomecoRes] = await Promise.all([
     query,
     db.from("lead_sources").select("id,label"),
     db.from("profiles").select("id,full_name"),
@@ -505,6 +507,9 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
     // (10/10/2026). Quem não lê `sdr_conversations` recebe erro aqui e a
     // regra do banco (0259) já o esconde; o erro não derruba a lista.
     db.from("sdr_conversations").select("lead_id").eq("status", "active"),
+    // Mesmo corte de `overdue_lead_count`: sem ele a tela contava 18 atrasados
+    // e o check-in 7 (16/11/2026). Falha aqui só deixa de aplicar o corte.
+    untyped.rpc("leads_recomeco"),
   ]);
   asError("leads", leadsRes.error);
   asError("lead_sources", sourcesRes.error);
@@ -519,9 +524,17 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
 
   const comRobo = new Set((comRoboRes.error ? [] : comRoboRes.data ?? []).map((row) => row.lead_id));
 
+  const recomeco = !recomecoRes.error && typeof recomecoRes.data === "string" ? Date.parse(recomecoRes.data) : NaN;
+
   return (leadsRes.data || [])
     .filter((row) => row.assigned_to || !comRobo.has(row.id))
-    .map((row) => decorateLead(row, sourceLabels, brokerNames));
+    .map((row) => {
+      const lead = decorateLead(row, sourceLabels, brokerNames);
+      if (!Number.isNaN(recomeco)) {
+        lead.antes_do_recomeco = Date.parse(lead.assigned_at || lead.created_at) < recomeco;
+      }
+      return lead;
+    });
 }
 
 /**
@@ -1359,10 +1372,11 @@ export const canClaim = (
  * para o corretor.
  */
 export const isLeadOverdue = (
-  lead: Pick<LeadRecord, "status" | "next_action_at">,
+  lead: Pick<LeadRecord, "status" | "next_action_at" | "antes_do_recomeco">,
   now: number = Date.now(),
 ): boolean => {
   if (!["assigned", "attending", "in_progress"].includes(lead.status)) return false;
+  if (lead.antes_do_recomeco) return false;
   if (!lead.next_action_at) return false;
   return new Date(lead.next_action_at).getTime() < now;
 };
