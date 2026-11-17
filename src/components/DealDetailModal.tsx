@@ -18,7 +18,7 @@ import {
 import { CorrigirNomeProponentes } from "@/components/pipeline/CorrigirNomeProponentes";
 import { addDealComment } from "@/components/pipeline/DealCommentsPanel";
 import { BaixaPendenciaContrato } from "@/components/pipeline/BaixaPendenciaContrato";
-import { marcarOff } from "@/integrations/supabase/dealStatuses";
+import { encerrarContrato, marcarOff } from "@/integrations/supabase/dealStatuses";
 import { MovimentoDoNegocio } from "@/components/pipeline/MovimentoDoNegocio";
 import { ConferenciaGerenteDialog } from "@/components/pipeline/ConferenciaGerenteDialog";
 import { submitDealForManagerReview } from "@/integrations/supabase/documents";
@@ -396,6 +396,23 @@ export default function DealDetailModal({
     return true;
   };
 
+  // Contrato não vai para OFF (0341): o banco escolhe Queda ou Distrato pelo mês.
+  const aplicarEncerramento = async (motivo: string): Promise<boolean> => {
+    if (!dealId) return false;
+    let resultado = "";
+    try {
+      resultado = await encerrarContrato(dealId, motivo);
+    } catch (err) {
+      toast({ variant: "destructive", title: "Não foi possível encerrar o contrato", description: describeError(err, "Tente de novo.") });
+      return false;
+    }
+    setVersaoComentarios((v) => v + 1);
+    toast({ variant: "success", title: resultado === "DISTRATO" ? "Distrato registrado" : "Queda registrada", description: "O motivo ficou no histórico." });
+    await dossieMudou();
+    onClose();
+    return true;
+  };
+
   // Negócio novo: as outras abas precisam do id. Clicar nelas grava a ficha
   // (com as mesmas cobranças do "Criar negócio") e abre a aba — antes elas
   // nasciam apagadas e o corretor achava que não podia anexar nem comentar
@@ -645,6 +662,7 @@ export default function DealDetailModal({
                   readOnly={lock.readOnly}
                   onPatch={patch}
                   onAplicarOff={aplicarOff}
+                  onEncerrarContrato={aplicarEncerramento}
                   onGravar={(status, silencioso) => handleSave({
                     fechar: false,
                     avisar: !silencioso,
