@@ -30,6 +30,21 @@ import {
   type LeadRecord, type LeadTone,
 } from "@/integrations/supabase/leads";
 
+/**
+ * Lead repassado que ainda não foi pego (pedido de 18/11/2026): o repasse
+ * (`reassign_lead`) deixa o lead "aguardando" sem cronômetro, mas na etapa em
+ * que estava — ele se misturava às colunas de quem já está em conversa. Tem
+ * coluna própria, a segunda; ao pegar, vai para "Conversa iniciada" (0344).
+ */
+const isLeadRepassado = (lead: Pick<LeadRecord, "status" | "attend_deadline">) =>
+  lead.status === "assigned" && !lead.attend_deadline;
+
+const COLUNAS_DO_FUNIL: { key: string; label: string; tone: LeadTone }[] = [
+  FUNNEL_STAGES[0],
+  { key: "repassado", label: "Repassados", tone: "highlight" },
+  ...FUNNEL_STAGES.slice(1),
+];
+
 /** Contorno da coluna por tom da etapa. Só token — não há paleta literal aqui. */
 const columnBorder: Record<LeadTone, string> = {
   info: "border-info/40",
@@ -89,9 +104,9 @@ export default function LeadFunnel({
 
   const grouped = useMemo(() => {
     const groups: Record<string, LeadRecord[]> = {};
-    FUNNEL_STAGES.forEach((stage) => { groups[stage.key] = []; });
+    COLUNAS_DO_FUNIL.forEach((stage) => { groups[stage.key] = []; });
     for (const lead of leads) {
-      const key = lead.funnel_stage || "new";
+      const key = isLeadRepassado(lead) ? "repassado" : lead.funnel_stage || "new";
       (groups[key] ||= []).push(lead);
     }
     return groups;
@@ -212,7 +227,7 @@ export default function LeadFunnel({
 
       {/* `lead-funnel`: gancho da regra de pintura em `index.css`. */}
       <div className="lead-funnel flex gap-3 overflow-x-auto pb-4">
-        {FUNNEL_STAGES.map((stage) => {
+        {COLUNAS_DO_FUNIL.map((stage) => {
           const items = grouped[stage.key] || [];
           const accent = columnBorder[stage.tone];
           const surface = stageSurface[stage.tone];
