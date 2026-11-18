@@ -474,7 +474,9 @@ const LeadCardMini = memo(function LeadCardMini({
         </Button>
       )}
       {claimable && (
-        <p className="mt-1 text-center text-xs text-muted-foreground">Só fica seu ao clicar em "Atender"</p>
+        <p className="mt-1 text-center text-xs text-muted-foreground">
+          {lead.attend_deadline ? 'Só fica seu ao clicar em "Atender"' : "Repassado para você · não volta à roleta"}
+        </p>
       )}
     </div>
   );
