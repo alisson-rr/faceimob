@@ -499,7 +499,16 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   if (filtro) query = query.or(filtro);
   query = query.limit(options.limit ?? LEADS_PAGE_SIZE);
 
-  const [leadsRes, sourcesRes, profilesRes, comRoboRes, recomecoRes] = await Promise.all([
+  // Lista padrão: os leads AGUARDANDO quem pegue vêm sempre, mesmo fora dos
+  // 1.000 mais novos (18/11/2026: a Susana tinha 645 repassados, todos de
+  // leads criados até 09/2025, e a coluna Repassados aparecia zerada).
+  // ponytail: até 1.000 aguardando por pessoa; evoluir quando alguém passar disso.
+  const aguardando = !options.ids?.length && !filtro && !options.statuses?.length
+    ? db.from("leads").select("*").eq("status", "assigned")
+      .order("assigned_at", { ascending: false, nullsFirst: false }).limit(LEADS_PAGE_SIZE)
+    : null;
+
+  const [leadsRes, sourcesRes, profilesRes, comRoboRes, recomecoRes, aguardandoRes] = await Promise.all([
     query,
     db.from("lead_sources").select("id,label"),
     db.from("profiles").select("id,full_name"),
@@ -510,8 +519,10 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
     // Mesmo corte de `overdue_lead_count`: sem ele a tela contava 18 atrasados
     // e o check-in 7 (16/11/2026). Falha aqui só deixa de aplicar o corte.
     untyped.rpc("leads_recomeco"),
+    aguardando,
   ]);
   asError("leads", leadsRes.error);
+  if (aguardandoRes) asError("leads aguardando", aguardandoRes.error);
   asError("lead_sources", sourcesRes.error);
   asError("profiles", profilesRes.error);
 
@@ -526,7 +537,13 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
 
   const recomeco = !recomecoRes.error && typeof recomecoRes.data === "string" ? Date.parse(recomecoRes.data) : NaN;
 
-  return (leadsRes.data || [])
+  const naLista = new Set((leadsRes.data || []).map((row) => row.id));
+  const linhas = [
+    ...(leadsRes.data || []),
+    ...(aguardandoRes?.data || []).filter((row) => !naLista.has(row.id)),
+  ];
+
+  return linhas
     .filter((row) => row.assigned_to || !comRobo.has(row.id))
     .map((row) => {
       const lead = decorateLead(row, sourceLabels, brokerNames);
