@@ -13,6 +13,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { LoadingState } from "@/components/shared";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { listSelectableBrokers } from "@/integrations/supabase/newSchema";
 import { describeError } from "@/lib/supabaseError";
@@ -81,7 +82,10 @@ function GrupoDoCorretor({ corretorId, nome, status, leads, ativos }: {
   ativos: { id: string; name: string }[];
 }) {
   const qc = useQueryClient();
-  const [marcados, setMarcados] = useState<Set<string>>(() => new Set(leads.map((l) => l.lead_id)));
+  // Começa sem nenhum marcado (18/11/2026): passar a carteira inteira de uma
+  // vez sobrecarregava quem recebe. Escolhe-se quantos, ou um a um.
+  const [marcados, setMarcados] = useState<Set<string>>(() => new Set());
+  const [quantos, setQuantos] = useState("");
   const [destino, setDestino] = useState<string>("");
   const [confirmando, setConfirmando] = useState(false);
   const nomeDestino = ativos.find((a) => a.id === destino)?.name ?? "";
@@ -124,13 +128,34 @@ function GrupoDoCorretor({ corretorId, nome, status, leads, ativos }: {
         </CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-3">
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Checkbox
-            checked={todos}
-            onCheckedChange={(v) => setMarcados(v === true ? new Set(leads.map((l) => l.lead_id)) : new Set())}
-          />
-          Marcar todos ({escolhidos.length} de {leads.length})
-        </label>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = Math.min(Math.max(Number.parseInt(quantos, 10) || 0, 0), leads.length);
+              setMarcados(new Set(leads.slice(0, n).map((l) => l.lead_id)));
+            }}
+          >
+            <label htmlFor={`quantos-${corretorId}`}>Quantos passar</label>
+            <Input
+              id={`quantos-${corretorId}`} type="number" inputMode="numeric" min={1} max={leads.length}
+              className="h-8 w-24 text-xs" placeholder="ex.: 50"
+              value={quantos} onChange={(e) => setQuantos(e.target.value)}
+            />
+            <Button type="submit" size="sm" variant="outline" className="h-8 text-xs" disabled={!quantos}>
+              Marcar os primeiros
+            </Button>
+          </form>
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={todos && leads.length > 0}
+              onCheckedChange={(v) => setMarcados(v === true ? new Set(leads.map((l) => l.lead_id)) : new Set())}
+            />
+            Marcar todos
+          </label>
+          <span className="tabular-nums">{escolhidos.length} de {leads.length} marcados</span>
+        </div>
         <ul className="max-h-80 divide-y divide-border/40 overflow-y-auto rounded-md border border-border/40">
           {leads.map((l) => (
             <li key={l.lead_id} className="flex items-start gap-3 p-2 text-sm">
