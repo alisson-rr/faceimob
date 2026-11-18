@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, Clock, HandMetal } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, HandMetal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
@@ -23,6 +23,7 @@ import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
 import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
 import { AttendCountdown } from "@/components/leads/LeadsTable";
 import { sameLeadProps } from "@/components/leads/sameLeadProps";
+import { NextActionDialog } from "@/components/leads/NextActionDialog";
 import {
   claimLead, FUNNEL_STAGES, funnelStageLabel, isLeadOverdue,
   canClaim, leadSourceTone,
@@ -75,6 +76,8 @@ export default function LeadFunnel({
   const [overdueOpen, setOverdueOpen] = useState(false);
   // WhatsApp com mensagem pronta (03/10/2026) em vez de abrir a conversa vazia.
   const [whatsappId, setWhatsappId] = useState<string | null>(null);
+  // Reagendar direto do cartão (pedido de 18/11/2026): o mesmo diálogo da lista de atrasados.
+  const [reagendarId, setReagendarId] = useState<string | null>(null);
   const templatesQuery = useWhatsappTemplates();
 
   const leads = useMemo(() => leadsDoCorretor(leadsQuery.data ?? [], broker), [leadsQuery.data, broker]);
@@ -124,6 +127,7 @@ export default function LeadFunnel({
   );
 
 
+  const reagendarLead = reagendarId ? leads.find((lead) => lead.id === reagendarId) ?? null : null;
   const whatsappLead = whatsappId ? leads.find((lead) => lead.id === whatsappId) ?? null : null;
 
   const threshold = settingsQuery.data?.overdue_block_threshold ?? 20;
@@ -236,6 +240,7 @@ export default function LeadFunnel({
                     onOpen={setSelectedId}
                     onAttend={onAttend}
                     onWhatsApp={setWhatsappId}
+                    onReschedule={setReagendarId}
                   />
                 ))}
                 {items.length === 0 && (
@@ -263,6 +268,8 @@ export default function LeadFunnel({
         onConvert={(lead) => { setSelectedId(null); onConvert(lead); }}
         onStageChanged={() => void invalidateLeads()}
       />
+
+      {reagendarLead && <NextActionDialog lead={reagendarLead} onClose={() => setReagendarId(null)} />}
 
       {/* Lista de leads atrasados */}
       <Dialog open={overdueOpen} onOpenChange={setOverdueOpen}>
@@ -331,6 +338,7 @@ export default function LeadFunnel({
  */
 const LeadCardMini = memo(function LeadCardMini({
   lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend, onWhatsApp,
+  onReschedule,
 }: {
   lead: LeadRecord;
   now: number;
@@ -344,6 +352,7 @@ const LeadCardMini = memo(function LeadCardMini({
   onOpen: (leadId: string) => void;
   onAttend: (lead: LeadRecord) => void;
   onWhatsApp: (leadId: string) => void;
+  onReschedule: (leadId: string) => void;
 }) {
   const isBrandNew = now - new Date(lead.created_at).getTime() < attendTimeout * 1000;
   const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
@@ -408,6 +417,17 @@ const LeadCardMini = memo(function LeadCardMini({
           </Button>
         )}
       </div>
+
+      {/* Lead em atendimento: reagendar a próxima ação sem abrir a ficha. */}
+      {!claimable && ["assigned", "attending", "in_progress"].includes(lead.status) && (
+        <Button
+          variant={overdue ? "outline" : "ghost"} size="sm"
+          className={cn("mt-1.5 h-7 w-full gap-1 text-xs", overdue && "border-destructive/50 text-destructive")}
+          onClick={() => onReschedule(lead.id)}
+        >
+          <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Reagendar
+        </Button>
+      )}
 
       {claimable && (
         <Button
