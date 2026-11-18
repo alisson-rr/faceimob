@@ -499,12 +499,16 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   if (filtro) query = query.or(filtro);
   query = query.limit(options.limit ?? LEADS_PAGE_SIZE);
 
-  // Lista padrão: os leads AGUARDANDO quem pegue vêm sempre, mesmo fora dos
-  // 1.000 mais novos (18/11/2026: a Susana tinha 645 repassados, todos de
-  // leads criados até 09/2025, e a coluna Repassados aparecia zerada).
-  // ponytail: até 1.000 aguardando por pessoa; evoluir quando alguém passar disso.
-  const aguardando = !options.ids?.length && !filtro && !options.statuses?.length
-    ? db.from("leads").select("*").eq("status", "assigned")
+  // Os leads em operação mais recentes POR ATRIBUIÇÃO vêm sempre, mesmo fora
+  // dos mais novos por criação: o repasse dá lead antigo (criado em 2025) e a
+  // lista, ordenada por `created_at`, o deixava de fora — a Susana tinha 609
+  // repassados e via a coluna Repassados zerada; depois de pegar, o lead sumia
+  // da lista e a tela ficava com a cópia de antes ("Pegar lead" de novo).
+  // ponytail: até 1.000 por atribuição; evoluir quando alguém passar disso.
+  const EM_OPERACAO: LeadStatus[] = ["assigned", "attending", "in_progress"];
+  const pedeEmOperacao = !options.statuses?.length || options.statuses.some((st) => EM_OPERACAO.includes(st));
+  const aguardando = !options.ids?.length && !filtro && pedeEmOperacao
+    ? db.from("leads").select("*").in("status", EM_OPERACAO)
       .order("assigned_at", { ascending: false, nullsFirst: false }).limit(LEADS_PAGE_SIZE)
     : null;
 
@@ -522,7 +526,7 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
     aguardando,
   ]);
   asError("leads", leadsRes.error);
-  if (aguardandoRes) asError("leads aguardando", aguardandoRes.error);
+  if (aguardandoRes) asError("leads em operação", aguardandoRes.error);
   asError("lead_sources", sourcesRes.error);
   asError("profiles", profilesRes.error);
 

@@ -94,6 +94,7 @@ export default function LeadDetailModal({
   const [whatsappAberto, setWhatsappAberto] = useState(false);
   const [anuncioAberto, setAnuncioAberto] = useState(false);
   const [pegarAberto, setPegarAberto] = useState(false);
+  const [pegoAgora, setPegoAgora] = useState<string | null>(null);
   const [repassando, setRepassando] = useState(false);
   const [reativando, setReativando] = useState(false);
   const [vinculando, setVinculando] = useState(false);
@@ -158,7 +159,9 @@ export default function LeadDetailModal({
     ? `https://wa.me/${digits.startsWith("55") ? digits : `55${digits}`}?text=${encodeURIComponent(`Olá ${lead.name}, tudo bem?`)}`
     : "";
   const secondsLeft = attendSecondsLeft(lead, now);
-  const claimable = canClaim(lead, profileId);
+  // Pegou por esta ficha: o botão some na hora, sem esperar a lista recarregar
+  // (a cópia antiga do lead oferecia "Pegar lead" de novo — ação dupla).
+  const claimable = canClaim(lead, profileId) && pegoAgora !== lead.id;
   const tracking = trackingFields(lead);
   const grupo = (groupsQuery.data ?? []).find((item) => item.id === lead.distribution_group_id);
   const semAtendimento = isLeadUnattended(lead, settingsQuery.data?.roulette_max_rounds ?? 0);
@@ -670,7 +673,7 @@ export default function LeadDetailModal({
         <NextActionDialog
           lead={lead}
           onClose={() => setAskNextAction(false)}
-          onSaved={() => onStageChanged?.()}
+          onSaved={() => { setPegoAgora(lead.id); onStageChanged?.(); }}
         />
       )}
 

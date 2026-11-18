@@ -279,6 +279,9 @@ export default function Leads() {
   };
   const pegou = async (lead: LeadRecord) => {
     await invalidateLeads();
+    // Lead aberto pelo link é uma cópia guardada: sem reler, a ficha seguia
+    // "aguardando" e oferecia "Pegar lead" de novo.
+    if (leadDoLink?.id === lead.id) setLeadDoLink(await getLeadById(lead.id).catch(() => leadDoLink));
     setDetailLeadId(lead.id);
   };
 
@@ -575,7 +578,12 @@ export default function Leads() {
         onOpenChange={(open) => { if (!open) setDetailLeadId(null); }}
         actorName={profile?.name || "Você"}
         onConvert={(lead) => { setDetailLeadId(null); openDialog({ convert: lead }); }}
-        onStageChanged={() => void invalidateLeads()}
+        onStageChanged={() => {
+          void invalidateLeads();
+          if (leadDoLink && leadDoLink.id === detailLeadId) {
+            void getLeadById(leadDoLink.id).then((atual) => { if (atual) setLeadDoLink(atual); }, () => undefined);
+          }
+        }}
       />
     </div>
   );
