@@ -20,6 +20,7 @@ declare
   v_time uuid;
   v_n int;
   v_t int;
+  v_j int;
 begin
   insert into auth.users(id,email,raw_user_meta_data) values
     (dir,'dir@l185.test','{"full_name":"Diretor 185"}'),
@@ -75,7 +76,11 @@ begin
   set local role authenticated;
   select count(*) into v_n from public.lista_de_ligacao('2025-03-01', '2025-04-01', null) l where l.cliente like 'Mes %';
   select count(*) into v_t from public.lista_de_ligacao('2025-03-01', '2025-04-01', '51') l where l.cliente like 'Mes %';
+  -- 0342: o pacote jsonb traz a mesma lista, sem o teto do PostgREST.
+  select count(*) into v_j from jsonb_array_elements(public.lista_de_ligacao_completa('2025-03-01', '2025-04-01', '51')) e
+   where e ->> 'cliente' like 'Mes %';
   reset role;
+  perform pg_temp.ok(v_j = 1, 'lista_de_ligacao_completa traz o mesmo recorte em jsonb');
   perform pg_temp.ok(v_n = 2, 'mês escolhido: só março, sem o lead de 01/04 00:30');
   perform pg_temp.ok(v_t = 1, 'DDD 51 tira o 11 e aceita telefone com 55 na frente');
 
