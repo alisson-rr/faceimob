@@ -35,7 +35,7 @@ import { enviarAcessoPorWhatsapp } from "@/components/boasVindas";
 import { TrilhaAcesso } from "@/components/equipes/TrilhaAcesso";
 import { CofreCredenciais } from "@/components/equipes/CofreCredenciais";
 import { ExigirNovaSenha } from "@/components/equipes/ExigirNovaSenha";
-import { RepasseDeNegocios } from "@/components/equipes/RepasseDeNegocios";
+import { Repasses } from "@/components/equipes/Repasses";
 import { DiretorDuploCard } from "@/components/equipes/DiretorDuploCard";
 import { goalPeriods, goalsByProfile, otherMetricsByProfile } from "@/components/equipes/metas";
 
@@ -688,7 +688,7 @@ export default function Equipes() {
         <TabsList>
           <TabsTrigger value="equipe">Equipe</TabsTrigger>
           {isAdmin && <TabsTrigger value="cofre">Cofre de credenciais</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="repasse">Repasse de negócios</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="repasse">Repasses</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="equipe" className="mt-0 space-y-6">
@@ -990,7 +990,7 @@ export default function Equipes() {
         )}
         {isAdmin && (
           <TabsContent value="repasse" className="mt-0">
-            <RepasseDeNegocios />
+            <Repasses />
           </TabsContent>
         )}
       </Tabs>
