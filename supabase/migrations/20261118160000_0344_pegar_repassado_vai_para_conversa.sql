@@ -56,8 +56,14 @@ begin
     raise exception 'Lead não está aguardando atendimento.' using errcode = 'P0001';
   end if;
 
-  -- Repasse manual (`reassign_lead`, 0275) deixa o lead aguardando sem cronômetro.
-  v_repassado := v_lead.attend_deadline is null;
+  -- Repassado = a atribuição atual veio do repasse manual (`reassign_lead`,
+  -- 0275), que grava o evento `reassigned` junto com o `assigned_at`. Lead
+  -- entregue direto por outra via (ex.: SDR qualificou) mantém a etapa.
+  v_repassado := exists (
+    select 1 from public.lead_events e
+     where e.lead_id = p_lead_id and e.kind = 'reassigned'
+       and e.created_at >= coalesce(v_lead.assigned_at, 'infinity'::timestamptz)
+  );
 
   select s.no_response_hours into v_hours from public.automation_settings s where s.id;
   -- A data escolhida ao pegar vence; sem ela, preserva a que o corretor já
