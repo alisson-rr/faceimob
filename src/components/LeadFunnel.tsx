@@ -40,7 +40,7 @@ import {
 const isLeadRepassado = (lead: Pick<LeadRecord, "status" | "attend_deadline">) =>
   lead.status === "assigned" && !lead.attend_deadline;
 
-const semAcento = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 const COLUNAS_DO_FUNIL: { key: string; label: string; tone: LeadTone }[] = [
   FUNNEL_STAGES[0],
