@@ -324,11 +324,12 @@ export default function LeadFunnel({
               </p>
             )}
             {overdueLeads.map((lead) => (
+              // Reagendar ao lado do lead (19/11/2026): a lista só abria a ficha.
+              <div key={lead.id} className="flex items-stretch gap-2">
               <button
-                key={lead.id}
                 type="button"
                 onClick={() => { setOverdueOpen(false); setSelectedId(lead.id); }}
-                className="w-full rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-left transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="min-w-0 flex-1 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-left transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -346,6 +347,13 @@ export default function LeadFunnel({
                   </div>
                 </div>
               </button>
+              <Button
+                variant="outline" size="sm" className="h-auto shrink-0 gap-1 px-2 text-xs"
+                onClick={() => { setOverdueOpen(false); setReagendarId(lead.id); }}
+              >
+                <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Reagendar
+              </Button>
+              </div>
             ))}
           </div>
           <DialogFooter>

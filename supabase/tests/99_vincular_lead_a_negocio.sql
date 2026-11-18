@@ -72,4 +72,39 @@ begin
 end;
 $$;
 
+-- 0346: negócio de mês anterior e FECHADO aceita o vínculo (retroativo), e o
+-- vínculo não abre o resto do negócio.
+do $$
+declare
+  cor uuid := '00000000-0000-0000-0000-000002790001';
+  v_mes date := (public.month_start(coalesce(public.current_season_month(), current_date)) - interval '1 month')::date;
+  v_deal uuid; v_lead uuid; v_msg text;
+begin
+  insert into public.deals (stage_id, created_by, month_base)
+    values ((select id from public.pipeline_stages where is_initial limit 1), cor, v_mes) returning id into v_deal;
+  insert into public.deal_participants (deal_id, profile_id, role, ordinal) values (v_deal, cor, 'broker', 1) on conflict do nothing;
+  insert into public.deal_clients (deal_id, ordinal, full_name, cpf) values (v_deal, 1, 'Ana Antiga', '52998224725');
+  insert into public.leads (full_name, phone, assigned_to, status) values ('Ana Lead', '5551999990009', cor, 'assigned') returning id into v_lead;
+  insert into public.closed_months (period) values (v_mes) on conflict do nothing;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
+  perform public.vincular_lead_a_negocio(v_lead, v_deal, '529.982.247-25');
+  if (select status from public.leads where id = v_lead) <> 'converted'
+     or (select lead_id from public.deals where id = v_deal) <> v_lead then
+    raise exception 'FALHOU: o vínculo retroativo devia passar no mês fechado';
+  end if;
+  raise notice '  ok  vínculo com negócio de mês fechado passa e tira o lead da lista';
+
+  begin
+    update public.deals set vgv_gross = 1 where id = v_deal;
+    v_msg := 'passou';
+  exception when others then v_msg := sqlerrm;
+  end;
+  if v_msg not like 'O mês % está fechado%' then
+    raise exception 'FALHOU: o mês fechado devia continuar travado fora do vínculo (%)', v_msg;
+  end if;
+  raise notice '  ok  fora do vínculo o mês fechado continua travado';
+end;
+$$;
+
 rollback;
