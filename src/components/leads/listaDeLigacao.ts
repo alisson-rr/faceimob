@@ -106,21 +106,14 @@ export async function buscarListaDeLigacao(filtro?: { mes: string; ddd?: string 
   const periodo = filtro ? periodoDoMes(filtro.mes) : null;
   if (filtro && !periodo) throw new Error("Escolha um mês válido.");
   const ddd = filtro?.ddd?.replace(/\D/g, "") || null;
-  // 0340: o PostgREST corta em 1.000 linhas; a RPC tem ordem estável, então
-  // as partes não se repetem nem pulam ninguém.
-  const PARTE = 1000;
-  const todas: unknown[] = [];
-  for (let de = 0; ; de += PARTE) {
-    const chamada = periodo
-      ? untyped.rpc("lista_de_ligacao", { p_inicio: periodo.inicio, p_fim: periodo.fim, p_ddd: ddd })
-      : untyped.rpc("lista_de_ligacao");
-    const { data, error } = await chamada.range(de, de + PARTE - 1);
-    if (error) throw dbError("lista_de_ligacao", error);
-    const parte = Array.isArray(data) ? data : [];
-    todas.push(...parte);
-    if (parte.length < PARTE) break;
-  }
-  return intercalarCampanhas(lerLinhas(todas));
+  // 0342: a lista vem num jsonb só. Em função que devolve linhas o PostgREST
+  // corta em 1.000 antes do offset, e buscar em partes não passava disso.
+  const { data, error } = await untyped.rpc(
+    "lista_de_ligacao_completa",
+    periodo ? { p_inicio: periodo.inicio, p_fim: periodo.fim, p_ddd: ddd } : {},
+  );
+  if (error) throw dbError("lista_de_ligacao", error);
+  return intercalarCampanhas(lerLinhas(data));
 }
 
 const nomeDoArquivo = (extensao: string) =>
