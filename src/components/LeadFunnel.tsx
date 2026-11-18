@@ -75,7 +75,12 @@ export default function LeadFunnel({
   // por vez, e o funil e os indicadores falam do mesmo corretor.
   const verPorCorretor = podeVerPorCorretor(previewRole ? [previewRole] : roles, isAdmin);
   const canViewQueue = can("leads.view_queue");
-  const [broker, setBroker] = useState("all");
+  // Gerente e diretor abrem nos PRÓPRIOS leads (pedido de 19/11/2026): a
+  // equipe inteira no funil confundia — a coluna Repassados dele parecia zerada
+  // no meio dos leads dos outros. "Equipe" mostra todos de novo.
+  const efetivos = previewRole ? [previewRole] : roles;
+  const gestorDeEquipe = !isAdmin && efetivos.some((role) => role === "manager" || role === "director");
+  const [broker, setBroker] = useState(() => (gestorDeEquipe && profileId ? profileId : "all"));
 
   const leadsQuery = useOpenLeads();
   // Panorama (hoje/semana/mês e a régua): a mesma base da tela de Leads, que
@@ -201,6 +206,19 @@ export default function LeadFunnel({
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        {gestorDeEquipe && profileId && (
+          <div className="flex rounded-xl border border-border p-0.5" role="group" aria-label="De quem são os leads do funil">
+            {([[profileId, "Meus leads"], ["all", "Equipe"]] as const).map(([valor, rotulo]) => (
+              <Button
+                key={rotulo} type="button" size="sm" className="h-7 text-xs"
+                variant={broker === valor ? "default" : "ghost"} aria-pressed={broker === valor}
+                onClick={() => setBroker(valor)}
+              >
+                {rotulo}
+              </Button>
+            ))}
+          </div>
+        )}
         <Button
           size="sm"
           variant={overdueLeads.length > 0 ? "destructive" : "outline"}
