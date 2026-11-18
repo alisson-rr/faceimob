@@ -18,7 +18,7 @@ import type { LeadDialogState } from "./model";
  * precisa de efeito para se ressincronizar quando o alvo muda.
  */
 export function LeadDialogs({
-  state, onClose, sources, brokers, templates, actorName, onPegou,
+  state, onClose, sources, brokers, templates, actorName, onPegou, novoLeadProprio = false,
 }: {
   state: LeadDialogState;
   onClose: (patch: Partial<LeadDialogState>) => void;
@@ -29,6 +29,8 @@ export function LeadDialogs({
   actorName?: string;
   /** Depois de "Pegar lead": a tela abre o card do lead com as ações. */
   onPegou?: (lead: LeadRecord) => void;
+  /** Corretor criando lead para si (0345). */
+  novoLeadProprio?: boolean;
 }) {
   return (
     <>
@@ -38,6 +40,7 @@ export function LeadDialogs({
           lead={state.form.lead}
           sources={sources}
           onClose={() => onClose({ form: { open: false, lead: null } })}
+          proprio={!state.form.lead && novoLeadProprio}
         />
       )}
 

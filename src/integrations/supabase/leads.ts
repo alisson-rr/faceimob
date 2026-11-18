@@ -623,6 +623,20 @@ export async function createLead(input: NewLeadInput): Promise<LeadRecord> {
   return decorateLead(data, new Map(), new Map());
 }
 
+/** Corretor cadastra o próprio lead (0345): nasce com ele, em atendimento, fora da roleta. */
+export async function corretorCriarLead(input: NewLeadInput): Promise<string> {
+  const { data, error } = await untyped.rpc("corretor_criar_lead", {
+    p_nome: input.full_name.trim(),
+    p_telefone: input.phone || "",
+    p_email: input.email || null,
+    p_documento: input.document || null,
+    p_origem: input.source_id || null,
+    p_observacao: input.notes || null,
+  });
+  asError("criar lead", error);
+  return String(data ?? "");
+}
+
 /** Quantas linhas por INSERT na importação. Ver `createLeads`. */
 export const IMPORT_CHUNK_SIZE = 200;
 

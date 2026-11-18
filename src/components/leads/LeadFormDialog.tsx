@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
-import { createLead, updateLead, type LeadRecord, type LeadSource } from "@/integrations/supabase/leads";
+import { corretorCriarLead, createLead, updateLead, type LeadRecord, type LeadSource } from "@/integrations/supabase/leads";
 import { useInvalidateLeads } from "./data";
 
 /**
@@ -20,11 +20,13 @@ import { useInvalidateLeads } from "./data";
  * do lead anterior.
  */
 export function LeadFormDialog({
-  lead, sources, onClose,
+  lead, sources, onClose, proprio = false,
 }: {
   lead: LeadRecord | null;
   sources: LeadSource[];
   onClose: () => void;
+  /** Corretor cadastrando o próprio lead (0345): fica com ele, não vai à roleta. */
+  proprio?: boolean;
 }) {
   const invalidateLeads = useInvalidateLeads();
   const fieldId = useId();
@@ -54,6 +56,16 @@ export function LeadFormDialog({
           notes: form.notes || null,
         });
         toast({ variant: "success", title: "Lead atualizado" });
+      } else if (proprio) {
+        await corretorCriarLead({
+          full_name: form.full_name,
+          phone: form.phone,
+          email: form.email,
+          document: form.document,
+          source_id: form.source_id || null,
+          notes: form.notes,
+        });
+        toast({ variant: "success", title: "Lead criado", description: "Ele já é seu, em atendimento. Não passa pela roleta." });
       } else {
         await createLead({
           full_name: form.full_name,
@@ -90,7 +102,9 @@ export function LeadFormDialog({
           {!lead && (
             <DialogDescription className="flex items-center gap-1.5">
               <Zap className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              O lead entra na fila e a roleta escolhe o corretor entre quem está com check-in aberto.
+              {proprio
+                ? "O lead já fica com você, em atendimento. Ele não passa pela roleta."
+                : "O lead entra na fila e a roleta escolhe o corretor entre quem está com check-in aberto."}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -129,7 +143,10 @@ export function LeadFormDialog({
 
         <DialogFooter>
           <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
-          <Button onClick={save} disabled={!form.full_name.trim() || saving}>
+          <Button
+            onClick={save}
+            disabled={!form.full_name.trim() || saving || (proprio && form.phone.replace(/\D/g, "").length < 10)}
+          >
             {saving ? "Salvando…" : lead ? "Salvar" : "Criar lead"}
           </Button>
         </DialogFooter>
