@@ -1,13 +1,14 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, LoadingState, StatusBadge } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, CalendarClock, Clock, HandMetal } from "lucide-react";
+import { AlertTriangle, CalendarClock, Clock, HandMetal, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateTime, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
@@ -25,7 +26,7 @@ import { AttendCountdown } from "@/components/leads/LeadsTable";
 import { sameLeadProps } from "@/components/leads/sameLeadProps";
 import { NextActionDialog } from "@/components/leads/NextActionDialog";
 import {
-  claimLead, FUNNEL_STAGES, funnelStageLabel, isLeadOverdue,
+  claimLead, FUNNEL_STAGES, funnelStageLabel, isLeadOverdue, searchPhoneDigits,
   canClaim, leadSourceTone,
   type LeadRecord, type LeadTone,
 } from "@/integrations/supabase/leads";
@@ -38,6 +39,8 @@ import {
  */
 const isLeadRepassado = (lead: Pick<LeadRecord, "status" | "attend_deadline">) =>
   lead.status === "assigned" && !lead.attend_deadline;
+
+const semAcento = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 const COLUNAS_DO_FUNIL: { key: string; label: string; tone: LeadTone }[] = [
   FUNNEL_STAGES[0],
@@ -107,15 +110,22 @@ export default function LeadFunnel({
   // relógio aqui, 1 lead em trava refazia os até 500 cartões a cada segundo.
   const now = useNowTicker(false);
 
+  // Busca por nome no funil (pedido de 19/11/2026): filtra os cartões que já
+  // estão na tela, sem ir ao banco; aceita também o telefone.
+  const [busca, setBusca] = useState("");
   const grouped = useMemo(() => {
     const groups: Record<string, LeadRecord[]> = {};
     COLUNAS_DO_FUNIL.forEach((stage) => { groups[stage.key] = []; });
+    const termo = semAcento(busca.trim());
+    const digitos = searchPhoneDigits(busca);
     for (const lead of leads) {
+      if (termo && !semAcento(lead.name).includes(termo)
+          && !(digitos && (lead.phone ?? "").replace(/\D/g, "").includes(digitos))) continue;
       const key = isLeadRepassado(lead) ? "repassado" : lead.funnel_stage || "new";
       (groups[key] ||= []).push(lead);
     }
     return groups;
-  }, [leads]);
+  }, [leads, busca]);
 
   // "Atrasado" é a definição do banco (`overdue_lead_count`): próxima ação
   // vencida. É essa conta que bloqueia o check-in, então a tela usa a mesma.
@@ -206,6 +216,14 @@ export default function LeadFunnel({
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" aria-hidden />
+          <Input
+            type="search" value={busca} onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar lead por nome ou telefone" aria-label="Buscar lead no funil por nome ou telefone"
+            className="h-8 w-64 max-w-full pl-8 text-xs"
+          />
+        </div>
         {gestorDeEquipe && profileId && (
           <div className="flex rounded-xl border border-border p-0.5" role="group" aria-label="De quem são os leads do funil">
             {([[profileId, "Meus leads"], ["all", "Equipe"]] as const).map(([valor, rotulo]) => (
