@@ -27,8 +27,8 @@ begin
     ('Lead A 343', '51900343001', 'attending', saiu, now()) returning id into l1;
   insert into public.leads (full_name, phone, status, assigned_to, assigned_at) values
     ('Lead B 343', '51900343002', 'assigned', saiu, now()) returning id into l2;
-  insert into public.leads (full_name, phone, status, assigned_to, assigned_at) values
-    ('Lead perdido 343', '51900343003', 'lost', saiu, now()) returning id into l_perdido;
+  insert into public.leads (full_name, phone, status, assigned_to, assigned_at, lost_at) values
+    ('Lead perdido 343', '51900343003', 'lost', saiu, now(), now()) returning id into l_perdido;
 
   perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
   update public.profiles set status = 'terminated', terminated_at = now() where id = saiu;
