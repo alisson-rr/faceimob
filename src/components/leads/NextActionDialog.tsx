@@ -48,13 +48,19 @@ export function NextActionDialog({
 }) {
   const invalidateLeads = useInvalidateLeads();
   const fieldId = useId();
-  const [value, setValue] = useState(() =>
-    toDateTimeInput(!pegar && lead.next_action_at ? new Date(lead.next_action_at) : nextActionPreset("amanha")),
-  );
+  // Reagendar parte da data marcada só se ela ainda estiver no futuro: com a
+  // data vencida no campo, "Marcar" regravava o atraso e o lead seguia
+  // atrasado (queixa de 19/11/2026).
+  const [value, setValue] = useState(() => {
+    const marcada = lead.next_action_at ? new Date(lead.next_action_at) : null;
+    return toDateTimeInput(!pegar && marcada && marcada.getTime() > Date.now() ? marcada : nextActionPreset("amanha"));
+  });
   const [saving, setSaving] = useState(false);
 
   const parsed = value ? new Date(value) : null;
-  const invalid = !parsed || Number.isNaN(parsed.getTime());
+  // Reagendar para o passado mantém o lead atrasado: só data futura.
+  const noPassado = !pegar && parsed != null && parsed.getTime() <= Date.now();
+  const invalid = !parsed || Number.isNaN(parsed.getTime()) || noPassado;
 
   const save = async () => {
     if (invalid) return;
@@ -117,6 +123,7 @@ export function NextActionDialog({
             onChange={(event) => setValue(event.target.value)}
             aria-invalid={invalid || undefined}
           />
+          {noPassado && <p className="text-xs text-destructive">Escolha uma data no futuro; no passado o lead continua atrasado.</p>}
           <div className="flex flex-wrap gap-1.5 pt-1">
             {PRESETS.map((preset) => (
               <Button
