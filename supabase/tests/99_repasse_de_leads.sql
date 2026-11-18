@@ -54,6 +54,13 @@ begin
     'leads vão direto ao corretor ativo, sem cronômetro');
   perform pg_temp.ok((select assigned_to = saiu from public.leads where id = l_perdido), 'o perdido fica onde estava');
   perform pg_temp.ok(exists (select 1 from public.lead_events where lead_id = l1 and kind = 'reassigned'), 'repasse no histórico do lead');
+
+  -- 0344: pegar o repassado leva para "Conversa iniciada", mesmo vindo de etapa adiante.
+  update public.leads set funnel_stage = 'warm' where id = l1;
+  perform set_config('request.jwt.claims', json_build_object('sub', novo, 'role', 'authenticated')::text, true);
+  perform public.claim_lead(l1, null);
+  perform pg_temp.ok((select status = 'attending' and funnel_stage = 'first_contact' from public.leads where id = l1),
+    'pegar o repassado leva para Conversa iniciada');
 end;
 $$;
 
