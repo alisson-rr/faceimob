@@ -344,12 +344,21 @@ export default function LeadDetailModal({
         {claimable && (
           <p role="status" className="flex items-start gap-2 rounded-2xl border border-warning/50 bg-warning/10 p-3 text-sm">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
-            <span>
-              <strong>Este lead ainda não é seu.</strong> Abrir o lead não reserva: clique em{" "}
-              <strong>"Pegar lead"</strong>
-              {secondsLeft !== null && <> em até <span className="tabular-nums font-semibold">{formatCountdown(secondsLeft)}</span></>}
-              , senão ele volta para a roleta e vai para o próximo da fila.
-            </span>
+            {/* Repassado (sem cronômetro, 0275): já é do corretor e não volta à
+                roleta — a frase da roleta assustava e dava a ideia contrária. */}
+            {lead.attend_deadline ? (
+              <span>
+                <strong>Este lead ainda não é seu.</strong> Abrir o lead não reserva: clique em{" "}
+                <strong>"Pegar lead"</strong>
+                {secondsLeft !== null && <> em até <span className="tabular-nums font-semibold">{formatCountdown(secondsLeft)}</span></>}
+                , senão ele volta para a roleta e vai para o próximo da fila.
+              </span>
+            ) : (
+              <span>
+                <strong>Lead repassado para você.</strong> Ele não volta para a roleta. Clique em{" "}
+                <strong>"Pegar lead"</strong> quando for começar o atendimento.
+              </span>
+            )}
           </p>
         )}
 
