@@ -63,6 +63,8 @@ export default function Leads() {
     [previewRole, roles],
   );
   const canInsertLead = isAdmin || effectiveRoles.some((role) => LEAD_INSERT_ROLES.includes(role));
+  // 0345: o corretor sem papel de gestão cadastra lead para si (fora da roleta).
+  const criaLeadProprio = !canInsertLead && effectiveRoles.includes("broker");
   const canManageReassign = can("leads.reassign");
   const canPassOwnLead = effectiveRoles.includes("broker");
   const canReassign = canManageReassign || canPassOwnLead;
@@ -371,6 +373,11 @@ export default function Leads() {
             <Button variant="outline" size="sm" onClick={() => setShowSources((open) => !open)}>
               <BarChart3 className="h-4 w-4" /> {showSources ? "Ocultar origens" : "Origens"}
             </Button>
+            {criaLeadProprio && (
+              <Button size="sm" onClick={() => openDialog({ form: { open: true, lead: null } })}>
+                <Plus className="h-4 w-4" /> Novo lead
+              </Button>
+            )}
             {canInsertLead && (
               <>
                 <Button variant="outline" size="sm" onClick={() => openDialog({ import: true })}>
@@ -569,6 +576,7 @@ export default function Leads() {
         templates={templatesQuery.data ?? []}
         actorName={profile?.name}
         onPegou={(lead) => { void pegou(lead); }}
+        novoLeadProprio={criaLeadProprio}
       />
 
       {/* Detalhe do lead — pela lista e pela notificação (`?lead=<id>`). */}
