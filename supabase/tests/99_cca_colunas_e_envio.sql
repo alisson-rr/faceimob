@@ -119,8 +119,8 @@ begin
                  where active and deal_status_id is null
                    and status <> 'sent_to_developer'
                    and not public.cca_stage_is_independent(name)
-                   and public.cca_stage_name_key(name) <>
-                       public.cca_stage_name_key('ANÁLISE P/ VIRAR NEGÓCIO')),
+                   and public.cca_stage_name_key(name) not in
+                       (public.cca_stage_name_key('ANÁLISE P/ VIRAR NEGÓCIO'),'ESTEIRA AGIL')),
     'nenhum estágio antigo segue ativo');
 
   perform pg_temp.check150(
@@ -250,8 +250,9 @@ begin
   reset role;
 
   select * into v_case from public.cca_cases where deal_id = v_a;
-  perform pg_temp.check150(v_case.status = 'under_review' and v_case.stage_id = v_em_analise,
-    'a aprovação do gerente abre o caso na coluna EM ANÁLISE');
+  perform pg_temp.check150(v_case.status = 'under_review' and v_case.stage_id =
+    (select id from public.cca_stages where active and public.cca_stage_name_key(name)='ESTEIRA AGIL' limit 1),
+    'a aprovação do gerente segue o roteamento oficial para a coluna Esteira Ágil');
   perform pg_temp.check150(
     (select status_detail from public.deals where id = v_a) = '13. ESTEIRA AGIL',
     'o 1º envio entra na CCA com "13. ESTEIRA AGIL"');

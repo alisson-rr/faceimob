@@ -13,6 +13,7 @@ import { elapsedDays, elapsedLabel } from "./ccaTime";
 import { cn } from "@/lib/utils";
 import { developerDot, isHexColor } from "@/lib/tone";
 import { bareStatus } from "@/lib/dealStatus";
+import { canReturnCcaToAgile, isCcaAgileStage } from "@/lib/ccaAgileReturn";
 
 function SeloDaConstrutora({ nome, cor }: { nome: string; cor?: string | null }) {
   const bolinha = developerDot(nome, cor);
@@ -215,7 +216,8 @@ export const CcaBoard = memo(function CcaBoard({
           const cor = ccaStageColor(stage.color);
           const stageDeals = porEstagio.get(stage.id) ?? [];
           const limite = limites[stage.id] ?? POR_COLUNA;
-          const recebeArraste = Boolean(canAct && casoArrastado && casoArrastado.stageId !== stage.id);
+          const recebeArraste = Boolean(canAct && casoArrastado && casoArrastado.stageId !== stage.id
+            && (!isCcaAgileStage(stage.name) || canReturnCcaToAgile(casoArrastado)));
           return (
             // As colunas esticam até a mais alta: o cabeçalho preso vale até o
             // fim da rolagem em todas, não só na coluna mais cheia. O fundo
@@ -439,7 +441,8 @@ function MoverPara({ deal, stages, atual, onMove }: {
       </SelectTrigger>
       {montado && (
         <SelectContent>
-          {stages.filter((item) => item.id !== atual).map((item) => (
+          {stages.filter((item) => item.id !== atual
+            && (!isCcaAgileStage(item.name) || canReturnCcaToAgile(deal))).map((item) => (
             <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
           ))}
         </SelectContent>
