@@ -90,6 +90,12 @@ describe("isLeadOverdue (mesma regra de overdue_lead_count)", () => {
     expect(isLeadOverdue(lead({ status: "lost", next_action_at: "2026-07-30T10:00:00.000Z" }), NOW)).toBe(false);
   });
 
+  it("repassado aguardando (sem cronômetro) não atrasa; da roleta, sim (0349)", () => {
+    const vencido = "2026-07-30T10:00:00.000Z";
+    expect(isLeadOverdue(lead({ status: "assigned", attend_deadline: null, next_action_at: vencido }), NOW)).toBe(false);
+    expect(isLeadOverdue(lead({ status: "assigned", attend_deadline: vencido, next_action_at: vencido }), NOW)).toBe(true);
+  });
+
   it("não é atrasado quando a próxima ação ainda está no futuro", () => {
     expect(isLeadOverdue(lead({ status: "assigned", next_action_at: "2026-07-30T18:00:00.000Z" }), NOW)).toBe(false);
   });
@@ -267,7 +273,7 @@ describe("nomeDeArquivoSeguro", () => {
 
 describe("isLeadOverdue e o recomeço da base (0187)", () => {
   it("lead de antes do recomeço não conta, igual a overdue_lead_count", () => {
-    const vencido = { status: "in_progress" as const, next_action_at: "2026-07-30T10:00:00.000Z" };
+    const vencido = { status: "in_progress" as const, next_action_at: "2026-07-30T10:00:00.000Z", attend_deadline: null };
     expect(isLeadOverdue({ ...vencido, antes_do_recomeco: true }, NOW)).toBe(false);
     expect(isLeadOverdue({ ...vencido, antes_do_recomeco: false }, NOW)).toBe(true);
   });
