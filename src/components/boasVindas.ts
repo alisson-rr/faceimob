@@ -1,4 +1,4 @@
-import { IMOBILIARIA, baixarVcard, vcardDe } from "@/components/leads/contatoVcard";
+import { IMOBILIARIA } from "@/components/leads/contatoVcard";
 import { waNumber } from "@/components/leads/model";
 
 /** Webmail e criação de e-mail (KingHost) da Faceimob — o e-mail de acesso nasce lá. */
@@ -50,18 +50,14 @@ export function linkAvisoAoGerente(p: { gerente: string; nome: string; email: st
   ].join("\n"));
 }
 
-/** Salva o colaborador na agenda como "Nome | Faceimob". Sem telefone, não faz nada. */
-export function salvarColaboradorNaAgenda(nome: string, telefone: string | null | undefined): boolean {
-  const nomeDoContato = `${nome.trim()} | ${IMOBILIARIA}`;
-  return baixarVcard(vcardDe(nomeDoContato, telefone), nome);
-}
-
-/** Salva o contato e abre o WhatsApp com o acesso pronto: o envio continua manual. Sem telefone, não faz nada. */
+/**
+ * Abre o WhatsApp com o acesso pronto: o envio continua manual. Sem telefone,
+ * não faz nada. Não baixa mais o .vcf do colaborador (19/11/2026): no
+ * computador ele caía em Downloads a cada envio.
+ */
 export function enviarAcessoPorWhatsapp(p: { nome: string; email: string; telefone: string | null | undefined }): boolean {
   const url = linkBoasVindas({ ...p, crmUrl: window.location.origin });
   if (!url) return false;
-  // Salva o contato antes: a conversa já nasce com o nome certo.
-  salvarColaboradorNaAgenda(p.nome, p.telefone);
   window.open(url, "_blank", "noopener,noreferrer");
   return true;
 }
