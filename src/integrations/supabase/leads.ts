@@ -1407,11 +1407,13 @@ export const canClaim = (
  * para o corretor.
  */
 export const isLeadOverdue = (
-  lead: Pick<LeadRecord, "status" | "next_action_at" | "antes_do_recomeco">,
+  lead: Pick<LeadRecord, "status" | "next_action_at" | "antes_do_recomeco" | "attend_deadline">,
   now: number = Date.now(),
 ): boolean => {
   if (!["assigned", "attending", "in_progress"].includes(lead.status)) return false;
   if (lead.antes_do_recomeco) return false;
+  // Repassado aguardando (sem cronômetro) não atrasa até ser pego (0349).
+  if (lead.status === "assigned" && !lead.attend_deadline) return false;
   if (!lead.next_action_at) return false;
   return new Date(lead.next_action_at).getTime() < now;
 };

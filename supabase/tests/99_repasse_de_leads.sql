@@ -55,12 +55,18 @@ begin
   perform pg_temp.ok((select assigned_to = saiu from public.leads where id = l_perdido), 'o perdido fica onde estava');
   perform pg_temp.ok(exists (select 1 from public.lead_events where lead_id = l1 and kind = 'reassigned'), 'repasse no histórico do lead');
 
+  -- 0349: repassado aguardando com data vencida não atrasa (não trava o check-in).
+  update public.leads set next_action_at = now() - interval '3 days' where id in (l1, l2);
+  perform pg_temp.ok(public.overdue_lead_count(novo) = 0, 'repassado aguardando não conta como atrasado');
+
   -- 0344: pegar o repassado leva para "Conversa iniciada", mesmo vindo de etapa adiante.
   update public.leads set funnel_stage = 'warm' where id = l1;
   perform set_config('request.jwt.claims', json_build_object('sub', novo, 'role', 'authenticated')::text, true);
   perform public.claim_lead(l1, null);
   perform pg_temp.ok((select status = 'attending' and funnel_stage = 'first_contact' from public.leads where id = l1),
     'pegar o repassado leva para Conversa iniciada');
+  perform pg_temp.ok((select next_action_at > now() from public.leads where id = l1)
+    and public.overdue_lead_count(novo) = 0, 'ao pegar, ganha próximo contato no futuro e segue sem atraso');
 end;
 $$;
 
