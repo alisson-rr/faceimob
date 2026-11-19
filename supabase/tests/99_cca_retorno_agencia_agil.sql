@@ -59,6 +59,19 @@ begin
     if sqlerrm='Mês fechado foi alterado' then raise; end if;
   end;
   perform pg_temp.ok283((select status_detail='11. AG. RET. AGENCIA' from public.deals where id=negocio),'mês fechado mantém status e caso');
+  -- 0348: caso preso da 1ª tentativa — etapa ESTEIRA ÁGIL, status em análise,
+  -- Status 2 ainda da agência — refaz o movimento e o Status 2 acompanha.
+  delete from public.closed_months where period=mes;
+  set local session_replication_role = replica;
+  update public.cca_cases set stage_id=agil, status='under_review' where id=caso;
+  update public.deals set status_detail='11. AG. RET. AGENCIA' where id=negocio;
+  set local session_replication_role = origin;
+  set local role authenticated;
+  resposta := public.move_cca_case(caso,agil,'Agência retornou; refazendo');
+  reset role;
+  perform pg_temp.ok283((select status_detail='13. ESTEIRA AGIL' from public.deals where id=negocio)
+    and not coalesce((resposta->>'already_moved')::boolean,false),
+    'caso preso da 1ª tentativa refaz o movimento e vai para a Esteira Ágil');
   perform set_config('request.jwt.claims',json_build_object('sub',corretor,'role','authenticated')::text,true);
   set local role authenticated;
   begin

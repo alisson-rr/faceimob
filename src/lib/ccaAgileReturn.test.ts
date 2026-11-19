@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { canReturnCcaToAgile, isCcaAgileStage } from "./ccaAgileReturn";
 
 describe("retorno da agência para Esteira Ágil", () => {
-  it("exige caso na agência e status comercial correspondente", () => {
+  it("decide pelo Status 2 da agência, mesmo com o caso já em análise (0348)", () => {
     expect(canReturnCcaToAgile({status:"sent_to_agency",dealStatus:"11. AG. RET. AGENCIA"})).toBe(true);
-    expect(canReturnCcaToAgile({status:"under_review",dealStatus:"11. AG. RET. AGENCIA"})).toBe(false);
+    expect(canReturnCcaToAgile({status:"under_review",dealStatus:"11. AG. RET. AGENCIA"})).toBe(true);
     expect(canReturnCcaToAgile({status:"sent_to_agency",dealStatus:"EM CONTRATO"})).toBe(false);
   });
   it("reconhece a coluna sistêmica sem confundir devolução ao comercial", () => {
