@@ -30,6 +30,13 @@ begin
   insert into public.deals (stage_id, created_by, month_base, status_detail) values (v_stage, cor, (v_mes - interval '1 month')::date, '16. PENDENTE') returning id into d3;
   insert into public.cca_cases (deal_id, submitted_at)
   select x, (v_mes + interval '5 days')::timestamptz from unnest(array[d1, d2, d3]) x;
+  -- Abrir o caso reescreve o rótulo da esteira no Status 2; o teste fixa o
+  -- status atual de cada negócio depois, sem gatilhos.
+  set local session_replication_role = replica;
+  update public.deals set status_detail = '09. APROV. TOTAL' where id = d1;
+  update public.deals set status_detail = '04. EM CONTRATO' where id = d2;
+  update public.deals set status_detail = '16. PENDENTE' where id = d3;
+  set local session_replication_role = origin;
 
   perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
   r := public.funil_por_etapas(v_mes);
