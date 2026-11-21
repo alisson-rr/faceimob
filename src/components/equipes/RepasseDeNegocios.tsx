@@ -17,6 +17,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { listSelectableBrokers } from "@/integrations/supabase/newSchema";
 import { describeError } from "@/lib/supabaseError";
 import { brl } from "@/lib/format";
+import { useDealStatusCatalog, EMPTY_STATUS_CATALOG } from "@/integrations/supabase/dealStatuses";
+import { statusLabel } from "@/components/pipeline/statuses";
 
 // RPCs da 0327, ainda fora do `types.ts` gerado.
 const untyped = supabase as unknown as SupabaseClient;
@@ -85,6 +87,8 @@ function GrupoDoCorretor({ corretorId, nome, status, negocios, ativos }: {
   corretorId: string; nome: string; status: string; negocios: NegocioDeInativo[];
   ativos: { id: string; name: string }[];
 }) {
+  // Nome exibido do Status 2, sem o número da planilha antiga (21/11/2026).
+  const catalogo = useDealStatusCatalog().data ?? EMPTY_STATUS_CATALOG;
   const qc = useQueryClient();
   const [marcados, setMarcados] = useState<Set<string>>(() => new Set(negocios.map((n) => n.deal_id)));
   const [destino, setDestino] = useState<string>("");
@@ -140,7 +144,7 @@ function GrupoDoCorretor({ corretorId, nome, status, negocios, ativos }: {
                 <span className="font-medium">{n.cliente || "Cliente sem nome"}</span>
                 {n.code && <span className="text-muted-foreground"> · {n.code}</span>}
                 <span className="block text-xs text-muted-foreground">
-                  {[n.etapa, n.status_detail, n.vgv ? brl(n.vgv) : null].filter(Boolean).join(" · ")}
+                  {[n.etapa, n.status_detail ? statusLabel(catalogo, n.status_detail) : null, n.vgv ? brl(n.vgv) : null].filter(Boolean).join(" · ")}
                   {n.outros_corretores > 0 && ` · com mais ${n.outros_corretores} corretor(es)`}
                 </span>
               </label>

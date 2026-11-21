@@ -85,9 +85,9 @@ export function ReopenDealDialog({ deal, stages, onClose, onReopened }: Props) {
       // negócio a "Proposta" ainda exibindo "18. QUEDA" no Status 2 — e o
       // salvamento seguinte lia esse rótulo em `dealStageCodeFor`, mandava o
       // negócio de volta para `lost` e desfazia a reabertura sem avisar.
-      // Nulo = o Status 2 volta a ser DERIVADO do desfecho, como em qualquer
-      // negócio aberto que ninguém rotulou à mão.
-      await updateDeal(deal.id, { stage_id: target.id, lost_reason: null, status_detail: null });
+      // Volta como INCOMPLETO (21/11/2026): o Status 2 nunca fica em branco, e
+      // o corretor troca para o status certo depois.
+      await updateDeal(deal.id, { stage_id: target.id, lost_reason: null, status_detail: "INCOMPLETO" });
       const nota = reason.trim();
       const voltou = `${deal.client} voltou para ${target.label}.`;
       const { error } = nota
