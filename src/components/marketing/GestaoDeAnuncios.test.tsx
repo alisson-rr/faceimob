@@ -12,12 +12,14 @@ const m = vi.hoisted(() => ({
   campanhas: [] as unknown[],
   metricas: [] as unknown[],
   contas: [] as unknown[],
+  dias: [] as unknown[],
 }));
 
 vi.mock("@/integrations/supabase/analytics", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/integrations/supabase/analytics")>()),
   listAdCampaigns: async () => m.campanhas,
   fetchMetaMetricas: async () => m.metricas,
+  fetchMetaPorDia: async () => m.dias,
 }));
 vi.mock("@/integrations/supabase/client", () => {
   const q: Record<string, unknown> = {};
@@ -26,6 +28,14 @@ vi.mock("@/integrations/supabase/client", () => {
   return { supabase: { from: () => q } };
 });
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ can: () => false }) }));
+
+// O gráfico (Recharts) observa o tamanho do container; o jsdom não tem ResizeObserver.
+const comObserver = globalThis as typeof globalThis & { ResizeObserver?: unknown };
+comObserver.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 import { GestaoDeAnuncios } from "./GestaoDeAnunciosPanel";
 
@@ -60,6 +70,10 @@ describe("GestaoDeAnuncios", () => {
     m.campanhas = [campanha("BOA"), campanha("CARA"), campanha("ZERADA"), campanha("PAUSADA", "PAUSED")];
     m.metricas = [metrica("BOA", 36, 4), metrica("CARA", 43, 1), metrica("ZERADA", 30, 0)];
     m.contas = [{ id: "acc", prepay_available: 3614.38, cpl_limite: 12, last_sync_ok_at: null }];
+    m.dias = [
+      { day: "2026-11-01", spend: 60, impressions: 3000, link_clicks: 60, resultados: 3, spend_lead: 60, resultados_lead: 3 },
+      { day: "2026-11-02", spend: 49, impressions: 2000, link_clicks: 40, resultados: 2, spend_lead: 49, resultados_lead: 2 },
+    ];
     const el = await montar();
 
     const linha = (nome: string) => [...el.querySelectorAll("tbody tr")].find((tr) => tr.textContent?.includes(nome));
@@ -69,8 +83,9 @@ describe("GestaoDeAnuncios", () => {
     expect(linha("PAUSADA")).toBeUndefined();
     expect(el.textContent).toContain("3 de 4");
     expect(el.textContent).toContain("Saldo da conta Meta Ads");
-    // CPL geral em destaque: 109 investidos ÷ 5 resultados, acima do limite de 12.
-    expect(el.textContent).toMatch(/CPL R\$ · .*R\$\s21,80/);
+    // Custo por resultado do período, dos números por dia: 109 investidos ÷ 5 leads.
+    expect(el.textContent).toMatch(/Custo por resultado.*R\$\s21,80/);
+    expect(el.textContent).toContain("Custo por lead por dia");
     expect(el.textContent).toContain("Simulador de budget diário");
   });
 

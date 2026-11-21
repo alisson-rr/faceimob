@@ -1,24 +1,26 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, ClipboardList, MessageCircle, RefreshCw, Search, Target, TrendingUp, Wallet } from "lucide-react";
+import { BarChart3, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
-import { EmptyState, KpiCard, KpiGrid, LoadingState } from "@/components/shared";
+import { EmptyState, LoadingState } from "@/components/shared";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  PERIODOS_META, PERIODO_META_LABEL, fetchMetaMetricas, listAdCampaigns, periodoMeta, sincronizarMeta,
+  PERIODOS_META, PERIODO_META_LABEL, fetchMetaMetricas, fetchMetaPorDia, listAdCampaigns, periodoAnteriorMeta, periodoMeta,
+  sincronizarMeta,
   type PeriodoMeta,
 } from "@/integrations/supabase/analytics";
 import { brl, num } from "@/lib/format";
 import { dbError, describeError } from "@/lib/supabaseError";
 import { cn } from "@/lib/utils";
 import { MetaCampaignActions } from "./MetaCampaignActions";
+import { PainelDaConta } from "./PainelDaConta";
 import { SimuladorDeVerba } from "./SimuladorDeVerbaPanel";
 import {
   ROTULO_DO_RESULTADO, linhasDoPainel, resumoDoPainel, type CampanhaDaConta, type LinhaDoPainel,
@@ -48,10 +50,13 @@ type Conta = { id: string; prepay_available: number | null; cpl_limite: number |
 
 async function carregar(periodo: PeriodoMeta) {
   const { from, to } = periodoMeta(periodo);
-  const [campanhas, metricas, contas] = await Promise.all([
+  const anterior = periodoAnteriorMeta(periodo);
+  const [campanhas, metricas, contas, dias, diasAnteriores] = await Promise.all([
     listAdCampaigns(),
     fetchMetaMetricas(from, to),
     supabase.from("meta_ad_accounts").select("id,prepay_available,cpl_limite,last_sync_ok_at").eq("enabled", true),
+    fetchMetaPorDia(from, to),
+    fetchMetaPorDia(anterior.from, anterior.to),
   ]);
   if (contas.error) throw dbError("meta_ad_accounts", contas.error);
   const lista = (contas.data ?? []) as Conta[];
@@ -70,6 +75,8 @@ async function carregar(periodo: PeriodoMeta) {
   const saldos = lista.map((c) => c.prepay_available).filter((v): v is number => v !== null);
   return {
     linhas: linhasDoPainel(daConta, metricas, cplLimite),
+    dias,
+    diasAnteriores,
     cplLimite,
     limitePadrao: limites.length === 0,
     saldo: saldos.length ? saldos.reduce((t, v) => t + Number(v), 0) : null,
@@ -134,9 +141,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
     );
   }
 
-  const { cplLimite, limitePadrao, saldo, sincronizadoEm } = consulta.data;
-  const cplAcima = resumo.cpl !== null && resumo.cpl > cplLimite;
-  const diasDeSaldo = saldo !== null && resumo.verbaDiaria > 0 ? Math.floor(saldo / resumo.verbaDiaria) : null;
+  const { cplLimite, limitePadrao, saldo, sincronizadoEm, dias, diasAnteriores } = consulta.data;
 
   return (
     <section aria-labelledby="gestao-anuncios-titulo" className="space-y-4">
@@ -174,52 +179,16 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
         />
       ) : (
         <>
-          <div className="grid gap-3 md:grid-cols-2">
-            {/* CPL em destaque (pedido de 03/10/2026): a métrica que o cliente acompanha. */}
-            <div
-              className={cn(
-                "flex items-center gap-4 rounded-2xl border p-4",
-                cplAcima ? "border-warning/50 bg-warning/10" : "border-primary/40 bg-primary/5",
-              )}
-            >
-              <Target className={cn("h-8 w-8", cplAcima ? "text-warning" : "text-primary")} aria-hidden />
-              <div>
-                <p className="text-eyebrow">CPL R$ · {PERIODO_META_LABEL[periodo]}</p>
-                <p className={cn("text-3xl font-bold tabular-nums", cplAcima ? "text-warning" : "text-primary")}>
-                  {resumo.cpl === null ? "—" : reais(resumo.cpl)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Limite {reais(cplLimite)}{limitePadrao ? " (padrão)" : ""} · {reais(resumo.investido)} investidos
-                </p>
-              </div>
-            </div>
-            {saldo !== null && (
-              <div className="flex items-center gap-4 rounded-2xl border border-success/40 bg-success/5 p-4">
-                <Wallet className="h-8 w-8 text-success" aria-hidden />
-                <div>
-                  <p className="text-eyebrow">Saldo da conta Meta Ads</p>
-                  <p className="text-2xl font-bold tabular-nums">{reais(saldo)}</p>
-                  {diasDeSaldo !== null && (
-                    <p className="text-xs text-muted-foreground">
-                      ~{num(diasDeSaldo)} dia(s) de campanha com a verba diária atual ({reais(resumo.verbaDiaria)}/dia)
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <KpiGrid cols={4}>
-            <KpiCard label="Ativas" value={num(resumo.ativas)} icon={TrendingUp} hint={`Verba/dia ${reais(resumo.verbaDiaria)}`} />
-            <KpiCard label="Cadastros (form)" value={num(resumo.cadastros)} icon={ClipboardList} hint={`CPL ${reais(resumo.custoPorCadastro)}`} />
-            <KpiCard label="Conversas (WhatsApp)" value={num(resumo.conversas)} icon={MessageCircle} hint={`Custo/conversa ${reais(resumo.custoPorConversa)}`} />
-            <KpiCard
-              label="Investimento no período"
-              value={reais(resumo.investido)}
-              icon={BarChart3}
-              hint={`${num(resumo.comCplAlto)} com CPL > ${reais(cplLimite)} · ${num(resumo.semLead)} sem lead`}
-            />
-          </KpiGrid>
+          <PainelDaConta
+            dias={dias} diasAnteriores={diasAnteriores} verbaDiaria={resumo.verbaDiaria} saldo={saldo}
+            cadastros={resumo.cadastros} conversas={resumo.conversas} cplLimite={cplLimite}
+            periodoRotulo={PERIODO_META_LABEL[periodo]} ultimoDiaCorrendo={periodo === "mes_atual"}
+          />
+          {(resumo.comCplAlto > 0 || resumo.semLead > 0) && (
+            <p className="text-xs text-muted-foreground">
+              {num(resumo.comCplAlto)} campanha(s) com CPL acima de {reais(cplLimite)} · {num(resumo.semLead)} sem lead
+            </p>
+          )}
 
           <SimuladorDeVerba linhas={todas} podeGerir={podeGerir} />
 
