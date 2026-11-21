@@ -652,6 +652,12 @@ export type MetaDiaRow = {
   /** Só as campanhas de lead (canal diferente de `outro`). */
   spend_lead: number;
   resultados_lead: number;
+  /** Formulário e landing page (0351). */
+  spend_cadastro: number;
+  cadastros: number;
+  /** WhatsApp (0351). */
+  spend_conversa: number;
+  conversas: number;
 };
 
 export async function fetchMetaPorDia(from: string, to: string): Promise<MetaDiaRow[]> {
@@ -665,6 +671,10 @@ export async function fetchMetaPorDia(from: string, to: string): Promise<MetaDia
     resultados: Number(r.resultados ?? 0),
     spend_lead: Number(r.spend_lead ?? 0),
     resultados_lead: Number(r.resultados_lead ?? 0),
+    spend_cadastro: Number(r.spend_cadastro ?? 0),
+    cadastros: Number(r.cadastros ?? 0),
+    spend_conversa: Number(r.spend_conversa ?? 0),
+    conversas: Number(r.conversas ?? 0),
   }));
 }
 

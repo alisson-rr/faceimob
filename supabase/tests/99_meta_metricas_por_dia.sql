@@ -14,7 +14,7 @@ do $$
 declare
   adm uuid := '00000000-0000-0000-0000-000003500001';
   cor uuid := '00000000-0000-0000-0000-000003500002';
-  c_form uuid; c_alcance uuid;
+  c_form uuid; c_alcance uuid; c_whats uuid;
   d1 date := date '2030-01-10';
   v_msg text;
 begin
@@ -25,10 +25,12 @@ begin
 
   insert into public.ad_campaigns (name, external_id, meta_channel) values ('Form 350', '9993500001', 'formulario') returning id into c_form;
   insert into public.ad_campaigns (name, external_id, meta_channel) values ('Alcance 350', '9993500002', 'outro') returning id into c_alcance;
+  insert into public.ad_campaigns (name, external_id, meta_channel) values ('Whats 350', '9993500003', 'whatsapp') returning id into c_whats;
   insert into public.meta_campaign_insights_daily (campaign_id, day, spend, impressions, link_clicks, resultados) values
     (c_form,    d1,     100, 1000, 20, 10),
     (c_alcance, d1,      50, 5000, 30,  0),
-    (c_form,    d1 + 1,  60,  800, 10,  3);
+    (c_form,    d1 + 1,  60,  800, 10,  3),
+    (c_whats,   d1 + 1,  40,  500,  5,  8);
 
   perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
   perform pg_temp.ok((select count(*) from public.meta_metricas_por_dia(d1, d1 + 1)) = 2, 'uma linha por dia');
@@ -37,6 +39,10 @@ begin
             and spend_lead = 100 and resultados_lead = 10
        from public.meta_metricas_por_dia(d1, d1) ),
     'soma o dia inteiro e separa as campanhas de lead');
+  perform pg_temp.ok(
+    (select spend_cadastro = 60 and cadastros = 3 and spend_conversa = 40 and conversas = 8
+       from public.meta_metricas_por_dia(d1 + 1, d1 + 1)),
+    '0351: separa cadastro (formulário) de conversa (WhatsApp)');
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   begin

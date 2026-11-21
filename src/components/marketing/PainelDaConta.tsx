@@ -5,7 +5,7 @@ import type { MetaDiaRow } from "@/integrations/supabase/analytics";
 import { brl, num } from "@/lib/format";
 import { chartAxis, chartGrid, chartStill, chartTooltip, tone } from "@/lib/tone";
 import { cn } from "@/lib/utils";
-import { resumoDoGrafico, serieDeCpl, totaisDaConta, variacao } from "./contasDaConta";
+import { resumoDoGrafico, serieDeCusto, totaisDaConta, variacao, type LinhaDoGrafico } from "./contasDaConta";
 
 const reais = (v: number | null) => (v === null ? "—" : brl(v, { cents: true }));
 const pct = (v: number | null) =>
@@ -68,11 +68,8 @@ export function PainelDaConta({
   const antes = totaisDaConta(diasAnteriores);
   const temAnterior = diasAnteriores.length > 0;
   const v = (a: number | null, b: number | null) => (temAnterior ? variacao(a, b) : null);
-  const serie = serieDeCpl(dias);
-  const { media, primeiraParaUltima } = resumoDoGrafico(dias);
   const diasDeSaldo = saldo !== null && verbaDiaria > 0 ? Math.floor(saldo / verbaDiaria) : null;
   const cplAcima = atual.custoPorResultado !== null && atual.custoPorResultado > cplLimite;
-  const ultimo = serie.at(-1)?.dia;
 
   return (
     <div className="space-y-3">
@@ -102,75 +99,113 @@ export function PainelDaConta({
         <Metrica rotulo="Cliques" valor={num(atual.cliques)} delta={seta(v(atual.cliques, antes.cliques), "sobe_bom")} />
       </div>
 
-      <section aria-labelledby="cpl-por-dia" className="rounded-2xl border border-border bg-card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 id="cpl-por-dia" className="font-bold">Custo por lead por dia · {periodoRotulo}</h3>
-            <p className="text-xs text-muted-foreground">Quanto menor, melhor. Só as campanhas de lead. Passe o dedo nos dias para ver o detalhe.</p>
-          </div>
-          <div className="flex gap-6 text-right">
-            <div>
-              <p className="text-eyebrow">Média do período</p>
-              <p className="text-xl font-bold tabular-nums">{reais(media)}</p>
-            </div>
-            {primeiraParaUltima !== null && (
-              <div>
-                <p className="text-eyebrow">1ª semana → última</p>
-                <p className={cn("flex items-center justify-end gap-1 text-xl font-bold tabular-nums",
-                  primeiraParaUltima <= 0 ? "text-success" : "text-destructive")}>
-                  {primeiraParaUltima <= 0 ? <ArrowDown className="h-4 w-4" aria-hidden /> : <ArrowUp className="h-4 w-4" aria-hidden />}
-                  {Math.round(Math.abs(primeiraParaUltima) * 100)}% {primeiraParaUltima <= 0 ? "melhor" : "pior"}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {serie.some((d) => d.cpl !== null) ? (
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={serie} margin={{ top: 24, right: 16, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke={chartGrid} vertical={false} strokeOpacity={0.4} />
-                <XAxis dataKey="rotulo" {...chartAxis} />
-                <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
-                <Tooltip
-                  {...chartTooltip}
-                  labelFormatter={(_, p) => (p?.[0]?.payload?.dia ? new Date(`${p[0].payload.dia}T12:00:00`).toLocaleDateString("pt-BR") : "")}
-                  formatter={(valor: number) => [reais(valor), "Custo por lead"]}
-                />
-                {media !== null && <ReferenceLine y={media} stroke={tone("muted-foreground")} strokeDasharray="5 5" />}
-                <Line
-                  {...chartStill} type="monotone" dataKey="cpl" connectNulls stroke={tone("highlight")} strokeWidth={2.5}
-                  dot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: { cpl: number | null; dia: string } }) => {
-                    if (cx === undefined || cy === undefined || payload?.cpl == null) return <g key={`v-${payload?.dia}`} />;
-                    const acima = media !== null && payload.cpl > media;
-                    const correndo = ultimoDiaCorrendo && payload.dia === ultimo;
-                    return (
-                      <circle
-                        key={payload.dia} cx={cx} cy={cy} r={correndo ? 6 : 4.5}
-                        fill={tone(acima ? "destructive" : "success")}
-                        stroke={correndo ? tone("highlight") : tone("card")} strokeWidth={2}
-                      />
-                    );
-                  }}
-                >
-                  <LabelList dataKey="cpl" position="top" offset={10} fontSize={11} fill={tone("foreground")}
-                    formatter={(valor: number | null) => (valor == null ? "" : decimal(valor))} />
-                </Line>
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <p className="py-10 text-center text-sm text-muted-foreground">Nenhum lead de campanha no período.</p>
-        )}
-
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden />abaixo da média</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-destructive" aria-hidden />acima da média</span>
-          <span>- - - média do período</span>
-          {ultimoDiaCorrendo && <span>o último dia é hoje e ainda está correndo</span>}
-        </div>
-      </section>
+      <GraficoDeCusto dias={dias} linha="cadastro" periodoRotulo={periodoRotulo} ultimoDiaCorrendo={ultimoDiaCorrendo} />
+      <GraficoDeCusto dias={dias} linha="conversa" periodoRotulo={periodoRotulo} ultimoDiaCorrendo={ultimoDiaCorrendo} />
     </div>
+  );
+}
+
+const TEXTO_DA_LINHA: Record<LinhaDoGrafico, { titulo: string; campanhas: string; total: string; custo: string; vazio: string; cor: string }> = {
+  cadastro: {
+    titulo: "Custo por cadastro por dia", campanhas: "Campanhas de formulário e landing page.", total: "Cadastros",
+    custo: "Custo por cadastro", vazio: "Nenhum cadastro de campanha no período.", cor: "highlight",
+  },
+  conversa: {
+    titulo: "Custo por conversa por dia", campanhas: "Campanhas de WhatsApp.", total: "Conversas",
+    custo: "Custo por conversa", vazio: "Nenhuma conversa de campanha no período.", cor: "primary",
+  },
+};
+
+/** Um gráfico por linha (cadastro ou conversa), cada um contra a própria média. */
+function GraficoDeCusto({ dias, linha, periodoRotulo, ultimoDiaCorrendo }: {
+  dias: MetaDiaRow[]; linha: LinhaDoGrafico; periodoRotulo: string; ultimoDiaCorrendo: boolean;
+}) {
+  const t = TEXTO_DA_LINHA[linha];
+  const cor = tone(t.cor);
+  const serie = serieDeCusto(dias, linha);
+  const { media, primeiraParaUltima, resultados, investido } = resumoDoGrafico(dias, linha);
+  const ultimo = serie.at(-1)?.dia;
+
+  return (
+    <section aria-labelledby={`custo-por-dia-${linha}`} className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 id={`custo-por-dia-${linha}`} className="flex items-center gap-2 font-bold">
+            <span className="h-3 w-3 rounded-full" style={{ background: cor }} aria-hidden />
+            {t.titulo} · {periodoRotulo}
+          </h3>
+          <p className="text-xs text-muted-foreground">{t.campanhas} Quanto menor, melhor. Passe o dedo nos dias para ver o detalhe.</p>
+        </div>
+        <div className="flex flex-wrap gap-6 text-right">
+          <div>
+            <p className="text-eyebrow">{t.total}</p>
+            <p className="text-xl font-bold tabular-nums">{num(resultados)}</p>
+          </div>
+          <div>
+            <p className="text-eyebrow">Investido</p>
+            <p className="text-xl font-bold tabular-nums">{reais(investido)}</p>
+          </div>
+          <div>
+            <p className="text-eyebrow">Média do período</p>
+            <p className="text-xl font-bold tabular-nums">{reais(media)}</p>
+          </div>
+          {primeiraParaUltima !== null && (
+            <div>
+              <p className="text-eyebrow">1ª semana → última</p>
+              <p className={cn("flex items-center justify-end gap-1 text-xl font-bold tabular-nums",
+                primeiraParaUltima <= 0 ? "text-success" : "text-destructive")}>
+                {primeiraParaUltima <= 0 ? <ArrowDown className="h-4 w-4" aria-hidden /> : <ArrowUp className="h-4 w-4" aria-hidden />}
+                {Math.round(Math.abs(primeiraParaUltima) * 100)}% {primeiraParaUltima <= 0 ? "melhor" : "pior"}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {serie.some((d) => d.cpl !== null) ? (
+        <div className="mt-4 h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={serie} margin={{ top: 24, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={chartGrid} vertical={false} strokeOpacity={0.4} />
+              <XAxis dataKey="rotulo" {...chartAxis} />
+              <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
+              <Tooltip
+                {...chartTooltip}
+                labelFormatter={(_, p) => (p?.[0]?.payload?.dia ? new Date(`${p[0].payload.dia}T12:00:00`).toLocaleDateString("pt-BR") : "")}
+                formatter={(valor: number) => [reais(valor), t.custo]}
+              />
+              {media !== null && <ReferenceLine y={media} stroke={tone("muted-foreground")} strokeDasharray="5 5" />}
+              <Line
+                {...chartStill} type="monotone" dataKey="cpl" connectNulls stroke={cor} strokeWidth={2.5}
+                dot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: { cpl: number | null; dia: string } }) => {
+                  if (cx === undefined || cy === undefined || payload?.cpl == null) return <g key={`v-${payload?.dia}`} />;
+                  const acima = media !== null && payload.cpl > media;
+                  const correndo = ultimoDiaCorrendo && payload.dia === ultimo;
+                  return (
+                    <circle
+                      key={payload.dia} cx={cx} cy={cy} r={correndo ? 6 : 4.5}
+                      fill={tone(acima ? "destructive" : "success")}
+                      stroke={correndo ? cor : tone("card")} strokeWidth={2}
+                    />
+                  );
+                }}
+              >
+                <LabelList dataKey="cpl" position="top" offset={10} fontSize={11} fill={tone("foreground")}
+                  formatter={(valor: number | null) => (valor == null ? "" : decimal(valor))} />
+              </Line>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <p className="py-10 text-center text-sm text-muted-foreground">{t.vazio}</p>
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-success" aria-hidden />abaixo da média</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-destructive" aria-hidden />acima da média</span>
+        <span>- - - média do período</span>
+        {ultimoDiaCorrendo && <span>o último dia é hoje e ainda está correndo</span>}
+      </div>
+    </section>
   );
 }

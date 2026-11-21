@@ -71,8 +71,8 @@ describe("GestaoDeAnuncios", () => {
     m.metricas = [metrica("BOA", 36, 4), metrica("CARA", 43, 1), metrica("ZERADA", 30, 0)];
     m.contas = [{ id: "acc", prepay_available: 3614.38, cpl_limite: 12, last_sync_ok_at: null }];
     m.dias = [
-      { day: "2026-11-01", spend: 60, impressions: 3000, link_clicks: 60, resultados: 3, spend_lead: 60, resultados_lead: 3 },
-      { day: "2026-11-02", spend: 49, impressions: 2000, link_clicks: 40, resultados: 2, spend_lead: 49, resultados_lead: 2 },
+      { day: "2026-11-01", spend: 60, impressions: 3000, link_clicks: 60, resultados: 3, spend_lead: 60, resultados_lead: 3, spend_cadastro: 60, cadastros: 3, spend_conversa: 0, conversas: 0 },
+      { day: "2026-11-02", spend: 49, impressions: 2000, link_clicks: 40, resultados: 2, spend_lead: 49, resultados_lead: 2, spend_cadastro: 49, cadastros: 2, spend_conversa: 0, conversas: 0 },
     ];
     const el = await montar();
 
@@ -85,7 +85,8 @@ describe("GestaoDeAnuncios", () => {
     expect(el.textContent).toContain("Saldo da conta Meta Ads");
     // Custo por resultado do período, dos números por dia: 109 investidos ÷ 5 leads.
     expect(el.textContent).toMatch(/Custo por resultado.*R\$\s21,80/);
-    expect(el.textContent).toContain("Custo por lead por dia");
+    expect(el.textContent).toContain("Custo por cadastro por dia");
+    expect(el.textContent).toContain("Custo por conversa por dia");
     expect(el.textContent).toContain("Simulador de budget diário");
   });
 
