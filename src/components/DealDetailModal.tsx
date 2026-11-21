@@ -80,7 +80,8 @@ export type TabKey = "detalhes" | "anexos" | "agenda" | "historico" | "cca" | "n
  */
 const emptyDeal = (stageCode: string, month?: string, selfBrokerId?: string): SaveLegacyDealInput => ({
   client: "", developer: "", project: "", unit: "",
-  status: "PROPOSTA",
+  // Em branco de propósito (21/11/2026): o Status 2 é obrigatório e quem cria escolhe.
+  status: "",
   // Fronteira: o código vem do catálogo do banco e `DealStage` é o espelho dele.
   stage: stageCode as DealStage,
   broker1: "", manager1: "", deal_value: 0,
@@ -211,6 +212,12 @@ export default function DealDetailModal({
       // de partida certo e faz o leitor de tela reler o campo com a frase
       // ligada por `aria-describedby` a cada nova tentativa.
       document.getElementById(field(obrigatorio.toLowerCase().includes("empreendimento") ? "project" : "developer"))?.focus();
+      return null;
+    }
+    // Depois das recusas de campo: elas aparecem juntas, presas ao campo.
+    if (!ficha.status?.trim()) {
+      toast({ variant: "destructive", title: "Escolha o Status 2 do negócio", description: "Nenhum negócio pode ficar com o Status 2 em branco." });
+      document.getElementById(field("status"))?.focus();
       return null;
     }
     const documentoInvalido = dealDocumentNumberError(ficha);

@@ -23,6 +23,10 @@ vi.mock("./data", () => ({
   useDeveloperProjects: () => ({ data: [], isPending: false, error: null }),
   useInvalidateLeads: () => async () => undefined,
 }));
+vi.mock("@/integrations/supabase/dealStatuses", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/integrations/supabase/dealStatuses")>()),
+  useDealStatusCatalog: () => ({ data: undefined, isPending: false }),
+}));
 
 const lead = (patch: Partial<LeadRecord> = {}): LeadRecord => ({
   id: "l1", full_name: "Cliente Conversão", phone: null, phone_raw: null, email: null, document: null,

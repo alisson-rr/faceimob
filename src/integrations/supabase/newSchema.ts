@@ -1406,7 +1406,9 @@ export function legacyDealFields(form: SaveLegacyDealInput) {
   // a chave — chegava `undefined`, a comparação estrita falhava e o INSERT
   // gravava "PROPOSTA" como se alguém tivesse escolhido. Esse negócio, depois
   // arrastado para "Fechado", exibia "PROPOSTA" no Status 2 de uma venda.
-  const untouched = form.status_detail == null && chosen === derived;
+  // Negócio novo (sem id) grava sempre o escolhido (21/11/2026): o Status 2 é
+  // obrigatório na criação, e o "PROPOSTA" escolhido não é mais rótulo derivado.
+  const untouched = Boolean(form.id) && form.status_detail == null && chosen === derived;
   // `choosesLoss`, e não `isLossStatus`: o motivo que JÁ está gravado (como o
   // "19. REPROVADO" da coluna da CCA num negócio aberto) não vira `lost_reason`.
   const losing = choosesLoss(form);

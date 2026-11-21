@@ -880,6 +880,8 @@ export type ConvertLeadInput = {
   projectId?: string | null;
   /** Empreendimento digitado (0295); o banco liga ao cadastro quando o nome bate. */
   projectName?: string | null;
+  /** Status 2 escolhido na conversão (0352): obrigatório, nunca em branco. */
+  statusDetail: string;
   unit?: string | null;
   vgvGross?: number | null;
 };
@@ -901,6 +903,7 @@ export async function convertLeadToDeal(input: ConvertLeadInput): Promise<void> 
     p_developer_id: input.developerId,
     p_project_id: input.projectId || null,
     p_project_name: input.projectName?.trim() || null,
+    p_status_detail: input.statusDetail,
     p_unit: input.unit || null,
     // `??` deixa NaN passar e o JSON o serializa como null: o negócio nascia
     // sem VGV e sem aviso. A tela valida antes; aqui é a rede de segurança.
