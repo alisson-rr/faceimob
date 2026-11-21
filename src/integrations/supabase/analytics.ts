@@ -642,6 +642,32 @@ export type MetaCanalRow = {
  *  denominador não vira zero. */
 const numeroOuNulo = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
+/** Um dia dos insights da Meta, somado entre as campanhas (0350). */
+export type MetaDiaRow = {
+  day: string;
+  spend: number;
+  impressions: number;
+  link_clicks: number;
+  resultados: number;
+  /** Só as campanhas de lead (canal diferente de `outro`). */
+  spend_lead: number;
+  resultados_lead: number;
+};
+
+export async function fetchMetaPorDia(from: string, to: string): Promise<MetaDiaRow[]> {
+  const { data, error } = await untyped.rpc("meta_metricas_por_dia", { p_from: from, p_to: to });
+  if (error) throw dbError("ler os números da Meta por dia", error);
+  return ((data ?? []) as MetaDiaRow[]).map((r) => ({
+    day: String(r.day),
+    spend: Number(r.spend ?? 0),
+    impressions: Number(r.impressions ?? 0),
+    link_clicks: Number(r.link_clicks ?? 0),
+    resultados: Number(r.resultados ?? 0),
+    spend_lead: Number(r.spend_lead ?? 0),
+    resultados_lead: Number(r.resultados_lead ?? 0),
+  }));
+}
+
 export async function fetchMetaMetricas(from: string, to: string): Promise<MetaMetricaRow[]> {
   const { data, error } = await untyped.rpc("meta_metricas", { p_from: from, p_to: to });
   if (error) throw dbError("ler os números da Meta", error);
@@ -955,4 +981,28 @@ export async function listCcaCaseEvents(caseId: string): Promise<HistoryEntry[]>
     .order("created_at", { ascending: false });
   if (error) throw dbError("eventos do caso CCA", error);
   return (data ?? []) as HistoryEntry[];
+}
+
+/**
+ * O período de comparação das setas do painel de campanhas: no mês atual, os
+ * mesmos dias do mês anterior (1 a 21 contra 1 a 21); no mês anterior, o mês
+ * antes dele; nos demais, a mesma quantidade de dias logo antes.
+ */
+export function periodoAnteriorMeta(periodo: PeriodoMeta, hoje: Date = new Date()): { from: string; to: string } {
+  const atual = periodoMeta(periodo, hoje);
+  const [ano, mes, dia] = [hoje.getFullYear(), hoje.getMonth(), hoje.getDate()];
+  if (periodo === "mes_atual") {
+    const fimDoMesAnterior = new Date(ano, mes, 0).getDate();
+    return { from: diaLocal(new Date(ano, mes - 1, 1)), to: diaLocal(new Date(ano, mes - 1, Math.min(dia, fimDoMesAnterior))) };
+  }
+  if (periodo === "mes_anterior") {
+    return { from: diaLocal(new Date(ano, mes - 2, 1)), to: diaLocal(new Date(ano, mes - 1, 0)) };
+  }
+  const deData = (s: string) => { const [a, m, d] = s.split("-").map(Number); return new Date(a, m - 1, d); };
+  const inicio = deData(atual.from);
+  const dias = Math.round((deData(atual.to).getTime() - inicio.getTime()) / 86_400_000) + 1;
+  return {
+    from: diaLocal(new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() - dias)),
+    to: diaLocal(new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() - 1)),
+  };
 }
