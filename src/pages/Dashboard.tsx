@@ -42,7 +42,7 @@ import { describeError } from "@/lib/supabaseError";
 import { num, parseMonthStart } from "@/lib/format";
 import { LeadershipReport } from "@/components/dashboard/LeadershipReport";
 import { ResumoDaDiretoria } from "@/components/dashboard/ResumoDaDiretoria";
-import { FunilDeVendasPanel } from "@/components/dashboard/FunilDeVendasPanel";
+import { FunilPorEtapasPanel } from "@/components/dashboard/FunilPorEtapasPanel";
 import { esteiraDoMes } from "@/components/dashboard/esteiraDoMes";
 
 /**
@@ -187,7 +187,6 @@ export default function Dashboard() {
 
   const tabs: [string, string][] = [
     ["geral", "Visão geral"],
-    ...(temFunil ? ([["funil", "Funil de Vendas"]] as [string, string][]) : []),
     ["propostas", "Propostas"],
     ["vendas", "Vendas"],
     ["leads", "Leads"],
@@ -363,6 +362,10 @@ export default function Dashboard() {
           cartoes={cartoes}
         />
 
+        {/* Funil fixo logo abaixo dos cartões (pedido de 21/11/2026): substitui a
+            aba "Funil de Vendas", com a régua nova e o que entra em cada etapa. */}
+        {temFunil && <FunilPorEtapasPanel month={mesDoFunil} />}
+
         {/* O conteudo de cada aba vai num <div> interno. `flex` direto no
             TabsContent empata em especificidade com o `[hidden]` da preflight
             do Tailwind, a utility vence, e a aba inativa fica exibida (vazia) —
@@ -371,7 +374,7 @@ export default function Dashboard() {
             diretoria some — sem este desvio a area de conteudo ficaria em
             branco, com nenhuma aba marcada. */}
         <Tabs
-          value={(tab === "diretoria" && !temAbaDeLideranca) || (tab === "funil" && !temFunil) ? "geral" : tab}
+          value={(tab === "diretoria" && !temAbaDeLideranca) || tab === "funil" ? "geral" : tab}
           onValueChange={setTab}
           className="flex flex-col gap-5"
         >
@@ -462,11 +465,6 @@ export default function Dashboard() {
             </div>
           </TabsContent>
 
-          {temFunil && (
-            <TabsContent value="funil" className="mt-0">
-              <FunilDeVendasPanel month={mesDoFunil} />
-            </TabsContent>
-          )}
 
           {temAbaDeLideranca && (
             <TabsContent value="diretoria" className="mt-0">
