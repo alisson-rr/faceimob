@@ -35,7 +35,7 @@ begin
   end;
   perform pg_temp.ok(v_msg = 'Escolha o Status 2 do negócio.', 'conversão com Status 2 em branco é recusada');
 
-  v_deal := public.convert_lead_to_deal(v_lead, v_dev, p_project_name => 'Res 352', p_status_detail => 'pendente');
+  v_deal := public.convert_lead_to_deal(v_lead, v_dev, p_project_name => 'Res 352', p_status_detail => 'PENDENTE');
   perform pg_temp.ok(v_deal.status_detail = '16. PENDENTE', 'conversão grava o valor do cadastro, sem depender do número');
 
   reset role;
