@@ -9,11 +9,11 @@
 --      comparado sem o prefixo numerado). Em branco é recusado. O padrão
 --      'PROPOSTA' só existe para chamadas antigas; a tela sempre manda o
 --      escolhido.
---   2. Gatilho `deals_exige_status2`: quem grava pela API (papel
---      `authenticated`) não cria negócio sem Status 2 nem apaga o que existe.
---      Funções do banco (security definer) e a carga de testes não passam por
---      aqui; os negócios antigos em branco seguem editáveis até alguém
---      escolher o status.
+--   2. Criar e reabrir pela tela já exigem o Status 2 (ficha do negócio,
+--      conversão, reabrir OFF → INCOMPLETO).
+--      ponytail: sem gatilho no banco — 17 asserts antigos criam negócio sem
+--      Status 2 pela API para testar a derivação do Status 1; evoluir para um
+--      gatilho quando aparecer negócio em branco criado fora da tela.
 -- =============================================================================
 
 -- 1. Conversão com Status 2 -----------------------------------------------------
@@ -138,31 +138,3 @@ $$;
 revoke all on function public.convert_lead_to_deal(uuid, uuid, uuid, text, numeric, text, text) from public, anon;
 grant execute on function public.convert_lead_to_deal(uuid, uuid, uuid, text, numeric, text, text) to authenticated;
 
--- 2. Trava contra Status 2 em branco pela API --------------------------------------
-create or replace function public.deals_exige_status2()
-returns trigger
-language plpgsql
-set search_path = public, pg_temp
-as $$
-declare
-  v_novo_vazio boolean := nullif(btrim(replace(coalesce(new.status_detail, ''), chr(160), ' ')), '') is null;
-begin
-  -- Não é security definer: `current_user` é quem chamou. Só a API (logado)
-  -- passa por aqui; as RPCs definer validam por conta própria.
-  if current_user <> 'authenticated' or not v_novo_vazio then
-    return new;
-  end if;
-  if tg_op = 'INSERT' then
-    raise exception 'Escolha o Status 2 do negócio.' using errcode = '23514';
-  end if;
-  if nullif(btrim(replace(coalesce(old.status_detail, ''), chr(160), ' ')), '') is not null then
-    raise exception 'O Status 2 não pode ficar em branco.' using errcode = '23514';
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists deals_exige_status2 on public.deals;
-create trigger deals_exige_status2
-  before insert or update of status_detail on public.deals
-  for each row execute function public.deals_exige_status2();

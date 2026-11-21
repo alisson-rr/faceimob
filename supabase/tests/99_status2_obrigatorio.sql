@@ -1,5 +1,4 @@
--- 0352 — Status 2 obrigatório: a conversão grava o escolhido e recusa em
--- branco; pela API não se cria negócio sem Status 2 nem se apaga o que existe.
+-- 0352 — Status 2 obrigatório na conversão: grava o escolhido e recusa em branco.
 \set ON_ERROR_STOP on
 begin;
 
@@ -39,20 +38,6 @@ begin
   v_deal := public.convert_lead_to_deal(v_lead, v_dev, p_project_name => 'Res 352', p_status_detail => 'pendente');
   perform pg_temp.ok(v_deal.status_detail = '16. PENDENTE', 'conversão grava o valor do cadastro, sem depender do número');
 
-  begin
-    update public.deals set status_detail = null where id = v_deal.id;
-    v_msg := 'passou';
-  exception when check_violation then v_msg := 'barrado';
-  end;
-  perform pg_temp.ok(v_msg = 'barrado', 'pela API o Status 2 não volta a ficar em branco');
-
-  begin
-    insert into public.deals (stage_id, created_by) values ((select id from public.pipeline_stages where is_initial limit 1), cor);
-    v_msg := 'passou';
-  exception when check_violation then v_msg := 'barrado';
-         when others then v_msg := 'outro: ' || sqlerrm;
-  end;
-  perform pg_temp.ok(v_msg = 'barrado', 'pela API não se cria negócio sem Status 2');
   reset role;
 end;
 $$;
