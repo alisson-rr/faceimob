@@ -44,23 +44,46 @@ export function variacao(atual: number | null, anterior: number | null): number 
 
 export type DiaDoGrafico = { dia: string; rotulo: string; cpl: number | null };
 
-/** Custo por lead de cada dia, só das campanhas de lead. Dia sem lead fica sem ponto. */
-export const serieDeCpl = (dias: MetaDiaRow[]): DiaDoGrafico[] =>
-  dias.map((d) => ({ dia: d.day, rotulo: d.day.slice(8, 10), cpl: divide(d.spend_lead, d.resultados_lead) }));
+/**
+ * A linha do gráfico (pedido de 21/11/2026): cadastro (formulário e landing
+ * page) e conversa (WhatsApp) em gráficos separados — juntos, a conversa
+ * encarecendo ficava escondida pelo cadastro.
+ */
+export type LinhaDoGrafico = "cadastro" | "conversa";
 
-const cplDe = (dias: MetaDiaRow[]) =>
-  divide(dias.reduce((t, d) => t + d.spend_lead, 0), dias.reduce((t, d) => t + d.resultados_lead, 0));
+const custoDe = (linha: LinhaDoGrafico) => (d: MetaDiaRow) =>
+  linha === "cadastro" ? { gasto: d.spend_cadastro, n: d.cadastros } : { gasto: d.spend_conversa, n: d.conversas };
+
+/** Custo de cada dia na linha escolhida. Dia sem resultado fica sem ponto. */
+export const serieDeCusto = (dias: MetaDiaRow[], linha: LinhaDoGrafico): DiaDoGrafico[] =>
+  dias.map((d) => {
+    const { gasto, n } = custoDe(linha)(d);
+    return { dia: d.day, rotulo: d.day.slice(8, 10), cpl: divide(gasto, n) };
+  });
+
+const custoDoTrecho = (dias: MetaDiaRow[], linha: LinhaDoGrafico) => {
+  const partes = dias.map(custoDe(linha));
+  return divide(partes.reduce((t, p) => t + p.gasto, 0), partes.reduce((t, p) => t + p.n, 0));
+};
 
 export type ResumoDoGrafico = {
-  /** Custo por lead do período inteiro: gasto de lead ÷ leads, não média das médias. */
+  /** Total da linha no período. */
+  resultados: number;
+  investido: number;
+  /** Custo do período inteiro: gasto ÷ resultados, não média das médias. */
   media: number | null;
   /** Primeira semana contra a última (negativo = ficou mais barato). Só com 14 dias ou mais. */
   primeiraParaUltima: number | null;
 };
 
-export function resumoDoGrafico(dias: MetaDiaRow[]): ResumoDoGrafico {
+export function resumoDoGrafico(dias: MetaDiaRow[], linha: LinhaDoGrafico): ResumoDoGrafico {
+  const partes = dias.map(custoDe(linha));
   return {
-    media: cplDe(dias),
-    primeiraParaUltima: dias.length >= 14 ? variacao(cplDe(dias.slice(-7)), cplDe(dias.slice(0, 7))) : null,
+    resultados: partes.reduce((t, p) => t + p.n, 0),
+    investido: partes.reduce((t, p) => t + p.gasto, 0),
+    media: custoDoTrecho(dias, linha),
+    primeiraParaUltima: dias.length >= 14
+      ? variacao(custoDoTrecho(dias.slice(-7), linha), custoDoTrecho(dias.slice(0, 7), linha))
+      : null,
   };
 }
