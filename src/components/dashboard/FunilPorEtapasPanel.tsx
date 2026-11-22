@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronRight, Filter } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -161,13 +161,13 @@ function Conteudo({ dados }: { dados: FunilPorEtapas }) {
       <div className="hidden gap-3 text-eyebrow lg:grid lg:grid-cols-[1fr_1fr_minmax(0,1.3fr)]">
         <span className="text-right">Meta</span><span>Realizado</span><span>O que entra</span>
       </div>
-      <ol className="flex flex-col gap-2" aria-label="Etapas do funil">
+      <ol className="flex flex-col gap-3 lg:gap-2" aria-label="Etapas do funil">
         {etapas.map((e, i) => {
           const largura = `${100 - i * 14}%`;
           const cor = tone(COR[e.chave]);
           const dif = e.esperado == null ? null : e.total - e.esperado;
           return (
-            <li key={e.chave} className="grid gap-3 lg:grid-cols-[1fr_1fr_minmax(0,1.3fr)]">
+            <li key={e.chave} className="grid lg:grid-cols-[1fr_1fr_minmax(0,1.3fr)] lg:gap-3">
               <div className="hidden justify-end lg:flex">
                 <div className="flex flex-col items-end justify-center rounded-l-2xl border border-r-0 border-dashed border-border bg-muted/20 px-4 py-3 text-right" style={{ width: largura }}>
                   <span className="text-eyebrow">Meta · {e.chave === "leads" ? "base" : e.meta == null ? "sem meta" : `${pct(e.meta).replace(",0", "")} dos ${e.base}`}</span>
@@ -177,8 +177,10 @@ function Conteudo({ dados }: { dados: FunilPorEtapas }) {
                 </div>
               </div>
               <div className="lg:-ml-3">
-                <div className="flex h-full flex-col justify-center rounded-2xl border px-4 py-3 lg:rounded-l-none"
-                  style={{ width: largura, minWidth: "14rem", borderColor: tone(COR[e.chave], 0.6), background: `linear-gradient(90deg, ${tone(COR[e.chave], 0.28)}, ${tone(COR[e.chave], 0.06)})` }}>
+                {/* No celular cada degrau ocupa a largura toda e cola no "o que entra";
+                    o estreitamento do funil fica para a tela larga. */}
+                <div className="flex h-full w-full flex-col justify-center rounded-t-2xl border px-4 py-3 lg:w-[var(--largura)] lg:min-w-[14rem] lg:rounded-b-2xl lg:rounded-l-none"
+                  style={{ ["--largura" as string]: largura, borderColor: tone(COR[e.chave], 0.6), background: `linear-gradient(90deg, ${tone(COR[e.chave], 0.28)}, ${tone(COR[e.chave], 0.06)})` } as CSSProperties}>
                   <span className="text-eyebrow" style={{ color: cor }}>{e.nome}</span>
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="font-display text-2xl font-bold tabular-nums">{num(e.total)}</span>
@@ -196,7 +198,7 @@ function Conteudo({ dados }: { dados: FunilPorEtapas }) {
                   )}
                 </div>
               </div>
-              <div className="flex flex-col justify-center rounded-2xl border border-border bg-card px-4 py-3">{oQueEntra[e.chave]}</div>
+              <div className="flex flex-col justify-center rounded-b-2xl border border-t-0 border-border bg-card px-4 py-3 lg:rounded-t-2xl lg:border-t">{oQueEntra[e.chave]}</div>
             </li>
           );
         })}
