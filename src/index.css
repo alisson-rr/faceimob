@@ -661,3 +661,41 @@
   .deal-income-panel > div > :nth-child(4) { grid-column: 1 / -1; }
   .deal-income-panel > div > :last-child { grid-column: 1 / -1; }
 }
+
+/*
+ * Teste do tema "Aço com brilho" (modelo 3, pedido de 21/11/2026), só na aba
+ * Campanhas do Marketing: cinza metálico, cantos mais redondos e contorno azul.
+ * Redefine os tokens dentro do bloco; o resto do sistema segue azul. Só no
+ * escuro: no claro o bloco fica como está.
+ * ponytail: tema escopado por classe; evoluir para tema global quando o modelo for aprovado.
+ */
+html:not(.light) .tema-aco {
+  --background: 240 6% 6%;
+  --card: 240 5% 11%;
+  --popover: 240 5% 13%;
+  --secondary: 240 4% 16%;
+  --muted: 240 4% 14%;
+  --muted-foreground: 240 5% 68%;
+  --accent: 240 4% 18%;
+  --border: 240 4% 21%;
+  --input: 240 4% 46%;
+  --card-glow: 217 91% 60%;
+  --primary: 217 92% 68%;
+  --ring: 217 92% 68%;
+  --chart-1: 217 92% 68%;
+  --radius: 1.1rem;
+  color: hsl(var(--foreground));
+  background: radial-gradient(1200px 500px at 70% -10%, hsl(240 6% 13%), hsl(240 6% 6%) 60%);
+  border: 1px solid hsl(var(--border));
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+}
+html:not(.light) .tema-aco .bg-card,
+html:not(.light) .tema-aco .rounded-2xl.border {
+  background-image: linear-gradient(180deg, hsl(240 5% 13%), hsl(240 5% 9.5%));
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.05);
+}
+html:not(.light) .tema-aco .border-primary,
+html:not(.light) .tema-aco [data-destaque] {
+  box-shadow: 0 0 0 1px hsl(217 92% 68% / 0.3), 0 0 28px hsl(217 92% 68% / 0.22);
+}
