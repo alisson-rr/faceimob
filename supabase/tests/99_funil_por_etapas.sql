@@ -34,7 +34,8 @@ begin
   -- status atual de cada negócio depois, sem gatilhos.
   set local session_replication_role = replica;
   update public.deals set status_detail = '09. APROV. TOTAL' where id = d1;
-  update public.deals set status_detail = '04. EM CONTRATO' where id = d2;
+  update public.deals set status_detail = '04. EM CONTRATO',
+         status_group_id = (select id from public.deal_status_groups where code = 'VENDA') where id = d2;
   update public.deals set status_detail = '16. PENDENTE' where id = d3;
   set local session_replication_role = origin;
 
@@ -44,6 +45,11 @@ begin
                      and (r -> 'envios' ->> 'outros_meses')::int = 1, 'envios do mês separados por mês-base');
   perform pg_temp.ok((r -> 'aprovados' ->> 'total')::int = 2, 'aprovado e quem já avançou contam como aprovados');
   perform pg_temp.ok((r -> 'vendas' ->> 'total')::int = 1, 'em contrato conta como venda');
+  -- 0354: a venda é do mês-base, enviada ou não à CCA no mês.
+  insert into public.deals (stage_id, created_by, month_base, status_detail) values (v_stage, cor, v_mes, '04. EM CONTRATO');
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  r := public.funil_por_etapas(v_mes);
+  perform pg_temp.ok((r -> 'vendas' ->> 'total')::int = 2, '0354: venda do mês sem envio no mês também conta');
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   begin
