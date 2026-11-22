@@ -308,7 +308,7 @@ export default function Marketing() {
           </TabsList>
         </div>
 
-        <TabsContent value="campanhas" className="mt-5 space-y-5">
+        <TabsContent value="campanhas" className="tema-aco mt-5 space-y-5">
           <GestaoDeAnuncios podeConectar={canConnectMeta} />
 
           {/* O que existia antes do painel de gestão (02/10/2026): cadastro à mão,
