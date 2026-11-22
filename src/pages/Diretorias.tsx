@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState, LoadingState, PageHeader } from "@/components/shared";
-import { FunilDeVendasPanel } from "@/components/dashboard/FunilDeVendasPanel";
+import { FunilPorEtapasPanel } from "@/components/dashboard/FunilPorEtapasPanel";
 import { agruparPorDiretoria, carregarEquipesPorDiretoria, type Diretoria, type EquipeDaDiretoria, type Numeros } from "@/components/diretorias/data";
 import { brl, num } from "@/lib/format";
 import { describeError } from "@/lib/supabaseError";
@@ -61,7 +61,7 @@ export default function Diretorias() {
       />
 
       <Card className="p-4 sm:p-5">
-        <FunilDeVendasPanel month={mesDoBanco} />
+        <FunilPorEtapasPanel month={mesDoBanco} />
       </Card>
 
       {consulta.isPending ? (
