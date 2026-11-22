@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { cartoesDoPeriodo } from "@/components/dashboard/cartoesDoMes";
 import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Inbox, LayoutDashboard, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronRight, Inbox, LayoutDashboard, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -338,33 +338,48 @@ export default function Dashboard() {
     );
   }
 
+  const indicadores = (
+    <KpiRow
+      stats={view.stats}
+      leadsNoPeriodo={leadsNoPeriodo}
+      leadsError={!!(mesDosLeads ? leadsDoMes.error : leadsQuery.error)}
+      onLeadsRetry={() => void (mesDosLeads ? leadsDoMes.refetch() : leadsQuery.refetch())}
+      // A contagem exata, nao o tamanho da lista: a lista para em 1.000 e o
+      // cartao dizia "1.000" para uma base de 102.799. A aba Leads nao repete
+      // mais este cartao, entao nao ha outro numero de mesmo nome a divergir.
+      leadsNaBase={payload?.leadsCount ?? 0}
+      leadsAmostra={amostraDeLeads}
+      dealsLabel={recorte.dealsLabel}
+      leadsLabel={recorte.leadsLabel}
+      month={activeMonth}
+      vgvGoal={vgvGoal.data?.target ?? null}
+      previous={view.previous}
+      previousLabel={view.previousMonth}
+      cartoes={cartoes}
+    />
+  );
+
   return (
     <>
       {header}
 
       <div className="flex flex-col gap-5">
-        <KpiRow
-          stats={view.stats}
-          leadsNoPeriodo={leadsNoPeriodo}
-          leadsError={!!(mesDosLeads ? leadsDoMes.error : leadsQuery.error)}
-          onLeadsRetry={() => void (mesDosLeads ? leadsDoMes.refetch() : leadsQuery.refetch())}
-          // A contagem exata, nao o tamanho da lista: a lista para em 1.000 e o
-          // cartao dizia "1.000" para uma base de 102.799. A aba Leads nao repete
-          // mais este cartao, entao nao ha outro numero de mesmo nome a divergir.
-          leadsNaBase={payload?.leadsCount ?? 0}
-          leadsAmostra={amostraDeLeads}
-          dealsLabel={recorte.dealsLabel}
-          leadsLabel={recorte.leadsLabel}
-          month={activeMonth}
-          vgvGoal={vgvGoal.data?.target ?? null}
-          previous={view.previous}
-          previousLabel={view.previousMonth}
-          cartoes={cartoes}
-        />
-
-        {/* Funil fixo logo abaixo dos cartões (pedido de 21/11/2026): substitui a
-            aba "Funil de Vendas", com a régua nova e o que entra em cada etapa. */}
-        {temFunil && <FunilPorEtapasPanel month={mesDoFunil} />}
+        {/* Funil em evidência (pedido de 21/11/2026): para a liderança os cartões
+            ficam recolhidos abaixo dele; quem não tem funil vê os cartões abertos. */}
+        {temFunil ? (
+          <>
+            <FunilPorEtapasPanel month={mesDoFunil} />
+            <details className="group rounded-2xl border border-border bg-card/40 px-4 py-3">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-semibold text-muted-foreground [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" aria-hidden />
+                Indicadores do mês
+              </summary>
+              <div className="mt-4">
+                {indicadores}
+              </div>
+            </details>
+          </>
+        ) : indicadores}
 
         {/* O conteudo de cada aba vai num <div> interno. `flex` direto no
             TabsContent empata em especificidade com o `[hidden]` da preflight
