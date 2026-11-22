@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Filter } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronRight, Filter } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LoadingState } from "@/components/shared";
 import { num } from "@/lib/format";
@@ -95,14 +95,18 @@ function Itens({ itens, cor }: { itens: ItemDaEtapa[]; cor?: string }) {
   );
 }
 
+/** Retrátil (pedido de 21/11/2026): fechado, a linha de documentos tem a altura das outras e o funil fica simétrico. */
 function Grupo({ titulo, itens, cor }: { titulo: string; itens: ItemDaEtapa[]; cor: string }) {
   return (
-    <div className="min-w-0">
-      <div className="mb-1 flex justify-between border-b pb-0.5 text-xs font-bold" style={{ color: cor, borderColor: cor }}>
-        <span>{titulo}</span><span className="tabular-nums">{num(somaDos(itens))}</span>
-      </div>
-      <div className="grid gap-x-4 sm:grid-cols-2"><Itens itens={itens} cor={cor} /></div>
-    </div>
+    <details className="group min-w-0">
+      <summary className="flex cursor-pointer list-none justify-between gap-3 rounded text-xs font-bold [&::-webkit-details-marker]:hidden" style={{ color: cor }}>
+        <span className="flex items-center gap-1">
+          <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" aria-hidden />{titulo}
+        </span>
+        <span className="tabular-nums">{num(somaDos(itens))}</span>
+      </summary>
+      <div className="mt-1 pl-5"><Itens itens={itens} cor={cor} /></div>
+    </details>
   );
 }
 
@@ -117,7 +121,7 @@ function Conteudo({ dados }: { dados: FunilPorEtapas }) {
   const oQueEntra: Record<Etapa["chave"], ReactNode> = {
     leads: <Itens itens={[{ rotulo: "Recebidos no mês", n: dados.leads }]} />,
     documentos: (
-      <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
+      <div className="flex flex-col gap-1.5">
         <Grupo titulo="Produção (propostas)" itens={dados.documentos.producao} cor={verde} />
         <Grupo titulo="Legado" itens={dados.documentos.legado} cor={amarelo} />
       </div>
