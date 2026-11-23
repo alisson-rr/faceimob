@@ -647,6 +647,21 @@ export async function submitDealForManagerReview(
   if (error) throw dbError("submit_deal_for_manager_review", error);
 }
 
+/** CCA leva o aprovado direto para "Análise p/ virar negócio", sem a
+ *  conferência do gerente (0358). */
+export async function ccaEnviarParaVirarNegocio(dealId: string, message: string): Promise<void> {
+  // Ainda fora do `types.ts` gerado: tipagem local, como em `dealStatuses.ts`.
+  const rpc = supabase as unknown as {
+    rpc(nome: "cca_enviar_para_virar_negocio", args: { p_deal_id: string; p_message: string }):
+      PromiseLike<{ error: { message?: string; code?: string } | null }>;
+  };
+  const { error } = await rpc.rpc("cca_enviar_para_virar_negocio", {
+    p_deal_id: dealId,
+    p_message: message.trim(),
+  });
+  if (error) throw dbError("cca_enviar_para_virar_negocio", error);
+}
+
 /** Aprova e segue ao CCA (mensagem opcional, registrada no negócio), ou
  *  devolve ao corretor com motivo obrigatório. */
 export async function reviewDealDocuments(input: {
