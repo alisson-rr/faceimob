@@ -8,9 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { describeError } from "@/lib/supabaseError";
-import { isLossStatus } from "@/lib/dealStatus";
-import { useDealStatusCatalog } from "@/integrations/supabase/dealStatuses";
-import { statusChoices } from "@/components/pipeline/statuses";
 import { comPrazo } from "@/lib/prazo";
 import {
   addLeadComment, ATTACHMENT_HINT, convertLeadToDeal, leadStatusLabel, promoteLeadAttachments,
@@ -50,10 +47,6 @@ export function ConvertLeadDialog({
   const [developerId, setDeveloperId] = useState("");
   const [projectName, setProjectName] = useState("");
   const [unit, setUnit] = useState("");
-  // Status 2 obrigatório na criação (21/11/2026): o corretor escolhe, não fica em branco.
-  const [status2, setStatus2] = useState("");
-  const catalogo = useDealStatusCatalog();
-  const opcoesDeStatus = catalogo.data ? statusChoices(catalogo.data).filter((o) => !isLossStatus(o.value)) : [];
   const [vgv, setVgv] = useState("");
   const [doc, setDocument] = useState<File | null>(null);
   const [converting, setConverting] = useState(false);
@@ -77,7 +70,7 @@ export function ConvertLeadDialog({
   };
 
   const submit = async () => {
-    if (!developerId || !projectName.trim() || !status2 || vgvInvalid || (encerrado && !reabrir)) return;
+    if (!developerId || !projectName.trim() || vgvInvalid || (encerrado && !reabrir)) return;
     setConverting(true);
     try {
       // Com prazo (29/09/2026): sem ele, um envio que a rede deixava pendurado
@@ -94,7 +87,8 @@ export function ConvertLeadDialog({
           leadId: lead.id,
           developerId,
           projectName: projectName.trim(),
-          statusDetail: status2,
+          // Nasce INCOMPLETO (23/11/2026): o movimento do Status 2 é feito na aba Negócio.
+          statusDetail: "INCOMPLETO",
           unit: unit || null,
           vgvGross,
         }),
@@ -247,17 +241,9 @@ export function ConvertLeadDialog({
             />
           </div>
 
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor={`${fieldId}-status2`}>Status do negócio *</Label>
-            <Select value={status2} onValueChange={setStatus2}>
-              <SelectTrigger id={`${fieldId}-status2`}>
-                <SelectValue placeholder={catalogo.isPending ? "Carregando status…" : "Escolha o Status 2"} />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                {opcoesDeStatus.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            O negócio nasce com o Status 2 <b>Incompleto</b>; o movimento é feito depois, na aba Negócio.
+          </p>
 
           <div className="space-y-1.5">
             <Label htmlFor={`${fieldId}-unidade`}>Unidade</Label>
@@ -315,7 +301,7 @@ export function ConvertLeadDialog({
             size="sm"
             variant="success"
             onClick={submit}
-            disabled={!developerId || !projectName.trim() || !status2 || vgvInvalid || converting || (encerrado && !reabrir)}
+            disabled={!developerId || !projectName.trim() || vgvInvalid || converting || (encerrado && !reabrir)}
           >
             {converting ? "Convertendo…" : "Converter"}
           </Button>
