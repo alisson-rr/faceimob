@@ -255,6 +255,13 @@ export function statusMoveBlock(
     && bareStatus(to) === "EM CONTRATO"
     && who.roles.some((role) => ["broker", "manager", "director", "cca"].includes(role))
   ) return null;
+  // 0356: a CCA leva o aprovado para a análise de virar negócio.
+  const semAcento = (v: string | null | undefined) => bareStatus(v ?? "").normalize("NFD").replace(/\p{M}/gu, "");
+  if (
+    ["APROV. TOTAL", "APROV. TOT. RESTRICAO", "APROV. COND.", "APROV. COND. RESTRICAO"].includes(semAcento(from))
+    && semAcento(to) === "ANALISE P/ VIRAR NEGOCIO"
+    && who.roles.includes("cca")
+  ) return null;
   const destinoIndex = catalog.indexByKey.get(statusKey(to));
   const destino = destinoIndex === undefined ? null : catalog.statuses[destinoIndex];
   if (!destino) return "Este Status 2 não está no cadastro.";

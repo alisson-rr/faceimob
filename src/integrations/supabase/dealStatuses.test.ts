@@ -73,6 +73,18 @@ describe("statusMoveBlock · contrato com pendência", () => {
   });
 });
 
+describe("statusMoveBlock · CCA leva aprovado para virar negócio (0356)", () => {
+  const aprovados = ["09. APROV. TOTAL", "10. APROV. COND.", "APROV. TOT. RESTRIÇÃO", "APROV. COND. RESTRIÇÃO"];
+  it("libera os quatro aprovados para Análise p/ virar negócio à CCA", () => {
+    for (const from of aprovados) {
+      expect(statusMoveBlock(EMPTY_STATUS_CATALOG, from, "ANÁLISE P/ VIRAR NEGÓCIO", { isAdmin: false, roles: ["cca"] })).toBeNull();
+    }
+  });
+  it("não abre o caminho para o corretor", () => {
+    expect(statusMoveBlock(EMPTY_STATUS_CATALOG, "09. APROV. TOTAL", "ANÁLISE P/ VIRAR NEGÓCIO", { isAdmin: false, roles: ["broker"] })).not.toBeNull();
+  });
+});
+
 describe("reativação e troca de construtora (0277)", () => {
   it("reativar manda o motivo sem espaços sobrando e o corretor escolhido", async () => {
     rpc.mockClear();
