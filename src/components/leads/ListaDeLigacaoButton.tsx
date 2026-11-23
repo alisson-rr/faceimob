@@ -65,8 +65,9 @@ export function ListaDeLigacaoButton() {
           <DialogHeader>
             <DialogTitle>Lista de ligação</DialogTitle>
             <DialogDescription>
-              Leads que não viraram negócio, com campanha, cliente e telefone. Sem mês escolhido, vale o ano
-              corrente até o mês passado, em ordem sortida.
+              {isAdmin
+                ? "Leads que não viraram negócio, com campanha, cliente e telefone. Sem mês escolhido, vale o ano corrente até o mês passado, em ordem sortida e sem limite."
+                : "Leads que não viraram negócio, com campanha, cliente e telefone: 500 contatos sorteados do ano corrente até o mês passado. Cada nova abertura sorteia outros."}
             </DialogDescription>
           </DialogHeader>
           {/* 0340: mês e DDD só para administrador e sócio; gerente e diretor seguem com a lista sortida. */}
