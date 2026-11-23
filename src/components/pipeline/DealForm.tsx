@@ -249,7 +249,8 @@ export function DealForm({
   const vgvTravado = !isNew && !can("deals.edit_value");
   // Negócio já criado: o Status 2 do Cadastro é de quem move por ele (admin, sócio e
   // CCA). Corretor, gerente e diretor movem pela aba Negócio (12/10/2026).
-  const status2Escondido = !isNew && !isAdmin && !roles.includes("cca");
+  // Negócio novo nasce INCOMPLETO para todos (23/11/2026): o movimento é pela aba Negócio.
+  const status2Escondido = isNew || (!isAdmin && !roles.includes("cca"));
   // 0332: em análise na CCA, a renda informal é do CCA; o comercial só vê.
   const rendaTravada = !isNew && Boolean(form.cca_em_analise) && !isAdmin && !can("cca.review");
   const canExitStage = useCanExitStage();
@@ -907,9 +908,11 @@ export function DealForm({
           <div className="deal-tone-green">
             <p className="text-eyebrow">Status do negócio</p>
             <p className="deal-readout mt-1 rounded-xl border px-3.5 py-2.5 text-xs font-semibold">
-              {catalog.statuses.find((item) => item.value === form.status)?.label ?? (form.status || "—")}
+              {catalog.statuses.find((item) => item.value === form.status)?.label ?? (form.status || (isNew ? "INCOMPLETO" : "—"))}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">O movimento do negócio é feito na aba Negócio.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isNew ? "Nasce Incompleto. Depois de criar, o movimento é feito na aba Negócio." : "O movimento do negócio é feito na aba Negócio."}
+            </p>
           </div>
         ) : (
           <div className="deal-tone-green">
