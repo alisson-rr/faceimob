@@ -10,7 +10,8 @@ import { toast } from "@/components/ui/sonner";
 import { ehDesfechoRuim } from "@/lib/dealStatus";
 import { describeError } from "@/lib/supabaseError";
 import { moveDealStatus, statusKey, type DealStatus } from "@/integrations/supabase/dealStatuses";
-import { submitDealForManagerReview } from "@/integrations/supabase/documents";
+import { ccaEnviarParaVirarNegocio, submitDealForManagerReview } from "@/integrations/supabase/documents";
+import { useAuth } from "@/contexts/AuthContext";
 import type { LegacyDealRecord } from "@/integrations/supabase/newSchema";
 
 /**
@@ -38,12 +39,20 @@ export function MoverStatusDialog({ movimento, envioParaAnalise, onClose, onMove
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const limpo = texto.trim();
+  const { roles } = useAuth();
+  // 0358: a CCA manda o aprovado direto para a esteira dela, sem o gerente.
+  const diretoPelaCca = envioParaAnalise && roles.includes("cca") && statusKey(status.value) === ANALISE_VIRAR;
 
   const confirmar = async () => {
     if (!limpo || enviando) return;
     setEnviando(true);
     try {
-      if (envioParaAnalise) {
+      if (diretoPelaCca) {
+        await ccaEnviarParaVirarNegocio(deal.id, limpo);
+        toast.success("Enviado para análise p/ virar negócio", {
+          description: "O negócio voltou para a esteira da CCA, com a sua observação no histórico.",
+        });
+      } else if (envioParaAnalise) {
         await submitDealForManagerReview(
           deal.id, limpo, statusKey(status.value) === ANALISE_VIRAR ? "virar" : "agil",
         );
@@ -72,7 +81,9 @@ export function MoverStatusDialog({ movimento, envioParaAnalise, onClose, onMove
         <DialogHeader>
           <DialogTitle>{envioParaAnalise ? "Enviar para análise" : `Mover para ${status.label}`}</DialogTitle>
           <DialogDescription>
-            {envioParaAnalise
+            {diretoPelaCca
+              ? `${deal.client}: o negócio vai direto para a esteira da CCA, sem a conferência do gerente. A mensagem fica no histórico.`
+              : envioParaAnalise
               ? `${deal.client}: descreva a pendência respondida. A mensagem vai para o gerente conferir e fica no histórico do negócio.`
               : `${deal.client}: este status pede uma observação, que fica no histórico do negócio.`}
           </DialogDescription>

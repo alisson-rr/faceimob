@@ -31,4 +31,54 @@ begin
 end;
 $$;
 
+-- 0358 — a CCA envia de verdade: o negócio cai em "Análise p/ virar negócio"
+-- na esteira, sem passar pela conferência do gerente.
+do $$
+declare
+  cca uuid := '00000000-0000-0000-0000-000003580001';
+  cor uuid := '00000000-0000-0000-0000-000003580002';
+  ger uuid := '00000000-0000-0000-0000-000003580003';
+  v_dev uuid;
+  v_deal uuid;
+  v_ok boolean;
+  v_type public.document_types;
+  v_stage uuid := (select id from public.pipeline_stages where is_initial limit 1);
+begin
+  insert into auth.users (id, email, raw_user_meta_data) values
+    (cca, 'cca@c358.test', '{"full_name":"CCA 358"}'),
+    (cor, 'cor@c358.test', '{"full_name":"Corretor 358"}'),
+    (ger, 'ger@c358.test', '{"full_name":"Gerente 358"}');
+  insert into public.user_roles (profile_id, role) values (cca, 'cca'), (cor, 'broker'), (ger, 'manager') on conflict do nothing;
+  insert into public.developers (name, slug, flow) values ('Construtora 358', 'construtora-358', 'internal') returning id into v_dev;
+  update public.document_types set required_for_conversion = false;
+
+  insert into public.deals (stage_id, created_by, document_review_status, developer_id)
+    values (v_stage, cor, 'approved', v_dev) returning id into v_deal;
+  insert into public.deal_participants (deal_id, profile_id, role, ordinal) values
+    (v_deal, cor, 'broker', 1), (v_deal, ger, 'manager', 1) on conflict do nothing;
+  select * into v_type from public.document_types order by sort_order limit 1;
+  insert into public.deal_documents (deal_id, document_type_id, storage_path, original_name, stored_name, uploaded_by)
+    values (v_deal, v_type.id, 'c358/' || v_deal || '/doc.pdf', 'doc.pdf', 'doc-cliente.pdf', cor);
+  insert into public.cca_cases (deal_id, status, submitted_at, decided_at) values (v_deal, 'approved', now(), now());
+  update public.deals set status_detail = '09. APROV. TOTAL' where id = v_deal;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
+  begin
+    perform public.cca_enviar_para_virar_negocio(v_deal, 'Cliente aprovado, seguir');
+    v_ok := true;
+  exception when others then v_ok := false;
+  end;
+  perform pg_temp.ok(not v_ok, 'corretor não usa o envio direto da CCA');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', cca, 'role', 'authenticated')::text, true);
+  perform public.cca_enviar_para_virar_negocio(v_deal, 'Cliente aprovado, seguir para virar');
+  perform pg_temp.ok((select status_detail from public.deals where id = v_deal) = '15. ANÁLISE P/ VIRAR NEGÓCIO',
+    'CCA: o negócio cai em Análise p/ virar negócio');
+  perform pg_temp.ok((select status from public.cca_cases where deal_id = v_deal) = 'under_review',
+    'CCA: o caso volta para análise na esteira');
+  perform pg_temp.ok((select document_review_status from public.deals where id = v_deal) = 'approved',
+    'CCA: não fica esperando o gerente');
+end;
+$$;
+
 rollback;
