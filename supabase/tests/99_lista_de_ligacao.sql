@@ -84,6 +84,23 @@ begin
   perform pg_temp.ok(v_n = 2, 'mês escolhido: só março, sem o lead de 01/04 00:30');
   perform pg_temp.ok(v_t = 1, 'DDD 51 tira o 11 e aceita telefone com 55 na frente');
 
+  -- 0359: gerente e diretor recebem no máximo 500 contatos sortidos; admin, todos.
+  insert into public.leads(full_name, phone, campaign_name, assigned_to, created_at)
+  select 'Lote 359 ' || g, '5199' || lpad(g::text, 7, '0'), '[FORM] GERAL', cor, now() - interval '40 days'
+    from generate_series(1, 510) g;
+  perform set_config('request.jwt.claims', json_build_object('sub', dir, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into v_n from public.lista_de_ligacao();
+  select jsonb_array_length(public.lista_de_ligacao_completa()) into v_j;
+  reset role;
+  perform pg_temp.ok(v_n = 500, 'diretor recebe 500 contatos (havia mais de 510)');
+  perform pg_temp.ok(v_j = 500, 'o pacote jsonb do diretor também para em 500');
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into v_t from public.lista_de_ligacao() l where l.cliente like 'Lote 359 %';
+  reset role;
+  perform pg_temp.ok(v_t = 510, 'admin recebe a lista inteira, sem limite');
+
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
   begin
     set local role authenticated;
