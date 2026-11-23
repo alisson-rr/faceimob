@@ -294,8 +294,11 @@ export default function CcaPipeline() {
   const visiveis = useMemo(() => {
     const termo = fold(busca.trim());
     if (!termo) return deals;
+    const soDigitos = termo.replace(/\D/g, "");
     return deals.filter((deal) =>
-      fold(`${deal.client} ${deal.developer} ${deal.project} ${deal.broker}`).includes(termo),
+      // Os dois proponentes, por nome e CPF (pedido da CCA, 23/11/2026).
+      fold(`${deal.client} ${deal.client2 ?? ""} ${deal.cpf ?? ""} ${deal.cpf2 ?? ""} ${deal.developer} ${deal.project} ${deal.broker}`).includes(termo)
+      || (soDigitos.length >= 3 && `${deal.cpf ?? ""} ${deal.cpf2 ?? ""}`.replace(/\D/g, "").includes(soDigitos)),
     );
   }, [deals, busca]);
 

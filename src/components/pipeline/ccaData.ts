@@ -68,10 +68,14 @@ export interface CcaDeal {
   /** Status 2 do negócio. */
   dealStatus?: string | null;
   cpf?: string;
+  /** Segundo proponente, só para a busca achar o caso pelo nome ou CPF dele. */
+  client2?: string;
+  cpf2?: string;
   submittedAt?: string | null;
   stageEnteredAt?: string | null;
   agile?: boolean;
-  /** Contrato originado de "Virou negócio com pendências" (0243). */
+  /** Selo amarelo de pendência: o negócio está em "Virou negócio com pendências"
+   *  ou o contrato nasceu dele (0243). */
   contractHasPendingIssue?: boolean;
   /** Construtora trocada depois de virar negócio (0277): o caso volta à fila com o selo "Troca construtora". */
   construtoraTrocada?: boolean;
@@ -453,10 +457,15 @@ export async function loadCcaBoard(
       status: row.status,
       dealStatus: deal?.status ?? null,
       cpf: deal?.cpf || "",
+      client2: deal?.client2 || "",
+      cpf2: deal?.cpf2 || "",
       submittedAt: row.submitted_at,
       stageEnteredAt: row.stage_entered_at ?? null,
       agile: bareStatus(deal?.status ?? "").normalize("NFD").replace(/\p{M}/gu, "") === "ESTEIRA AGIL",
-      contractHasPendingIssue: deal?.contract_has_pending_issue ?? false,
+      // Também enquanto o Status 2 é "com pendências" (pedido da CCA, 23/11/2026):
+      // antes o selo só aparecia depois de ir para Em contrato.
+      contractHasPendingIssue: Boolean(deal?.contract_has_pending_issue)
+        || foldStatus(deal?.status) === "VIROU NEGOCIO COM PENDENCIAS",
       // O selo vale até o negócio virar negócio de novo.
       construtoraTrocada: Boolean(deal?.construtora_trocada_em)
         && !foldStatus(deal?.status).startsWith("VIROU NEGOCIO"),
