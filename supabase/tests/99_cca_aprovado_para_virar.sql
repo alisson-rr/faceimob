@@ -59,7 +59,10 @@ begin
   select * into v_type from public.document_types order by sort_order limit 1;
   insert into public.deal_documents (deal_id, document_type_id, storage_path, original_name, stored_name, uploaded_by)
     values (v_deal, v_type.id, 'c358/' || v_deal || '/doc.pdf', 'doc.pdf', 'doc-cliente.pdf', cor);
-  insert into public.cca_cases (deal_id, status, submitted_at, decided_at) values (v_deal, 'approved', now(), now());
+  -- Aprovado dias antes, como na vida real: o reenvio só conta como entrada se
+  -- `submitted_at` mudar, e `now()` é o mesmo instante dentro da transação.
+  insert into public.cca_cases (deal_id, status, submitted_at, decided_at)
+    values (v_deal, 'approved', now() - interval '3 days', now() - interval '2 days');
   update public.deals set status_detail = '09. APROV. TOTAL' where id = v_deal;
 
   perform set_config('request.jwt.claims', json_build_object('sub', cor, 'role', 'authenticated')::text, true);
@@ -73,7 +76,8 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', cca, 'role', 'authenticated')::text, true);
   perform public.cca_enviar_para_virar_negocio(v_deal, 'Cliente aprovado, seguir para virar');
   perform pg_temp.ok((select status_detail from public.deals where id = v_deal) = '15. ANÁLISE P/ VIRAR NEGÓCIO',
-    'CCA: o negócio cai em Análise p/ virar negócio');
+    'CCA: o negócio cai em Análise p/ virar negócio (está em '
+    || coalesce((select status_detail from public.deals where id = v_deal), 'nulo') || ')');
   perform pg_temp.ok((select status from public.cca_cases where deal_id = v_deal) = 'under_review',
     'CCA: o caso volta para análise na esteira');
   perform pg_temp.ok((select document_review_status from public.deals where id = v_deal) = 'approved',
