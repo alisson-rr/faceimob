@@ -38,6 +38,11 @@ const POSICAO_DA_CIDADE: Record<string, { x: number; y: number }> = {
   "montenegro": { x: 40, y: 15 },
 };
 
+/** Mapa do Google (My Maps) da operação, pedido de 23/11/2026. Só o `mid` e o enquadramento do link enviado. */
+const MAPA_GOOGLE_ID = "1KQGEE-ynI5sjpxXnFTxStDMkxYA-mXk";
+const MAPA_GOOGLE_EMBED = `https://www.google.com/maps/d/embed?mid=${MAPA_GOOGLE_ID}&ll=-29.965802%2C-50.975376&z=10`;
+const MAPA_GOOGLE_ABRIR = `https://www.google.com/maps/d/viewer?mid=${MAPA_GOOGLE_ID}`;
+
 type Cidade = { chave: string; nome: string; imoveis: ImovelDoMapa[]; pos: { x: number; y: number } | null };
 
 const preco = (i: ImovelDoMapa) =>
@@ -83,6 +88,25 @@ export default function CentralMapa() {
           </Button>
         )}
       />
+
+      <Card className="overflow-hidden p-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+          <h2 className="font-display text-base font-semibold">Mapa dos empreendimentos</h2>
+          <Button variant="outline" size="sm" asChild>
+            <a href={MAPA_GOOGLE_ABRIR} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4" aria-hidden /> Abrir no Google Maps
+            </a>
+          </Button>
+        </div>
+        <iframe
+          src={MAPA_GOOGLE_EMBED}
+          title="Mapa dos empreendimentos no Google Maps"
+          className="block h-[70vh] min-h-[360px] w-full border-0 border-t border-border"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          allowFullScreen
+        />
+      </Card>
 
       <div>
           {imoveis.isError ? (
