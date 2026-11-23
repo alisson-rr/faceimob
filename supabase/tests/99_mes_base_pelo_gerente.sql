@@ -53,6 +53,8 @@ begin
 
   perform pg_temp.ok(pg_temp.tenta(cor, v_deal.id, v_mes, 'quero mudar') = '42501', 'corretor não troca o mês-base');
   perform pg_temp.ok(pg_temp.tenta(ger, v_deal.id, v_mes, '  ') = '22023', 'sem motivo é recusado');
+  perform pg_temp.ok(pg_temp.tenta(ger, v_deal.id, v_mes, 'dsasd') = '22023', '0357: motivo sem sentido é recusado');
+  perform pg_temp.ok(pg_temp.tenta(ger, v_deal.id, v_mes, 'Análise') = '22023', '0357: uma palavra só é recusada');
   perform pg_temp.ok(pg_temp.tenta(ger, v_deal.id, v_mes, 'Assinatura ficou para o mês que vem') = 'ok', 'gerente troca com motivo');
   perform pg_temp.ok((select month_base = v_mes from public.deals where id = v_deal.id), 'o mês-base mudou');
   perform pg_temp.ok(exists (

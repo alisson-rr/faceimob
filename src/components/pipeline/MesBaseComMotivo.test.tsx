@@ -7,7 +7,7 @@ const m = vi.hoisted(() => ({ rpc: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: m.rpc } }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { MesBaseComMotivo } from "./MesBaseComMotivo";
+import { MesBaseComMotivo, motivoComSentido } from "./MesBaseComMotivo";
 
 let root: Root | null = null;
 afterEach(() => { root?.unmount(); root = null; document.body.innerHTML = ""; });
@@ -28,5 +28,13 @@ describe("MesBaseComMotivo", () => {
     expect(confirmar()?.disabled).toBe(true);
     expect(document.body.textContent).toContain("O motivo fica registrado nos comentários");
     expect(m.rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("motivoComSentido (0357)", () => {
+  it("recusa texto sem sentido e palavra solta; aceita uma frase", () => {
+    expect(motivoComSentido("dsasd")).toBe(false);
+    expect(motivoComSentido("Análise")).toBe(false);
+    expect(motivoComSentido("Resolvendo SERASA")).toBe(true);
   });
 });

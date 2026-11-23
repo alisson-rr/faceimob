@@ -17,6 +17,12 @@ import { describeError } from "@/lib/supabaseError";
 // RPC da 0201, ainda fora do `types.ts` gerado.
 const untyped = supabase as unknown as SupabaseClient;
 
+/** A mesma regra da 0357: ao menos 10 caracteres e duas palavras de 3+ letras. */
+export const motivoComSentido = (texto: string) => {
+  const t = texto.trim();
+  return t.length >= 10 && (t.match(/\p{L}{3,}/gu)?.length ?? 0) >= 2;
+};
+
 /**
  * Troca do mês-base pelo gerente e pelo diretor (pedido de 03/10/2026), com
  * motivo obrigatório. Vai pela RPC `alterar_mes_base`, que confere quem pode e
@@ -37,7 +43,7 @@ export function MesBaseComMotivo({ dealId, atual, opcoes, onTrocado }: {
   const [motivo, setMotivo] = useState("");
   const [enviando, setEnviando] = useState(false);
 
-  const valido = !!mes && mes !== atual && motivo.trim().length >= 3;
+  const valido = !!mes && mes !== atual && motivoComSentido(motivo);
 
   const confirmar = async () => {
     if (!mes || !valido) return;
@@ -94,7 +100,11 @@ export function MesBaseComMotivo({ dealId, atual, opcoes, onTrocado }: {
                 id={`${id}-motivo`} className="mt-1" rows={3} maxLength={1000}
                 placeholder="Ex.: a assinatura do contrato ficou para o mês seguinte"
                 value={motivo} onChange={(e) => setMotivo(e.target.value)}
+                aria-describedby={`${id}-motivo-regra`}
               />
+              <p id={`${id}-motivo-regra`} className="mt-1 text-xs text-muted-foreground">
+                Uma frase com ao menos duas palavras explicando o porquê.
+              </p>
             </div>
           </div>
           <DialogFooter>
