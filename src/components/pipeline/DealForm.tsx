@@ -917,7 +917,7 @@ export function DealForm({
             {/* Trocar o Status 2 devolve o Status 1 à derivação: é a regra do
                 banco (a troca manual vale até o Status 2 mudar), e mandar o grupo
                 antigo junto seria uma troca manual que ninguém pediu. */}
-            <Select value={form.status} disabled={!can("deals.edit_status_detail")} onValueChange={(v) => {
+            <Select value={form.status} disabled={!isNew && !can("deals.edit_status_detail")} onValueChange={(v) => {
               if (pedeConferencia(v)) {
                 onPedirConferencia?.();
                 return;

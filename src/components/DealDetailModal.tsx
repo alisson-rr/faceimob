@@ -175,7 +175,10 @@ export default function DealDetailModal({
       alterar?: Partial<SaveLegacyDealInput>;
     } = {},
   ): Promise<string | null> => {
-    const ficha = alterar ? { ...form, ...alterar } : form;
+    const preenchida = alterar ? { ...form, ...alterar } : form;
+    // Negócio novo salvo sem escolher o Status 2 nasce INCOMPLETO (23/11/2026):
+    // o campo nunca fica em branco, e quem quer outro status escolhe na lista.
+    const ficha = isNew && !preenchida.status?.trim() ? { ...preenchida, status: "INCOMPLETO" } : preenchida;
     // Liga antes da primeira recusa, e não depois delas: o formulário nasce sem
     // corretor E sem construtora, então cobrar um campo por clique fazia o
     // operador descobrir a segunda pendência só na tentativa seguinte. Ligado
