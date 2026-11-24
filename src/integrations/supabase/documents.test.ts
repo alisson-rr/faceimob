@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { from, rpc, remove, createSignedUrls } = vi.hoisted(() => ({
-  from: vi.fn(), rpc: vi.fn(), remove: vi.fn(), createSignedUrls: vi.fn(),
+const { from, rpc, remove, createSignedUrls, createSignedUrl } = vi.hoisted(() => ({
+  from: vi.fn(), rpc: vi.fn(), remove: vi.fn(), createSignedUrls: vi.fn(), createSignedUrl: vi.fn(),
 }));
 vi.mock("./client", () => ({
-  supabase: { from, rpc, storage: { from: () => ({ remove, createSignedUrls }) } },
+  supabase: { from, rpc, storage: { from: () => ({ remove, createSignedUrls, createSignedUrl }) } },
 }));
 
 import {
   MAX_DOCUMENT_ALIAS,
+  baixarBytesDoDocumento,
+  baixarVariosDocumentos,
   MAX_DOCUMENT_BYTES,
   canAttachNow,
   deleteDealDocument,
@@ -518,5 +520,52 @@ describe("submitBlockReason — o que falta anexar", () => {
       allows_multiple: true, naming_pattern: null, sort_order: 1 } as DocumentTypeRecord;
     expect(submitBlockReason({ types: [tipo], documents: [], hasDeveloper: true, managerCount: 1 }))
       .toBe("Falta anexar RG / CNH (aba Anexos) antes de enviar.");
+  });
+});
+
+describe("download com nova tentativa (24/11/2026)", () => {
+  const doc = { storage_path: "d1/a.pdf", stored_name: "a.pdf" };
+  beforeEach(() => {
+    createSignedUrl.mockReset().mockResolvedValue({ data: { signedUrl: "https://arq/a" }, error: null });
+  });
+
+  it("repete depois de uma falha passageira e entrega o arquivo", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("", { status: 502 }))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const blob = await baixarBytesDoDocumento(doc, { espera: 0 });
+    expect(blob.size).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(createSignedUrl).toHaveBeenCalledTimes(3);
+    vi.unstubAllGlobals();
+  });
+
+  it("arquivo ausente (404) não insiste", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(baixarBytesDoDocumento(doc, { espera: 0 })).rejects.toThrow("404");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("baixa vários sem passar de 3 ao mesmo tempo e marca quem falhou", async () => {
+    let abertos = 0;
+    let pico = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      abertos++;
+      pico = Math.max(pico, abertos);
+      await new Promise((ok) => setTimeout(ok, 1));
+      abertos--;
+      return new Response(url.endsWith("ruim") ? "" : "x", { status: url.endsWith("ruim") ? 404 : 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    createSignedUrl.mockImplementation(async (path: string) => ({ data: { signedUrl: `https://arq/${path}` }, error: null }));
+    const docs = Array.from({ length: 8 }, (_, i) => ({ storage_path: i === 5 ? "ruim" : `d${i}`, stored_name: `${i}.pdf` }));
+    const resultado = await baixarVariosDocumentos(docs, { espera: 0 });
+    expect(pico).toBeLessThanOrEqual(3);
+    expect(resultado.map((b) => b !== null)).toEqual([true, true, true, true, true, false, true, true]);
+    vi.unstubAllGlobals();
   });
 });

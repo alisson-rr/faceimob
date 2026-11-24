@@ -43,7 +43,8 @@ import {
   missingStoragePaths,
   renameDealDocument,
   reviewDealDocuments,
-  signedDocumentUrl,
+  baixarBytesDoDocumento,
+  baixarVariosDocumentos,
   signedDocumentPreviewUrl,
   submitBlockReason,
   submitDealForManagerReview,
@@ -377,9 +378,7 @@ export default function DealDocumentUpload({
    * pelo próprio navegador, com o nome guardado (que tem a extensão).
    */
   const salvarArquivo = async (doc: DealDocumentRecord) => {
-    const resposta = await fetch(await signedDocumentUrl(doc));
-    if (!resposta.ok) throw new Error(`O armazenamento respondeu ${resposta.status}.`);
-    const url = URL.createObjectURL(await resposta.blob());
+    const url = URL.createObjectURL(await baixarBytesDoDocumento(doc));
     const link = document.createElement("a");
     link.href = url;
     link.download = doc.stored_name;
@@ -443,15 +442,14 @@ export default function DealDocumentUpload({
       const { montarZip } = await import("@/lib/zipSimples");
       const usados = new Set<string>();
       const falharam: string[] = [];
-      const arquivos = (await Promise.all(vigentes.map(async (doc) => {
-        try {
-          const resposta = await fetch(await signedDocumentUrl(doc));
-          if (!resposta.ok) throw new Error(String(resposta.status));
-          return { doc, bytes: new Uint8Array(await resposta.arrayBuffer()) };
-        } catch {
+      const blobs = await baixarVariosDocumentos(vigentes);
+      const arquivos = (await Promise.all(vigentes.map(async (doc, i) => {
+        const blob = blobs[i];
+        if (!blob) {
           falharam.push(documentDisplayName(doc));
           return null;
         }
+        return { doc, bytes: new Uint8Array(await blob.arrayBuffer()) };
       }))).flatMap((item) => {
         if (!item) return [];
         // Dois arquivos com o mesmo nome não podem coexistir na pasta.
@@ -516,15 +514,12 @@ export default function DealDocumentUpload({
     setJuntando(true);
     try {
       const { juntarEmPdf, converterNoNavegador } = await import("@/lib/pdfUnico");
-      const baixados = await Promise.all(vigentes.map(async (d) => {
+      const blobs = await baixarVariosDocumentos(vigentes);
+      const baixados = await Promise.all(vigentes.map(async (d, i) => {
         const nome = documentDisplayName(d);
-        try {
-          const resposta = await fetch(await signedDocumentUrl(d));
-          if (!resposta.ok) return { nome, falhou: true as const };
-          return { nome, tipo: d.mime_type, bytes: await resposta.arrayBuffer() };
-        } catch {
-          return { nome, falhou: true as const };
-        }
+        const blob = blobs[i];
+        if (!blob) return { nome, falhou: true as const };
+        return { nome, tipo: d.mime_type, bytes: await blob.arrayBuffer() };
       }));
       const semDownload = baixados.flatMap((b) => ("falhou" in b ? [b.nome] : []));
       const resultado = await juntarEmPdf(
