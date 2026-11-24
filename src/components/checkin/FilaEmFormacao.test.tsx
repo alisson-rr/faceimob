@@ -68,7 +68,21 @@ describe("FilaEmFormacao", () => {
     expect(itens[0]).toContain("1º");
     expect(itens[0]).toContain("abre 08:30");
     expect(itens[2]).toContain("3 atrasado(s)");
-    expect(el.textContent).toContain("2 corretor(es) em check-in hoje");
+    expect(el.querySelector("summary strong")?.textContent).toBe("2");
+    expect(el.textContent).toContain("corretor(es) em check-in hoje");
+  });
+
+  it("conta cada corretor uma vez, mesmo em vários grupos (24/11/2026)", async () => {
+    m.user = { id: "admin" };
+    m.linhas = [
+      linha("Mauricio", 1, "aguardando"),
+      linha("Mauricio", 2, "aguardando", { group_id: "g2", group_name: "Grupo Open" }),
+      linha("Mauricio", 1, "aguardando", { group_id: "g3", group_name: "Leads Diarios" }),
+      linha("Ana", 2, "aguardando", { group_id: "g3", group_name: "Leads Diarios" }),
+    ];
+    const el = montar();
+    await vi.waitFor(() => expect(el.textContent).toContain("Ana"));
+    expect(el.querySelector("summary strong")?.textContent).toBe("2");
   });
 
   // 19/10/2026: o corretor vê só a roleta em que está; fora de todas, nada.
