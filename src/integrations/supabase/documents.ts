@@ -400,6 +400,60 @@ export async function signedDocumentUrl(doc: Pick<DealDocumentRecord, "storage_p
   return data.signedUrl;
 }
 
+/**
+ * Bytes de um documento, com nova tentativa (24/11/2026, CCA: "tenho que tentar
+ * 4 vezes até baixar"). Uma falha passageira do armazenamento — rede, 502/503
+ * no gateway — derrubava o download de primeira. Cada tentativa assina de novo
+ * (o link pode ter vencido) e espera um pouco mais antes da próxima. 4xx que não
+ * seja 408/429 é definitivo (arquivo ausente ou fora do acesso): não repete.
+ */
+export async function baixarBytesDoDocumento(
+  doc: Pick<DealDocumentRecord, "storage_path" | "stored_name">,
+  { tentativas = 3, espera = 600 }: { tentativas?: number; espera?: number } = {},
+): Promise<Blob> {
+  let ultimo: unknown;
+  for (let vez = 1; vez <= tentativas; vez++) {
+    try {
+      const resposta = await fetch(await signedDocumentUrl(doc));
+      if (resposta.ok) return await resposta.blob();
+      ultimo = new Error(`O armazenamento respondeu ${resposta.status}.`);
+      const definitivo = resposta.status >= 400 && resposta.status < 500
+        && resposta.status !== 408 && resposta.status !== 429;
+      if (definitivo) break;
+    } catch (erro) {
+      ultimo = erro;
+    }
+    if (vez < tentativas) await new Promise((ok) => setTimeout(ok, espera * vez));
+  }
+  throw ultimo instanceof Error ? ultimo : new Error("Não foi possível baixar o documento.");
+}
+
+/**
+ * Vários documentos, poucos de cada vez. Pedir todos juntos (o "Baixar todos"
+ * e o "Tudo em PDF" faziam isso) abre dezenas de conexões no mesmo instante e
+ * é justamente o que faz o armazenamento falhar. Devolve na ordem da entrada;
+ * quem falhou depois das tentativas vem como `null`.
+ */
+export async function baixarVariosDocumentos<T extends Pick<DealDocumentRecord, "storage_path" | "stored_name">>(
+  docs: T[],
+  { simultaneos = 3, ...opcoes }: { simultaneos?: number; tentativas?: number; espera?: number } = {},
+): Promise<(Blob | null)[]> {
+  const resultado: (Blob | null)[] = new Array(docs.length).fill(null);
+  let proximo = 0;
+  const trabalhador = async () => {
+    while (proximo < docs.length) {
+      const i = proximo++;
+      try {
+        resultado[i] = await baixarBytesDoDocumento(docs[i], opcoes);
+      } catch {
+        resultado[i] = null;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(simultaneos, docs.length) }, trabalhador));
+  return resultado;
+}
+
 /** URL assinada curta, sem `download`, para renderização dentro do popup. */
 export async function signedDocumentPreviewUrl(
   doc: Pick<DealDocumentRecord, "storage_path">,
