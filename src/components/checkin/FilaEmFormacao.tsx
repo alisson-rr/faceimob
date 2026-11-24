@@ -91,17 +91,27 @@ export function FilaEmFormacao() {
     .filter((g) => veTodas || g.linhas.some((l) => l.profile_id === user.id));
   // Fora de todas as roletas, o corretor não vê o quadro.
   if (!veTodas && !fila.isPending && !fila.isError && grupos.length === 0) return null;
-  const presentes = grupos.flatMap((g) => g.linhas).filter((l) => l.situacao !== "bloqueado").length;
+  // Uma pessoa por corretor (24/11/2026): quem está em 3 grupos contava 3 vezes.
+  const presentes = new Set(
+    grupos.flatMap((g) => g.linhas).filter((l) => l.situacao !== "bloqueado").map((l) => l.profile_id),
+  ).size;
 
   return (
     <details className="group rounded-2xl border border-primary/35 bg-card p-4">
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
         <ListOrdered className="h-4 w-4 text-primary" aria-hidden />
         <h2 className="font-display text-sm font-bold">Fila em formação</h2>
-        <span className="text-xs text-muted-foreground">
-          {/* 0310: o corretor só recebe a própria colocação; a contagem é da liderança. */}
-          {fila.isPending ? "consultando…" : veTodas ? `${presentes} corretor(es) em check-in hoje` : "sua colocação"}
-        </span>
+        {/* 0310: o corretor só recebe a própria colocação; a contagem é da liderança. */}
+        {fila.isPending ? (
+          <span className="text-xs text-muted-foreground">consultando…</span>
+        ) : veTodas ? (
+          <span className="inline-flex items-baseline gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-0.5">
+            <strong className="font-display text-2xl font-bold tabular-nums text-primary">{presentes}</strong>
+            <span className="text-xs text-muted-foreground">corretor(es) em check-in hoje</span>
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">sua colocação</span>
+        )}
         <ChevronDown className="ml-auto h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
 
