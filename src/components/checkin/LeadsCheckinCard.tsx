@@ -62,6 +62,9 @@ export function LeadsCheckinCard() {
       .channel(`leads-checkin-${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${userId}` }, invalidate)
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments", filter: `profile_id=eq.${userId}` }, invalidate)
+      // Atualizar o próprio lead (próximo contato, status) é o que tira o atraso:
+      // sem ouvir `leads`, o bloqueio só sumia com F5 (corretora, 25/11/2026).
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `assigned_to=eq.${userId}` }, invalidate)
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [queryClient, role, userId]);

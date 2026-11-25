@@ -286,7 +286,11 @@ export default function DealDetailModal({
         onClose();
       } else if (isNew && gravado) {
         setCriadoId(gravado);
-        patch({ id: gravado });
+        // O Status 2 gravado (INCOMPLETO, quando ninguém escolheu) vai junto:
+        // com a ficha ainda em branco, o próximo salvamento — o envio para
+        // análise, por exemplo — recusava "Escolha o Status 2" até fechar e
+        // reabrir (25/11/2026).
+        patch({ id: gravado, status: ficha.status });
         setComentarioInicial("");
       }
       return gravado;
