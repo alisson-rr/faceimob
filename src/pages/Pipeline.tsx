@@ -238,10 +238,17 @@ export default function Pipeline() {
   /** Meses presentes nos negócios do período — o filtro de mês era campo de texto livre. */
   // `compareMonth` e não `sort()` de string: "12/2025" vem depois de "01/2026"
   // na ordem alfabética, e a lista abriria com o mês errado no topo.
-  const months = useMemo(
-    () => [...new Set(deals.map(dealMonth).filter(Boolean))].sort((a, b) => compareMonth(b, a)),
-    [deals],
-  );
+  // 26/11/2026: a lista só trazia os meses dos negócios JÁ carregados (o período
+  // do topo, que abre no mês vigente) — para extrair agosto não havia agosto. Os
+  // 24 meses até o vigente entram sempre; escolher um mês carrega o período dele.
+  const months = useMemo(() => {
+    const [mes, ano] = mesVigente.split("/").map(Number);
+    const recentes = Array.from({ length: 24 }, (_, i) => {
+      const d = new Date(Date.UTC(ano, mes - 1 - i, 1));
+      return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+    });
+    return [...new Set([...recentes, ...deals.map(dealMonth).filter(Boolean)])].sort((a, b) => compareMonth(b, a));
+  }, [deals, mesVigente]);
 
   // A lista segue o filtro ADIADO: a tecla aparece no campo na hora, e o filtro
   // com as duas ordenações sobre os 7.579 negócios roda num render que a
@@ -519,7 +526,11 @@ export default function Pipeline() {
           {showFilters && (
             <DealFilters
               filters={filters}
-              onChange={patchFilters}
+              onChange={(patch) => {
+                // Mês escolhido fora do período carregado ficaria vazio: o período passa a ser o do mês.
+                if (patch.month && patch.month !== ALL) setPeriodoEscolhido(activeMonthRange(patch.month));
+                patchFilters(patch);
+              }}
               onClear={() => setFiltrosEscolhidos(filtrosLimpos)}
               onClose={() => setShowFilters(false)}
               stages={stages}
