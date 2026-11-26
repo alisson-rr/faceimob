@@ -81,6 +81,8 @@ export function FilaEmFormacao() {
       .channel("fila-em-formacao")
       .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, recarregar)
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, recarregar)
+      // O próprio lead atualizado pode tirar o "bloqueado" (atrasos) sem F5.
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `assigned_to=eq.${user.id}` }, recarregar)
       .subscribe();
     return () => { void supabase.removeChannel(canal); };
   }, [user?.id, queryClient]);
