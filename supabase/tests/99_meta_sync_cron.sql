@@ -34,8 +34,8 @@ $$;
 -- estado da conta: o job só de estado saiu.
 select pg_temp.check118(exists (
   select 1 from cron.job where jobname = 'faceimob-meta-sync-diaria'
-     and schedule = '20 11 * * *' and active and command like '%dispatch_meta_sync()%'),
-  'sincronização completa uma vez por dia, 08:20 em São Paulo (0333)');
+     and schedule = '0 11,21 * * *' and active and command like '%dispatch_meta_sync()%'),
+  'sincronização completa às 08:00 e às 18:00 em São Paulo (0362)');
 select pg_temp.check118(not exists (
   select 1 from cron.job where jobname = 'faceimob-meta-sync'),
   'o job de hora em hora saiu (0333)');
