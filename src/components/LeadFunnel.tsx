@@ -123,14 +123,20 @@ export default function LeadFunnel({
   }, [periodo]);
   const periodoQuery = useLeadsDoPeriodo(intervaloIso);
   const emPeriodo = intervaloIso !== null;
-  const ids3cAbertos = useMemo(() => new Set((ia3cQuery.data ?? []).map((lead) => lead.id)), [ia3cQuery.data]);
+  const ids3cAbertos = useMemo(() => new Set((ia3cQuery.data?.leads ?? []).map((lead) => lead.id)), [ia3cQuery.data]);
+  // Selo "Agenda Ana" (26/11/2026): o corretor vê no cartão que a IA marcou a visita.
+  const tipos3c = useMemo(() => {
+    const mapa = new Map(ia3cQuery.data?.tipos ?? []);
+    for (const [id, tipo] of periodoQuery.data?.tipos ?? []) if (mapa.get(id) !== "agenda") mapa.set(id, tipo);
+    return mapa;
+  }, [ia3cQuery.data, periodoQuery.data]);
   const ids3c = useMemo(
     () => (emPeriodo ? periodoQuery.data?.ids3c ?? new Set<string>() : ids3cAbertos),
     [emPeriodo, periodoQuery.data, ids3cAbertos],
   );
   const todos = useMemo(() => {
     const porId = new Map((leadsQuery.data ?? []).map((lead) => [lead.id, lead]));
-    for (const lead of [...(ia3cQuery.data ?? []), ...(buscaNoBanco.length >= 3 ? buscaQuery.data ?? [] : [])]) {
+    for (const lead of [...(ia3cQuery.data?.leads ?? []), ...(buscaNoBanco.length >= 3 ? buscaQuery.data ?? [] : [])]) {
       if (!porId.has(lead.id)) porId.set(lead.id, lead);
     }
     return [...porId.values()];
@@ -376,6 +382,7 @@ export default function LeadFunnel({
                     primeiroDaFila={lead.id === primeiroDaFila}
                     overdue={isLeadOverdue(lead, now)}
                     stageTone={stage.tone}
+                    selo3c={tipos3c.get(lead.id) ?? null}
                     onOpen={setSelectedId}
                     onAttend={onAttend}
                     onWhatsApp={setWhatsappId}
@@ -485,7 +492,7 @@ export default function LeadFunnel({
  * "novo", "inativo" e o "há X minutos" precisam andar a cada tique de 30 s.
  */
 const LeadCardMini = memo(function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, onOpen, onAttend, onWhatsApp,
+  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, selo3c, onOpen, onAttend, onWhatsApp,
   onReschedule,
 }: {
   lead: LeadRecord;
@@ -497,6 +504,8 @@ const LeadCardMini = memo(function LeadCardMini({
   primeiroDaFila: boolean;
   overdue: boolean;
   stageTone: LeadTone;
+  /** Visita marcada ou interesse registrado pela IA da 3C ("Ana"). */
+  selo3c: "agenda" | "interessado" | null;
   onOpen: (leadId: string) => void;
   onAttend: (lead: LeadRecord) => void;
   onWhatsApp: (leadId: string) => void;
@@ -550,6 +559,11 @@ const LeadCardMini = memo(function LeadCardMini({
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
         <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
+        {selo3c && (
+          <StatusBadge tone="warning" icon={selo3c === "agenda" ? CalendarClock : undefined}>
+            {selo3c === "agenda" ? "Agenda Ana" : "Ana · interessado"}
+          </StatusBadge>
+        )}
         {/* Cronômetro neutro, como o do NewLeadNotifier: o âmbar deste cartão é
             o botão "Atender". No último minuto vira alerta vermelho. */}
         <AttendCountdown lead={lead} />

@@ -91,6 +91,24 @@ export const useOpenLeads = () =>
     queryFn: () => listLeads({ statuses: OPEN_LEAD_STATUSES, limit: 500 }),
   });
 
+/** O que a IA da 3C fez com o lead: marcou visita ou deixou como interessado. */
+export type Entrega3c = "agenda" | "interessado";
+
+/** Lead → entrega da 3C a partir dos eventos; visita marcada vale mais que interesse. */
+function entregasDa3c(eventos: { lead_id: string | null; kind: string; detail: unknown }[]): Map<string, Entrega3c> {
+  const mapa = new Map<string, Entrega3c>();
+  for (const e of eventos) {
+    if (!e.lead_id) continue;
+    const desfecho = String((e.detail as { desfecho?: unknown } | null)?.desfecho ?? "");
+    const tipo: Entrega3c | null = e.kind === "visita_3c_pendente" || (e.kind === "voice_ai_call" && desfecho === "agendado")
+      ? "agenda"
+      : e.kind === "interessado_3c_roleta" || (e.kind === "voice_ai_call" && desfecho === "interessado")
+        ? "interessado" : null;
+    if (tipo && mapa.get(e.lead_id) !== "agenda") mapa.set(e.lead_id, tipo);
+  }
+  return mapa;
+}
+
 /**
  * Leads em operação que a IA da 3C entregou nos últimos 30 dias (26/11/2026):
  * visita marcada, "interessado" ou base reativada. Muitos foram criados há
@@ -107,13 +125,10 @@ export const useLeads3c = () =>
         .gte("created_at", desde)
         .limit(2000);
       if (error) throw error;
-      const ids = [...new Set((data ?? [])
-        .filter((e) => e.kind !== "voice_ai_call"
-          || ["agendado", "interessado"].includes(String((e.detail as { desfecho?: unknown } | null)?.desfecho ?? "")))
-        .map((e) => e.lead_id)
-        .filter((id): id is string => Boolean(id)))];
-      if (ids.length === 0) return [];
-      return listLeads({ ids, statuses: OPEN_LEAD_STATUSES, limit: ids.length });
+      const tipos = entregasDa3c(data ?? []);
+      const ids = [...tipos.keys()];
+      if (ids.length === 0) return { leads: [], tipos };
+      return { leads: await listLeads({ ids, statuses: OPEN_LEAD_STATUSES, limit: ids.length }), tipos };
     },
   });
 
@@ -137,15 +152,12 @@ export const useLeadsDoPeriodo = (intervalo: { de: string; ate: string } | null)
           .gte("created_at", de).lt("created_at", ate).limit(2000),
       ]);
       if (eventos.error) throw eventos.error;
-      const ids3c = [...new Set((eventos.data ?? [])
-        .filter((e) => e.kind !== "voice_ai_call"
-          || ["agendado", "interessado"].includes(String((e.detail as { desfecho?: unknown } | null)?.desfecho ?? "")))
-        .map((e) => e.lead_id)
-        .filter((id): id is string => Boolean(id)))];
+      const tipos = entregasDa3c(eventos.data ?? []);
+      const ids3c = [...tipos.keys()];
       const jaVieram = new Set(criados.map((lead) => lead.id));
       const faltam = ids3c.filter((id) => !jaVieram.has(id));
       const da3c = faltam.length ? await listLeads({ ids: faltam, limit: faltam.length }) : [];
-      return { leads: [...criados, ...da3c], ids3c: new Set(ids3c) };
+      return { leads: [...criados, ...da3c], ids3c: new Set(ids3c), tipos };
     },
   });
 
