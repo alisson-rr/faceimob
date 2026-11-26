@@ -43,6 +43,27 @@ begin
   end if;
   raise notice '  ok  descartado conta nos leads do mês do corretor';
 
+  -- 0367: lead antigo em que a IA da 3C marcou visita hoje conta como chegada;
+  -- ligação "não qualificado" não conta, e o mesmo lead não conta duas vezes.
+  insert into public.leads (full_name, phone, status, assigned_to, assigned_at, created_at)
+  values ('Antigo 3C 367', '11955536701', 'in_progress', cor, now() - interval '90 days', now() - interval '90 days')
+  returning id into v_lead;
+  insert into public.lead_events (lead_id, kind, detail) values
+    (v_lead, 'voice_ai_call', '{"desfecho":"agendado","origem":"3c"}'),
+    (v_lead, 'voice_ai_call', '{"desfecho":"agendado","origem":"3c"}');
+  insert into public.leads (full_name, phone, status, assigned_to, assigned_at, created_at)
+  values ('Antigo sem interesse 367', '11955536702', 'in_progress', cor, now() - interval '90 days', now() - interval '90 days')
+  returning id into v_lead;
+  insert into public.lead_events (lead_id, kind, detail) values (v_lead, 'voice_ai_call', '{"desfecho":"nao_qualificado","origem":"3c"}');
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  v_r := public.leads_recebidos(cor, false);
+  execute 'reset role';
+  if (v_r ->> 'hoje')::int <> 2 or (v_r ->> 'mes')::int <> 2 then
+    raise exception 'FALHOU: a visita marcada pela 3C deveria contar uma vez na chegada (veio %)', v_r;
+  end if;
+  raise notice '  ok  entrega da 3C conta na chegada, uma vez; não qualificado fica fora';
+
   if has_function_privilege('anon', 'public.leads_recebidos(uuid, boolean)', 'execute') then
     raise exception 'FALHOU: anon não pode contar leads';
   end if;
