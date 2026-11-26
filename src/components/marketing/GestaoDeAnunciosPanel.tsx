@@ -103,7 +103,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
     queryKey: ["marketing", "gestao-anuncios", periodo],
     queryFn: () => carregar(periodo),
     staleTime: 60_000,
-    // A sincronização roda uma vez por dia, às 08:20 (0333); a tela aberta pega a nova sozinha.
+    // A sincronização roda às 08:00 e às 18:00 (0362); a tela aberta pega a nova sozinha.
     refetchInterval: 10 * 60_000,
   });
 
@@ -152,7 +152,7 @@ export function GestaoDeAnuncios({ podeConectar }: { podeConectar: boolean }) {
             {sincronizadoEm
               ? `Números da Meta até ${new Date(sincronizadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`
               : "Ainda sem sincronização com a Meta"}
-            {" · atualiza sozinho todo dia às 08:20"}
+            {" · atualiza sozinho às 08:00 e às 18:00"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
