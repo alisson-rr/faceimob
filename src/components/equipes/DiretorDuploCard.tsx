@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Crown, Loader2, Plus, Users } from "lucide-react";
+import { ChevronDown, Crown, Loader2, Plus, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { listCoDiretores, salvarCoDiretor } from "@/integrations/supabase/coDiretores";
 import { listPeople, type PersonRecord } from "@/integrations/supabase/newSchema";
@@ -31,6 +31,7 @@ export function DiretorDuploCard({ diretores, gerentes, nomeDe }: {
   const qc = useQueryClient();
   const [salvando, setSalvando] = useState<string | null>(null);
   const [corretoresDe, setCorretoresDe] = useState<{ id: string; name: string } | null>(null);
+  const [aberto, setAberto] = useState(false);
   const [criando, setCriando] = useState(false);
   const equipes = useQuery({
     queryKey: ["equipes", "diretor-2"],
@@ -61,16 +62,31 @@ export function DiretorDuploCard({ diretores, gerentes, nomeDe }: {
     <Card className="border-info/30">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-sm"><Crown className="h-4 w-4" /> Equipes e diretores</CardTitle>
+          {/* Nasce recolhido (26/11/2026): a lista de equipes empurrava as pessoas para fora da tela. */}
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-expanded={aberto}
+            aria-controls="equipes-e-diretores-lista"
+            onClick={() => setAberto((v) => !v)}
+          >
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Crown className="h-4 w-4" /> Equipes e diretores
+              {equipes.data && <span className="text-xs font-normal text-muted-foreground">({equipes.data.length})</span>}
+            </CardTitle>
+            <ChevronDown className={`h-4 w-4 transition-transform ${aberto ? "rotate-180" : ""}`} aria-hidden />
+          </button>
           <Button size="sm" className="h-8 gap-1" onClick={() => setCriando(true)}><Plus className="h-3.5 w-3.5" /> Nova equipe</Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Crie equipes, escolha os corretores de cada uma e, se for o caso, o Diretor 2: com ele, a equipe aparece na
-          hierarquia dos dois e cada um leva meia venda, metade do VGV e metade da meta das vendas feitas depois que o
-          corretor entrou na equipe.
-        </p>
+        {aberto && (
+          <p className="text-xs text-muted-foreground">
+            Crie equipes, escolha os corretores de cada uma e, se for o caso, o Diretor 2: com ele, a equipe aparece na
+            hierarquia dos dois e cada um leva meia venda, metade do VGV e metade da meta das vendas feitas depois que o
+            corretor entrou na equipe.
+          </p>
+        )}
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent id="equipes-e-diretores-lista" hidden={!aberto} className="space-y-2">
         {equipes.isPending && <LoadingState variant="list" rows={3} label="Carregando equipes…" />}
         {equipes.isError && <p className="text-xs text-destructive">{describeError(equipes.error, "Não foi possível carregar as equipes.")}</p>}
         {(equipes.data ?? []).map((t) => (
