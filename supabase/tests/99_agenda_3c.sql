@@ -141,14 +141,20 @@ begin
   exception when exclusion_violation then denied:=true; end;
   perform pg_temp.agenda_assert(denied,true,'troca de corretor respeita agenda de destino');
 
-  update public.leads set status='lost',lost_at=now() where id=lead_a;
-  res := private.integracao_3c_agenda('criar_evento',data||jsonb_build_object('inicio',nine+interval '2 hours','fim',nine+interval '150 minutes'),cfg,actor);
-  perform pg_temp.agenda_assert(res->>'status','422','lead perdido não agenda');
-  update public.leads set assigned_to=null,distribution_group_id=g where id=lead_a;
-  res := private.integracao_3c_agenda('criar_evento',data||jsonb_build_object('inicio',nine+interval '2 hours','fim',nine+interval '150 minutes'),cfg,actor);
-  perform pg_temp.agenda_assert(res#>>'{body,erro}','AGENDAMENTO_NAO_PERMITIDO','lead encerrado sem dono não é tratado como aguardando distribuição');
-  perform pg_temp.agenda_assert((select status::text from public.leads where id=lead_a),'lost','lead encerrado sem dono continua encerrado');
-  update public.leads set status='in_progress',lost_at=null,assigned_to=a,distribution_group_id=null where id=lead_a;
+  -- 0363: lead da base fria (perdido) que aceita a visita volta para a roleta,
+  -- com dia, hora e loja anotados; a agenda do corretor não é ocupada.
+  update public.leads set status='lost',lost_at=now(),lost_reason='Não responde' where id=lead_a;
+  res := private.integracao_3c_agenda('criar_evento',data||jsonb_build_object('inicio',nine+interval '2 hours','fim',nine+interval '150 minutes','observacao','Loja Zona Norte'),cfg,actor);
+  perform pg_temp.agenda_assert(res->>'status','201','lead perdido que aceita visita é aceito');
+  perform pg_temp.agenda_assert(res#>>'{body,pendente_corretor}','true','a visita fica pendente do corretor que receber');
+  perform pg_temp.agenda_assert((select status::text from public.leads where id=lead_a),'queued','o lead perdido volta para a roleta');
+  perform pg_temp.agenda_assert((select distribution_group_id from public.leads where id=lead_a)::text,g::text,'entra no grupo de entrada da 3C');
+  perform pg_temp.agenda_assert((select lost_reason is null and next_action_at = nine+interval '2 hours'
+                                   and notes like 'Visita combinada pela IA (3C)%Loja Zona Norte%'
+                                   from public.leads where id=lead_a),true,'motivo limpo, próxima ação no horário e visita anotada');
+  perform pg_temp.agenda_assert(exists(select 1 from public.lead_events where lead_id=lead_a and kind='visita_3c_pendente'),true,'o histórico registra a visita pedida');
+  perform pg_temp.agenda_assert(exists(select 1 from public.visits where lead_id=lead_a and scheduled_at=nine+interval '2 hours'),false,'nenhuma agenda é ocupada no lugar do corretor');
+  update public.leads set status='in_progress',lost_at=null,assigned_to=a,distribution_group_id=null,notes=null where id=lead_a;
 
   -- Simula visitas anteriores à integração, inclusive sobrepostas, sem alterar histórico.
   update private.integration_credentials set config=cfg||'{"enabled":false}' where provider='3c' and label='api_token';
