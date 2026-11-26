@@ -117,6 +117,38 @@ export const useLeads3c = () =>
     },
   });
 
+/**
+ * Leads que CHEGARAM no período, de qualquer situação (26/11/2026): criados nele
+ * e os que a IA da 3C entregou nele (visita marcada, "interessado", base
+ * reativada). É a mesma conta do Dashboard, para a soma das duas telas bater.
+ * ponytail: até 1.000 criados por período (teto do PostgREST); evoluir para
+ * páginas quando "Este mês" passar disso.
+ */
+export const useLeadsDoPeriodo = (intervalo: { de: string; ate: string } | null) =>
+  useQuery({
+    queryKey: [...leadKeys.records, "periodo", intervalo?.de ?? null, intervalo?.ate ?? null],
+    enabled: Boolean(intervalo),
+    queryFn: async () => {
+      const { de, ate } = intervalo as { de: string; ate: string };
+      const [criados, eventos] = await Promise.all([
+        listLeads({ createdFrom: de, createdTo: ate }),
+        supabase.from("lead_events").select("lead_id,kind,detail")
+          .in("kind", ["voice_ai_call", "visita_3c_pendente", "interessado_3c_roleta"])
+          .gte("created_at", de).lt("created_at", ate).limit(2000),
+      ]);
+      if (eventos.error) throw eventos.error;
+      const ids3c = [...new Set((eventos.data ?? [])
+        .filter((e) => e.kind !== "voice_ai_call"
+          || ["agendado", "interessado"].includes(String((e.detail as { desfecho?: unknown } | null)?.desfecho ?? "")))
+        .map((e) => e.lead_id)
+        .filter((id): id is string => Boolean(id)))];
+      const jaVieram = new Set(criados.map((lead) => lead.id));
+      const faltam = ids3c.filter((id) => !jaVieram.has(id));
+      const da3c = faltam.length ? await listLeads({ ids: faltam, limit: faltam.length }) : [];
+      return { leads: [...criados, ...da3c], ids3c: new Set(ids3c) };
+    },
+  });
+
 /** Busca no banco os leads em operação pelo nome ou telefone, fora dos 500 do funil. */
 export const useBuscaLeadsAbertos = (termo: string) =>
   useQuery({

@@ -16,12 +16,13 @@ import LeadDetailModal from "./LeadDetailModal";
 import {
   LeadsIndicadores, leadsDoCorretor, podeVerPorCorretor,
   useAssignableBrokers, useAutomationSettings, useBuscaLeadsAbertos, useDebounced, useInvalidateLeads, useLeads,
-  useLeads3c, useLeadsRealtime, useNowTicker,
+  useLeads3c, useLeadsDoPeriodo, useLeadsRealtime, useNowTicker,
   useOpenLeads, useTimeoutReleasesToday, useWhatsappTemplates, waNumber,
 } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
 import { WhatsAppIcon } from "@/components/ui/whatsapp-icon";
 import { LeadsCheckinCard } from "@/components/checkin/LeadsCheckinCard";
+import { intervaloDoPeriodo, type PeriodoLeads } from "@/components/dashboard/periodoLeads";
 import { FilaEmFormacao } from "@/components/checkin/FilaEmFormacao";
 import { AttendCountdown } from "@/components/leads/LeadsTable";
 import { sameLeadProps } from "@/components/leads/sameLeadProps";
@@ -111,7 +112,22 @@ export default function LeadFunnel({
   const [busca, setBusca] = useState("");
   const buscaNoBanco = useDebounced(busca.trim(), 400);
   const buscaQuery = useBuscaLeadsAbertos(buscaNoBanco);
-  const ids3c = useMemo(() => new Set((ia3cQuery.data ?? []).map((lead) => lead.id)), [ia3cQuery.data]);
+  // Período (26/11/2026): "Em operação" é o funil de sempre; com um período, o
+  // funil mostra o que CHEGOU nele, de qualquer situação (os encerrados numa
+  // coluna própria) — a mesma soma do Dashboard.
+  const [periodo, setPeriodo] = useState<"operacao" | PeriodoLeads>("operacao");
+  const intervaloIso = useMemo(() => {
+    if (periodo === "operacao") return null;
+    const i = intervaloDoPeriodo(periodo);
+    return i ? { de: i.de.toISOString(), ate: i.ate.toISOString() } : null;
+  }, [periodo]);
+  const periodoQuery = useLeadsDoPeriodo(intervaloIso);
+  const emPeriodo = intervaloIso !== null;
+  const ids3cAbertos = useMemo(() => new Set((ia3cQuery.data ?? []).map((lead) => lead.id)), [ia3cQuery.data]);
+  const ids3c = useMemo(
+    () => (emPeriodo ? periodoQuery.data?.ids3c ?? new Set<string>() : ids3cAbertos),
+    [emPeriodo, periodoQuery.data, ids3cAbertos],
+  );
   const todos = useMemo(() => {
     const porId = new Map((leadsQuery.data ?? []).map((lead) => [lead.id, lead]));
     for (const lead of [...(ia3cQuery.data ?? []), ...(buscaNoBanco.length >= 3 ? buscaQuery.data ?? [] : [])]) {
@@ -119,7 +135,15 @@ export default function LeadFunnel({
     }
     return [...porId.values()];
   }, [leadsQuery.data, ia3cQuery.data, buscaQuery.data, buscaNoBanco]);
-  const leads = useMemo(() => leadsDoCorretor(todos, broker), [todos, broker]);
+  const abertos = useMemo(() => leadsDoCorretor(todos, broker), [todos, broker]);
+  const leads = useMemo(
+    () => (emPeriodo ? leadsDoCorretor(periodoQuery.data?.leads ?? [], broker) : abertos),
+    [emPeriodo, periodoQuery.data, broker, abertos],
+  );
+  const colunas = useMemo(
+    () => (emPeriodo ? [...COLUNAS_DO_FUNIL, { key: "encerrado", label: "Encerrados", tone: "neutral" as LeadTone }] : COLUNAS_DO_FUNIL),
+    [emPeriodo],
+  );
   // Filtro por origem (26/11/2026). "IA 3C" junta o que a IA entregou, de qualquer origem.
   const [origem, setOrigem] = useState("todas");
   const origens = useMemo(
@@ -138,28 +162,31 @@ export default function LeadFunnel({
   // estão na tela, sem ir ao banco; aceita também o telefone.
   const grouped = useMemo(() => {
     const groups: Record<string, LeadRecord[]> = {};
-    COLUNAS_DO_FUNIL.forEach((stage) => { groups[stage.key] = []; });
+    colunas.forEach((stage) => { groups[stage.key] = []; });
     const termo = semAcento(busca.trim());
     const digitos = searchPhoneDigits(busca);
     for (const lead of leads) {
       if (origem === "ia-3c" ? !ids3c.has(lead.id) : origem !== "todas" && lead.source !== origem) continue;
       if (termo && !semAcento(lead.name).includes(termo)
           && !(digitos && (lead.phone ?? "").replace(/\D/g, "").includes(digitos))) continue;
-      const key = isLeadRepassado(lead) ? "repassado" : lead.funnel_stage || "new";
+      const encerrado = ["lost", "discarded", "converted"].includes(lead.status);
+      const key = encerrado ? (emPeriodo ? "encerrado" : null)
+        : isLeadRepassado(lead) ? "repassado" : lead.funnel_stage || "new";
+      if (!key) continue;
       (groups[key] ||= []).push(lead);
     }
     return groups;
-  }, [leads, busca, origem, ids3c]);
+  }, [leads, busca, origem, ids3c, colunas, emPeriodo]);
 
   // "Atrasado" é a definição do banco (`overdue_lead_count`): próxima ação
   // vencida. É essa conta que bloqueia o check-in, então a tela usa a mesma.
   const overdueLeads = useMemo(
-    () => leads
+    () => abertos
       .filter((lead) => (profileId ? lead.assigned_to === profileId : true))
       .filter((lead) => isLeadOverdue(lead, now))
       .sort((a, b) => new Date(a.next_action_at || a.created_at).getTime()
         - new Date(b.next_action_at || b.created_at).getTime()),
-    [leads, now, profileId],
+    [abertos, now, profileId],
   );
 
   // Um destaque por tela: com vários leads aguardando atendimento, o "Atender"
@@ -176,13 +203,14 @@ export default function LeadFunnel({
 
   // Deriva da consulta: sem isso o modal congela uma cópia e ignora o realtime.
   const selected = useMemo(
-    () => leads.find((lead) => lead.id === selectedId) ?? null,
-    [leads, selectedId],
+    () => leads.find((lead) => lead.id === selectedId) ?? abertos.find((lead) => lead.id === selectedId) ?? null,
+    [leads, abertos, selectedId],
   );
 
 
-  const reagendarLead = reagendarId ? leads.find((lead) => lead.id === reagendarId) ?? null : null;
-  const whatsappLead = whatsappId ? leads.find((lead) => lead.id === whatsappId) ?? null : null;
+  const acharLead = (id: string) => leads.find((lead) => lead.id === id) ?? abertos.find((lead) => lead.id === id) ?? null;
+  const reagendarLead = reagendarId ? acharLead(reagendarId) : null;
+  const whatsappLead = whatsappId ? acharLead(whatsappId) : null;
 
   const threshold = settingsQuery.data?.overdue_block_threshold ?? 20;
   const inactivityHours = settingsQuery.data?.inactivity_alert_hours ?? 48;
@@ -249,6 +277,23 @@ export default function LeadFunnel({
           />
         </div>
         <select
+          value={periodo} onChange={(e) => setPeriodo(e.target.value as "operacao" | PeriodoLeads)}
+          aria-label="Período do funil"
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="operacao">Em operação (todos)</option>
+          <option value="hoje">Chegaram hoje</option>
+          <option value="ontem">Chegaram ontem</option>
+          <option value="semana">Chegaram esta semana</option>
+          <option value="mes">Chegaram este mês</option>
+          <option value="mes_passado">Chegaram no mês passado</option>
+        </select>
+        {emPeriodo && (
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            {periodoQuery.isPending ? "carregando…" : `${num(leads.length)} lead(s) no período`}
+          </span>
+        )}
+        <select
           value={origem} onChange={(e) => setOrigem(e.target.value)}
           aria-label="Filtrar o funil por origem"
           className="h-8 rounded-md border border-input bg-background px-2 text-xs"
@@ -306,7 +351,7 @@ export default function LeadFunnel({
           para cima e o conteúdo é desvirado logo abaixo. */}
       <div className="overflow-x-auto pt-2 [transform:rotateX(180deg)]">
       <div className="lead-funnel flex gap-3 pb-2 [transform:rotateX(180deg)]">
-        {COLUNAS_DO_FUNIL.map((stage) => {
+        {colunas.map((stage) => {
           const items = grouped[stage.key] || [];
           const accent = columnBorder[stage.tone];
           const surface = stageSurface[stage.tone];
