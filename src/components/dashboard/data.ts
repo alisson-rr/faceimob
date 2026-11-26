@@ -25,6 +25,7 @@ import type { Lead } from "@/types/crm";
 import {
   displayMonthToIso,
   listCompanyDashboardLeads,
+  listLeadsReativados3c,
   listLegacyLeads,
   loadCompanyDashboardPayload,
   loadDashboardPayload,
@@ -403,6 +404,17 @@ export function useDashboardLeadsNoIntervalo(
     queryFn: () => dataScope === "company"
       ? listCompanyDashboardLeads(intervalo ?? undefined)
       : listLegacyLeads(intervalo ?? undefined),
+    enabled: !!profileId && !!intervalo,
+  });
+}
+
+/** Leads da base que a IA da 3C reativou no intervalo, com a data e a origem da reativação. */
+export function useLeadsReativados3c(intervalo: { de: string; ate: string } | null) {
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+  return useQuery({
+    queryKey: ["dashboard", "leads", profileId, "reativados-3c", intervalo?.de ?? null, intervalo?.ate ?? null],
+    queryFn: () => listLeadsReativados3c(intervalo as { de: string; ate: string }),
     enabled: !!profileId && !!intervalo,
   });
 }
