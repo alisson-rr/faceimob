@@ -17,7 +17,7 @@ import { toast } from "@/components/ui/sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  AlertTriangle, ArrowRightCircle, Check, CheckCircle2, Clock, Download, HandMetal, Link2, Loader2, Mail,
+  AlertTriangle, ArrowRightCircle, CalendarClock, Check, CheckCircle2, Clock, Download, HandMetal, Link2, Loader2, Mail,
   Paperclip, Pencil, Phone, RefreshCcw, Route, Save, Send, Timer, Upload, User, XCircle,
   UserPlus, Megaphone, ExternalLink, Users, ClipboardList,
 } from "lucide-react";
@@ -146,6 +146,14 @@ export default function LeadDetailModal({
     return [...fromEvents, ...fromComments]
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [events, comments]);
+  // Destaque "Cliente agendado" (26/11/2026): a IA da 3C (Ana) marcou a visita.
+  // O combinado (dia, hora, loja) está no histórico da ligação.
+  const agendadoPelaAna = useMemo(
+    () => events.some((event) => event.kind === "visita_3c_pendente"
+      || (event.kind === "voice_ai_call" && event.detail?.desfecho === "agendado")),
+    [events],
+  );
+  const abaHistoricoId = `lead-aba-historico-${lead?.id ?? "novo"}`;
 
   if (!lead) return null;
 
@@ -362,6 +370,25 @@ export default function LeadDetailModal({
           </p>
         )}
 
+        {agendadoPelaAna && (
+          <button
+            type="button"
+            onClick={() => {
+              const aba = document.getElementById(abaHistoricoId);
+              aba?.click();
+              aba?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+            className="relative flex w-full items-center gap-2 rounded-2xl border border-warning/60 bg-warning/15 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning"
+          >
+            <span className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-warning/70 motion-safe:animate-pulse" aria-hidden />
+            <CalendarClock className="h-5 w-5 shrink-0 text-warning" aria-hidden />
+            <span className="text-sm">
+              <strong className="font-semibold text-warning">Cliente agendado pela Ana</strong>
+              <span className="text-foreground"> — leia o histórico antes de falar com ele.</span>
+            </span>
+          </button>
+        )}
+
         {/* Próxima ação comercial — antes da agenda e das partes técnicas. */}
         <section className="rounded-2xl border border-info/30 bg-info/10 p-3" aria-labelledby="lead-next-step">
           <div className="mb-2 flex items-start gap-2">
@@ -460,7 +487,7 @@ export default function LeadDetailModal({
             <TabsTrigger value="info" className="text-xs">Dados</TabsTrigger>
             <TabsTrigger value="comments" className="text-xs">Comentar</TabsTrigger>
             <TabsTrigger value="attachments" className="text-xs">Anexos</TabsTrigger>
-            <TabsTrigger value="history" className="text-xs">Histórico</TabsTrigger>
+            <TabsTrigger id={abaHistoricoId} value="history" className="text-xs">Histórico</TabsTrigger>
             <TabsTrigger value="agenda" className="text-xs">Agenda</TabsTrigger>
             <TabsTrigger value="tracking" className="text-xs">Rastreio</TabsTrigger>
           </TabsList>
