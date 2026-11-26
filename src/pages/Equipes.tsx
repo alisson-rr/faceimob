@@ -692,46 +692,7 @@ export default function Equipes() {
         </TabsList>
 
         <TabsContent value="equipe" className="mt-0 space-y-6">
-          {/* Meta global: mesma regra de escrita da RLS (admin e diretor).
-              As duas metas nascem recolhidas (29/09/2026): abrem pelo título. */}
-          {canEdit && <GlobalGoalCard recolhivel />}
-          {/* Meta e Meta remuneração de cada gestor, por mês — o relatório da
-              Visão Geral lê daqui (pedido de 28/09/2026). */}
-          {canEdit && <LeaderGoalsCard recolhivel />}
-
-          {/* Meu Perfil */}
-          <Card className="glass border-primary/30" role="region" aria-label="Meu Perfil">
-            <CardHeader className="py-3 px-4">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <User className="h-4 w-4 text-primary" /> Meu Perfil
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-4">
-              {loading ? (
-                <LoadingState variant="list" rows={1} label="Carregando seu perfil…" />
-              ) : loadError ? (
-                // Sem este ramo, falha de carga virava "Seu usuário não está
-                // vinculado a um corretor cadastrado" — a mesma acusação falsa já
-                // corrigida nas quatro colunas do organograma logo abaixo.
-                <p className="text-xs text-destructive">Não foi possível carregar seu perfil. Use "Tentar de novo" abaixo.</p>
-              ) : myBroker ? (
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
-                    {iniciais(myBroker.name)}
-                  </div>
-                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div><span className="text-muted-foreground">Nome</span><p className="font-medium">{myBroker.name}</p></div>
-                    <div><span className="text-muted-foreground">Função</span><p className="font-medium">{rotuloDaPessoa(myBroker.roles ?? [], myBroker.role)}</p></div>
-                    <div><span className="text-muted-foreground">Gerente</span><p className="font-medium">{nomeDe(myBroker.manager_id) ?? "—"}</p></div>
-                    <div><span className="text-muted-foreground">Diretor</span><p className="font-medium">{nomeDe(myBroker.director_id) ?? "—"}</p></div>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Seu usuário não está vinculado a um corretor cadastrado.</p>
-              )}
-            </CardContent>
-          </Card>
-
+          {/* 26/11/2026: pessoas primeiro, perto da busca; perfil, equipes e metas depois. */}
           {/* Hierarquia */}
           {/* Um gate só. Fora dele, "Nenhum … visível para o seu acesso" apareceria
               no primeiro paint, antes de qualquer consulta voltar. */}
@@ -750,15 +711,6 @@ export default function Equipes() {
             />
           ) : (
             <>
-            {/* Diretor 2 por equipe (0266): só admin e sócio definem. */}
-            {isAdmin && (
-              <DiretorDuploCard
-                diretores={directors.filter(d => d.active !== false).map(d => ({ id: d.id, name: d.name }))}
-                gerentes={[...managers, ...directors].filter(d => d.active !== false).map(d => ({ id: d.id, name: d.name }))
-                  .sort((x, y) => x.name.localeCompare(y.name, "pt-BR"))}
-                nomeDe={nomeDe}
-              />
-            )}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Diretores */}
               <Card className="border-info/30" role="region" aria-label="Diretores">
@@ -896,6 +848,48 @@ export default function Equipes() {
             </CardContent>
           </Card>
 
+          {/* Meu Perfil */}
+          <Card className="glass border-primary/30" role="region" aria-label="Meu Perfil">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <User className="h-4 w-4 text-primary" /> Meu Perfil
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {loading ? (
+                <LoadingState variant="list" rows={1} label="Carregando seu perfil…" />
+              ) : loadError ? (
+                // Sem este ramo, falha de carga virava "Seu usuário não está
+                // vinculado a um corretor cadastrado" — a mesma acusação falsa já
+                // corrigida nas quatro colunas do organograma logo abaixo.
+                <p className="text-xs text-destructive">Não foi possível carregar seu perfil. Use "Tentar de novo" abaixo.</p>
+              ) : myBroker ? (
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
+                    {iniciais(myBroker.name)}
+                  </div>
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div><span className="text-muted-foreground">Nome</span><p className="font-medium">{myBroker.name}</p></div>
+                    <div><span className="text-muted-foreground">Função</span><p className="font-medium">{rotuloDaPessoa(myBroker.roles ?? [], myBroker.role)}</p></div>
+                    <div><span className="text-muted-foreground">Gerente</span><p className="font-medium">{nomeDe(myBroker.manager_id) ?? "—"}</p></div>
+                    <div><span className="text-muted-foreground">Diretor</span><p className="font-medium">{nomeDe(myBroker.director_id) ?? "—"}</p></div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Seu usuário não está vinculado a um corretor cadastrado.</p>
+              )}
+            </CardContent>
+          </Card>
+
+            {/* Diretor 2 por equipe (0266): só admin e sócio definem. */}
+            {isAdmin && (
+              <DiretorDuploCard
+                diretores={directors.filter(d => d.active !== false).map(d => ({ id: d.id, name: d.name }))}
+                gerentes={[...managers, ...directors].filter(d => d.active !== false).map(d => ({ id: d.id, name: d.name }))
+                  .sort((x, y) => x.name.localeCompare(y.name, "pt-BR"))}
+                nomeDe={nomeDe}
+              />
+            )}
           {/* Auditoria: as duas tabelas existiam, com policy de leitura só para
               admin, e nenhuma tela as mostrava. */}
           {isAdmin && <TrilhaAcesso />}
@@ -981,6 +975,13 @@ export default function Equipes() {
           </Card>
           </>
           )}
+          {/* Meta global: mesma regra de escrita da RLS (admin e diretor).
+              As duas metas nascem recolhidas (29/09/2026): abrem pelo título. */}
+          {canEdit && <GlobalGoalCard recolhivel />}
+          {/* Meta e Meta remuneração de cada gestor, por mês — o relatório da
+              Visão Geral lê daqui (pedido de 28/09/2026). */}
+          {canEdit && <LeaderGoalsCard recolhivel />}
+
         </TabsContent>
 
         {isAdmin && (
