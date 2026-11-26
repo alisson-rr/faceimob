@@ -17,6 +17,7 @@ import {
   leadsInMonth,
   useDashboardLeads,
   useDashboardLeadsNoIntervalo,
+  useLeadsReativados3c,
   type DashboardDataScope,
 } from "./data";
 import {
@@ -137,9 +138,18 @@ export function LeadsPanel({
     dataScope,
   );
 
+  // 26/11/2026: lead da base reativado pela IA da 3C conta na chegada do período,
+  // com origem própria ("IA 3C · base reativada"). Quem já foi criado no período
+  // não entra duas vezes.
+  const reativados = useLeadsReativados3c(
+    consulta ? { de: consulta.de.toISOString(), ate: consulta.ate.toISOString() } : null,
+  );
+
   const view = useMemo(() => {
     const base = leads ?? [];
-    const rows = consulta ? doIntervalo.data ?? [] : leadsInMonth(base, month);
+    const criados = consulta ? doIntervalo.data ?? [] : leadsInMonth(base, month);
+    const jaContados = new Set(criados.map((lead) => lead.id));
+    const rows = [...criados, ...(reativados.data ?? []).filter((lead) => !jaContados.has(lead.id))];
     const dias = usaIntervalo && intervalo ? diasDoIntervalo(intervalo) : diasDaSerie(month);
 
     const porDia = new Map<string, number>(dias.map((dia) => [dia, 0]));
@@ -194,7 +204,7 @@ export function LeadsPanel({
       porSituacao: ordenar(porSituacao).map((row) => ({ ...row, token: situacaoToken(row.label) })),
       porCorretor: ordenar(porCorretor).slice(0, 10),
     };
-  }, [leads, month, usaIntervalo, consulta, doIntervalo.data, intervalo]);
+  }, [leads, month, usaIntervalo, consulta, doIntervalo.data, intervalo, reativados.data]);
 
   const seletor = (
     <div className="flex flex-wrap items-end gap-2">

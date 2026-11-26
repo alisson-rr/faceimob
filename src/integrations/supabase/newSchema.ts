@@ -761,6 +761,48 @@ export async function listLegacyLeads(intervalo?: { de: string; ate: string }): 
   }));
 }
 
+/** Origem com que o Dashboard mostra o lead que a IA da 3C trouxe de volta. */
+export const ORIGEM_REATIVADO_3C = "IA 3C · base reativada";
+
+/**
+ * Leads da base que a IA da 3C reativou no período (0363/0365: visita marcada
+ * ou "interessado"). Foram criados meses atrás, então a contagem por
+ * `created_at` não os via: voltam aqui com a data da reativação e a origem
+ * própria, para o Dashboard contar a chegada deles (26/11/2026).
+ */
+export async function listLeadsReativados3c(intervalo: { de: string; ate: string }): Promise<Lead[]> {
+  const { data: eventos, error } = await db.from("lead_events")
+    .select("lead_id,created_at")
+    .in("kind", ["visita_3c_pendente", "interessado_3c_roleta"])
+    .gte("created_at", intervalo.de).lt("created_at", intervalo.ate)
+    .order("created_at", { ascending: true });
+  if (error) throw dbError("lead_events", error);
+  const quando = new Map<string, string>();
+  for (const e of eventos ?? []) if (e.lead_id && !quando.has(e.lead_id)) quando.set(e.lead_id, e.created_at);
+  if (quando.size === 0) return [];
+  const [leadsRes, profilesRes] = await Promise.all([
+    db.from("leads").select("id,full_name,phone,email,assigned_to,status,funnel_stage,notes,created_at")
+      .in("id", [...quando.keys()]),
+    db.from("profiles").select("id,full_name"),
+  ]);
+  throwIfError("leads", leadsRes);
+  throwIfError("profiles", profilesRes);
+  const profileById = new Map((profilesRes.data || []).map((row) => [row.id, row.full_name]));
+  return (leadsRes.data || []).map((lead) => ({
+    id: lead.id,
+    name: lead.full_name,
+    phone: lead.phone || "",
+    whatsapp: lead.phone || "",
+    email: lead.email || "",
+    source: ORIGEM_REATIVADO_3C,
+    broker_id: lead.assigned_to || "",
+    broker_name: profileById.get(lead.assigned_to) || undefined,
+    created_at: quando.get(lead.id) ?? lead.created_at,
+    status: legacyLeadStatus(lead),
+    notes: lead.notes || "",
+  }));
+}
+
 type DashboardRpcResult<T> = PromiseLike<{
   data: T | null;
   error: { message?: string; code?: string; details?: string; hint?: string } | null;
