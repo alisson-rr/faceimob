@@ -24,6 +24,8 @@ vi.mock("@/components/leads", async (importOriginal) => {
     ...real,
     useOpenLeads: () => ({ data: estado.leads, error: null, isPending: false, refetch: noop }),
     useLeads: () => ({ data: undefined }),
+    useLeads3c: () => ({ data: undefined }),
+    useBuscaLeadsAbertos: () => ({ data: undefined }),
     useAssignableBrokers: () => ({ data: undefined }),
     useWhatsappTemplates: () => ({ data: undefined }),
     useAutomationSettings: () => ({ data: undefined }),
