@@ -201,6 +201,14 @@ begin
     values ('Fora do escopo','1192830003',v_other_group,v_outsider,'assigned') returning id into v_other;
   perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','buscar_lead',jsonb_build_object('id',v_other))#>>'{body,encontrado}' = 'false', 'busca não revela lead fora do escopo');
   perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','atualizar_lead',jsonb_build_object('id',v_other,'nome','Inválido'))->>'status' = '404', 'PATCH fora do escopo é 404');
+  -- 0363: a base fria (perdido ou descartado) chega pelo lead_id do mailing.
+  update public.leads set status = 'lost', lost_at = now() where id = v_other;
+  perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','registrar_ligacao',
+    jsonb_build_object('id',v_other,'data','2026-11-25T16:01:15-03:00','duracao_seg',142,'desfecho','sem_interesse','resumo','Base fria'))->>'status' = '201',
+    'ligação da base fria fora do escopo é registrada pelo lead_id');
+  perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','buscar_lead',jsonb_build_object('id',v_other))#>>'{body,encontrado}' = 'false',
+    'a busca continua sem revelar lead fora do escopo');
+  update public.leads set status = 'assigned', lost_at = null where id = v_other;
   perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','criar_lead','{"nome":"Não duplicar","telefone":"1192830003"}')->>'status' = '404', 'POST não duplica telefone existente fora do escopo');
   insert into public.leads (full_name,phone,email,distribution_group_id)
     values ('Duplicado preservado','11928300002','lead283@teste.invalid',v_group) returning id into v_duplicate;
