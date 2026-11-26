@@ -82,7 +82,8 @@ export default function Pipeline() {
    * Extrair a planilha é ato de quem responde pelo número, não de quem trabalha
    * nele: ela sai com VGV, percentual e VGV POR CORRETOR do recorte inteiro —
    * a folha de comissão da operação num arquivo que anda por WhatsApp. Pedido
-   * do cliente em 05/09/2026: só administrador e sócio.
+   * do cliente em 05/09/2026: só administrador e sócio. Desde 26/11/2026 (0364)
+   * o diretor também, com os negócios da hierarquia dele que o RLS entrega.
    *
    * A trava é a matriz (`pipeline.export`, migration 0092), e não uma lista de
    * papéis no código: quem administra permissões já tem onde mudar isso, e
