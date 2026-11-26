@@ -138,8 +138,8 @@ export function LeadsPanel({
     dataScope,
   );
 
-  // 26/11/2026: lead da base reativado pela IA da 3C conta na chegada do período,
-  // com origem própria ("IA 3C · base reativada"). Quem já foi criado no período
+  // 26/11/2026: o que a IA da 3C entregou (base reativada e visita agendada) conta na chegada do período,
+  // com origem própria ("IA 3C · ..."). Quem já foi criado no período
   // não entra duas vezes.
   const reativados = useLeadsReativados3c(
     consulta ? { de: consulta.de.toISOString(), ate: consulta.ate.toISOString() } : null,

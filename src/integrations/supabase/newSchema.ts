@@ -761,28 +761,48 @@ export async function listLegacyLeads(intervalo?: { de: string; ate: string }): 
   }));
 }
 
-/** Origem com que o Dashboard mostra o lead que a IA da 3C trouxe de volta. */
+/** Origens com que o Dashboard mostra o que a IA da 3C entregou. */
 export const ORIGEM_REATIVADO_3C = "IA 3C · base reativada";
+export const ORIGEM_AGENDADO_3C = "IA 3C · visita agendada";
 
 /**
- * Leads da base que a IA da 3C reativou no período (0363/0365: visita marcada
- * ou "interessado"). Foram criados meses atrás, então a contagem por
- * `created_at` não os via: voltam aqui com a data da reativação e a origem
- * própria, para o Dashboard contar a chegada deles (26/11/2026).
+ * Leads que a IA da 3C entregou no período (26/11/2026), para o Dashboard contar
+ * a chegada deles — foram criados meses atrás, e a contagem por `created_at`
+ * não os via. Voltam com a data da entrega e a origem própria:
+ *   · base reativada: o lead encerrado voltou para a roleta (visita marcada ou
+ *     "interessado", 0363/0365);
+ *   · visita agendada: a IA marcou a visita num lead que já estava com corretor.
+ * O mesmo lead conta uma vez, pela primeira entrega do período.
  */
 export async function listLeadsReativados3c(intervalo: { de: string; ate: string }): Promise<Lead[]> {
-  const { data: eventos, error } = await db.from("lead_events")
-    .select("lead_id,created_at")
-    .in("kind", ["visita_3c_pendente", "interessado_3c_roleta"])
-    .gte("created_at", intervalo.de).lt("created_at", intervalo.ate)
-    .order("created_at", { ascending: true });
-  if (error) throw dbError("lead_events", error);
-  const quando = new Map<string, string>();
-  for (const e of eventos ?? []) if (e.lead_id && !quando.has(e.lead_id)) quando.set(e.lead_id, e.created_at);
-  if (quando.size === 0) return [];
+  const [reativadosRes, agendadosRes] = await Promise.all([
+    db.from("lead_events").select("lead_id,created_at")
+      .in("kind", ["visita_3c_pendente", "interessado_3c_roleta"])
+      .gte("created_at", intervalo.de).lt("created_at", intervalo.ate),
+    db.from("lead_events").select("lead_id,created_at")
+      .eq("kind", "voice_ai_call").eq("detail->>desfecho", "agendado")
+      .gte("created_at", intervalo.de).lt("created_at", intervalo.ate),
+  ]);
+  if (reativadosRes.error) throw dbError("lead_events", reativadosRes.error);
+  if (agendadosRes.error) throw dbError("lead_events", agendadosRes.error);
+  const entrega = new Map<string, { quando: string; origem: string }>();
+  const anotar = (rows: { lead_id: string | null; created_at: string }[] | null, origem: string) => {
+    for (const e of rows ?? []) {
+      if (!e.lead_id) continue;
+      const atual = entrega.get(e.lead_id);
+      // Reativação vale mais que a visita no lead ativo; dentro da mesma origem, a primeira.
+      if (!atual || (atual.origem !== ORIGEM_REATIVADO_3C && origem === ORIGEM_REATIVADO_3C)
+        || (atual.origem === origem && e.created_at < atual.quando)) {
+        entrega.set(e.lead_id, { quando: e.created_at, origem });
+      }
+    }
+  };
+  anotar(agendadosRes.data, ORIGEM_AGENDADO_3C);
+  anotar(reativadosRes.data, ORIGEM_REATIVADO_3C);
+  if (entrega.size === 0) return [];
   const [leadsRes, profilesRes] = await Promise.all([
     db.from("leads").select("id,full_name,phone,email,assigned_to,status,funnel_stage,notes,created_at")
-      .in("id", [...quando.keys()]),
+      .in("id", [...entrega.keys()]),
     db.from("profiles").select("id,full_name"),
   ]);
   throwIfError("leads", leadsRes);
@@ -794,10 +814,10 @@ export async function listLeadsReativados3c(intervalo: { de: string; ate: string
     phone: lead.phone || "",
     whatsapp: lead.phone || "",
     email: lead.email || "",
-    source: ORIGEM_REATIVADO_3C,
+    source: entrega.get(lead.id)?.origem ?? ORIGEM_REATIVADO_3C,
     broker_id: lead.assigned_to || "",
     broker_name: profileById.get(lead.assigned_to) || undefined,
-    created_at: quando.get(lead.id) ?? lead.created_at,
+    created_at: entrega.get(lead.id)?.quando ?? lead.created_at,
     status: legacyLeadStatus(lead),
     notes: lead.notes || "",
   }));
