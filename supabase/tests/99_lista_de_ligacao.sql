@@ -35,12 +35,15 @@ begin
     ('Antigo Sem Fone', null, '[FORM] GERAL', cor, now() - interval '40 days'),
     ('Deste Mes', '51999990002', '[FORM] GERAL', cor, now());
 
+  -- 0364: o diretor extrai o próprio pipe; gerente continua sem a planilha.
+  perform pg_temp.ok((select allowed from public.role_permissions where role = 'director' and permission = 'pipeline.export'),
+    'diretor extrai a planilha do Pipeline');
   begin
-    update public.role_permissions set allowed = true where role = 'director' and permission = 'pipeline.export';
-    insert into public.role_permissions(role, permission, allowed) values ('director','pipeline.export',true);
-    raise exception 'FALHOU: diretor ganhou a planilha do Pipeline';
+    insert into public.role_permissions(role, permission, allowed) values ('manager','pipeline.export',true)
+      on conflict (role, permission) do update set allowed = true;
+    raise exception 'FALHOU: gerente ganhou a planilha do Pipeline';
   exception when check_violation then
-    raise notice '  ok  planilha do Pipeline não liga para diretor';
+    raise notice '  ok  planilha do Pipeline não liga para gerente';
   end;
 
   perform set_config('request.jwt.claims', json_build_object('sub', dir, 'role', 'authenticated')::text, true);
