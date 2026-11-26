@@ -18,6 +18,7 @@ export {
   useLeadDetail,
   useLeads,
   useLeads3c,
+  useLeadsDoPeriodo,
   useLeadsRealtime,
   useNowTicker,
   useOpenLeads,

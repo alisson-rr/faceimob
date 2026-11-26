@@ -385,6 +385,9 @@ export type ListLeadsOptions = {
    * do recorte era invisível por qualquer termo.
    */
   search?: string;
+  /** Criados a partir de (inclusivo) e antes de (exclusivo), ISO. Funil por período (26/11/2026). */
+  createdFrom?: string;
+  createdTo?: string;
 };
 
 /**
@@ -497,6 +500,8 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   if (options.ids?.length) query = query.in("id", options.ids);
   const filtro = options.search ? leadSearchFilter(options.search) : null;
   if (filtro) query = query.or(filtro);
+  if (options.createdFrom) query = query.gte("created_at", options.createdFrom);
+  if (options.createdTo) query = query.lt("created_at", options.createdTo);
   query = query.limit(options.limit ?? LEADS_PAGE_SIZE);
 
   // Os leads em operação mais recentes POR ATRIBUIÇÃO vêm sempre, mesmo fora
@@ -507,7 +512,7 @@ export async function listLeads(options: ListLeadsOptions = {}): Promise<LeadRec
   // ponytail: até 1.000 por atribuição; evoluir quando alguém passar disso.
   const EM_OPERACAO: LeadStatus[] = ["assigned", "attending", "in_progress"];
   const pedeEmOperacao = !options.statuses?.length || options.statuses.some((st) => EM_OPERACAO.includes(st));
-  const aguardando = !options.ids?.length && !filtro && pedeEmOperacao
+  const aguardando = !options.ids?.length && !filtro && !options.createdFrom && pedeEmOperacao
     ? db.from("leads").select("*").in("status", EM_OPERACAO)
       .order("assigned_at", { ascending: false, nullsFirst: false }).limit(LEADS_PAGE_SIZE)
     : null;
