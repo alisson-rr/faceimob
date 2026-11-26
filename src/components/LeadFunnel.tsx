@@ -15,7 +15,8 @@ import { describeError } from "@/lib/supabaseError";
 import LeadDetailModal from "./LeadDetailModal";
 import {
   LeadsIndicadores, leadsDoCorretor, podeVerPorCorretor,
-  useAssignableBrokers, useAutomationSettings, useInvalidateLeads, useLeads, useLeadsRealtime, useNowTicker,
+  useAssignableBrokers, useAutomationSettings, useBuscaLeadsAbertos, useDebounced, useInvalidateLeads, useLeads,
+  useLeads3c, useLeadsRealtime, useNowTicker,
   useOpenLeads, useTimeoutReleasesToday, useWhatsappTemplates, waNumber,
 } from "@/components/leads";
 import { WhatsAppDialog } from "@/components/leads/OutreachDialogs";
@@ -103,7 +104,30 @@ export default function LeadFunnel({
   const [reagendarId, setReagendarId] = useState<string | null>(null);
   const templatesQuery = useWhatsappTemplates();
 
-  const leads = useMemo(() => leadsDoCorretor(leadsQuery.data ?? [], broker), [leadsQuery.data, broker]);
+  // 26/11/2026: o funil carrega os 500 leads em operação mais recentes. Os da
+  // IA da 3C (lead antigo com visita marcada ou interesse) e os achados pela
+  // busca no banco entram junto, sem repetir.
+  const ia3cQuery = useLeads3c();
+  const [busca, setBusca] = useState("");
+  const buscaNoBanco = useDebounced(busca.trim(), 400);
+  const buscaQuery = useBuscaLeadsAbertos(buscaNoBanco);
+  const ids3c = useMemo(() => new Set((ia3cQuery.data ?? []).map((lead) => lead.id)), [ia3cQuery.data]);
+  const todos = useMemo(() => {
+    const porId = new Map((leadsQuery.data ?? []).map((lead) => [lead.id, lead]));
+    for (const lead of [...(ia3cQuery.data ?? []), ...(buscaNoBanco.length >= 3 ? buscaQuery.data ?? [] : [])]) {
+      if (!porId.has(lead.id)) porId.set(lead.id, lead);
+    }
+    return [...porId.values()];
+  }, [leadsQuery.data, ia3cQuery.data, buscaQuery.data, buscaNoBanco]);
+  const leads = useMemo(() => leadsDoCorretor(todos, broker), [todos, broker]);
+  // Filtro por origem (26/11/2026). "IA 3C" junta o que a IA entregou, de qualquer origem.
+  const [origem, setOrigem] = useState("todas");
+  const origens = useMemo(
+    () => [...new Set(leads.map((lead) => lead.source).filter((s): s is string => Boolean(s)))]
+      .sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [leads],
+  );
+  const total3c = useMemo(() => leads.filter((lead) => ids3c.has(lead.id)).length, [leads, ids3c]);
   const base = useMemo(() => leadsDoCorretor(baseQuery.data ?? [], broker), [baseQuery.data, broker]);
   // Relógio lento: "atrasado", "inativo" e "novo" andam de 30 em 30 s. O
   // cronômetro da trava tem o próprio tique de 1 s (`AttendCountdown`): com o
@@ -112,20 +136,20 @@ export default function LeadFunnel({
 
   // Busca por nome no funil (pedido de 19/11/2026): filtra os cartões que já
   // estão na tela, sem ir ao banco; aceita também o telefone.
-  const [busca, setBusca] = useState("");
   const grouped = useMemo(() => {
     const groups: Record<string, LeadRecord[]> = {};
     COLUNAS_DO_FUNIL.forEach((stage) => { groups[stage.key] = []; });
     const termo = semAcento(busca.trim());
     const digitos = searchPhoneDigits(busca);
     for (const lead of leads) {
+      if (origem === "ia-3c" ? !ids3c.has(lead.id) : origem !== "todas" && lead.source !== origem) continue;
       if (termo && !semAcento(lead.name).includes(termo)
           && !(digitos && (lead.phone ?? "").replace(/\D/g, "").includes(digitos))) continue;
       const key = isLeadRepassado(lead) ? "repassado" : lead.funnel_stage || "new";
       (groups[key] ||= []).push(lead);
     }
     return groups;
-  }, [leads, busca]);
+  }, [leads, busca, origem, ids3c]);
 
   // "Atrasado" é a definição do banco (`overdue_lead_count`): próxima ação
   // vencida. É essa conta que bloqueia o check-in, então a tela usa a mesma.
@@ -224,6 +248,21 @@ export default function LeadFunnel({
             className="h-8 w-64 max-w-full pl-8 text-xs"
           />
         </div>
+        <select
+          value={origem} onChange={(e) => setOrigem(e.target.value)}
+          aria-label="Filtrar o funil por origem"
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="todas">Todas as origens</option>
+          <option value="ia-3c">IA 3C ({num(total3c)})</option>
+          {origens.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <Button
+          type="button" size="sm" variant={origem === "ia-3c" ? "default" : "outline"} className="h-8 text-xs"
+          aria-pressed={origem === "ia-3c"} onClick={() => setOrigem(origem === "ia-3c" ? "todas" : "ia-3c")}
+        >
+          IA 3C <Badge variant="secondary" className="ml-1 tabular-nums">{num(total3c)}</Badge>
+        </Button>
         {gestorDeEquipe && profileId && (
           <div className="flex rounded-xl border border-border p-0.5" role="group" aria-label="De quem são os leads do funil">
             {([[profileId, "Meus leads"], ["all", "Equipe"]] as const).map(([valor, rotulo]) => (
@@ -262,7 +301,11 @@ export default function LeadFunnel({
       </div>
 
       {/* `lead-funnel`: gancho da regra de pintura em `index.css`. */}
-      <div className="lead-funnel flex gap-3 overflow-x-auto pb-4">
+      {/* Barra de rolagem no topo (26/11/2026): com as colunas compridas ela
+          ficava no rodapé, longe da vista. O giro de 180° no eixo X leva a barra
+          para cima e o conteúdo é desvirado logo abaixo. */}
+      <div className="overflow-x-auto pt-2 [transform:rotateX(180deg)]">
+      <div className="lead-funnel flex gap-3 pb-2 [transform:rotateX(180deg)]">
         {COLUNAS_DO_FUNIL.map((stage) => {
           const items = grouped[stage.key] || [];
           const accent = columnBorder[stage.tone];
@@ -301,6 +344,7 @@ export default function LeadFunnel({
             </div>
           );
         })}
+      </div>
       </div>
 
       {whatsappLead && (

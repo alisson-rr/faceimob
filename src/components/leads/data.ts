@@ -91,6 +91,41 @@ export const useOpenLeads = () =>
     queryFn: () => listLeads({ statuses: OPEN_LEAD_STATUSES, limit: 500 }),
   });
 
+/**
+ * Leads em operação que a IA da 3C entregou nos últimos 30 dias (26/11/2026):
+ * visita marcada, "interessado" ou base reativada. Muitos foram criados há
+ * meses e ficavam fora dos 500 mais recentes que o funil carrega.
+ */
+export const useLeads3c = () =>
+  useQuery({
+    queryKey: [...leadKeys.records, "ia-3c"],
+    queryFn: async () => {
+      const desde = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase.from("lead_events")
+        .select("lead_id,kind,detail")
+        .in("kind", ["voice_ai_call", "visita_3c_pendente", "interessado_3c_roleta"])
+        .gte("created_at", desde)
+        .limit(2000);
+      if (error) throw error;
+      const ids = [...new Set((data ?? [])
+        .filter((e) => e.kind !== "voice_ai_call"
+          || ["agendado", "interessado"].includes(String((e.detail as { desfecho?: unknown } | null)?.desfecho ?? "")))
+        .map((e) => e.lead_id)
+        .filter((id): id is string => Boolean(id)))];
+      if (ids.length === 0) return [];
+      return listLeads({ ids, statuses: OPEN_LEAD_STATUSES, limit: ids.length });
+    },
+  });
+
+/** Busca no banco os leads em operação pelo nome ou telefone, fora dos 500 do funil. */
+export const useBuscaLeadsAbertos = (termo: string) =>
+  useQuery({
+    queryKey: [...leadKeys.records, "busca-aberta", termo],
+    queryFn: () => listLeads({ search: termo, statuses: OPEN_LEAD_STATUSES, limit: 200 }),
+    enabled: termo.trim().length >= 3,
+    placeholderData: (previous) => previous,
+  });
+
 /** Quantos leads a roleta devolveu por estouro de prazo hoje, por corretor. */
 export const useTimeoutReleasesToday = () =>
   useQuery({ queryKey: leadKeys.timeoutReleases, queryFn: listTimeoutReleasesToday });
