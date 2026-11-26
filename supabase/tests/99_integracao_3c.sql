@@ -209,6 +209,30 @@ begin
   perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','buscar_lead',jsonb_build_object('id',v_other))#>>'{body,encontrado}' = 'false',
     'a busca continua sem revelar lead fora do escopo');
   update public.leads set status = 'assigned', lost_at = null where id = v_other;
+  -- 0365: desfecho "interessado" manda o lead para a roleta e libera o corretor anterior.
+  update private.integration_credentials
+     set config = jsonb_set(config,'{outcomes}',(config->'outcomes') || '"interessado"'::jsonb)
+   where provider = '3c' and label = 'api_token' and not (config->'outcomes' ? 'interessado');
+  insert into public.leads (full_name,phone,distribution_group_id,assigned_to,status,notes)
+    values ('Interessado 365','11928300365',null,v_broker,'in_progress','Anterior') returning id into v_duplicate;
+  insert into public.lead_assignments (lead_id,profile_id,group_id,sequence,assigned_at,deadline,counts_for_queue)
+    values (v_duplicate,v_broker,v_group,1,now() - interval '1 day',now() - interval '1 day' + interval '10 minutes',true);
+  v_result := public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','registrar_ligacao',
+    jsonb_build_object('id',v_duplicate,'data','2026-11-26T10:40:19-03:00','duracao_seg',60,'desfecho','interessado',
+      'resumo',E'Continua buscando imóvel em Porto Alegre.
+Transcrição...'));
+  perform pg_temp.ok(v_result->>'status' = '201' and v_result#>>'{body,enviado_para_roleta}' = 'true', 'interessado responde que foi para a roleta');
+  perform pg_temp.ok((select status = 'queued' and assigned_to is null and distribution_group_id = v_group
+    and notes like 'Ligação da IA (3C) em 26/11/2026 às 10:40: interessado. Continua buscando imóvel em Porto Alegre.%Anterior'
+    from public.leads where id = v_duplicate), 'lead interessado sai do corretor e entra na fila do grupo de entrada com o resumo');
+  perform pg_temp.ok(not exists (select 1 from public.lead_assignments where lead_id = v_duplicate and released_at is null and profile_id = v_broker),
+    'a vez do corretor anterior é encerrada');
+  v_result := public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','registrar_ligacao',
+    jsonb_build_object('id',v_duplicate,'data','2026-11-26T10:50:00-03:00','duracao_seg',30,'desfecho','sem_interesse','resumo','Outra'));
+  perform pg_temp.ok(not (v_result->'body' ? 'enviado_para_roleta'), 'outro desfecho não mexe na roleta');
+  delete from public.lead_events where lead_id = v_duplicate;
+  delete from public.lead_assignments where lead_id = v_duplicate;
+  delete from public.leads where id = v_duplicate;
   perform pg_temp.ok(public.integracao_3c_request('token-283-novo-0123456789abcdef0123456789abcdef','criar_lead','{"nome":"Não duplicar","telefone":"1192830003"}')->>'status' = '404', 'POST não duplica telefone existente fora do escopo');
   insert into public.leads (full_name,phone,email,distribution_group_id)
     values ('Duplicado preservado','11928300002','lead283@teste.invalid',v_group) returning id into v_duplicate;
