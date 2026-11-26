@@ -36,7 +36,11 @@ begin
   insert into public.leads (full_name, phone, status, distribution_group_id)
     values ('Contato meta 306', '+5511900306001', 'queued', grupo_b) returning id into novo;
 
-  -- 0366: sem check-in do dono do contato, o lead vai para a roleta do grupo.
+  -- 0366: sem check-in do dono do contato, o lead vai para a roleta do grupo
+  -- (grupo que exige check-in; o corretor B está no turno).
+  update public.distribution_groups set deliver_without_checkin = false where id = grupo_b;
+  insert into public.checkins (profile_id, shift_id, work_date)
+    values (cor_b, (select id from public.work_shifts where code = 'aberto-306'), public.current_work_date());
   v_dono := public.assign_lead(novo);
   if v_dono is distinct from cor_b then
     raise exception 'FALHOU: dono do contato fora do check-in não devia receber (veio %)', v_dono;

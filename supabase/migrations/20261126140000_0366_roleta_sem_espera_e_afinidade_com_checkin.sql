@@ -8,7 +8,8 @@
 --   1. `assign_lead` tenta a trava e, sem ela, deixa o lead na fila para a
 --      próxima rodada, em vez de esperar.
 --   2. Afinidade por telefone (0306): o lead só vai direto para o dono do
---      contato se ele estiver em check-in hoje; senão, roleta. Antes ia mesmo
+--      contato se ele estiver em check-in hoje (ou se o grupo dispensa
+--      check-in); senão, roleta. Antes ia mesmo
 --      para quem não estava trabalhando ("recebeu sem estar logado").
 -- O resto da função é igual à 0361.
 -- =============================================================================
@@ -126,9 +127,13 @@ begin
       ) candidato
       -- 0306: qualquer corretor ativo que já tem o contato, mesmo de outro grupo.
       join public.profiles p on p.id = candidato.profile_id and p.status = 'active'
-      -- 0366: dono do contato fora do check-in não recebe; o lead vai para a roleta.
-      join public.checkins ck on ck.profile_id = candidato.profile_id
-       and ck.work_date = public.current_work_date() and ck.checked_out_at is null
+     -- 0366: dono do contato fora do check-in não recebe; o lead vai para a roleta.
+     -- Grupo que dispensa check-in continua dispensando.
+     where exists (select 1 from public.checkins ck
+                    where ck.profile_id = candidato.profile_id
+                      and ck.work_date = public.current_work_date() and ck.checked_out_at is null)
+        or exists (select 1 from public.distribution_groups g
+                    where g.id = v_group and g.deliver_without_checkin)
      order by candidato.prioridade, candidato.ocorrido_em desc nulls last
      limit 1;
 
