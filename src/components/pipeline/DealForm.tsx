@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SeloEmConferencia } from "./SeloEmConferencia";
 import { AlertTriangle, Building2, Coins, Flag, User, Users, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -910,6 +911,7 @@ export function DealForm({
             <p className="text-eyebrow">Status do negócio</p>
             <p className="deal-readout mt-1 rounded-xl border px-3.5 py-2.5 text-xs font-semibold">
               {catalog.statuses.find((item) => item.value === form.status)?.label ?? (form.status || (isNew ? "INCOMPLETO" : "—"))}
+              <SeloEmConferencia pendente={conferenciaPendente} className="ml-2" />
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {isNew ? "Nasce Incompleto. Depois de criar, o movimento é feito na aba Negócio." : "O movimento do negócio é feito na aba Negócio."}

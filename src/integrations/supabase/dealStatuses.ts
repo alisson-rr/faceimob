@@ -257,6 +257,11 @@ export function statusMoveBlock(
   ) return null;
   // 0356: a CCA leva o aprovado para a análise de virar negócio.
   const semAcento = (v: string | null | undefined) => bareStatus(v ?? "").normalize("NFD").replace(/\p{M}/gu, "");
+  // 0368: OFF saindo de Internalizado para corretor, gerente e diretor (o resto segue com a CCA).
+  if (
+    semAcento(from) === "INTERNALIZADO" && bareStatus(to) === "OFF"
+    && who.roles.some((role) => ["broker", "manager", "director"].includes(role))
+  ) return null;
   if (
     ["APROV. TOTAL", "APROV. TOT. RESTRICAO", "APROV. COND.", "APROV. COND. RESTRICAO"].includes(semAcento(from))
     && semAcento(to) === "ANALISE P/ VIRAR NEGOCIO"
