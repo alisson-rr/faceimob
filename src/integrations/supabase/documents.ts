@@ -190,7 +190,18 @@ export async function listMyDealRoles(dealId: string, profileId: string): Promis
     .eq("deal_id", dealId)
     .eq("profile_id", profileId);
   if (error) throw dbError("deal_participants", error);
-  return (data ?? []).map((row) => row.role);
+  const papeis = (data ?? []).map((row) => row.role);
+  // 0369: gerente da equipe de um corretor do negócio confere como gerente,
+  // mesmo sem estar gravado no negócio (a corretora que é gerente da própria equipe).
+  if (!papeis.includes("manager")) {
+    const lider = supabase as unknown as {
+      rpc(nome: "lidera_corretor_do_negocio", args: { p_deal_id: string }):
+        PromiseLike<{ data: boolean | null; error: { message?: string } | null }>;
+    };
+    const { data: lidera, error: erroLider } = await lider.rpc("lidera_corretor_do_negocio", { p_deal_id: dealId });
+    if (!erroLider && lidera) papeis.push("manager");
+  }
+  return papeis;
 }
 
 /**
