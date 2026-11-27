@@ -74,6 +74,8 @@ export type LegacyDealRecord = PipelineDeal & {
   broker3_share: number | null;
   director1_id: string | null;
   director2_id: string | null;
+  /** Diretor do Corretor 3 (27/11/2026); `deal_participants` aceita ordinal 3 desde a 0025. */
+  director3_id: string | null;
   broker1_name: string | null;
   broker2_name: string | null;
   manager1_name: string | null;
@@ -660,6 +662,7 @@ export async function listLegacyDeals(
       manager3_id: managers[2]?.profile_id || null,
       director1_id: directors[0]?.profile_id || null,
       director2_id: directors[1]?.profile_id || null,
+      director3_id: directors[2]?.profile_id || null,
       broker1_name: profileById.get(brokers[0]?.profile_id) || null,
       broker2_name: profileById.get(brokers[1]?.profile_id) || null,
       manager1_name: profileById.get(managers[0]?.profile_id) || null,
@@ -1639,7 +1642,7 @@ export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string>
   // `deal_participants_autofill` o vinculava, pela equipe do corretor). Mesmo
   // `(deal_id, profile_id, role)` único: quem é gerente E diretor do negócio
   // fica nas duas linhas, como o gatilho já fazia.
-  const directorIds = dedupe([form.director1_id, form.director2_id]);
+  const directorIds = dedupe([form.director1_id, form.director2_id, form.director3_id]);
 
   // `ordinal` é o slot da tela (Corretor 1/2/3, Gerente 1/2). Sem ele a leitura
   // dependia de `created_at`, que é igual para todas as linhas do mesmo insert —

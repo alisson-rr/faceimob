@@ -558,6 +558,7 @@ export const participantsOf = (
         : [
             [deal.director1_id, deal.director1_name],
             [deal.director2_id, deal.director2_name],
+            [deal.director3_id ?? null, null],
           ];
   return slots.flatMap(([id, name]) => (id ? [{ id, name: name || null }] : []));
 };
@@ -608,9 +609,9 @@ export const pesoDoDiretor = (deal: DealRow, diretorId: string): number => {
  */
 export const diretoresDaVenda = (
   team: Pick<PersonRecord, "director_id" | "co_director_id"> | undefined,
-  deal: Pick<DealRow, "director1_id" | "director2_id">,
+  deal: Pick<DealRow, "director1_id" | "director2_id"> & Partial<Pick<DealRow, "director3_id">>,
 ): Array<{ id: string; peso: number }> => {
-  const noNegocio = [deal.director1_id, deal.director2_id];
+  const noNegocio = [deal.director1_id, deal.director2_id, deal.director3_id ?? null];
   if (team?.co_director_id && noNegocio.includes(team.co_director_id)) return diretoresDe(team);
   return team?.director_id ? [{ id: team.director_id, peso: 1 }] : [];
 };

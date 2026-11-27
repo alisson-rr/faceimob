@@ -172,7 +172,7 @@ type Lideranca = Pick<PersonRecord, "id" | "manager_id" | "director_id" | "co_di
  */
 export function sugestaoDeLideres(
   form: Pick<SaveLegacyDealInput, "broker1_id" | "broker2_id" | "broker3_id" | "manager1_id" | "manager2_id"
-    | "manager3_id" | "director1_id" | "director2_id">,
+    | "manager3_id" | "director1_id" | "director2_id" | "director3_id">,
   brokerId: string | null,
   slot: 1 | 2 | 3,
   people: Lideranca[],
@@ -180,11 +180,11 @@ export function sugestaoDeLideres(
   directors: { id: string }[],
 ): Partial<SaveLegacyDealInput> {
   const campoGerente = (["manager1_id", "manager2_id", "manager3_id"] as const)[slot - 1];
-  const campoDiretor = slot < 3 ? (["director1_id", "director2_id"] as const)[slot - 1] : null;
+  const campoDiretor = (["director1_id", "director2_id", "director3_id"] as const)[slot - 1];
   const anterior = people.find((person) => person.id === form[(["broker1_id", "broker2_id", "broker3_id"] as const)[slot - 1]]);
   const corretor = people.find((person) => person.id === brokerId);
   const gerentes = [form.manager1_id, form.manager2_id, form.manager3_id];
-  const diretores = [form.director1_id, form.director2_id];
+  const diretores = [form.director1_id, form.director2_id, form.director3_id];
   const gerente = corretor?.manager_id && managers.some((p) => p.id === corretor.manager_id)
     && !gerentes.some((id, i) => i !== slot - 1 && id === corretor.manager_id) ? corretor.manager_id : null;
   const diretor = campoDiretor && corretor?.director_id && directors.some((p) => p.id === corretor.director_id)
@@ -722,6 +722,7 @@ export function DealForm({
         <PersonField id={field("manager3")} label="Gerente 3" value={form.manager3_id} fallbackName={form.manager3} options={managers} onChange={(v) => onChange({ manager3_id: v })} optional />
         <PersonField id={field("director1")} label="Diretor 1" value={form.director1_id} fallbackName={form.director1_name ?? undefined} options={directors} onChange={(v) => onChange({ director1_id: v })} optional />
         <PersonField id={field("director2")} label="Diretor 2" value={form.director2_id} fallbackName={form.director2_name ?? undefined} options={directors} onChange={(v) => onChange({ director2_id: v })} optional />
+        <PersonField id={field("director3")} label="Diretor 3" value={form.director3_id ?? null} options={directors} onChange={(v) => onChange({ director3_id: v })} optional />
         {/* O rateio é do banco (`recalc_deal_shares`, disparado por gatilho ao
             inserir ou remover corretor) e até aqui não aparecia em tela
             nenhuma: nem o diretor, nem o gerente, nem o próprio corretor viam
