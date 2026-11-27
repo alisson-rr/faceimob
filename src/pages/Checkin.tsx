@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { recargaEspalhada } from "@/lib/recargaEspalhada";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CalendarClock, Clock, ListChecks, LogIn, LogOut, ShieldCheck } from "lucide-react";
@@ -119,7 +120,7 @@ export default function Checkin() {
    */
   useEffect(() => {
     if (!userId) return;
-    const invalidate = () => { void queryClient.invalidateQueries({ queryKey: ["checkin"] }); };
+    const invalidate = recargaEspalhada(() => { void queryClient.invalidateQueries({ queryKey: ["checkin"] }); }, 800, 1_200);
     const channel = supabase
       .channel(`checkin-${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments", filter: `profile_id=eq.${userId}` }, invalidate)
@@ -128,7 +129,7 @@ export default function Checkin() {
       // sem ouvir `leads`, o bloqueio só sumia com F5 (corretora, 25/11/2026).
       .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `assigned_to=eq.${userId}` }, invalidate)
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => { invalidate.cancelar(); void supabase.removeChannel(channel); };
   }, [userId, queryClient]);
 
   const shiftList = shifts.data ?? [];
