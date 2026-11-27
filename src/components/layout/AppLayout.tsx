@@ -10,6 +10,7 @@ import NotificationBell from "@/components/NotificationBell";
 import { BrandMotif } from "@/components/shared/BrandMotif";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { AvisoSessaoExpirada } from "@/components/layout/AvisoSessaoExpirada";
 import { Trophy } from "lucide-react";
 import { useGameRanking } from "@/hooks/useGameRanking";
 import { cn } from "@/lib/utils";
@@ -146,6 +147,7 @@ export default function AppLayout() {
               )}
             </div>
           </header>
+          <AvisoSessaoExpirada />
 
           <div className="gradient-premium flex-1">
             <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
