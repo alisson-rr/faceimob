@@ -127,7 +127,13 @@ export default function LeadFunnel({
   // Selo "Agenda Ana" (26/11/2026): o corretor vê no cartão que a IA marcou a visita.
   const tipos3c = useMemo(() => {
     const mapa = new Map(ia3cQuery.data?.tipos ?? []);
-    for (const [id, tipo] of periodoQuery.data?.tipos ?? []) if (mapa.get(id) !== "agenda") mapa.set(id, tipo);
+    for (const [id, entrega] of periodoQuery.data?.tipos ?? []) {
+      const atual = mapa.get(id);
+      mapa.set(id, {
+        tipo: atual?.tipo === "agenda" ? "agenda" : entrega.tipo,
+        em: atual && atual.em > entrega.em ? atual.em : entrega.em,
+      });
+    }
     return mapa;
   }, [ia3cQuery.data, periodoQuery.data]);
   const ids3c = useMemo(
@@ -382,7 +388,8 @@ export default function LeadFunnel({
                     primeiroDaFila={lead.id === primeiroDaFila}
                     overdue={isLeadOverdue(lead, now)}
                     stageTone={stage.tone}
-                    selo3c={tipos3c.get(lead.id) ?? null}
+                    selo3c={tipos3c.get(lead.id)?.tipo ?? null}
+                    entregue3cEm={tipos3c.get(lead.id)?.em ?? null}
                     onOpen={setSelectedId}
                     onAttend={onAttend}
                     onWhatsApp={setWhatsappId}
@@ -492,7 +499,7 @@ export default function LeadFunnel({
  * "novo", "inativo" e o "há X minutos" precisam andar a cada tique de 30 s.
  */
 const LeadCardMini = memo(function LeadCardMini({
-  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, selo3c, onOpen, onAttend, onWhatsApp,
+  lead, now, inactivityHours, attendTimeout, claimable, primeiroDaFila, overdue, stageTone, selo3c, entregue3cEm, onOpen, onAttend, onWhatsApp,
   onReschedule,
 }: {
   lead: LeadRecord;
@@ -506,13 +513,21 @@ const LeadCardMini = memo(function LeadCardMini({
   stageTone: LeadTone;
   /** Visita marcada ou interesse registrado pela IA da 3C ("Ana"). */
   selo3c: "agenda" | "interessado" | null;
+  /** Quando a 3C entregou: o cartão conta o tempo e a inatividade a partir daí. */
+  entregue3cEm: string | null;
   onOpen: (leadId: string) => void;
   onAttend: (lead: LeadRecord) => void;
   onWhatsApp: (leadId: string) => void;
   onReschedule: (leadId: string) => void;
 }) {
   const isBrandNew = now - new Date(lead.created_at).getTime() < attendTimeout * 1000;
-  const lastActivity = new Date(lead.last_activity_at || lead.created_at).getTime();
+  // Lead antigo que a Ana reativou (27/11/2026): contar desde a criação fazia o
+  // cartão dizer "2 meses · Inativo" e o corretor achar que era repique de base.
+  const chegouEm = entregue3cEm ?? lead.created_at;
+  const lastActivity = Math.max(
+    new Date(lead.last_activity_at || lead.created_at).getTime(),
+    entregue3cEm ? new Date(entregue3cEm).getTime() : 0,
+  );
   const inactive = (now - lastActivity) / 3_600_000 > inactivityHours;
   const number = waNumber(lead.phone);
 
@@ -544,7 +559,7 @@ const LeadCardMini = memo(function LeadCardMini({
             <div className="flex items-start justify-between gap-2">
               <p className="truncate text-sm font-semibold">{lead.name}</p>
               <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(lead.created_at), { locale: ptBR, addSuffix: false })}
+                {formatDistanceToNow(new Date(chegouEm), { locale: ptBR, addSuffix: false })}
               </span>
             </div>
             <p className="truncate text-xs text-muted-foreground">
@@ -558,7 +573,9 @@ const LeadCardMini = memo(function LeadCardMini({
       </button>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>
+        {selo3c
+          ? <StatusBadge tone="highlight">Lead 3C</StatusBadge>
+          : <StatusBadge tone={leadSourceTone(lead.source)}>{lead.source || "Origem —"}</StatusBadge>}
         {selo3c && (
           <StatusBadge tone="warning" icon={selo3c === "agenda" ? CalendarClock : undefined}>
             {selo3c === "agenda" ? "Agenda Ana" : "Ana · interessado"}
