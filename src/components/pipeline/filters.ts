@@ -135,7 +135,7 @@ export function dealsForLeader(deals: LegacyDealRecord[], people: PersonRecord[]
     ? new Set([leaderId, ...people.filter((p) => p.manager_id === leaderId).map((p) => p.id)])
     : teamProfileIds(people, leaderId);
   return deals.filter((d) => [
-    ...participantIds(d), ...managerIds(d), ...(ownTeam ? [] : [d.director1_id, d.director2_id]),
+    ...participantIds(d), ...managerIds(d), ...(ownTeam ? [] : [d.director1_id, d.director2_id, d.director3_id]),
   ].some((id) => id && ids.has(id)));
 }
 
@@ -191,7 +191,7 @@ export function applyDealFilters(
     // equipe com o slot de gerente vazio tem de entrar, e o da diretoria de quem
     // lidera também. É o mesmo "qualquer participante" de `can_see_deal`.
     if (filters.team === MY_TEAM
-      && ![...participantIds(deal), ...managerIds(deal), deal.director1_id, deal.director2_id]
+      && ![...participantIds(deal), ...managerIds(deal), deal.director1_id, deal.director2_id, deal.director3_id]
         .some((id) => id && teamIds.has(id))) {
       return false;
     }
