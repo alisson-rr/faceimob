@@ -1,4 +1,5 @@
 import { memo, type KeyboardEvent, type MouseEvent } from "react";
+import { SeloEmConferencia } from "./SeloEmConferencia";
 import {
   AlertCircle, CalendarCheck, ChevronLeft, ChevronRight, GripVertical, Lock, StickyNote, User,
   XCircle, RefreshCw,
@@ -237,6 +238,7 @@ function DealCardBase({
         <Badge variant="outline" className={cn("mb-2 h-5 px-1.5 text-xs", review.className)}>
           {review.label}
         </Badge>
+        <SeloEmConferencia pendente={deal.document_review_status === "pending"} className="mb-2 ml-1 h-5 px-1.5" />
         {deal.cca_pending_label && (
           <Badge variant="outline" className="mb-2 h-auto whitespace-normal border-warning/60 bg-warning/15 text-xs text-warning">
             Pendência CCA: {deal.cca_pending_label}

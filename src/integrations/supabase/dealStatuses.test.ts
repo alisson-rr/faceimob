@@ -85,6 +85,17 @@ describe("statusMoveBlock · CCA leva aprovado para virar negócio (0356)", () =
   });
 });
 
+describe("statusMoveBlock · OFF a partir de Internalizado (0368)", () => {
+  it("libera o OFF para corretor, gerente e diretor", () => {
+    for (const role of ["broker", "manager", "director"]) {
+      expect(statusMoveBlock(EMPTY_STATUS_CATALOG, "15. INTERNALIZADO", "OFF", { isAdmin: false, roles: [role] })).toBeNull();
+    }
+  });
+  it("não abre outros destinos saindo de Internalizado", () => {
+    expect(statusMoveBlock(EMPTY_STATUS_CATALOG, "15. INTERNALIZADO", "INCOMPLETO", { isAdmin: false, roles: ["director"] })).not.toBeNull();
+  });
+});
+
 describe("reativação e troca de construtora (0277)", () => {
   it("reativar manda o motivo sem espaços sobrando e o corretor escolhido", async () => {
     rpc.mockClear();

@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, type MouseEvent } from "react";
+import { SeloEmConferencia } from "./SeloEmConferencia";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Calendar as CalendarIcon, ChevronLeft, ChevronRight,
   Lock, Maximize2, RefreshCw, RotateCcw, XCircle,
@@ -342,6 +343,7 @@ export function DealsTable({
                         })}
                       </SelectContent>
                     </Select>
+                    <SeloEmConferencia pendente={deal.document_review_status === "pending"} className="ml-1" />
                   </td>
                   <td className="p-2">
                     <div className="flex flex-col items-start gap-1">
