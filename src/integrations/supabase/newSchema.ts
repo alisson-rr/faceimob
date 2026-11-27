@@ -1636,8 +1636,13 @@ export async function saveLegacyDeal(form: SaveLegacyDealInput): Promise<string>
   const dedupe = (ids: (string | null | undefined)[]) =>
     [...new Set(ids.filter((id): id is string => Boolean(id)))];
   const brokerIds = dedupe([form.broker1_id, form.broker2_id, form.broker3_id]);
-  const managerIds = dedupe([form.manager1_id, form.manager2_id, form.manager3_id])
-    .filter((id) => !brokerIds.includes(id));
+  // Corretor que é gerente da própria equipe continua gerente do negócio
+  // (27/11/2026): o filtro que o tirava daqui apagava a linha que o gatilho de
+  // equipe acabara de criar. A Susana (corretora e gerente) sumiu do negócio do
+  // Rafael quando a Daiane entrou como Corretor 2 — a conferência foi só para o
+  // gerente da Daiane. `(deal_id, profile_id, role)` é único por papel, então
+  // corretor e gerente na mesma pessoa não conflitam.
+  const managerIds = dedupe([form.manager1_id, form.manager2_id, form.manager3_id]);
   // Diretor entrou no formulário em 28/09/2026 (antes só o gatilho
   // `deal_participants_autofill` o vinculava, pela equipe do corretor). Mesmo
   // `(deal_id, profile_id, role)` único: quem é gerente E diretor do negócio
