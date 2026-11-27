@@ -47,12 +47,12 @@ describe("useLeadsRealtime", () => {
 
     for (let i = 0; i < 500; i++) ouvintes[i % ouvintes.length]();
     expect(invalidar).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1500);
+    vi.advanceTimersByTime(4_500); // 1,5 s + até 3 s de espalhamento (27/11/2026)
     expect(invalidar).toHaveBeenCalledTimes(1);
 
     // Evento depois da janela agenda outra recarga.
     ouvintes[0]();
-    vi.advanceTimersByTime(1500);
+    vi.advanceTimersByTime(4_500);
     expect(invalidar).toHaveBeenCalledTimes(2);
 
     await act(async () => root.unmount());

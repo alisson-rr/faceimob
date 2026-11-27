@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { recargaEspalhada } from "@/lib/recargaEspalhada";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronDown, ListOrdered } from "lucide-react";
@@ -76,7 +77,8 @@ export function FilaEmFormacao() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const recarregar = () => { void queryClient.invalidateQueries({ queryKey: ["checkin", "fila-em-formacao"] }); };
+    // Espalhada (27/11/2026): cada entrega da roleta recalculava a fila de todos ao mesmo tempo.
+    const recarregar = recargaEspalhada(() => { void queryClient.invalidateQueries({ queryKey: ["checkin", "fila-em-formacao"] }); });
     const canal = supabase
       .channel("fila-em-formacao")
       .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, recarregar)
@@ -84,7 +86,7 @@ export function FilaEmFormacao() {
       // O próprio lead atualizado pode tirar o "bloqueado" (atrasos) sem F5.
       .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `assigned_to=eq.${user.id}` }, recarregar)
       .subscribe();
-    return () => { void supabase.removeChannel(canal); };
+    return () => { recarregar.cancelar(); void supabase.removeChannel(canal); };
   }, [user?.id, queryClient]);
 
   if (!user?.id) return null;

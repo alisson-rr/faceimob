@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { recargaEspalhada } from "@/lib/recargaEspalhada";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, History, ListOrdered, Loader2, RefreshCcw } from "lucide-react";
@@ -78,12 +79,14 @@ export default function QueuePosition({ checkedIn, opensAt, blocked = false }: P
 
   useEffect(() => {
     if (!user?.id) return;
+    // Espalhada (27/11/2026): toda entrega de qualquer corretor recarregava a posição de todos juntos.
+    const recarregar = recargaEspalhada(() => void load());
     const channel = supabase
       .channel(`queue-position-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${user.id}` }, () => void load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, recarregar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${user.id}` }, recarregar)
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => { recarregar.cancelar(); void supabase.removeChannel(channel); };
   }, [user?.id, load]);
 
   if (loading) {

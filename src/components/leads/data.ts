@@ -9,6 +9,7 @@
  * invalida as chaves de registro de lead.
  */
 import { useEffect, useState } from "react";
+import { recargaEspalhada } from "@/lib/recargaEspalhada";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -298,14 +299,8 @@ export function useLeadsRealtime(channelName = "leads-page") {
     // (02/10/2026) gravou ~25 mil leads: cada evento recarregava a lista
     // inteira em toda tela de Leads aberta e afogou o banco — o Dashboard
     // ficou sem carregar. O primeiro evento agenda; os da janela entram nela.
-    let agendada: ReturnType<typeof setTimeout> | undefined;
-    const invalidar = () => {
-      if (agendada) return;
-      agendada = setTimeout(() => {
-        agendada = undefined;
-        void queryClient.invalidateQueries({ queryKey: leadKeys.records });
-      }, 1500);
-    };
+    // 27/11/2026: além de juntar, espalha — as telas abertas não recarregam no mesmo segundo.
+    const invalidar = recargaEspalhada(() => { void queryClient.invalidateQueries({ queryKey: leadKeys.records }); }, 1_500, 3_000);
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, invalidar)
@@ -326,7 +321,7 @@ export function useLeadsRealtime(channelName = "leads-page") {
       .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, invalidar)
       .subscribe();
     return () => {
-      clearTimeout(agendada);
+      invalidar.cancelar();
       void supabase.removeChannel(channel);
     };
   }, [queryClient, channelName]);

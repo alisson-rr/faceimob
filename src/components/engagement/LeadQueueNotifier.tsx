@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { recargaEspalhada } from "@/lib/recargaEspalhada";
 import { BellRing, ListOrdered } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -97,12 +98,15 @@ export function LeadQueueNotifier({ paused = false }: { paused?: boolean }) {
   useEffect(() => {
     if (!profileId || role !== "broker") return;
     const timer = setInterval(() => void load(), POLL_MS);
+    // Espalhada (27/11/2026): toda entrega de qualquer corretor recarregava a fila de todos juntos.
+    const recarregar = recargaEspalhada(() => void load());
     const channel = supabase
       .channel(`lead-queue-notifier-${profileId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, () => void load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${profileId}` }, () => void load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_assignments" }, recarregar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "checkins", filter: `profile_id=eq.${profileId}` }, recarregar)
       .subscribe();
     return () => {
+      recarregar.cancelar();
       clearInterval(timer);
       void supabase.removeChannel(channel);
     };
