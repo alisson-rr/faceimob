@@ -95,9 +95,14 @@ export const useOpenLeads = () =>
 /** O que a IA da 3C fez com o lead: marcou visita ou deixou como interessado. */
 export type Entrega3c = "agenda" | "interessado";
 
+/** Entrega da 3C num lead e quando foi (a ligação mais recente que conta). */
+export type Entrega3cNoLead = { tipo: Entrega3c; em: string };
+
 /** Lead → entrega da 3C a partir dos eventos; visita marcada vale mais que interesse. */
-function entregasDa3c(eventos: { lead_id: string | null; kind: string; detail: unknown }[]): Map<string, Entrega3c> {
-  const mapa = new Map<string, Entrega3c>();
+export function entregasDa3c(
+  eventos: { lead_id: string | null; kind: string; detail: unknown; created_at: string }[],
+): Map<string, Entrega3cNoLead> {
+  const mapa = new Map<string, Entrega3cNoLead>();
   for (const e of eventos) {
     if (!e.lead_id) continue;
     const desfecho = String((e.detail as { desfecho?: unknown } | null)?.desfecho ?? "");
@@ -105,7 +110,10 @@ function entregasDa3c(eventos: { lead_id: string | null; kind: string; detail: u
       ? "agenda"
       : e.kind === "interessado_3c_roleta" || (e.kind === "voice_ai_call" && desfecho === "interessado")
         ? "interessado" : null;
-    if (tipo && mapa.get(e.lead_id) !== "agenda") mapa.set(e.lead_id, tipo);
+    if (!tipo) continue;
+    const atual = mapa.get(e.lead_id);
+    const em = atual && atual.em > e.created_at ? atual.em : e.created_at;
+    mapa.set(e.lead_id, { tipo: atual?.tipo === "agenda" ? "agenda" : tipo, em });
   }
   return mapa;
 }
@@ -121,7 +129,7 @@ export const useLeads3c = () =>
     queryFn: async () => {
       const desde = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase.from("lead_events")
-        .select("lead_id,kind,detail")
+        .select("lead_id,kind,detail,created_at")
         .in("kind", ["voice_ai_call", "visita_3c_pendente", "interessado_3c_roleta"])
         .gte("created_at", desde)
         .limit(2000);
@@ -148,7 +156,7 @@ export const useLeadsDoPeriodo = (intervalo: { de: string; ate: string } | null)
       const { de, ate } = intervalo as { de: string; ate: string };
       const [criados, eventos] = await Promise.all([
         listLeads({ createdFrom: de, createdTo: ate }),
-        supabase.from("lead_events").select("lead_id,kind,detail")
+        supabase.from("lead_events").select("lead_id,kind,detail,created_at")
           .in("kind", ["voice_ai_call", "visita_3c_pendente", "interessado_3c_roleta"])
           .gte("created_at", de).lt("created_at", ate).limit(2000),
       ]);
